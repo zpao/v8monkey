@@ -38,6 +38,7 @@ namespace v8 {
 
   class String : public Value  {
     JSString *mStr;
+    int mLength;
     String(JSString *s, size_t len);
   public:
     static String *New(const char *data);
@@ -45,19 +46,15 @@ namespace v8 {
     JSString *getJSString();
 
     class AsciiValue {
+      char* mStr;
+      int mLength;
     public:
       AsciiValue(Handle<v8::Value> val);
       ~AsciiValue();
       char* operator*() { return mStr; }
       const char* operator*() const { return mStr; }
       int length() const { return mLength; }
-    private:
-      char* mStr;
-      int mLength;
     };
-
-  private:
-    int mLength;
   };
 
   template <typename T>

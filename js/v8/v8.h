@@ -4,6 +4,11 @@
 #include <jsapi.h>
 
 namespace v8 {
+  // Define some classes first so we can use them before fully defined
+  class String;
+  template <class T> class Handle;
+  template <class T> class Local;
+
   struct HandleScope {
   };
 
@@ -27,6 +32,8 @@ namespace v8 {
 
   // Parent class of every JS val / object
   class Value {
+  public:
+    Local<String> ToString() const;
   };
 
   class String : public Value  {

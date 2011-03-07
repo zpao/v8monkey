@@ -69,4 +69,8 @@ namespace v8 {
       return mVal;
     }
   };
+
+  template <typename T>
+  class Local : public Handle<T> {
+  };
 }

@@ -94,4 +94,24 @@ namespace v8 {
   JSString *String::getJSString() {
     return mStr;
   }
+
+  String::AsciiValue::AsciiValue(Handle<v8::Value> val) {
+    // Set some defaults which will be used for empty values/strings
+    mStr = NULL;
+    mLength = 0;
+
+    if (val.IsEmpty()) {
+      return;
+    }
+
+    // TODO: Do we need something about HandleScope here?
+    Local<String> str = val->ToString();
+    if (!str.IsEmpty()) {
+      mLength = (size_t)str->Length();
+      JS_EncodeStringToBuffer(str->getJSString(), mStr, mLength);
+    }
+  }
+  String::AsciiValue::~AsciiValue() {
+    delete mStr;
+  }
 }

@@ -46,7 +46,7 @@ namespace v8 {
 
     class AsciiValue {
     public:
-      AsciiValue(Value val);
+      AsciiValue(Handle<v8::Value> val);
       ~AsciiValue();
       char* operator*() { return mStr; }
       const char* operator*() const { return mStr; }

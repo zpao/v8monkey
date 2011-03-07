@@ -49,10 +49,35 @@ namespace v8 {
     JS_DestroyContext(mCtx);
   }
 
+  JSContext *Context::getJSContext() {
+    return mCtx;
+  }
+
   Context* Context::New() {
     return new Context;
   }
 
-  Context::Scope::Scope(Context *) {
+  // XXX: handle nested scopes - make this a stack
+  static Context *gCurrentContext = 0;
+  static Context *cx() {
+    return gCurrentContext;
+  }
+
+  Context::Scope::Scope(Context *c) {
+    gCurrentContext = c;
+  }
+
+  Context::Scope::~Scope() {
+    gCurrentContext = 0;
+  }
+
+  String::String(JSString *s) :
+    mStr(s)
+  {
+  }
+
+  String *String::New(const char *data) {
+    JSString *str = JS_NewStringCopyZ(cx()->getJSContext(), data);
+    return new String(str);
   }
 }

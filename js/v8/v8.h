@@ -13,11 +13,22 @@ namespace v8 {
 
     Context();
     ~Context();
+
   public:
     static Context* New();
 
+    JSContext *getJSContext();
+
     struct Scope {
       Scope(Context *ctx);
+      ~Scope();
     };
+  };
+
+  class String {
+    JSString *mStr;
+    String(JSString *s);
+  public:
+    static String *New(const char *data);
   };
 }

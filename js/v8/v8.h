@@ -35,6 +35,7 @@ namespace v8 {
   public:
     static String *New(const char *data);
     int Length() const;
+    JSString *getJSString();
 
     class AsciiValue {
     public:

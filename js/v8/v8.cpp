@@ -90,4 +90,8 @@ namespace v8 {
   int String::Length() const {
     return mLength;
   }
+
+  JSString *String::getJSString() {
+    return mStr;
+  }
 }

@@ -1,3 +1,4 @@
+#include <limits>
 #include "v8.h"
 
 namespace v8 {
@@ -71,13 +72,22 @@ namespace v8 {
     gCurrentContext = 0;
   }
 
-  String::String(JSString *s) :
-    mStr(s)
+  String::String(JSString *s, size_t len) :
+    mStr(s),
+    mLength(len)
   {
+    // TODO: handle this some other way.
+    if (len > std::numeric_limits<int>::max()) {
+      exit (1);
+    }
   }
 
   String *String::New(const char *data) {
     JSString *str = JS_NewStringCopyZ(cx()->getJSContext(), data);
-    return new String(str);
+    return new String(str, strlen(data));
+  }
+
+  int String::Length() const {
+    return mLength;
   }
 }

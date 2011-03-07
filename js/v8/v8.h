@@ -31,9 +31,10 @@ namespace v8 {
 
   class String : public Value  {
     JSString *mStr;
-    String(JSString *s);
+    String(JSString *s, size_t len);
   public:
     static String *New(const char *data);
+    int Length() const;
 
     class AsciiValue {
     public:
@@ -46,6 +47,9 @@ namespace v8 {
       char* mStr;
       int mLength;
     };
+
+  private:
+    int mLength;
   };
 
   template <typename T>

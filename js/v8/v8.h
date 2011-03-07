@@ -77,5 +77,8 @@ namespace v8 {
 
   template <typename T>
   class Local : public Handle<T> {
+  public:
+    Local() : Handle<T>() {}
+    Local(T *val) : Handle<T>(val) {}
   };
 }

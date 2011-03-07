@@ -34,6 +34,18 @@ namespace v8 {
     String(JSString *s);
   public:
     static String *New(const char *data);
+
+    class AsciiValue {
+    public:
+      AsciiValue(Value val);
+      ~AsciiValue();
+      char* operator*() { return mStr; }
+      const char* operator*() const { return mStr; }
+      int length() const { return mLength; }
+    private:
+      char* mStr;
+      int mLength;
+    };
   };
 
   template <typename T>

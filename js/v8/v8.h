@@ -31,4 +31,22 @@ namespace v8 {
   public:
     static String *New(const char *data);
   };
+
+  template <typename T>
+  class Handle {
+    T* mVal;
+  public:
+    Handle() : mVal(NULL) {}
+    Handle(T *val) : mVal(val) {}
+
+    bool IsEmpty() const {
+      return mVal != 0;
+    }
+    T* operator ->() {
+      return mVal;
+    }
+    T* operator *() {
+      return mVal;
+    }
+  };
 }

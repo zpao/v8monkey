@@ -25,7 +25,11 @@ namespace v8 {
     };
   };
 
-  class String {
+  // Parent class of every JS val / object
+  class Value {
+  };
+
+  class String : public Value  {
     JSString *mStr;
     String(JSString *s);
   public:

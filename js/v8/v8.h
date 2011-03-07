@@ -43,7 +43,7 @@ namespace v8 {
   public:
     static String *New(const char *data);
     int Length() const;
-    JSString *getJSString();
+    JSString *&getJSString();
 
     class AsciiValue {
       char* mStr;
@@ -80,5 +80,14 @@ namespace v8 {
   public:
     Local() : Handle<T>() {}
     Local(T *val) : Handle<T>(val) {}
+  };
+
+  template <typename T>
+  class Persistent : public Handle<T> {
+  public:
+    Persistent() : Handle<T>() {}
+    Persistent(T *val);
+
+    void Dispose();
   };
 }

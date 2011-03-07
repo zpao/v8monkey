@@ -91,7 +91,7 @@ namespace v8 {
     return mLength;
   }
 
-  JSString *String::getJSString() {
+  JSString *&String::getJSString() {
     return mStr;
   }
 
@@ -113,5 +113,17 @@ namespace v8 {
   }
   String::AsciiValue::~AsciiValue() {
     delete mStr;
+  }
+
+  template <>
+  Persistent<String>::Persistent(String *s) :
+    Handle<String>(s)
+  {
+    JS_AddStringRoot(cx()->getJSContext(), &s->getJSString());
+  }
+
+  template <>
+  void Persistent<String>::Dispose() {
+    JS_RemoveStringRoot(cx()->getJSContext(), &(*this)->getJSString());
   }
 }

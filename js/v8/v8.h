@@ -35,6 +35,19 @@ namespace v8 {
   protected:
     jsval mVal;
   public:
+    bool IsUndefined() const { return JSVAL_IS_VOID(mVal); }
+    bool IsNull() const { return JSVAL_IS_NULL(mVal); }
+    bool IsTrue() const { return IsBoolean() && JSVAL_TO_BOOLEAN(mVal); }
+    bool IsFalse() const { return IsBoolean() && !JSVAL_TO_BOOLEAN(mVal); }
+
+    bool IsString() const { return JSVAL_IS_STRING(mVal); }
+    bool IsFunction() const;
+    bool IsArray() const;
+    bool IsObject() const { return JSVAL_IS_OBJECT(mVal); }
+    bool IsBoolean() const { return JSVAL_IS_BOOLEAN(mVal); }
+    bool IsNumber() const { return JSVAL_IS_NUMBER(mVal); }
+    bool IsInt32() const { return JSVAL_IS_INT(mVal); }
+    bool IsDate() const;
     Local<String> ToString() const;
 
     jsval &getJsval() { return mVal; }

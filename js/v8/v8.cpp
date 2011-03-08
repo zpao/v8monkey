@@ -36,6 +36,9 @@ namespace v8 {
     }
   }
 
+  //////////////////////////////////////////////////////////////////////////////
+  //// Context class
+
   Context::Context()
     : mCtx(JS_NewContext(rt(), 8192))
   {
@@ -82,8 +85,29 @@ namespace v8 {
     return Local<String>();
   }
 
+  bool Value::IsFunction() const {
+    if (!IsObject())
+      return false;
+    JSObject *obj = JSVAL_TO_OBJECT(mVal);
+    return JS_ObjectIsFunction(cx()->getJSContext(), obj);
+  }
+
+  bool Value::IsArray() const {
+    if (!IsObject())
+      return false;
+    JSObject *obj = JSVAL_TO_OBJECT(mVal);
+    return JS_IsArrayObject(cx()->getJSContext(), obj);
+  }
+
+  bool Value::IsDate() const {
+    if (!IsObject())
+      return false;
+    JSObject *obj = JSVAL_TO_OBJECT(mVal);
+    return JS_ObjectIsDate(cx()->getJSContext(), obj);
+  }
+
   //////////////////////////////////////////////////////////////////////////////
-  // Handle class
+  //// Boolean class
 
   Handle<Boolean> Boolean::New(bool value) {
     static Boolean sTrue(true);
@@ -136,6 +160,8 @@ namespace v8 {
     delete mStr;
   }
 
+  //////////////////////////////////////////////////////////////////////////////
+  //// Handle class
   template <>
   Persistent<Value>::Persistent(Value *v) :
     Handle<Value>(v)

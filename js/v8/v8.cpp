@@ -164,7 +164,7 @@ namespace v8 {
     }
     int idx = 0;
     for (int i = start; i < toWrite; i++) {
-      if (tmp[i] > 0x7F) {
+      if (unsigned int(tmp[i]) > 0x7F) {
         continue;
       }
       buffer[idx] = tmp[i];

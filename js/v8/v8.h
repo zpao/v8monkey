@@ -25,7 +25,7 @@ namespace v8 {
     JSContext *getJSContext();
 
     struct Scope {
-      Scope(Context *ctx);
+      Scope(Handle<Context> ctx);
       ~Scope();
     };
   };

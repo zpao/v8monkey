@@ -68,8 +68,8 @@ namespace v8 {
     return gCurrentContext;
   }
 
-  Context::Scope::Scope(Context *c) {
-    gCurrentContext = c;
+  Context::Scope::Scope(Handle<Context> c) {
+    gCurrentContext = *c;
   }
 
   Context::Scope::~Scope() {

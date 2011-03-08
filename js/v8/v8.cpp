@@ -81,8 +81,10 @@ namespace v8 {
 
   Local<String> Value::ToString() const
   {
-    // TODO implement me!
-    return Local<String>();
+    // TODO Allocate this in a way that doesn't leak
+    JSString *str(JS_ValueToString(cx()->getJSContext(), mVal));
+    Local<String> s = new String(str);
+    return s;
   }
 
   bool Value::IsFunction() const {

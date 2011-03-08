@@ -65,6 +65,8 @@ namespace v8 {
   };
 
   class String : public Value  {
+    friend class Value;
+
     String(JSString *s);
 
     JSString *asJSString() const;

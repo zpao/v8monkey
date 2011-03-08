@@ -72,6 +72,18 @@ namespace v8 {
     gCurrentContext = 0;
   }
 
+  //////////////////////////////////////////////////////////////////////////////
+  //// Value class
+
+  Local<String> Value::ToString() const
+  {
+    // TODO implement me!
+    return Local<String>();
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// String class
+
   String::String(JSString *s, size_t len) :
     mStr(s),
     mLength(len)

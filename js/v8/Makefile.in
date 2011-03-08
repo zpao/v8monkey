@@ -1,0 +1,27 @@
+DEPTH = ../..
+topsrcdir = @top_srcdir@
+srcdir = @srcdir@
+VPATH = @srcdir@
+
+include $(DEPTH)/config/autoconf.mk
+
+MODULE = v8api
+LIBRARY_NAME = v8api_s
+FORCE_STATIC_LIB = 1
+
+EXPORTS_NAMESPACES = v8
+EXPORTS_v8 = \
+  v8.h \
+  $(NULL)
+
+CPPSRCS = \
+  v8.cpp \
+  $(NULL)
+
+EXTRA_DSO_LDOPTS += \
+  $(MOZALLOC_LIB) \
+  $(MOZ_JS_LIBS) \
+  $(NULL)
+
+include $(topsrcdir)/config/config.mk
+include $(topsrcdir)/config/rules.mk

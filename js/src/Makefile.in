@@ -71,7 +71,7 @@ ifdef ENABLE_TESTS
 DIRS += tests
 endif
 
-DIRS += ../v8
+DIRS += v8api
 
 MODULE		    = js
 LIBRARY_NAME	    = mozjs

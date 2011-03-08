@@ -2,7 +2,7 @@ CC=gcc
 LINK=ld
 AR=ar -r
 RM=rm -f
-CFLAGS=-Ijsapi -I../src
+CFLAGS=-Ijsapi -I..
 
 v8.a: v8.o
 	$(AR) $@ v8.o

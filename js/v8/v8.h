@@ -32,18 +32,33 @@ namespace v8 {
 
   // Parent class of every JS val / object
   class Value {
+  protected:
+    jsval mVal;
   public:
     Local<String> ToString() const;
+
+    jsval &getJsval() { return mVal; }
+  };
+
+  class Boolean : public Value {
+    Boolean(JSBool val) {
+      mVal = val ? JSVAL_TRUE : JSVAL_FALSE;
+    }
+  public:
+    bool Value() const {
+      return mVal == JSVAL_TRUE;
+    }
+    static Handle<Boolean> New(bool value);
   };
 
   class String : public Value  {
-    JSString *mStr;
-    int mLength;
-    String(JSString *s, size_t len);
+    String(JSString *s);
+
+    JSString *asJSString() const;
   public:
     static String *New(const char *data);
     int Length() const;
-    JSString *getJSString();
+    int Utf8Length() const;
 
     class AsciiValue {
       char* mStr;
@@ -77,5 +92,17 @@ namespace v8 {
 
   template <typename T>
   class Local : public Handle<T> {
+  public:
+    Local() : Handle<T>() {}
+    Local(T *val) : Handle<T>(val) {}
+  };
+
+  template <typename T>
+  class Persistent : public Handle<T> {
+  public:
+    Persistent() : Handle<T>() {}
+    Persistent(T *val);
+
+    void Dispose();
   };
 }

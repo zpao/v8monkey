@@ -8,6 +8,7 @@ namespace v8 {
     JSRuntime *gRuntime = 0;
     JSRuntime *rt() {
       if (!gRuntime) {
+        JS_CStringsAreUTF8();
         gRuntime = JS_NewRuntime(64 * MB);
       }
       return gRuntime;
@@ -82,29 +83,36 @@ namespace v8 {
   }
 
   //////////////////////////////////////////////////////////////////////////////
+  // Handle class
+
+  Handle<Boolean> Boolean::New(bool value) {
+    static Boolean sTrue(true);
+    static Boolean sFalse(false);
+    return value ? &sTrue : &sFalse;
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
   //// String class
 
-  String::String(JSString *s, size_t len) :
-    mStr(s),
-    mLength(len)
-  {
-    // TODO: handle this some other way.
-    if (len > std::numeric_limits<int>::max()) {
-      exit (1);
-    }
+  String::String(JSString *s) {
+    mVal = STRING_TO_JSVAL(s);
   }
 
   String *String::New(const char *data) {
     JSString *str = JS_NewStringCopyZ(cx()->getJSContext(), data);
-    return new String(str, strlen(data));
+    return new String(str);
+  }
+
+  JSString *String::asJSString() const {
+    return JSVAL_TO_STRING(mVal);
   }
 
   int String::Length() const {
-    return mLength;
+    return JS_GetStringLength(asJSString());
   }
 
-  JSString *String::getJSString() {
-    return mStr;
+  int String::Utf8Length() const {
+    return 0; // Safe, but wrong
   }
 
   String::AsciiValue::AsciiValue(Handle<v8::Value> val) {
@@ -120,10 +128,23 @@ namespace v8 {
     Local<String> str = val->ToString();
     if (!str.IsEmpty()) {
       mLength = (size_t)str->Length();
-      JS_EncodeStringToBuffer(str->getJSString(), mStr, mLength);
+      // FIXME sdwilsh
+      JS_EncodeStringToBuffer(NULL, mStr, mLength);
     }
   }
   String::AsciiValue::~AsciiValue() {
     delete mStr;
+  }
+
+  template <>
+  Persistent<Value>::Persistent(Value *v) :
+    Handle<Value>(v)
+  {
+    JS_AddValueRoot(cx()->getJSContext(), &v->getJsval());
+  }
+
+  template <>
+  void Persistent<Value>::Dispose() {
+    JS_RemoveValueRoot(cx()->getJSContext(), &(*this)->getJsval());
   }
 }

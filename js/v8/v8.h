@@ -50,7 +50,7 @@ namespace v8 {
     bool IsDate() const;
     Local<String> ToString() const;
 
-    jsval &getJsval() { return mVal; }
+    jsval &native() { return mVal; }
   };
 
   class Boolean : public Value {

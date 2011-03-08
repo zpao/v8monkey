@@ -215,11 +215,11 @@ namespace v8 {
   Persistent<Value>::Persistent(Value *v) :
     Handle<Value>(v)
   {
-    JS_AddValueRoot(cx()->getJSContext(), &v->getJsval());
+    JS_AddValueRoot(cx()->getJSContext(), &v->native());
   }
 
   template <>
   void Persistent<Value>::Dispose() {
-    JS_RemoveValueRoot(cx()->getJSContext(), &(*this)->getJsval());
+    JS_RemoveValueRoot(cx()->getJSContext(), &(*this)->native());
   }
 }

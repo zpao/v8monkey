@@ -43,7 +43,7 @@ namespace v8 {
     bool IsString() const { return JSVAL_IS_STRING(mVal); }
     bool IsFunction() const;
     bool IsArray() const;
-    bool IsObject() const { return JSVAL_IS_OBJECT(mVal); }
+    bool IsObject() const { return !JSVAL_IS_PRIMITIVE(mVal); }
     bool IsBoolean() const { return JSVAL_IS_BOOLEAN(mVal); }
     bool IsNumber() const { return JSVAL_IS_NUMBER(mVal); }
     bool IsInt32() const { return JSVAL_IS_INT(mVal); }

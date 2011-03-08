@@ -58,6 +58,10 @@ namespace v8 {
     return mCtx;
   }
 
+  JSObject *Context::getJSGlobal() {
+    return mGlobal;
+  }
+
   Context* Context::New() {
     return new Context;
   }
@@ -164,7 +168,7 @@ namespace v8 {
     }
     int idx = 0;
     for (int i = start; i < toWrite; i++) {
-      if (unsigned int(tmp[i]) > 0x7F) {
+      if (static_cast<unsigned int>(tmp[i]) > 0x7F) {
         continue;
       }
       buffer[idx] = tmp[i];
@@ -207,6 +211,26 @@ namespace v8 {
   }
   String::AsciiValue::~AsciiValue() {
     delete mStr;
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Script class
+  Script::Script(JSScript *s) :
+    mScript(s)
+  {
+  }
+
+  Local<Script> Script::Compile(Handle<String> source) {
+    // TODO: we might need to do something to prevent GC?
+    const jschar* chars;
+    size_t len;
+    JS_GetStringCharsAndLength(cx()->getJSContext(),
+                               JSVAL_TO_STRING(source->native()), &len);
+
+    JSScript* s = JS_CompileUCScript(cx()->getJSContext(), cx()->getJSGlobal(),
+                                     chars, len, NULL, NULL);
+    Local<Script> script= new Script(s);
+    return script;
   }
 
   //////////////////////////////////////////////////////////////////////////////

@@ -24,6 +24,9 @@ namespace v8 {
 
     JSContext *getJSContext();
 
+    // TODO: expose Local<Object> Global instead
+    JSObject *getJSGlobal();
+
     struct Scope {
       Scope(Handle<Context> ctx);
       ~Scope();
@@ -103,6 +106,14 @@ namespace v8 {
     };
 
     static String *New(const char *data);
+  };
+
+  class Script {
+    JSScript *mScript;
+    Script(JSScript *s);
+  public:
+    // TODO follow the v8 api
+    static Local<Script> Compile(Handle<String> str);
   };
 
   template <typename T>

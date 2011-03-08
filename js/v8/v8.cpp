@@ -129,16 +129,65 @@ namespace v8 {
     return new String(str);
   }
 
-  JSString *String::asJSString() const {
-    return JSVAL_TO_STRING(mVal);
-  }
-
   int String::Length() const {
-    return JS_GetStringLength(asJSString());
+    return JS_GetStringLength(*this);
   }
 
   int String::Utf8Length() const {
-    return 0; // Safe, but wrong
+    return 0; // XXX Safe, but wrong
+  }
+
+  int String::Write(JSUint16* buffer,
+                    int start,
+                    int length,
+                    WriteHints hints) const
+  {
+    return 0; // XXX Safe, but wrong
+  }
+
+  int String::WriteAscii(char* buffer,
+                         int start,
+                         int length,
+                         WriteHints hints) const
+  {
+    size_t encodedLength = JS_GetStringEncodingLength(cx()->getJSContext(),
+                                                      *this);
+    char* tmp = new char[encodedLength];
+    (void)WriteUtf8(tmp, encodedLength);
+
+    // No easy way to convert UTF-8 to ASCII, so just drop characters that are
+    // not ASCII.
+    int toWrite = start + length;
+    if (length == -1) {
+      length = static_cast<int>(encodedLength);
+      toWrite = length - start;
+    }
+    int idx = 0;
+    for (int i = start; i < toWrite; i++) {
+      if (tmp[i] > 0x7F) {
+        continue;
+      }
+      buffer[idx] = tmp[i];
+      idx++;
+    }
+
+    delete[] tmp;
+    return idx;
+  }
+
+  int String::WriteUtf8(char* buffer,
+                        int length,
+                        int* nchars_ref,
+                        WriteHints hints) const
+  {
+    // TODO handle -1 for length!
+    // XXX unclear if this includes the NULL terminator!
+    size_t bytesWritten = JS_EncodeStringToBuffer(*this, buffer, length);
+    // TODO check to make sure we don't overflow int
+    if (nchars_ref) {
+      *nchars_ref = static_cast<int>(bytesWritten);
+    }
+    return static_cast<int>(bytesWritten);
   }
 
   String::AsciiValue::AsciiValue(Handle<v8::Value> val) {
@@ -153,9 +202,7 @@ namespace v8 {
     // TODO: Do we need something about HandleScope here?
     Local<String> str = val->ToString();
     if (!str.IsEmpty()) {
-      mLength = (size_t)str->Length();
-      // FIXME sdwilsh
-      JS_EncodeStringToBuffer(NULL, mStr, mLength);
+      mLength = str->WriteAscii(mStr);
     }
   }
   String::AsciiValue::~AsciiValue() {

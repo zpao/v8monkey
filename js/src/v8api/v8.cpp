@@ -256,4 +256,14 @@ namespace v8 {
   void Persistent<Value>::Dispose() {
     JS_RemoveValueRoot(cx()->getJSContext(), &(*this)->native());
   }
+
+  template <>
+  Persistent<Context>::Persistent(Context *c) : Handle<Context>(c)
+  {
+  }
+
+  template <>
+  void Persistent<Context>::Dispose()
+  {
+  }
 }

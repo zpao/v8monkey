@@ -38,6 +38,14 @@ namespace v8 {
   protected:
     jsval mVal;
   public:
+    Value() :
+      mVal(JSVAL_VOID)
+    {
+    }
+    Value(jsval val) :
+      mVal(val)
+    {
+    }
     bool IsUndefined() const { return JSVAL_IS_VOID(mVal); }
     bool IsNull() const { return JSVAL_IS_NULL(mVal); }
     bool IsTrue() const { return IsBoolean() && JSVAL_TO_BOOLEAN(mVal); }
@@ -114,6 +122,8 @@ namespace v8 {
   public:
     // TODO follow the v8 api
     static Local<Script> Compile(Handle<String> str);
+
+    Local<Value> Run();
   };
 
   template <typename T>
@@ -124,7 +134,7 @@ namespace v8 {
     Handle(T *val) : mVal(val) {}
 
     bool IsEmpty() const {
-      return mVal != 0;
+      return mVal == 0;
     }
     T* operator ->() {
       return mVal;

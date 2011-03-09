@@ -221,11 +221,14 @@ namespace v8 {
     // TODO: Do we need something about HandleScope here?
     Local<String> str = val->ToString();
     if (!str.IsEmpty()) {
-      mLength = str->WriteAscii(mStr);
+      int len = str->Length();
+      mStr = new char[len];
+      mLength = str->WriteAscii(mStr, 0, len);
     }
   }
   String::AsciiValue::~AsciiValue() {
-    delete mStr;
+    if (mStr)
+      delete[] mStr;
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -239,13 +242,22 @@ namespace v8 {
     // TODO: we might need to do something to prevent GC?
     const jschar* chars;
     size_t len;
-    JS_GetStringCharsAndLength(cx()->getJSContext(),
-                               JSVAL_TO_STRING(source->native()), &len);
+    chars = JS_GetStringCharsAndLength(cx()->getJSContext(),
+                                       JSVAL_TO_STRING(source->native()), &len);
 
     JSScript* s = JS_CompileUCScript(cx()->getJSContext(), cx()->getJSGlobal(),
                                      chars, len, NULL, NULL);
     Local<Script> script= new Script(s);
     return script;
+  }
+
+  Local<Value> Script::Run() {
+    jsval js_retval;
+    JSBool success = JS_ExecuteScript(cx()->getJSContext(), cx()->getJSGlobal(),
+                                      mScript, &js_retval);
+    Local<Value> retval = new Value(js_retval);
+
+    return retval;
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -260,5 +272,15 @@ namespace v8 {
   template <>
   void Persistent<Value>::Dispose() {
     JS_RemoveValueRoot(cx()->getJSContext(), &(*this)->native());
+  }
+
+  template <>
+  Persistent<Context>::Persistent(Context *c) : Handle<Context>(c)
+  {
+  }
+
+  template <>
+  void Persistent<Context>::Dispose()
+  {
   }
 }

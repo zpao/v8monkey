@@ -206,6 +206,7 @@ namespace v8 {
     // TODO: Do we need something about HandleScope here?
     Local<String> str = val->ToString();
     if (!str.IsEmpty()) {
+      mStr = new char[str->Length()];
       mLength = str->WriteAscii(mStr);
     }
   }

@@ -212,7 +212,8 @@ namespace v8 {
     }
   }
   String::AsciiValue::~AsciiValue() {
-    delete mStr;
+    if (mStr)
+      delete[] mStr;
   }
 
   //////////////////////////////////////////////////////////////////////////////

@@ -132,7 +132,7 @@ namespace v8 {
     Handle(T *val) : mVal(val) {}
 
     bool IsEmpty() const {
-      return mVal != 0;
+      return mVal == 0;
     }
     T* operator ->() {
       return mVal;

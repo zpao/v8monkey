@@ -224,8 +224,8 @@ namespace v8 {
     // TODO: we might need to do something to prevent GC?
     const jschar* chars;
     size_t len;
-    JS_GetStringCharsAndLength(cx()->getJSContext(),
-                               JSVAL_TO_STRING(source->native()), &len);
+    chars = JS_GetStringCharsAndLength(cx()->getJSContext(),
+                                       JSVAL_TO_STRING(source->native()), &len);
 
     JSScript* s = JS_CompileUCScript(cx()->getJSContext(), cx()->getJSGlobal(),
                                      chars, len, NULL, NULL);

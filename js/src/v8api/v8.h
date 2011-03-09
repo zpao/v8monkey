@@ -38,7 +38,9 @@ namespace v8 {
   protected:
     jsval mVal;
   public:
-    Value() { }
+    Value() {
+      mVal = JSVAL_VOID;
+    }
     Value(jsval val) {
       mVal = val;
     }

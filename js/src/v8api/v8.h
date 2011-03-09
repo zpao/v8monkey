@@ -118,6 +118,8 @@ namespace v8 {
   public:
     // TODO follow the v8 api
     static Local<Script> Compile(Handle<String> str);
+
+    Local<Value> Run();
   };
 
   template <typename T>

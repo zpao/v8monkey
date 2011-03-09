@@ -233,6 +233,15 @@ namespace v8 {
     return script;
   }
 
+  Local<Value> Script::Run() {
+    jsval js_retval;
+    JSBool success = JS_ExecuteScript(cx()->getJSContext(), cx()->getJSGlobal(),
+                                      mScript, &js_retval);
+    Local<Value> retval = new Value(js_retval);
+
+    return retval;
+  }
+
   //////////////////////////////////////////////////////////////////////////////
   //// Handle class
   template <>

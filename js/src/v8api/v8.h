@@ -38,6 +38,10 @@ namespace v8 {
   protected:
     jsval mVal;
   public:
+    Value() { }
+    Value(jsval val) {
+      mVal = val;
+    }
     bool IsUndefined() const { return JSVAL_IS_VOID(mVal); }
     bool IsNull() const { return JSVAL_IS_NULL(mVal); }
     bool IsTrue() const { return IsBoolean() && JSVAL_TO_BOOLEAN(mVal); }

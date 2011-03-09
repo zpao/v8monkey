@@ -14,7 +14,7 @@ jslib: jsapi/libjs_static.a
 
 jsapi/js-config.h:
 	if [ ! -e jsapi ]; then mkdir jsapi; fi
-	(cd jsapi; ../../src/configure)
+	(cd jsapi; ../../configure)
 
 jsapi/libjs_static.a: jsapi/js-config.h
 	$(MAKE) -C jsapi

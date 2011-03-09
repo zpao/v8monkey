@@ -1,4 +1,5 @@
 #include <limits>
+#include <algorithm>
 #include "v8.h"
 
 namespace v8 {
@@ -138,7 +139,9 @@ namespace v8 {
   }
 
   int String::Utf8Length() const {
-    return 0; // XXX Safe, but wrong
+    size_t encodedLength = JS_GetStringEncodingLength(cx()->getJSContext(),
+                                                      *this);
+    return static_cast<int>(encodedLength);
   }
 
   int String::Write(JSUint16* buffer,
@@ -146,7 +149,19 @@ namespace v8 {
                     int length,
                     WriteHints hints) const
   {
-    return 0; // XXX Safe, but wrong
+    size_t internalLen;
+    const jschar* chars =
+      JS_GetStringCharsZAndLength(cx()->getJSContext(), *this, &internalLen);
+    if (!chars || internalLen >= static_cast<size_t>(start)) {
+      return 0;
+    }
+    size_t bytes = std::min<size_t>(length, internalLen - start) * 2;
+    if (length == -1) {
+      bytes = (internalLen - start) * 2;
+    }
+    (void)memcpy(buffer, &chars[start], bytes);
+
+    return bytes / 2;
   }
 
   int String::WriteAscii(char* buffer,

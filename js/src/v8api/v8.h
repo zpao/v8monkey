@@ -29,6 +29,8 @@ namespace v8 {
       Scope(Handle<Context> ctx);
       ~Scope();
     };
+
+    operator JSContext*() const { return mCtx; }
   };
 
   // Parent class of every JS val / object

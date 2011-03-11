@@ -1,6 +1,4 @@
 #pragma once
-// TODO: win32?
-#define XP_UNIX
 #include <jsapi.h>
 
 namespace v8 {

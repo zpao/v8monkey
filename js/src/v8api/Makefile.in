@@ -18,6 +18,10 @@ CPPSRCS = \
   v8.cpp \
   $(NULL)
 
+#ifdef ENABLE_TESTS
+TOOL_DIRS += test
+#endif
+
 EXTRA_DSO_LDOPTS += \
   $(MOZALLOC_LIB) \
   $(MOZ_JS_LIBS) \

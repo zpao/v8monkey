@@ -72,6 +72,7 @@ DIRS += tests
 endif
 
 DIRS += v8api
+SHARED_LIBRARY_LIBS += v8api/$(LIB_PREFIX)v8api_s.$(LIB_SUFFIX)
 
 MODULE		    = js
 LIBRARY_NAME	    = mozjs

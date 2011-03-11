@@ -6027,7 +6027,7 @@ MAKEFILES="
   config/Makefile
   config/autoconf.mk
   config/mkdepend/Makefile
-  v8api/Makefile
+  v8api/test/Makefile
 "
 
 if test -n "$JS_NATIVE_EDITLINE"; then

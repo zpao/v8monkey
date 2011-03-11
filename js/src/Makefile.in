@@ -71,9 +71,6 @@ ifdef ENABLE_TESTS
 DIRS += tests
 endif
 
-DIRS += v8api
-SHARED_LIBRARY_LIBS += v8api/$(LIB_PREFIX)v8api_s.$(LIB_SUFFIX)
-
 MODULE		    = js
 LIBRARY_NAME	    = mozjs
 STATIC_LIBRARY_NAME = js_static
@@ -259,6 +256,16 @@ INSTALLED_HEADERS = \
 		jsvalue.h \
 		prmjtime.h \
 		$(NULL)
+
+CPPSRCS += v8api/v8.cpp
+LOCAL_INCLUDES += -Iv8api
+EXPORTS_NAMEPSACES = v8
+EXPORTS_v8 = \
+  v8api/v8.h \
+  $(NULL)
+#ifdef ENABLE_TESTS
+TOOL_DIRS += v8api/test
+#endif
 
 ifdef ENABLE_TRACEJIT
 VPATH		+= \
@@ -449,7 +456,7 @@ CPPSRCS += \
     Library.cpp \
     $(NULL)
 
-LOCAL_INCLUDES = \
+LOCAL_INCLUDES += \
     -Ictypes/libffi/include \
     -I. \
     $(NULL)

@@ -176,13 +176,13 @@ namespace v8 {
     size_t encodedLength = JS_GetStringEncodingLength(cx()->getJSContext(),
                                                       *this);
     char* tmp = new char[encodedLength];
-    (void)WriteUtf8(tmp, encodedLength);
+    int written = WriteUtf8(tmp, encodedLength);
 
     // No easy way to convert UTF-8 to ASCII, so just drop characters that are
     // not ASCII.
     int toWrite = start + length;
     if (length == -1) {
-      length = static_cast<int>(encodedLength);
+      length = written;
       toWrite = length - start;
     }
     int idx = 0;
@@ -193,9 +193,13 @@ namespace v8 {
       buffer[idx] = tmp[i];
       idx++;
     }
+    // If we have enough space for the NULL terminator, set it.
+    if (idx <= length) {
+      buffer[idx--] = '\0';
+    }
 
     delete[] tmp;
-    return idx;
+    return idx - 1;
   }
 
   int String::WriteUtf8(char* buffer,
@@ -206,6 +210,12 @@ namespace v8 {
     // TODO handle -1 for length!
     // XXX unclear if this includes the NULL terminator!
     size_t bytesWritten = JS_EncodeStringToBuffer(*this, buffer, length);
+
+    // If we have enough space for the NULL terminator, set it.
+    if (bytesWritten < length) {
+      buffer[bytesWritten + 1] = '\0';
+    }
+
     // TODO check to make sure we don't overflow int
     if (nchars_ref) {
       *nchars_ref = static_cast<int>(bytesWritten);
@@ -226,8 +236,9 @@ namespace v8 {
     Local<String> str = val->ToString();
     if (!str.IsEmpty()) {
       int len = str->Length();
-      mStr = new char[len];
-      mLength = str->WriteAscii(mStr, 0, len);
+      // Need space for the NULL terminator.
+      mStr = new char[len + 1];
+      mLength = str->WriteAscii(mStr, 0, len + 1);
     }
   }
   String::AsciiValue::~AsciiValue() {

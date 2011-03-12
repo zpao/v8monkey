@@ -8,7 +8,8 @@ include $(DEPTH)/config/autoconf.mk
 MODULE = test_v8api
 
 CPP_UNIT_TESTS = \
-  test_hello_world.cpp
+  test_hello_world.cpp \
+  test_String.cpp \
   $(NULL)
 
 LIBS = \

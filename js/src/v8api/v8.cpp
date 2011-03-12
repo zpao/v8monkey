@@ -133,8 +133,14 @@ namespace v8 {
     mVal = STRING_TO_JSVAL(s);
   }
 
-  String *String::New(const char *data) {
-    JSString *str = JS_NewStringCopyZ(cx()->getJSContext(), data);
+  String *String::New(const char *data,
+                      int length)
+  {
+    if (length == -1) {
+      length = strlen(data);
+    }
+
+    JSString *str = JS_NewStringCopyN(cx()->getJSContext(), data, length);
     return new String(str);
   }
 

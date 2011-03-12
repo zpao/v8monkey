@@ -9,11 +9,15 @@ namespace v8 {
   //// Context class
 
   namespace internal {
-    // XXX: handle nested scopes - make this a stack
-    static Context *gCurrentContext = 0;
+    struct ContextChain {
+      Context* ctx;
+      ContextChain *next;
+    };
+    static ContextChain *gContextChain = 0;
     Context *cx() {
-      return gCurrentContext;
+      return gContextChain->ctx;
     }
+
     static Persistent<Context> gRootContext;
     Persistent<Context> gcx() {
       if (gRootContext.IsEmpty()) {
@@ -36,13 +40,18 @@ namespace v8 {
   }
 
   void Context::Enter() {
-    gCurrentContext = this;
+    ContextChain *link = new ContextChain;
+    link->next = gContextChain;
+    link->ctx = this;
+    gContextChain = link;
     JS_BeginRequest(mCtx);
   }
 
   void Context::Exit() {
     JS_EndRequest(mCtx);
-    gCurrentContext = 0;
+    ContextChain *link = gContextChain;
+    gContextChain = gContextChain->next;
+    delete link;
   }
 
   Persistent<Context> Context::New() {

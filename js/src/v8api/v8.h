@@ -266,7 +266,7 @@ namespace v8 {
       int length() const { return mLength; }
     };
 
-    static String *New(const char *data, int length = -1);
+    static Local<String> New(const char *data, int length = -1);
   };
 
   class Script {

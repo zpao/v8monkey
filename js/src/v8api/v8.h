@@ -91,6 +91,9 @@ namespace v8 {
     internal::GCReference *asGCRef() {
       return reinterpret_cast<internal::GCReference*>(mVal);
     }
+
+    friend class Local<T>;
+    friend class Persistent<T>;
   public:
     Handle() : mVal(NULL) {}
     Handle(T *val) : mVal(val) {}
@@ -115,7 +118,7 @@ namespace v8 {
     static inline Local<T> New(Handle<T> other) {
       if (other.IsEmpty())
         return Local<T>();
-      internal::GCReference *ref = HandleScope::CreateHandle(other.asGCRef());
+      internal::GCReference *ref = HandleScope::CreateHandle(*other.asGCRef());
       return Local<T>(ref->As<T>());
     }
   };

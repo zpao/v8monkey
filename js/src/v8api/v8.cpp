@@ -85,6 +85,23 @@ namespace v8 {
   }
 
   //////////////////////////////////////////////////////////////////////////////
+  //// Resource Constraints
+
+  ResourceConstraints::ResourceConstraints() :
+    mMaxYoungSpaceSize(0),
+    mMaxOldSpaceSize(0),
+    mMaxExecutableSize(0),
+    mStackLimit(NULL)
+  {
+  }
+
+  bool SetResourceConstraints(ResourceConstraints *constraints) {
+    // TODO: Pull the relevent information out that applies to SM and set some
+    //       globals that would be used.
+    return true;
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
   //// Value class
 
   Local<String> Value::ToString() const

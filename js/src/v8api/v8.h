@@ -172,6 +172,25 @@ namespace v8 {
     operator JSContext*() const { return mCtx; }
   };
 
+  class ResourceConstraints {
+  public:
+    ResourceConstraints();
+    int max_young_space_size() const { return mMaxYoungSpaceSize; }
+    void set_max_young_space_size(int value) { mMaxYoungSpaceSize = value; }
+    int max_old_space_size() const { return mMaxOldSpaceSize; }
+    void set_max_old_space_size(int value) { mMaxOldSpaceSize = value; }
+    int max_executable_size() { return mMaxExecutableSize; }
+    void set_max_executable_size(int value) { mMaxExecutableSize = value; }
+    uint32_t* stack_limit() const { return mStackLimit; }
+    void set_stack_limit(uint32_t* value) { mStackLimit = value; }
+  private:
+    int mMaxYoungSpaceSize;
+    int mMaxOldSpaceSize;
+    int mMaxExecutableSize;
+    uint32_t* mStackLimit;
+  };
+  bool SetResourceConstraints(ResourceConstraints *constraints);
+
   // Parent class of every JS val / object
   class Value : protected internal::GCReference {
   public:

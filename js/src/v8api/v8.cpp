@@ -78,8 +78,8 @@ namespace v8 {
   {
     // TODO Allocate this in a way that doesn't leak
     JSString *str(JS_ValueToString(cx()->getJSContext(), mVal));
-    Local<String> s = new String(str);
-    return s;
+    String s(str);
+    return Local<String>::New(&s);
   }
 
   bool Value::IsFunction() const {
@@ -137,8 +137,7 @@ namespace v8 {
     (void)JS_ExecuteScript(cx()->getJSContext(), cx()->getJSGlobal(),
                            mScript, &js_retval);
     // js_retval will be unchanged on failure, so it's a JSVAL_VOID.
-    Local<Value> retval = new Value(js_retval);
-
-    return retval;
+    Value v(js_retval);
+    return Local<Value>::New(&v);
   }
 }

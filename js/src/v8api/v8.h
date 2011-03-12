@@ -18,6 +18,9 @@ namespace v8 {
     ~Context();
 
   public:
+    void Enter();
+    void Exit();
+
     static Context* New();
 
     JSContext *getJSContext();
@@ -26,8 +29,15 @@ namespace v8 {
     JSObject *getJSGlobal();
 
     struct Scope {
-      Scope(Handle<Context> ctx);
-      ~Scope();
+      Scope(Handle<Context> ctx) :
+        mCtx(ctx) {
+        mCtx->Enter();
+      }
+      ~Scope() {
+        mCtx->Exit();
+      }
+    private:
+      Handle<Context> mCtx;
     };
 
     operator JSContext*() const { return mCtx; }

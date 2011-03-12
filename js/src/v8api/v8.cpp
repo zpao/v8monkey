@@ -40,17 +40,23 @@ namespace v8 {
   //////////////////////////////////////////////////////////////////////////////
   //// Context class
 
+  // XXX: handle nested scopes - make this a stack
+  static Context *gCurrentContext = 0;
+  static Context *cx() {
+    return gCurrentContext;
+  }
+
   Context::Context()
     : mCtx(JS_NewContext(rt(), 8192))
   {
     JS_SetOptions(mCtx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
     JS_SetVersion(mCtx, JSVERSION_LATEST);
     JS_SetErrorReporter(mCtx, reportError);
-    JS_BeginRequest(mCtx);
+    Enter();
     mGlobal = JS_NewCompartmentAndGlobalObject(mCtx, &global_class, NULL);
 
     JS_InitStandardClasses(mCtx, mGlobal);
-    JS_EndRequest(mCtx);
+    Exit();
   }
 
   Context::~Context() {
@@ -65,24 +71,18 @@ namespace v8 {
     return mGlobal;
   }
 
+  void Context::Enter() {
+    gCurrentContext = this;
+    JS_BeginRequest(mCtx);
+  }
+
+  void Context::Exit() {
+    JS_EndRequest(mCtx);
+    gCurrentContext = 0;
+  }
+
   Context* Context::New() {
     return new Context;
-  }
-
-  // XXX: handle nested scopes - make this a stack
-  static Context *gCurrentContext = 0;
-  static Context *cx() {
-    return gCurrentContext;
-  }
-
-  Context::Scope::Scope(Handle<Context> c) {
-    gCurrentContext = *c;
-    JS_BeginRequest(*gCurrentContext);
-  }
-
-  Context::Scope::~Scope() {
-    JS_EndRequest(*gCurrentContext);
-    gCurrentContext = 0;
   }
 
   //////////////////////////////////////////////////////////////////////////////

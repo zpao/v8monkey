@@ -144,8 +144,7 @@ namespace v8 {
 
     JSScript* s = JS_CompileUCScript(cx()->getJSContext(), cx()->getJSGlobal(),
                                      chars, len, NULL, NULL);
-    Local<Script> script= new Script(s);
-    return script;
+    return Local<Script>::New(new Script(s));
   }
 
   Local<Value> Script::Run() {

@@ -63,10 +63,10 @@ namespace v8 {
     struct RCOps {
       typedef internal::RCReference Slot;
       static void onNewSlot(Slot *s) {
-        s->addRef();
+        s->Globalize();
       }
       static void onRemoveSlot(Slot *s) {
-        s->release();
+        s->Dispose();
       }
     };
 
@@ -82,6 +82,10 @@ namespace v8 {
     void GCReference::Dispose() {
         unroot(cx()->getJSContext());
         delete this;
+    }
+
+    GCReference *GCReference::Localize() {
+      return HandleScope::CreateHandle(*this);
     }
   }
 

@@ -3,6 +3,7 @@
 
 namespace v8 {
   // Define some classes first so we can use them before fully defined
+  class HandleScope;
   class String;
   class Context;
   template <class T> class Handle;
@@ -10,32 +11,26 @@ namespace v8 {
   template <class T> class Persistent;
 
   namespace internal {
+    class GCReference;
     class GCOps;
     class GCReferenceContainer;
     class RCOps;
     class RCReferenceContainer;
+  }
 
+  namespace internal {
     class GCReference {
+      friend class GCOps;
+
       void root(JSContext *ctx) {
         JS_AddValueRoot(ctx, &mVal);
       }
       void unroot(JSContext *ctx) {
         JS_RemoveValueRoot(ctx, &mVal);
       }
-      GCReference *Globalize();
-      void Dispose();
 
     protected:
       jsval mVal;
-
-      friend class GCOps;
-      template <class T> friend class v8::Local;
-      template <class T> friend class v8::Persistent;
-
-      template <typename T>
-      T* As() {
-        return reinterpret_cast<T*>(this);
-      }
     public:
       GCReference(jsval val) :
         mVal(val)
@@ -46,26 +41,33 @@ namespace v8 {
       jsval &native() {
         return mVal;
       }
+
+      GCReference *Globalize();
+      void Dispose();
+      GCReference *Localize();
     };
 
     class RCReference {
       size_t mRefCount;
 
-      friend class RCOps;
-      template <class T> friend class v8::Local;
-      template <class T> friend class v8::Persistent;
+    public:
+      RCReference() : mRefCount(0)
+      {}
 
-      void addRef() {
+      RCReference *Globalize() {
         mRefCount++;
+        return this;
       }
-      void release() {
+
+      void Dispose() {
         if (0 == --mRefCount) {
           delete this;
         }
       }
-    public:
-      RCReference() : mRefCount(0)
-      {}
+
+      RCReference *Localize() {
+        return Globalize();
+      }
     };
   }
 
@@ -73,7 +75,7 @@ namespace v8 {
     HandleScope();
     ~HandleScope();
   private:
-    template <class T> friend class Local;
+    friend class internal::GCReference;
     static internal::GCReference *CreateHandle(internal::GCReference r);
 
     static HandleScope *sCurrent;
@@ -87,13 +89,6 @@ namespace v8 {
   template <typename T>
   class Handle {
     T* mVal;
-  protected:
-    internal::GCReference *asGCRef() {
-      return reinterpret_cast<internal::GCReference*>(mVal);
-    }
-
-    friend class Local<T>;
-    friend class Persistent<T>;
   public:
     Handle() : mVal(NULL) {}
     Handle(T *val) : mVal(val) {}
@@ -118,8 +113,7 @@ namespace v8 {
     static inline Local<T> New(Handle<T> other) {
       if (other.IsEmpty())
         return Local<T>();
-      internal::GCReference *ref = HandleScope::CreateHandle(*other.asGCRef());
-      return Local<T>(ref->As<T>());
+      return reinterpret_cast<T*>(other->Localize());
     }
   };
 
@@ -132,13 +126,13 @@ namespace v8 {
     Persistent(S *val) : Handle<T>(val) {}
 
     void Dispose() {
-      internal::GCReference *ref = this->asGCRef();
-      ref->Dispose();
+      (*this)->Dispose();
     }
 
     static Persistent<T> New(Handle<T> other) {
-      internal::GCReference *ref = other.asGCRef()->Globalize();
-      return Persistent<T>(ref->As<T>());
+      if (other.IsEmpty())
+        return Persistent<T>();
+      return reinterpret_cast<T*>(other->Globalize());
     }
   };
 
@@ -193,7 +187,7 @@ namespace v8 {
   bool SetResourceConstraints(ResourceConstraints *constraints);
 
   // Parent class of every JS val / object
-  class Value : protected internal::GCReference {
+  class Value : public internal::GCReference {
   public:
     Value() : internal::GCReference()
     {}
@@ -269,7 +263,7 @@ namespace v8 {
     static Local<String> New(const char *data, int length = -1);
   };
 
-  class Script {
+  class Script : public internal::RCReference {
     JSScript *mScript;
     Script(JSScript *s);
   public:
@@ -278,26 +272,4 @@ namespace v8 {
 
     Local<Value> Run();
   };
-
-  template <>
-  inline Local<Context> Local<Context>::New(Handle<Context> other) {
-    if (other.IsEmpty())
-      return Local<Context>();
-    other->addRef();
-    return Local<Context>(*other);
-  }
-
-  template <>
-  inline void Persistent<Context>::Dispose() {
-    (*this)->release();
-  }
-
-  template <>
-  inline Persistent<Context> Persistent<Context>::New(Handle<Context> other) {
-    if (other.IsEmpty())
-      return Persistent<Context>();
-    other->addRef();
-    return Persistent<Context>(*other);
-  }
-
 }

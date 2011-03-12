@@ -182,13 +182,13 @@ namespace v8 {
     void set_max_old_space_size(int value) { mMaxOldSpaceSize = value; }
     int max_executable_size() { return mMaxExecutableSize; }
     void set_max_executable_size(int value) { mMaxExecutableSize = value; }
-    uint32_t* stack_limit() const { return mStackLimit; }
-    void set_stack_limit(uint32_t* value) { mStackLimit = value; }
+    JSUint32* stack_limit() const { return mStackLimit; }
+    void set_stack_limit(JSUint32* value) { mStackLimit = value; }
   private:
     int mMaxYoungSpaceSize;
     int mMaxOldSpaceSize;
     int mMaxExecutableSize;
-    uint32_t* mStackLimit;
+    JSUint32* mStackLimit;
   };
   bool SetResourceConstraints(ResourceConstraints *constraints);
 

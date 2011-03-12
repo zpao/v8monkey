@@ -274,8 +274,9 @@ namespace v8 {
 
   Local<Value> Script::Run() {
     jsval js_retval;
-    JSBool success = JS_ExecuteScript(cx()->getJSContext(), cx()->getJSGlobal(),
-                                      mScript, &js_retval);
+    (void)JS_ExecuteScript(cx()->getJSContext(), cx()->getJSGlobal(),
+                           mScript, &js_retval);
+    // js_retval will be unchanged on failure, so it's a JSVAL_VOID.
     Local<Value> retval = new Value(js_retval);
 
     return retval;

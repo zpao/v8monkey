@@ -9,12 +9,15 @@ namespace v8 {
       if (!gRuntime) {
         JS_CStringsAreUTF8();
         gRuntime = JS_NewRuntime(64 * MB);
+        gcx()->Enter();
       }
       return gRuntime;
     }
 
     // TODO: call this
     void shutdown() {
+      gcx()->Exit();
+      gcx().Dispose();
       if (gRuntime)
         JS_DestroyRuntime(gRuntime);
       JS_ShutDown();

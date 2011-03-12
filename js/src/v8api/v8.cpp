@@ -14,6 +14,13 @@ namespace v8 {
     Context *cx() {
       return gCurrentContext;
     }
+    static Persistent<Context> gRootContext;
+    Persistent<Context> gcx() {
+      if (gRootContext.IsEmpty()) {
+        gRootContext = Context::New();
+      }
+      return gRootContext;
+    }
   }
 
   Context::Context(JSContext *ctx, JSObject *global) :

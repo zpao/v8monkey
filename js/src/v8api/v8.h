@@ -207,8 +207,6 @@ namespace v8 {
     bool IsInt32() const { return JSVAL_IS_INT(mVal); }
     bool IsDate() const;
     Local<String> ToString() const;
-
-    jsval &native() { return mVal; }
   };
 
   class Boolean : public Value {

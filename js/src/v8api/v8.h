@@ -4,24 +4,153 @@
 namespace v8 {
   // Define some classes first so we can use them before fully defined
   class String;
+  class Context;
   template <class T> class Handle;
   template <class T> class Local;
+  template <class T> class Persistent;
+
+  namespace internal {
+    class GCOps;
+    class GCReferenceContainer;
+    class RCOps;
+    class RCReferenceContainer;
+
+    class GCReference {
+      void root(JSContext *ctx) {
+        JS_AddValueRoot(ctx, &mVal);
+      }
+      void unroot(JSContext *ctx) {
+        JS_RemoveValueRoot(ctx, &mVal);
+      }
+      GCReference *Globalize();
+      void Dispose();
+
+    protected:
+      jsval mVal;
+
+      friend class GCOps;
+      template <class T> friend class v8::Local;
+      template <class T> friend class v8::Persistent;
+
+      template <typename T>
+      T* As() {
+        return reinterpret_cast<T*>(this);
+      }
+    public:
+      GCReference(jsval val) :
+        mVal(val)
+      {}
+      GCReference() :
+        mVal(JSVAL_VOID)
+      {}
+      jsval &native() {
+        return mVal;
+      }
+    };
+
+    class RCReference {
+      size_t mRefCount;
+
+      friend class RCOps;
+      template <class T> friend class v8::Local;
+      template <class T> friend class v8::Persistent;
+
+      void addRef() {
+        mRefCount++;
+      }
+      void release() {
+        if (0 == --mRefCount) {
+          delete this;
+        }
+      }
+    public:
+      RCReference() : mRefCount(0)
+      {}
+    };
+
+    void FinalizeContext(JSContext *ctx, JSObject *obj);
+  }
 
   struct HandleScope {
+    HandleScope();
+    ~HandleScope();
+  private:
+    template <class T> friend class Local;
+    static internal::GCReference *CreateHandle(internal::GCReference r);
+
+    static HandleScope *sCurrent;
+    size_t getHandleCount();
+
+    internal::GCReferenceContainer *mGCReferences;
+    internal::RCReferenceContainer *mRCReferences;
+    HandleScope *mPrevious;
   };
 
-  class Context {
+  template <typename T>
+  class Handle {
+    T* mVal;
+  protected:
+    internal::GCReference *asGCRef() {
+      return reinterpret_cast<internal::GCReference*>(mVal);
+    }
+  public:
+    Handle() : mVal(NULL) {}
+    Handle(T *val) : mVal(val) {}
+
+    bool IsEmpty() const {
+      return mVal == 0;
+    }
+    T* operator ->() {
+      return mVal;
+    }
+    T* operator *() {
+      return mVal;
+    }
+  };
+
+  template <typename T>
+  class Local : public Handle<T> {
+  public:
+    Local() : Handle<T>() {}
+    Local(T *val) : Handle<T>(val) {}
+
+    static inline Local<T> New(Handle<T> other) {
+      if (other.IsEmpty())
+        return Local<T>();
+      internal::GCReference *ref = HandleScope::CreateHandle(other.asGCRef());
+      return Local<T>(ref->As<T>());
+    }
+  };
+
+  template <typename T>
+  class Persistent : public Handle<T> {
+  public:
+    Persistent() : Handle<T>() {}
+
+    template <class S>
+    Persistent(S *val) : Handle<T>(val) {}
+
+    void Dispose() {
+      internal::GCReference *ref = this->asGCRef();
+      ref->Dispose();
+    }
+
+    static Persistent<T> New(Handle<T> other) {
+      internal::GCReference *ref = other.asGCRef()->Globalize();
+      return Persistent<T>(ref->As<T>());
+    }
+  };
+
+  class Context : public internal::RCReference {
     JSContext *mCtx;
     JSObject *mGlobal;
 
-    Context();
-    ~Context();
-
+    Context(JSContext *ctx, JSObject *global);
   public:
     void Enter();
     void Exit();
 
-    static Context* New();
+    static Persistent<Context> New();
 
     JSContext *getJSContext();
 
@@ -44,18 +173,12 @@ namespace v8 {
   };
 
   // Parent class of every JS val / object
-  class Value {
-  protected:
-    jsval mVal;
+  class Value : protected internal::GCReference {
   public:
-    Value() :
-      mVal(JSVAL_VOID)
-    {
-    }
-    Value(jsval val) :
-      mVal(val)
-    {
-    }
+    Value() : internal::GCReference()
+    {}
+    Value(jsval val) : internal::GCReference(val)
+    {}
     bool IsUndefined() const { return JSVAL_IS_VOID(mVal); }
     bool IsNull() const { return JSVAL_IS_NULL(mVal); }
     bool IsTrue() const { return IsBoolean() && JSVAL_TO_BOOLEAN(mVal); }
@@ -136,37 +259,25 @@ namespace v8 {
     Local<Value> Run();
   };
 
-  template <typename T>
-  class Handle {
-    T* mVal;
-  public:
-    Handle() : mVal(NULL) {}
-    Handle(T *val) : mVal(val) {}
+  template <>
+  inline Local<Context> Local<Context>::New(Handle<Context> other) {
+    if (other.IsEmpty())
+      return Local<Context>();
+    other->addRef();
+    return Local<Context>(*other);
+  }
 
-    bool IsEmpty() const {
-      return mVal == 0;
-    }
-    T* operator ->() {
-      return mVal;
-    }
-    T* operator *() {
-      return mVal;
-    }
-  };
+  template <>
+  inline void Persistent<Context>::Dispose() {
+    (*this)->release();
+  }
 
-  template <typename T>
-  class Local : public Handle<T> {
-  public:
-    Local() : Handle<T>() {}
-    Local(T *val) : Handle<T>(val) {}
-  };
+  template <>
+  inline Persistent<Context> Persistent<Context>::New(Handle<Context> other) {
+    if (other.IsEmpty())
+      return Persistent<Context>();
+    other->addRef();
+    return Persistent<Context>(*other);
+  }
 
-  template <typename T>
-  class Persistent : public Handle<T> {
-  public:
-    Persistent() : Handle<T>() {}
-    Persistent(T *val);
-
-    void Dispose();
-  };
 }

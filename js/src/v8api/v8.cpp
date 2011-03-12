@@ -23,10 +23,10 @@ namespace v8 {
     }
 
     JSClass global_class = {
-     "global", JSCLASS_GLOBAL_FLAGS,
-     JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
-     JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_FinalizeStub,
-     JSCLASS_NO_OPTIONAL_MEMBERS
+      "global", JSCLASS_GLOBAL_FLAGS,
+      JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+      JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_FinalizeStub,
+      JSCLASS_NO_OPTIONAL_MEMBERS
     };
 
     void reportError(JSContext *ctx, const char *message, JSErrorReport *report) {
@@ -46,22 +46,9 @@ namespace v8 {
     return gCurrentContext;
   }
 
-  Context::Context()
-    : mCtx(JS_NewContext(rt(), 8192))
-  {
-    JS_SetOptions(mCtx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
-    JS_SetVersion(mCtx, JSVERSION_LATEST);
-    JS_SetErrorReporter(mCtx, reportError);
-    Enter();
-    mGlobal = JS_NewCompartmentAndGlobalObject(mCtx, &global_class, NULL);
-
-    JS_InitStandardClasses(mCtx, mGlobal);
-    Exit();
-  }
-
-  Context::~Context() {
-    JS_DestroyContext(mCtx);
-  }
+  Context::Context(JSContext *ctx, JSObject *global) :
+    mCtx(ctx), mGlobal(global)
+  {}
 
   JSContext *Context::getJSContext() {
     return mCtx;
@@ -81,8 +68,20 @@ namespace v8 {
     gCurrentContext = 0;
   }
 
-  Context* Context::New() {
-    return new Context;
+  Persistent<Context> Context::New() {
+    JSContext *ctx(JS_NewContext(rt(), 8192));
+    JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
+    JS_SetVersion(ctx, JSVERSION_LATEST);
+    JS_SetErrorReporter(ctx, reportError);
+
+    JS_BeginRequest(ctx);
+    JSObject *global = JS_NewCompartmentAndGlobalObject(ctx, &global_class, NULL);
+
+    JS_InitStandardClasses(ctx, global);
+
+    JS_EndRequest(ctx);
+
+    return Persistent<Context>(new Context(ctx, global));
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -284,25 +283,109 @@ namespace v8 {
 
   //////////////////////////////////////////////////////////////////////////////
   //// Handle class
-  template <>
-  Persistent<Value>::Persistent(Value *v) :
-    Handle<Value>(v)
-  {
-    JS_AddValueRoot(cx()->getJSContext(), &v->native());
+
+  namespace internal {
+    template <typename SlotOps>
+    class ReferenceContainer {
+      static const size_t kBlockSize = 16;
+      struct SlotBlock {
+        typename SlotOps::Slot elements[kBlockSize];
+        SlotBlock *next;
+      };
+      SlotBlock *mBlock;
+      size_t mUsedThisBlock;
+      void deallocateBlock() {
+        if (!mBlock)
+          return;
+
+        SlotBlock *next = mBlock->next;
+
+        while (mUsedThisBlock--)
+          SlotOps::onRemoveSlot(&mBlock->elements[mUsedThisBlock]);
+
+        delete mBlock;
+        mUsedThisBlock = kBlockSize;
+        mBlock = next;
+      }
+    public:
+      ReferenceContainer() :
+        mBlock(NULL),
+        mUsedThisBlock(0)
+      {}
+      typename SlotOps::Slot *allocate() {
+        if (mUsedThisBlock == kBlockSize) {
+          SlotBlock *block = new SlotBlock;
+          block->next = mBlock;
+          mBlock = block;
+          mUsedThisBlock = 0;
+        }
+        typename SlotOps::Slot *slot = &mBlock->elements[mUsedThisBlock];
+        mUsedThisBlock++;
+        SlotOps::onNewSlot(slot);
+        return slot;
+      }
+      ~ReferenceContainer() {
+        while (mBlock) {
+          deallocateBlock();
+        }
+      }
+    };
+
+    struct GCOps {
+      typedef internal::GCReference Slot;
+      static void onNewSlot(Slot *s) {
+        s->root(cx()->getJSContext());
+      }
+      static void onRemoveSlot(Slot *s) {
+        s->unroot(cx()->getJSContext());
+      }
+    };
+
+    struct RCOps {
+      typedef internal::RCReference Slot;
+      static void onNewSlot(Slot *s) {
+        s->addRef();
+      }
+      static void onRemoveSlot(Slot *s) {
+        s->release();
+      }
+    };
+
+    class GCReferenceContainer : public ReferenceContainer<GCOps> {};
+    class RCReferenceContainer : public ReferenceContainer<RCOps> {};
+
+    GCReference* GCReference::Globalize() {
+      GCReference *r = new GCReference(*this);
+      r->root(cx()->getJSContext());
+      return r;
+    }
+
+    void GCReference::Dispose() {
+        unroot(cx()->getJSContext());
+        delete this;
+    }
   }
 
-  template <>
-  void Persistent<Value>::Dispose() {
-    JS_RemoveValueRoot(cx()->getJSContext(), &(*this)->native());
+  HandleScope *HandleScope::sCurrent = 0;
+
+  HandleScope::HandleScope() :
+    mGCReferences(new internal::GCReferenceContainer),
+    mRCReferences(new internal::RCReferenceContainer),
+    mPrevious(sCurrent)
+  {
+    sCurrent = this;
   }
 
-  template <>
-  Persistent<Context>::Persistent(Context *c) : Handle<Context>(c)
-  {
+  HandleScope::~HandleScope() {
+    sCurrent = mPrevious;
+    delete mRCReferences;
+    delete mGCReferences;
   }
 
-  template <>
-  void Persistent<Context>::Dispose()
-  {
+  internal::GCReference *HandleScope::CreateHandle(internal::GCReference r) {
+    internal::GCReference *ref = sCurrent->mGCReferences->allocate();
+    *ref = r;
+    return ref;
   }
+
 }

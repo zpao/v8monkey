@@ -133,8 +133,14 @@ namespace v8 {
     mVal = STRING_TO_JSVAL(s);
   }
 
-  String *String::New(const char *data) {
-    JSString *str = JS_NewStringCopyZ(cx()->getJSContext(), data);
+  String *String::New(const char *data,
+                      int length)
+  {
+    if (length == -1) {
+      length = strlen(data);
+    }
+
+    JSString *str = JS_NewStringCopyN(cx()->getJSContext(), data, length);
     return new String(str);
   }
 
@@ -268,8 +274,9 @@ namespace v8 {
 
   Local<Value> Script::Run() {
     jsval js_retval;
-    JSBool success = JS_ExecuteScript(cx()->getJSContext(), cx()->getJSGlobal(),
-                                      mScript, &js_retval);
+    (void)JS_ExecuteScript(cx()->getJSContext(), cx()->getJSGlobal(),
+                           mScript, &js_retval);
+    // js_retval will be unchanged on failure, so it's a JSVAL_VOID.
     Local<Value> retval = new Value(js_retval);
 
     return retval;

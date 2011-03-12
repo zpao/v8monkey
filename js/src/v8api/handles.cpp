@@ -32,7 +32,7 @@ namespace v8 {
         mUsedThisBlock(0)
       {}
       typename SlotOps::Slot *allocate() {
-        if (mUsedThisBlock == kBlockSize) {
+        if (mUsedThisBlock == kBlockSize || !mBlock) {
           SlotBlock *block = new SlotBlock;
           block->next = mBlock;
           mBlock = block;

@@ -1,49 +1,19 @@
 #include <limits>
 #include <algorithm>
-#include "v8.h"
+#include "v8-internal.h"
 
 namespace v8 {
-  namespace {
-    const int KB = 1024;
-    const int MB = 1024 * 1024;
-    JSRuntime *gRuntime = 0;
-    JSRuntime *rt() {
-      if (!gRuntime) {
-        JS_CStringsAreUTF8();
-        gRuntime = JS_NewRuntime(64 * MB);
-      }
-      return gRuntime;
-    }
-
-    // TODO: call this
-    void shutdown() {
-      if (gRuntime)
-        JS_DestroyRuntime(gRuntime);
-      JS_ShutDown();
-    }
-
-    JSClass global_class = {
-      "global", JSCLASS_GLOBAL_FLAGS,
-      JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
-      JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_FinalizeStub,
-      JSCLASS_NO_OPTIONAL_MEMBERS
-    };
-
-    void reportError(JSContext *ctx, const char *message, JSErrorReport *report) {
-      fprintf(stderr, "%s:%u:%s\n",
-              report->filename ? report->filename : "<no filename>",
-              (unsigned int) report->lineno,
-              message);
-    }
-  }
+  using namespace internal;
 
   //////////////////////////////////////////////////////////////////////////////
   //// Context class
 
-  // XXX: handle nested scopes - make this a stack
-  static Context *gCurrentContext = 0;
-  static Context *cx() {
-    return gCurrentContext;
+  namespace internal {
+    // XXX: handle nested scopes - make this a stack
+    static Context *gCurrentContext = 0;
+    Context *cx() {
+      return gCurrentContext;
+    }
   }
 
   Context::Context(JSContext *ctx, JSObject *global) :
@@ -297,112 +267,4 @@ namespace v8 {
 
     return retval;
   }
-
-  //////////////////////////////////////////////////////////////////////////////
-  //// Handle class
-
-  namespace internal {
-    template <typename SlotOps>
-    class ReferenceContainer {
-      static const size_t kBlockSize = 16;
-      struct SlotBlock {
-        typename SlotOps::Slot elements[kBlockSize];
-        SlotBlock *next;
-      };
-      SlotBlock *mBlock;
-      size_t mUsedThisBlock;
-      void deallocateBlock() {
-        if (!mBlock)
-          return;
-
-        SlotBlock *next = mBlock->next;
-
-        while (mUsedThisBlock--)
-          SlotOps::onRemoveSlot(&mBlock->elements[mUsedThisBlock]);
-
-        delete mBlock;
-        mUsedThisBlock = kBlockSize;
-        mBlock = next;
-      }
-    public:
-      ReferenceContainer() :
-        mBlock(NULL),
-        mUsedThisBlock(0)
-      {}
-      typename SlotOps::Slot *allocate() {
-        if (mUsedThisBlock == kBlockSize) {
-          SlotBlock *block = new SlotBlock;
-          block->next = mBlock;
-          mBlock = block;
-          mUsedThisBlock = 0;
-        }
-        typename SlotOps::Slot *slot = &mBlock->elements[mUsedThisBlock];
-        mUsedThisBlock++;
-        SlotOps::onNewSlot(slot);
-        return slot;
-      }
-      ~ReferenceContainer() {
-        while (mBlock) {
-          deallocateBlock();
-        }
-      }
-    };
-
-    struct GCOps {
-      typedef internal::GCReference Slot;
-      static void onNewSlot(Slot *s) {
-        s->root(cx()->getJSContext());
-      }
-      static void onRemoveSlot(Slot *s) {
-        s->unroot(cx()->getJSContext());
-      }
-    };
-
-    struct RCOps {
-      typedef internal::RCReference Slot;
-      static void onNewSlot(Slot *s) {
-        s->addRef();
-      }
-      static void onRemoveSlot(Slot *s) {
-        s->release();
-      }
-    };
-
-    class GCReferenceContainer : public ReferenceContainer<GCOps> {};
-    class RCReferenceContainer : public ReferenceContainer<RCOps> {};
-
-    GCReference* GCReference::Globalize() {
-      GCReference *r = new GCReference(*this);
-      r->root(cx()->getJSContext());
-      return r;
-    }
-
-    void GCReference::Dispose() {
-        unroot(cx()->getJSContext());
-        delete this;
-    }
-  }
-
-  HandleScope *HandleScope::sCurrent = 0;
-
-  HandleScope::HandleScope() :
-    mGCReferences(new internal::GCReferenceContainer),
-    mRCReferences(new internal::RCReferenceContainer),
-    mPrevious(sCurrent)
-  {
-    sCurrent = this;
-  }
-
-  HandleScope::~HandleScope() {
-    sCurrent = mPrevious;
-    delete mRCReferences;
-    delete mGCReferences;
-  }
-
-  internal::GCReference *HandleScope::CreateHandle(internal::GCReference r) {
-    internal::GCReference *ref = sCurrent->mGCReferences->allocate();
-    *ref = r;
-    return ref;
-  }
-
 }

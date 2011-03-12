@@ -257,7 +257,12 @@ INSTALLED_HEADERS = \
 		prmjtime.h \
 		$(NULL)
 
-CPPSRCS += v8api/v8.cpp
+CPPSRCS += \
+		v8api/v8.cpp \
+		v8api/core.cpp \
+		v8api/handles.cpp \
+		$(NULL)
+
 LOCAL_INCLUDES += -Iv8api
 EXPORTS_NAMESPACES = v8
 EXPORTS_v8 = \

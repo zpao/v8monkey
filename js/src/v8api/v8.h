@@ -67,8 +67,6 @@ namespace v8 {
       RCReference() : mRefCount(0)
       {}
     };
-
-    void FinalizeContext(JSContext *ctx, JSObject *obj);
   }
 
   struct HandleScope {

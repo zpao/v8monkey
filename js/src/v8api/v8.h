@@ -93,6 +93,9 @@ namespace v8 {
     Handle() : mVal(NULL) {}
     Handle(T *val) : mVal(val) {}
 
+    template <typename S>
+    Handle(Handle<S> h) : mVal(*h) {}
+
     bool IsEmpty() const {
       return mVal == 0;
     }

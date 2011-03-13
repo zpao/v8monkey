@@ -90,8 +90,23 @@ namespace v8 {
   //////////////////////////////////////////////////////////////////////////////
   //// Value class
 
-  Local<String> Value::ToString() const
-  {
+  Local<Boolean> Value::ToBoolean() const {
+    JSBool b;
+    if (!JS_ValueToBoolean(*cx(), mVal, &b))
+      return Local<Boolean>();
+
+    Boolean value(b);
+    return Local<Boolean>::New(&value);
+  }
+
+  Local<Number> Value::ToNumber() const {
+    double d;
+    if (JS_ValueToNumber(*cx(), mVal, &d))
+      return Local<Number>();
+    return Number::New(d);
+  }
+
+  Local<String> Value::ToString() const {
     // TODO Allocate this in a way that doesn't leak
     JSString *str(JS_ValueToString(cx()->getJSContext(), mVal));
     String s(str);
@@ -126,6 +141,18 @@ namespace v8 {
     static Boolean sTrue(true);
     static Boolean sFalse(false);
     return value ? &sTrue : &sFalse;
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Number class
+
+  Local<Number> Number::New(double d) {
+    jsval val;
+    if (!JS_NewNumberValue(*cx(), d, &val))
+      return Local<Number>();
+
+    Number n(val);
+    return Local<Number>::New(&n);
   }
 
   //////////////////////////////////////////////////////////////////////////////

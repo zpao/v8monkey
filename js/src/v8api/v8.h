@@ -4,6 +4,8 @@
 namespace v8 {
   // Define some classes first so we can use them before fully defined
   class HandleScope;
+  class Boolean;
+  class Number;
   class String;
   class Context;
   template <class T> class Handle;
@@ -209,18 +211,32 @@ namespace v8 {
     bool IsNumber() const { return JSVAL_IS_NUMBER(mVal); }
     bool IsInt32() const { return JSVAL_IS_INT(mVal); }
     bool IsDate() const;
+
+    Local<Boolean> ToBoolean() const;
+    Local<Number> ToNumber() const;
     Local<String> ToString() const;
   };
 
   class Boolean : public Value {
+  public:
     Boolean(JSBool val) {
       mVal = val ? JSVAL_TRUE : JSVAL_FALSE;
     }
-  public:
     bool Value() const {
       return mVal == JSVAL_TRUE;
     }
     static Handle<Boolean> New(bool value);
+  };
+
+  class Number : public Value {
+    Number(double v) {
+      mVal = v;
+    }
+  public:
+    inline double Value() const {
+      return JSVAL_TO_DOUBLE(mVal);
+    }
+    static Local<Number> New(double value);
   };
 
   class String : public Value  {

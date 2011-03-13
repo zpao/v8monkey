@@ -264,6 +264,23 @@ namespace v8 {
     static Local<String> New(const char *data, int length = -1);
   };
 
+  enum PropertyAttribute {
+    None = 0,
+    ReadOnly = 1 << 0,
+    DontEnum = 1 << 1,
+    DontDelete = 1 << 2
+  };
+
+  class Object : public Value {
+    Object(JSObject *obj);
+    operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
+  public:
+    bool Set(Handle<Value> key, Handle<Value> value, PropertyAttribute attribs = None);
+    Local<Value> Get(Handle<Value> key);
+
+    static Local<Object> New();
+  };
+
   class Script : public internal::RCReference {
     JSScript *mScript;
     Script(JSScript *s);

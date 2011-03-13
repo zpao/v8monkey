@@ -17,7 +17,7 @@ namespace v8 {
 
     JSString *str = JS_NewStringCopyN(cx()->getJSContext(), data, length);
     String s(str);
-    return Local<String>(&s);
+    return Local<String>::New(&s);
   }
 
   int String::Length() const {

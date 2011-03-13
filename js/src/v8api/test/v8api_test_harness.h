@@ -77,6 +77,17 @@ static size_t gPassedTests = 0;
 #else
 #include <sstream>
 
+#ifdef DEBUG
+// DEBUG bulids use a struct, but OPT builds are just 64-bit unsigned numbers.
+std::ostream&
+operator<<(std::ostream& o,
+const jsval& val)
+{
+  o << val.asBits;
+  return o;
+}
+#endif
+
 #define do_check_eq(aActual, aExpected) \
   JS_BEGIN_MACRO \
     gTotalTests++; \

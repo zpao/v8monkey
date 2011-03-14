@@ -162,6 +162,26 @@ Local<Number> Number::New(double d) {
   return Local<Number>::New(&n);
 }
 
+
+//////////////////////////////////////////////////////////////////////////////
+//// Primitives & basic values
+
+Handle<Primitive> Undefined() {
+  UNIMPLEMENTEDAPI(Handle<Primitive>());
+}
+
+Handle<Primitive> Null() {
+  UNIMPLEMENTEDAPI(Handle<Primitive>());
+}
+
+Handle<Boolean> True() {
+  UNIMPLEMENTEDAPI(Handle<Boolean>());
+}
+
+Handle<Boolean> False() {
+  UNIMPLEMENTEDAPI(Handle<Boolean>());
+}
+
 //////////////////////////////////////////////////////////////////////////////
 //// Script class
 Script::Script(JSScript *s) :

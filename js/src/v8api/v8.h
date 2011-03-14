@@ -288,6 +288,12 @@ public:
   static Local<String> New(const char *data, int length = -1);
 };
 
+
+Handle<Primitive> Undefined();
+Handle<Primitive> Null();
+Handle<Boolean> True();
+Handle<Boolean> False();
+
 enum PropertyAttribute {
   None = 0,
   ReadOnly = 1 << 0,

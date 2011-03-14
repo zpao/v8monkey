@@ -37,4 +37,8 @@ void reportError(JSContext *ctx, const char *message, JSErrorReport *report) {
           message);
 }
 
+void notImplemented() {
+  fprintf(stderr, "Calling an unimplemented API!");
+}
+
 } }

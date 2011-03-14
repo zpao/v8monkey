@@ -12,6 +12,8 @@ template <class T> class Handle;
 template <class T> class Local;
 template <class T> class Persistent;
 
+#define UNIMPLEMENTEDAPI(rval) do { v8::internal::notImplemented(); return rval; } while(0)
+
 namespace internal {
   class GCReference;
   class GCOps;
@@ -21,6 +23,8 @@ namespace internal {
 }
 
 namespace internal {
+  void notImplemented();
+
   class GCReference {
     friend class GCOps;
 

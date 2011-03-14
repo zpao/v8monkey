@@ -223,7 +223,9 @@ public:
   bool StrictEquals(Handle<Value> other);
 };
 
-class Boolean : public Value {
+class Primitive : public Value { };
+
+class Boolean : public Primitive {
 public:
   Boolean(JSBool val) {
     mVal = val ? JSVAL_TRUE : JSVAL_FALSE;
@@ -234,7 +236,7 @@ public:
   static Handle<Boolean> New(bool value);
 };
 
-class Number : public Value {
+class Number : public Primitive {
   Number(double v) {
     mVal = v;
   }
@@ -245,7 +247,7 @@ public:
   static Local<Number> New(double value);
 };
 
-class String : public Value  {
+class String : public Primitive  {
   friend class Value;
 
   String(JSString *s);

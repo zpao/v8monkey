@@ -3,7 +3,7 @@
 
 namespace v8 {
 // Define some classes first so we can use them before fully defined
-class HandleScope;
+struct HandleScope;
 class Boolean;
 class Number;
 class String;
@@ -237,7 +237,7 @@ public:
 };
 
 class Number : public Primitive {
-  Number(double v) {
+  Number(jsval v) {
     mVal = v;
   }
 public:

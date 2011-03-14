@@ -138,7 +138,7 @@ bool Value::StrictEquals(Handle<Value> other) {
   JSBool equal;
   // XXX: check for error. This can fail if they are ropes that fail to turn into strings
   (void) JS_StrictlyEqual(*cx(), mVal, other->native(), &equal);
-  return equal == JSVAL_TRUE;
+  return equal == JS_TRUE;
 }
 
 //////////////////////////////////////////////////////////////////////////////

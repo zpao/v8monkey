@@ -195,13 +195,17 @@ private:
 };
 bool SetResourceConstraints(ResourceConstraints *constraints);
 
-// Parent class of every JS val / object
-class Value : public internal::GCReference {
+class Data : public internal::GCReference {
 public:
-  Value() : internal::GCReference()
-  {}
-  Value(jsval val) : internal::GCReference(val)
-  {}
+  Data() : internal::GCReference() { }
+  Data(jsval val) : internal::GCReference(val) { }
+};
+
+// Parent class of every JS val / object
+class Value : public Data {
+public:
+  Value() : Data() { }
+  Value(jsval val) : Data(val) { }
   bool IsUndefined() const { return JSVAL_IS_VOID(mVal); }
   bool IsNull() const { return JSVAL_IS_NULL(mVal); }
   bool IsTrue() const { return IsBoolean() && JSVAL_TO_BOOLEAN(mVal); }

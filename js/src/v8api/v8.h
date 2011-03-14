@@ -215,6 +215,8 @@ public:
   Local<Boolean> ToBoolean() const;
   Local<Number> ToNumber() const;
   Local<String> ToString() const;
+
+  bool StrictEquals(Handle<Value> other);
 };
 
 class Boolean : public Value {

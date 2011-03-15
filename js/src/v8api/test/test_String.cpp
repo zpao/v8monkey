@@ -32,6 +32,15 @@ test_Utf8Length()
   Persistent<Context> context = Context::New();
   Context::Scope context_scope(context);
 
+  char TEST_STRING[] = "this is a UTF-8 test!  This is pi: π";
+  size_t TEST_LENGTH = strlen(TEST_STRING);
+  Handle<String> str = String::New(TEST_STRING);
+  do_check_eq(str->Utf8Length(), TEST_LENGTH);
+
+  // Now, make a string with an embedded NULL.
+  TEST_STRING[8] = '\0';
+  str = String::New(TEST_STRING, TEST_LENGTH);
+  do_check_eq(str->Utf8Length(), TEST_LENGTH);
 }
 
 void

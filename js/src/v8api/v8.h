@@ -6,8 +6,14 @@ namespace v8 {
 struct HandleScope;
 class Boolean;
 class Number;
+class Integer;
 class String;
+class Array;
 class Context;
+class Function;
+class AccessorInfo;
+class ObjectTemplate;
+class Signature;
 template <class T> class Handle;
 template <class T> class Local;
 template <class T> class Persistent;
@@ -305,6 +311,16 @@ enum PropertyAttribute {
   DontDelete = 1 << 2
 };
 
+typedef Handle<Value> (*AccessorGetter)(Local<String> property, const AccessorInfo &info);
+typedef Handle<Value> (*AccessorSetter)(Local<String> property, Local<Value> value, const AccessorInfo &info);
+
+enum AccessControl {
+  DEFAULT = 0,
+  ALL_CAN_READ = 1,
+  ALL_CAN_WRITE = 1 << 1,
+  PROHIBITS_OVERWRITING = 1 << 2
+};
+
 class Object : public Value {
   Object(JSObject *obj);
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
@@ -324,4 +340,160 @@ public:
 
   Local<Value> Run();
 };
+
+class Template {
+public:
+  void Set(Handle<String> name, Handle<Value> data, PropertyAttribute attribs = None) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  template <typename T>
+  void Set(const char *name, Handle<T> data) {
+    Set(String::New(name), data);
+  }
+private:
+  Template();
+
+  friend class FunctionTemplate;
+  friend class ObjectTemplate;
+};
+
+class Arguments {
+public:
+  int Length() const {
+    UNIMPLEMENTEDAPI(0);
+  }
+  Local<Value> operator[](int i) const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  Local<Function> Callee() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  Local<Object> This() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  Local<Object> Holder() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  bool IsConstructCall() const {
+    UNIMPLEMENTEDAPI(false);
+  }
+  Local<Value> Data() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+};
+
+class AccessorInfo {
+  Local<Value> Data() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  Local<Object> This() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  Local<Object> Holder() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+};
+
+typedef Handle<Value> (*InvocationCallback)(const Arguments &args);
+typedef Handle<Value> (*NamedPropertyGetter)(Local<String> property, const AccessorInfo &info);
+typedef Handle<Value> (*NamedPropertySetter)(Local<String> property, Local<Value> value, const AccessorInfo &info);
+typedef Handle<Integer> (*NamedPropertyQuery)(Local<String> property, const AccessorInfo &info);
+typedef Handle<Boolean> (*NamedPropertyDeleter)(Local<String> property, const AccessorInfo &info);
+typedef Handle<Array> (*NamedPropertyEnumerator)(const AccessorInfo &info);
+
+typedef Handle<Value> (*IndexedPropertyGetter)(uint32_t index, const AccessorInfo &info);
+typedef Handle<Value> (*IndexedPropertySetter)(uint32_t index, Local<Value> value, const AccessorInfo &info);
+typedef Handle<Integer> (*IndexedPropertyQuery)(uint32_t index, const AccessorInfo &info);
+typedef Handle<Boolean> (*IndexedPropertyDeleter)(uint32_t index, AccessorInfo &info);
+typedef Handle<Array> (*IndexedPropertyEnumerator)(const AccessorInfo &info);
+
+enum AccessType {
+  ACCESS_GET,
+  ACCESS_SET,
+  ACCESS_HAS,
+  ACCESS_DELETE,
+  ACCESS_KEYS
+};
+
+typedef bool (*NamedSecurityCallback)(Local<Object> host, Local<Value> key, AccessType type, Local<Value> data);
+typedef bool (*IndexedSecurityCallback)(Local<Object> host, uint32_t index, AccessType type, Local<Value> data);
+
+class FunctionTemplate : public Template {
+  static Local<FunctionTemplate> New(InvocationCallback callback, Handle<Value> data = Handle<Value>(), Handle<Signature> signature = Handle<Signature>());
+  Local<Function> GetFunction () {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+
+  void SetCallHandler(InvocationCallback callback, Handle<Value> data = Handle<Value>()) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  Local<ObjectTemplate> InstanceTemplate() {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+
+  void Inherit(Handle<FunctionTemplate> parent) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  Local<ObjectTemplate> PrototypeTemplate() {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+
+  void SetClassName(Handle<String> name) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  void SetHiddenPrototype(bool value) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  bool HasInstance(Handle<Value> object) {
+    UNIMPLEMENTEDAPI(false);
+  }
+};
+
+class ObjectTemplate : public Template {
+  static Local<ObjectTemplate> New() {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+
+  Local<Object> NewInstance() {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+
+  void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  void SetNamedPropertyHandler(NamedPropertyGetter getter, NamedPropertySetter setter = 0, NamedPropertyQuery query = 0, NamedPropertyDeleter deleter = 0, NamedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>()) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  void SetIndexedPropertyHandler(IndexedPropertyGetter getter, IndexedPropertySetter setter = 0, IndexedPropertyQuery query = 0, IndexedPropertyDeleter deleter = 0, IndexedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>()) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  void SetCallAsFunctionHandler(InvocationCallback callback, Handle<Value> data = Handle<Value>()) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  void MarkAsUndetectable() {
+    UNIMPLEMENTEDAPI();
+  }
+
+  void SetAccessCheckACalback(NamedSecurityCallback named_handler, IndexedSecurityCallback indexed_callback, Handle<Value> data = Handle<Value>(), bool turned_on_by_default = true) {
+    UNIMPLEMENTEDAPI();
+  }
+
+  int InternalFieldCount() {
+    UNIMPLEMENTEDAPI(0);
+  }
+
+  void SetInternalFieldCount(int i) {
+    UNIMPLEMENTEDAPI();
+  }
+};
+
 }

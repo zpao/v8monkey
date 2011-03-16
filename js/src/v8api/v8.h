@@ -26,9 +26,9 @@ template <class T> class Persistent;
 
 namespace internal {
   class GCReference;
-  class GCOps;
+  struct GCOps;
   class GCReferenceContainer;
-  class RCOps;
+  struct RCOps;
   class RCReferenceContainer;
 }
 
@@ -36,7 +36,7 @@ namespace internal {
   void notImplemented();
 
   class GCReference {
-    friend class GCOps;
+    friend struct GCOps;
 
     void root(JSContext *ctx) {
       JS_AddValueRoot(ctx, &mVal);

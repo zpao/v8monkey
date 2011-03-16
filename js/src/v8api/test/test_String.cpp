@@ -11,7 +11,7 @@ test_Length()
   Context::Scope context_scope(context);
 
   char TEST_STRING[] = "this is a test";
-  size_t TEST_LENGTH = strlen(TEST_STRING);
+  int TEST_LENGTH = strlen(TEST_STRING);
   Handle<String> str = String::New(TEST_STRING);
   do_check_eq(str->Length(), TEST_LENGTH);
 
@@ -33,7 +33,7 @@ test_Utf8Length()
   Context::Scope context_scope(context);
 
   char TEST_STRING[] = "this is a UTF-8 test!  This is pi: π";
-  size_t TEST_LENGTH = strlen(TEST_STRING);
+  int TEST_LENGTH = strlen(TEST_STRING);
   Handle<String> str = String::New(TEST_STRING);
   do_check_eq(str->Utf8Length(), TEST_LENGTH);
 

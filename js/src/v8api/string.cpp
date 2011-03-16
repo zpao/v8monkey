@@ -94,7 +94,7 @@ int String::WriteUtf8(char* buffer,
   size_t bytesWritten = JS_EncodeStringToBuffer(*this, buffer, length);
 
   // If we have enough space for the NULL terminator, set it.
-  if (bytesWritten < length) {
+  if (bytesWritten < size_t(length)) {
     buffer[bytesWritten + 1] = '\0';
   }
 

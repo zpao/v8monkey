@@ -211,16 +211,6 @@ THREADED_TEST(AccessElement) {
 }
 
 
-THREADED_TEST(Script) {
-  v8::HandleScope scope;
-  LocalContext env;
-  const char* c_source = "1 + 2 + 3";
-  Local<String> source = String::New(c_source);
-  Local<Script> script = Script::Compile(source);
-  CHECK_EQ(6, script->Run()->Int32Value());
-}
-
-
 static uint16_t* AsciiToTwoByteString(const char* source) {
   int array_length = i::StrLength(source) + 1;
   uint16_t* converted = i::NewArray<uint16_t>(array_length);

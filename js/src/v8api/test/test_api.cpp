@@ -34,7 +34,7 @@
 #include "v8api_test_harness.h"
 
 #define CHECK do_check_true
-#define CHECK_EQ do_check_eq
+#define CHECK_EQ(expected, actual) do_check_eq(actual, expected)
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Helpers
@@ -154,12 +154,24 @@ test_Access()
   CHECK_EQ(bar_str, foo_after);
 }
 
+void
+test_Script()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  const char* c_source = "1 + 2 + 3";
+  Local<String> source = String::New(c_source);
+  Local<Script> script = Script::Compile(source);
+  CHECK_EQ(6, script->Run()->Int32Value());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
 Test gTests[] = {
   DISABLED_TEST(test_Handles),
   TEST(test_Access),
+  DISABLED_TEST(test_Script),
 };
 
 const char* file = __FILE__;

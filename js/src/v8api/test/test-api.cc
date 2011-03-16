@@ -887,17 +887,6 @@ THREADED_TEST(BigUnsignedInteger) {
 }
 
 
-THREADED_TEST(OutOfSignedRangeUnsignedInteger) {
-  v8::HandleScope scope;
-  LocalContext env;
-  uint32_t INT32_MAX_AS_UINT = (1U << 31) - 1;
-  uint32_t value = INT32_MAX_AS_UINT + 1;
-  CHECK(value > INT32_MAX_AS_UINT);  // No overflow.
-  Local<v8::Integer> value_obj = v8::Integer::NewFromUnsigned(value);
-  CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
-}
-
-
 THREADED_TEST(Number) {
   v8::HandleScope scope;
   LocalContext env;

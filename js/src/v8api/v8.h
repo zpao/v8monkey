@@ -234,6 +234,12 @@ public:
   Local<Number> ToNumber() const;
   Local<String> ToString() const;
 
+  bool BooleanValue() const;
+  double NumberValue() const;
+  JSInt64 IntegerValue() const;
+  JSUint32 Uint32Value() const;
+  JSInt32 Int32Value() const;
+
   bool StrictEquals(Handle<Value> other);
 };
 

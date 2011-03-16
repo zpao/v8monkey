@@ -134,6 +134,36 @@ bool Value::IsDate() const {
   return JS_ObjectIsDate(cx()->getJSContext(), obj);
 }
 
+bool
+Value::BooleanValue() const
+{
+  return IsTrue();
+}
+
+double
+Value::NumberValue() const
+{
+  UNIMPLEMENTEDAPI(0);
+}
+
+JSInt64
+Value::IntegerValue() const
+{
+  UNIMPLEMENTEDAPI(0);
+}
+
+JSUint32
+Value::Uint32Value() const
+{
+  UNIMPLEMENTEDAPI(0);
+}
+
+JSInt32
+Value::Int32Value() const
+{
+  UNIMPLEMENTEDAPI(0);
+}
+
 bool Value::StrictEquals(Handle<Value> other) {
   JSBool equal;
   // XXX: check for error. This can fail if they are ropes that fail to turn into strings

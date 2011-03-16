@@ -134,6 +134,9 @@ struct Test
 {
   void (*func)(void);
   const char* const name;
+  bool disabled;
 };
 #define TEST(aName) \
-  {aName, #aName}
+  {aName, #aName, false}
+#define DISABLED_TEST(aName) \
+  {aName, #aName, true}

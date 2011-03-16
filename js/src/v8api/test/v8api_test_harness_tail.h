@@ -55,8 +55,14 @@ main(int aArgc,
 
   for (size_t i = 0; i < (sizeof(gTests) / sizeof(gTests[0])); i++) {
     Test &test = gTests[i];
-    (void)printf(TEST_INFO_STR "Running %s.\n", TEST_FILE, test.name);
-    test.func();
+    if (!test.disabled) {
+      (void)printf(TEST_INFO_STR "Running %s.\n", TEST_FILE, test.name);
+      test.func();
+    }
+    else {
+      (void)printf(TEST_INFO_STR "Not running %s (DISABLED).\n", TEST_FILE,
+                   test.name);
+    }
   }
 
   // Check that we have passed all of our tests, and output accordingly.

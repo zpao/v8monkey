@@ -75,19 +75,70 @@ static void ExpectUndefined(const char* code) {
   CHECK(result->IsUndefined());
 }
 
+// A LocalContext holds a reference to a v8::Context.
+class LocalContext {
+ public:
+  // TODO use v8::ExtensionConfiguration again
+  LocalContext(//v8::ExtensionConfiguration* extensions = 0,
+               v8::Handle<v8::ObjectTemplate> global_template =
+                   v8::Handle<v8::ObjectTemplate>(),
+               v8::Handle<v8::Value> global_object = v8::Handle<v8::Value>())
+    : context_(v8::Context::New()) {
+//    : context_(v8::Context::New(extensions, global_template, global_object)) {
+    context_->Enter();
+  }
+
+  virtual ~LocalContext() {
+    context_->Exit();
+    context_.Dispose();
+  }
+
+  v8::Context* operator->() { return *context_; }
+  v8::Context* operator*() { return *context_; }
+  bool IsReady() { return !context_.IsEmpty(); }
+
+  v8::Local<v8::Context> local() {
+    return v8::Local<v8::Context>::New(context_);
+  }
+
+ private:
+  v8::Persistent<v8::Context> context_;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
 void
-test_dummy_to_stop_compiler_warnings()
+test_Handles()
 {
+  v8::HandleScope scope;
+  Local<Context> local_env;
+  {
+    LocalContext env;
+    local_env = env.local();
+  }
+
+  // Local context should still be live.
+  CHECK(!local_env.IsEmpty());
+  local_env->Enter();
+
+  v8::Handle<v8::Primitive> undef = v8::Undefined();
+  CHECK(!undef.IsEmpty());
+  CHECK(undef->IsUndefined());
+
+  const char* c_source = "1 + 2 + 3";
+  Local<String> source = String::New(c_source);
+  Local<Script> script = Script::Compile(source);
+  CHECK_EQ(6, script->Run()->Int32Value());
+
+  local_env->Exit();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
 Test gTests[] = {
-  TEST(test_dummy_to_stop_compiler_warnings),
+  DISABLED_TEST(test_Handles),
 };
 
 const char* file = __FILE__;

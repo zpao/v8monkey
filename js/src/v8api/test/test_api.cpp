@@ -37,6 +37,7 @@
 #define CHECK_EQ(expected, actual) do_check_eq(actual, expected)
 
 typedef JSInt32 int32_t;
+typedef JSUint32 uint32_t;
 typedef JSInt64 int64_t;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -178,6 +179,16 @@ test_TinyInteger()
   CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
 }
 
+void
+test_TinyUnsignedInteger()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  uint32_t value = 239;
+  Local<v8::Integer> value_obj = v8::Integer::NewFromUnsigned(value);
+  CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -186,6 +197,7 @@ Test gTests[] = {
   TEST(test_Access),
   DISABLED_TEST(test_Script),
   TEST(test_TinyInteger),
+  TEST(test_TinyUnsignedInteger),
 };
 
 const char* file = __FILE__;

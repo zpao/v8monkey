@@ -72,31 +72,6 @@ static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
 }
 
 
-THREADED_TEST(Handles) {
-  v8::HandleScope scope;
-  Local<Context> local_env;
-  {
-    LocalContext env;
-    local_env = env.local();
-  }
-
-  // Local context should still be live.
-  CHECK(!local_env.IsEmpty());
-  local_env->Enter();
-
-  v8::Handle<v8::Primitive> undef = v8::Undefined();
-  CHECK(!undef.IsEmpty());
-  CHECK(undef->IsUndefined());
-
-  const char* c_source = "1 + 2 + 3";
-  Local<String> source = String::New(c_source);
-  Local<Script> script = Script::Compile(source);
-  CHECK_EQ(6, script->Run()->Int32Value());
-
-  local_env->Exit();
-}
-
-
 THREADED_TEST(ReceiverSignature) {
   v8::HandleScope scope;
   LocalContext env;
@@ -214,21 +189,6 @@ THREADED_TEST(HulIgennem) {
   undef_str->WriteAscii(value);
   CHECK_EQ(0, strcmp(value, "undefined"));
   i::DeleteArray(value);
-}
-
-
-THREADED_TEST(Access) {
-  v8::HandleScope scope;
-  LocalContext env;
-  Local<v8::Object> obj = v8::Object::New();
-  Local<Value> foo_before = obj->Get(v8_str("foo"));
-  CHECK(foo_before->IsUndefined());
-  Local<String> bar_str = v8_str("bar");
-  obj->Set(v8_str("foo"), bar_str);
-  Local<Value> foo_after = obj->Get(v8_str("foo"));
-  CHECK(!foo_after->IsUndefined());
-  CHECK(foo_after->IsString());
-  CHECK_EQ(bar_str, foo_after);
 }
 
 

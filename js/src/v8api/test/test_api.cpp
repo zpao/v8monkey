@@ -39,6 +39,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 //// Helpers
 
+static inline v8::Local<v8::String> v8_str(const char* x) {
+  return v8::String::New(x);
+}
+
 // Helper function that compiles and runs the source.
 static inline v8::Local<v8::Value> CompileRun(const char* source) {
   return v8::Script::Compile(v8::String::New(source))->Run();
@@ -134,11 +138,28 @@ test_Handles()
   local_env->Exit();
 }
 
+void
+test_Access()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  Local<v8::Object> obj = v8::Object::New();
+  Local<Value> foo_before = obj->Get(v8_str("foo"));
+  CHECK(foo_before->IsUndefined());
+  Local<String> bar_str = v8_str("bar");
+  obj->Set(v8_str("foo"), bar_str);
+  Local<Value> foo_after = obj->Get(v8_str("foo"));
+  CHECK(!foo_after->IsUndefined());
+  CHECK(foo_after->IsString());
+  CHECK_EQ(bar_str, foo_after);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
 Test gTests[] = {
   DISABLED_TEST(test_Handles),
+  TEST(test_Access),
 };
 
 const char* file = __FILE__;

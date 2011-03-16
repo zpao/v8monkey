@@ -38,6 +38,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include <stdarg.h>
+#include <sstream>
 #include "jstypes.h"
 
 #include "v8/v8.h"
@@ -69,24 +70,29 @@ static size_t gPassedTests = 0;
 #define do_check_success(aResult) \
   do_check_true(NS_SUCCEEDED(aResult))
 
-#ifdef LINUX
-// XXX Linux opt builds on tinderbox are orange due to linking with stdlib.
-// This is sad and annoying, but it's a workaround that works.
-#define do_check_eq(aExpected, aActual) \
-  do_check_true(aExpected == aActual)
-#else
-#include <sstream>
-
 #ifdef DEBUG
 // DEBUG bulids use a struct, but OPT builds are just 64-bit unsigned numbers.
 std::ostream&
 operator<<(std::ostream& o,
-const jsval& val)
+           const jsval& val)
 {
   o << val.asBits;
   return o;
 }
 #endif
+
+std::ostream&
+operator<<(std::ostream& o,
+           const Handle<Value>& val)
+{
+  Local<String> str = val->ToString();
+  int len = str->Length();
+  char* asciiStr = new char[len + 1];
+  (void)str->WriteAscii(asciiStr);
+  o << asciiStr;
+  delete[] asciiStr;
+  return o;
+}
 
 #define do_check_eq(aActual, aExpected) \
   JS_BEGIN_MACRO \
@@ -100,7 +106,13 @@ const jsval& val)
       fail(temp.str().c_str()); \
     } \
   JS_END_MACRO
-#endif
+
+bool
+operator==(const Handle<Value>& a,
+           const Handle<Value>& b)
+{
+  return a->StrictEquals(b);
+}
 
 /**
  * Prints the given failure message and arguments using printf, prepending

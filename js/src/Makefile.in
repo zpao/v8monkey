@@ -271,7 +271,7 @@ EXPORTS_v8 = \
   v8api/v8.h \
   $(NULL)
 #ifdef ENABLE_TESTS
-TOOL_DIRS += v8api/test
+DIRS += v8api/test
 #endif
 
 ifdef ENABLE_TRACEJIT

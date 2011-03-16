@@ -50,56 +50,6 @@ static bool IsNaN(double x) {
 #endif
 }
 
-using ::v8::ObjectTemplate;
-using ::v8::Value;
-using ::v8::Context;
-using ::v8::Local;
-using ::v8::String;
-using ::v8::Script;
-using ::v8::Function;
-using ::v8::AccessorInfo;
-using ::v8::Extension;
-
-namespace i = ::i;
-
-
-static void ExpectString(const char* code, const char* expected) {
-  Local<Value> result = CompileRun(code);
-  CHECK(result->IsString());
-  String::AsciiValue ascii(result);
-  CHECK_EQ(expected, *ascii);
-}
-
-
-static void ExpectBoolean(const char* code, bool expected) {
-  Local<Value> result = CompileRun(code);
-  CHECK(result->IsBoolean());
-  CHECK_EQ(expected, result->BooleanValue());
-}
-
-
-static void ExpectTrue(const char* code) {
-  ExpectBoolean(code, true);
-}
-
-
-static void ExpectFalse(const char* code) {
-  ExpectBoolean(code, false);
-}
-
-
-static void ExpectObject(const char* code, Local<Value> expected) {
-  Local<Value> result = CompileRun(code);
-  CHECK(result->Equals(expected));
-}
-
-
-static void ExpectUndefined(const char* code) {
-  Local<Value> result = CompileRun(code);
-  CHECK(result->IsUndefined());
-}
-
-
 static int signature_callback_count;
 static v8::Handle<Value> IncrementingSignatureCallback(
     const v8::Arguments& args) {

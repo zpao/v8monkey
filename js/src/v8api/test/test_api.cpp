@@ -1,0 +1,96 @@
+// Copyright 2007-2009 the V8 project authors. All rights reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+//
+//     * Redistributions of source code must retain the above copyright
+//       notice, this list of conditions and the following disclaimer.
+//     * Redistributions in binary form must reproduce the above
+//       copyright notice, this list of conditions and the following
+//       disclaimer in the documentation and/or other materials provided
+//       with the distribution.
+//     * Neither the name of Google Inc. nor the names of its
+//       contributors may be used to endorse or promote products derived
+//       from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+/**
+ * This test file is an adaptation of test-api.cc from the v8 source tree.  We
+ * would need to import a whole bunch of their source files to just drop in that
+ * test file, which we don't really want to do.
+ */
+
+#include "v8api_test_harness.h"
+
+#define CHECK do_check_true
+#define CHECK_EQ do_check_eq
+
+////////////////////////////////////////////////////////////////////////////////
+//// Helpers
+
+// Helper function that compiles and runs the source.
+static inline v8::Local<v8::Value> CompileRun(const char* source) {
+  return v8::Script::Compile(v8::String::New(source))->Run();
+}
+
+static void ExpectString(const char* code, const char* expected) {
+  Local<Value> result = CompileRun(code);
+  CHECK(result->IsString());
+  String::AsciiValue ascii(result);
+  CHECK_EQ(expected, *ascii);
+}
+
+static void ExpectBoolean(const char* code, bool expected) {
+  Local<Value> result = CompileRun(code);
+  CHECK(result->IsBoolean());
+  CHECK_EQ(expected, result->BooleanValue());
+}
+
+static void ExpectTrue(const char* code) {
+  ExpectBoolean(code, true);
+}
+
+static void ExpectFalse(const char* code) {
+  ExpectBoolean(code, false);
+}
+
+static void ExpectObject(const char* code, Local<Value> expected) {
+  Local<Value> result = CompileRun(code);
+  CHECK(result->Equals(expected));
+}
+
+static void ExpectUndefined(const char* code) {
+  Local<Value> result = CompileRun(code);
+  CHECK(result->IsUndefined());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// Tests
+
+void
+test_dummy_to_stop_compiler_warnings()
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// Test Harness
+
+Test gTests[] = {
+  TEST(test_dummy_to_stop_compiler_warnings),
+};
+
+const char* file = __FILE__;
+#define TEST_NAME "V8 API"
+#define TEST_FILE file
+#include "v8api_test_harness_tail.h"

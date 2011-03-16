@@ -240,7 +240,8 @@ public:
   JSUint32 Uint32Value() const;
   JSInt32 Int32Value() const;
 
-  bool StrictEquals(Handle<Value> other);
+  bool Equals(Handle<Value> other) const;
+  bool StrictEquals(Handle<Value> other) const;
 };
 
 class Primitive : public Value { };

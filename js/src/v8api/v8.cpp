@@ -164,7 +164,15 @@ Value::Int32Value() const
   UNIMPLEMENTEDAPI(0);
 }
 
-bool Value::StrictEquals(Handle<Value> other) {
+bool
+Value::Equals(Handle<Value> other) const
+{
+  UNIMPLEMENTEDAPI(false);
+}
+
+bool
+Value::StrictEquals(Handle<Value> other) const
+{
   JSBool equal;
   // XXX: check for error. This can fail if they are ropes that fail to turn into strings
   (void) JS_StrictlyEqual(*cx(), mVal, other->native(), &equal);

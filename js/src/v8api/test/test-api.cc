@@ -834,15 +834,6 @@ THREADED_TEST(FindInstanceInPrototypeChain) {
 }
 
 
-THREADED_TEST(TinyInteger) {
-  v8::HandleScope scope;
-  LocalContext env;
-  int32_t value = 239;
-  Local<v8::Integer> value_obj = v8::Integer::New(value);
-  CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
-}
-
-
 THREADED_TEST(BigSmiInteger) {
   v8::HandleScope scope;
   LocalContext env;

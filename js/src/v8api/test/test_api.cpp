@@ -36,6 +36,9 @@
 #define CHECK do_check_true
 #define CHECK_EQ(expected, actual) do_check_eq(actual, expected)
 
+typedef JSInt32 int32_t;
+typedef JSInt64 int64_t;
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Helpers
 
@@ -165,6 +168,16 @@ test_Script()
   CHECK_EQ(6, script->Run()->Int32Value());
 }
 
+void
+test_TinyInteger()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  int32_t value = 239;
+  Local<v8::Integer> value_obj = v8::Integer::New(value);
+  CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -172,6 +185,7 @@ Test gTests[] = {
   DISABLED_TEST(test_Handles),
   TEST(test_Access),
   DISABLED_TEST(test_Script),
+  TEST(test_TinyInteger),
 };
 
 const char* file = __FILE__;

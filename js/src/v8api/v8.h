@@ -18,7 +18,11 @@ template <class T> class Handle;
 template <class T> class Local;
 template <class T> class Persistent;
 
-#define UNIMPLEMENTEDAPI(rval) do { v8::internal::notImplemented(); return rval; } while(0)
+#define UNIMPLEMENTEDAPI(...) \
+  JS_BEGIN_MACRO \
+  v8::internal::notImplemented(); \
+  return __VA_ARGS__; \
+  JS_END_MACRO
 
 namespace internal {
   class GCReference;

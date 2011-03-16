@@ -258,6 +258,7 @@ public:
 };
 
 class Number : public Primitive {
+protected:
   Number(jsval v) {
     mVal = v;
   }
@@ -266,6 +267,21 @@ public:
     return JSVAL_TO_DOUBLE(mVal);
   }
   static Local<Number> New(double value);
+  static Number* Cast(v8::Value* obj) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+};
+
+class Integer : public Number {
+  Integer(jsval v) : Number(v) { }
+public:
+  static Local<Integer> New(JSInt32 value);
+  static Local<Integer> NewFromUnsigned(JSUint32 value);
+  JSInt64 Value() const;
+  // XXX Cast is inline in V8
+  static Integer* Cast(v8::Value* obj) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
 };
 
 class String : public Primitive  {

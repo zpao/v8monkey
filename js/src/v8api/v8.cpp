@@ -202,6 +202,25 @@ Local<Number> Number::New(double d) {
 
 
 //////////////////////////////////////////////////////////////////////////////
+//// Integer class
+
+Local<Integer> Integer::New(JSInt32 value) {
+  jsval val = INT_TO_JSVAL(value);
+  Integer i(val);
+  return Local<Integer>::New(&i);
+  //return Local<Integer>(val);
+}
+Local<Integer> Integer::NewFromUnsigned(JSUint32 value) {
+  jsval val = INT_TO_JSVAL(value);
+  Integer i(val);
+  return Local<Integer>::New(&i);
+}
+JSInt64 Integer::Value() const {
+  return (JSInt64)JSVAL_TO_INT(mVal);
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
 //// Primitives & basic values
 
 Handle<Primitive> Undefined() {

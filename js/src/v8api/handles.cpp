@@ -53,10 +53,10 @@ namespace internal {
   struct GCOps {
     typedef internal::GCReference Slot;
     static void onNewSlot(Slot *s) {
-      s->root(cx()->getJSContext());
+      s->root(cx());
     }
     static void onRemoveSlot(Slot *s) {
-      s->unroot(cx()->getJSContext());
+      s->unroot(cx());
     }
   };
 
@@ -75,12 +75,12 @@ namespace internal {
 
   GCReference* GCReference::Globalize() {
     GCReference *r = new GCReference(*this);
-    r->root(cx()->getJSContext());
+    r->root(cx());
     return r;
   }
 
   void GCReference::Dispose() {
-      unroot(cx()->getJSContext());
+      unroot(cx());
       delete this;
   }
 

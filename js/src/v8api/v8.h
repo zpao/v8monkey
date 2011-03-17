@@ -116,10 +116,10 @@ public:
   bool IsEmpty() const {
     return mVal == 0;
   }
-  T* operator ->() {
+  T* operator ->() const {
     return mVal;
   }
-  T* operator *() {
+  T* operator *() const {
     return mVal;
   }
 };

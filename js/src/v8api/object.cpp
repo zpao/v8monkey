@@ -1,4 +1,5 @@
 #include "v8-internal.h"
+#include <limits>
 
 namespace v8 {
 using namespace internal;
@@ -34,7 +35,12 @@ bool
 Object::Set(JSUint32 index,
             Handle<Value> value)
 {
-  UNIMPLEMENTEDAPI(false);
+  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+    return false;
+  }
+
+  jsval& val = value->native();
+  return !!JS_SetElement(*cx(), *this, index, &val);
 }
 
 bool
@@ -60,31 +66,69 @@ Object::Get(Handle<Value> key) {
 Local<Value>
 Object::Get(JSUint32 index)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+    return Local<Value>();
+  }
+
+  Value v;
+  if (JS_GetElement(*cx(), *this, index, &v.native())) {
+    return Local<Value>::New(&v);
+  }
+  return Local<Value>();
 }
 
 bool
 Object::Has(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(false);
+  // TODO: use String::Value
+  String::AsciiValue k(key);
+
+  JSBool found;
+  if (JS_HasProperty(*cx(), *this, *k, &found)) {
+    return !!found;
+  }
+  return false;
 }
 
 bool
 Object::Has(JSUint32 index)
 {
-  UNIMPLEMENTEDAPI(false);
+  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+    return false;
+  }
+
+  jsval val;
+  if (JS_LookupElement(*cx(), *this, index, &val)) {
+    return !JSVAL_IS_VOID(val);
+  }
+  return false;
 }
 
 bool
 Object::Delete(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(false);
+  // TODO: use String::Value
+  String::AsciiValue k(key);
+
+  jsval val;
+  if (JS_DeleteProperty2(*cx(), *this, *k, &val)) {
+    return val == JSVAL_TRUE;
+  }
+  return false;
 }
 
 bool
 Object::Delete(JSUint32 index)
 {
-  UNIMPLEMENTEDAPI(false);
+  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+    return false;
+  }
+
+  jsval val;
+  if (JS_DeleteElement2(*cx(), *this, index, &val)) {
+    return val == JSVAL_TRUE;
+  }
+  return false;
 }
 
 bool
@@ -175,13 +219,28 @@ Object::SetPointerInInternalField(int index,
 bool
 Object::HasRealNamedProperty(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(false);
+  // TODO: use String::Value
+  String::AsciiValue k(key);
+
+  JSBool found;
+  if (JS_AlreadyHasOwnProperty(*cx(), *this, *k, &found)) {
+    return !!found;
+  }
+  return false;
 }
 
 bool
 Object::HasRealIndexedProperty(JSUint32 index)
 {
-  UNIMPLEMENTEDAPI(false);
+  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+    return false;
+  }
+
+  JSBool found;
+  if (JS_AlreadyHasOwnElement(*cx(), *this, index, &found)) {
+    return !!found;
+  }
+  return false;
 }
 
 bool

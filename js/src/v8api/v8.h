@@ -503,13 +503,13 @@ public:
     UNIMPLEMENTEDAPI(NULL);
   }
 
-  void SetIndexedPropertiesToPixelData(uint8_t* data, int length) {
+  void SetIndexedPropertiesToPixelData(JSUint8* data, int length) {
     UNIMPLEMENTEDAPI();
   }
   bool HasIndexedPropertiesInPixelData() {
     UNIMPLEMENTEDAPI(false);
   }
-  uint8_t* GetIndexedPropertiesPixelData() {
+  JSUint8* GetIndexedPropertiesPixelData() {
     UNIMPLEMENTEDAPI(NULL);
   }
   int GetIndexedPropertiesPixelDataLength() {

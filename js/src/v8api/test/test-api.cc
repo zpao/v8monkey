@@ -896,29 +896,6 @@ THREADED_TEST(Date) {
 }
 
 
-THREADED_TEST(Boolean) {
-  v8::HandleScope scope;
-  LocalContext env;
-  v8::Handle<v8::Boolean> t = v8::True();
-  CHECK(t->Value());
-  v8::Handle<v8::Boolean> f = v8::False();
-  CHECK(!f->Value());
-  v8::Handle<v8::Primitive> u = v8::Undefined();
-  CHECK(!u->BooleanValue());
-  v8::Handle<v8::Primitive> n = v8::Null();
-  CHECK(!n->BooleanValue());
-  v8::Handle<String> str1 = v8_str("");
-  CHECK(!str1->BooleanValue());
-  v8::Handle<String> str2 = v8_str("x");
-  CHECK(str2->BooleanValue());
-  CHECK(!v8::Number::New(0)->BooleanValue());
-  CHECK(v8::Number::New(-1)->BooleanValue());
-  CHECK(v8::Number::New(1)->BooleanValue());
-  CHECK(v8::Number::New(42)->BooleanValue());
-  CHECK(!v8_compile("NaN")->Run()->BooleanValue());
-}
-
-
 static v8::Handle<Value> DummyCallHandler(const v8::Arguments& args) {
   ApiTestFuzzer::Fuzz();
   return v8_num(13.4);

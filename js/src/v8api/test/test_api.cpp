@@ -47,6 +47,10 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
   return v8::String::New(x);
 }
 
+static inline v8::Local<v8::Script> v8_compile(const char* x) {
+  return v8::Script::Compile(v8_str(x));
+}
+
 // Helper function that compiles and runs the source.
 static inline v8::Local<v8::Value> CompileRun(const char* source) {
   return v8::Script::Compile(v8::String::New(source))->Run();
@@ -224,6 +228,30 @@ test_ToNumber()
   CHECK_EQ(0.0, f->NumberValue());
 }
 
+void
+test_Boolean()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::Handle<v8::Boolean> t = v8::True();
+  CHECK(t->Value());
+  v8::Handle<v8::Boolean> f = v8::False();
+  CHECK(!f->Value());
+  v8::Handle<v8::Primitive> u = v8::Undefined();
+  CHECK(!u->BooleanValue());
+  v8::Handle<v8::Primitive> n = v8::Null();
+  CHECK(!n->BooleanValue());
+  v8::Handle<String> str1 = v8_str("");
+  CHECK(!str1->BooleanValue());
+  v8::Handle<String> str2 = v8_str("x");
+  CHECK(str2->BooleanValue());
+  CHECK(!v8::Number::New(0)->BooleanValue());
+  CHECK(v8::Number::New(-1)->BooleanValue());
+  CHECK(v8::Number::New(1)->BooleanValue());
+  CHECK(v8::Number::New(42)->BooleanValue());
+  CHECK(!v8_compile("NaN")->Run()->BooleanValue());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -236,6 +264,7 @@ Test gTests[] = {
   DISABLED_TEST(test_OutOfSignedRangeUnsignedInteger),
   DISABLED_TEST(test_Number),
   DISABLED_TEST(test_ToNumber),
+  DISABLED_TEST(test_Boolean),
 };
 
 const char* file = __FILE__;

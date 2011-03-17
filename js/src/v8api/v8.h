@@ -365,7 +365,7 @@ class Object : public Value {
 public:
   bool Set(Handle<Value> key, Handle<Value> value, PropertyAttribute attribs = None);
 
-  bool Set(uint32_t index, Handle<Value> value) {
+  bool Set(JSUint32 index, Handle<Value> value) {
     UNIMPLEMENTEDAPI(false);
   }
 
@@ -375,7 +375,7 @@ public:
 
   Local<Value> Get(Handle<Value> key);
 
-  Local<Value> Get(uint32_t index) {
+  Local<Value> Get(JSUint32 index) {
     UNIMPLEMENTEDAPI(NULL);
   }
 
@@ -391,11 +391,11 @@ public:
     UNIMPLEMENTEDAPI(false);
   }
 
-  bool Has(uint32_t index) {
+  bool Has(JSUint32 index) {
     UNIMPLEMENTEDAPI(false);
   }
 
-  bool Delete(uint32_t index) {
+  bool Delete(JSUint32 index) {
     UNIMPLEMENTEDAPI(false);
   }
 
@@ -451,7 +451,7 @@ public:
     UNIMPLEMENTEDAPI(false);
   }
 
-  bool HasRealIndexedProperty(uint32_t index) {
+  bool HasRealIndexedProperty(JSUint32 index) {
     UNIMPLEMENTEDAPI(false);
   }
 

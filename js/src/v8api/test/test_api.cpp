@@ -211,6 +211,19 @@ test_Number()
   CHECK_EQ(PI, pi_obj->NumberValue());
 }
 
+void
+test_ToNumber()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  Local<String> str = v8_str("3.1415926");
+  CHECK_EQ(3.1415926, str->NumberValue());
+  v8::Handle<v8::Boolean> t = v8::True();
+  CHECK_EQ(1.0, t->NumberValue());
+  v8::Handle<v8::Boolean> f = v8::False();
+  CHECK_EQ(0.0, f->NumberValue());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -222,6 +235,7 @@ Test gTests[] = {
   TEST(test_TinyUnsignedInteger),
   DISABLED_TEST(test_OutOfSignedRangeUnsignedInteger),
   DISABLED_TEST(test_Number),
+  DISABLED_TEST(test_ToNumber),
 };
 
 const char* file = __FILE__;

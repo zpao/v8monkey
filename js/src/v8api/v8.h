@@ -9,6 +9,7 @@ class Number;
 class Integer;
 class String;
 class Array;
+class Object;
 class Context;
 class Function;
 class AccessorInfo;
@@ -156,18 +157,18 @@ public:
   }
 };
 
-class Context : public internal::RCReference {
-  JSContext *mCtx;
-  JSObject *mGlobal;
-
-  Context(JSContext *ctx, JSObject *global);
+class Context : public internal::GCReference {
+  Context(JSObject *global);
 public:
   void Enter();
   void Exit();
 
-  static Persistent<Context> New();
+  inline Local<Object> Global();
 
-  JSContext *getJSContext();
+  static Local<Context> GetEntered();
+  static Local<Context> GetCurrent();
+
+  static Persistent<Context> New();
 
   // TODO: expose Local<Object> Global instead
   JSObject *getJSGlobal();
@@ -184,7 +185,7 @@ public:
     Handle<Context> mCtx;
   };
 
-  operator JSContext*() const { return mCtx; }
+  operator JSObject*() const { return JSVAL_TO_OBJECT(mVal); }
 };
 
 class ResourceConstraints {
@@ -360,6 +361,8 @@ enum AccessControl {
 };
 
 class Object : public Value {
+  friend class Context;
+  friend class Script;
   Object(JSObject *obj);
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
 public:
@@ -579,5 +582,10 @@ class ObjectTemplate : public Template {
     UNIMPLEMENTEDAPI();
   }
 };
+
+Local<Object> Context::Global() {
+  Object obj(*this);
+  return Local<Object>::New(&obj);
+}
 
 }

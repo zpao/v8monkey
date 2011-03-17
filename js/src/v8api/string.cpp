@@ -15,7 +15,7 @@ Local<String> String::New(const char *data,
     length = strlen(data);
   }
 
-  JSString *str = JS_NewStringCopyN(cx()->getJSContext(), data, length);
+  JSString *str = JS_NewStringCopyN(cx(), data, length);
   String s(str);
   return Local<String>::New(&s);
 }
@@ -25,7 +25,7 @@ int String::Length() const {
 }
 
 int String::Utf8Length() const {
-  size_t encodedLength = JS_GetStringEncodingLength(cx()->getJSContext(),
+  size_t encodedLength = JS_GetStringEncodingLength(cx(),
                                                     *this);
   return static_cast<int>(encodedLength);
 }
@@ -37,7 +37,7 @@ int String::Write(JSUint16* buffer,
 {
   size_t internalLen;
   const jschar* chars =
-    JS_GetStringCharsZAndLength(cx()->getJSContext(), *this, &internalLen);
+    JS_GetStringCharsZAndLength(cx(), *this, &internalLen);
   if (!chars || internalLen >= static_cast<size_t>(start)) {
     return 0;
   }
@@ -55,7 +55,7 @@ int String::WriteAscii(char* buffer,
                        int length,
                        WriteHints hints) const
 {
-  size_t encodedLength = JS_GetStringEncodingLength(cx()->getJSContext(),
+  size_t encodedLength = JS_GetStringEncodingLength(cx(),
                                                     *this);
   char* tmp = new char[encodedLength];
   int written = WriteUtf8(tmp, encodedLength);

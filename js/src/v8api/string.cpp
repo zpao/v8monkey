@@ -62,13 +62,12 @@ int String::WriteAscii(char* buffer,
 
   // No easy way to convert UTF-8 to ASCII, so just drop characters that are
   // not ASCII.
-  int toWrite = start + length - 1;
+  int end = start + written;
   if (length == -1) {
-    length = written + 1;
-    toWrite = start + written;
+    length = written;
   }
   int idx = 0;
-  for (int i = start; i < toWrite; i++) {
+  for (int i = start; i < end; i++) {
     if (static_cast<unsigned int>(tmp[i]) > 0x7F) {
       continue;
     }
@@ -77,11 +76,11 @@ int String::WriteAscii(char* buffer,
   }
   // If we have enough space for the NULL terminator, set it.
   if (idx <= length) {
-    buffer[idx--] = '\0';
+    buffer[idx] = '\0';
   }
 
   delete[] tmp;
-  return idx - 1;
+  return idx;
 }
 
 int String::WriteUtf8(char* buffer,

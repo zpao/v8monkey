@@ -364,176 +364,53 @@ class Object : public Value {
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
 public:
   bool Set(Handle<Value> key, Handle<Value> value, PropertyAttribute attribs = None);
-
-  bool Set(JSUint32 index, Handle<Value> value) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool ForceSet(Handle<Value> key, Handle<Value> value, PropertyAttribute attrib = None) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
+  bool Set(JSUint32 index, Handle<Value> value);
+  bool ForceSet(Handle<Value> key, Handle<Value> value, PropertyAttribute attrib = None);
   Local<Value> Get(Handle<Value> key);
-
-  Local<Value> Get(JSUint32 index) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  bool Has(Handle<String> v) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool Delete(Handle<String> v) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool ForceDelete(Handle<String> v) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool Has(JSUint32 index) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool Delete(JSUint32 index) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Data> data = Handle<Data>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  Local<Array> GetPropertyNames() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  Local<Value> GetPrototype() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  void SetPrototype(Handle<Value> prototype) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  Local<Object> FindInstanceInPrototypeChain(Handle<FunctionTemplate> tmpl) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  Local<String> ObjectProtoToString() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  Local<String> GetConstructorName() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  int InternalFieldCount() {
-    UNIMPLEMENTEDAPI(0);
-  }
-
-  Local<Value> GetInternalField(int index) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  void SetInternalField(int index, Handle<Value> value) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void* GetPointerFromInternalField(int index) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  void SetPointerInInternalField(int index, void*value) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  bool HasRealNamedProperty(Handle<String> key) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool HasRealIndexedProperty(JSUint32 index) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool HasRealNamedCallbackProperty(Handle<String> key) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  Local<Value> GetRealNamedPropertyInPrototypeChain(Handle<String> key) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  Local<Value> GetRealNamedProperty(Handle<String> key) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  bool HasNamedLookupInterceptor() {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool HasIndexedLookupInterceptor() {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  void TurnOnAccessCheck() {
-    UNIMPLEMENTEDAPI();
-  }
-
-  int GetIdentityHash() {
-    UNIMPLEMENTEDAPI(0);
-  }
-
-  bool SetHiddenValue(Handle<String> key, Handle<Value> value) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  Local<Value> GetHiddenValue(Handle<String> key) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  bool DeleteHiddenValue(Handle<String> key) {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  bool IsDirty() {
-    UNIMPLEMENTEDAPI(false);
-  }
-
-  Local<Object> Clone() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  void SetIndexedPropertiesToPixelData(JSUint8* data, int length) {
-    UNIMPLEMENTEDAPI();
-  }
-  bool HasIndexedPropertiesInPixelData() {
-    UNIMPLEMENTEDAPI(false);
-  }
-  JSUint8* GetIndexedPropertiesPixelData() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-  int GetIndexedPropertiesPixelDataLength() {
-    UNIMPLEMENTEDAPI(0);
-  }
-
+  Local<Value> Get(JSUint32 index);
+  bool Has(Handle<String> key);
+  bool Has(JSUint32 index);
+  bool Delete(Handle<String> key);
+  bool Delete(JSUint32 index);
+  bool ForceDelete(Handle<String> key);
+  bool SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Data> data = Handle<Data>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
+  Local<Array> GetPropertyNames();
+  Local<Value> GetPrototype();
+  void SetPrototype(Handle<Value> prototype);
+  Local<Object> FindInstanceInPrototypeChain(Handle<FunctionTemplate> tmpl);
+  Local<String> ObjectProtoToString();
+  Local<String> GetConstructorName();
+  int InternalFieldCount();
+  Local<Value> GetInternalField(int index);
+  void SetInternalField(int index, Handle<Value> value);
+  void* GetPointerFromInternalField(int index);
+  void SetPointerInInternalField(int index, void* value);
+  bool HasRealNamedProperty(Handle<String> key);
+  bool HasRealIndexedProperty(JSUint32 index);
+  bool HasRealNamedCallbackProperty(Handle<String> key);
+  Local<Value> GetRealNamedPropertyInPrototypeChain(Handle<String> key);
+  Local<Value> GetRealNamedProperty(Handle<String> key);
+  bool HasNamedLookupInterceptor();
+  bool HasIndexedLookupInterceptor();
+  void TurnOnAccessCheck();
+  int GetIdentityHash();
+  bool SetHiddenValue(Handle<String> key, Handle<Value> value);
+  Local<Value> GetHiddenValue(Handle<String> key);
+  bool DeleteHiddenValue(Handle<String> key);
+  bool IsDirty();
+  Local<Object> Clone();
+  void SetIndexedPropertiesToPixelData(JSUint8* data, int length);
+  bool HasIndexedPropertiesInPixelData();
+  JSUint8* GetIndexedPropertiesPixelData();
+  int GetIndexedPropertiesPixelDataLength();
   void SetIndexedPropertiesToExternalArrayData(
       void* data,
       ExternalArrayType array_type,
-      int number_of_elements) {
-    UNIMPLEMENTEDAPI();
-  }
-  bool HasIndexedPropertiesInExternalArrayData() {
-    UNIMPLEMENTEDAPI(false);
-  }
-  void* GetIndexedPropertiesExternalArrayData() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-  ExternalArrayType GetIndexedPropertiesExternalArrayDataType() {
-    UNIMPLEMENTEDAPI(kExternalByteArray);
-  }
-  int GetIndexedPropertiesExternalArrayDataLength() {
-    UNIMPLEMENTEDAPI(0);
-  }
+      int number_of_elements);
+  bool HasIndexedPropertiesInExternalArrayData();
+  void* GetIndexedPropertiesExternalArrayData();
+  ExternalArrayType GetIndexedPropertiesExternalArrayDataType();
+  int GetIndexedPropertiesExternalArrayDataLength();
 
   static Local<Object> New();
 };

@@ -201,6 +201,16 @@ test_OutOfSignedRangeUnsignedInteger()
   CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
 }
 
+void
+test_Number()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  double PI = 3.1415926;
+  Local<v8::Number> pi_obj = v8::Number::New(PI);
+  CHECK_EQ(PI, pi_obj->NumberValue());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -211,6 +221,7 @@ Test gTests[] = {
   TEST(test_TinyInteger),
   TEST(test_TinyUnsignedInteger),
   DISABLED_TEST(test_OutOfSignedRangeUnsignedInteger),
+  DISABLED_TEST(test_Number),
 };
 
 const char* file = __FILE__;

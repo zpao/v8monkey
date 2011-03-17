@@ -887,15 +887,6 @@ THREADED_TEST(BigUnsignedInteger) {
 }
 
 
-THREADED_TEST(Number) {
-  v8::HandleScope scope;
-  LocalContext env;
-  double PI = 3.1415926;
-  Local<v8::Number> pi_obj = v8::Number::New(PI);
-  CHECK_EQ(PI, pi_obj->NumberValue());
-}
-
-
 THREADED_TEST(ToNumber) {
   v8::HandleScope scope;
   LocalContext env;

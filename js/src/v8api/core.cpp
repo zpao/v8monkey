@@ -9,32 +9,18 @@ JSRuntime *rt() {
   if (!gRuntime) {
     JS_CStringsAreUTF8();
     gRuntime = JS_NewRuntime(64 * MB);
-    JS_BeginRequest(cx());
+    gcx()->Enter();
   }
   return gRuntime;
 }
 
 // TODO: call this
 void shutdown() {
-  JS_EndRequest(cx());
+  gcx()->Exit();
+  gcx().Dispose();
   if (gRuntime)
     JS_DestroyRuntime(gRuntime);
   JS_ShutDown();
-}
-
-static JSContext *gRootContext = 0;
-JSContext *cx() {
-  if (!gRootContext) {
-    JSContext *ctx(JS_NewContext(rt(), 8192));
-    JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
-    JS_SetVersion(ctx, JSVERSION_LATEST);
-    JS_SetErrorReporter(ctx, reportError);
-
-    JS_BeginRequest(ctx);
-
-    gRootContext = ctx;
-  }
-  return gRootContext;
 }
 
 JSClass global_class = {

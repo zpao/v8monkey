@@ -12,7 +12,7 @@ Object::Set(Handle<Value> key,
   String::AsciiValue k(key);
   jsval v = value->native();
 
-  if (!JS_SetProperty(cx(), *this, *k, &v)) {
+  if (!JS_SetProperty(*cx(), *this, *k, &v)) {
     return false;
   }
 
@@ -28,7 +28,7 @@ Object::Set(Handle<Value> key,
   }
 
   JSBool wasFound;
-  return JS_SetPropertyAttributes(cx(), *this, *k, js_attribs, &wasFound);
+  return JS_SetPropertyAttributes(*cx(), *this, *k, js_attribs, &wasFound);
 }
 
 bool
@@ -40,7 +40,7 @@ Object::Set(JSUint32 index,
   }
 
   jsval& val = value->native();
-  return !!JS_SetElement(cx(), *this, index, &val);
+  return !!JS_SetElement(*cx(), *this, index, &val);
 }
 
 bool
@@ -57,7 +57,7 @@ Object::Get(Handle<Value> key) {
   String::AsciiValue k(key);
   Value v(JSVAL_VOID);
 
-  if (JS_GetProperty(cx(), *this, *k, &v.native())) {
+  if (JS_GetProperty(*cx(), *this, *k, &v.native())) {
     return Local<Value>::New(&v);
   }
   return Local<Value>();
@@ -71,7 +71,7 @@ Object::Get(JSUint32 index)
   }
 
   Value v;
-  if (JS_GetElement(cx(), *this, index, &v.native())) {
+  if (JS_GetElement(*cx(), *this, index, &v.native())) {
     return Local<Value>::New(&v);
   }
   return Local<Value>();
@@ -84,7 +84,7 @@ Object::Has(Handle<String> key)
   String::AsciiValue k(key);
 
   JSBool found;
-  if (JS_HasProperty(cx(), *this, *k, &found)) {
+  if (JS_HasProperty(*cx(), *this, *k, &found)) {
     return !!found;
   }
   return false;
@@ -98,7 +98,7 @@ Object::Has(JSUint32 index)
   }
 
   jsval val;
-  if (JS_LookupElement(cx(), *this, index, &val)) {
+  if (JS_LookupElement(*cx(), *this, index, &val)) {
     return !JSVAL_IS_VOID(val);
   }
   return false;
@@ -111,7 +111,7 @@ Object::Delete(Handle<String> key)
   String::AsciiValue k(key);
 
   jsval val;
-  if (JS_DeleteProperty2(cx(), *this, *k, &val)) {
+  if (JS_DeleteProperty2(*cx(), *this, *k, &val)) {
     return val == JSVAL_TRUE;
   }
   return false;
@@ -125,7 +125,7 @@ Object::Delete(JSUint32 index)
   }
 
   jsval val;
-  if (JS_DeleteElement2(cx(), *this, index, &val)) {
+  if (JS_DeleteElement2(*cx(), *this, index, &val)) {
     return val == JSVAL_TRUE;
   }
   return false;
@@ -223,7 +223,7 @@ Object::HasRealNamedProperty(Handle<String> key)
   String::AsciiValue k(key);
 
   JSBool found;
-  if (JS_AlreadyHasOwnProperty(cx(), *this, *k, &found)) {
+  if (JS_AlreadyHasOwnProperty(*cx(), *this, *k, &found)) {
     return !!found;
   }
   return false;
@@ -237,7 +237,7 @@ Object::HasRealIndexedProperty(JSUint32 index)
   }
 
   JSBool found;
-  if (JS_AlreadyHasOwnElement(cx(), *this, index, &found)) {
+  if (JS_AlreadyHasOwnElement(*cx(), *this, index, &found)) {
     return !!found;
   }
   return false;
@@ -380,7 +380,7 @@ Object::Object(JSObject *obj) :
 
 Local<Object>
 Object::New() {
-  JSObject *obj = JS_NewObject(cx(), NULL, NULL, NULL);
+  JSObject *obj = JS_NewObject(*cx(), NULL, NULL, NULL);
   if (!obj) {
     return Local<Object>();
   }

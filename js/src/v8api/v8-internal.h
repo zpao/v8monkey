@@ -9,6 +9,8 @@ namespace v8 {
     void reportError(JSContext *ctx, const char *message, JSErrorReport *report);
     extern JSClass global_class;
 
-    JSContext *cx();
+    // Persistent context for various manipulations
+    Persistent<Context> gcx();
+    Context *cx();
   }
 }

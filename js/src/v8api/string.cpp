@@ -62,10 +62,10 @@ int String::WriteAscii(char* buffer,
 
   // No easy way to convert UTF-8 to ASCII, so just drop characters that are
   // not ASCII.
-  int toWrite = start + length;
+  int toWrite = start + length - 1;
   if (length == -1) {
-    length = written;
-    toWrite = length - start;
+    length = written + 1;
+    toWrite = start + written;
   }
   int idx = 0;
   for (int i = start; i < toWrite; i++) {

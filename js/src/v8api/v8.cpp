@@ -243,11 +243,11 @@ Script::operator JSScript *() {
 }
 
 Local<Script> Script::Compile(Handle<String> source) {
-  // TODO: we might need to do something to prevent GC?
+  JS::Anchor<JSString*> anchor(JSVAL_TO_STRING(source->native()));
   const jschar* chars;
   size_t len;
   chars = JS_GetStringCharsAndLength(cx(),
-                                     JSVAL_TO_STRING(source->native()), &len);
+                                     anchor.get(), &len);
 
   JSScript* s = JS_CompileUCScript(cx(), **Context::GetCurrent()->Global(),
                                    chars, len, NULL, NULL);

@@ -418,15 +418,49 @@ public:
   static Local<Object> New();
 };
 
+class ScriptOrigin {
+  Handle<Value> mResourceName;
+  Handle<Integer> mResourceLineOffset;
+  Handle<Integer> mResourceColumnOffset;
+
+public:
+  // XXX: V8 inlines these, should we?
+  ScriptOrigin(Handle<Value> resourceName,
+               Handle<Integer> resourceLineOffset = Handle<Integer>(),
+               Handle<Integer> resourceColumnOffset = Handle<Integer>());
+  Handle<Value> ResourceName() const;
+  Handle<Integer> ResourceLineOffset() const;
+  Handle<Integer> ResourceColumnOffset() const;
+};
+
+class ScriptData {
+public:
+  virtual ~ScriptData() { }
+  static ScriptData* PreCompile(const char* input, int length);
+  static ScriptData* PreCompile(Handle<String> source);
+  static ScriptData* New(const char* data, int length);
+  virtual int Length() = 0;
+  virtual const char* Data() = 0;
+  virtual bool HasError() = 0;
+};
+
 class Script : public internal::GCReference {
   Script(JSScript *s);
 
   operator JSScript *();
 public:
-  // TODO follow the v8 api
-  static Local<Script> Compile(Handle<String> str);
-
+  static Local<Script> New(Handle<String> source, ScriptOrigin *origin = NULL,
+                           ScriptData *preData = NULL,
+                           Handle<String> scriptData = Handle<String>());
+  static Local<Script> New(Handle<String> source, Handle<Value> fileName);
+  static Local<Script> Compile(Handle<String> source, ScriptOrigin *origin = NULL,
+                               ScriptData *preData = NULL,
+                               Handle<String> scriptData = Handle<String>());
+  static Local<Script> Compile(Handle<String> source,
+                               Handle<Value> fileName,
+                               Handle<String> scriptData = Handle<String>());
   Local<Value> Run();
+  Local<Value> Id();
 };
 
 class Template {

@@ -229,8 +229,47 @@ Handle<Boolean> False() {
   UNIMPLEMENTEDAPI(Handle<Boolean>());
 }
 
+
+
+//////////////////////////////////////////////////////////////////////////////
+//// ScriptOrigin class
+
+ScriptOrigin::ScriptOrigin(Handle<Value> resourceName,
+                           Handle<Integer> resourceLineOffset,
+                           Handle<Integer> resourceColumnOffset) :
+  mResourceName(resourceName),
+  mResourceLineOffset(resourceLineOffset),
+  mResourceColumnOffset(resourceColumnOffset)
+{
+}
+Handle<Value> ScriptOrigin::ResourceName() const {
+  return mResourceName;
+}
+Handle<Integer> ScriptOrigin::ResourceLineOffset() const {
+  return mResourceLineOffset;
+}
+Handle<Integer> ScriptOrigin::ResourceColumnOffset() const {
+  return mResourceColumnOffset;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
+//// ScriptData class
+
+ScriptData* ScriptData::PreCompile(const char* input, int length) {
+  UNIMPLEMENTEDAPI(NULL);
+}
+ScriptData* ScriptData::PreCompile(Handle<String> source) {
+  UNIMPLEMENTEDAPI(NULL);
+}
+ScriptData* ScriptData::New(const char* data, int length) {
+  UNIMPLEMENTEDAPI(NULL);
+}
+
+
 //////////////////////////////////////////////////////////////////////////////
 //// Script class
+
 Script::Script(JSScript *s)
 {
   JSObject *obj = JS_NewScriptObject(cx(), s);
@@ -242,7 +281,17 @@ Script::operator JSScript *() {
   return reinterpret_cast<JSScript*>(JS_GetPrivate(cx(), JSVAL_TO_OBJECT(mVal)));
 }
 
-Local<Script> Script::Compile(Handle<String> source) {
+Local<Script> Script::New(Handle<String> source, ScriptOrigin *origin,
+                          ScriptData *preData, Handle<String> scriptData) {
+  UNIMPLEMENTEDAPI(Local<Script>());
+}
+
+Local<Script> Script::New(Handle<String> source, Handle<Value> fileName) {
+  UNIMPLEMENTEDAPI(Local<Script>());
+}
+
+Local<Script> Script::Compile(Handle<String> source, ScriptOrigin *origin,
+                              ScriptData *preData, Handle<String> scriptData) {
   JS::Anchor<JSString*> anchor(JSVAL_TO_STRING(source->native()));
   const jschar* chars;
   size_t len;
@@ -254,6 +303,11 @@ Local<Script> Script::Compile(Handle<String> source) {
   return Local<Script>::New(new Script(s));
 }
 
+Local<Script> Script::Compile(Handle<String> source, Handle<Value> fileName,
+                              Handle<String> scriptData) {
+  UNIMPLEMENTEDAPI(Local<Script>());
+}
+
 Local<Value> Script::Run() {
   jsval js_retval;
   (void)JS_ExecuteScript(cx(), **Context::GetCurrent()->Global(),
@@ -262,4 +316,9 @@ Local<Value> Script::Run() {
   Value v(js_retval);
   return Local<Value>::New(&v);
 }
+
+Local<Value> Script::Id() {
+  UNIMPLEMENTEDAPI(Local<Value>());
+}
+
 }

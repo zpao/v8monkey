@@ -71,6 +71,11 @@ ifdef ENABLE_TESTS
 DIRS += tests
 endif
 
+# XXX This should probably only happen if tests are enabled
+ifneq ($(HOST_OS_ARCH),WINNT)
+DIRS += build/unix
+endif
+
 MODULE		    = js
 LIBRARY_NAME	    = mozjs
 STATIC_LIBRARY_NAME = js_static

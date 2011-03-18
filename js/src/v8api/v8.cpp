@@ -231,9 +231,15 @@ Handle<Boolean> False() {
 
 //////////////////////////////////////////////////////////////////////////////
 //// Script class
-Script::Script(JSScript *s) :
-  mScript(s)
+Script::Script(JSScript *s)
 {
+  JSObject *obj = JS_NewScriptObject(cx(), s);
+  JS_SetPrivate(cx(), obj, s);
+  mVal = OBJECT_TO_JSVAL(obj);
+}
+
+Script::operator JSScript *() {
+  return reinterpret_cast<JSScript*>(JS_GetPrivate(cx(), JSVAL_TO_OBJECT(mVal)));
 }
 
 Local<Script> Script::Compile(Handle<String> source) {
@@ -251,7 +257,7 @@ Local<Script> Script::Compile(Handle<String> source) {
 Local<Value> Script::Run() {
   jsval js_retval;
   (void)JS_ExecuteScript(cx(), **Context::GetCurrent()->Global(),
-                         mScript, &js_retval);
+                         *this, &js_retval);
   // js_retval will be unchanged on failure, so it's a JSVAL_VOID.
   Value v(js_retval);
   return Local<Value>::New(&v);

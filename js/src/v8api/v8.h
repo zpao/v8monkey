@@ -418,9 +418,10 @@ public:
   static Local<Object> New();
 };
 
-class Script : public internal::RCReference {
-  JSScript *mScript;
+class Script : public internal::GCReference {
   Script(JSScript *s);
+
+  operator JSScript *();
 public:
   // TODO follow the v8 api
   static Local<Script> Compile(Handle<String> str);

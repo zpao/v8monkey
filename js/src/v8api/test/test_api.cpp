@@ -261,7 +261,7 @@ Test gTests[] = {
   DISABLED_TEST(test_Script),
   TEST(test_TinyInteger),
   TEST(test_TinyUnsignedInteger),
-  DISABLED_TEST(test_OutOfSignedRangeUnsignedInteger),
+  TEST(test_OutOfSignedRangeUnsignedInteger),
   DISABLED_TEST(test_Number),
   DISABLED_TEST(test_ToNumber),
   DISABLED_TEST(test_Boolean),

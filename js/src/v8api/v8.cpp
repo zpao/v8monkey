@@ -208,15 +208,20 @@ Local<Integer> Integer::New(JSInt32 value) {
   jsval val = INT_TO_JSVAL(value);
   Integer i(val);
   return Local<Integer>::New(&i);
-  //return Local<Integer>(val);
 }
 Local<Integer> Integer::NewFromUnsigned(JSUint32 value) {
-  jsval val = INT_TO_JSVAL(value);
+  jsval val = UINT_TO_JSVAL(value);
   Integer i(val);
   return Local<Integer>::New(&i);
 }
 JSInt64 Integer::Value() const {
-  return (JSInt64)JSVAL_TO_INT(mVal);
+  // XXX We should keep track of mIsDouble or something, but that wasn't working...
+  if (JSVAL_IS_INT(mVal)) {
+    return static_cast<JSInt64>(JSVAL_TO_INT(mVal));
+  }
+  else {
+    return static_cast<JSInt64>(JSVAL_TO_DOUBLE(mVal));
+  }
 }
 
 

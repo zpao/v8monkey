@@ -27,67 +27,65 @@ template <class T> class Persistent;
   JS_END_MACRO
 
 namespace internal {
-  class GCReference;
-  struct GCOps;
-  class GCReferenceContainer;
-  struct RCOps;
-  class RCReferenceContainer;
-}
+class GCReference;
+struct GCOps;
+class GCReferenceContainer;
+struct RCOps;
+class RCReferenceContainer;
 
-namespace internal {
-  void notImplemented();
+void notImplemented();
 
-  class GCReference {
-    friend struct GCOps;
+class GCReference {
+  friend struct GCOps;
 
-    void root(JSContext *ctx) {
-      JS_AddValueRoot(ctx, &mVal);
+  void root(JSContext *ctx) {
+    JS_AddValueRoot(ctx, &mVal);
+  }
+  void unroot(JSContext *ctx) {
+    JS_RemoveValueRoot(ctx, &mVal);
+  }
+
+protected:
+  jsval mVal;
+public:
+  GCReference(jsval val) :
+    mVal(val)
+  {}
+  GCReference() :
+    mVal(JSVAL_VOID)
+  {}
+  jsval &native() {
+    return mVal;
+  }
+
+  GCReference *Globalize();
+  void Dispose();
+  GCReference *Localize();
+};
+
+class RCReference {
+  size_t mRefCount;
+
+public:
+  RCReference() : mRefCount(0)
+  {}
+
+  RCReference *Globalize() {
+    mRefCount++;
+    return this;
+  }
+
+  void Dispose() {
+    if (0 == --mRefCount) {
+      delete this;
     }
-    void unroot(JSContext *ctx) {
-      JS_RemoveValueRoot(ctx, &mVal);
-    }
+  }
 
-  protected:
-    jsval mVal;
-  public:
-    GCReference(jsval val) :
-      mVal(val)
-    {}
-    GCReference() :
-      mVal(JSVAL_VOID)
-    {}
-    jsval &native() {
-      return mVal;
-    }
-
-    GCReference *Globalize();
-    void Dispose();
-    GCReference *Localize();
-  };
-
-  class RCReference {
-    size_t mRefCount;
-
-  public:
-    RCReference() : mRefCount(0)
-    {}
-
-    RCReference *Globalize() {
-      mRefCount++;
-      return this;
-    }
-
-    void Dispose() {
-      if (0 == --mRefCount) {
-        delete this;
-      }
-    }
-
-    RCReference *Localize() {
-      return Globalize();
-    }
-  };
-}
+  RCReference *Localize() {
+    return Globalize();
+  }
+};
+} // namespace internal
 
 struct HandleScope {
   HandleScope();

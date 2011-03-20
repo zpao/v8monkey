@@ -180,18 +180,6 @@ THREADED_TEST(ArgumentSignature) {
 }
 
 
-THREADED_TEST(HulIgennem) {
-  v8::HandleScope scope;
-  LocalContext env;
-  v8::Handle<v8::Primitive> undef = v8::Undefined();
-  Local<String> undef_str = undef->ToString();
-  char* value = i::NewArray<char>(undef_str->Length() + 1);
-  undef_str->WriteAscii(value);
-  CHECK_EQ(0, strcmp(value, "undefined"));
-  i::DeleteArray(value);
-}
-
-
 THREADED_TEST(AccessElement) {
   v8::HandleScope scope;
   LocalContext env;

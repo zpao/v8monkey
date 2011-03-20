@@ -27,67 +27,65 @@ template <class T> class Persistent;
   JS_END_MACRO
 
 namespace internal {
-  class GCReference;
-  struct GCOps;
-  class GCReferenceContainer;
-  struct RCOps;
-  class RCReferenceContainer;
-}
+class GCReference;
+struct GCOps;
+class GCReferenceContainer;
+struct RCOps;
+class RCReferenceContainer;
 
-namespace internal {
-  void notImplemented();
+void notImplemented();
 
-  class GCReference {
-    friend struct GCOps;
+class GCReference {
+  friend struct GCOps;
 
-    void root(JSContext *ctx) {
-      JS_AddValueRoot(ctx, &mVal);
+  void root(JSContext *ctx) {
+    JS_AddValueRoot(ctx, &mVal);
+  }
+  void unroot(JSContext *ctx) {
+    JS_RemoveValueRoot(ctx, &mVal);
+  }
+
+protected:
+  jsval mVal;
+public:
+  GCReference(jsval val) :
+    mVal(val)
+  {}
+  GCReference() :
+    mVal(JSVAL_VOID)
+  {}
+  jsval &native() {
+    return mVal;
+  }
+
+  GCReference *Globalize();
+  void Dispose();
+  GCReference *Localize();
+};
+
+class RCReference {
+  size_t mRefCount;
+
+public:
+  RCReference() : mRefCount(0)
+  {}
+
+  RCReference *Globalize() {
+    mRefCount++;
+    return this;
+  }
+
+  void Dispose() {
+    if (0 == --mRefCount) {
+      delete this;
     }
-    void unroot(JSContext *ctx) {
-      JS_RemoveValueRoot(ctx, &mVal);
-    }
+  }
 
-  protected:
-    jsval mVal;
-  public:
-    GCReference(jsval val) :
-      mVal(val)
-    {}
-    GCReference() :
-      mVal(JSVAL_VOID)
-    {}
-    jsval &native() {
-      return mVal;
-    }
-
-    GCReference *Globalize();
-    void Dispose();
-    GCReference *Localize();
-  };
-
-  class RCReference {
-    size_t mRefCount;
-
-  public:
-    RCReference() : mRefCount(0)
-    {}
-
-    RCReference *Globalize() {
-      mRefCount++;
-      return this;
-    }
-
-    void Dispose() {
-      if (0 == --mRefCount) {
-        delete this;
-      }
-    }
-
-    RCReference *Localize() {
-      return Globalize();
-    }
-  };
-}
+  RCReference *Localize() {
+    return Globalize();
+  }
+};
+} // namespace internal
 
 struct HandleScope {
   HandleScope();
@@ -363,8 +361,9 @@ enum AccessControl {
 class Object : public Value {
   friend class Context;
   friend class Script;
-  Object(JSObject *obj);
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
+protected:
+  Object(JSObject *obj);
 public:
   bool Set(Handle<Value> key, Handle<Value> value, PropertyAttribute attribs = None);
   bool Set(JSUint32 index, Handle<Value> value);
@@ -416,6 +415,17 @@ public:
   int GetIndexedPropertiesExternalArrayDataLength();
 
   static Local<Object> New();
+};
+
+class Array : public Object {
+ public:
+  JSUint32 Length() const;
+  Local<Object> CloneElementAt(JSUint32 index);
+
+  static Local<Array> New(int length = 0);
+  static inline Array* Cast(Value* obj);
+ private:
+  Array();
 };
 
 class ScriptOrigin {

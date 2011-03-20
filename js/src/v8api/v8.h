@@ -361,8 +361,9 @@ enum AccessControl {
 class Object : public Value {
   friend class Context;
   friend class Script;
-  Object(JSObject *obj);
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
+protected:
+  Object(JSObject *obj);
 public:
   bool Set(Handle<Value> key, Handle<Value> value, PropertyAttribute attribs = None);
   bool Set(JSUint32 index, Handle<Value> value);
@@ -414,6 +415,17 @@ public:
   int GetIndexedPropertiesExternalArrayDataLength();
 
   static Local<Object> New();
+};
+
+class Array : public Object {
+ public:
+  JSUint32 Length() const;
+  Local<Object> CloneElementAt(JSUint32 index);
+
+  static Local<Array> New(int length = 0);
+  static inline Array* Cast(Value* obj);
+ private:
+  Array();
 };
 
 class ScriptOrigin {

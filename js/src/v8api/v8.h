@@ -623,4 +623,6 @@ Local<Object> Context::Global() {
   return Local<Object>::New(&obj);
 }
 
-}
+} // namespace v8
+
+namespace i = v8::internal;

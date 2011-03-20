@@ -117,6 +117,23 @@ class LocalContext {
   v8::Persistent<v8::Context> context_;
 };
 
+namespace v8 {
+namespace internal {
+template <typename T>
+static T* NewArray(int size) {
+  T* result = new T[size];
+  do_check_true(result);
+  return result;
+}
+
+
+template <typename T>
+static void DeleteArray(T* array) {
+  delete[] array;
+}
+} // namespace internal
+} // namespace v8
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -252,6 +269,19 @@ test_Boolean()
   CHECK(!v8_compile("NaN")->Run()->BooleanValue());
 }
 
+void
+test_HulIgennem()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::Handle<v8::Primitive> undef = v8::Undefined();
+  Local<String> undef_str = undef->ToString();
+  char* value = i::NewArray<char>(undef_str->Length() + 1);
+  undef_str->WriteAscii(value);
+  CHECK_EQ(0, strcmp(value, "undefined"));
+  i::DeleteArray(value);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -265,6 +295,7 @@ Test gTests[] = {
   DISABLED_TEST(test_Number),
   DISABLED_TEST(test_ToNumber),
   DISABLED_TEST(test_Boolean),
+  DISABLED_TEST(test_HulIgennem),
 };
 
 const char* file = __FILE__;

@@ -43,6 +43,7 @@
 
 #include "v8/v8.h"
 using namespace v8;
+namespace i = ::i;
 
 static size_t gTotalTests = 0;
 static size_t gPassedTests = 0;

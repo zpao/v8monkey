@@ -61,7 +61,6 @@ static v8::Handle<Value> IncrementingSignatureCallback(
   return result;
 }
 
-
 static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
   ApiTestFuzzer::Fuzz();
   v8::Handle<v8::Array> result = v8::Array::New(args.Length());
@@ -70,7 +69,6 @@ static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
   }
   return result;
 }
-
 
 THREADED_TEST(ReceiverSignature) {
   v8::HandleScope scope;

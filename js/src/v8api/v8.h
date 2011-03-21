@@ -491,7 +491,7 @@ public:
   Local<Value> Id();
 };
 
-class Template {
+class Template : public Data {
 public:
   void Set(Handle<String> name, Handle<Value> data, PropertyAttribute attribs = None) {
     UNIMPLEMENTEDAPI();

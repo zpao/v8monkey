@@ -4,6 +4,10 @@
 namespace v8 {
 using namespace internal;
 
+struct Object::PrivateData {
+  Persistent<Object> hiddenValues;
+};
+
 bool
 Object::Set(Handle<Value> key,
             Handle<Value> value,

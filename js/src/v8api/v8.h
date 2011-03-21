@@ -379,9 +379,7 @@ enum AccessControl {
 };
 
 class Object : public Value {
-  struct PrivateData {
-    Persistent<Object> hiddenValues;
-  };
+  struct PrivateData;
   PrivateData& GetHiddenStore();
   friend class Context;
   friend class Script;

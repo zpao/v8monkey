@@ -121,6 +121,11 @@ public:
   T* operator *() const {
     return mVal;
   }
+
+  template <class S>
+  inline Handle<S> As() {
+    return Handle<S>::Cast(*this);
+  }
 };
 
 template <typename T>
@@ -133,6 +138,16 @@ public:
     if (other.IsEmpty())
       return Local<T>();
     return reinterpret_cast<T*>(other->Localize());
+  }
+
+  template <class S>
+  static inline Local<T> Cast(Local<S> that) {
+    return Local<T>(T::Cast(*that));
+  }
+
+  template <class S>
+  inline Local<S> As() {
+    return Local<S>::Cast(*this);
   }
 };
 
@@ -423,7 +438,9 @@ class Array : public Object {
   Local<Object> CloneElementAt(JSUint32 index);
 
   static Local<Array> New(int length = 0);
-  static inline Array* Cast(Value* obj);
+  static inline Array* Cast(Value* obj) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
  private:
   Array();
 };

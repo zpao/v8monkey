@@ -21,13 +21,6 @@ Array::New(int length)
   UNIMPLEMENTEDAPI(NULL);
 }
 
-// static
-Array*
-Array::Cast(Value* obj)
-{
-  UNIMPLEMENTEDAPI(NULL);
-}
-
 Array::Array() :
   Object(NULL)
 {

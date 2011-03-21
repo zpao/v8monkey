@@ -282,6 +282,26 @@ test_HulIgennem()
   i::DeleteArray(value);
 }
 
+void
+test_AccessElement()
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  Local<v8::Object> obj = v8::Object::New();
+  Local<Value> before = obj->Get(1);
+  CHECK(before->IsUndefined());
+  Local<String> bar_str = v8_str("bar");
+  obj->Set(1, bar_str);
+  Local<Value> after = obj->Get(1);
+  CHECK(!after->IsUndefined());
+  CHECK(after->IsString());
+  CHECK_EQ(bar_str, after);
+
+  Local<v8::Array> value = CompileRun("[\"a\", \"b\"]").As<v8::Array>();
+  CHECK_EQ(v8_str("a"), value->Get(0));
+  CHECK_EQ(v8_str("b"), value->Get(1));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -296,6 +316,7 @@ Test gTests[] = {
   DISABLED_TEST(test_ToNumber),
   DISABLED_TEST(test_Boolean),
   DISABLED_TEST(test_HulIgennem),
+  DISABLED_TEST(test_AccessElement),
 };
 
 const char* file = __FILE__;

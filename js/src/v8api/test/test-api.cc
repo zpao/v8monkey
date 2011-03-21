@@ -180,25 +180,6 @@ THREADED_TEST(ArgumentSignature) {
 }
 
 
-THREADED_TEST(AccessElement) {
-  v8::HandleScope scope;
-  LocalContext env;
-  Local<v8::Object> obj = v8::Object::New();
-  Local<Value> before = obj->Get(1);
-  CHECK(before->IsUndefined());
-  Local<String> bar_str = v8_str("bar");
-  obj->Set(1, bar_str);
-  Local<Value> after = obj->Get(1);
-  CHECK(!after->IsUndefined());
-  CHECK(after->IsString());
-  CHECK_EQ(bar_str, after);
-
-  Local<v8::Array> value = CompileRun("[\"a\", \"b\"]").As<v8::Array>();
-  CHECK_EQ(v8_str("a"), value->Get(0));
-  CHECK_EQ(v8_str("b"), value->Get(1));
-}
-
-
 static uint16_t* AsciiToTwoByteString(const char* source) {
   int array_length = i::StrLength(source) + 1;
   uint16_t* converted = i::NewArray<uint16_t>(array_length);

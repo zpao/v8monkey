@@ -220,6 +220,14 @@ JSInt64 Integer::Value() const {
   }
 }
 
+JSInt32 Int32::Value() {
+  return JSVAL_TO_INT(mVal);
+}
+
+JSUint32 Uint32::Value() {
+  return static_cast<JSUint32>(JSVAL_TO_DOUBLE(mVal));
+}
+
 
 //////////////////////////////////////////////////////////////////////////////
 //// Primitives & basic values

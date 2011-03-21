@@ -304,6 +304,16 @@ public:
   }
 };
 
+class Int32 : public Integer {
+public:
+  JSInt32 Value();
+};
+
+class Uint32 : public Integer {
+public:
+  JSUint32 Value();
+};
+
 class String : public Primitive  {
   friend class Value;
 

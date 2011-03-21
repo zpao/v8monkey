@@ -296,7 +296,11 @@ public:
   JSInt64 Value() const;
   // XXX Cast is inline in V8
   static Integer* Cast(v8::Value* obj) {
-    UNIMPLEMENTEDAPI(NULL);
+    // TODO: check for uint32
+    if (obj->IsInt32()) {
+      return reinterpret_cast<Integer*>(obj);
+    }
+    return NULL;
   }
 };
 

@@ -285,23 +285,39 @@ Object::GetIdentityHash()
   UNIMPLEMENTEDAPI(0);
 }
 
+Object::PrivateData&
+Object::GetHiddenStore()
+{
+  void* obj = JS_GetPrivate(cx(), *this);
+  if (!obj) {
+    // XXX this will leak.  Fix!
+    PrivateData* pd = new PrivateData();
+    (void)JS_SetPrivate(cx(), *this, pd);
+    obj = pd;
+  }
+  return *reinterpret_cast<PrivateData*>(obj);
+}
+
 bool
 Object::SetHiddenValue(Handle<String> key,
                        Handle<Value> value)
 {
-  UNIMPLEMENTEDAPI(false);
+  PrivateData& pd = GetHiddenStore();
+  return pd.hiddenValues->Set(key, value);
 }
 
 Local<Value>
 Object::GetHiddenValue(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  PrivateData& pd = GetHiddenStore();
+  return pd.hiddenValues->Get(key);
 }
 
 bool
 Object::DeleteHiddenValue(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(false);
+  PrivateData& pd = GetHiddenStore();
+  return pd.hiddenValues->Delete(key);
 }
 
 bool

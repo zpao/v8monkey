@@ -98,6 +98,17 @@ Local<String> Value::ToString() const {
   return Local<String>::New(&s);
 }
 
+Local<Object>
+Value::ToObject() const
+{
+  if (JSVAL_IS_OBJECT(mVal)) {
+    Value* val = const_cast<Value*>(this);
+    return Local<Object>::New(reinterpret_cast<Object*>(val));
+  }
+
+  return NULL;
+}
+
 bool Value::IsFunction() const {
   if (!IsObject())
     return false;

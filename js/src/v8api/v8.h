@@ -248,6 +248,7 @@ public:
   Local<Boolean> ToBoolean() const;
   Local<Number> ToNumber() const;
   Local<String> ToString() const;
+  Local<Object> ToObject() const;
 
   bool BooleanValue() const;
   double NumberValue() const;
@@ -376,8 +377,8 @@ enum AccessControl {
 class Object : public Value {
   friend class Context;
   friend class Script;
-  operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
 protected:
+  operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   Object(JSObject *obj);
 public:
   bool Set(Handle<Value> key, Handle<Value> value, PropertyAttribute attribs = None);

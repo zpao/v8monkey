@@ -1,17 +1,27 @@
 #include "v8-internal.h"
 
 namespace v8 {
+using namespace internal;
 
 JSUint32
 Array::Length() const
 {
-  UNIMPLEMENTEDAPI(0);
+  jsuint length;
+  if (JS_GetArrayLength(cx(), *this, &length)) {
+    return length;
+  }
+
+  return 0;
 }
 
 Local<Object>
 Array::CloneElementAt(JSUint32 index)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Local<Value> toBeCloned = Get(index);
+  if (!toBeCloned->IsObject()) {
+    return NULL;
+  }
+  return toBeCloned->ToObject()->Clone();
 }
 
 // static

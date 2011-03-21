@@ -434,16 +434,20 @@ public:
 };
 
 class Array : public Object {
+  Array(JSObject* obj) :
+    Object(obj)
+  {}
  public:
   JSUint32 Length() const;
   Local<Object> CloneElementAt(JSUint32 index);
 
   static Local<Array> New(int length = 0);
   static inline Array* Cast(Value* obj) {
-    UNIMPLEMENTEDAPI(NULL);
+    if (obj->IsArray()) {
+      return reinterpret_cast<Array*>(obj);
+    }
+    return NULL;
   }
- private:
-  Array();
 };
 
 class ScriptOrigin {

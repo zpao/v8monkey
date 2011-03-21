@@ -28,13 +28,9 @@ Array::CloneElementAt(JSUint32 index)
 Local<Array>
 Array::New(int length)
 {
-  UNIMPLEMENTEDAPI(NULL);
-}
-
-Array::Array() :
-  Object(NULL)
-{
-  UNIMPLEMENTEDAPI();
+  JSObject *obj = JS_NewArrayObject(cx(), length, NULL);
+  Array a(obj);
+  return Local<Array>::New(&a);
 }
 
 } // namespace v8

@@ -34,6 +34,29 @@ static ObjectPrivateDataMap& privateDataMap() {
   return *gPrivateDataMap;
 }
 
+JSBool Object::JSAPIPropertyGetter(JSContext* cx, JSObject* obj, jsid id, jsval* vp) {
+  HandleScope scope;
+  Object o(obj);
+  AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
+  AccessorInfo info(p->value.data, obj);
+  Handle<Value> result = p->value.getter(String::FromJSID(id), info);
+  *vp = result->native();
+  // XXX: this is usually correct
+  return JS_TRUE;
+}
+
+JSBool Object::JSAPIPropertySetter(JSContext* , JSObject* obj, jsid id, JSBool, jsval* vp) {
+  HandleScope scope;
+  Object o(obj);
+  AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
+  AccessorInfo info(p->value.data, obj);
+  Value value(*vp);
+  Handle<Value> result = p->value.setter(String::FromJSID(id), &value, info);
+  *vp = result->native();
+  // XXX: this is usually correct
+  return JS_TRUE;
+}
+
 bool
 Object::Set(Handle<Value> key,
             Handle<Value> value,
@@ -175,7 +198,25 @@ Object::SetAccessor(Handle<String> name,
                     AccessControl settings,
                     PropertyAttribute attribs)
 {
-  UNIMPLEMENTEDAPI(false);
+  jsid propid;
+  JS_ValueToId(cx(), name->native(), &propid);
+  PropertyData prop = {
+    getter,
+    setter,
+    data
+  };
+  uintN attributes = 0;
+  if (!JS_DefinePropertyById(cx(), *this, propid,
+        JSVAL_VOID,
+        getter ? JSAPIPropertyGetter : NULL,
+        setter ? JSAPIPropertySetter : NULL,
+        attributes)) {
+    return false;
+  }
+  PrivateData &store = GetHiddenStore();
+  AccessorTable::AddPtr slot = store.properties.lookupForAdd(propid);
+  store.properties.add(slot, propid, prop);
+  return true;
 }
 
 Local<Array>

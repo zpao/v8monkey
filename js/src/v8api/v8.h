@@ -425,6 +425,8 @@ private:
   friend class Arguments;
   friend class AccessorInfo;
 
+  static JSBool JSAPIPropertyGetter(JSContext*, JSObject* obj, jsid id, jsval* vp);
+  static JSBool JSAPIPropertySetter(JSContext*, JSObject* obj, jsid id, JSBool, jsval* vp);
 protected:
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   Object(JSObject *obj);

@@ -85,11 +85,7 @@ Local<Boolean> Value::ToBoolean() const {
 }
 
 Local<Number> Value::ToNumber() const {
-  double d;
-  if (JS_ValueToNumber(cx(), mVal, &d)) {
-    return Number::New(d);
-  }
-  return NULL;
+  return Number::New(this->NumberValue());
 }
 
 Local<String> Value::ToString() const {
@@ -152,7 +148,9 @@ Value::BooleanValue() const
 double
 Value::NumberValue() const
 {
-  UNIMPLEMENTEDAPI(0);
+  double d;
+  JS_ValueToNumber(cx(), mVal, &d);
+  return d;
 }
 
 JSInt64

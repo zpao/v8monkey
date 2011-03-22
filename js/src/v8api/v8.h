@@ -649,45 +649,16 @@ class FunctionTemplate : public Template {
 };
 
 class ObjectTemplate : public Template {
-  static Local<ObjectTemplate> New() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  Local<Object> NewInstance() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void SetNamedPropertyHandler(NamedPropertyGetter getter, NamedPropertySetter setter = 0, NamedPropertyQuery query = 0, NamedPropertyDeleter deleter = 0, NamedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>()) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void SetIndexedPropertyHandler(IndexedPropertyGetter getter, IndexedPropertySetter setter = 0, IndexedPropertyQuery query = 0, IndexedPropertyDeleter deleter = 0, IndexedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>()) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void SetCallAsFunctionHandler(InvocationCallback callback, Handle<Value> data = Handle<Value>()) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void MarkAsUndetectable() {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void SetAccessCheckACalback(NamedSecurityCallback named_handler, IndexedSecurityCallback indexed_callback, Handle<Value> data = Handle<Value>(), bool turned_on_by_default = true) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  int InternalFieldCount() {
-    UNIMPLEMENTEDAPI(0);
-  }
-
-  void SetInternalFieldCount(int i) {
-    UNIMPLEMENTEDAPI();
-  }
+  static Local<ObjectTemplate> New();
+  Local<Object> NewInstance();
+  void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
+  void SetNamedPropertyHandler(NamedPropertyGetter getter, NamedPropertySetter setter = 0, NamedPropertyQuery query = 0, NamedPropertyDeleter deleter = 0, NamedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>());
+  void SetIndexedPropertyHandler(IndexedPropertyGetter getter, IndexedPropertySetter setter = 0, IndexedPropertyQuery query = 0, IndexedPropertyDeleter deleter = 0, IndexedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>());
+  void SetCallAsFunctionHandler(InvocationCallback callback, Handle<Value> data = Handle<Value>());
+  void MarkAsUndetectable();
+  void SetAccessCheckCallbacks(NamedSecurityCallback named_handler, IndexedSecurityCallback indexed_callback, Handle<Value> data = Handle<Value>(), bool turned_on_by_default = true);
+  int InternalFieldCount();
+  void SetInternalFieldCount(int value);
 };
 
 Local<Object> Context::Global() {

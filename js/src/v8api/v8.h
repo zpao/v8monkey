@@ -528,7 +528,7 @@ private:
   Template();
 
   struct PrivateData;
-  typedef js::HashMap<jsid, PrivateData, internal::JSIDHashPolicy, js::SystemAllocPolicy>TemplateHash;
+  typedef js::HashMap<jsid, PrivateData, internal::JSIDHashPolicy, js::SystemAllocPolicy> TemplateHash;
   TemplateHash mData;
 
   friend class FunctionTemplate;

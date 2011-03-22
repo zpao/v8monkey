@@ -1,5 +1,6 @@
-#pragma once
-#include <jsapi.h>
+#include "jsapi.h"
+#include "jstl.h"
+#include "jshashtable.h"
 
 namespace v8 {
 // Define some classes first so we can use them before fully defined
@@ -83,6 +84,22 @@ public:
 
   RCReference *Localize() {
     return Globalize();
+  }
+
+};
+
+// Hash policy for jsids
+struct JSIDHashPolicy
+{
+  typedef jsid Key;
+  typedef Key Lookup;
+
+  static uint32 hash(const Lookup &l) {
+    return *reinterpret_cast<const uint32*>(&l);
+  }
+
+  static JSBool match(const Key &k, const Lookup &l) {
+    return k == l;
   }
 };
 } // namespace internal
@@ -248,6 +265,7 @@ public:
   Local<Boolean> ToBoolean() const;
   Local<Number> ToNumber() const;
   Local<String> ToString() const;
+  Local<Object> ToObject() const;
 
   bool BooleanValue() const;
   double NumberValue() const;
@@ -295,7 +313,11 @@ public:
   JSInt64 Value() const;
   // XXX Cast is inline in V8
   static Integer* Cast(v8::Value* obj) {
-    UNIMPLEMENTEDAPI(NULL);
+    // TODO: check for uint32
+    if (obj->IsInt32()) {
+      return reinterpret_cast<Integer*>(obj);
+    }
+    return NULL;
   }
 };
 
@@ -374,10 +396,12 @@ enum AccessControl {
 };
 
 class Object : public Value {
+  struct PrivateData;
+  PrivateData& GetHiddenStore();
   friend class Context;
   friend class Script;
-  operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
 protected:
+  operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   Object(JSObject *obj);
 public:
   bool Set(Handle<Value> key, Handle<Value> value, PropertyAttribute attribs = None);
@@ -433,16 +457,20 @@ public:
 };
 
 class Array : public Object {
+  Array(JSObject* obj) :
+    Object(obj)
+  {}
  public:
   JSUint32 Length() const;
   Local<Object> CloneElementAt(JSUint32 index);
 
   static Local<Array> New(int length = 0);
   static inline Array* Cast(Value* obj) {
-    UNIMPLEMENTEDAPI(NULL);
+    if (obj->IsArray()) {
+      return reinterpret_cast<Array*>(obj);
+    }
+    return NULL;
   }
- private:
-  Array();
 };
 
 class ScriptOrigin {
@@ -490,18 +518,18 @@ public:
   Local<Value> Id();
 };
 
-class Template {
+class Template : public Data {
 public:
-  void Set(Handle<String> name, Handle<Value> data, PropertyAttribute attribs = None) {
-    UNIMPLEMENTEDAPI();
-  }
+  void Set(Handle<String> name, Handle<Data> value,
+           PropertyAttribute attribs = None);
 
-  template <typename T>
-  void Set(const char *name, Handle<T> data) {
-    Set(String::New(name), data);
-  }
+  inline void Set(const char* name, Handle<Data> value);
 private:
   Template();
+
+  struct PrivateData;
+  typedef js::HashMap<jsid, PrivateData, internal::JSIDHashPolicy, js::SystemAllocPolicy> TemplateHash;
+  TemplateHash mData;
 
   friend class FunctionTemplate;
   friend class ObjectTemplate;

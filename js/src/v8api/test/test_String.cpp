@@ -22,7 +22,9 @@ test_Length()
 
   // Finally, make sure that we end up calling strlen if no length is passed.
   str = String::New(TEST_STRING);
-  do_check_eq(str->Length(), strlen(TEST_STRING));
+
+  int strlength = strlen(TEST_STRING);
+  do_check_eq(str->Length(), strlength);
 }
 
 void

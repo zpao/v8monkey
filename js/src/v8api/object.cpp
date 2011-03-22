@@ -1,8 +1,27 @@
 #include "v8-internal.h"
+#include "jstl.h"
+#include "jshashtable.h"
 #include <limits>
 
 namespace v8 {
 using namespace internal;
+
+struct PropertyData {
+  AccessorGetter getter;
+  AccessorSetter setter;
+  Handle<Data> data;
+};
+
+typedef js::HashMap<jsid, PropertyData, JSIDHashPolicy, js::SystemAllocPolicy> AccessorTable;
+
+struct Object::PrivateData {
+  Persistent<Object> hiddenValues;
+  AccessorTable properties;
+
+  PrivateData() {
+    properties.init(10);
+  }
+};
 
 bool
 Object::Set(Handle<Value> key,
@@ -285,23 +304,39 @@ Object::GetIdentityHash()
   UNIMPLEMENTEDAPI(0);
 }
 
+Object::PrivateData&
+Object::GetHiddenStore()
+{
+  void* obj = JS_GetPrivate(cx(), *this);
+  if (!obj) {
+    // XXX this will leak.  Fix!
+    PrivateData* pd = new PrivateData();
+    (void)JS_SetPrivate(cx(), *this, pd);
+    obj = pd;
+  }
+  return *reinterpret_cast<PrivateData*>(obj);
+}
+
 bool
 Object::SetHiddenValue(Handle<String> key,
                        Handle<Value> value)
 {
-  UNIMPLEMENTEDAPI(false);
+  PrivateData& pd = GetHiddenStore();
+  return pd.hiddenValues->Set(key, value);
 }
 
 Local<Value>
 Object::GetHiddenValue(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  PrivateData& pd = GetHiddenStore();
+  return pd.hiddenValues->Get(key);
 }
 
 bool
 Object::DeleteHiddenValue(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(false);
+  PrivateData& pd = GetHiddenStore();
+  return pd.hiddenValues->Delete(key);
 }
 
 bool

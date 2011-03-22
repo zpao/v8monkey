@@ -649,6 +649,9 @@ class FunctionTemplate : public Template {
 };
 
 class ObjectTemplate : public Template {
+  ObjectTemplate();
+  JSClass mClass;
+public:
   static Local<ObjectTemplate> New();
   Local<Object> NewInstance();
   void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);

@@ -13,4 +13,10 @@ extern JSClass global_class;
 JSContext *cx();
 
 } // namespace internal
+
+struct Template::PrivateData {
+  Persistent<Data> value;
+  PropertyAttribute attribs;
+};
+
 } // namespace v8

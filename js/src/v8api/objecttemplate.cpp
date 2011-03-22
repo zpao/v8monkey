@@ -3,6 +3,33 @@
 namespace v8 {
 using namespace internal;
 
+ObjectTemplate::ObjectTemplate() :
+  Template()
+{
+  // TODO we don't really want to use all these stubs...
+  JSClass member = {
+    NULL, // name
+    0, // flags
+    JS_PropertyStub, // addProperty
+    JS_PropertyStub, // delProperty
+    JS_PropertyStub, // getProperty
+    JS_StrictPropertyStub, // setProperty
+    JS_EnumerateStub, // enumerate
+    JS_ResolveStub, // resolve
+    JS_ConvertStub, // convert
+    JS_FinalizeStub, // finalize
+    NULL, // getObjectOps
+    NULL, // checkAccess
+    NULL, // call
+    NULL, // construct
+    NULL, // xdrObject
+    NULL, // hasInstance
+    NULL, // mark
+    NULL, // reservedSlots
+  };
+  mClass = member;
+}
+
 // static
 Local<ObjectTemplate>
 ObjectTemplate::New()

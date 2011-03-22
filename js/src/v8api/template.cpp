@@ -3,11 +3,6 @@
 namespace v8 {
 using namespace internal;
 
-struct Template::PrivateData {
-  Persistent<Data> value;
-  PropertyAttribute attribs;
-};
-
 Template::Template() :
   Data()
 {

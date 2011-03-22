@@ -10,6 +10,8 @@ class Integer;
 class String;
 class Array;
 class Object;
+class Uint32;
+class Int32;
 class Context;
 class Function;
 class AccessorInfo;
@@ -249,6 +251,8 @@ public:
   Local<Number> ToNumber() const;
   Local<String> ToString() const;
   Local<Object> ToObject() const;
+  Local<Uint32> ToUint32() const;
+  Local<Int32> ToInt32() const;
 
   bool BooleanValue() const;
   double NumberValue() const;
@@ -287,6 +291,7 @@ public:
 };
 
 class Integer : public Number {
+protected:
   Integer(jsval v) : Number(v) { }
 public:
   static Local<Integer> New(JSInt32 value);
@@ -303,11 +308,15 @@ public:
 };
 
 class Int32 : public Integer {
+  friend class Value;
+  Int32(JSInt32 i) : Integer(INT_TO_JSVAL(i)) { }
 public:
   JSInt32 Value();
 };
 
 class Uint32 : public Integer {
+  friend class Value;
+  Uint32(JSUint32 i) : Integer(UINT_TO_JSVAL(i)) { }
 public:
   JSUint32 Value();
 };

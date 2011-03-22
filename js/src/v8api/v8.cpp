@@ -99,6 +99,18 @@ Local<String> Value::ToString() const {
   return Local<String>::New(&s);
 }
 
+Local<Uint32> Value::ToUint32() const {
+  JSUint32 i = this->Uint32Value();
+  Uint32 v(i);
+  return Local<Uint32>::New(&v);
+}
+
+Local<Int32> Value::ToInt32() const {
+  JSInt32 i = this->Int32Value();
+  Int32 v(i);
+  return Local<Int32>::New(&v);
+}
+
 Local<Object>
 Value::ToObject() const
 {
@@ -152,13 +164,17 @@ Value::IntegerValue() const
 JSUint32
 Value::Uint32Value() const
 {
-  UNIMPLEMENTEDAPI(0);
+  JSUint32 i = 0;
+  JS_ValueToECMAUint32(cx(), mVal, &i);
+  return i;
 }
 
 JSInt32
 Value::Int32Value() const
 {
-  UNIMPLEMENTEDAPI(0);
+  JSInt32 i = 0;
+  JS_ValueToECMAInt32(cx(), mVal, &i);
+  return i;
 }
 
 bool
@@ -232,6 +248,9 @@ JSInt32 Int32::Value() {
 }
 
 JSUint32 Uint32::Value() {
+  if (JSVAL_IS_INT(mVal)) {
+    return static_cast<JSUint32>(JSVAL_TO_INT(mVal));
+  }
   return static_cast<JSUint32>(JSVAL_TO_DOUBLE(mVal));
 }
 

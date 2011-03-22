@@ -15,6 +15,7 @@ class Uint32;
 class Int32;
 class Context;
 class Function;
+class ScriptOrigin;
 class AccessorInfo;
 class FunctionTemplate;
 class ObjectTemplate;
@@ -418,6 +419,7 @@ class Object : public Value {
   friend class Context;
   friend class Script;
   friend class ObjectTemplate;
+  friend class Arguments;
 protected:
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   Object(JSObject *obj);
@@ -491,6 +493,37 @@ class Array : public Object {
   }
 };
 
+class Function : public Object {
+  Function(JSObject *obj) :
+    Object(obj)
+  {}
+  Function(JSFunction *fn) :
+    Object(JS_GetFunctionObject(fn))
+  {}
+
+  friend class Object;
+  friend class Arguments;
+public:
+  Local<Object> NewInstance() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  Local<Object> NewInstance(int argc, Handle<Value> argv[]) const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  Local<Value> Call(Handle<Object> recv, int argc, Handle<Value> argv[]) const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  void SetName(Handle<String> name);
+  Handle<String> GetName() const;
+
+  int GetScriptLineNumber() const {
+    UNIMPLEMENTEDAPI(0);
+  }
+  // UNIMPLEMENTEDAPI
+  ScriptOrigin GetScriptOrigin() const;
+  static const int kLineOffsetNotFound;
+};
+
 class ScriptOrigin {
   Handle<Value> mResourceName;
   Handle<Integer> mResourceLineOffset;
@@ -554,27 +587,31 @@ private:
 };
 
 class Arguments {
+  friend class Object;
+  Arguments(JSContext* cx, JSObject* thisObj, int nargs, jsval* vals, Handle<Value> data);
+
+  JSContext *mCtx;
+  jsval *mValues;
+  JSObject *mThis;
+  int mLength;
+  Local<Value> mData;
 public:
   int Length() const {
-    UNIMPLEMENTEDAPI(0);
+    return mLength;
   }
-  Local<Value> operator[](int i) const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-  Local<Function> Callee() const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
+  Local<Value> operator[](int i) const;
+  Local<Function> Callee() const;
+
   Local<Object> This() const {
-    UNIMPLEMENTEDAPI(NULL);
+    Object o(mThis);
+    return Local<Object>::New(&o);
   }
   Local<Object> Holder() const {
     UNIMPLEMENTEDAPI(NULL);
   }
-  bool IsConstructCall() const {
-    UNIMPLEMENTEDAPI(false);
-  }
+  bool IsConstructCall() const;
   Local<Value> Data() const {
-    UNIMPLEMENTEDAPI(NULL);
+    return mData;
   }
 };
 

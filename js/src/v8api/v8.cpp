@@ -364,4 +364,29 @@ Local<Value> Script::Id() {
   UNIMPLEMENTEDAPI(Local<Value>());
 }
 
+//////////////////////////////////////////////////////////////////////////////
+//// Arguments class
+
+Arguments::Arguments(JSContext* cx, JSObject* thisObj, int nargs, jsval* vp, Handle<Value> data) :
+  mCtx(cx), mValues(vp), mThis(thisObj), mLength(nargs), mData(Local<Value>::New(*data))
+{
+}
+
+Local<Value> Arguments::operator[](int i) const {
+  if (i < 0 || i >= mLength)
+    return NULL;
+  Value v(mValues[i]);
+  return Local<Value>::New(&v);
+}
+
+Local<Function> Arguments::Callee() const {
+  jsval callee = JS_CALLEE(mCtx, mValues);
+  Function f(JSVAL_TO_OBJECT(callee));
+  return Local<Function>::New(&f);
+}
+
+bool Arguments::IsConstructCall() const {
+  return JS_IsConstructing(mCtx, mValues);
+}
+
 }

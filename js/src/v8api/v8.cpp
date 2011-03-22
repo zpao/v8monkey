@@ -196,6 +196,12 @@ Local<Number> Number::New(double d) {
   return Local<Number>::New(&n);
 }
 
+double Number::Value() const {
+  double d;
+  JS_ValueToNumber(cx(), mVal, &d);
+  return d;
+}
+
 
 //////////////////////////////////////////////////////////////////////////////
 //// Integer class

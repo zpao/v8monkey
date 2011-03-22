@@ -279,9 +279,7 @@ protected:
     mVal = v;
   }
 public:
-  inline double Value() const {
-    return JSVAL_TO_DOUBLE(mVal);
-  }
+  double Value() const;
   static Local<Number> New(double value);
   static Number* Cast(v8::Value* obj) {
     UNIMPLEMENTEDAPI(NULL);

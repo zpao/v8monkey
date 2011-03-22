@@ -1,11 +1,26 @@
 #include "v8-internal.h"
+#include "jstl.h"
+#include "jshashtable.h"
 #include <limits>
 
 namespace v8 {
 using namespace internal;
 
+struct PropertyData {
+  AccessorGetter getter;
+  AccessorSetter setter;
+  Handle<Data> data;
+};
+
+typedef js::HashMap<jsid, PropertyData, JSIDHashPolicy, js::SystemAllocPolicy> AccessorTable;
+
 struct Object::PrivateData {
   Persistent<Object> hiddenValues;
+  AccessorTable properties;
+
+  PrivateData() {
+    properties.init(10);
+  }
 };
 
 bool

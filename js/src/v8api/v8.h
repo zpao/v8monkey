@@ -503,14 +503,10 @@ public:
 
 class Template : public Data {
 public:
-  void Set(Handle<String> name, Handle<Value> data, PropertyAttribute attribs = None) {
-    UNIMPLEMENTEDAPI();
-  }
+  void Set(Handle<String> name, Handle<Data> value,
+           PropertyAttribute attribs = None);
 
-  template <typename T>
-  void Set(const char *name, Handle<T> data) {
-    Set(String::New(name), data);
-  }
+  inline void Set(const char *name, Handle<Data> value);
 private:
   Template();
 

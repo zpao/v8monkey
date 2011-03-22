@@ -1,5 +1,6 @@
-#pragma once
-#include <jsapi.h>
+#include "jsapi.h"
+#include "jstl.h"
+#include "jshashtable.h"
 
 namespace v8 {
 // Define some classes first so we can use them before fully defined
@@ -83,6 +84,22 @@ public:
 
   RCReference *Localize() {
     return Globalize();
+  }
+
+};
+
+// Hash policy for jsids
+struct JSIDHashPolicy
+{
+  typedef jsid Key;
+  typedef Key Lookup;
+
+  static uint32 hash(const Lookup &l) {
+    return *reinterpret_cast<const uint32*>(&l);
+  }
+
+  static JSBool match(const Key &k, const Lookup &l) {
+    return k == l;
   }
 };
 } // namespace internal
@@ -506,9 +523,13 @@ public:
   void Set(Handle<String> name, Handle<Data> value,
            PropertyAttribute attribs = None);
 
-  inline void Set(const char *name, Handle<Data> value);
+  inline void Set(const char* name, Handle<Data> value);
 private:
   Template();
+
+  struct PrivateData;
+  typedef js::HashMap<jsid, PrivateData, internal::JSIDHashPolicy, js::SystemAllocPolicy>TemplateHash;
+  TemplateHash mData;
 
   friend class FunctionTemplate;
   friend class ObjectTemplate;

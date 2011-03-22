@@ -12,21 +12,6 @@ struct PropertyData {
   Handle<Data> data;
 };
 
-// Hash policy for jsids
-struct JSIDHashPolicy
-{
-  typedef jsid Key;
-  typedef Key Lookup;
-
-  static uint32 hash(const Lookup &l) {
-    return *reinterpret_cast<const uint32*>(&l);
-  }
-
-  static JSBool match(const Key &k, const Lookup &l) {
-    return k == l;
-  }
-};
-
 typedef js::HashMap<jsid, PropertyData, JSIDHashPolicy, js::SystemAllocPolicy> AccessorTable;
 
 struct Object::PrivateData {

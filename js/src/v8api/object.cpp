@@ -9,7 +9,7 @@ using namespace internal;
 struct PropertyData {
   AccessorGetter getter;
   AccessorSetter setter;
-  Handle<Data> data;
+  Handle<Value> data;
 };
 
 typedef js::HashMap<jsid, PropertyData, JSIDHashPolicy, js::SystemAllocPolicy> AccessorTable;
@@ -160,7 +160,7 @@ bool
 Object::SetAccessor(Handle<String> name,
                     AccessorGetter getter,
                     AccessorSetter setter,
-                    Handle<Data> data,
+                    Handle<Value> data,
                     AccessControl settings,
                     PropertyAttribute attribs)
 {

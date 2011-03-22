@@ -86,9 +86,10 @@ Local<Boolean> Value::ToBoolean() const {
 
 Local<Number> Value::ToNumber() const {
   double d;
-  if (JS_ValueToNumber(cx(), mVal, &d))
-    return Local<Number>();
-  return Number::New(d);
+  if (JS_ValueToNumber(cx(), mVal, &d)) {
+    return Number::New(d);
+  }
+  return NULL;
 }
 
 Local<String> Value::ToString() const {

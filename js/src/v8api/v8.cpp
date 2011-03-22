@@ -265,11 +265,11 @@ Handle<Primitive> Null() {
 }
 
 Handle<Boolean> True() {
-  UNIMPLEMENTEDAPI(Handle<Boolean>());
+  return Boolean::New(true);
 }
 
 Handle<Boolean> False() {
-  UNIMPLEMENTEDAPI(Handle<Boolean>());
+  return Boolean::New(false);
 }
 
 

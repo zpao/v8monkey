@@ -20,6 +20,17 @@ Local<String> String::New(const char *data,
   return Local<String>::New(&s);
 }
 
+Local<String> String::FromJSID(jsid id) {
+  jsval v;
+  if (!JS_IdToValue(cx(), id, &v))
+    return NULL;
+  JSString* str = JS_ValueToString(cx(), v);
+  if (!str)
+    return NULL;
+  String s(str);
+  return Local<String>::New(&s);
+}
+
 int String::Length() const {
   return JS_GetStringLength(*this);
 }

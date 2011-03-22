@@ -378,6 +378,7 @@ public:
   };
 
   static Local<String> New(const char *data, int length = -1);
+  static Local<String> FromJSID(jsid id);
 };
 
 

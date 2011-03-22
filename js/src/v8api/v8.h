@@ -421,6 +421,8 @@ class Object : public Value {
   friend class Script;
   friend class ObjectTemplate;
   friend class Arguments;
+  friend class AccessorInfo;
+
 protected:
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   Object(JSObject *obj);
@@ -617,12 +619,16 @@ public:
 };
 
 class AccessorInfo {
+  friend class Object;
+  AccessorInfo(Handle<Value> data, JSObject *obj);
+
+  Handle<Value> mData;
+  JSObject* mObj;
+public:
   Local<Value> Data() const {
-    UNIMPLEMENTEDAPI(NULL);
+    return Local<Value>::New(mData);
   }
-  Local<Object> This() const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
+  Local<Object> This() const;
   Local<Object> Holder() const {
     UNIMPLEMENTEDAPI(NULL);
   }

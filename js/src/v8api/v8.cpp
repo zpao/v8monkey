@@ -389,4 +389,13 @@ bool Arguments::IsConstructCall() const {
   return JS_IsConstructing(mCtx, mValues);
 }
 
+AccessorInfo::AccessorInfo(Handle<Value> data, JSObject *obj) :
+  mData(data), mObj(obj)
+{}
+
+Local<Object> AccessorInfo::This() const {
+  Object o(mObj);
+  return Local<Object>::New(&o);
+}
+
 }

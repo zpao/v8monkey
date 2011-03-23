@@ -38,7 +38,7 @@ ObjectTemplate::ObjectTemplate() :
     JS_PropertyStub, // addProperty
     JS_PropertyStub, // delProperty
     v8api_GetProperty, // getProperty
-    JS_StrictPropertyStub, // setProperty
+    v8api_SetProperty, // setProperty
     JS_EnumerateStub, // enumerate
     JS_ResolveStub, // resolve
     JS_ConvertStub, // convert

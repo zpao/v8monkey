@@ -436,6 +436,7 @@ class Date : public Value {
 
 class String : public Primitive  {
   friend class Value;
+  friend class Function;
 
   String(JSString *s) : Primitive (STRING_TO_JSVAL(s)) { }
 
@@ -521,6 +522,7 @@ private:
   friend class Arguments;
   friend class AccessorInfo;
   friend class Message;
+  friend class Function;
 
   static JSBool JSAPIPropertyGetter(JSContext*, JSObject* obj, jsid id, jsval* vp);
   static JSBool JSAPIPropertySetter(JSContext*, JSObject* obj, jsid id, JSBool, jsval* vp);
@@ -611,24 +613,18 @@ class Function : public Object {
     Object(JS_GetFunctionObject(fn))
   {}
 
+  operator JSFunction *() const;
+
   friend class Object;
   friend class Arguments;
 public:
-  Local<Object> NewInstance() const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-  Local<Object> NewInstance(int argc, Handle<Value> argv[]) const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-  Local<Value> Call(Handle<Object> recv, int argc, Handle<Value> argv[]) const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
+  Local<Object> NewInstance() const;
+  Local<Object> NewInstance(int argc, Handle<Value> argv[]) const;
+  Local<Value> Call(Handle<Object> recv, int argc, Handle<Value> argv[]) const;
   void SetName(Handle<String> name);
   Handle<String> GetName() const;
 
-  int GetScriptLineNumber() const {
-    UNIMPLEMENTEDAPI(0);
-  }
+  int GetScriptLineNumber() const;
   // UNIMPLEMENTEDAPI
   ScriptOrigin GetScriptOrigin() const;
   static const int kLineOffsetNotFound;

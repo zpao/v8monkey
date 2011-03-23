@@ -142,7 +142,9 @@ bool Value::IsDate() const {
 bool
 Value::BooleanValue() const
 {
-  return IsTrue();
+  JSBool b;
+  JS_ValueToBoolean(cx(), mVal, &b);
+  return b;
 }
 
 double

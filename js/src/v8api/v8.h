@@ -417,6 +417,7 @@ class Object : public Value {
   PrivateData& GetHiddenStore();
   friend class Context;
   friend class Script;
+  friend class ObjectTemplate;
 protected:
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   Object(JSObject *obj);

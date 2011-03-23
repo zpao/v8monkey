@@ -3,6 +3,31 @@
 namespace v8 {
 using namespace internal;
 
+namespace {
+
+JSBool
+v8api_GetProperty(JSContext* cx,
+                  JSObject* obj,
+                  jsid id,
+                  jsval* vp)
+{
+  // TODO this is just a stub
+  return JS_PropertyStub(cx, obj, id, vp);
+}
+
+JSBool
+v8api_SetProperty(JSContext* cx,
+                  JSObject* obj,
+                  jsid id,
+                  JSBool strict,
+                  jsval* vp)
+{
+  // TODO this is just a stub
+  return JS_StrictPropertyStub(cx, obj, id, strict, vp);
+}
+
+} // anonymous namespace
+
 ObjectTemplate::ObjectTemplate() :
   Template()
 {
@@ -12,7 +37,7 @@ ObjectTemplate::ObjectTemplate() :
     0, // flags
     JS_PropertyStub, // addProperty
     JS_PropertyStub, // delProperty
-    JS_PropertyStub, // getProperty
+    v8api_GetProperty, // getProperty
     JS_StrictPropertyStub, // setProperty
     JS_EnumerateStub, // enumerate
     JS_ResolveStub, // resolve
@@ -40,7 +65,15 @@ ObjectTemplate::New()
 Local<Object>
 ObjectTemplate::NewInstance()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  JSObject* obj = JS_NewObject(cx(), &mClass, NULL, NULL);
+  if (!obj) {
+    return NULL;
+  }
+
+  // TODO iterate properties added with Template::Set
+
+  Object o(obj);
+  return Local<Object>::New(&o);
 }
 
 void

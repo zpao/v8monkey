@@ -1628,33 +1628,6 @@ THREADED_TEST(MessageHandlerData) {
 }
 
 
-THREADED_TEST(GetSetProperty) {
-  v8::HandleScope scope;
-  LocalContext context;
-  context->Global()->Set(v8_str("foo"), v8_num(14));
-  context->Global()->Set(v8_str("12"), v8_num(92));
-  context->Global()->Set(v8::Integer::New(16), v8_num(32));
-  context->Global()->Set(v8_num(13), v8_num(56));
-  Local<Value> foo = Script::Compile(v8_str("this.foo"))->Run();
-  CHECK_EQ(14, foo->Int32Value());
-  Local<Value> twelve = Script::Compile(v8_str("this[12]"))->Run();
-  CHECK_EQ(92, twelve->Int32Value());
-  Local<Value> sixteen = Script::Compile(v8_str("this[16]"))->Run();
-  CHECK_EQ(32, sixteen->Int32Value());
-  Local<Value> thirteen = Script::Compile(v8_str("this[13]"))->Run();
-  CHECK_EQ(56, thirteen->Int32Value());
-  CHECK_EQ(92, context->Global()->Get(v8::Integer::New(12))->Int32Value());
-  CHECK_EQ(92, context->Global()->Get(v8_str("12"))->Int32Value());
-  CHECK_EQ(92, context->Global()->Get(v8_num(12))->Int32Value());
-  CHECK_EQ(32, context->Global()->Get(v8::Integer::New(16))->Int32Value());
-  CHECK_EQ(32, context->Global()->Get(v8_str("16"))->Int32Value());
-  CHECK_EQ(32, context->Global()->Get(v8_num(16))->Int32Value());
-  CHECK_EQ(56, context->Global()->Get(v8::Integer::New(13))->Int32Value());
-  CHECK_EQ(56, context->Global()->Get(v8_str("13"))->Int32Value());
-  CHECK_EQ(56, context->Global()->Get(v8_num(13))->Int32Value());
-}
-
-
 THREADED_TEST(PropertyAttributes) {
   v8::HandleScope scope;
   LocalContext context;

@@ -43,6 +43,9 @@ typedef JSInt64 int64_t;
 ////////////////////////////////////////////////////////////////////////////////
 //// Helpers
 
+static inline v8::Local<v8::Number> v8_num(double x) {
+  return v8::Number::New(x);
+}
 static inline v8::Local<v8::String> v8_str(const char* x) {
   return v8::String::New(x);
 }
@@ -177,6 +180,33 @@ test_Access()
   CHECK(!foo_after->IsUndefined());
   CHECK(foo_after->IsString());
   CHECK_EQ(bar_str, foo_after);
+}
+
+void
+test_GetSetProperty() {
+  v8::HandleScope scope;
+  LocalContext context;
+  context->Global()->Set(v8_str("foo"), v8_num(14));
+  context->Global()->Set(v8_str("12"), v8_num(92));
+  context->Global()->Set(v8::Integer::New(16), v8_num(32));
+  context->Global()->Set(v8_num(13), v8_num(56));
+  Local<Value> foo = Script::Compile(v8_str("this.foo"))->Run();
+  CHECK_EQ(14, foo->Int32Value());
+  Local<Value> twelve = Script::Compile(v8_str("this[12]"))->Run();
+  CHECK_EQ(92, twelve->Int32Value());
+  Local<Value> sixteen = Script::Compile(v8_str("this[16]"))->Run();
+  CHECK_EQ(32, sixteen->Int32Value());
+  Local<Value> thirteen = Script::Compile(v8_str("this[13]"))->Run();
+  CHECK_EQ(56, thirteen->Int32Value());
+  CHECK_EQ(92, context->Global()->Get(v8::Integer::New(12))->Int32Value());
+  CHECK_EQ(92, context->Global()->Get(v8_str("12"))->Int32Value());
+  CHECK_EQ(92, context->Global()->Get(v8_num(12))->Int32Value());
+  CHECK_EQ(32, context->Global()->Get(v8::Integer::New(16))->Int32Value());
+  CHECK_EQ(32, context->Global()->Get(v8_str("16"))->Int32Value());
+  CHECK_EQ(32, context->Global()->Get(v8_num(16))->Int32Value());
+  CHECK_EQ(56, context->Global()->Get(v8::Integer::New(13))->Int32Value());
+  CHECK_EQ(56, context->Global()->Get(v8_str("13"))->Int32Value());
+  CHECK_EQ(56, context->Global()->Get(v8_num(13))->Int32Value());
 }
 
 void
@@ -398,6 +428,7 @@ test_isNumberType() {
 Test gTests[] = {
   DISABLED_TEST(test_Handles),
   TEST(test_Access),
+  TEST(test_GetSetProperty),
   DISABLED_TEST(test_Script),
   TEST(test_TinyInteger),
   TEST(test_TinyUnsignedInteger),

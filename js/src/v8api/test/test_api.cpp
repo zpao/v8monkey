@@ -363,7 +363,7 @@ Test gTests[] = {
   TEST(test_OutOfSignedRangeUnsignedInteger),
   TEST(test_Number),
   TEST(test_ToNumber),
-  DISABLED_TEST(test_Boolean),
+  TEST(test_Boolean),
   DISABLED_TEST(test_HulIgennem),
   DISABLED_TEST(test_AccessElement),
   TEST(test_ConversionNumber),

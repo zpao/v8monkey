@@ -108,7 +108,6 @@
 #include "nsIPageSequenceFrame.h"
 #include "nsCaret.h"
 #include "nsIDOMHTMLDocument.h"
-#include "nsIXPointer.h"
 #include "nsIDOMXMLDocument.h"
 #include "nsIParser.h"
 #include "nsParserCIID.h"
@@ -1037,12 +1036,10 @@ protected:
   struct RenderingState {
     RenderingState(PresShell* aPresShell) 
       : mRenderFlags(aPresShell->mRenderFlags)
-      , mDisplayPort(aPresShell->mDisplayPort)
       , mXResolution(aPresShell->mXResolution)
       , mYResolution(aPresShell->mYResolution)
     { }
     PRUint32 mRenderFlags;
-    nsRect mDisplayPort;
     float mXResolution;
     float mYResolution;
   };
@@ -1056,7 +1053,6 @@ protected:
     ~AutoSaveRestoreRenderingState()
     {
       mPresShell->mRenderFlags = mOldState.mRenderFlags;
-      mPresShell->mDisplayPort = mOldState.mDisplayPort;
       mPresShell->mXResolution = mOldState.mXResolution;
       mPresShell->mYResolution = mOldState.mYResolution;
     }
@@ -3879,77 +3875,6 @@ PresShell::GoToAnchor(const nsAString& aAnchorName, PRBool aScroll)
     }
   }
 
-  nsCOMPtr<nsIDOMRange> jumpToRange;
-  nsCOMPtr<nsIXPointerResult> xpointerResult;
-  if (!content) {
-    nsCOMPtr<nsIDOMXMLDocument> xmldoc = do_QueryInterface(mDocument);
-    if (xmldoc) {
-      // Try XPointer
-      xmldoc->EvaluateXPointer(aAnchorName, getter_AddRefs(xpointerResult));
-      if (xpointerResult) {
-        xpointerResult->Item(0, getter_AddRefs(jumpToRange));
-        if (!jumpToRange) {
-          // We know it was an XPointer, so there is no point in
-          // trying any other pointer types, let's just return
-          // an error.
-          return NS_ERROR_FAILURE;
-        }
-      }
-
-      // Finally try FIXptr
-      if (!jumpToRange) {
-        xmldoc->EvaluateFIXptr(aAnchorName,getter_AddRefs(jumpToRange));
-      }
-
-      if (jumpToRange) {
-        nsCOMPtr<nsIDOMNode> node;
-        jumpToRange->GetStartContainer(getter_AddRefs(node));
-        if (node) {
-          PRUint16 nodeType;
-          node->GetNodeType(&nodeType);
-          PRInt32 offset = -1;
-          jumpToRange->GetStartOffset(&offset);
-          switch (nodeType) {
-            case nsIDOMNode::ATTRIBUTE_NODE:
-            {
-              // XXX Assuming jumping to the ownerElement is the sanest action.
-              nsCOMPtr<nsIAttribute> attr = do_QueryInterface(node);
-              content = attr->GetContent();
-              break;
-            }
-            case nsIDOMNode::DOCUMENT_NODE:
-            {
-              if (offset >= 0) {
-                nsCOMPtr<nsIDocument> document = do_QueryInterface(node);
-                content = document->GetChildAt(offset);
-              }
-              break;
-            }
-            case nsIDOMNode::DOCUMENT_FRAGMENT_NODE:
-            case nsIDOMNode::ELEMENT_NODE:
-            case nsIDOMNode::ENTITY_REFERENCE_NODE:
-            {
-              if (offset >= 0) {
-                nsCOMPtr<nsIContent> parent = do_QueryInterface(node);
-                content = parent->GetChildAt(offset);
-              }
-              break;
-            }
-            case nsIDOMNode::CDATA_SECTION_NODE:
-            case nsIDOMNode::COMMENT_NODE:
-            case nsIDOMNode::TEXT_NODE:
-            case nsIDOMNode::PROCESSING_INSTRUCTION_NODE:
-            {
-              // XXX This should scroll to a specific position in the text.
-              content = do_QueryInterface(node);
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
-
   esm->SetContentState(content, NS_EVENT_STATE_URLTARGET);
 
 #ifdef ACCESSIBILITY
@@ -3977,16 +3902,14 @@ PresShell::GoToAnchor(const nsAString& aAnchorName, PRBool aScroll)
     // Even if select anchor pref is false, we must still move the
     // caret there. That way tabbing will start from the new
     // location
-    if (!jumpToRange) {
-      jumpToRange = do_CreateInstance(kRangeCID);
-      if (jumpToRange) {
-        while (content && content->GetChildCount() > 0) {
-          content = content->GetChildAt(0);
-        }
-        nsCOMPtr<nsIDOMNode> node(do_QueryInterface(content));
-        NS_ASSERTION(node, "No nsIDOMNode for descendant of anchor");
-        jumpToRange->SelectNodeContents(node);
+    nsCOMPtr<nsIDOMRange> jumpToRange = do_CreateInstance(kRangeCID);
+    if (jumpToRange) {
+      while (content && content->GetChildCount() > 0) {
+        content = content->GetChildAt(0);
       }
+      nsCOMPtr<nsIDOMNode> node(do_QueryInterface(content));
+      NS_ASSERTION(node, "No nsIDOMNode for descendant of anchor");
+      jumpToRange->SelectNodeContents(node);
     }
     if (jumpToRange) {
       // Select the anchor
@@ -3998,17 +3921,6 @@ PresShell::GoToAnchor(const nsAString& aAnchorName, PRBool aScroll)
         if (!selectAnchor) {
           // Use a caret (collapsed selection) at the start of the anchor
           sel->CollapseToStart();
-        }
-
-        if (selectAnchor && xpointerResult) {
-          // Select the rest (if any) of the ranges in XPointerResult
-          PRUint32 count, i;
-          xpointerResult->GetLength(&count);
-          for (i = 1; i < count; i++) { // jumpToRange is i = 0
-            nsCOMPtr<nsIDOMRange> range;
-            xpointerResult->Item(i, getter_AddRefs(range));
-            sel->AddRange(range);
-          }
         }
       }
       // Selection is at anchor.
@@ -6017,14 +5929,7 @@ void PresShell::SetIgnoreViewportScrolling(PRBool aIgnore)
 
 void PresShell::SetDisplayPort(const nsRect& aDisplayPort)
 {
-  if (UsingDisplayPort() && mDisplayPort == aDisplayPort) {
-    return;
-  }
-  RenderingState state(this);
-  state.mRenderFlags = ChangeFlag(mRenderFlags, PR_TRUE,
-                                  STATE_USING_DISPLAYPORT);
-  state.mDisplayPort = aDisplayPort;
-  SetRenderingState(state);
+  NS_ABORT_IF_FALSE(false, "SetDisplayPort is deprecated");
 }
 
 nsresult PresShell::SetResolution(float aXResolution, float aYResolution)
@@ -6054,37 +5959,8 @@ void PresShell::SetRenderingState(const RenderingState& aState)
   }
 
   mRenderFlags = aState.mRenderFlags;
-  if (UsingDisplayPort()) {
-    mDisplayPort = aState.mDisplayPort;
-  } else {
-    mDisplayPort = nsRect();
-  }
   mXResolution = aState.mXResolution;
   mYResolution = aState.mYResolution;
-
-  // FIXME (Bug 593243 should fix this.)
-  //
-  // Invalidated content does not pay any attention to the displayport, so
-  // invalidating the subdocument's root frame could end up not repainting
-  // visible content.
-  //
-  // For instance, imagine the iframe is located at y=1000. Even though the
-  // displayport may intersect the iframe's viewport, the visual overflow
-  // rect of the root content could be (0, 0, 800, 500). Since the dirty region
-  // does not intersect the visible overflow rect, the display list for the
-  // iframe will not even be generated.
-  //
-  // Here, we find the very top presShell and use its root frame for
-  // invalidation instead.
-  //
-  nsPresContext* rootPresContext = mPresContext->GetRootPresContext();
-  if (rootPresContext) {
-    nsIPresShell* rootPresShell = rootPresContext->GetPresShell();
-    nsIFrame* rootFrame = rootPresShell->FrameManager()->GetRootFrame();
-    if (rootFrame) {
-      rootFrame->InvalidateFrameSubtree();
-    }
-  }
 }
 
 void PresShell::SynthesizeMouseMove(PRBool aFromScroll)

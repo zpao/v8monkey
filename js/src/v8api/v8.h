@@ -282,13 +282,16 @@ public:
   bool StrictEquals(Handle<Value> other) const;
 };
 
-class Primitive : public Value { };
+class Primitive : public Value {
+public:
+  Primitive(jsval val) : Value(val) { }
+};
 
 class Boolean : public Primitive {
 public:
-  Boolean(JSBool val) {
-    mVal = val ? JSVAL_TRUE : JSVAL_FALSE;
-  }
+  Boolean(JSBool val) :
+    Primitive(val ? JSVAL_TRUE : JSVAL_FALSE) { }
+  Boolean(jsval v) : Primitive(v) { }
   bool Value() const {
     return mVal == JSVAL_TRUE;
   }
@@ -297,9 +300,7 @@ public:
 
 class Number : public Primitive {
 protected:
-  Number(jsval v) {
-    mVal = v;
-  }
+  Number(jsval v) : Primitive(v) { }
 public:
   double Value() const;
   static Local<Number> New(double value);
@@ -342,7 +343,7 @@ public:
 class String : public Primitive  {
   friend class Value;
 
-  String(JSString *s);
+  String(JSString *s) : Primitive (STRING_TO_JSVAL(s)) { }
 
   operator JSString*() const { return JSVAL_TO_STRING(mVal); }
 public:

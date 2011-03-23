@@ -4,10 +4,6 @@
 namespace v8 {
 using namespace internal;
 
-String::String(JSString *s) {
-  mVal = STRING_TO_JSVAL(s);
-}
-
 Local<String> String::New(const char *data,
                           int length)
 {

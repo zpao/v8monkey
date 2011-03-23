@@ -259,11 +259,13 @@ JSUint32 Uint32::Value() {
 //// Primitives & basic values
 
 Handle<Primitive> Undefined() {
-  UNIMPLEMENTEDAPI(Handle<Primitive>());
+  Primitive p(JSVAL_VOID);
+  return Handle<Primitive>(&p);
 }
 
 Handle<Primitive> Null() {
-  UNIMPLEMENTEDAPI(Handle<Primitive>());
+  Primitive p(JSVAL_NULL);
+  return Handle<Primitive>(&p);
 }
 
 Handle<Boolean> True() {

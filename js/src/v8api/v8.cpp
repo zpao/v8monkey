@@ -1,5 +1,6 @@
 #include <limits>
 #include <algorithm>
+#include <math.h>
 #include "v8-internal.h"
 
 namespace v8 {
@@ -137,6 +138,15 @@ bool Value::IsDate() const {
     return false;
   JSObject *obj = JSVAL_TO_OBJECT(mVal);
   return JS_ObjectIsDate(cx(), obj);
+}
+
+bool Value::IsUint32() const {
+  if (!this->IsNumber())
+    return false;
+
+  double d = this->NumberValue();
+  return d >= 0 &&
+         (this->IsInt32() || (d <= UINT_MAX && ceil(d) == floor(d)));
 }
 
 bool

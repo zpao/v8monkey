@@ -263,6 +263,7 @@ public:
   bool IsBoolean() const { return JSVAL_IS_BOOLEAN(mVal); }
   bool IsNumber() const { return JSVAL_IS_NUMBER(mVal); }
   bool IsInt32() const { return JSVAL_IS_INT(mVal); }
+  bool IsUint32() const;
   bool IsDate() const;
 
   Local<Boolean> ToBoolean() const;

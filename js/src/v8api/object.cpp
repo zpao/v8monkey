@@ -23,6 +23,17 @@ struct Object::PrivateData {
   }
 };
 
+typedef js::HashMap<JSObject*,Object::PrivateData*, js::DefaultHasher<JSObject*>, js::SystemAllocPolicy> ObjectPrivateDataMap;
+
+static ObjectPrivateDataMap *gPrivateDataMap = 0;
+static ObjectPrivateDataMap& privateDataMap() {
+  if (!gPrivateDataMap) {
+    gPrivateDataMap = new ObjectPrivateDataMap;
+    gPrivateDataMap->init(11);
+  }
+  return *gPrivateDataMap;
+}
+
 bool
 Object::Set(Handle<Value> key,
             Handle<Value> value,
@@ -307,14 +318,17 @@ Object::GetIdentityHash()
 Object::PrivateData&
 Object::GetHiddenStore()
 {
-  void* obj = JS_GetPrivate(cx(), *this);
-  if (!obj) {
+  ObjectPrivateDataMap::Ptr p = privateDataMap().lookup(*this);
+  PrivateData *pd;
+  if (p.found()) {
+    pd = p->value;
+  } else {
     // XXX this will leak.  Fix!
-    PrivateData* pd = new PrivateData();
-    (void)JS_SetPrivate(cx(), *this, pd);
-    obj = pd;
+    pd = new PrivateData();
+    ObjectPrivateDataMap::AddPtr slot = privateDataMap().lookupForAdd(*this);
+    privateDataMap().add(slot, *this, pd);
   }
-  return *reinterpret_cast<PrivateData*>(obj);
+  return *pd;
 }
 
 bool

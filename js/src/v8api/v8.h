@@ -415,7 +415,9 @@ enum AccessControl {
 };
 
 class Object : public Value {
+public:
   struct PrivateData;
+private:
   PrivateData& GetHiddenStore();
   friend class Context;
   friend class Script;

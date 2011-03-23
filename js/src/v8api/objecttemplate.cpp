@@ -26,33 +26,33 @@ v8api_SetProperty(JSContext* cx,
   return JS_StrictPropertyStub(cx, obj, id, strict, vp);
 }
 
+// TODO we don't really want to use all these stubs...
+JSClass gClass = {
+  NULL, // name
+  JSCLASS_HAS_PRIVATE, // flags
+  JS_PropertyStub, // addProperty
+  JS_PropertyStub, // delProperty
+  v8api_GetProperty, // getProperty
+  v8api_SetProperty, // setProperty
+  JS_EnumerateStub, // enumerate
+  JS_ResolveStub, // resolve
+  JS_ConvertStub, // convert
+  JS_FinalizeStub, // finalize
+  NULL, // getObjectOps
+  NULL, // checkAccess
+  NULL, // call
+  NULL, // construct
+  NULL, // xdrObject
+  NULL, // hasInstance
+  NULL, // mark
+  NULL, // reservedSlots
+};
+
 } // anonymous namespace
 
 ObjectTemplate::ObjectTemplate() :
   Template()
 {
-  // TODO we don't really want to use all these stubs...
-  JSClass member = {
-    NULL, // name
-    0, // flags
-    JS_PropertyStub, // addProperty
-    JS_PropertyStub, // delProperty
-    v8api_GetProperty, // getProperty
-    v8api_SetProperty, // setProperty
-    JS_EnumerateStub, // enumerate
-    JS_ResolveStub, // resolve
-    JS_ConvertStub, // convert
-    JS_FinalizeStub, // finalize
-    NULL, // getObjectOps
-    NULL, // checkAccess
-    NULL, // call
-    NULL, // construct
-    NULL, // xdrObject
-    NULL, // hasInstance
-    NULL, // mark
-    NULL, // reservedSlots
-  };
-  mClass = member;
 }
 
 // static
@@ -65,8 +65,13 @@ ObjectTemplate::New()
 Local<Object>
 ObjectTemplate::NewInstance()
 {
-  JSObject* obj = JS_NewObject(cx(), &mClass, NULL, NULL);
+  JSObject* obj = JS_NewObject(cx(), &gClass, NULL, NULL);
   if (!obj) {
+    return NULL;
+  }
+
+  if (!JS_SetPrivate(cx(), obj, this)) {
+    // TODO handle error better
     return NULL;
   }
 

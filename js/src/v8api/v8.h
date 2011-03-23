@@ -651,7 +651,6 @@ class FunctionTemplate : public Template {
 
 class ObjectTemplate : public Template {
   ObjectTemplate();
-  JSClass mClass;
 public:
   static Local<ObjectTemplate> New();
   Local<Object> NewInstance();

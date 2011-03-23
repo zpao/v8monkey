@@ -146,7 +146,7 @@ bool Value::IsUint32() const {
 
   double d = this->NumberValue();
   return d >= 0 &&
-         (this->IsInt32() || (d <= UINT_MAX && ceil(d) == floor(d)));
+         (this->IsInt32() || (d <= std::numeric_limits<JSUint32>::max() && ceil(d) == floor(d)));
 }
 
 bool

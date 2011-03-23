@@ -7,6 +7,90 @@ namespace v8 {
 using namespace internal;
 
 //////////////////////////////////////////////////////////////////////////////
+//// TryCatch class
+namespace internal {
+  struct ExceptionHandlerChain {
+    TryCatch *catcher;
+    ExceptionHandlerChain *next;
+  };
+  static ExceptionHandlerChain *gExnChain = 0;
+}
+void TryCatch::ReportError(JSContext *ctx, const char *message, JSErrorReport *report) {
+  if (!gExnChain) {
+    fprintf(stderr, "%s:%u:%s\n",
+            report->filename ? report->filename : "<no filename>",
+            (unsigned int) report->lineno,
+            message);
+    return;
+  }
+  // TODO: figure out if we care about other types of warnings
+  if (!JSREPORT_IS_EXCEPTION(report->flags))
+    return;
+  TryCatch *current = gExnChain->catcher;
+  jsval v;
+  if (!JS_GetPendingException(cx(), &v)) {
+    // TODO: log warning?
+    return;
+  }
+  current->mHasCaught = true;
+  Value exn(v);
+  current->mException = Persistent<Value>::New(&exn);
+  if (current->mCaptureMessage) {
+    v8::Message m(message, report);
+    current->mMessage = Persistent<v8::Message>::New(&m);
+  }
+}
+
+
+TryCatch::TryCatch() :
+  mHasCaught(false),
+  mCaptureMessage(true)
+{
+  ExceptionHandlerChain *link = new ExceptionHandlerChain;
+  link->catcher = this;
+  link->next = gExnChain;
+  gExnChain = link;
+}
+
+TryCatch::~TryCatch() {
+  Reset();
+  ExceptionHandlerChain *link = gExnChain;
+  JS_ASSERT(link->catcher == this);
+  gExnChain = gExnChain->next;
+  delete link;
+}
+
+Handle<Value> TryCatch::ReThrow() {
+  UNIMPLEMENTEDAPI(NULL);
+}
+
+Local<Value> TryCatch::StackTrace() const {
+  Handle<Object> obj(mException.As<Object>());
+  if (obj.IsEmpty())
+    return Local<Value>();
+  return obj->Get(String::New("stack"));
+}
+
+Local<v8::Message> TryCatch::Message() const {
+  return Local<v8::Message>::New(*mMessage);
+}
+
+void TryCatch::Reset() {
+  mException.Dispose();
+  mMessage.Dispose();
+
+  mHasCaught = false;
+}
+
+void TryCatch::SetVerbose(bool value) {
+  // TODO: figure out what to do with this
+}
+
+void TryCatch::SetCaptureMessage(bool value) {
+  mCaptureMessage = value;
+}
+
+//////////////////////////////////////////////////////////////////////////////
 //// Context class
 
 namespace internal {
@@ -388,6 +472,78 @@ Local<Value> Script::Run() {
 
 Local<Value> Script::Id() {
   UNIMPLEMENTEDAPI(Local<Value>());
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//// Message class
+
+namespace {
+  JSClass message_class = {
+    "v8::Message", JSCLASS_HAS_PRIVATE,
+    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_FinalizeStub,
+    JSCLASS_NO_OPTIONAL_MEMBERS
+  };
+}
+
+Message::Message(const char *message, JSErrorReport *report) :
+  GCReference(OBJECT_TO_JSVAL(JS_NewObject(cx(), &message_class, NULL, NULL)))
+{
+  const char *filename = report->filename ? report->filename : "";
+  const char *linebuf = report->linebuf ? report->linebuf : "";
+  Object &o = InternalObject();
+  o.Set(String::New("message"), String::New(message));
+  o.Set(String::New("filename"), String::New(filename));
+  o.Set(String::New("lineNumber"), Integer::New(report->lineno));
+  o.Set(String::New("line"), String::New(linebuf));
+}
+
+Object &Message::InternalObject() const {
+  Message *msg = const_cast<Message*>(this);
+  return *reinterpret_cast<Object*>(msg);
+}
+
+Local<String> Message::Get() const {
+  return InternalObject().Get(String::New("message"))->ToString();
+}
+
+Local<String> Message::GetSourceLine() const {
+  return InternalObject().Get(String::New("line"))->ToString();
+}
+
+Handle<Value> Message::GetScriptResourceName() const {
+  return InternalObject().Get(String::New("filename"));
+}
+
+Handle<Value> Message::GetScriptData() const {
+  UNIMPLEMENTEDAPI(NULL);
+}
+
+Handle<StackTrace> Message::GetStackTrace() const {
+  UNIMPLEMENTEDAPI(NULL);
+}
+
+int Message::GetLineNumber() const {
+  return InternalObject().Get(String::New("lineNumber"))->Int32Value();
+}
+
+int Message::GetStartPosition() const {
+  UNIMPLEMENTEDAPI(0);
+}
+
+int Message::GetEndPosition() const {
+  UNIMPLEMENTEDAPI(0);
+}
+
+int Message::GetStartColumn() const {
+  UNIMPLEMENTEDAPI(kNoColumnInfo);
+}
+int Message::GetEndColumn() const {
+  UNIMPLEMENTEDAPI(kNoColumnInfo);
+}
+
+void Message::PrintCurrentStackTrace(FILE*) {
+  UNIMPLEMENTEDAPI();
 }
 
 //////////////////////////////////////////////////////////////////////////////

@@ -5,6 +5,7 @@
 namespace v8 {
 // Define some classes first so we can use them before fully defined
 struct HandleScope;
+class Value;
 class Boolean;
 class Number;
 class Integer;
@@ -14,6 +15,8 @@ class Object;
 class Uint32;
 class Int32;
 class Context;
+class Message;
+class StackTrace;
 class Function;
 class ScriptOrigin;
 class AccessorInfo;
@@ -143,7 +146,7 @@ public:
   }
 
   template <class S>
-  inline Handle<S> As() {
+  inline Handle<S> As() const {
     return Handle<S>::Cast(*this);
   }
 };
@@ -166,7 +169,7 @@ public:
   }
 
   template <class S>
-  inline Local<S> As() {
+  inline Local<S> As() const {
     return Local<S>::Cast(*this);
   }
 };
@@ -188,12 +191,82 @@ public:
       return Persistent<T>();
     return reinterpret_cast<T*>(other->Globalize());
   }
+
+  template <class S>
+  static inline Persistent<T> Cast(Persistent<S> that) {
+    return Persistent<T>(T::Cast(*that));
+  }
+
+  template <class S>
+  inline Persistent<S> As() const {
+    return Persistent<S>::Cast(*this);
+  }
+};
+
+class Message : public internal::GCReference {
+  friend class TryCatch;
+
+  Message(const char *message, JSErrorReport *report);
+
+  Object &InternalObject() const;
+public:
+  Local<String> Get() const;
+  Local<String> GetSourceLine() const;
+
+  Handle<Value> GetScriptResourceName() const;
+  Handle<Value> GetScriptData() const;
+
+  Handle<StackTrace> GetStackTrace() const;
+
+  int GetLineNumber() const;
+  int GetStartPosition() const;
+  int GetEndPosition() const;
+
+  int GetStartColumn() const;
+  int GetEndColumn() const;
+
+  static void PrintCurrentStackTrace(FILE* out);
+
+  static const int kNoLineNumberInfo = 0;
+  static const int kNoColumnInfo = 0;
 };
 
 class V8 {
 public:
   static bool Initialize();
   static bool Dispose();
+};
+
+class TryCatch {
+  friend class V8;
+  static void ReportError(JSContext *ctx, const char *message, JSErrorReport *report);
+
+  bool mHasCaught;
+  bool mCaptureMessage;
+  Persistent<Value> mException;
+  Persistent<v8::Message> mMessage;
+public:
+  TryCatch();
+  ~TryCatch();
+
+  bool HasCaught() const {
+    return mHasCaught;
+  }
+  bool CanContinue() const {
+    return true;
+  }
+
+  Handle<Value> ReThrow();
+
+  Local<Value> Exception() const {
+    return Local<Value>::New(*mException);
+  }
+  Local<Value> StackTrace() const;
+
+  Local<v8::Message> Message() const;
+  void Reset();
+  void SetVerbose(bool value);
+  void SetCaptureMessage(bool value);
 };
 
 class Context : public internal::GCReference {
@@ -446,6 +519,7 @@ private:
   friend class ObjectTemplate;
   friend class Arguments;
   friend class AccessorInfo;
+  friend class Message;
 
   static JSBool JSAPIPropertyGetter(JSContext*, JSObject* obj, jsid id, jsval* vp);
   static JSBool JSAPIPropertySetter(JSContext*, JSObject* obj, jsid id, JSBool, jsval* vp);
@@ -501,6 +575,12 @@ public:
   void* GetIndexedPropertiesExternalArrayData();
   ExternalArrayType GetIndexedPropertiesExternalArrayDataType();
   int GetIndexedPropertiesExternalArrayDataLength();
+
+  static inline Object* Cast(Value *obj) {
+    if (obj->IsObject())
+      return reinterpret_cast<Object*>(obj);
+    return NULL;
+  }
 
   static Local<Object> New();
 };

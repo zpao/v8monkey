@@ -27,13 +27,6 @@ JSClass global_class = {
   JSCLASS_NO_OPTIONAL_MEMBERS
 };
 
-void reportError(JSContext *ctx, const char *message, JSErrorReport *report) {
-  fprintf(stderr, "%s:%u:%s\n",
-          report->filename ? report->filename : "<no filename>",
-          (unsigned int) report->lineno,
-          message);
-}
-
 void notImplemented() {
   fprintf(stderr, "Calling an unimplemented API!\n");
 }
@@ -53,7 +46,7 @@ bool V8::Initialize() {
     return false;
   JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
   JS_SetVersion(ctx, JSVERSION_LATEST);
-  JS_SetErrorReporter(ctx, reportError);
+  JS_SetErrorReporter(ctx, TryCatch::ReportError);
 
   JS_BeginRequest(ctx);
 

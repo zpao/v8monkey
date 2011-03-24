@@ -190,6 +190,12 @@ public:
   }
 };
 
+class V8 {
+public:
+  static bool Initialize();
+  static bool Dispose();
+};
+
 class Context : public internal::GCReference {
   Context(JSObject *global);
 public:

@@ -7,32 +7,15 @@ const int MB = 1024 * 1024;
 JSRuntime *gRuntime = 0;
 JSRuntime *rt() {
   if (!gRuntime) {
-    JS_CStringsAreUTF8();
-    gRuntime = JS_NewRuntime(64 * MB);
-    JS_BeginRequest(cx());
+    V8::Initialize();
   }
   return gRuntime;
-}
-
-// TODO: call this
-void shutdown() {
-  JS_EndRequest(cx());
-  if (gRuntime)
-    JS_DestroyRuntime(gRuntime);
-  JS_ShutDown();
 }
 
 static JSContext *gRootContext = 0;
 JSContext *cx() {
   if (!gRootContext) {
-    JSContext *ctx(JS_NewContext(rt(), 8192));
-    JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
-    JS_SetVersion(ctx, JSVERSION_LATEST);
-    JS_SetErrorReporter(ctx, reportError);
-
-    JS_BeginRequest(ctx);
-
-    gRootContext = ctx;
+    V8::Initialize();
   }
   return gRootContext;
 }
@@ -55,4 +38,36 @@ void notImplemented() {
   fprintf(stderr, "Calling an unimplemented API!\n");
 }
 
-} }
+}
+
+using namespace internal;
+
+bool V8::Initialize() {
+  JS_CStringsAreUTF8();
+  gRuntime = JS_NewRuntime(64 * MB);
+  if(!gRuntime)
+    return false;
+
+  JSContext *ctx(JS_NewContext(gRuntime, 8192));
+  if (!ctx)
+    return false;
+  JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
+  JS_SetVersion(ctx, JSVERSION_LATEST);
+  JS_SetErrorReporter(ctx, reportError);
+
+  JS_BeginRequest(ctx);
+
+  gRootContext = ctx;
+  return true;
+}
+
+// TODO: call this
+bool V8::Dispose() {
+  JS_EndRequest(gRootContext);
+  if (gRuntime)
+    JS_DestroyRuntime(gRuntime);
+  JS_ShutDown();
+  return true;
+}
+
+}

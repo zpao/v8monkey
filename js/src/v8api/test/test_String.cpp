@@ -3,6 +3,22 @@
 
 #include "v8api_test_harness.h"
 
+////////////////////////////////////////////////////////////////////////////////
+//// Helpers
+
+void
+fill_string(char* buf,
+            char filler,
+            int length)
+{
+  for (int i = 0; i < length; i++) {
+    buf[i] = filler;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// Tests
+
 void
 test_Length()
 {
@@ -52,6 +68,20 @@ test_Write()
   Persistent<Context> context = Context::New();
   Context::Scope context_scope(context);
 
+  char TEST_STRING[] = "this is a UTF-8 test!  This is pi: π";
+  int TEST_LENGTH = strlen(TEST_STRING);
+  Handle<String> str = String::New(TEST_STRING);
+  char* buf = new char[TEST_LENGTH * 2];
+
+  for (int start = 0; start < TEST_LENGTH; start++) {
+    // Fill the buffer with 'a' to ensure there are no NULLs to start with.
+    fill_string(buf, 'a', TEST_LENGTH * 2);
+    int copied = str->WriteAscii(buf, start, TEST_LENGTH * 2);
+    do_check_eq(copied, TEST_LENGTH - start);
+    do_check_eq(strlen(buf), TEST_LENGTH - start);
+  }
+
+  delete[] buf;
 }
 
 void
@@ -61,6 +91,22 @@ test_WriteAscii()
   Persistent<Context> context = Context::New();
   Context::Scope context_scope(context);
 
+  char TEST_STRING[] = "this is a UTF-8 test!  This is pi: π";
+  int TEST_LENGTH = strlen(TEST_STRING);
+  Handle<String> str = String::New(TEST_STRING);
+  char* buf = new char[TEST_LENGTH * 2];
+
+  // Iterate over the entire string and use it as the start.
+  int EXPECTED_LENGTH = TEST_LENGTH - 1; // We should drop the UTF-8 char.
+  for (int start = 0; start < TEST_LENGTH; start++) {
+    // Fill the buffer with 'a' to ensure there are no NULLs to start with.
+    fill_string(buf, 'a', TEST_LENGTH * 2);
+    int copied = str->WriteAscii(buf, start, TEST_LENGTH * 2);
+    do_check_eq(copied, EXPECTED_LENGTH - start);
+    do_check_eq(strlen(buf), EXPECTED_LENGTH - start);
+  }
+
+  delete[] buf;
 }
 
 void
@@ -70,6 +116,19 @@ test_WriteUtf8()
   Persistent<Context> context = Context::New();
   Context::Scope context_scope(context);
 
+  char TEST_STRING[] = "this is a UTF-8 test!  This is pi: π";
+  int TEST_LENGTH = strlen(TEST_STRING);
+  Handle<String> str = String::New(TEST_STRING);
+  char* buf = new char[TEST_LENGTH * 2];
+  // Fill the buffer with 'a' to ensure there are no NULLs to start with.
+  fill_string(buf, 'a', TEST_LENGTH * 2);
+  int charsWritten;
+  int copied = str->WriteUtf8(buf, TEST_LENGTH * 2, &charsWritten);
+  do_check_eq(copied, TEST_LENGTH + 1);
+  do_check_eq(charsWritten, TEST_LENGTH);
+  do_check_eq(strlen(buf), TEST_LENGTH);
+
+  delete[] buf;
 }
 
 void
@@ -103,9 +162,9 @@ test_AsciiValue_length()
 Test gTests[] = {
   TEST(test_Length),
   TEST(test_Utf8Length),
-  TEST(test_Write),
-  TEST(test_WriteAscii),
-  TEST(test_WriteUtf8),
+  DISABLED_TEST(test_Write, 13),
+  DISABLED_TEST(test_WriteAscii, 14),
+  DISABLED_TEST(test_WriteUtf8, 15),
   TEST(test_AsciiValue_operators),
   TEST(test_AsciiValue_length),
 };

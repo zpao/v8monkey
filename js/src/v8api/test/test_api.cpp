@@ -436,7 +436,7 @@ Test gTests[] = {
   TEST(test_Number),
   TEST(test_ToNumber),
   DISABLED_TEST(test_Boolean, 10),
-  DISABLED_TEST(test_HulIgennem),
+  DISABLED_TEST(test_HulIgennem, 12),
   TEST(test_AccessElement),
   TEST(test_ConversionNumber),
   TEST(test_isNumberType),

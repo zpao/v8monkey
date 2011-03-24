@@ -426,18 +426,18 @@ test_isNumberType() {
 //// Test Harness
 
 Test gTests[] = {
-  DISABLED_TEST(test_Handles),
+  DISABLED_TEST(test_Handles, 11),
   TEST(test_Access),
   TEST(test_GetSetProperty),
-  DISABLED_TEST(test_Script),
+  TEST(test_Script),
   TEST(test_TinyInteger),
   TEST(test_TinyUnsignedInteger),
   TEST(test_OutOfSignedRangeUnsignedInteger),
   TEST(test_Number),
   TEST(test_ToNumber),
-  DISABLED_TEST(test_Boolean),
+  DISABLED_TEST(test_Boolean, 10),
   DISABLED_TEST(test_HulIgennem),
-  DISABLED_TEST(test_AccessElement),
+  TEST(test_AccessElement),
   TEST(test_ConversionNumber),
   TEST(test_isNumberType),
 };

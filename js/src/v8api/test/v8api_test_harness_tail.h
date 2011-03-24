@@ -60,8 +60,10 @@ main(int aArgc,
       test.func();
     }
     else {
-      (void)printf(TEST_INFO_STR "Not running %s (DISABLED).\n", TEST_FILE,
-                   test.name);
+      do_check_neq(test.issue, 0);
+      (void)printf(TEST_INFO_STR "TODO %s is DISABLED.  Tracked in %s%u\n",
+                   TEST_FILE, test.name,
+                   "https://github.com/zpao/v8monkey/issues/", test.issue);
     }
   }
 

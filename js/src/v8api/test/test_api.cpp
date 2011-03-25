@@ -36,6 +36,7 @@
 #define CHECK do_check_true
 #define CHECK_EQ(expected, actual) do_check_eq(actual, expected)
 
+typedef JSUint16 uint16_t;
 typedef JSInt32 int32_t;
 typedef JSUint32 uint32_t;
 typedef JSInt64 int64_t;

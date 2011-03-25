@@ -96,12 +96,11 @@ int String::WriteUtf8(char* buffer,
                       WriteHints hints) const
 {
   // TODO handle -1 for length!
-  // XXX unclear if this includes the NULL terminator!
   size_t bytesWritten = JS_EncodeStringToBuffer(*this, buffer, length);
 
   // If we have enough space for the NULL terminator, set it.
   if (bytesWritten < size_t(length)) {
-    buffer[bytesWritten + 1] = '\0';
+    buffer[++bytesWritten] = '\0';
   }
 
   // TODO check to make sure we don't overflow int

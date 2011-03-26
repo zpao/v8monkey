@@ -50,13 +50,23 @@ JSClass gNewInstanceClass = {
 
 struct PrivateData
 {
+  static PrivateData* Get(JSContext* cx,
+                          JSObject* obj)
+  {
+    return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
+  }
+  static PrivateData* Get(jsval val)
+  {
+    JSObject* obj = JSVAL_TO_OBJECT(val);
+    return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
+  }
 };
 
 void
 finalize(JSContext* cx,
          JSObject* obj)
 {
-  PrivateData* data = static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
+  PrivateData* data = PrivateData::Get(cx, obj);
   delete data;
 }
 

@@ -198,6 +198,11 @@ Object::SetAccessor(Handle<String> name,
                     AccessControl settings,
                     PropertyAttribute attribs)
 {
+  if (settings != 0) {
+    // We only currently support the default settings.
+    UNIMPLEMENTEDAPI(false);
+  }
+
   jsid propid;
   JS_ValueToId(cx(), name->native(), &propid);
   PropertyData prop = {

@@ -699,7 +699,7 @@ public:
   // XXX v8 header says the second argument should be a Handle<Data>
   inline void Set(const char* name, Handle<Value> value);
 protected:
-  Template();
+  Template(JSClass* clasp);
 
   friend class FunctionTemplate;
   friend class ObjectTemplate;

@@ -3,8 +3,8 @@
 namespace v8 {
 using namespace internal;
 
-Template::Template() :
-  Data(OBJECT_TO_JSVAL(JS_NewObject(cx(), NULL, NULL, NULL)))
+Template::Template(JSClass* clasp) :
+  Data(OBJECT_TO_JSVAL(JS_NewObject(cx(), clasp, NULL, NULL)))
 {
 }
 

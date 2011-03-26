@@ -27,7 +27,7 @@ v8api_SetProperty(JSContext* cx,
 }
 
 // TODO we don't really want to use all these stubs...
-JSClass gClass = {
+JSClass gNewInstanceClass = {
   NULL, // name
   JSCLASS_HAS_PRIVATE, // flags
   JS_PropertyStub, // addProperty
@@ -48,11 +48,46 @@ JSClass gClass = {
   NULL, // reservedSlots
 };
 
+struct PrivateData
+{
+};
+
+void
+finalize(JSContext* cx,
+         JSObject* obj)
+{
+  PrivateData* data = static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
+  delete data;
+}
+
+JSClass gObjectTemplateClass = {
+  NULL, // name
+  JSCLASS_HAS_PRIVATE, // flags
+  JS_PropertyStub, // addProperty
+  JS_PropertyStub, // delProperty
+  JS_PropertyStub, // getProperty
+  JS_StrictPropertyStub, // setProperty
+  JS_EnumerateStub, // enumerate
+  JS_ResolveStub, // resolve
+  JS_ConvertStub, // convert
+  finalize, // finalize
+  NULL, // getObjectOps
+  NULL, // checkAccess
+  NULL, // call
+  NULL, // construct
+  NULL, // xdrObject
+  NULL, // hasInstance
+  NULL, // mark
+  NULL, // reservedSlots
+};
+
 } // anonymous namespace
 
 ObjectTemplate::ObjectTemplate() :
-  Template()
+  Template(&gObjectTemplateClass)
 {
+  PrivateData* data = new PrivateData();
+  (void)JS_SetPrivate(cx(), JSVAL_TO_OBJECT(mVal), data);
 }
 
 // static
@@ -65,7 +100,7 @@ ObjectTemplate::New()
 Local<Object>
 ObjectTemplate::NewInstance()
 {
-  JSObject* obj = JS_NewObject(cx(), &gClass, NULL, NULL);
+  JSObject* obj = JS_NewObject(cx(), &gNewInstanceClass, NULL, NULL);
   if (!obj) {
     return NULL;
   }

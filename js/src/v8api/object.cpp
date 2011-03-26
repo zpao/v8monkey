@@ -421,7 +421,8 @@ Object::DeleteHiddenValue(Handle<String> key)
 bool
 Object::IsDirty()
 {
-  UNIMPLEMENTEDAPI(false);
+  // TODO: see if we have any properties not from our proto
+  return true;
 }
 
 Local<Object>

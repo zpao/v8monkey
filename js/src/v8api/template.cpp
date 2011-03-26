@@ -4,29 +4,22 @@ namespace v8 {
 using namespace internal;
 
 Template::Template() :
-  Data()
+  Data(OBJECT_TO_JSVAL(JS_NewObject(cx(), NULL, NULL, NULL)))
 {
-  (void)mData.init();
 }
 
 void
 Template::Set(Handle<String> name,
-              Handle<Data> value,
+              Handle<Value> value,
               PropertyAttribute attribs)
 {
-  jsid id;
-  if (!JS_ValueToId(cx(), name->native(), &id)) {
-    // TODO handle failures!
-    UNIMPLEMENTEDAPI();
-  }
-  TemplateHash::AddPtr ref = mData.lookupForAdd(id);
-  PrivateData pd = { Persistent<Data>::New(value), attribs };
-  (void)mData.add(ref, id, pd);
+  Object obj(JSVAL_TO_OBJECT(mVal));
+  obj.Set(name, value, attribs);
 }
 
 void
 Template::Set(const char* name,
-              Handle<Data> value)
+              Handle<Value> value)
 {
   Set(String::New(name), value);
 }

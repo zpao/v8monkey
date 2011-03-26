@@ -436,6 +436,7 @@ private:
   PrivateData& GetHiddenStore();
   friend class Context;
   friend class Script;
+  friend class Template;
   friend class ObjectTemplate;
   friend class Arguments;
   friend class AccessorInfo;
@@ -593,16 +594,14 @@ public:
 
 class Template : public Data {
 public:
-  void Set(Handle<String> name, Handle<Data> value,
+  // XXX v8 header says the second argument should be a Handle<Data>
+  void Set(Handle<String> name, Handle<Value> value,
            PropertyAttribute attribs = None);
 
-  inline void Set(const char* name, Handle<Data> value);
-private:
+  // XXX v8 header says the second argument should be a Handle<Data>
+  inline void Set(const char* name, Handle<Value> value);
+protected:
   Template();
-
-  struct PrivateData;
-  typedef js::HashMap<jsid, PrivateData, internal::JSIDHashPolicy, js::SystemAllocPolicy> TemplateHash;
-  TemplateHash mData;
 
   friend class FunctionTemplate;
   friend class ObjectTemplate;

@@ -262,7 +262,8 @@ Object::ObjectProtoToString()
 Local<String>
 Object::GetConstructorName()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Function f(JS_GetConstructor(cx(), *this));
+  return Local<String>::New(*f.GetName());
 }
 
 int

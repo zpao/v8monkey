@@ -354,7 +354,8 @@ Object::GetRealNamedPropertyInPrototypeChain(Handle<String> key)
 Local<Value>
 Object::GetRealNamedProperty(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  // TODO: this needs to bypass interceptors when they're implemented
+  return Get(key);
 }
 
 bool

@@ -222,7 +222,20 @@ Object::SetAccessor(Handle<String> name,
 Local<Array>
 Object::GetPropertyNames()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  // XXX: this doesn't cover non-enumerable properties
+  JSIdArray *ids = JS_Enumerate(cx(), *this);
+  Local<Array> array = Array::New(ids->length);
+  for (jsint i = 0; i < ids->length; i++) {
+    jsid id = ids->vector[i];
+    jsval val;
+    if (!JS_IdToValue(cx(), id, &val)) {
+      return Local<Array>();
+    }
+    Value v(val);
+    array->Set(i, &v);
+  }
+  JS_DestroyIdArray(cx(), ids);
+  return array;
 }
 
 Local<Value>

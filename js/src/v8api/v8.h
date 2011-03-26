@@ -243,6 +243,7 @@ class TryCatch {
 
   bool mHasCaught;
   bool mCaptureMessage;
+  bool mRethrown;
   Persistent<Value> mException;
   Persistent<v8::Message> mMessage;
 public:

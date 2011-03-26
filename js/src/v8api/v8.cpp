@@ -44,7 +44,8 @@ void TryCatch::ReportError(JSContext *ctx, const char *message, JSErrorReport *r
 
 TryCatch::TryCatch() :
   mHasCaught(false),
-  mCaptureMessage(true)
+  mCaptureMessage(true),
+  mRethrown(false)
 {
   ExceptionHandlerChain *link = new ExceptionHandlerChain;
   link->catcher = this;
@@ -53,15 +54,25 @@ TryCatch::TryCatch() :
 }
 
 TryCatch::~TryCatch() {
-  Reset();
   ExceptionHandlerChain *link = gExnChain;
   JS_ASSERT(link->catcher == this);
   gExnChain = gExnChain->next;
   delete link;
+
+  if (mRethrown) {
+    JS_SetPendingException(cx(), mException->native());
+    JS_ReportPendingException(cx());
+  }
+
+  Reset();
 }
 
 Handle<Value> TryCatch::ReThrow() {
-  UNIMPLEMENTEDAPI(NULL);
+  if (!HasCaught()) {
+    return Handle<Value>();
+  }
+  mRethrown = true;
+  return Undefined();
 }
 
 Local<Value> TryCatch::StackTrace() const {

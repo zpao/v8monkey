@@ -811,6 +811,7 @@ class FunctionTemplate : public Template {
 
 class ObjectTemplate : public Template {
   ObjectTemplate();
+  Object &InternalObject() const;
 public:
   static Local<ObjectTemplate> New();
   Local<Object> NewInstance();

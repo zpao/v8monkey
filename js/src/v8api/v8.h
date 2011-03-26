@@ -480,6 +480,11 @@ public:
 
   static Local<String> New(const char *data, int length = -1);
   static Local<String> FromJSID(jsid id);
+  static inline String* Cast(Value *v) {
+    if (v->IsString())
+      return reinterpret_cast<String*>(v);
+    return NULL;
+  }
 };
 
 
@@ -632,6 +637,11 @@ public:
   int GetScriptLineNumber() const;
   // UNIMPLEMENTEDAPI
   ScriptOrigin GetScriptOrigin() const;
+  static inline Function* Cast(Value *v) {
+    if (v->IsFunction())
+      return reinterpret_cast<Function*>(v);
+    return NULL;
+  }
   static const int kLineOffsetNotFound;
 };
 

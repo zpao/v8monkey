@@ -377,7 +377,8 @@ Object::TurnOnAccessCheck()
 int
 Object::GetIdentityHash()
 {
-  UNIMPLEMENTEDAPI(0);
+  JSObject *obj = *this;
+  return reinterpret_cast<int>(obj);
 }
 
 Object::PrivateData&

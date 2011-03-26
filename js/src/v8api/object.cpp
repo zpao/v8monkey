@@ -228,13 +228,19 @@ Object::GetPropertyNames()
 Local<Value>
 Object::GetPrototype()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Value v(OBJECT_TO_JSVAL(JS_GetPrototype(cx(), *this)));
+  return Local<Value>::New(&v);
 }
 
 void
 Object::SetPrototype(Handle<Value> prototype)
 {
-  UNIMPLEMENTEDAPI();
+  Handle<Object> h(prototype.As<Object>());
+  if (h.IsEmpty()) {
+    // XXX: indicate error? The V8API is unclear here
+    return;
+  }
+  JS_SetPrototype(cx(), *this, **h);
 }
 
 Local<Object>

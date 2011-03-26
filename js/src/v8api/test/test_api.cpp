@@ -241,6 +241,16 @@ test_Script()
 }
 
 void
+test_Date() {
+  v8::HandleScope scope;
+  LocalContext env;
+  double PI = 3.1415926;
+  Local<Value> date_obj = v8::Date::New(PI);
+  CHECK(date_obj->IsDate());
+  CHECK_EQ(3.0, date_obj->NumberValue());
+}
+
+void
 test_TinyInteger()
 {
   v8::HandleScope scope;
@@ -592,6 +602,7 @@ Test gTests[] = {
   TEST(test_Access),
   TEST(test_GetSetProperty),
   TEST(test_Script),
+  TEST(test_Date),
   TEST(test_TinyInteger),
   TEST(test_TinyUnsignedInteger),
   TEST(test_OutOfSignedRangeUnsignedInteger),

@@ -341,6 +341,19 @@ public:
   JSUint32 Value();
 };
 
+class Date : public Value {
+ public:
+  static Local<Value> New(double time);
+  double NumberValue() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  static inline Date* Cast(v8::Value* obj) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  static void DateTimeConfigurationChangeNotification();
+};
+
+
 class String : public Primitive  {
   friend class Value;
 

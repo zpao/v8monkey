@@ -266,6 +266,18 @@ JSUint32 Uint32::Value() {
 
 
 //////////////////////////////////////////////////////////////////////////////
+//// Date class
+
+Local<Value> Date::New(double time) {
+  // We floor the value since anything after the decimal is not used.
+  // This keeps us from having to specialize Value::NumberValue.
+  JSObject *obj = JS_NewDateObjectMsec(cx(), floor(time));
+  Value v(OBJECT_TO_JSVAL(obj));
+  return Local<Value>::New(&v);
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
 //// Primitives & basic values
 
 Handle<Primitive> Undefined() {

@@ -856,15 +856,6 @@ THREADED_TEST(BigUnsignedInteger) {
 }
 
 
-THREADED_TEST(Date) {
-  v8::HandleScope scope;
-  LocalContext env;
-  double PI = 3.1415926;
-  Local<Value> date_obj = v8::Date::New(PI);
-  CHECK_EQ(3.0, date_obj->NumberValue());
-}
-
-
 static v8::Handle<Value> DummyCallHandler(const v8::Arguments& args) {
   ApiTestFuzzer::Fuzz();
   return v8_num(13.4);

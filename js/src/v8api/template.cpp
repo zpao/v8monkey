@@ -13,7 +13,7 @@ Template::Set(Handle<String> name,
               Handle<Value> value,
               PropertyAttribute attribs)
 {
-  Object obj(JSVAL_TO_OBJECT(mVal));
+  Object &obj = *reinterpret_cast<Object*>(this);
   obj.Set(name, value, attribs);
 }
 

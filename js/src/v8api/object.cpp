@@ -252,7 +252,11 @@ Object::FindInstanceInPrototypeChain(Handle<FunctionTemplate> tmpl)
 Local<String>
 Object::ObjectProtoToString()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Object proto(JS_GetPrototype(cx(), *this));
+  Handle<Function> toString = proto.Get(String::New("toString")).As<Function>();
+  if (toString.IsEmpty())
+    return Local<String>();
+  return toString->Call(this, 0, NULL).As<String>();
 }
 
 Local<String>

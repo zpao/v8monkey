@@ -1,3 +1,6 @@
+/* Any copyright is dedicated to the Public Domain.
+   http://creativecommons.org/publicdomain/zero/1.0/ */
+
 #include "v8api_test_harness.h"
 
 void
@@ -55,6 +58,6 @@ Test gTests[] = {
 };
 
 const char* file = __FILE__;
-#define TEST_NAME "Object Properties"
+#define TEST_NAME "TryCatch class"
 #define TEST_FILE file
 #include "v8api_test_harness_tail.h"

@@ -347,7 +347,8 @@ Object::HasRealNamedCallbackProperty(Handle<String> key)
 Local<Value>
 Object::GetRealNamedPropertyInPrototypeChain(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Local<Object> proto = GetPrototype().As<Object>();
+  return proto->GetRealNamedProperty(key);
 }
 
 Local<Value>

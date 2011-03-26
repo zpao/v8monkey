@@ -427,7 +427,20 @@ Object::IsDirty()
 Local<Object>
 Object::Clone()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  // XXX: this doesn't cover non-enumerable properties
+  JSIdArray *ids = JS_Enumerate(cx(), *this);
+  Local<Object> obj = Object::New();
+  for (jsint i = 0; i < ids->length; i++) {
+    jsid id = ids->vector[i];
+    jsval val;
+    if (!JS_IdToValue(cx(), id, &val)) {
+      return Local<Object>();
+    }
+    Value v(val);
+    obj->Set(&v, Get(v.ToString()));
+  }
+  JS_DestroyIdArray(cx(), ids);
+  return obj;
 }
 
 void

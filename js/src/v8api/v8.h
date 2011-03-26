@@ -146,6 +146,11 @@ public:
   }
 
   template <class S>
+  static inline Handle<T> Cast(Handle<S> that) {
+    return Handle<T>(T::Cast(*that));
+  }
+
+  template <class S>
   inline Handle<S> As() const {
     return Handle<S>::Cast(*this);
   }

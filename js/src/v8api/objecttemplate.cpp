@@ -6,34 +6,37 @@ using namespace internal;
 namespace {
 
 JSBool
-v8api_GetProperty(JSContext* cx,
-                  JSObject* obj,
-                  jsid id,
-                  jsval* vp)
+ot_GetProperty(JSContext* cx,
+               JSObject* obj,
+               jsid id,
+               jsval* vp)
 {
-  // TODO this is just a stub
+  // TODO We set accessors on the |Object| representation of our private data.
+  //      Somehow, we need to check if that exists here, and use it if so.  For
+  //      now, we just call the stub method.
   return JS_PropertyStub(cx, obj, id, vp);
 }
 
 JSBool
-v8api_SetProperty(JSContext* cx,
-                  JSObject* obj,
-                  jsid id,
-                  JSBool strict,
-                  jsval* vp)
+ot_SetProperty(JSContext* cx,
+               JSObject* obj,
+               jsid id,
+               JSBool strict,
+               jsval* vp)
 {
-  // TODO this is just a stub
+  // TODO We set accessors on the |Object| representation of our private data.
+  //      Somehow, we need to check if that exists here, and use it if so.  For
+  //      now, we just call the stub method.
   return JS_StrictPropertyStub(cx, obj, id, strict, vp);
 }
 
-// TODO we don't really want to use all these stubs...
 JSClass gNewInstanceClass = {
   NULL, // name
   JSCLASS_HAS_PRIVATE, // flags
   JS_PropertyStub, // addProperty
   JS_PropertyStub, // delProperty
-  v8api_GetProperty, // getProperty
-  v8api_SetProperty, // setProperty
+  ot_GetProperty, // getProperty
+  ot_SetProperty, // setProperty
   JS_EnumerateStub, // enumerate
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert
@@ -141,7 +144,8 @@ ObjectTemplate::SetAccessor(Handle<String> name,
                             AccessControl settings,
                             PropertyAttribute attribute)
 {
-  UNIMPLEMENTEDAPI();
+  (void)InternalObject().SetAccessor(name, getter, setter, data, settings,
+                                     attribute);
 }
 
 void

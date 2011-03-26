@@ -61,7 +61,7 @@ finalize(JSContext* cx,
 }
 
 JSClass gObjectTemplateClass = {
-  NULL, // name
+  "ObjectTemplate", // name
   JSCLASS_HAS_PRIVATE, // flags
   JS_PropertyStub, // addProperty
   JS_PropertyStub, // delProperty

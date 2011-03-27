@@ -604,6 +604,18 @@ void test_GlobalProperties() {
   CHECK_EQ(3.1415926, pi->NumberValue());
 }
 
+void test_GlobalHandle() {
+  v8::Persistent<String> global;
+  {
+    v8::HandleScope scope;
+    Local<String> str = v8_str("str");
+    global = v8::Persistent<String>::New(str);
+  }
+  CHECK_EQ(global->Length(), 3);
+  global.Dispose();
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -625,6 +637,7 @@ Test gTests[] = {
   TEST(test_isNumberType),
   DISABLED_TEST(test_StringWrite, 16),
   TEST(test_GlobalProperties),
+  TEST(test_GlobalHandle),
 };
 
 const char* file = __FILE__;

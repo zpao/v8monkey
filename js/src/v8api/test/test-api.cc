@@ -1552,19 +1552,6 @@ THREADED_TEST(External) {
   i::DeleteArray(data);
 }
 
-
-THREADED_TEST(GlobalHandle) {
-  v8::Persistent<String> global;
-  {
-    v8::HandleScope scope;
-    Local<String> str = v8_str("str");
-    global = v8::Persistent<String>::New(str);
-  }
-  CHECK_EQ(global->Length(), 3);
-  global.Dispose();
-}
-
-
 THREADED_TEST(ScriptException) {
   v8::HandleScope scope;
   LocalContext env;

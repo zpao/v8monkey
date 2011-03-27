@@ -437,7 +437,6 @@ ScriptData* ScriptData::New(const char* data, int length) {
 Script::Script(JSScript *s)
 {
   JSObject *obj = JS_NewScriptObject(cx(), s);
-  JS_SetPrivate(cx(), obj, s);
   mVal = OBJECT_TO_JSVAL(obj);
 }
 

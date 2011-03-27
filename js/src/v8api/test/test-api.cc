@@ -612,17 +612,6 @@ THREADED_TEST(StringConcat) {
   i::Heap::CollectAllGarbage(false);
 }
 
-
-THREADED_TEST(GlobalProperties) {
-  v8::HandleScope scope;
-  LocalContext env;
-  v8::Handle<v8::Object> global = env->Global();
-  global->Set(v8_str("pi"), v8_num(3.1415926));
-  Local<Value> pi = global->Get(v8_str("pi"));
-  CHECK_EQ(3.1415926, pi->NumberValue());
-}
-
-
 static v8::Handle<Value> handle_call(const v8::Arguments& args) {
   ApiTestFuzzer::Fuzz();
   return v8_num(102);

@@ -594,6 +594,16 @@ test_StringWrite() {
   uint16_t answer7[] = {'d', 0x101};
   CHECK_EQ(StrNCmp16(answer7, wbuf, 2), 0);
 }
+
+void test_GlobalProperties() {
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::Handle<v8::Object> global = env->Global();
+  global->Set(v8_str("pi"), v8_num(3.1415926));
+  Local<Value> pi = global->Get(v8_str("pi"));
+  CHECK_EQ(3.1415926, pi->NumberValue());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -614,6 +624,7 @@ Test gTests[] = {
   TEST(test_ConversionNumber),
   TEST(test_isNumberType),
   DISABLED_TEST(test_StringWrite, 16),
+  TEST(test_GlobalProperties),
 };
 
 const char* file = __FILE__;

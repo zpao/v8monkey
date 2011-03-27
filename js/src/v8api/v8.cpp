@@ -450,7 +450,8 @@ Local<Script> Script::New(Handle<String> source, ScriptOrigin *origin,
 }
 
 Local<Script> Script::New(Handle<String> source, Handle<Value> fileName) {
-  UNIMPLEMENTEDAPI(Local<Script>());
+  ScriptOrigin origin(fileName);
+  return New(source, &origin);
 }
 
 Local<Script> Script::Compile(Handle<String> source, ScriptOrigin *origin,
@@ -469,7 +470,8 @@ Local<Script> Script::Compile(Handle<String> source, ScriptOrigin *origin,
 
 Local<Script> Script::Compile(Handle<String> source, Handle<Value> fileName,
                               Handle<String> scriptData) {
-  UNIMPLEMENTEDAPI(Local<Script>());
+  ScriptOrigin origin(fileName);
+  return Compile(source, &origin);
 }
 
 Local<Value> Script::Run() {

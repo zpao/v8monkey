@@ -444,9 +444,30 @@ Script::operator JSScript *() {
   return reinterpret_cast<JSScript*>(JS_GetPrivate(cx(), JSVAL_TO_OBJECT(mVal)));
 }
 
+Handle<Object> Script::InternalObject() {
+  Object o(JSVAL_TO_OBJECT(mVal));
+  return Local<Object>::New(&o);
+}
+
+Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, Handle<String> scriptData, bool bindToCurrentContext) {
+  JS::Anchor<JSString*> anchor(JSVAL_TO_STRING(source->native()));
+  const jschar* chars;
+  size_t len;
+  chars = JS_GetStringCharsAndLength(cx(),
+                                     anchor.get(), &len);
+
+  JSScript* s = JS_CompileUCScript(cx(), NULL,
+                                   chars, len, NULL, NULL);
+  Script script(s);
+  if (bindToCurrentContext) {
+    script.InternalObject()->Set(String::New("global"), Context::GetCurrent()->Global());
+  }
+  return Local<Script>::New(&script);
+}
+
 Local<Script> Script::New(Handle<String> source, ScriptOrigin *origin,
                           ScriptData *preData, Handle<String> scriptData) {
-  UNIMPLEMENTEDAPI(Local<Script>());
+  return Create(source, origin, preData, scriptData, false);
 }
 
 Local<Script> Script::New(Handle<String> source, Handle<Value> fileName) {
@@ -456,16 +477,7 @@ Local<Script> Script::New(Handle<String> source, Handle<Value> fileName) {
 
 Local<Script> Script::Compile(Handle<String> source, ScriptOrigin *origin,
                               ScriptData *preData, Handle<String> scriptData) {
-  JS::Anchor<JSString*> anchor(JSVAL_TO_STRING(source->native()));
-  const jschar* chars;
-  size_t len;
-  chars = JS_GetStringCharsAndLength(cx(),
-                                     anchor.get(), &len);
-
-  JSScript* s = JS_CompileUCScript(cx(), **Context::GetCurrent()->Global(),
-                                   chars, len, NULL, NULL);
-  Script script(s);
-  return Local<Script>::New(&script);
+  return Create(source, origin, preData, scriptData, true);
 }
 
 Local<Script> Script::Compile(Handle<String> source, Handle<Value> fileName,
@@ -475,8 +487,15 @@ Local<Script> Script::Compile(Handle<String> source, Handle<Value> fileName,
 }
 
 Local<Value> Script::Run() {
+  Handle<Value> boundGlobalValue = InternalObject()->Get(String::New("global"));
+  Handle<Object> global;
+  if (boundGlobalValue.IsEmpty()) {
+    global = Context::GetCurrent()->Global();
+  } else {
+    global = boundGlobalValue.As<Object>();
+  }
   jsval js_retval;
-  (void)JS_ExecuteScript(cx(), **Context::GetCurrent()->Global(),
+  (void)JS_ExecuteScript(cx(), **global,
                          *this, &js_retval);
   // js_retval will be unchanged on failure, so it's a JSVAL_VOID.
   Value v(js_retval);

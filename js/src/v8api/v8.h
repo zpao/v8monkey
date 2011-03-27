@@ -675,6 +675,9 @@ class Script : public internal::GCReference {
   Script(JSScript *s);
 
   operator JSScript *();
+  Handle<Object> InternalObject();
+
+  static Local<Script> Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, Handle<String> scriptData, bool bindToCurrentContext);
 public:
   static Local<Script> New(Handle<String> source, ScriptOrigin *origin = NULL,
                            ScriptData *preData = NULL,

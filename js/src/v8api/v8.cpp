@@ -114,7 +114,7 @@ namespace internal {
 }
 
 Context::Context(JSObject *global) :
-  internal::GCReference(OBJECT_TO_JSVAL(global))
+  internal::SecretObject(global)
 {}
 
 Local<Context> Context::GetEntered() {
@@ -130,7 +130,7 @@ void Context::Enter() {
   ContextChain *link = new ContextChain;
   link->next = gContextChain;
   link->ctx = this;
-  link->call = JS_EnterCrossCompartmentCall(cx(), *this);
+  link->call = JS_EnterCrossCompartmentCall(cx(), InternalObject());
   gContextChain = link;
 }
 

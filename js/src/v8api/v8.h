@@ -284,7 +284,7 @@ public:
   void SetCaptureMessage(bool value);
 };
 
-class Context : public internal::GCReference {
+class Context : public internal::SecretObject {
   Context(JSObject *global);
 public:
   void Enter();
@@ -297,9 +297,6 @@ public:
 
   static Persistent<Context> New();
 
-  // TODO: expose Local<Object> Global instead
-  JSObject *getJSGlobal();
-
   struct Scope {
     Scope(Handle<Context> ctx) :
       mCtx(ctx) {
@@ -311,8 +308,6 @@ public:
   private:
     Handle<Context> mCtx;
   };
-
-  operator JSObject*() const { return JSVAL_TO_OBJECT(mVal); }
 };
 
 class ResourceConstraints {
@@ -838,8 +833,7 @@ public:
 };
 
 Local<Object> Context::Global() {
-  Object obj(*this);
-  return Local<Object>::New(&obj);
+  return Local<Object>::New(&InternalObject());
 }
 
 } // namespace v8

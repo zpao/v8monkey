@@ -70,6 +70,17 @@ public:
   GCReference *Localize();
 };
 
+class SecretObject : public GCReference {
+protected:
+  SecretObject(JSObject *obj) :
+    GCReference(OBJECT_TO_JSVAL(obj))
+  {}
+  Object& InternalObject() const {
+    SecretObject *obj = const_cast<SecretObject*>(this);
+    return *reinterpret_cast<Object*>(obj);
+  }
+};
+
 class RCReference {
   size_t mRefCount;
 

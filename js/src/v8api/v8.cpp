@@ -482,7 +482,8 @@ Local<Value> Script::Run() {
 }
 
 Local<Value> Script::Id() {
-  UNIMPLEMENTEDAPI(Local<Value>());
+  Value v(mVal);
+  return Local<Value>::New(&v);
 }
 
 //////////////////////////////////////////////////////////////////////////////

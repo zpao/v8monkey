@@ -464,7 +464,8 @@ Local<Script> Script::Compile(Handle<String> source, ScriptOrigin *origin,
 
   JSScript* s = JS_CompileUCScript(cx(), **Context::GetCurrent()->Global(),
                                    chars, len, NULL, NULL);
-  return Local<Script>::New(new Script(s));
+  Script script(s);
+  return Local<Script>::New(&script);
 }
 
 Local<Script> Script::Compile(Handle<String> source, Handle<Value> fileName,

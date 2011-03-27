@@ -520,7 +520,7 @@ namespace {
 }
 
 Message::Message(const char *message, JSErrorReport *report) :
-  GCReference(OBJECT_TO_JSVAL(JS_NewObject(cx(), &message_class, NULL, NULL)))
+  SecretObject(JS_NewObject(cx(), &message_class, NULL, NULL))
 {
   const char *filename = report->filename ? report->filename : "";
   const char *linebuf = report->linebuf ? report->linebuf : "";
@@ -529,11 +529,6 @@ Message::Message(const char *message, JSErrorReport *report) :
   o.Set(String::New("filename"), String::New(filename));
   o.Set(String::New("lineNumber"), Integer::New(report->lineno));
   o.Set(String::New("line"), String::New(linebuf));
-}
-
-Object &Message::InternalObject() const {
-  Message *msg = const_cast<Message*>(this);
-  return *reinterpret_cast<Object*>(msg);
 }
 
 Local<String> Message::Get() const {

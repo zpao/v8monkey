@@ -219,12 +219,10 @@ public:
   }
 };
 
-class Message : public internal::GCReference {
+class Message : public internal::SecretObject {
   friend class TryCatch;
 
   Message(const char *message, JSErrorReport *report);
-
-  Object &InternalObject() const;
 public:
   Local<String> Get() const;
   Local<String> GetSourceLine() const;

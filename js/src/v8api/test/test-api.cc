@@ -1582,26 +1582,6 @@ THREADED_TEST(MessageHandlerData) {
 }
 
 
-THREADED_TEST(PropertyAttributes) {
-  v8::HandleScope scope;
-  LocalContext context;
-  // read-only
-  Local<String> prop = v8_str("read_only");
-  context->Global()->Set(prop, v8_num(7), v8::ReadOnly);
-  CHECK_EQ(7, context->Global()->Get(prop)->Int32Value());
-  Script::Compile(v8_str("read_only = 9"))->Run();
-  CHECK_EQ(7, context->Global()->Get(prop)->Int32Value());
-  context->Global()->Set(prop, v8_num(10));
-  CHECK_EQ(7, context->Global()->Get(prop)->Int32Value());
-  // dont-delete
-  prop = v8_str("dont_delete");
-  context->Global()->Set(prop, v8_num(13), v8::DontDelete);
-  CHECK_EQ(13, context->Global()->Get(prop)->Int32Value());
-  Script::Compile(v8_str("delete dont_delete"))->Run();
-  CHECK_EQ(13, context->Global()->Get(prop)->Int32Value());
-}
-
-
 THREADED_TEST(Array) {
   v8::HandleScope scope;
   LocalContext context;

@@ -670,6 +670,20 @@ void test_Array() {
   CHECK_EQ(3, arr->Get(2)->Int32Value());
 }
 
+void test_EvalInTryFinally() {
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::TryCatch try_catch;
+  CompileRun("(function() {"
+             "  try {"
+             "    eval('asldkf (*&^&*^');"
+             "  } finally {"
+             "    return;"
+             "  }"
+             "})()");
+  CHECK(!try_catch.HasCaught());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -695,6 +709,7 @@ Test gTests[] = {
   TEST(test_ScriptException),
   TEST(test_PropertyAttributes),
   TEST(test_Array),
+  TEST(test_EvalInTryFinally),
 };
 
 const char* file = __FILE__;

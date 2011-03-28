@@ -26,18 +26,32 @@ void TryCatch::ReportError(JSContext *ctx, const char *message, JSErrorReport *r
   // TODO: figure out if we care about other types of warnings
   if (!JSREPORT_IS_EXCEPTION(report->flags))
     return;
+
   TryCatch *current = gExnChain->catcher;
-  jsval v;
-  if (!JS_GetPendingException(cx(), &v)) {
-    // TODO: log warning?
-    return;
-  }
-  current->mHasCaught = true;
-  Value exn(v);
-  current->mException = Persistent<Value>::New(&exn);
+  JSExceptionState *state = JS_SaveExceptionState(cx());
   if (current->mCaptureMessage) {
     v8::Message m(message, report);
     current->mMessage = Persistent<v8::Message>::New(&m);
+  }
+  JS_RestoreExceptionState(cx(), state);
+}
+
+void TryCatch::CheckForException() {
+  if (!JS_IsExceptionPending(cx())) {
+    return;
+  }
+
+  TryCatch *current = gExnChain->catcher;
+  current->mHasCaught = true;
+
+  Value exn;
+  if (!JS_GetPendingException(cx(), &exn.native())) {
+    // TODO: log warning?
+    return;
+  }
+  current->mException = Persistent<Value>::New(&exn);
+  if (current->mCaptureMessage) {
+    JS_ReportPendingException(cx());
   }
 }
 
@@ -61,7 +75,9 @@ TryCatch::~TryCatch() {
 
   if (mRethrown) {
     JS_SetPendingException(cx(), mException->native());
-    JS_ReportPendingException(cx());
+    CheckForException();
+  } else if (mHasCaught) {
+    JS_ClearPendingException(cx());
   }
 
   Reset();
@@ -495,9 +511,11 @@ Local<Value> Script::Run() {
     global = boundGlobalValue.As<Object>();
   }
   jsval js_retval;
-  (void)JS_ExecuteScript(cx(), **global,
-                         *this, &js_retval);
-  // js_retval will be unchanged on failure, so it's a JSVAL_VOID.
+  if (!JS_ExecuteScript(cx(), **global,
+                        *this, &js_retval)) {
+    TryCatch::CheckForException();
+    return Local<Value>();
+  }
   Value v(js_retval);
   return Local<Value>::New(&v);
 }

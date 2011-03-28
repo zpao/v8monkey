@@ -44,7 +44,8 @@ bool V8::Initialize() {
   JSContext *ctx(JS_NewContext(gRuntime, 8192));
   if (!ctx)
     return false;
-  JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
+  // TODO: look into JSOPTION_NO_SCRIPT_RVAL
+  JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT | JSOPTION_DONT_REPORT_UNCAUGHT);
   JS_SetVersion(ctx, JSVERSION_LATEST);
   JS_SetErrorReporter(ctx, TryCatch::ReportError);
 

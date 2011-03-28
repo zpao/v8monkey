@@ -253,7 +253,9 @@ public:
 
 class TryCatch {
   friend class V8;
+  friend class Script;
   static void ReportError(JSContext *ctx, const char *message, JSErrorReport *report);
+  static void CheckForException();
 
   bool mHasCaught;
   bool mCaptureMessage;

@@ -28,7 +28,7 @@ test_script_run_void()
   // Dispose the persistent context.
   context.Dispose();
 
-  do_check_eq(result->native(), JSVAL_VOID);
+  do_check_true(result.IsEmpty());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

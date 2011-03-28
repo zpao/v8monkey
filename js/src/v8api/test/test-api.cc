@@ -2241,43 +2241,6 @@ THREADED_TEST(ThrowValues) {
 }
 
 
-THREADED_TEST(CatchZero) {
-  v8::HandleScope scope;
-  LocalContext context;
-  v8::TryCatch try_catch;
-  CHECK(!try_catch.HasCaught());
-  Script::Compile(v8_str("throw 10"))->Run();
-  CHECK(try_catch.HasCaught());
-  CHECK_EQ(10, try_catch.Exception()->Int32Value());
-  try_catch.Reset();
-  CHECK(!try_catch.HasCaught());
-  Script::Compile(v8_str("throw 0"))->Run();
-  CHECK(try_catch.HasCaught());
-  CHECK_EQ(0, try_catch.Exception()->Int32Value());
-}
-
-
-THREADED_TEST(CatchExceptionFromWith) {
-  v8::HandleScope scope;
-  LocalContext context;
-  v8::TryCatch try_catch;
-  CHECK(!try_catch.HasCaught());
-  Script::Compile(v8_str("var o = {}; with (o) { throw 42; }"))->Run();
-  CHECK(try_catch.HasCaught());
-}
-
-
-THREADED_TEST(TryCatchAndFinallyHidingException) {
-  v8::HandleScope scope;
-  LocalContext context;
-  v8::TryCatch try_catch;
-  CHECK(!try_catch.HasCaught());
-  CompileRun("function f(k) { try { this[k]; } finally { return 0; } };");
-  CompileRun("f({toString: function() { throw 42; }});");
-  CHECK(!try_catch.HasCaught());
-}
-
-
 v8::Handle<v8::Value> WithTryCatch(const v8::Arguments& args) {
   v8::TryCatch try_catch;
   return v8::Undefined();

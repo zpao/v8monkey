@@ -684,6 +684,44 @@ void test_EvalInTryFinally() {
   CHECK(!try_catch.HasCaught());
 }
 
+void test_CatchZero() {
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::TryCatch try_catch;
+  CHECK(!try_catch.HasCaught());
+  Script::Compile(v8_str("throw 10"))->Run();
+  CHECK(try_catch.HasCaught());
+  CHECK_EQ(10, try_catch.Exception()->Int32Value());
+  try_catch.Reset();
+  CHECK(!try_catch.HasCaught());
+  Script::Compile(v8_str("throw 0"))->Run();
+  CHECK(try_catch.HasCaught());
+  CHECK_EQ(0, try_catch.Exception()->Int32Value());
+}
+
+
+void test_CatchExceptionFromWith() {
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::TryCatch try_catch;
+  CHECK(!try_catch.HasCaught());
+  Script::Compile(v8_str("var o = {}; with (o) { throw 42; }"))->Run();
+  CHECK(try_catch.HasCaught());
+}
+
+
+void test_TryCatchAndFinallyHidingException() {
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::TryCatch try_catch;
+  CHECK(!try_catch.HasCaught());
+  CompileRun("function f(k) { try { this[k]; } finally { return 0; } };");
+  CompileRun("f({toString: function() { throw 42; }});");
+  CHECK(!try_catch.HasCaught());
+}
+
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -710,6 +748,9 @@ Test gTests[] = {
   TEST(test_PropertyAttributes),
   TEST(test_Array),
   TEST(test_EvalInTryFinally),
+  TEST(test_CatchZero),
+  TEST(test_CatchExceptionFromWith),
+  TEST(test_TryCatchAndFinallyHidingException),
 };
 
 const char* file = __FILE__;

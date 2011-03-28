@@ -1582,29 +1582,6 @@ THREADED_TEST(MessageHandlerData) {
 }
 
 
-THREADED_TEST(Array) {
-  v8::HandleScope scope;
-  LocalContext context;
-  Local<v8::Array> array = v8::Array::New();
-  CHECK_EQ(0, array->Length());
-  CHECK(array->Get(0)->IsUndefined());
-  CHECK(!array->Has(0));
-  CHECK(array->Get(100)->IsUndefined());
-  CHECK(!array->Has(100));
-  array->Set(2, v8_num(7));
-  CHECK_EQ(3, array->Length());
-  CHECK(!array->Has(0));
-  CHECK(!array->Has(1));
-  CHECK(array->Has(2));
-  CHECK_EQ(7, array->Get(2)->Int32Value());
-  Local<Value> obj = Script::Compile(v8_str("[1, 2, 3]"))->Run();
-  Local<v8::Array> arr = obj.As<v8::Array>();
-  CHECK_EQ(3, arr->Length());
-  CHECK_EQ(1, arr->Get(0)->Int32Value());
-  CHECK_EQ(2, arr->Get(1)->Int32Value());
-  CHECK_EQ(3, arr->Get(2)->Int32Value());
-}
-
 
 v8::Handle<Value> HandleF(const v8::Arguments& args) {
   v8::HandleScope scope;

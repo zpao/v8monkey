@@ -615,6 +615,18 @@ void test_GlobalHandle() {
   global.Dispose();
 }
 
+void test_ScriptException() {
+  v8::HandleScope scope;
+  LocalContext env;
+  Local<Script> script = Script::Compile(v8_str("throw 'panama!';"));
+  v8::TryCatch try_catch;
+  Local<Value> result = script->Run();
+  CHECK(result.IsEmpty());
+  CHECK(try_catch.HasCaught());
+  String::AsciiValue exception_value(try_catch.Exception());
+  //CHECK_EQ(*exception_value, "panama!");
+  do_check_true(0 == strcmp(*exception_value, "panama!"));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
@@ -638,6 +650,7 @@ Test gTests[] = {
   DISABLED_TEST(test_StringWrite, 16),
   TEST(test_GlobalProperties),
   TEST(test_GlobalHandle),
+  TEST(test_ScriptException),
 };
 
 const char* file = __FILE__;

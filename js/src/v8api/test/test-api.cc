@@ -1552,19 +1552,6 @@ THREADED_TEST(External) {
   i::DeleteArray(data);
 }
 
-THREADED_TEST(ScriptException) {
-  v8::HandleScope scope;
-  LocalContext env;
-  Local<Script> script = Script::Compile(v8_str("throw 'panama!';"));
-  v8::TryCatch try_catch;
-  Local<Value> result = script->Run();
-  CHECK(result.IsEmpty());
-  CHECK(try_catch.HasCaught());
-  String::AsciiValue exception_value(try_catch.Exception());
-  CHECK_EQ(*exception_value, "panama!");
-}
-
-
 bool message_received;
 
 

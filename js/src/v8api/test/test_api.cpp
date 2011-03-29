@@ -1967,7 +1967,13 @@ test_CallbackFunctionName()
 // from test-api.cc:9144
 void
 test_DateAccess()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::Handle<v8::Value> date = v8::Date::New(1224744689038.0);
+  CHECK(date->IsDate());
+  CHECK_EQ(1224744689038.0, date.As<v8::Date>()->NumberValue());
+}
 
 // from test-api.cc:9164
 void
@@ -2645,7 +2651,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_TryCatchSourceInfo),
   UNIMPLEMENTED_TEST(test_CompilationCache),
   UNIMPLEMENTED_TEST(test_CallbackFunctionName),
-  UNIMPLEMENTED_TEST(test_DateAccess),
+  DISABLED_TEST(test_DateAccess, 20),
   UNIMPLEMENTED_TEST(test_PropertyEnumeration),
   UNIMPLEMENTED_TEST(test_DisableAccessChecksWhileConfiguring),
   UNIMPLEMENTED_TEST(test_AccessChecksReenabledCorrectly),

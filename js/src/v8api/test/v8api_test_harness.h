@@ -161,7 +161,7 @@ struct Test
   void (*func)(void);
   const char* const name;
   bool disabled;
-  unsigned issue;
+  int issue;
 };
 #define TEST(aName) \
   {aName, #aName, false, 0}

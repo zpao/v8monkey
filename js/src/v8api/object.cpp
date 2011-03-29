@@ -385,7 +385,7 @@ int
 Object::GetIdentityHash()
 {
   JSObject *obj = *this;
-  return reinterpret_cast<int>(obj);
+  return reinterpret_cast<JSIntPtr>(obj);
 }
 
 Object::PrivateData&

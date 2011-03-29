@@ -50,6 +50,56 @@ static bool IsNaN(double x) {
 #endif
 }
 
+using ::v8::ObjectTemplate;
+using ::v8::Value;
+using ::v8::Context;
+using ::v8::Local;
+using ::v8::String;
+using ::v8::Script;
+using ::v8::Function;
+using ::v8::AccessorInfo;
+using ::v8::Extension;
+
+namespace i = ::i;
+
+
+static void ExpectString(const char* code, const char* expected) {
+  Local<Value> result = CompileRun(code);
+  CHECK(result->IsString());
+  String::AsciiValue ascii(result);
+  CHECK_EQ(expected, *ascii);
+}
+
+
+static void ExpectBoolean(const char* code, bool expected) {
+  Local<Value> result = CompileRun(code);
+  CHECK(result->IsBoolean());
+  CHECK_EQ(expected, result->BooleanValue());
+}
+
+
+static void ExpectTrue(const char* code) {
+  ExpectBoolean(code, true);
+}
+
+
+static void ExpectFalse(const char* code) {
+  ExpectBoolean(code, false);
+}
+
+
+static void ExpectObject(const char* code, Local<Value> expected) {
+  Local<Value> result = CompileRun(code);
+  CHECK(result->Equals(expected));
+}
+
+
+static void ExpectUndefined(const char* code) {
+  Local<Value> result = CompileRun(code);
+  CHECK(result->IsUndefined());
+}
+
+
 static int signature_callback_count;
 static v8::Handle<Value> IncrementingSignatureCallback(
     const v8::Arguments& args) {
@@ -61,6 +111,7 @@ static v8::Handle<Value> IncrementingSignatureCallback(
   return result;
 }
 
+
 static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
   ApiTestFuzzer::Fuzz();
   v8::Handle<v8::Array> result = v8::Array::New(args.Length());
@@ -69,6 +120,32 @@ static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
   }
   return result;
 }
+
+
+THREADED_TEST(Handles) {
+  v8::HandleScope scope;
+  Local<Context> local_env;
+  {
+    LocalContext env;
+    local_env = env.local();
+  }
+
+  // Local context should still be live.
+  CHECK(!local_env.IsEmpty());
+  local_env->Enter();
+
+  v8::Handle<v8::Primitive> undef = v8::Undefined();
+  CHECK(!undef.IsEmpty());
+  CHECK(undef->IsUndefined());
+
+  const char* c_source = "1 + 2 + 3";
+  Local<String> source = String::New(c_source);
+  Local<Script> script = Script::Compile(source);
+  CHECK_EQ(6, script->Run()->Int32Value());
+
+  local_env->Exit();
+}
+
 
 THREADED_TEST(ReceiverSignature) {
   v8::HandleScope scope;
@@ -175,6 +252,62 @@ THREADED_TEST(ArgumentSignature) {
   v8::Handle<Value> value8 = CompileRun(
       "Fun2(new Cons1(), new Cons2()) == '[object Cons1],[object Cons2]'");
   CHECK(value8->IsTrue());
+}
+
+
+THREADED_TEST(HulIgennem) {
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::Handle<v8::Primitive> undef = v8::Undefined();
+  Local<String> undef_str = undef->ToString();
+  char* value = i::NewArray<char>(undef_str->Length() + 1);
+  undef_str->WriteAscii(value);
+  CHECK_EQ(0, strcmp(value, "undefined"));
+  i::DeleteArray(value);
+}
+
+
+THREADED_TEST(Access) {
+  v8::HandleScope scope;
+  LocalContext env;
+  Local<v8::Object> obj = v8::Object::New();
+  Local<Value> foo_before = obj->Get(v8_str("foo"));
+  CHECK(foo_before->IsUndefined());
+  Local<String> bar_str = v8_str("bar");
+  obj->Set(v8_str("foo"), bar_str);
+  Local<Value> foo_after = obj->Get(v8_str("foo"));
+  CHECK(!foo_after->IsUndefined());
+  CHECK(foo_after->IsString());
+  CHECK_EQ(bar_str, foo_after);
+}
+
+
+THREADED_TEST(AccessElement) {
+  v8::HandleScope scope;
+  LocalContext env;
+  Local<v8::Object> obj = v8::Object::New();
+  Local<Value> before = obj->Get(1);
+  CHECK(before->IsUndefined());
+  Local<String> bar_str = v8_str("bar");
+  obj->Set(1, bar_str);
+  Local<Value> after = obj->Get(1);
+  CHECK(!after->IsUndefined());
+  CHECK(after->IsString());
+  CHECK_EQ(bar_str, after);
+
+  Local<v8::Array> value = CompileRun("[\"a\", \"b\"]").As<v8::Array>();
+  CHECK_EQ(v8_str("a"), value->Get(0));
+  CHECK_EQ(v8_str("b"), value->Get(1));
+}
+
+
+THREADED_TEST(Script) {
+  v8::HandleScope scope;
+  LocalContext env;
+  const char* c_source = "1 + 2 + 3";
+  Local<String> source = String::New(c_source);
+  Local<Script> script = Script::Compile(source);
+  CHECK_EQ(6, script->Run()->Int32Value());
 }
 
 
@@ -801,6 +934,15 @@ THREADED_TEST(FindInstanceInPrototypeChain) {
 }
 
 
+THREADED_TEST(TinyInteger) {
+  v8::HandleScope scope;
+  LocalContext env;
+  int32_t value = 239;
+  Local<v8::Integer> value_obj = v8::Integer::New(value);
+  CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
+}
+
+
 THREADED_TEST(BigSmiInteger) {
   v8::HandleScope scope;
   LocalContext env;
@@ -832,6 +974,15 @@ THREADED_TEST(BigInteger) {
 }
 
 
+THREADED_TEST(TinyUnsignedInteger) {
+  v8::HandleScope scope;
+  LocalContext env;
+  uint32_t value = 239;
+  Local<v8::Integer> value_obj = v8::Integer::NewFromUnsigned(value);
+  CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
+}
+
+
 THREADED_TEST(BigUnsignedSmiInteger) {
   v8::HandleScope scope;
   LocalContext env;
@@ -854,12 +1005,67 @@ THREADED_TEST(BigUnsignedInteger) {
 }
 
 
+THREADED_TEST(OutOfSignedRangeUnsignedInteger) {
+  v8::HandleScope scope;
+  LocalContext env;
+  uint32_t INT32_MAX_AS_UINT = (1U << 31) - 1;
+  uint32_t value = INT32_MAX_AS_UINT + 1;
+  CHECK(value > INT32_MAX_AS_UINT);  // No overflow.
+  Local<v8::Integer> value_obj = v8::Integer::NewFromUnsigned(value);
+  CHECK_EQ(static_cast<int64_t>(value), value_obj->Value());
+}
+
+
+THREADED_TEST(Number) {
+  v8::HandleScope scope;
+  LocalContext env;
+  double PI = 3.1415926;
+  Local<v8::Number> pi_obj = v8::Number::New(PI);
+  CHECK_EQ(PI, pi_obj->NumberValue());
+}
+
+
+THREADED_TEST(ToNumber) {
+  v8::HandleScope scope;
+  LocalContext env;
+  Local<String> str = v8_str("3.1415926");
+  CHECK_EQ(3.1415926, str->NumberValue());
+  v8::Handle<v8::Boolean> t = v8::True();
+  CHECK_EQ(1.0, t->NumberValue());
+  v8::Handle<v8::Boolean> f = v8::False();
+  CHECK_EQ(0.0, f->NumberValue());
+}
+
+
 THREADED_TEST(Date) {
   v8::HandleScope scope;
   LocalContext env;
   double PI = 3.1415926;
   Local<Value> date_obj = v8::Date::New(PI);
   CHECK_EQ(3.0, date_obj->NumberValue());
+}
+
+
+THREADED_TEST(Boolean) {
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::Handle<v8::Boolean> t = v8::True();
+  CHECK(t->Value());
+  v8::Handle<v8::Boolean> f = v8::False();
+  CHECK(!f->Value());
+  v8::Handle<v8::Primitive> u = v8::Undefined();
+  CHECK(!u->BooleanValue());
+  v8::Handle<v8::Primitive> n = v8::Null();
+  CHECK(!n->BooleanValue());
+  v8::Handle<String> str1 = v8_str("");
+  CHECK(!str1->BooleanValue());
+  v8::Handle<String> str2 = v8_str("x");
+  CHECK(str2->BooleanValue());
+  CHECK(!v8::Number::New(0)->BooleanValue());
+  CHECK(v8::Number::New(-1)->BooleanValue());
+  CHECK(v8::Number::New(1)->BooleanValue());
+  CHECK(v8::Number::New(42)->BooleanValue());
+  CHECK(!v8_compile("NaN")->Run()->BooleanValue());
 }
 
 
@@ -7421,10 +7627,11 @@ static void GenerateSomeGarbage() {
       "garbage = undefined;");
 }
 
+
 v8::Handle<v8::Value> DirectApiCallback(const v8::Arguments& args) {
   static int count = 0;
   if (count++ % 3 == 0) {
-    v8::V8::LowMemoryNotification();  // This should move the stub
+    i::Heap::CollectAllGarbage(true);  // This should move the stub
     GenerateSomeGarbage();  // This should ensure the old stub memory is flushed
   }
   return v8::Handle<v8::Value>();
@@ -7472,6 +7679,54 @@ THREADED_TEST(CallICFastApi_DirectCall_Throw) {
       "  }"
       "}"
       "f(); result;");
+  CHECK_EQ(v8_str("ggggg"), result);
+}
+
+
+v8::Handle<v8::Value> DirectGetterCallback(Local<String> name,
+                                           const v8::AccessorInfo& info) {
+  if (++p_getter_count % 3 == 0) {
+    i::Heap::CollectAllGarbage(true);
+    GenerateSomeGarbage();
+  }
+  return v8::Handle<v8::Value>();
+}
+
+
+THREADED_TEST(LoadICFastApi_DirectCall_GCMoveStub) {
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::Handle<v8::ObjectTemplate> obj = v8::ObjectTemplate::New();
+  obj->SetAccessor(v8_str("p1"), DirectGetterCallback);
+  context->Global()->Set(v8_str("o1"), obj->NewInstance());
+  p_getter_count = 0;
+  CompileRun(
+      "function f() {"
+      "  for (var i = 0; i < 30; i++) o1.p1;"
+      "}"
+      "f();");
+  CHECK_EQ(30, p_getter_count);
+}
+
+
+v8::Handle<v8::Value> ThrowingDirectGetterCallback(
+    Local<String> name, const v8::AccessorInfo& info) {
+  return v8::ThrowException(v8_str("g"));
+}
+
+
+THREADED_TEST(LoadICFastApi_DirectCall_Throw) {
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::Handle<v8::ObjectTemplate> obj = v8::ObjectTemplate::New();
+  obj->SetAccessor(v8_str("p1"), ThrowingDirectGetterCallback);
+  context->Global()->Set(v8_str("o1"), obj->NewInstance());
+  v8::Handle<Value> result = CompileRun(
+      "var result = '';"
+      "for (var i = 0; i < 5; i++) {"
+      "    try { o1.p1; } catch (e) { result += e; }"
+      "}"
+      "result;");
   CHECK_EQ(v8_str("ggggg"), result);
 }
 
@@ -9836,10 +10091,11 @@ class RegExpStringModificationTest {
     // Inject the input as a global variable.
     i::Handle<i::String> input_name =
         i::Factory::NewStringFromAscii(i::Vector<const char>("input", 5));
-    i::Top::global_context()->global()->SetProperty(*input_name,
-                                                    *input_,
-                                                    NONE)->ToObjectChecked();
-
+    i::Top::global_context()->global()->SetProperty(
+        *input_name,
+        *input_,
+        NONE,
+        i::kNonStrictMode)->ToObjectChecked();
 
     MorphThread morph_thread(this);
     morph_thread.Start();
@@ -12635,3 +12891,4 @@ TEST(DefinePropertyPostDetach) {
   context->DetachGlobal();
   define_property->Call(proxy, 0, NULL);
 }
+

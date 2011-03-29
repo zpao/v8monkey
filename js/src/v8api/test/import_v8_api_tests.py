@@ -30,13 +30,25 @@ srcfile = open(src, "r")
 # Compile the regex since we'll be using it a lot.
 test_re = re.compile("^(THREADED_)?TEST\((.+)\)")
 
+out_stubs = ""
+out_gTests = "Test gTests[] = {\n"
+
 linenum = 0
 for line in srcfile:
   linenum += 1
   match = test_re.match(line)
   if match is not None:
-    out = "// from test-api.cc:" + str(linenum)
-    out += "\nvoid\ntest_" + match.group(2) + "()\n{ }\n"
-    print out
+    out_stubs += "// from test-api.cc:" + str(linenum)
+    out_stubs += "\nvoid\ntest_" + match.group(2) + "()\n{ }\n\n"
+    out_gTests += "  UNIMPLEMENTED_TEST(test_" + match.group(2) + "),\n"
+
+out_gTests += "};"
+
+print "////////////////////////////////////////////////////////////////////////////////"
+print "//// Tests\n"
+print out_stubs
+print "////////////////////////////////////////////////////////////////////////////////"
+print "//// Test Harness\n"
+print out_gTests
 
 srcfile.close()

@@ -167,3 +167,5 @@ struct Test
   {aName, #aName, false, 0}
 #define DISABLED_TEST(aName, aIssueNumber) \
   {aName, #aName, true, aIssueNumber}
+#define UNIMPLEMENTED_TEST(aName) \
+  {aName, #aName, true, -1}

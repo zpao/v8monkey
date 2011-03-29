@@ -680,7 +680,56 @@ test_Vector()
 // from test-api.cc:1954
 void
 test_FunctionCall()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  CompileRun(
+    "function Foo() {"
+    "  var result = [];"
+    "  for (var i = 0; i < arguments.length; i++) {"
+    "    result.push(arguments[i]);"
+    "  }"
+    "  return result;"
+    "}");
+  Local<Function> Foo =
+      Local<Function>::Cast(context->Global()->Get(v8_str("Foo")));
+
+  v8::Handle<Value>* args0 = NULL;
+  Local<v8::Array> a0 = Local<v8::Array>::Cast(Foo->Call(Foo, 0, args0));
+  CHECK_EQ(0, a0->Length());
+
+  v8::Handle<Value> args1[] = { v8_num(1.1) };
+  Local<v8::Array> a1 = Local<v8::Array>::Cast(Foo->Call(Foo, 1, args1));
+  CHECK_EQ(1, a1->Length());
+  CHECK_EQ(1.1, a1->Get(v8::Integer::New(0))->NumberValue());
+
+  v8::Handle<Value> args2[] = { v8_num(2.2),
+                                v8_num(3.3) };
+  Local<v8::Array> a2 = Local<v8::Array>::Cast(Foo->Call(Foo, 2, args2));
+  CHECK_EQ(2, a2->Length());
+  CHECK_EQ(2.2, a2->Get(v8::Integer::New(0))->NumberValue());
+  CHECK_EQ(3.3, a2->Get(v8::Integer::New(1))->NumberValue());
+
+  v8::Handle<Value> args3[] = { v8_num(4.4),
+                                v8_num(5.5),
+                                v8_num(6.6) };
+  Local<v8::Array> a3 = Local<v8::Array>::Cast(Foo->Call(Foo, 3, args3));
+  CHECK_EQ(3, a3->Length());
+  CHECK_EQ(4.4, a3->Get(v8::Integer::New(0))->NumberValue());
+  CHECK_EQ(5.5, a3->Get(v8::Integer::New(1))->NumberValue());
+  CHECK_EQ(6.6, a3->Get(v8::Integer::New(2))->NumberValue());
+
+  v8::Handle<Value> args4[] = { v8_num(7.7),
+                                v8_num(8.8),
+                                v8_num(9.9),
+                                v8_num(10.11) };
+  Local<v8::Array> a4 = Local<v8::Array>::Cast(Foo->Call(Foo, 4, args4));
+  CHECK_EQ(4, a4->Length());
+  CHECK_EQ(7.7, a4->Get(v8::Integer::New(0))->NumberValue());
+  CHECK_EQ(8.8, a4->Get(v8::Integer::New(1))->NumberValue());
+  CHECK_EQ(9.9, a4->Get(v8::Integer::New(2))->NumberValue());
+  CHECK_EQ(10.11, a4->Get(v8::Integer::New(3))->NumberValue());
+}
 
 // from test-api.cc:2012
 void
@@ -2343,6 +2392,7 @@ Test gTests[] = {
   TEST(test_GetSetProperty),
   TEST(test_PropertyAttributes),
   TEST(test_Array),
+  TEST(test_FunctionCall),
   TEST(test_ConversionNumber),
   TEST(test_isNumberType),
   TEST(test_EvalInTryFinally),

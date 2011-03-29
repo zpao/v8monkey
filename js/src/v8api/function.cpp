@@ -26,7 +26,7 @@ Local<Value> Function::Call(Handle<Object> recv, int argc, Handle<Value> argv[])
   for (int i = 0; i < argc; i++)
     values[i] = argv[i]->native();
   jsval rval;
-  if (!JS_CallFunction(cx(), **recv, *this, argc, values, &rval)) {
+  if (!JS_CallFunctionValue(cx(), **recv, mVal, argc, values, &rval)) {
     return Local<Value>();
   }
   Value v(rval);

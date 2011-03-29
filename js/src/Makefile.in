@@ -269,7 +269,9 @@ CPPSRCS += \
 		v8api/string.cpp \
 		v8api/object.cpp \
 		v8api/array.cpp \
+		v8api/function.cpp \
 		v8api/template.cpp \
+		v8api/objecttemplate.cpp \
 		$(NULL)
 
 LOCAL_INCLUDES += -Iv8api
@@ -675,8 +677,8 @@ EXTRA_DSO_LDOPTS += C:/Program\ Files/Intel/VTune/Analyzer/Lib/VtuneApi.lib
 LIBS +=  C:/Program\ Files/Intel/VTune/Analyzer/Lib/VtuneApi.lib
 endif
 
-# BeOS and HP-UX do not require the extra linking of "-lm"
-ifeq (,$(filter BeOS HP-UX WINNT WINCE OpenVMS OS2,$(OS_ARCH)))
+# HP-UX does not require the extra linking of "-lm"
+ifeq (,$(filter HP-UX WINNT WINCE OpenVMS OS2,$(OS_ARCH)))
 EXTRA_LIBS	+= -lm
 endif
 

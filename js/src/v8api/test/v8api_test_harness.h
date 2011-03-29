@@ -108,6 +108,19 @@ operator<<(std::ostream& o,
     } \
   JS_END_MACRO
 
+#define do_check_neq(aActual, aExpected) \
+  JS_BEGIN_MACRO \
+    gTotalTests++; \
+    if (aExpected != aActual) { \
+      gPassedTests++; \
+    } else { \
+      std::ostringstream temp; \
+      temp << __FILE__ << " | Expected '" << aExpected << "' to not be '"; \
+      temp << aActual <<"' at line " << __LINE__; \
+      fail(temp.str().c_str()); \
+    } \
+  JS_END_MACRO
+
 bool
 operator==(const Handle<Value>& a,
            const Handle<Value>& b)
@@ -148,8 +161,9 @@ struct Test
   void (*func)(void);
   const char* const name;
   bool disabled;
+  unsigned issue;
 };
 #define TEST(aName) \
-  {aName, #aName, false}
-#define DISABLED_TEST(aName) \
-  {aName, #aName, true}
+  {aName, #aName, false, 0}
+#define DISABLED_TEST(aName, aIssueNumber) \
+  {aName, #aName, true, aIssueNumber}

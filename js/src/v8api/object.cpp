@@ -9,7 +9,7 @@ using namespace internal;
 struct PropertyData {
   AccessorGetter getter;
   AccessorSetter setter;
-  Handle<Data> data;
+  Handle<Value> data;
 };
 
 typedef js::HashMap<jsid, PropertyData, JSIDHashPolicy, js::SystemAllocPolicy> AccessorTable;
@@ -22,6 +22,40 @@ struct Object::PrivateData {
     properties.init(10);
   }
 };
+
+typedef js::HashMap<JSObject*,Object::PrivateData*, js::DefaultHasher<JSObject*>, js::SystemAllocPolicy> ObjectPrivateDataMap;
+
+static ObjectPrivateDataMap *gPrivateDataMap = 0;
+static ObjectPrivateDataMap& privateDataMap() {
+  if (!gPrivateDataMap) {
+    gPrivateDataMap = new ObjectPrivateDataMap;
+    gPrivateDataMap->init(11);
+  }
+  return *gPrivateDataMap;
+}
+
+JSBool Object::JSAPIPropertyGetter(JSContext* cx, JSObject* obj, jsid id, jsval* vp) {
+  HandleScope scope;
+  Object o(obj);
+  AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
+  AccessorInfo info(p->value.data, obj);
+  Handle<Value> result = p->value.getter(String::FromJSID(id), info);
+  *vp = result->native();
+  // XXX: this is usually correct
+  return JS_TRUE;
+}
+
+JSBool Object::JSAPIPropertySetter(JSContext* , JSObject* obj, jsid id, JSBool, jsval* vp) {
+  HandleScope scope;
+  Object o(obj);
+  AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
+  AccessorInfo info(p->value.data, obj);
+  Value value(*vp);
+  Handle<Value> result = p->value.setter(String::FromJSID(id), &value, info);
+  *vp = result->native();
+  // XXX: this is usually correct
+  return JS_TRUE;
+}
 
 bool
 Object::Set(Handle<Value> key,
@@ -160,29 +194,71 @@ bool
 Object::SetAccessor(Handle<String> name,
                     AccessorGetter getter,
                     AccessorSetter setter,
-                    Handle<Data> data,
+                    Handle<Value> data,
                     AccessControl settings,
                     PropertyAttribute attribs)
 {
-  UNIMPLEMENTEDAPI(false);
+  if (settings != 0) {
+    // We only currently support the default settings.
+    UNIMPLEMENTEDAPI(false);
+  }
+
+  jsid propid;
+  JS_ValueToId(cx(), name->native(), &propid);
+  PropertyData prop = {
+    getter,
+    setter,
+    data
+  };
+  uintN attributes = 0;
+  if (!JS_DefinePropertyById(cx(), *this, propid,
+        JSVAL_VOID,
+        getter ? JSAPIPropertyGetter : NULL,
+        setter ? JSAPIPropertySetter : NULL,
+        attributes)) {
+    return false;
+  }
+  PrivateData &store = GetHiddenStore();
+  AccessorTable::AddPtr slot = store.properties.lookupForAdd(propid);
+  store.properties.add(slot, propid, prop);
+  return true;
 }
 
 Local<Array>
 Object::GetPropertyNames()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  // XXX: this doesn't cover non-enumerable properties
+  JSIdArray *ids = JS_Enumerate(cx(), *this);
+  Local<Array> array = Array::New(ids->length);
+  for (jsint i = 0; i < ids->length; i++) {
+    jsid id = ids->vector[i];
+    jsval val;
+    if (!JS_IdToValue(cx(), id, &val)) {
+      return Local<Array>();
+    }
+    Value v(val);
+    array->Set(i, &v);
+  }
+  JS_DestroyIdArray(cx(), ids);
+  return array;
 }
 
 Local<Value>
 Object::GetPrototype()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Value v(OBJECT_TO_JSVAL(JS_GetPrototype(cx(), *this)));
+  return Local<Value>::New(&v);
 }
 
 void
 Object::SetPrototype(Handle<Value> prototype)
 {
-  UNIMPLEMENTEDAPI();
+  Handle<Object> h(prototype.As<Object>());
+  if (h.IsEmpty()) {
+    // XXX: indicate error? The V8API is unclear here
+    return;
+  }
+  JS_SetPrototype(cx(), *this, **h);
 }
 
 Local<Object>
@@ -194,13 +270,18 @@ Object::FindInstanceInPrototypeChain(Handle<FunctionTemplate> tmpl)
 Local<String>
 Object::ObjectProtoToString()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Object proto(JS_GetPrototype(cx(), *this));
+  Handle<Function> toString = proto.Get(String::New("toString")).As<Function>();
+  if (toString.IsEmpty())
+    return Local<String>();
+  return toString->Call(this, 0, NULL).As<String>();
 }
 
 Local<String>
 Object::GetConstructorName()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Function f(JS_GetConstructor(cx(), *this));
+  return Local<String>::New(*f.GetName());
 }
 
 int
@@ -271,13 +352,15 @@ Object::HasRealNamedCallbackProperty(Handle<String> key)
 Local<Value>
 Object::GetRealNamedPropertyInPrototypeChain(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Local<Object> proto = GetPrototype().As<Object>();
+  return proto->GetRealNamedProperty(key);
 }
 
 Local<Value>
 Object::GetRealNamedProperty(Handle<String> key)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  // TODO: this needs to bypass interceptors when they're implemented
+  return Get(key);
 }
 
 bool
@@ -301,20 +384,24 @@ Object::TurnOnAccessCheck()
 int
 Object::GetIdentityHash()
 {
-  UNIMPLEMENTEDAPI(0);
+  JSObject *obj = *this;
+  return reinterpret_cast<int>(obj);
 }
 
 Object::PrivateData&
 Object::GetHiddenStore()
 {
-  void* obj = JS_GetPrivate(cx(), *this);
-  if (!obj) {
+  ObjectPrivateDataMap::Ptr p = privateDataMap().lookup(*this);
+  PrivateData *pd;
+  if (p.found()) {
+    pd = p->value;
+  } else {
     // XXX this will leak.  Fix!
-    PrivateData* pd = new PrivateData();
-    (void)JS_SetPrivate(cx(), *this, pd);
-    obj = pd;
+    pd = new PrivateData();
+    ObjectPrivateDataMap::AddPtr slot = privateDataMap().lookupForAdd(*this);
+    privateDataMap().add(slot, *this, pd);
   }
-  return *reinterpret_cast<PrivateData*>(obj);
+  return *pd;
 }
 
 bool
@@ -342,13 +429,27 @@ Object::DeleteHiddenValue(Handle<String> key)
 bool
 Object::IsDirty()
 {
-  UNIMPLEMENTEDAPI(false);
+  // TODO: see if we have any properties not from our proto
+  return true;
 }
 
 Local<Object>
 Object::Clone()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  // XXX: this doesn't cover non-enumerable properties
+  JSIdArray *ids = JS_Enumerate(cx(), *this);
+  Local<Object> obj = Object::New();
+  for (jsint i = 0; i < ids->length; i++) {
+    jsid id = ids->vector[i];
+    jsval val;
+    if (!JS_IdToValue(cx(), id, &val)) {
+      return Local<Object>();
+    }
+    Value v(val);
+    obj->Set(&v, Get(v.ToString()));
+  }
+  JS_DestroyIdArray(cx(), ids);
+  return obj;
 }
 
 void

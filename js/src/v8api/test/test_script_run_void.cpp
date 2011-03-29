@@ -6,6 +6,8 @@ test_script_run_void()
   // Create a stack-allocated handle scope.
   HandleScope handle_scope;
 
+  TryCatch trycatch;
+
   // Create a new context.
   Persistent<Context> context = Context::New();
 
@@ -21,10 +23,12 @@ test_script_run_void()
   // Run the script to get the result.
   Handle<Value> result = script->Run();
 
+  do_check_true(trycatch.HasCaught());
+
   // Dispose the persistent context.
   context.Dispose();
 
-  do_check_eq(result->native(), JSVAL_VOID);
+  do_check_true(result.IsEmpty());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

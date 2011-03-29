@@ -4,10 +4,6 @@
 namespace v8 {
 using namespace internal;
 
-String::String(JSString *s) {
-  mVal = STRING_TO_JSVAL(s);
-}
-
 Local<String> String::New(const char *data,
                           int length)
 {
@@ -16,6 +12,17 @@ Local<String> String::New(const char *data,
   }
 
   JSString *str = JS_NewStringCopyN(cx(), data, length);
+  String s(str);
+  return Local<String>::New(&s);
+}
+
+Local<String> String::FromJSID(jsid id) {
+  jsval v;
+  if (!JS_IdToValue(cx(), id, &v))
+    return NULL;
+  JSString* str = JS_ValueToString(cx(), v);
+  if (!str)
+    return NULL;
   String s(str);
   return Local<String>::New(&s);
 }
@@ -89,12 +96,11 @@ int String::WriteUtf8(char* buffer,
                       WriteHints hints) const
 {
   // TODO handle -1 for length!
-  // XXX unclear if this includes the NULL terminator!
   size_t bytesWritten = JS_EncodeStringToBuffer(*this, buffer, length);
 
   // If we have enough space for the NULL terminator, set it.
   if (bytesWritten < size_t(length)) {
-    buffer[bytesWritten + 1] = '\0';
+    buffer[++bytesWritten] = '\0';
   }
 
   // TODO check to make sure we don't overflow int

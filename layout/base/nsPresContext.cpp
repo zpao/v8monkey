@@ -186,7 +186,7 @@ static NS_DEFINE_CID(kLookAndFeelCID,  NS_LOOKANDFEEL_CID);
 
 nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
   : mType(aType), mDocument(aDocument), mTextZoom(1.0), mFullZoom(1.0),
-    mPageSize(-1, -1), mPPScale(1.0f),
+    mPageSize(-1, -1), mPPScale(1.0f), mMinFontSize(0),
     mViewportStyleOverflow(NS_STYLE_OVERFLOW_AUTO, NS_STYLE_OVERFLOW_AUTO),
     mImageAnimationModePref(imgIContainer::kNormalAnimMode),
     // Font sizes default to zero; they will be set in GetFontPreferences
@@ -484,10 +484,10 @@ nsPresContext::GetFontPreferences()
 
   PRInt32 size = nsContentUtils::GetIntPref(pref.get());
   if (unit == eUnit_px) {
-    mMinimumFontSize = CSSPixelsToAppUnits(size);
+    mMinimumFontSizePref = CSSPixelsToAppUnits(size);
   }
   else if (unit == eUnit_pt) {
-    mMinimumFontSize = CSSPointsToAppUnits(size);
+    mMinimumFontSizePref = CSSPointsToAppUnits(size);
   }
 
   // get attributes specific to each generic font
@@ -1071,12 +1071,10 @@ nsPresContext::UpdateCharSet(const nsAFlatCString& aCharSet)
     // this will be a language group (or script) code rather than a true language code
 
     // bug 39570: moved from nsLanguageAtomService::LookupCharSet()
-#if !defined(XP_BEOS) 
     if (mLanguage == nsGkAtoms::Unicode) {
       NS_RELEASE(mLanguage);
       NS_IF_ADDREF(mLanguage = mLangService->GetLocaleLanguage()); 
     }
-#endif
     GetFontPreferences();
   }
 #ifdef IBMBIDI

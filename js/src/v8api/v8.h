@@ -5,14 +5,20 @@
 namespace v8 {
 // Define some classes first so we can use them before fully defined
 struct HandleScope;
+class Value;
 class Boolean;
 class Number;
 class Integer;
 class String;
 class Array;
 class Object;
+class Uint32;
+class Int32;
 class Context;
+class Message;
+class StackTrace;
 class Function;
+class ScriptOrigin;
 class AccessorInfo;
 class FunctionTemplate;
 class ObjectTemplate;
@@ -62,6 +68,17 @@ public:
   GCReference *Globalize();
   void Dispose();
   GCReference *Localize();
+};
+
+class SecretObject : public GCReference {
+protected:
+  SecretObject(JSObject *obj) :
+    GCReference(OBJECT_TO_JSVAL(obj))
+  {}
+  Object& InternalObject() const {
+    SecretObject *obj = const_cast<SecretObject*>(this);
+    return *reinterpret_cast<Object*>(obj);
+  }
 };
 
 class RCReference {
@@ -140,7 +157,12 @@ public:
   }
 
   template <class S>
-  inline Handle<S> As() {
+  static inline Handle<T> Cast(Handle<S> that) {
+    return Handle<T>(T::Cast(*that));
+  }
+
+  template <class S>
+  inline Handle<S> As() const {
     return Handle<S>::Cast(*this);
   }
 };
@@ -163,7 +185,7 @@ public:
   }
 
   template <class S>
-  inline Local<S> As() {
+  inline Local<S> As() const {
     return Local<S>::Cast(*this);
   }
 };
@@ -185,9 +207,86 @@ public:
       return Persistent<T>();
     return reinterpret_cast<T*>(other->Globalize());
   }
+
+  template <class S>
+  static inline Persistent<T> Cast(Persistent<S> that) {
+    return Persistent<T>(T::Cast(*that));
+  }
+
+  template <class S>
+  inline Persistent<S> As() const {
+    return Persistent<S>::Cast(*this);
+  }
 };
 
-class Context : public internal::GCReference {
+class Message : public internal::SecretObject {
+  friend class TryCatch;
+
+  Message(const char *message, JSErrorReport *report);
+public:
+  Local<String> Get() const;
+  Local<String> GetSourceLine() const;
+
+  Handle<Value> GetScriptResourceName() const;
+  Handle<Value> GetScriptData() const;
+
+  Handle<StackTrace> GetStackTrace() const;
+
+  int GetLineNumber() const;
+  int GetStartPosition() const;
+  int GetEndPosition() const;
+
+  int GetStartColumn() const;
+  int GetEndColumn() const;
+
+  static void PrintCurrentStackTrace(FILE* out);
+
+  static const int kNoLineNumberInfo = 0;
+  static const int kNoColumnInfo = 0;
+};
+
+class V8 {
+public:
+  static bool Initialize();
+  static bool Dispose();
+};
+
+class TryCatch {
+  friend class V8;
+  friend class Script;
+  static void ReportError(JSContext *ctx, const char *message, JSErrorReport *report);
+  static void CheckForException();
+
+  bool mHasCaught;
+  bool mCaptureMessage;
+  bool mRethrown;
+  Persistent<Value> mException;
+  Persistent<v8::Message> mMessage;
+public:
+  TryCatch();
+  ~TryCatch();
+
+  bool HasCaught() const {
+    return mHasCaught;
+  }
+  bool CanContinue() const {
+    return true;
+  }
+
+  Handle<Value> ReThrow();
+
+  Local<Value> Exception() const {
+    return Local<Value>::New(*mException);
+  }
+  Local<Value> StackTrace() const;
+
+  Local<v8::Message> Message() const;
+  void Reset();
+  void SetVerbose(bool value);
+  void SetCaptureMessage(bool value);
+};
+
+class Context : public internal::SecretObject {
   Context(JSObject *global);
 public:
   void Enter();
@@ -200,9 +299,6 @@ public:
 
   static Persistent<Context> New();
 
-  // TODO: expose Local<Object> Global instead
-  JSObject *getJSGlobal();
-
   struct Scope {
     Scope(Handle<Context> ctx) :
       mCtx(ctx) {
@@ -214,8 +310,6 @@ public:
   private:
     Handle<Context> mCtx;
   };
-
-  operator JSObject*() const { return JSVAL_TO_OBJECT(mVal); }
 };
 
 class ResourceConstraints {
@@ -260,12 +354,15 @@ public:
   bool IsBoolean() const { return JSVAL_IS_BOOLEAN(mVal); }
   bool IsNumber() const { return JSVAL_IS_NUMBER(mVal); }
   bool IsInt32() const { return JSVAL_IS_INT(mVal); }
+  bool IsUint32() const;
   bool IsDate() const;
 
   Local<Boolean> ToBoolean() const;
   Local<Number> ToNumber() const;
   Local<String> ToString() const;
   Local<Object> ToObject() const;
+  Local<Uint32> ToUint32() const;
+  Local<Int32> ToInt32() const;
 
   bool BooleanValue() const;
   double NumberValue() const;
@@ -277,13 +374,16 @@ public:
   bool StrictEquals(Handle<Value> other) const;
 };
 
-class Primitive : public Value { };
+class Primitive : public Value {
+public:
+  Primitive(jsval val) : Value(val) { }
+};
 
 class Boolean : public Primitive {
 public:
-  Boolean(JSBool val) {
-    mVal = val ? JSVAL_TRUE : JSVAL_FALSE;
-  }
+  Boolean(JSBool val) :
+    Primitive(val ? JSVAL_TRUE : JSVAL_FALSE) { }
+  Boolean(jsval v) : Primitive(v) { }
   bool Value() const {
     return mVal == JSVAL_TRUE;
   }
@@ -292,13 +392,9 @@ public:
 
 class Number : public Primitive {
 protected:
-  Number(jsval v) {
-    mVal = v;
-  }
+  Number(jsval v) : Primitive(v) { }
 public:
-  inline double Value() const {
-    return JSVAL_TO_DOUBLE(mVal);
-  }
+  double Value() const;
   static Local<Number> New(double value);
   static Number* Cast(v8::Value* obj) {
     UNIMPLEMENTEDAPI(NULL);
@@ -306,6 +402,7 @@ public:
 };
 
 class Integer : public Number {
+protected:
   Integer(jsval v) : Number(v) { }
 public:
   static Local<Integer> New(JSInt32 value);
@@ -321,10 +418,38 @@ public:
   }
 };
 
+class Int32 : public Integer {
+  friend class Value;
+  Int32(JSInt32 i) : Integer(INT_TO_JSVAL(i)) { }
+public:
+  JSInt32 Value();
+};
+
+class Uint32 : public Integer {
+  friend class Value;
+  Uint32(JSUint32 i) : Integer(UINT_TO_JSVAL(i)) { }
+public:
+  JSUint32 Value();
+};
+
+class Date : public Value {
+ public:
+  static Local<Value> New(double time);
+  double NumberValue() const {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  static inline Date* Cast(v8::Value* obj) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  static void DateTimeConfigurationChangeNotification();
+};
+
+
 class String : public Primitive  {
   friend class Value;
+  friend class Function;
 
-  String(JSString *s);
+  String(JSString *s) : Primitive (STRING_TO_JSVAL(s)) { }
 
   operator JSString*() const { return JSVAL_TO_STRING(mVal); }
 public:
@@ -360,6 +485,12 @@ public:
   };
 
   static Local<String> New(const char *data, int length = -1);
+  static Local<String> FromJSID(jsid id);
+  static inline String* Cast(Value *v) {
+    if (v->IsString())
+      return reinterpret_cast<String*>(v);
+    return NULL;
+  }
 };
 
 
@@ -396,10 +527,21 @@ enum AccessControl {
 };
 
 class Object : public Value {
+public:
   struct PrivateData;
+private:
   PrivateData& GetHiddenStore();
   friend class Context;
   friend class Script;
+  friend class Template;
+  friend class ObjectTemplate;
+  friend class Arguments;
+  friend class AccessorInfo;
+  friend class Message;
+  friend class Function;
+
+  static JSBool JSAPIPropertyGetter(JSContext*, JSObject* obj, jsid id, jsval* vp);
+  static JSBool JSAPIPropertySetter(JSContext*, JSObject* obj, jsid id, JSBool, jsval* vp);
 protected:
   operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   Object(JSObject *obj);
@@ -414,7 +556,7 @@ public:
   bool Delete(Handle<String> key);
   bool Delete(JSUint32 index);
   bool ForceDelete(Handle<String> key);
-  bool SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Data> data = Handle<Data>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
+  bool SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
   Local<Array> GetPropertyNames();
   Local<Value> GetPrototype();
   void SetPrototype(Handle<Value> prototype);
@@ -453,6 +595,12 @@ public:
   ExternalArrayType GetIndexedPropertiesExternalArrayDataType();
   int GetIndexedPropertiesExternalArrayDataLength();
 
+  static inline Object* Cast(Value *obj) {
+    if (obj->IsObject())
+      return reinterpret_cast<Object*>(obj);
+    return NULL;
+  }
+
   static Local<Object> New();
 };
 
@@ -471,6 +619,36 @@ class Array : public Object {
     }
     return NULL;
   }
+};
+
+class Function : public Object {
+  Function(JSObject *obj) :
+    Object(obj)
+  {}
+  Function(JSFunction *fn) :
+    Object(JS_GetFunctionObject(fn))
+  {}
+
+  operator JSFunction *() const;
+
+  friend class Object;
+  friend class Arguments;
+public:
+  Local<Object> NewInstance() const;
+  Local<Object> NewInstance(int argc, Handle<Value> argv[]) const;
+  Local<Value> Call(Handle<Object> recv, int argc, Handle<Value> argv[]) const;
+  void SetName(Handle<String> name);
+  Handle<String> GetName() const;
+
+  int GetScriptLineNumber() const;
+  // UNIMPLEMENTEDAPI
+  ScriptOrigin GetScriptOrigin() const;
+  static inline Function* Cast(Value *v) {
+    if (v->IsFunction())
+      return reinterpret_cast<Function*>(v);
+    return NULL;
+  }
+  static const int kLineOffsetNotFound;
 };
 
 class ScriptOrigin {
@@ -503,6 +681,9 @@ class Script : public internal::GCReference {
   Script(JSScript *s);
 
   operator JSScript *();
+  Handle<Object> InternalObject();
+
+  static Local<Script> Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, Handle<String> scriptData, bool bindToCurrentContext);
 public:
   static Local<Script> New(Handle<String> source, ScriptOrigin *origin = NULL,
                            ScriptData *preData = NULL,
@@ -520,53 +701,59 @@ public:
 
 class Template : public Data {
 public:
-  void Set(Handle<String> name, Handle<Data> value,
+  // XXX v8 header says the second argument should be a Handle<Data>
+  void Set(Handle<String> name, Handle<Value> value,
            PropertyAttribute attribs = None);
 
-  inline void Set(const char* name, Handle<Data> value);
-private:
-  Template();
-
-  struct PrivateData;
-  typedef js::HashMap<jsid, PrivateData, internal::JSIDHashPolicy, js::SystemAllocPolicy> TemplateHash;
-  TemplateHash mData;
+  // XXX v8 header says the second argument should be a Handle<Data>
+  inline void Set(const char* name, Handle<Value> value);
+protected:
+  Template(JSClass* clasp);
 
   friend class FunctionTemplate;
   friend class ObjectTemplate;
 };
 
 class Arguments {
+  friend class Object;
+  Arguments(JSContext* cx, JSObject* thisObj, int nargs, jsval* vals, Handle<Value> data);
+
+  JSContext *mCtx;
+  jsval *mValues;
+  JSObject *mThis;
+  int mLength;
+  Local<Value> mData;
 public:
   int Length() const {
-    UNIMPLEMENTEDAPI(0);
+    return mLength;
   }
-  Local<Value> operator[](int i) const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-  Local<Function> Callee() const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
+  Local<Value> operator[](int i) const;
+  Local<Function> Callee() const;
+
   Local<Object> This() const {
-    UNIMPLEMENTEDAPI(NULL);
+    Object o(mThis);
+    return Local<Object>::New(&o);
   }
   Local<Object> Holder() const {
     UNIMPLEMENTEDAPI(NULL);
   }
-  bool IsConstructCall() const {
-    UNIMPLEMENTEDAPI(false);
-  }
+  bool IsConstructCall() const;
   Local<Value> Data() const {
-    UNIMPLEMENTEDAPI(NULL);
+    return mData;
   }
 };
 
 class AccessorInfo {
+  friend class Object;
+  AccessorInfo(Handle<Value> data, JSObject *obj);
+
+  Handle<Value> mData;
+  JSObject* mObj;
+public:
   Local<Value> Data() const {
-    UNIMPLEMENTEDAPI(NULL);
+    return Local<Value>::New(mData);
   }
-  Local<Object> This() const {
-    UNIMPLEMENTEDAPI(NULL);
-  }
+  Local<Object> This() const;
   Local<Object> Holder() const {
     UNIMPLEMENTEDAPI(NULL);
   }
@@ -632,50 +819,23 @@ class FunctionTemplate : public Template {
 };
 
 class ObjectTemplate : public Template {
-  static Local<ObjectTemplate> New() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  Local<Object> NewInstance() {
-    UNIMPLEMENTEDAPI(NULL);
-  }
-
-  void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void SetNamedPropertyHandler(NamedPropertyGetter getter, NamedPropertySetter setter = 0, NamedPropertyQuery query = 0, NamedPropertyDeleter deleter = 0, NamedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>()) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void SetIndexedPropertyHandler(IndexedPropertyGetter getter, IndexedPropertySetter setter = 0, IndexedPropertyQuery query = 0, IndexedPropertyDeleter deleter = 0, IndexedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>()) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void SetCallAsFunctionHandler(InvocationCallback callback, Handle<Value> data = Handle<Value>()) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void MarkAsUndetectable() {
-    UNIMPLEMENTEDAPI();
-  }
-
-  void SetAccessCheckACalback(NamedSecurityCallback named_handler, IndexedSecurityCallback indexed_callback, Handle<Value> data = Handle<Value>(), bool turned_on_by_default = true) {
-    UNIMPLEMENTEDAPI();
-  }
-
-  int InternalFieldCount() {
-    UNIMPLEMENTEDAPI(0);
-  }
-
-  void SetInternalFieldCount(int i) {
-    UNIMPLEMENTEDAPI();
-  }
+  ObjectTemplate();
+  Object &InternalObject() const;
+public:
+  static Local<ObjectTemplate> New();
+  Local<Object> NewInstance();
+  void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
+  void SetNamedPropertyHandler(NamedPropertyGetter getter, NamedPropertySetter setter = 0, NamedPropertyQuery query = 0, NamedPropertyDeleter deleter = 0, NamedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>());
+  void SetIndexedPropertyHandler(IndexedPropertyGetter getter, IndexedPropertySetter setter = 0, IndexedPropertyQuery query = 0, IndexedPropertyDeleter deleter = 0, IndexedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>());
+  void SetCallAsFunctionHandler(InvocationCallback callback, Handle<Value> data = Handle<Value>());
+  void MarkAsUndetectable();
+  void SetAccessCheckCallbacks(NamedSecurityCallback named_handler, IndexedSecurityCallback indexed_callback, Handle<Value> data = Handle<Value>(), bool turned_on_by_default = true);
+  int InternalFieldCount();
+  void SetInternalFieldCount(int value);
 };
 
 Local<Object> Context::Global() {
-  Object obj(*this);
-  return Local<Object>::New(&obj);
+  return Local<Object>::New(&InternalObject());
 }
 
 } // namespace v8

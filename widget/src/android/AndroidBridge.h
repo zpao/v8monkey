@@ -145,6 +145,7 @@ public:
                            const nsAString& aTitle = EmptyString());
 
     void GetMimeTypeFromExtensions(const nsACString& aFileExt, nsCString& aMimeType);
+    void GetExtensionFromMimeType(const nsCString& aMimeType, nsACString& aFileExt);
 
     void MoveTaskToBack();
 
@@ -186,7 +187,7 @@ public:
 
     bool IsNetworkLinkKnown();
 
-    void SetSelectedLocale(const nsACString&);
+    void SetSelectedLocale(const nsAString&);
 
     struct AutoLocalJNIFrame {
         AutoLocalJNIFrame(int nEntries = 128) : mEntries(nEntries) {
@@ -260,6 +261,7 @@ protected:
     jmethodID jGetHandlersForURL;
     jmethodID jOpenUriExternal;
     jmethodID jGetMimeTypeFromExtensions;
+    jmethodID jGetExtensionFromMimeType;
     jmethodID jMoveTaskToBack;
     jmethodID jGetClipboardText;
     jmethodID jSetClipboardText;

@@ -2357,7 +2357,23 @@ test_RegExp()
 // from test-api.cc:12833
 void
 test_Equals()
-{ }
+{
+  v8::HandleScope handleScope;
+  LocalContext localContext;
+
+  v8::Handle<v8::Object> globalProxy = localContext->Global();
+  v8::Handle<Value> global = globalProxy->GetPrototype();
+
+  CHECK(global->StrictEquals(global));
+  CHECK(!global->StrictEquals(globalProxy));
+  CHECK(!globalProxy->StrictEquals(global));
+  CHECK(globalProxy->StrictEquals(globalProxy));
+
+  CHECK(global->Equals(global));
+  CHECK(!global->Equals(globalProxy));
+  CHECK(!globalProxy->Equals(global));
+  CHECK(globalProxy->Equals(globalProxy));
+}
 
 // from test-api.cc:12865
 void
@@ -2707,7 +2723,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DontDeleteCellLoadICAPI),
   UNIMPLEMENTED_TEST(test_GlobalLoadICGC),
   UNIMPLEMENTED_TEST(test_RegExp),
-  UNIMPLEMENTED_TEST(test_Equals),
+  DISABLED_TEST(test_Equals, 19),
   UNIMPLEMENTED_TEST(test_NamedEnumeratorAndForIn),
   UNIMPLEMENTED_TEST(test_DefinePropertyPostDetach),
 };

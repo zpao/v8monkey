@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 # For now this file won't actually do any importing.
 # This will read through V8's test-api.cc and output the corresponding test

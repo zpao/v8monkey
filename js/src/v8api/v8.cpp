@@ -130,7 +130,7 @@ namespace internal {
 }
 
 Context::Context(JSObject *global) :
-  internal::SecretObject(global)
+  internal::SecretObject<internal::GCReference>(global)
 {}
 
 Local<Context> Context::GetEntered() {

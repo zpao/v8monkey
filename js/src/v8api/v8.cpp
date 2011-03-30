@@ -538,7 +538,7 @@ namespace {
 }
 
 Message::Message(const char *message, JSErrorReport *report) :
-  SecretObject(JS_NewObject(cx(), &message_class, NULL, NULL))
+  SecretObject<internal::GCReference>(JS_NewObject(cx(), &message_class, NULL, NULL))
 {
   const char *filename = report->filename ? report->filename : "";
   const char *linebuf = report->linebuf ? report->linebuf : "";

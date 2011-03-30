@@ -113,7 +113,9 @@ ObjectTemplate::New()
 Local<Object>
 ObjectTemplate::NewInstance()
 {
-  JSObject* obj = JS_NewObject(cx(), &gNewInstanceClass, NULL, NULL);
+  // We've set everything we care about on our SecretObject, so we can assign
+  // that to the prototype of our new object.
+  JSObject* obj = JS_NewObject(cx(), &gNewInstanceClass, InternalObject(), NULL);
   if (!obj) {
     return NULL;
   }
@@ -122,8 +124,6 @@ ObjectTemplate::NewInstance()
     // TODO handle error better
     return NULL;
   }
-
-  // TODO iterate properties added with Template::Set
 
   Object o(obj);
   return Local<Object>::New(&o);

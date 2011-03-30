@@ -250,6 +250,8 @@ class V8 {
 public:
   static bool Initialize();
   static bool Dispose();
+
+  static Handle<Value> ThrowException(Handle<Value> exception);
 };
 
 class TryCatch {

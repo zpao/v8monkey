@@ -70,10 +70,11 @@ public:
   GCReference *Localize();
 };
 
-class SecretObject : public GCReference {
+template <class Inherits>
+class SecretObject : public Inherits {
 protected:
   SecretObject(JSObject *obj) :
-    GCReference(OBJECT_TO_JSVAL(obj))
+    Inherits(OBJECT_TO_JSVAL(obj))
   {}
   Object& InternalObject() const {
     SecretObject *obj = const_cast<SecretObject*>(this);
@@ -219,7 +220,7 @@ public:
   }
 };
 
-class Message : public internal::SecretObject {
+class Message : public internal::SecretObject<internal::GCReference> {
   friend class TryCatch;
 
   Message(const char *message, JSErrorReport *report);
@@ -286,7 +287,7 @@ public:
   void SetCaptureMessage(bool value);
 };
 
-class Context : public internal::SecretObject {
+class Context : public internal::SecretObject<internal::GCReference> {
   Context(JSObject *global);
 public:
   void Enter();

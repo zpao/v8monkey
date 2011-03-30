@@ -4,7 +4,7 @@ namespace v8 {
 using namespace internal;
 
 Template::Template(JSClass* clasp) :
-  Data(OBJECT_TO_JSVAL(JS_NewObject(cx(), clasp, NULL, NULL)))
+  SecretObject(JS_NewObject(cx(), clasp, NULL, NULL))
 {
 }
 

@@ -103,13 +103,6 @@ ObjectTemplate::ObjectTemplate() :
   (void)JS_SetPrivate(cx(), JSVAL_TO_OBJECT(mVal), data);
 }
 
-Object&
-ObjectTemplate::InternalObject() const
-{
-  ObjectTemplate* msg = const_cast<ObjectTemplate*>(this);
-  return *reinterpret_cast<Object*>(msg);
-}
-
 // static
 Local<ObjectTemplate>
 ObjectTemplate::New()

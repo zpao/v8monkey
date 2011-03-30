@@ -700,7 +700,7 @@ public:
   Local<Value> Id();
 };
 
-class Template : public Data {
+class Template : public internal::SecretObject<Data> {
 public:
   // XXX v8 header says the second argument should be a Handle<Data>
   void Set(Handle<String> name, Handle<Value> value,
@@ -821,7 +821,6 @@ class FunctionTemplate : public Template {
 
 class ObjectTemplate : public Template {
   ObjectTemplate();
-  Object &InternalObject() const;
 public:
   static Local<ObjectTemplate> New();
   Local<Object> NewInstance();

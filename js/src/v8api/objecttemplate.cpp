@@ -93,8 +93,8 @@ struct PrivateData
 };
 
 void
-finalize(JSContext* cx,
-         JSObject* obj)
+ot_finalize(JSContext* cx,
+            JSObject* obj)
 {
   PrivateData* data = PrivateData::Get(cx, obj);
   delete data;
@@ -110,7 +110,7 @@ JSClass gObjectTemplateClass = {
   JS_EnumerateStub, // enumerate
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert
-  finalize, // finalize
+  ot_finalize, // finalize
   NULL, // getObjectOps
   NULL, // checkAccess
   NULL, // call

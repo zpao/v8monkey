@@ -11,9 +11,8 @@ ot_GetProperty(JSContext* cx,
                jsid id,
                jsval* vp)
 {
-  // TODO We set accessors on the |Object| representation of our private data.
-  //      Somehow, we need to check if that exists here, and use it if so.  For
-  //      now, we just call the stub method.
+  // TODO get the accessors from PrivateData stored on the object in our private
+  //      data.
   return JS_PropertyStub(cx, obj, id, vp);
 }
 
@@ -24,9 +23,8 @@ ot_SetProperty(JSContext* cx,
                JSBool strict,
                jsval* vp)
 {
-  // TODO We set accessors on the |Object| representation of our private data.
-  //      Somehow, we need to check if that exists here, and use it if so.  For
-  //      now, we just call the stub method.
+  // TODO get the accessors from PrivateData stored on the object in our private
+  //      data.
   return JS_StrictPropertyStub(cx, obj, id, strict, vp);
 }
 

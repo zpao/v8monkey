@@ -36,7 +36,7 @@ void notImplemented() {
 using namespace internal;
 
 bool V8::Initialize() {
-  JS_CStringsAreUTF8();
+  JS_SetCStringsAreUTF8();
   gRuntime = JS_NewRuntime(64 * MB);
   if(!gRuntime)
     return false;

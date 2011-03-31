@@ -626,4 +626,11 @@ Local<Object> AccessorInfo::This() const {
   return Local<Object>::New(&o);
 }
 
+const AccessorInfo
+AccessorInfo::MakeAccessorInfo(Handle<Value> data,
+                               JSObject* obj)
+{
+  return AccessorInfo(data, obj);
+}
+
 }

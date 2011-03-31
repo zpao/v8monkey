@@ -775,6 +775,7 @@ class AccessorInfo {
   Handle<Value> mData;
   JSObject* mObj;
 public:
+  static const AccessorInfo MakeAccessorInfo(Handle<Value> data, JSObject* obj);
   Local<Value> Data() const {
     return Local<Value>::New(mData);
   }

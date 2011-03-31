@@ -146,10 +146,10 @@ String::Utf8Value::Utf8Value(Handle<v8::Value> val)
   // TODO: Do we need something about HandleScope here?
   Local<String> str = val->ToString();
   if (!str.IsEmpty()) {
-    int len = str->Length();
+    int len = str->Utf8Length();
     // Need space for the NULL terminator.
     mStr = new char[len + 1];
-    mLength = str->WriteUtf8(mStr);
+    mLength = str->WriteUtf8(mStr, len + 1) - 1;
   }
 }
 String::Utf8Value::~Utf8Value() {

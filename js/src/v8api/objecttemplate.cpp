@@ -100,7 +100,7 @@ ObjectTemplate::ObjectTemplate() :
   Template(&gObjectTemplateClass)
 {
   PrivateData* data = new PrivateData();
-  (void)JS_SetPrivate(cx(), JSVAL_TO_OBJECT(mVal), data);
+  (void)JS_SetPrivate(cx(), InternalObject(), data);
 }
 
 // static

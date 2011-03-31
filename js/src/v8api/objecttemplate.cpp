@@ -53,6 +53,20 @@ JSClass gNewInstanceClass = {
 
 struct PrivateData
 {
+  PrivateData() :
+    namedGetter(NULL),
+    namedSetter(NULL),
+    namedQuery(NULL),
+    namedDeleter(NULL),
+    namedEnumerator(NULL),
+    indexedGetter(NULL),
+    indexedSetter(NULL),
+    indexedQuery(NULL),
+    indexedDeleter(NULL),
+    indexedEnumerator(NULL)
+  {
+  }
+
   static PrivateData* Get(JSContext* cx,
                           JSObject* obj)
   {
@@ -62,6 +76,22 @@ struct PrivateData
   {
     return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
   }
+
+  // Named Property Handler storage.
+  NamedPropertyGetter namedGetter;
+  NamedPropertySetter namedSetter;
+  NamedPropertyQuery namedQuery;
+  NamedPropertyDeleter namedDeleter;
+  NamedPropertyEnumerator namedEnumerator;
+  Persistent<Value> namedData;
+
+  // Indexed Property Handler storage.
+  IndexedPropertyGetter indexedGetter;
+  IndexedPropertySetter indexedSetter;
+  IndexedPropertyQuery indexedQuery;
+  IndexedPropertyDeleter indexedDeleter;
+  IndexedPropertyEnumerator indexedEnumerator;
+  Persistent<Value> indexedData;
 };
 
 void
@@ -148,7 +178,13 @@ ObjectTemplate::SetNamedPropertyHandler(NamedPropertyGetter getter,
                                         NamedPropertyEnumerator enumerator,
                                         Handle<Value> data)
 {
-  UNIMPLEMENTEDAPI();
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  pd->namedGetter = getter;
+  pd->namedSetter = setter;
+  pd->namedQuery = query;
+  pd->namedDeleter = deleter;
+  pd->namedEnumerator = enumerator;
+  pd->namedData = Persistent<Value>::New(data);
 }
 
 void
@@ -159,7 +195,13 @@ ObjectTemplate::SetIndexedPropertyHandler(IndexedPropertyGetter getter,
                                           IndexedPropertyEnumerator enumerator,
                                           Handle<Value> data)
 {
-  UNIMPLEMENTEDAPI();
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  pd->indexedGetter = getter;
+  pd->indexedSetter = setter;
+  pd->indexedQuery = query;
+  pd->indexedDeleter = deleter;
+  pd->indexedEnumerator = enumerator;
+  pd->indexedData = Persistent<Value>::New(data);
 }
 
 void

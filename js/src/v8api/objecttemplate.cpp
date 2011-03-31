@@ -5,6 +5,49 @@ using namespace internal;
 
 namespace {
 
+struct PrivateData
+{
+  PrivateData() :
+    namedGetter(NULL),
+    namedSetter(NULL),
+    namedQuery(NULL),
+    namedDeleter(NULL),
+    namedEnumerator(NULL),
+    indexedGetter(NULL),
+    indexedSetter(NULL),
+    indexedQuery(NULL),
+    indexedDeleter(NULL),
+    indexedEnumerator(NULL)
+  {
+  }
+
+  static PrivateData* Get(JSContext* cx,
+                          JSObject* obj)
+  {
+    return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
+  }
+  static PrivateData* Get(JSObject* obj)
+  {
+    return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
+  }
+
+  // Named Property Handler storage.
+  NamedPropertyGetter namedGetter;
+  NamedPropertySetter namedSetter;
+  NamedPropertyQuery namedQuery;
+  NamedPropertyDeleter namedDeleter;
+  NamedPropertyEnumerator namedEnumerator;
+  Persistent<Value> namedData;
+
+  // Indexed Property Handler storage.
+  IndexedPropertyGetter indexedGetter;
+  IndexedPropertySetter indexedSetter;
+  IndexedPropertyQuery indexedQuery;
+  IndexedPropertyDeleter indexedDeleter;
+  IndexedPropertyEnumerator indexedEnumerator;
+  Persistent<Value> indexedData;
+};
+
 struct ObjectTemplateHandle
 {
   ObjectTemplateHandle(ObjectTemplate* ot) :
@@ -70,49 +113,6 @@ JSClass gNewInstanceClass = {
   NULL, // hasInstance
   NULL, // mark
   NULL, // reservedSlots
-};
-
-struct PrivateData
-{
-  PrivateData() :
-    namedGetter(NULL),
-    namedSetter(NULL),
-    namedQuery(NULL),
-    namedDeleter(NULL),
-    namedEnumerator(NULL),
-    indexedGetter(NULL),
-    indexedSetter(NULL),
-    indexedQuery(NULL),
-    indexedDeleter(NULL),
-    indexedEnumerator(NULL)
-  {
-  }
-
-  static PrivateData* Get(JSContext* cx,
-                          JSObject* obj)
-  {
-    return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
-  }
-  static PrivateData* Get(JSObject* obj)
-  {
-    return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
-  }
-
-  // Named Property Handler storage.
-  NamedPropertyGetter namedGetter;
-  NamedPropertySetter namedSetter;
-  NamedPropertyQuery namedQuery;
-  NamedPropertyDeleter namedDeleter;
-  NamedPropertyEnumerator namedEnumerator;
-  Persistent<Value> namedData;
-
-  // Indexed Property Handler storage.
-  IndexedPropertyGetter indexedGetter;
-  IndexedPropertySetter indexedSetter;
-  IndexedPropertyQuery indexedQuery;
-  IndexedPropertyDeleter indexedDeleter;
-  IndexedPropertyEnumerator indexedEnumerator;
-  Persistent<Value> indexedData;
 };
 
 void

@@ -100,7 +100,7 @@ int String::WriteUtf8(char* buffer,
 
   // If we have enough space for the NULL terminator, set it.
   if (bytesWritten < size_t(length)) {
-    buffer[++bytesWritten] = '\0';
+    buffer[bytesWritten++] = '\0';
   }
 
   // TODO check to make sure we don't overflow int

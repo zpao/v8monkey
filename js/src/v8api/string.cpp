@@ -132,4 +132,29 @@ String::AsciiValue::~AsciiValue() {
   if (mStr)
     delete[] mStr;
 }
+
+String::Utf8Value::Utf8Value(Handle<v8::Value> val)
+{
+  // Set some defaults which will be used for empty values/strings
+  mStr = NULL;
+  mLength = 0;
+
+  if (val.IsEmpty()) {
+    return;
+  }
+
+  // TODO: Do we need something about HandleScope here?
+  Local<String> str = val->ToString();
+  if (!str.IsEmpty()) {
+    int len = str->Length();
+    // Need space for the NULL terminator.
+    mStr = new char[len + 1];
+    mLength = str->WriteUtf8(mStr);
+  }
+}
+String::Utf8Value::~Utf8Value() {
+  if (mStr)
+    delete[] mStr;
+}
+
 }

@@ -484,6 +484,20 @@ public:
                int* nchars_ref = NULL,
                WriteHints hints = NO_HINTS) const;
 
+  class Utf8Value {
+    char* mStr;
+    int mLength;
+    // Disallow copying and assigning.
+    Utf8Value(const Utf8Value&);
+    void operator=(const Utf8Value&);
+  public:
+    explicit Utf8Value(Handle<v8::Value> val);
+    ~Utf8Value();
+    char* operator*() { return mStr; }
+    const char* operator*() const { return mStr; }
+    int length() const { return mLength; }
+  };
+
   class AsciiValue {
     char* mStr;
     int mLength;

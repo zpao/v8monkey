@@ -107,8 +107,25 @@ o_SetProperty(JSContext* cx,
               JSBool strict,
               jsval* vp)
 {
-  // TODO get the accessors from PrivateData stored on the object in our private
-  //      data.
+  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
+  PrivateData* pd = PrivateData::Get(ot);
+  if (JSID_IS_INT(id) && pd->indexedSetter) {
+    Value val(*vp);
+    const AccessorInfo info =
+      AccessorInfo::MakeAccessorInfo(pd->indexedData, obj);
+    JSUint32 idx = JSID_TO_INT(id);
+    *vp = pd->indexedSetter(idx, Local<Value>(&val), info)->native();
+    return JS_TRUE;
+  }
+  else if (JSID_IS_STRING(id) && pd->namedSetter) {
+    Value val(*vp);
+    const AccessorInfo info =
+      AccessorInfo::MakeAccessorInfo(pd->namedData, obj);
+    *vp = pd->namedSetter(String::FromJSID(id), Local<Value>(&val),
+                          info)->native();
+    return JS_TRUE;
+  }
+
   return JS_StrictPropertyStub(cx, obj, id, strict, vp);
 }
 

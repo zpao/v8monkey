@@ -5,6 +5,21 @@ using namespace internal;
 
 namespace {
 
+struct ObjectTemplateHandle
+{
+  ObjectTemplateHandle(ObjectTemplate* ot) :
+    objectTemplate(ot)
+  {
+  }
+  static ObjectTemplateHandle* Get(JSContext* cx,
+                                   JSObject* obj)
+  {
+    return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+  }
+
+  Persistent<ObjectTemplate> objectTemplate;
+};
+
 JSBool
 o_GetProperty(JSContext* cx,
               JSObject* obj,
@@ -28,6 +43,14 @@ o_SetProperty(JSContext* cx,
   return JS_StrictPropertyStub(cx, obj, id, strict, vp);
 }
 
+void
+o_finalize(JSContext* cx,
+           JSObject* obj)
+{
+  ObjectTemplateHandle* data = ObjectTemplateHandle::Get(cx, obj);
+  delete data;
+}
+
 JSClass gNewInstanceClass = {
   NULL, // name
   JSCLASS_HAS_PRIVATE, // flags
@@ -38,7 +61,7 @@ JSClass gNewInstanceClass = {
   JS_EnumerateStub, // enumerate
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert
-  JS_FinalizeStub, // finalize
+  o_finalize, // finalize
   NULL, // getObjectOps
   NULL, // checkAccess
   NULL, // call
@@ -147,7 +170,9 @@ ObjectTemplate::NewInstance()
     return NULL;
   }
 
-  if (!JS_SetPrivate(cx(), obj, this)) {
+  ObjectTemplateHandle* handle = new ObjectTemplateHandle(this);
+  if (!JS_SetPrivate(cx(), obj, handle)) {
+    delete handle;
     // TODO handle error better
     return NULL;
   }

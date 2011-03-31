@@ -6,10 +6,10 @@ using namespace internal;
 namespace {
 
 JSBool
-ot_GetProperty(JSContext* cx,
-               JSObject* obj,
-               jsid id,
-               jsval* vp)
+o_GetProperty(JSContext* cx,
+              JSObject* obj,
+              jsid id,
+              jsval* vp)
 {
   // TODO get the accessors from PrivateData stored on the object in our private
   //      data.
@@ -17,11 +17,11 @@ ot_GetProperty(JSContext* cx,
 }
 
 JSBool
-ot_SetProperty(JSContext* cx,
-               JSObject* obj,
-               jsid id,
-               JSBool strict,
-               jsval* vp)
+o_SetProperty(JSContext* cx,
+              JSObject* obj,
+              jsid id,
+              JSBool strict,
+              jsval* vp)
 {
   // TODO get the accessors from PrivateData stored on the object in our private
   //      data.
@@ -33,8 +33,8 @@ JSClass gNewInstanceClass = {
   JSCLASS_HAS_PRIVATE, // flags
   JS_PropertyStub, // addProperty
   JS_PropertyStub, // delProperty
-  ot_GetProperty, // getProperty
-  ot_SetProperty, // setProperty
+  o_GetProperty, // getProperty
+  o_SetProperty, // setProperty
   JS_EnumerateStub, // enumerate
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert

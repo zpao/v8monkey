@@ -32,9 +32,7 @@
  */
 
 #include "v8api_test_harness.h"
-
-#define CHECK do_check_true
-#define CHECK_EQ(expected, actual) do_check_eq(actual, expected)
+#include "v8api_test_checks.h"
 
 typedef JSUint16 uint16_t;
 typedef JSInt32 int32_t;

@@ -58,9 +58,8 @@ struct PrivateData
   {
     return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
   }
-  static PrivateData* Get(jsval val)
+  static PrivateData* Get(JSObject* obj)
   {
-    JSObject* obj = JSVAL_TO_OBJECT(val);
     return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
   }
 };

@@ -82,8 +82,21 @@ o_GetProperty(JSContext* cx,
               jsid id,
               jsval* vp)
 {
-  // TODO get the accessors from PrivateData stored on the object in our private
-  //      data.
+  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
+  PrivateData* pd = PrivateData::Get(ot);
+  if (JSID_IS_INT(id) && pd->indexedGetter) {
+    const AccessorInfo info =
+      AccessorInfo::MakeAccessorInfo(pd->indexedData, obj);
+    *vp = pd->indexedGetter(JSID_TO_INT(id), info)->native();
+    return JS_TRUE;
+  }
+  else if (JSID_IS_STRING(id) && pd->namedGetter) {
+    const AccessorInfo info =
+      AccessorInfo::MakeAccessorInfo(pd->namedData, obj);
+    *vp = pd->namedGetter(String::FromJSID(id), info)->native();
+    return JS_TRUE;
+  }
+
   return JS_PropertyStub(cx, obj, id, vp);
 }
 

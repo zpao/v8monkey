@@ -252,6 +252,14 @@ public:
   static bool Dispose();
 
   static Handle<Value> ThrowException(Handle<Value> exception);
+
+  struct Exception {
+    static Local<Value> RangeError(Handle<String> message);
+    static Local<Value> ReferenceError(Handle<String> message);
+    static Local<Value> SyntaxError(Handle<String> message);
+    static Local<Value> TypeError(Handle<String> message);
+    static Local<Value> Error(Handle<String> message);
+  };
 };
 
 class TryCatch {

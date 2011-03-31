@@ -72,4 +72,36 @@ Handle<Value> V8::ThrowException(Handle<Value> exception) {
   return Undefined();
 }
 
+static Local<Value> ConstructError(const char *name, Handle<String> message) {
+  // XXX: this probably isn't correct in all cases
+  Handle<Context> ctx = Context::GetCurrent();
+  Handle<Object> global = ctx->Global();
+  Handle<Value> ctor = global->Get(String::New(name));
+  if (ctor.IsEmpty() || !ctor->IsFunction())
+    return Local<Value>();
+  Handle<Function> fn = ctor.As<Function>();
+  Handle<Value> args[] = { Handle<Value>(message) };
+  return Local<Value>::New(fn->NewInstance(1, args));
+}
+
+Local<Value> V8::Exception::RangeError(Handle<String> message) {
+  return ConstructError("RangeError", message);
+}
+
+Local<Value> V8::Exception::ReferenceError(Handle<String> message) {
+  return ConstructError("ReferenceError", message);
+}
+
+Local<Value> V8::Exception::SyntaxError(Handle<String> message) {
+  return ConstructError("SyntaxError", message);
+}
+
+Local<Value> V8::Exception::TypeError(Handle<String> message) {
+  return ConstructError("TypeError", message);
+}
+
+Local<Value> V8::Exception::Error(Handle<String> message) {
+  return ConstructError("Error", message);
+}
+
 }

@@ -568,9 +568,9 @@ private:
   static JSBool JSAPIPropertyGetter(JSContext*, JSObject* obj, jsid id, jsval* vp);
   static JSBool JSAPIPropertySetter(JSContext*, JSObject* obj, jsid id, JSBool, jsval* vp);
 protected:
-  operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   Object(JSObject *obj);
 public:
+  operator JSObject *() const { return JSVAL_TO_OBJECT(mVal); }
   bool Set(Handle<Value> key, Handle<Value> value, PropertyAttribute attribs = None);
   bool Set(JSUint32 index, Handle<Value> value);
   bool ForceSet(Handle<Value> key, Handle<Value> value, PropertyAttribute attrib = None);

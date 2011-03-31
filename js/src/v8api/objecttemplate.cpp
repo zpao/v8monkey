@@ -30,6 +30,11 @@ struct PrivateData
   {
     return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
   }
+  static PrivateData* Get(Handle<ObjectTemplate> ot)
+  {
+    Object* obj = reinterpret_cast<Object*>(*ot);
+    return PrivateData::Get(*obj);
+  }
 
   // Named Property Handler storage.
   NamedPropertyGetter namedGetter;
@@ -58,6 +63,14 @@ struct ObjectTemplateHandle
                                    JSObject* obj)
   {
     return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+  }
+
+  static Local<ObjectTemplate> GetHandle(JSContext* cx,
+                                         JSObject* obj)
+  {
+    ObjectTemplateHandle* h =
+      static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+    return Local<ObjectTemplate>::New(h->objectTemplate);
   }
 
   Persistent<ObjectTemplate> objectTemplate;

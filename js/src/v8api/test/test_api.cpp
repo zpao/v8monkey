@@ -2775,7 +2775,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DontDeleteCellLoadICAPI),
   UNIMPLEMENTED_TEST(test_GlobalLoadICGC),
   UNIMPLEMENTED_TEST(test_RegExp),
-  DISABLED_TEST(test_Equals, 19),
+  TEST(test_Equals),
   UNIMPLEMENTED_TEST(test_NamedEnumeratorAndForIn),
   UNIMPLEMENTED_TEST(test_DefinePropertyPostDetach),
 };

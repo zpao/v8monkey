@@ -82,9 +82,7 @@ void check_eq_helper(const char* aFile, int aLine,
                      v8::Handle<v8::Value> aExpected,
                      v8::Handle<v8::Value> aActual)
 {
-  // XXX This should just be Equals, but we haven't implemented that yet and
-  //     this works for now
-  if (aExpected->StrictEquals(aActual)) {
+  if (aExpected->Equals(aActual)) {
     gPassedTests++;
   }
   else {

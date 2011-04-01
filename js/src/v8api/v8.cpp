@@ -301,7 +301,9 @@ Value::Int32Value() const
 bool
 Value::Equals(Handle<Value> other) const
 {
-  UNIMPLEMENTEDAPI(false);
+  JSBool equal;
+  JS_LooselyEqual(cx(), mVal, other->native(), &equal);
+  return equal == JS_TRUE;
 }
 
 bool

@@ -111,6 +111,9 @@ private:
   HandleScope *mPrevious;
 };
 
+typedef void (*WeakReferenceCallback)(Persistent<Value> object,
+                                      void* parameter);
+
 template <typename T>
 class Handle {
   T* mVal;

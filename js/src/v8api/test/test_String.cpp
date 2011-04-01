@@ -164,10 +164,10 @@ test_Utf8Value_length()
   Persistent<Context> context = Context::New();
   Context::Scope context_scope(context);
 
-  char TEST_STRING[] = "toString";
+  char TEST_STRING[] = "this is a UTF-8 test!  This is pi: π";
   int TEST_LENGTH = strlen(TEST_STRING);
   Handle<String> str = String::New(TEST_STRING);
-  do_check_eq(str->Length(), TEST_LENGTH);
+  do_check_eq(str->Length(), TEST_LENGTH - 1);
   String::Utf8Value k(str);
   do_check_eq(k.length(), TEST_LENGTH);
   do_check_true(0 == strcmp(TEST_STRING, *k));
@@ -183,7 +183,7 @@ Test gTests[] = {
   TEST(test_WriteUtf8),
   TEST(test_AsciiValue_operators),
   TEST(test_AsciiValue_length),
-  DISABLED_TEST(test_Utf8Value_length, 23),
+  TEST(test_Utf8Value_length),
 };
 
 const char* file = __FILE__;

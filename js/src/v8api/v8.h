@@ -795,7 +795,7 @@ typedef Handle<Array> (*NamedPropertyEnumerator)(const AccessorInfo &info);
 typedef Handle<Value> (*IndexedPropertyGetter)(JSUint32 index, const AccessorInfo &info);
 typedef Handle<Value> (*IndexedPropertySetter)(JSUint32 index, Local<Value> value, const AccessorInfo &info);
 typedef Handle<Integer> (*IndexedPropertyQuery)(JSUint32 index, const AccessorInfo &info);
-typedef Handle<Boolean> (*IndexedPropertyDeleter)(JSUint32 index, AccessorInfo &info);
+typedef Handle<Boolean> (*IndexedPropertyDeleter)(JSUint32 index, const AccessorInfo &info);
 typedef Handle<Array> (*IndexedPropertyEnumerator)(const AccessorInfo &info);
 
 enum AccessType {

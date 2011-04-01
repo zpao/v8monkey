@@ -37,8 +37,6 @@ namespace internal {
 class GCReference;
 struct GCOps;
 class GCReferenceContainer;
-struct RCOps;
-class RCReferenceContainer;
 
 void notImplemented();
 
@@ -82,30 +80,6 @@ protected:
   }
 };
 
-class RCReference {
-  size_t mRefCount;
-
-public:
-  RCReference() : mRefCount(0)
-  {}
-
-  RCReference *Globalize() {
-    mRefCount++;
-    return this;
-  }
-
-  void Dispose() {
-    if (0 == --mRefCount) {
-      delete this;
-    }
-  }
-
-  RCReference *Localize() {
-    return Globalize();
-  }
-
-};
-
 // Hash policy for jsids
 struct JSIDHashPolicy
 {
@@ -133,7 +107,6 @@ private:
   size_t getHandleCount();
 
   internal::GCReferenceContainer *mGCReferences;
-  internal::RCReferenceContainer *mRCReferences;
   HandleScope *mPrevious;
 };
 

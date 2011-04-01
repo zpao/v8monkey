@@ -60,18 +60,7 @@ namespace internal {
     }
   };
 
-  struct RCOps {
-    typedef internal::RCReference Slot;
-    static void onNewSlot(Slot *s) {
-      s->Globalize();
-    }
-    static void onRemoveSlot(Slot *s) {
-      s->Dispose();
-    }
-  };
-
   class GCReferenceContainer : public ReferenceContainer<GCOps> {};
-  class RCReferenceContainer : public ReferenceContainer<RCOps> {};
 
   GCReference* GCReference::Globalize() {
     GCReference *r = new GCReference(*this);
@@ -93,7 +82,6 @@ HandleScope *HandleScope::sCurrent = 0;
 
 HandleScope::HandleScope() :
   mGCReferences(new internal::GCReferenceContainer),
-  mRCReferences(new internal::RCReferenceContainer),
   mPrevious(sCurrent)
 {
   sCurrent = this;
@@ -101,7 +89,6 @@ HandleScope::HandleScope() :
 
 HandleScope::~HandleScope() {
   sCurrent = mPrevious;
-  delete mRCReferences;
   delete mGCReferences;
 }
 

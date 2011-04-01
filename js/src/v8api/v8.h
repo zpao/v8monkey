@@ -475,14 +475,14 @@ public:
             int start = 0,
             int length = -1,
             WriteHints hints = NO_HINTS) const;
- int WriteAscii(char* buffer,
-                int start = 0,
-                int length = -1,
+  int WriteAscii(char* buffer,
+                 int start = 0,
+                 int length = -1,
+                 WriteHints hints = NO_HINTS) const;
+  int WriteUtf8(char* buffer,
+                int length= -1,
+                int* nchars_ref = NULL,
                 WriteHints hints = NO_HINTS) const;
- int WriteUtf8(char* buffer,
-               int length= -1,
-               int* nchars_ref = NULL,
-               WriteHints hints = NO_HINTS) const;
 
   class Utf8Value {
     char* mStr;

@@ -125,7 +125,8 @@ test_WriteUtf8()
   int charsWritten;
   int copied = str->WriteUtf8(buf, TEST_LENGTH * 2, &charsWritten);
   do_check_eq(copied, TEST_LENGTH + 1);
-  do_check_eq(charsWritten, TEST_LENGTH);
+  // π is 2 bytes, so strlen (TEST_LENGTH) returns 1 larger than charsWritten
+  do_check_eq(charsWritten, TEST_LENGTH - 1);
   do_check_eq(strlen(buf), TEST_LENGTH);
 
   delete[] buf;
@@ -179,7 +180,7 @@ Test gTests[] = {
   TEST(test_Utf8Length),
   DISABLED_TEST(test_Write, 13),
   DISABLED_TEST(test_WriteAscii, 14),
-  DISABLED_TEST(test_WriteUtf8, 15),
+  TEST(test_WriteUtf8),
   TEST(test_AsciiValue_operators),
   TEST(test_AsciiValue_length),
   DISABLED_TEST(test_Utf8Value_length, 23),

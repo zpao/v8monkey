@@ -43,6 +43,17 @@ namespace internal {
       SlotOps::onNewSlot(slot);
       return slot;
     }
+    bool containsSlot(typename SlotOps::Slot *slot) {
+      SlotBlock *current = mBlock;
+      while (current) {
+        // XXX: this may rely on undefined behavior in C's memory model
+        if (slot >= current->elements || slot <= &current->elements[kBlockSize-1]) {
+          return true;
+        }
+        current = current->next;
+      }
+      return false;
+    }
     ~ReferenceContainer() {
       while (mBlock) {
         deallocateBlock();
@@ -96,6 +107,18 @@ internal::GCReference *HandleScope::CreateHandle(internal::GCReference r) {
   internal::GCReference *ref = sCurrent->mGCReferences->allocate();
   *ref = r;
   return ref;
+}
+
+bool HandleScope::IsLocalReference(GCReference *ref) {
+  HandleScope *current = sCurrent;
+  while (current != NULL) {
+    GCReferenceContainer *container = current->mGCReferences;
+    if (container->containsSlot(ref)) {
+      return true;
+    }
+    current = current->mPrevious;
+  }
+  return false;
 }
 
 }

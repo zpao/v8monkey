@@ -102,6 +102,7 @@ struct HandleScope {
 private:
   friend class internal::GCReference;
   static internal::GCReference *CreateHandle(internal::GCReference r);
+  static bool IsLocalReference(internal::GCReference *);
 
   static HandleScope *sCurrent;
   size_t getHandleCount();

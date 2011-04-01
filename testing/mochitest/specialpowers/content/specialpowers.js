@@ -37,10 +37,50 @@
 /* This code is loaded in every child process that is started by mochitest in
  * order to be used as a replacement for UniversalXPConnect
  */
-function SpecialPowers() {}
 
-var SpecialPowers = {
+var Ci = Components.interfaces;
+var Cc = Components.classes;
+
+function SpecialPowers(window) {
+  this.window = window;
+  bindDOMWindowUtils(this, window);
+}
+
+function bindDOMWindowUtils(sp, window) {
+  var util = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                   .getInterface(Ci.nsIDOMWindowUtils);
+  // This bit of magic brought to you by the letters
+  // B Z, and E, S and the number 5.
+  //
+  // Take all of the properties on the nsIDOMWindowUtils-implementing
+  // object, and rebind them onto a new object with a stub that uses
+  // apply to call them from this privileged scope. This way we don't
+  // have to explicitly stub out new methods that appear on
+  // nsIDOMWindowUtils.
+  var proto = Object.getPrototypeOf(util);
+  var target = {};
+  function rebind(desc, prop) {
+    if (prop in desc && typeof(desc[prop]) == "function") {
+      var oldval = desc[prop];
+      desc[prop] = function() { return oldval.apply(util, arguments); };
+    }
+  }
+  for (var i in proto) {
+    var desc = Object.getOwnPropertyDescriptor(proto, i);
+    rebind(desc, "get");
+    rebind(desc, "set");
+    rebind(desc, "value");
+    Object.defineProperty(target, i, desc);
+  }
+  sp.DOMWindowUtils = target;
+}
+
+SpecialPowers.prototype = {
+  toString: function() { return "[SpecialPowers]"; },
   sanityCheck: function() { return "foo"; },
+
+  // This gets filled in in the constructor.
+  DOMWindowUtils: undefined,
 
   // Mimic the get*Pref API
   getBoolPref: function(aPrefName) {
@@ -70,6 +110,12 @@ var SpecialPowers = {
     return (this._setPref(aPrefName, 'COMPLEX', aValue, aIid));
   },
 
+  // Mimic the clearUserPref API
+  clearUserPref: function(aPrefName) {
+    var msg = {'op':'clear', 'prefName': aPrefName, 'prefType': ""};
+    sendSyncMessage('SPPrefService', msg);
+  },
+
   // Private pref functions to communicate to chrome
   _getPref: function(aPrefName, aPrefType, aIid) {
     var msg = {};
@@ -91,8 +137,9 @@ var SpecialPowers = {
     return(sendSyncMessage('SPPrefService', msg)[0]);
   },
 
+  //XXX: these APIs really ought to be removed, they're not e10s-safe.
+  // (also they're pretty Firefox-specific)
   _getTopChromeWindow: function(window) {
-    var Ci = Components.interfaces;
     return window.QueryInterface(Ci.nsIInterfaceRequestor)
                  .getInterface(Ci.nsIWebNavigation)
                  .QueryInterface(Ci.nsIDocShellTreeItem)
@@ -100,6 +147,15 @@ var SpecialPowers = {
                  .QueryInterface(Ci.nsIInterfaceRequestor)
                  .getInterface(Ci.nsIDOMWindow)
                  .QueryInterface(Ci.nsIDOMChromeWindow);
+  },
+  _getDocShell: function(window) {
+    return window.QueryInterface(Ci.nsIInterfaceRequestor)
+                 .getInterface(Ci.nsIWebNavigation)
+                 .QueryInterface(Ci.nsIDocShell);
+  },
+  _getMUDV: function(window) {
+    return this._getDocShell(window).contentViewer
+               .QueryInterface(Ci.nsIMarkupDocumentViewer);
   },
   _getAutoCompletePopup: function(window) {
     return this._getTopChromeWindow(window).document
@@ -119,16 +175,40 @@ var SpecialPowers = {
     return !this._getTopChromeWindow(window).document
                                       .getElementById("Browser:Back")
                                       .hasAttribute("disabled");
+  },
+
+  addChromeEventListener: function(type, listener, capture, allowUntrusted) {
+    addEventListener(type, listener, capture, allowUntrusted);
+  },
+  removeChromeEventListener: function(type, listener, capture) {
+    removeEventListener(type, listener, capture);
+  },
+
+  getFullZoom: function(window) {
+    return this._getMUDV(window).fullZoom;
+  },
+  setFullZoom: function(window, zoom) {
+    this._getMUDV(window).fullZoom = zoom;
+  },
+  getTextZoom: function(window) {
+    return this._getMUDV(window).textZoom;
+  },
+  setTextZoom: function(window, zoom) {
+    this._getMUDV(window).textZoom = zoom;
+  },
+
+  createSystemXHR: function() {
+    return Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
+             .createInstance(Ci.nsIXMLHttpRequest);
   }
 };
 
 // Expose everything but internal APIs (starting with underscores) to
 // web content.
-SpecialPowers.__exposedProps__ = {};
-for each (i in Object.keys(SpecialPowers).filter(function(v) {return v.charAt(0) != "_";})) {
-  SpecialPowers.__exposedProps__[i] = "r";
+SpecialPowers.prototype.__exposedProps__ = {};
+for each (i in Object.keys(SpecialPowers.prototype).filter(function(v) {return v.charAt(0) != "_";})) {
+  SpecialPowers.prototype.__exposedProps__[i] = "r";
 }
-
 
 // Attach our API to the window.
 function attachSpecialPowersToWindow(aWindow) {
@@ -137,7 +217,7 @@ function attachSpecialPowersToWindow(aWindow) {
         (aWindow !== undefined) &&
         (aWindow.wrappedJSObject) &&
         !(aWindow.wrappedJSObject.SpecialPowers)) {
-      aWindow.wrappedJSObject.SpecialPowers = SpecialPowers;
+      aWindow.wrappedJSObject.SpecialPowers = new SpecialPowers(aWindow);
     }
   } catch(ex) {
     dump("TEST-INFO | specialpowers.js |  Failed to attach specialpowers to window exception: " + ex + "\n");

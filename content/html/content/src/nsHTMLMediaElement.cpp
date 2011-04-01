@@ -974,11 +974,11 @@ nsresult nsHTMLMediaElement::LoadResource(nsIURI* aURI)
   nsCOMPtr<nsIStreamListener> listener;
   if (ShouldCheckAllowOrigin()) {
     listener =
-      new nsCrossSiteListenerProxy(loadListener,
-                                   NodePrincipal(),
-                                   channel,
-                                   PR_FALSE,
-                                   &rv);
+      new nsCORSListenerProxy(loadListener,
+                              NodePrincipal(),
+                              channel,
+                              PR_FALSE,
+                              &rv);
   } else {
     rv = nsContentUtils::GetSecurityManager()->
            CheckLoadURIWithPrincipal(NodePrincipal(),
@@ -1382,6 +1382,9 @@ NS_IMETHODIMP nsHTMLMediaElement::Play()
   if (mPaused) {
     DispatchAsyncEvent(NS_LITERAL_STRING("play"));
     switch (mReadyState) {
+    case nsIDOMHTMLMediaElement::HAVE_NOTHING:
+      DispatchAsyncEvent(NS_LITERAL_STRING("waiting"));
+      break;
     case nsIDOMHTMLMediaElement::HAVE_METADATA:
     case nsIDOMHTMLMediaElement::HAVE_CURRENT_DATA:
       FireTimeUpdate(PR_FALSE);
@@ -1423,7 +1426,7 @@ PRBool nsHTMLMediaElement::ParseAttribute(PRInt32 aNamespaceID,
        || aAttribute == nsGkAtoms::loopend
        || aAttribute == nsGkAtoms::start
        || aAttribute == nsGkAtoms::end) {
-      return aResult.ParseFloatValue(aValue);
+      return aResult.ParseDoubleValue(aValue);
     }
     else if (ParseImageAttribute(aAttribute, aValue, aResult)) {
       return PR_TRUE;

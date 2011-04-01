@@ -124,7 +124,6 @@ MAKEFILES_gfx="
   gfx/ycbcr/Makefile
   gfx/layers/Makefile
   gfx/src/Makefile
-  gfx/src/thebes/Makefile
   gfx/tests/Makefile
   gfx/thebes/Makefile
   gfx/qcms/Makefile
@@ -357,11 +356,6 @@ MAKEFILES_plugin="
   modules/plugin/Makefile
   modules/plugin/base/src/Makefile
   modules/plugin/base/public/Makefile
-  modules/plugin/sdk/Makefile
-  modules/plugin/sdk/samples/Makefile
-  modules/plugin/sdk/samples/common/Makefile
-  modules/plugin/sdk/samples/basic/windows/Makefile
-  modules/plugin/sdk/samples/winless/windows/Makefile
 "
 
 MAKEFILES_netwerk="
@@ -462,11 +456,6 @@ MAKEFILES_docshell="
   docshell/shistory/public/Makefile
   docshell/shistory/src/Makefile
   docshell/build/Makefile
-"
-
-MAKEFILES_webshell="
-  webshell/Makefile
-  webshell/public/Makefile
 "
 
 MAKEFILES_widget="
@@ -774,7 +763,6 @@ add_makefiles "
   $MAKEFILES_chrome
   $MAKEFILES_view
   $MAKEFILES_docshell
-  $MAKEFILES_webshell
   $MAKEFILES_widget
   $MAKEFILES_xpcom
   $MAKEFILES_xpcom_tests

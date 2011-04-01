@@ -130,7 +130,7 @@ GCONF_VERSION=1.2.1
 GIO_VERSION=2.0
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.7.4
+SQLITE_VERSION=3.7.5
 LIBNOTIFY_VERSION=0.4
 
 MSMANIFEST_TOOL=
@@ -1011,6 +1011,9 @@ if test -z "$XARGS" -o "$XARGS" = ":"; then
     AC_MSG_ERROR([xargs not found in \$PATH .])
 fi
 
+MOZ_PATH_PROG(RPMBUILD, rpmbuild, :)
+AC_SUBST(RPMBUILD)
+
 if test "$COMPILE_ENVIRONMENT"; then
 
 dnl ========================================================
@@ -1166,6 +1169,28 @@ tools are selected during the Xcode/Developer Tools installation.])
 fi
 
 fi # COMPILE_ENVIRONMENT
+
+dnl clang prior to 2.9 (including Xcode 4) does not support all the
+dnl constructs required by the libtheora inline asm. This is used to
+dnl detect and disable it
+AC_LANG_SAVE
+AC_LANG_C
+AC_TRY_COMPILE([
+#if defined(__clang__)
+# if __clang_major__<2 || (__clang_major__==2 && __clang_minor__<9)
+#  error "clang older than 2.9 detected"
+# endif
+#endif
+               ],
+               [],
+               result="yes",
+               result="no")
+if test "$result" = "no"; then
+    AC_DEFINE(HAVE_OLD_CLANG)
+    HAVE_OLD_CLANG=1
+fi
+AC_LANG_RESTORE
+AC_SUBST(HAVE_OLD_CLANG)
 
 if test -n "$MAKE"; then
   if test `echo $MAKE | grep -c make.py` != 1; then
@@ -1343,9 +1368,6 @@ UNIX_SYSTEM_V)
     ;;
 OSF1)
     ;;
-*OpenVMS*)
-    HOST_OS_ARCH=OpenVMS
-    ;;
 OS_2)
     HOST_OS_ARCH=OS2
     ;;
@@ -1433,11 +1455,6 @@ OSF1)
         OS_RELEASE=V4.0D
         ;;
     esac
-    ;;
-*OpenVMS*)
-    OS_ARCH=OpenVMS
-    OS_RELEASE=`uname -v`
-    OS_TEST=`uname -p`
     ;;
 OS_2)
     OS_ARCH=OS2
@@ -2614,25 +2631,6 @@ ia64*-hpux*)
     fi
     ;;
 
-*-openvms*) 
-    AC_DEFINE(NO_PW_GECOS)
-    AC_DEFINE(NO_UDSOCK)
-    AC_DEFINE(POLL_WITH_XCONNECTIONNUMBER)
-    USE_PTHREADS=1
-    MKSHLIB_FORCE_ALL='-all'
-    MKSHLIB_UNFORCE_ALL='-none'
-    AS='as'
-    AS_DASH_C_FLAG='-Wc/names=as_is'
-    AR_FLAGS='c $@'
-    DSO_LDOPTS='-shared -auto_symvec'
-    DSO_PIC_CFLAGS=
-    MOZ_DEBUG_LDFLAGS='-g'
-    COMPAQ_CXX=1
-    CC_VERSION=`$CC -V 2>&1 | awk '/ C / { print $3 }'`
-    CXX_VERSION=`$CXX -V 2>&1 | awk '/ C\+\+ / { print $3 }'`
-    ;;
-
-
 *-os2*)
     MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -o $@'
     MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -o $@'
@@ -2770,7 +2768,6 @@ alpha*-*-osf*)
                        ,
                        [LDFLAGS=$_SAVE_LDFLAGS])
        fi
-       WARNINGS_AS_ERRORS='-Werror'
        MOZ_OPTIMIZE_FLAGS="-xO4"
        MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_FLAGS) $(DSO_LDOPTS) -h $@ -o $@'
        MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_FLAGS) $(DSO_LDOPTS) -h $@ -o $@'
@@ -2820,6 +2817,7 @@ alpha*-*-osf*)
        MKSHLIB_UNFORCE_ALL='-Wl,-z -Wl,defaultextract'
        ASFLAGS="$ASFLAGS -fPIC"
        DSO_LDOPTS='-shared'
+       WARNINGS_AS_ERRORS='-Werror'
        _WARNINGS_CFLAGS=''
        _WARNINGS_CXXFLAGS=''
        if test "$OS_RELEASE" = "5.3"; then
@@ -2893,9 +2891,6 @@ case "$target" in
     NO_LD_ARCHIVE_FLAGS=
     ;;
 *-aix4.3*|*-aix5*)
-    NO_LD_ARCHIVE_FLAGS=
-    ;;
-*-openvms*)
     NO_LD_ARCHIVE_FLAGS=
     ;;
 *-mingw*|*-wince|*-winmo)
@@ -4979,11 +4974,14 @@ VPX_AS_CONVERSION=
 VPX_ASM_SUFFIX=
 VPX_X86_ASM=
 VPX_ARM_ASM=
+MOZ_LIBJPEG_TURBO=1
+LIBJPEG_TURBO_AS=
+LIBJPEG_TURBO_ASFLAGS=
+LIBJPEG_TURBO_X86_ASM=
+LIBJPEG_TURBO_X64_ASM=
 MOZ_PANGO=1
 MOZ_PERMISSIONS=1
 MOZ_PLACES=1
-MOZ_PLAINTEXT_EDITOR_ONLY=
-MOZ_PLUGINS=1
 MOZ_PREF_EXTENSIONS=1
 MOZ_PROFILELOCKING=1
 MOZ_PSM=1
@@ -5083,13 +5081,18 @@ if test -z "$XULRUNNER_STUB_NAME"; then
 fi
 AC_SUBST(XULRUNNER_STUB_NAME)
 
+AC_MSG_CHECKING([for application to build])
 if test -z "$MOZ_BUILD_APP"; then
-  AC_MSG_ERROR([--enable-application=APP was not specified and is required.])
+  AC_MSG_RESULT([browser])
+  MOZ_BUILD_APP=browser
 else
   # We have a valid application only if it has a build.mk file in its top
   # directory.
   if test ! -f "${srcdir}/${MOZ_BUILD_APP}/build.mk" ; then
+    AC_MSG_RESULT([none])
     AC_MSG_ERROR([--enable-application value not recognized (${MOZ_BUILD_APP}/build.mk does not exist).])
+  else
+    AC_MSG_RESULT([$MOZ_BUILD_APP])
   fi
 fi
 
@@ -5850,14 +5853,6 @@ fi
 AC_SUBST(MOZ_IPDL_TESTS)
 
 dnl ========================================================
-dnl = Disable plugin support
-dnl ========================================================
-MOZ_ARG_DISABLE_BOOL(plugins,
-[  --disable-plugins       Disable plugins support],
-    MOZ_PLUGINS=,
-    MOZ_PLUGINS=1)
-
-dnl ========================================================
 dnl = Disable building dbm
 dnl ========================================================
 MOZ_ARG_DISABLE_BOOL(dbm,
@@ -5920,19 +5915,6 @@ if test "$OS_ARCH" != "WINCE" -a "$OS_ARCH" != "WINNT" -a "$MOZ_USE_NATIVE_UCONV
     AC_MSG_ERROR([iconv() not found.  Cannot enable native uconv support.])
 fi
 
-
-dnl ========================================================
-dnl Libeditor can be build as plaintext-only,
-dnl or as a full html and text editing component.
-dnl We build both by default.
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(plaintext-editor-only,
-[  --enable-plaintext-editor-only
-                          Allow only plaintext editing],
-    MOZ_PLAINTEXT_EDITOR_ONLY=1,
-    MOZ_PLAINTEXT_EDITOR_ONLY= )
-dnl Note the #define is MOZILLA, not MOZ, for compat with the Mac build.
-AC_SUBST(MOZ_PLAINTEXT_EDITOR_ONLY)
 
 dnl ========================================================
 dnl = Disable Fast Load
@@ -6459,6 +6441,85 @@ fi
 AC_DEFINE_UNQUOTED(MOZ_CRASHREPORTER_ENABLE_PERCENT, $MOZ_CRASHREPORTER_ENABLE_PERCENT)
 
 dnl ========================================================
+dnl = libjpeg-turbo configuration
+dnl ========================================================
+
+MOZ_ARG_DISABLE_BOOL(libjpeg_turbo,
+[ --disable-libjpeg-turbo  Disable optimized jpeg decoding routines],
+    MOZ_LIBJPEG_TURBO=,
+    MOZ_LIBJPEG_TURBO=1)
+
+dnl Detect if we can use yasm to compile libjpeg-turbo's optimized assembly
+dnl files.
+
+if test -n "$MOZ_LIBJPEG_TURBO"; then
+
+  dnl Do we support libjpeg-turbo on this platform?
+  case "$OS_ARCH:$OS_TEST" in
+  Linux:x86|Linux:i?86)
+    LIBJPEG_TURBO_ASFLAGS="-f elf32 -rnasm -pnasm -DPIC -DELF"
+    LIBJPEG_TURBO_X86_ASM=1
+  ;;
+  Linux:x86_64)
+    LIBJPEG_TURBO_ASFLAGS="-f elf64 -rnasm -pnasm -D__x86_64__ -DPIC -DELF"
+    LIBJPEG_TURBO_X64_ASM=1
+  ;;
+  SunOS:i?86)
+    LIBJPEG_TURBO_ASFLAGS="-f elf32 -rnasm -pnasm -DPIC -DELF"
+    LIBJPEG_TURBO_X86_ASM=1
+  ;;
+  SunOS:x86_64)
+    LIBJPEG_TURBO_ASFLAGS="-f elf64 -rnasm -pnasm -D__x86_64__ -DPIC -DELF"
+    LIBJPEG_TURBO_X64_ASM=1
+  ;;
+  Darwin:i?86)
+    LIBJPEG_TURBO_ASFLAGS="-f macho32 -rnasm -pnasm -DPIC -DMACHO"
+    LIBJPEG_TURBO_X86_ASM=1
+  ;;
+  Darwin:x86_64)
+    LIBJPEG_TURBO_ASFLAGS="-f macho64 -rnasm -pnasm -D__x86_64__ -DPIC -DMACHO"
+    LIBJPEG_TURBO_X64_ASM=1
+  ;;
+  WINNT:x86|WINNT:i?86)
+    LIBJPEG_TURBO_ASFLAGS="-f win32 -rnasm -pnasm -DPIC -DWIN32"
+    LIBJPEG_TURBO_X86_ASM=1
+  ;;
+  WINNT:x86_64)
+    LIBJPEG_TURBO_ASFLAGS="-f win64 -rnasm -pnasm -D__x86_64__ -DPIC -DWIN64"
+    LIBJPEG_TURBO_X64_ASM=1
+  ;;
+  esac
+
+fi
+
+dnl If we're on a system which supports libjpeg-turbo's asm routines and
+dnl --disable-libjpeg-turbo wasn't passed, check for yasm, and error out if it
+dnl doesn't exist or we have too old of a version.
+if test -n "$LIBJPEG_TURBO_X86_ASM" -o -n "$LIBJPEG_TURBO_X64_ASM" ; then
+    AC_MSG_CHECKING([for YASM assembler])
+    AC_CHECK_PROGS(LIBJPEG_TURBO_AS, yasm, "")
+
+    if test -z "$LIBJPEG_TURBO_AS" ; then
+        AC_MSG_ERROR([yasm is required to build with libjpeg-turbo's optimized JPEG decoding routines, but you do not appear to have yasm installed.  Either install it or configure with --disable-libjpeg-turbo to use the pure C JPEG decoder.  See https://developer.mozilla.org/en/YASM for more details.])
+    fi
+
+    dnl Check for yasm 1.1 or greater.
+    if test "$_YASM_MAJOR_VERSION" -lt "1" -o \( "$_YASM_MAJOR_VERSION" -eq "1" -a "$_YASM_MINOR_VERSION" -lt "1" \) ; then
+        AC_MSG_ERROR([yasm 1.1 or greater is required to build with libjpeg-turbo's optimized JPEG decoding routines, but you appear to have version $_YASM_MAJOR_VERSION.$_YASM_MINOR_VERSION.  Upgrade to the newest version or configure with --disable-libjpeg-turbo to use the pure C JPEG decoder.  See https://developer.mozilla.org/en/YASM for more details.])
+    fi
+fi
+
+if test -n "$LIBJPEG_TURBO_X86_ASM"; then
+    AC_DEFINE(LIBJPEG_TURBO_X86_ASM)
+elif test -n "$LIBJPEG_TURBO_X64_ASM"; then
+    AC_DEFINE(LIBJPEG_TURBO_X64_ASM)
+elif test -n "$MOZ_LIBJPEG_TURBO"; then
+    dnl Warn if we're not building the optimized routines, even though the user
+    dnl didn't specify --disable-libjpeg-turbo.
+    AC_MSG_WARN([No assembler or assembly support for libjpeg-turbo.  Using unoptimized C routines.])
+fi
+
+dnl ========================================================
 dnl = Enable compilation of specific extension modules
 dnl ========================================================
 
@@ -6963,6 +7024,9 @@ else
     fi
 fi
 
+if test -n "$MOZ_NATIVE_SQLITE"; then
+    AC_DEFINE(MOZ_NATIVE_SQLITE)
+fi
 AC_SUBST(MOZ_NATIVE_SQLITE)
 
 dnl ========================================================
@@ -8259,11 +8323,7 @@ MOZ_ARG_DISABLE_BOOL(md,
    fi])
 if test "$_cpp_md_flag"; then
   COMPILER_DEPEND=1
-  if test "$OS_ARCH" = "OpenVMS"; then
-    _DEPEND_CFLAGS='$(subst =, ,$(filter-out %/.pp,-MM=-MD=-MF=$(MDDEPDIR)/$(basename $(@F)).pp))'
-  else
-    _DEPEND_CFLAGS='$(filter-out %/.pp,-MD -MF $(MDDEPDIR)/$(basename $(@F)).pp)'
-  fi
+  _DEPEND_CFLAGS='$(filter-out %/.pp,-MD -MF $(MDDEPDIR)/$(basename $(@F)).pp)'
   dnl Sun Studio on Solaris use -xM instead of -MD, see config/rules.mk
   if test "$SOLARIS_SUNPRO_CC"; then
     _DEPEND_CFLAGS=
@@ -8989,7 +9049,6 @@ AC_SUBST(MOZ_DEBUG_LDFLAGS)
 AC_SUBST(WARNINGS_AS_ERRORS)
 AC_SUBST(MOZ_EXTENSIONS)
 AC_SUBST(MOZ_JSDEBUGGER)
-AC_SUBST(MOZ_PLUGINS)
 AC_SUBST(MOZ_LOG_REFCNT)
 AC_SUBST(MOZ_LEAKY)
 AC_SUBST(MOZ_JPROF)
@@ -9230,6 +9289,10 @@ AC_SUBST(VPX_AS_CONVERSION)
 AC_SUBST(VPX_ASM_SUFFIX)
 AC_SUBST(VPX_X86_ASM)
 AC_SUBST(VPX_ARM_ASM)
+AC_SUBST(LIBJPEG_TURBO_AS)
+AC_SUBST(LIBJPEG_TURBO_ASFLAGS)
+AC_SUBST(LIBJPEG_TURBO_X86_ASM)
+AC_SUBST(LIBJPEG_TURBO_X64_ASM)
 
 if test "$USING_HCC"; then
    CC='${topsrcdir}/build/hcc'
@@ -9311,8 +9374,6 @@ dnl ========================================================
 if test "$OS_ARCH" = "Darwin"; then
   AC_DEFINE(XP_UNIX)
   AC_DEFINE(UNIX_ASYNC_DNS)
-elif test "$OS_ARCH" = "OpenVMS"; then
-  AC_DEFINE(XP_UNIX)
 elif test "$OS_ARCH" != "WINNT" -a "$OS_ARCH" != "OS2" -a "$OS_ARCH" != "WINCE"; then
   AC_DEFINE(XP_UNIX)
   AC_DEFINE(UNIX_ASYNC_DNS)
@@ -9448,8 +9509,6 @@ dnl   will handle these files.
 dnl If it fails, nothing is set and config.status will run as usual.
 dnl
 dnl This does not change the $MAKEFILES variable.
-dnl
-dnl OpenVMS gets a line overflow on the long eval command, so use a temp file.
 dnl
 echo $MAKEFILES | ${PERL} $srcdir/build/autoconf/acoutput-fast.pl > conftest.sh
 . ./conftest.sh

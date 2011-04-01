@@ -151,6 +151,97 @@ INNER_MAKE_PACKAGE	= rm -f app.7z && \
 INNER_UNMAKE_PACKAGE	= $(CYGWIN_WRAPPER) 7z x $(UNPACKAGE) && \
   mv core $(MOZ_PKG_DIR)
 endif
+
+#Create an RPM file
+ifeq ($(MOZ_PKG_FORMAT),RPM)
+PKG_SUFFIX  = .rpm
+MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed "s/[^0-9.].*//" )
+MOZ_RPM_RELEASE = $(shell echo $(MOZ_PKG_VERSION) | sed "s/[0-9.]*//" )
+
+RPMBUILD_TOPDIR=$(_ABS_DIST)/rpmbuild
+RPMBUILD_RPMDIR=$(_ABS_DIST)
+RPMBUILD_SRPMDIR=$(_ABS_DIST)
+RPMBUILD_SOURCEDIR=$(RPMBUILD_TOPDIR)/SOURCES
+RPMBUILD_SPECDIR=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
+RPMBUILD_BUILDDIR=$(_ABS_DIST)/..
+
+SPEC_FILE = $(RPMBUILD_SPECDIR)/mozilla.spec
+RPM_INCIDENTALS=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
+
+RPM_CMD = \
+  echo Creating RPM && \
+  mkdir -p $(RPMBUILD_SOURCEDIR) && \
+  $(PYTHON) $(topsrcdir)/config/Preprocessor.py \
+  	-DMOZ_APP_NAME=$(MOZ_APP_NAME) \
+	-DMOZ_APP_DISPLAYNAME=$(MOZ_APP_DISPLAYNAME) \
+	< $(RPM_INCIDENTALS)/mozilla.desktop \
+	> $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
+  rm -rf $(_ABS_DIST)/$(TARGET_CPU) && \
+  $(RPMBUILD) -bb \
+  $(SPEC_FILE) \
+  --target $(TARGET_CPU) \
+  --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
+  --define "moz_app_name $(MOZ_APP_NAME)" \
+  --define "moz_app_displayname $(MOZ_APP_DISPLAYNAME)" \
+  --define "moz_app_version $(MOZ_APP_VERSION)" \
+  --define "moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)" \
+  --define "moz_rpm_release $(MOZ_RPM_RELEASE)" \
+  --define "buildid $(BUILDID)" \
+  --define "moz_source_repo $(MOZ_SOURCE_REPO)" \
+  --define "moz_source_stamp $(MOZ_SOURCE_STAMP)" \
+  --define "moz_branding_directory $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)" \
+  --define "_topdir $(RPMBUILD_TOPDIR)" \
+  --define "_rpmdir $(RPMBUILD_RPMDIR)" \
+  --define "_sourcedir $(RPMBUILD_SOURCEDIR)" \
+  --define "_specdir $(RPMBUILD_SPECDIR)" \
+  --define "_srcrpmdir $(RPMBUILD_SRPMDIR)" \
+  --define "_builddir $(RPMBUILD_BUILDDIR)" \
+  --define "_prefix $(prefix)" \
+  --define "_libdir $(libdir)" \
+  --define "_bindir $(bindir)" \
+  --define "_datadir $(datadir)" \
+  --define "_installdir $(installdir)" 
+
+ifdef ENABLE_TESTS
+RPM_CMD += \
+  --define "createtests yes" \
+  --define "_testsinstalldir $(shell basename $(installdir))" 
+endif 
+
+ifdef INSTALL_SDK
+RPM_CMD += \
+  --define "createdevel yes" \
+  --define "_idldir $(idldir)" \
+  --define "_sdkdir $(sdkdir)" \
+  --define "_includedir $(includedir)" 
+endif
+
+#For each of the main, tests, sdk rpms we want to make sure that
+#if they exist that they are in objdir/dist/ and that they get 
+#uploaded and that they are beside the other build artifacts
+MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+UPLOAD_EXTRA_FILES += $(MAIN_RPM)
+RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(_ABS_DIST)/
+
+ifdef ENABLE_TESTS
+TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+UPLOAD_EXTRA_FILES += $(TESTS_RPM)
+RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(_ABS_DIST)/
+endif
+
+ifdef INSTALL_SDK
+SDK_RPM=$(MOZ_APP_NAME)-devel-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+UPLOAD_EXTRA_FILES += $(SDK_RPM)
+RPM_CMD += && mv $(TARGET_CPU)/$(SDK_RPM) $(_ABS_DIST)/
+endif
+
+INNER_MAKE_PACKAGE = $(RPM_CMD)
+#Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
+INNER_UNMAKE_PACKAGE = $(error Try using rpm2cpio and cpio)
+
+endif #Create an RPM file
+
+
 ifeq ($(MOZ_PKG_FORMAT),APK)
 
 # we have custom stuff for Android
@@ -725,11 +816,24 @@ ifndef MOZ_PKG_SRCDIR
 MOZ_PKG_SRCDIR = $(topsrcdir)
 endif
 
+DIR_TO_BE_PACKAGED ?= ../$(notdir $(topsrcdir))
+SRC_TAR_EXCLUDE_PATHS += \
+  --exclude=".hg*" \
+  --exclude="CVS" \
+  --exclude=".cvs*" \
+  --exclude=".mozconfig*" \
+  --exclude="*.pyc" \
+  --exclude="$(MOZILLA_DIR)/Makefile" \
+  --exclude="$(MOZILLA_DIR)/dist"
+ifdef MOZ_OBJDIR
+SRC_TAR_EXCLUDE_PATHS += --exclude="$(MOZ_OBJDIR)"
+endif
 CREATE_SOURCE_TAR = $(TAR) -c --owner=0 --group=0 --numeric-owner \
-  --mode="go-w" --exclude=".hg*" --exclude="CVS" --exclude=".cvs*" -f
+  --mode="go-w" $(SRC_TAR_EXCLUDE_PATHS) -f
 
 # source-package creates a source tarball from the files in MOZ_PKG_SRCDIR,
 # which is either set to a clean checkout or defaults to $topsrcdir
 source-package:
 	@echo "Packaging source tarball..."
-	(cd $(MOZ_PKG_SRCDIR) && $(CREATE_SOURCE_TAR) - .) | bzip2 -vf > $(DIST)/$(PKG_SRCPACK_PATH)$(PKG_SRCPACK_BASENAME).tar.bz2
+	mkdir -p $(DIST)/$(PKG_SRCPACK_PATH)
+	(cd $(MOZ_PKG_SRCDIR) && $(CREATE_SOURCE_TAR) - $(DIR_TO_BE_PACKAGED)) | bzip2 -vf > $(DIST)/$(PKG_SRCPACK_PATH)$(PKG_SRCPACK_BASENAME).tar.bz2

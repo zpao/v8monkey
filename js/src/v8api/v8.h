@@ -731,7 +731,7 @@ public:
            PropertyAttribute attribs = None);
 
   // XXX v8 header says the second argument should be a Handle<Data>
-  inline void Set(const char* name, Handle<Value> value);
+  void Set(const char* name, Handle<Value> value);
 protected:
   Template(JSClass* clasp);
 
@@ -810,7 +810,11 @@ typedef bool (*NamedSecurityCallback)(Local<Object> host, Local<Value> key, Acce
 typedef bool (*IndexedSecurityCallback)(Local<Object> host, JSUint32 index, AccessType type, Local<Value> data);
 
 class FunctionTemplate : public Template {
-  static Local<FunctionTemplate> New(InvocationCallback callback, Handle<Value> data = Handle<Value>(), Handle<Signature> signature = Handle<Signature>());
+public:
+  static Local<FunctionTemplate> New(InvocationCallback callback = 0, Handle<Value> data = Handle<Value>(), Handle<Signature> signature = Handle<Signature>()) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+
   Local<Function> GetFunction () {
     UNIMPLEMENTEDAPI(NULL);
   }

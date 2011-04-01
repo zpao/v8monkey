@@ -77,6 +77,36 @@ struct ObjectTemplateHandle
 };
 
 JSBool
+o_DeleteProperty(JSContext* cx,
+                 JSObject* obj,
+                 jsid id,
+                 jsval* vp)
+{
+  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
+  PrivateData* pd = PrivateData::Get(ot);
+  if (JSID_IS_INT(id) && pd->indexedDeleter) {
+    const AccessorInfo info =
+      AccessorInfo::MakeAccessorInfo(pd->indexedData, obj);
+    Handle<Boolean> ret = pd->indexedDeleter(JSID_TO_INT(id), info);
+    if (!ret.IsEmpty()) {
+      *vp = ret->native();
+      return JS_TRUE;
+    }
+  }
+  else if (JSID_IS_STRING(id) && pd->namedDeleter) {
+    const AccessorInfo info =
+      AccessorInfo::MakeAccessorInfo(pd->namedData, obj);
+    Handle<Boolean> ret = pd->namedDeleter(String::FromJSID(id), info);
+    if (!ret.IsEmpty()) {
+      *vp = ret->native();
+      return JS_TRUE;
+    }
+  }
+
+  return JS_PropertyStub(cx, obj, id, vp);
+}
+
+JSBool
 o_GetProperty(JSContext* cx,
               JSObject* obj,
               jsid id,
@@ -153,7 +183,7 @@ JSClass gNewInstanceClass = {
   NULL, // name
   JSCLASS_HAS_PRIVATE, // flags
   JS_PropertyStub, // addProperty
-  JS_PropertyStub, // delProperty
+  o_DeleteProperty, // delProperty
   o_GetProperty, // getProperty
   o_SetProperty, // setProperty
   JS_EnumerateStub, // enumerate

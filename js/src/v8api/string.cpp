@@ -105,7 +105,8 @@ int String::WriteUtf8(char* buffer,
 
   // TODO check to make sure we don't overflow int
   if (nchars_ref) {
-    *nchars_ref = static_cast<int>(bytesWritten);
+    // XXX This works when the whole string fits in length, but not if it's less
+    *nchars_ref = this->Length();
   }
   return static_cast<int>(bytesWritten);
 }

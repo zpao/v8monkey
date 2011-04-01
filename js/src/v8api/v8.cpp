@@ -450,14 +450,13 @@ ScriptData* ScriptData::New(const char* data, int length) {
 //////////////////////////////////////////////////////////////////////////////
 //// Script class
 
-Script::Script(JSScript *s)
+Script::Script(JSObject *s)
 {
-  JSObject *obj = JS_NewScriptObject(cx(), s);
-  mVal = OBJECT_TO_JSVAL(obj);
+  mVal = OBJECT_TO_JSVAL(s);
 }
 
-Script::operator JSScript *() {
-  return reinterpret_cast<JSScript*>(JS_GetPrivate(cx(), JSVAL_TO_OBJECT(mVal)));
+Script::operator JSObject *() {
+  return JSVAL_TO_OBJECT(mVal);
 }
 
 Handle<Object> Script::InternalObject() {
@@ -472,7 +471,7 @@ Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, Script
   chars = JS_GetStringCharsAndLength(cx(),
                                      anchor.get(), &len);
 
-  JSScript* s = JS_CompileUCScript(cx(), NULL,
+  JSObject* s = JS_CompileUCScript(cx(), NULL,
                                    chars, len, NULL, NULL);
   Script script(s);
   if (bindToCurrentContext) {

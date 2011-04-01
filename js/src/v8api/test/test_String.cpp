@@ -179,10 +179,10 @@ Test gTests[] = {
   TEST(test_Utf8Length),
   DISABLED_TEST(test_Write, 13),
   DISABLED_TEST(test_WriteAscii, 14),
-  TEST(test_WriteUtf8),
+  DISABLED_TEST(test_WriteUtf8, 15),
   TEST(test_AsciiValue_operators),
   TEST(test_AsciiValue_length),
-  TEST(test_Utf8Value_length),
+  DISABLED_TEST(test_Utf8Value_length, 23),
 };
 
 const char* file = __FILE__;

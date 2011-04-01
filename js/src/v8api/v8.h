@@ -853,7 +853,7 @@ class ObjectTemplate : public Template {
 public:
   static Local<ObjectTemplate> New();
   Local<Object> NewInstance();
-  void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
+  void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
   void SetNamedPropertyHandler(NamedPropertyGetter getter, NamedPropertySetter setter = 0, NamedPropertyQuery query = 0, NamedPropertyDeleter deleter = 0, NamedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>());
   void SetIndexedPropertyHandler(IndexedPropertyGetter getter, IndexedPropertySetter setter = 0, IndexedPropertyQuery query = 0, IndexedPropertyDeleter deleter = 0, IndexedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>());
   void SetCallAsFunctionHandler(InvocationCallback callback, Handle<Value> data = Handle<Value>());

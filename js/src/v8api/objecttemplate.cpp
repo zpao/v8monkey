@@ -87,14 +87,20 @@ o_GetProperty(JSContext* cx,
   if (JSID_IS_INT(id) && pd->indexedGetter) {
     const AccessorInfo info =
       AccessorInfo::MakeAccessorInfo(pd->indexedData, obj);
-    *vp = pd->indexedGetter(JSID_TO_INT(id), info)->native();
-    return JS_TRUE;
+    Handle<Value> ret = pd->indexedGetter(JSID_TO_INT(id), info);
+    if (!ret.IsEmpty()) {
+      *vp = ret->native();
+      return JS_TRUE;
+    }
   }
   else if (JSID_IS_STRING(id) && pd->namedGetter) {
     const AccessorInfo info =
       AccessorInfo::MakeAccessorInfo(pd->namedData, obj);
-    *vp = pd->namedGetter(String::FromJSID(id), info)->native();
-    return JS_TRUE;
+    Handle<Value> ret = pd->namedGetter(String::FromJSID(id), info);
+    if (!ret.IsEmpty()) {
+      *vp = ret->native();
+      return JS_TRUE;
+    }
   }
 
   return JS_PropertyStub(cx, obj, id, vp);
@@ -114,16 +120,22 @@ o_SetProperty(JSContext* cx,
     const AccessorInfo info =
       AccessorInfo::MakeAccessorInfo(pd->indexedData, obj);
     JSUint32 idx = JSID_TO_INT(id);
-    *vp = pd->indexedSetter(idx, Local<Value>(&val), info)->native();
-    return JS_TRUE;
+    Handle<Value> ret = pd->indexedSetter(idx, Local<Value>(&val), info);
+    if (!ret.IsEmpty()) {
+      *vp = ret->native();
+      return JS_TRUE;
+    }
   }
   else if (JSID_IS_STRING(id) && pd->namedSetter) {
     Value val(*vp);
     const AccessorInfo info =
       AccessorInfo::MakeAccessorInfo(pd->namedData, obj);
-    *vp = pd->namedSetter(String::FromJSID(id), Local<Value>(&val),
-                          info)->native();
-    return JS_TRUE;
+    Handle<Value> ret =
+      pd->namedSetter(String::FromJSID(id), Local<Value>(&val), info);
+    if (!ret.IsEmpty()) {
+      *vp = ret->native();
+      return JS_TRUE;
+    }
   }
 
   return JS_StrictPropertyStub(cx, obj, id, strict, vp);

@@ -118,6 +118,18 @@ static int StrNCmp16(uint16_t* a, uint16_t* b, int n) {
   }
 }
 
+static v8::Handle<Value> GetFlabby(const v8::Arguments& args) {
+  // XXX Calls to ApiTestFuzzer::Fuzz have been commented out since
+  //     we aren't currently doing any thread fuzzing.
+  //ApiTestFuzzer::Fuzz();
+  return v8_num(17.2);
+}
+
+static v8::Handle<Value> GetKnurd(Local<String> property, const AccessorInfo&) {
+  //ApiTestFuzzer::Fuzz();
+  return v8_num(15.2);
+}
+
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:

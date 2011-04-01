@@ -73,15 +73,31 @@ namespace internal {
 
   class GCReferenceContainer : public ReferenceContainer<GCOps> {};
 
+  // This is allowed to violate the sacred rule that any class which inherits
+  // from GCReference must not increase the size of the class. The reason is
+  // that Persistent handles are never copied around in memory.
+  struct PersistentGCReference : public GCReference {
+    PersistentGCReference(GCReference *ref) :
+      GCReference(*ref)
+    {}
+  };
+
   GCReference* GCReference::Globalize() {
-    GCReference *r = new GCReference(*this);
+    GCReference *r = new PersistentGCReference(this);
     r->root(cx());
     return r;
   }
 
   void GCReference::Dispose() {
       unroot(cx());
-      delete this;
+      // Yay no RTTI
+      if (HandleScope::IsLocalReference(this)) {
+        delete this;
+      } else {
+        PersistentGCReference *ref =
+          reinterpret_cast<PersistentGCReference*>(this);
+        delete ref;
+      }
   }
 
   GCReference *GCReference::Localize() {

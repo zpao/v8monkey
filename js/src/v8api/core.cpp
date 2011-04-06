@@ -84,23 +84,23 @@ static Local<Value> ConstructError(const char *name, Handle<String> message) {
   return Local<Value>::New(fn->NewInstance(1, args));
 }
 
-Local<Value> V8::Exception::RangeError(Handle<String> message) {
+Local<Value> Exception::RangeError(Handle<String> message) {
   return ConstructError("RangeError", message);
 }
 
-Local<Value> V8::Exception::ReferenceError(Handle<String> message) {
+Local<Value> Exception::ReferenceError(Handle<String> message) {
   return ConstructError("ReferenceError", message);
 }
 
-Local<Value> V8::Exception::SyntaxError(Handle<String> message) {
+Local<Value> Exception::SyntaxError(Handle<String> message) {
   return ConstructError("SyntaxError", message);
 }
 
-Local<Value> V8::Exception::TypeError(Handle<String> message) {
+Local<Value> Exception::TypeError(Handle<String> message) {
   return ConstructError("TypeError", message);
 }
 
-Local<Value> V8::Exception::Error(Handle<String> message) {
+Local<Value> Exception::Error(Handle<String> message) {
   return ConstructError("Error", message);
 }
 

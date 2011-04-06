@@ -274,6 +274,17 @@ public:
   static const int kNoColumnInfo = 0;
 };
 
+// Exceptions
+class Exception {
+ public:
+  static Local<Value> RangeError(Handle<String> message);
+  static Local<Value> ReferenceError(Handle<String> message);
+  static Local<Value> SyntaxError(Handle<String> message);
+  static Local<Value> TypeError(Handle<String> message);
+  static Local<Value> Error(Handle<String> message);
+};
+
+
 class V8 {
 public:
   static bool Initialize();
@@ -281,13 +292,6 @@ public:
 
   static Handle<Value> ThrowException(Handle<Value> exception);
 
-  struct Exception {
-    static Local<Value> RangeError(Handle<String> message);
-    static Local<Value> ReferenceError(Handle<String> message);
-    static Local<Value> SyntaxError(Handle<String> message);
-    static Local<Value> TypeError(Handle<String> message);
-    static Local<Value> Error(Handle<String> message);
-  };
 };
 
 class TryCatch {

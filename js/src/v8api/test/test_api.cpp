@@ -2269,7 +2269,15 @@ test_SourceURLInStackTrace()
 // from test-api.cc:11703
 void
 test_IdleNotification()
-{ }
+{
+  bool rv = false;
+  for (int i = 0; i < 100; i++) {
+    rv = v8::V8::IdleNotification();
+    if (rv)
+      break;
+  }
+  CHECK(rv == true);
+}
 
 // from test-api.cc:11736
 void
@@ -2747,7 +2755,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_CaptureStackTraceForUncaughtException),
   UNIMPLEMENTED_TEST(test_CaptureStackTraceForUncaughtExceptionAndSetters),
   UNIMPLEMENTED_TEST(test_SourceURLInStackTrace),
-  UNIMPLEMENTED_TEST(test_IdleNotification),
+  DISABLED_TEST(test_IdleNotification, 24),
   UNIMPLEMENTED_TEST(test_SetResourceConstraints),
   UNIMPLEMENTED_TEST(test_SetResourceConstraintsInThread),
   UNIMPLEMENTED_TEST(test_GetHeapStatistics),

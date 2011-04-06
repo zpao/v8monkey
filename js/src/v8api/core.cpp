@@ -72,6 +72,12 @@ Handle<Value> V8::ThrowException(Handle<Value> exception) {
   return Undefined();
 }
 
+bool V8::IdleNotification() {
+  // XXX Returning true here will tell Node to stop running the GC timer, so
+  //     we're just going to do that for now.
+  return true;
+}
+
 static Local<Value> ConstructError(const char *name, Handle<String> message) {
   // XXX: this probably isn't correct in all cases
   Handle<Context> ctx = Context::GetCurrent();

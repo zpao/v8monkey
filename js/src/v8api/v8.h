@@ -27,6 +27,9 @@ template <class T> class Handle;
 template <class T> class Local;
 template <class T> class Persistent;
 
+typedef void (*WeakReferenceCallback)(Persistent<Value> object,
+                                      void* parameter);
+
 #define UNIMPLEMENTEDAPI(...) \
   JS_BEGIN_MACRO \
   v8::internal::notImplemented(); \
@@ -37,11 +40,13 @@ namespace internal {
 class GCReference;
 struct GCOps;
 class GCReferenceContainer;
+struct PersistentGCReference;
 
 void notImplemented();
 
 class GCReference {
   friend struct GCOps;
+  friend struct PersistentGCReference;
 
   void root(JSContext *ctx) {
     JS_AddValueRoot(ctx, &mVal);
@@ -66,6 +71,32 @@ public:
   GCReference *Globalize();
   void Dispose();
   GCReference *Localize();
+};
+
+// This is allowed to violate the sacred rule that any class which inherits
+// from GCReference must not increase the size of the class. The reason is
+// that Persistent handles are never copied around in memory.
+struct PersistentGCReference : public GCReference {
+  PersistentGCReference(GCReference *ref);
+
+  bool IsWeak() const {
+    return prev != NULL || next != NULL;
+  }
+  bool IsNearDeath() const {
+    return isNearDeath;
+  }
+  void MakeWeak(WeakReferenceCallback callback, void *context);
+  void ClearWeak();
+
+private:
+  WeakReferenceCallback callback;
+  void *context;
+  bool isNearDeath;
+  PersistentGCReference *prev, *next;
+
+  static PersistentGCReference *weakPtrs;
+  static bool setupWeakRefs;
+  static JSBool GCCallback(JSContext *cx, JSGCStatus status);
 };
 
 template <class Inherits>
@@ -110,9 +141,6 @@ private:
   internal::GCReferenceContainer *mGCReferences;
   HandleScope *mPrevious;
 };
-
-typedef void (*WeakReferenceCallback)(Persistent<Value> object,
-                                      void* parameter);
 
 template <typename T>
 class Handle {
@@ -170,6 +198,9 @@ public:
 
 template <typename T>
 class Persistent : public Handle<T> {
+  internal::PersistentGCReference *persistentRef() const {
+    return reinterpret_cast<internal::PersistentGCReference*>(**this);
+  }
 public:
   Persistent() : Handle<T>() {}
 
@@ -178,6 +209,22 @@ public:
 
   void Dispose() {
     (*this)->Dispose();
+  }
+
+  inline void MakeWeak(void* parameters, WeakReferenceCallback callback) {
+    persistentRef()->MakeWeak(callback, parameters);
+  }
+
+  inline void ClearWeak() {
+    persistentRef()->ClearWeak();
+  }
+
+  inline bool IsNearDeath() const {
+    return persistentRef()->IsNearDeath();
+  }
+
+  inline bool IsWeak() const {
+    return persistentRef()->IsWeak();
   }
 
   static Persistent<T> New(Handle<T> other) {

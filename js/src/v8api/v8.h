@@ -162,6 +162,10 @@ public:
     return mVal;
   }
 
+  void Clear() {
+    mVal = 0;
+  }
+
   template <class S>
   static inline Handle<T> Cast(Handle<S> that) {
     return Handle<T>(T::Cast(*that));

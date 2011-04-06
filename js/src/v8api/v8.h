@@ -23,6 +23,7 @@ class AccessorInfo;
 class FunctionTemplate;
 class ObjectTemplate;
 class Signature;
+class HeapStatistics;
 template <class T> class Handle;
 template <class T> class Local;
 template <class T> class Persistent;
@@ -274,6 +275,22 @@ public:
   static const int kNoColumnInfo = 0;
 };
 
+
+// Garbage Collection
+enum GCType {
+  kGCTypeScavenge = 1 << 0,
+  kGCTypeMarkSweepCompact = 1 << 1,
+  kGCTypeAll = kGCTypeScavenge | kGCTypeMarkSweepCompact
+};
+
+enum GCCallbackFlags {
+  kNoGCCallbackFlags = 0,
+  kGCCallbackFlagCompacted = 1 << 0
+};
+
+typedef void (*GCPrologueCallback)(GCType type, GCCallbackFlags flags);
+
+
 // Exceptions
 class Exception {
  public:
@@ -284,14 +301,24 @@ class Exception {
   static Local<Value> Error(Handle<String> message);
 };
 
+typedef void (*FatalErrorCallback)(const char* location, const char* message);
+
 
 class V8 {
 public:
   static bool Initialize();
   static bool Dispose();
 
-  static Handle<Value> ThrowException(Handle<Value> exception);
+  static bool IdleNotification();
+  static void GetHeapStatistics(HeapStatistics* aHeapStatistics);
+  static const char* GetVersion();
+  static void SetFlagsFromCommandLine(int* argc, char** argv, bool aRemoveFlags);
+  static void SetFatalErrorHandler(FatalErrorCallback aCallback);
+  static int AdjustAmountOfExternalAllocatedMemory(int aChangeInBytes);
+  static void AddGCPrologueCallback(GCPrologueCallback aCallback, GCType aGCTypeFilter = kGCTypeAll);
+  static void LowMemoryNotification();
 
+  static Handle<Value> ThrowException(Handle<Value> exception);
 };
 
 class TryCatch {
@@ -373,6 +400,15 @@ private:
   JSUint32* mStackLimit;
 };
 bool SetResourceConstraints(ResourceConstraints *constraints);
+
+class HeapStatistics {
+ public:
+  HeapStatistics();
+  size_t total_heap_size() { UNIMPLEMENTEDAPI(0); }
+  size_t total_heap_size_executable() { UNIMPLEMENTEDAPI(0); }
+  size_t used_heap_size() { UNIMPLEMENTEDAPI(0); }
+  size_t heap_size_limit() { UNIMPLEMENTEDAPI(0); }
+};
 
 class Data : public internal::GCReference {
 public:

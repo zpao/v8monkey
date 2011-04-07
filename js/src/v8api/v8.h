@@ -461,7 +461,7 @@ public:
 class Boolean : public Primitive {
 public:
   Boolean(JSBool val) :
-    Primitive(val ? JSVAL_TRUE : JSVAL_FALSE) { }
+    Primitive(JS_TRUE == val ? JSVAL_TRUE : JSVAL_FALSE) { }
   Boolean(jsval v) : Primitive(v) { }
   bool Value() const {
     return mVal == JSVAL_TRUE;

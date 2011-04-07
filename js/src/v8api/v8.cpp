@@ -265,7 +265,7 @@ Value::BooleanValue() const
 {
   JSBool b;
   JS_ValueToBoolean(cx(), mVal, &b);
-  return b;
+  return b == JS_TRUE;
 }
 
 double

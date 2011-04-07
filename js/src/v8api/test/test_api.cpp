@@ -2450,7 +2450,7 @@ test_DefinePropertyPostDetach()
 //// Test Harness
 
 Test gTests[] = {
-  DISABLED_TEST(test_Handles, 11),
+  TEST(test_Handles),
   UNIMPLEMENTED_TEST(test_ReceiverSignature),
   UNIMPLEMENTED_TEST(test_ArgumentSignature),
   DISABLED_TEST(test_HulIgennem, 12),
@@ -2483,7 +2483,7 @@ Test gTests[] = {
   TEST(test_Number),
   TEST(test_ToNumber),
   TEST(test_Date),
-  DISABLED_TEST(test_Boolean, 10),
+  TEST(test_Boolean),
   UNIMPLEMENTED_TEST(test_GlobalPrototype),
   UNIMPLEMENTED_TEST(test_ObjectTemplate),
   UNIMPLEMENTED_TEST(test_DescriptorInheritance),

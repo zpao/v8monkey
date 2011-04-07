@@ -394,12 +394,12 @@ Local<Value> Date::New(double time) {
 //// Primitives & basic values
 
 Handle<Primitive> Undefined() {
-  Primitive p(JSVAL_VOID);
+  static Primitive p(JSVAL_VOID);
   return Handle<Primitive>(&p);
 }
 
 Handle<Primitive> Null() {
-  Primitive p(JSVAL_NULL);
+  static Primitive p(JSVAL_NULL);
   return Handle<Primitive>(&p);
 }
 

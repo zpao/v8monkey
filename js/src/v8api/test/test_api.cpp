@@ -130,6 +130,26 @@ static v8::Handle<Value> GetKnurd(Local<String> property, const AccessorInfo&) {
   return v8_num(15.2);
 }
 
+v8::Persistent<Value> xValue;
+
+static void SetXValue(Local<String> name,
+                      Local<Value> value,
+                      const AccessorInfo& info) {
+  CHECK_EQ(value, v8_num(4));
+  CHECK_EQ(info.Data(), v8_str("donut"));
+  CHECK_EQ(name, v8_str("x"));
+  CHECK(xValue.IsEmpty());
+  xValue = v8::Persistent<Value>::New(value);
+}
+
+static v8::Handle<Value> GetXValue(Local<String> name,
+                                   const AccessorInfo& info) {
+  //ApiTestFuzzer::Fuzz();
+  CHECK_EQ(info.Data(), v8_str("donut"));
+  CHECK_EQ(name, v8_str("x"));
+  return name;
+}
+
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
@@ -992,7 +1012,18 @@ test_MultiRun()
 // from test-api.cc:2779
 void
 test_SimplePropertyRead()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetAccessor(v8_str("x"), GetXValue, NULL, v8_str("donut"));
+  LocalContext context;
+  context->Global()->Set(v8_str("obj"), templ->NewInstance());
+  Local<Script> script = Script::Compile(v8_str("obj.x"));
+  for (int i = 0; i < 10; i++) {
+    Local<Value> result = script->Run();
+    CHECK_EQ(result, v8_str("x"));
+  }
+}
 
 // from test-api.cc:2792
 void
@@ -2534,7 +2565,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_TryCatchAndFinally),
   UNIMPLEMENTED_TEST(test_Equality),
   UNIMPLEMENTED_TEST(test_MultiRun),
-  UNIMPLEMENTED_TEST(test_SimplePropertyRead),
+  DISABLED_TEST(test_SimplePropertyRead, 26),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnAPIAccessor),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnDefineGetterSetter),
   UNIMPLEMENTED_TEST(test_DefineAPIAccessorOnObject),

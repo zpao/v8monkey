@@ -3,6 +3,11 @@
 namespace v8 {
 using namespace internal;
 
+FunctionTemplate::FunctionTemplate() :
+  Template(NULL)
+{
+}
+
 // static
 Local<FunctionTemplate>
 FunctionTemplate::New(InvocationCallback callback,

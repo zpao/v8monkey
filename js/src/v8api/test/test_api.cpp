@@ -2644,7 +2644,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_TryCatchAndFinally),
   UNIMPLEMENTED_TEST(test_Equality),
   UNIMPLEMENTED_TEST(test_MultiRun),
-  DISABLED_TEST(test_SimplePropertyRead, 26),
+  TEST(test_SimplePropertyRead),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnAPIAccessor),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnDefineGetterSetter),
   UNIMPLEMENTED_TEST(test_DefineAPIAccessorOnObject),

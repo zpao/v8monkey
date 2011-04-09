@@ -242,7 +242,8 @@ ObjectTemplate::ObjectTemplate() :
 Local<ObjectTemplate>
 ObjectTemplate::New()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  ObjectTemplate d;
+  return Local<ObjectTemplate>::New(&d);
 }
 
 Local<Object>

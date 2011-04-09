@@ -86,12 +86,16 @@ std::ostream&
 operator<<(std::ostream& o,
            const Handle<Value>& val)
 {
-  Local<String> str = val->ToString();
-  int len = str->Length();
-  char* asciiStr = new char[len + 1];
-  (void)str->WriteAscii(asciiStr);
-  o << asciiStr;
-  delete[] asciiStr;
+  if (val.IsEmpty()) {
+    o << "<empty handle>";
+  } else {
+    Local<String> str = val->ToString();
+    int len = str->Length();
+    char* asciiStr = new char[len + 1];
+    (void)str->WriteAscii(asciiStr);
+    o << asciiStr;
+    delete[] asciiStr;
+  }
   return o;
 }
 

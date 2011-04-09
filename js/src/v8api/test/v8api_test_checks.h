@@ -82,7 +82,14 @@ void check_eq_helper(const char* aFile, int aLine,
                      v8::Handle<v8::Value> aExpected,
                      v8::Handle<v8::Value> aActual)
 {
-  if (aExpected->Equals(aActual)) {
+  bool areEqual;
+  if (aExpected.IsEmpty()) {
+    areEqual = aActual.IsEmpty();
+  }
+  else {
+    areEqual = !aActual.IsEmpty() && aExpected->Equals(aActual);
+  }
+  if (areEqual) {
     gPassedTests++;
   }
   else {

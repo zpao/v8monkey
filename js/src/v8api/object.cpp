@@ -51,8 +51,7 @@ JSBool Object::JSAPIPropertySetter(JSContext* , JSObject* obj, jsid id, JSBool, 
   AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
   AccessorInfo info(p->value.data, obj);
   Value value(*vp);
-  Handle<Value> result = p->value.setter(String::FromJSID(id), &value, info);
-  *vp = result->native();
+  p->value.setter(String::FromJSID(id), &value, info);
   // XXX: this is usually correct
   return JS_TRUE;
 }

@@ -610,7 +610,7 @@ enum ExternalArrayType {
 };
 
 typedef Handle<Value> (*AccessorGetter)(Local<String> property, const AccessorInfo &info);
-typedef Handle<Value> (*AccessorSetter)(Local<String> property, Local<Value> value, const AccessorInfo &info);
+typedef void (*AccessorSetter)(Local<String> property, Local<Value> value, const AccessorInfo &info);
 
 enum AccessControl {
   DEFAULT = 0,

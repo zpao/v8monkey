@@ -126,6 +126,7 @@ struct JSIDHashPolicy
     return k == l;
   }
 };
+
 } // namespace internal
 
 struct HandleScope {

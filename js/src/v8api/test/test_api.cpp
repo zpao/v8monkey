@@ -564,7 +564,13 @@ test_PrePropertyHandler()
 // from test-api.cc:1431
 void
 test_UndefinedIsNotEnumerable()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::Handle<Value> result = Script::Compile(v8_str(
+      "this.propertyIsEnumerable(undefined)"))->Run();
+  CHECK(result->IsFalse());
+}
 
 // from test-api.cc:1468
 void
@@ -2543,7 +2549,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_IndexedPropertyHandlerGetter),
   UNIMPLEMENTED_TEST(test_PropertyHandlerInPrototype),
   UNIMPLEMENTED_TEST(test_PrePropertyHandler),
-  UNIMPLEMENTED_TEST(test_UndefinedIsNotEnumerable),
+  TEST(test_UndefinedIsNotEnumerable),
   UNIMPLEMENTED_TEST(test_DeepCrossLanguageRecursion),
   UNIMPLEMENTED_TEST(test_CallbackExceptionRegression),
   UNIMPLEMENTED_TEST(test_FunctionPrototype),

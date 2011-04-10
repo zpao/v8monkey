@@ -280,7 +280,7 @@ ObjectTemplate::SetAccessor(Handle<String> name,
                             PropertyAttribute attribute)
 {
   (void)InternalObject().SetAccessor(name, getter, setter, data, settings,
-                                     attribute);
+                                     attribute, true);
 }
 
 void

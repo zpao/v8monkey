@@ -203,18 +203,24 @@ class LocalContext {
 
 namespace v8 {
 namespace internal {
-template <typename T>
-static T* NewArray(int size) {
-  T* result = new T[size];
-  do_check_true(result);
-  return result;
-}
+  template <typename T>
+  static T* NewArray(int size) {
+    T* result = new T[size];
+    do_check_true(result);
+    return result;
+  }
 
 
-template <typename T>
-static void DeleteArray(T* array) {
-  delete[] array;
-}
+  template <typename T>
+  static void DeleteArray(T* array) {
+    delete[] array;
+  }
+
+  struct Heap {
+    static void CollectAllGarbage(bool force_compaction) {
+      JS_GC(cx());
+    }
+  };
 } // namespace internal
 } // namespace v8
 
@@ -615,7 +621,53 @@ test_IdentityHash()
 // from test-api.cc:1672
 void
 test_HiddenProperties()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+
+  v8::Local<v8::Object> obj = v8::Object::New();
+  v8::Local<v8::String> key = v8_str("api-test::hidden-key");
+  v8::Local<v8::String> empty = v8_str("");
+  v8::Local<v8::String> prop_name = v8_str("prop_name");
+
+  i::Heap::CollectAllGarbage(false);
+
+  // Make sure delete of a non-existent hidden value works
+  CHECK(obj->DeleteHiddenValue(key));
+
+  CHECK(obj->SetHiddenValue(key, v8::Integer::New(1503)));
+  CHECK_EQ(1503, obj->GetHiddenValue(key)->Int32Value());
+  CHECK(obj->SetHiddenValue(key, v8::Integer::New(2002)));
+  CHECK_EQ(2002, obj->GetHiddenValue(key)->Int32Value());
+
+  i::Heap::CollectAllGarbage(false);
+
+  // Make sure we do not find the hidden property.
+  CHECK(!obj->Has(empty));
+  CHECK_EQ(2002, obj->GetHiddenValue(key)->Int32Value());
+  CHECK(obj->Get(empty)->IsUndefined());
+  CHECK_EQ(2002, obj->GetHiddenValue(key)->Int32Value());
+  CHECK(obj->Set(empty, v8::Integer::New(2003)));
+  CHECK_EQ(2002, obj->GetHiddenValue(key)->Int32Value());
+  CHECK_EQ(2003, obj->Get(empty)->Int32Value());
+
+  i::Heap::CollectAllGarbage(false);
+
+  // Add another property and delete it afterwards to force the object in
+  // slow case.
+  CHECK(obj->Set(prop_name, v8::Integer::New(2008)));
+  CHECK_EQ(2002, obj->GetHiddenValue(key)->Int32Value());
+  CHECK_EQ(2008, obj->Get(prop_name)->Int32Value());
+  CHECK_EQ(2002, obj->GetHiddenValue(key)->Int32Value());
+  CHECK(obj->Delete(prop_name));
+  CHECK_EQ(2002, obj->GetHiddenValue(key)->Int32Value());
+
+  i::Heap::CollectAllGarbage(false);
+
+  CHECK(obj->DeleteHiddenValue(key));
+  CHECK(obj->GetHiddenValue(key).IsEmpty());
+}
+
 
 // from test-api.cc:1728
 void
@@ -2558,7 +2610,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_InternalFieldsNativePointers),
   UNIMPLEMENTED_TEST(test_InternalFieldsNativePointersAndExternal),
   UNIMPLEMENTED_TEST(test_IdentityHash),
-  UNIMPLEMENTED_TEST(test_HiddenProperties),
+  DISABLED_TEST(test_HiddenProperties, 31),
   UNIMPLEMENTED_TEST(test_HiddenPropertiesWithInterceptors),
   UNIMPLEMENTED_TEST(test_External),
   TEST(test_GlobalHandle),

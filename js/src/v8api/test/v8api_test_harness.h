@@ -41,7 +41,7 @@
 #include <sstream>
 #include "jstypes.h"
 
-#include "v8/v8.h"
+#include "../v8-internal.h"
 using namespace v8;
 namespace i = ::i;
 

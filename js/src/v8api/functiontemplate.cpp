@@ -3,13 +3,22 @@
 namespace v8 {
 using namespace internal;
 
+FunctionTemplate::FunctionTemplate() :
+  Template(NULL)
+{
+}
+
 // static
 Local<FunctionTemplate>
 FunctionTemplate::New(InvocationCallback callback,
                       Handle<Value> data,
                       Handle<Signature>)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  if (callback) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  FunctionTemplate ft;
+  return Local<FunctionTemplate>::New(&ft);
 }
 
 Local<Function>

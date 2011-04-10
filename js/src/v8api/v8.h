@@ -878,6 +878,7 @@ typedef bool (*NamedSecurityCallback)(Local<Object> host, Local<Value> key, Acce
 typedef bool (*IndexedSecurityCallback)(Local<Object> host, JSUint32 index, AccessType type, Local<Value> data);
 
 class FunctionTemplate : public Template {
+  FunctionTemplate();
 public:
   static Local<FunctionTemplate> New(InvocationCallback callback = 0, Handle<Value> data = Handle<Value>(), Handle<Signature> signature = Handle<Signature>());
   Local<Function> GetFunction ();

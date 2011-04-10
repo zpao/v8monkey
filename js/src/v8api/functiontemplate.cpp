@@ -68,7 +68,7 @@ FunctionTemplate::InstanceTemplate()
 void
 FunctionTemplate::Inherit(Handle<FunctionTemplate> parent)
 {
-  UNIMPLEMENTEDAPI();
+  (void)JS_SetPrototype(cx(), InternalObject(), parent->InternalObject());
 }
 
 Local<ObjectTemplate>

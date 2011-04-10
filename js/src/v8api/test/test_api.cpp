@@ -1132,7 +1132,21 @@ test_ElementAPIAccessor()
 // from test-api.cc:3063
 void
 test_SimplePropertyWrite()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetAccessor(v8_str("x"), GetXValue, SetXValue, v8_str("donut"));
+  LocalContext context;
+  context->Global()->Set(v8_str("obj"), templ->NewInstance());
+  Local<Script> script = Script::Compile(v8_str("obj.x = 4;"));
+  for (int i = 0; i < 10; i++) {
+    CHECK(xValue.IsEmpty());
+    script->Run();
+    CHECK_EQ(v8_num(4), xValue);
+    xValue.Dispose();
+    xValue = v8::Persistent<Value>();
+  }
+}
 
 // from test-api.cc:3088
 void
@@ -2650,7 +2664,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DefineAPIAccessorOnObject),
   UNIMPLEMENTED_TEST(test_DontDeleteAPIAccessorsCannotBeOverriden),
   UNIMPLEMENTED_TEST(test_ElementAPIAccessor),
-  UNIMPLEMENTED_TEST(test_SimplePropertyWrite),
+  TEST(test_SimplePropertyWrite),
   UNIMPLEMENTED_TEST(test_NamedInterceptorPropertyRead),
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryIC),
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryICMultipleContext),

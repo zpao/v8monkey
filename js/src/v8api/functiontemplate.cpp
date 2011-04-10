@@ -3,8 +3,33 @@
 namespace v8 {
 using namespace internal;
 
+namespace {
+
+JSClass gFunctionTemplateClass = {
+  "FunctionTemplate", // name
+  0, // flags
+  JS_PropertyStub, // addProperty
+  JS_PropertyStub, // delProperty
+  JS_PropertyStub, // getProperty
+  JS_StrictPropertyStub, // setProperty
+  JS_EnumerateStub, // enumerate
+  JS_ResolveStub, // resolve
+  JS_ConvertStub, // convert
+  JS_FinalizeStub, // finalize
+  NULL, // getObjectOps
+  NULL, // checkAccess
+  NULL, // call
+  NULL, // construct
+  NULL, // xdrObject
+  NULL, // hasInstance
+  NULL, // mark
+  NULL, // reservedSlots
+};
+
+} // anonymous namespace
+
 FunctionTemplate::FunctionTemplate() :
-  Template(NULL)
+  Template(&gFunctionTemplateClass)
 {
 }
 

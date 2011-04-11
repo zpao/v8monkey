@@ -289,6 +289,11 @@ CPPSRCS += \
 		v8api/functiontemplate.cpp \
 		$(NULL)
 
+INSTALLED_HEADERS += \
+		v8api/v8.h \
+		v8api/v8-internal.h \
+		$(NULL)
+
 LOCAL_INCLUDES += -Iv8api
 EXPORTS_NAMESPACES += v8
 EXPORTS_v8 = \

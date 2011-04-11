@@ -123,7 +123,6 @@ void TryCatch::SetCaptureMessage(bool value) {
 namespace internal {
   struct ContextChain {
     Context* ctx;
-    JSCrossCompartmentCall *call;
     ContextChain *next;
   };
   static ContextChain *gContextChain = 0;
@@ -146,23 +145,22 @@ void Context::Enter() {
   ContextChain *link = new ContextChain;
   link->next = gContextChain;
   link->ctx = this;
-  link->call = JS_EnterCrossCompartmentCall(cx(), InternalObject());
+  JS_SetGlobalObject(cx(), InternalObject());
   gContextChain = link;
 }
 
 void Context::Exit() {
-  JS_LeaveCrossCompartmentCall(gContextChain->call);
   ContextChain *link = gContextChain;
   gContextChain = gContextChain->next;
   delete link;
+  JSObject *global = gContextChain ? gContextChain->ctx->InternalObject() : NULL;
+  JS_SetGlobalObject(cx(), global);
 }
 
 Persistent<Context> Context::New() {
-  JSObject *global = JS_NewCompartmentAndGlobalObject(cx(), &global_class, NULL);
+  JSObject *global = JS_NewGlobalObject(cx(), &global_class);
 
-  JSCrossCompartmentCall *call = JS_EnterCrossCompartmentCall(cx(), global);
   JS_InitStandardClasses(cx(), global);
-  JS_LeaveCrossCompartmentCall(call);
 
   return Persistent<Context>(new Context(global));
 }

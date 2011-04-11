@@ -252,9 +252,6 @@ ObjectTemplate::NewInstance()
   // We've set everything we care about on our SecretObject, so we can assign
   // that to the prototype of our new object.
   JSObject* proto = InternalObject();
-  if (!JS_WrapObject(cx(), &proto)) {
-    return NULL;
-  }
   JSObject* obj = JS_NewObject(cx(), &gNewInstanceClass, proto, NULL);
   if (!obj) {
     return NULL;

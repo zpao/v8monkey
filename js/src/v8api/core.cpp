@@ -31,6 +31,9 @@ void notImplemented() {
   fprintf(stderr, "Calling an unimplemented API!\n");
 }
 
+static JSObject* gCompartment = 0;
+static JSCrossCompartmentCall *gCompartmentCall = 0;
+
 }
 
 using namespace internal;
@@ -52,14 +55,24 @@ bool V8::Initialize() {
   JS_BeginRequest(ctx);
 
   gRootContext = ctx;
+
+  gCompartment = JS_NewCompartmentAndGlobalObject(ctx, &global_class, NULL);
+  gCompartmentCall = JS_EnterCrossCompartmentCall(ctx, gCompartment);
+
+  (void) JS_AddObjectRoot(ctx, &gCompartment);
   return true;
 }
 
 // TODO: call this
 bool V8::Dispose() {
+  JS_LeaveCrossCompartmentCall(gCompartmentCall);
+  (void) JS_RemoveObjectRoot(gRootContext, &gCompartment);
+  gCompartment = 0;
   JS_EndRequest(gRootContext);
+  gRootContext = 0;
   if (gRuntime)
     JS_DestroyRuntime(gRuntime);
+  gRuntime = 0;
   JS_ShutDown();
   return true;
 }

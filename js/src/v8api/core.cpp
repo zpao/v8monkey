@@ -4,7 +4,7 @@ namespace v8 { namespace internal {
 
 const int KB = 1024;
 const int MB = 1024 * 1024;
-JSRuntime *gRuntime = 0;
+static JSRuntime *gRuntime = 0;
 JSRuntime *rt() {
   if (!gRuntime) {
     V8::Initialize();

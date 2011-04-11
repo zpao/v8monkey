@@ -2577,7 +2577,7 @@ Test gTests[] = {
   TEST(test_Handles),
   UNIMPLEMENTED_TEST(test_ReceiverSignature),
   UNIMPLEMENTED_TEST(test_ArgumentSignature),
-  DISABLED_TEST(test_HulIgennem, 12),
+  TEST(test_HulIgennem),
   TEST(test_Access),
   TEST(test_AccessElement),
   TEST(test_Script),

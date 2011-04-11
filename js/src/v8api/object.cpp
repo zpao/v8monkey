@@ -34,23 +34,42 @@ static ObjectPrivateDataMap& privateDataMap() {
   return *gPrivateDataMap;
 }
 
-JSBool Object::JSAPIPropertyGetter(JSContext* cx, JSObject* obj, jsid id, jsval* vp) {
+JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   HandleScope scope;
-  Object o(obj);
+  JSObject* fnObj = JSVAL_TO_OBJECT(JS_CALLEE(cx, vp));
+  jsval accessorOwner;
+  (void) JS_GetReservedSlot(cx, fnObj, 0, &accessorOwner);
+  JS_ASSERT(JSVAL_IS_OBJECT(accessorOwner));
+  Object o(JSVAL_TO_OBJECT(accessorOwner));
+
+  jsval name;
+  (void) JS_GetReservedSlot(cx, fnObj, 1, &name);
+  jsid id;
+  (void) JS_ValueToId(cx, name, &id);
   AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
-  AccessorInfo info(p->value.data, obj);
+  AccessorInfo info(p->value.data, JS_THIS_OBJECT(cx, vp));
   Handle<Value> result = p->value.getter(String::FromJSID(id), info);
-  *vp = result->native();
+  JS_SET_RVAL(cx, vp, result->native());
   // XXX: this is usually correct
   return JS_TRUE;
 }
 
-JSBool Object::JSAPIPropertySetter(JSContext* , JSObject* obj, jsid id, JSBool, jsval* vp) {
+JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   HandleScope scope;
-  Object o(obj);
+  JSObject* fnObj = JSVAL_TO_OBJECT(JS_CALLEE(cx, vp));
+  jsval accessorOwner;
+  (void) JS_GetReservedSlot(cx, fnObj, 0, &accessorOwner);
+  JS_ASSERT(JSVAL_IS_OBJECT(accessorOwner));
+  Object o(JSVAL_TO_OBJECT(accessorOwner));
+
+  jsval name;
+  (void) JS_GetReservedSlot(cx, fnObj, 1, &name);
+  jsid id;
+  (void) JS_ValueToId(cx, name, &id);
+
   AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
-  AccessorInfo info(p->value.data, obj);
-  Value value(*vp);
+  AccessorInfo info(p->value.data, JS_THIS_OBJECT(cx, vp));
+  Value value(*JS_ARGV(cx, vp));
   p->value.setter(String::FromJSID(id), &value, info);
   // XXX: this is usually correct
   return JS_TRUE;
@@ -209,11 +228,26 @@ Object::SetAccessor(Handle<String> name,
     setter,
     data
   };
-  uintN attributes = 0;
+  JSFunction* getterFn = JS_NewFunction(cx(), JSAPIPropertyGetter, 0, 0, NULL, NULL);
+  if (!getterFn)
+    return false;
+  JSObject *getterObj = JS_GetFunctionObject(getterFn);
+
+  JSFunction* setterFn = JS_NewFunction(cx(), JSAPIPropertySetter, 1, 0, NULL, NULL);
+  if (!setterFn)
+    return false;
+  JSObject *setterObj = JS_GetFunctionObject(setterFn);
+
+  JS_SetReservedSlot(cx(), getterObj, 0, native());
+  JS_SetReservedSlot(cx(), getterObj, 1, name->native());
+  JS_SetReservedSlot(cx(), setterObj, 0, native());
+  JS_SetReservedSlot(cx(), setterObj, 1, name->native());
+
+  uintN attributes = JSPROP_GETTER | JSPROP_SETTER;
   if (!JS_DefinePropertyById(cx(), *this, propid,
         JSVAL_VOID,
-        getter ? JSAPIPropertyGetter : NULL,
-        setter ? JSAPIPropertySetter : NULL,
+        (JSPropertyOp)getterObj,
+        (JSStrictPropertyOp)setterObj,
         attributes)) {
     return false;
   }

@@ -634,8 +634,8 @@ private:
   friend class Message;
   friend class Function;
 
-  static JSBool JSAPIPropertyGetter(JSContext*, JSObject* obj, jsid id, jsval* vp);
-  static JSBool JSAPIPropertySetter(JSContext*, JSObject* obj, jsid id, JSBool, jsval* vp);
+  static JSBool JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp);
+  static JSBool JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp);
 protected:
   Object(JSObject *obj);
 public:

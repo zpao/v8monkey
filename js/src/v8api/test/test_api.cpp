@@ -42,8 +42,9 @@ typedef JSInt64 int64_t;
 ////////////////////////////////////////////////////////////////////////////////
 //// Helpers
 
-static inline v8::Local<v8::Number> v8_num(double x) {
-  return v8::Number::New(x);
+static inline v8::Local<v8::Value> v8_num(double x) {
+  v8::Local<v8::Number> num = v8::Number::New(x);
+  return v8::Local<v8::Value>(reinterpret_cast<v8::Value*>(*num));
 }
 static inline v8::Local<v8::String> v8_str(const char* x) {
   return v8::String::New(x);

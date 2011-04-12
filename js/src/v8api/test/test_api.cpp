@@ -40,6 +40,37 @@ typedef JSUint32 uint32_t;
 typedef JSInt64 int64_t;
 
 ////////////////////////////////////////////////////////////////////////////////
+//// Fake Internal Namespace
+namespace v8 {
+namespace internal {
+  template <typename T>
+  static T* NewArray(int size) {
+    T* result = new T[size];
+    do_check_true(result);
+    return result;
+  }
+
+
+  template <typename T>
+  static void DeleteArray(T* array) {
+    delete[] array;
+  }
+
+  struct Heap {
+    static void CollectAllGarbage(bool force_compaction) {
+      JS_GC(cx());
+    }
+  };
+
+  struct OS {
+    static double nan_value() {
+      return JSVAL_TO_DOUBLE(JS_GetNaNValue(cx()));
+    }
+  };
+} // namespace internal
+} // namespace v8
+
+////////////////////////////////////////////////////////////////////////////////
 //// Helpers
 
 static inline v8::Local<v8::Value> v8_num(double x) {
@@ -220,35 +251,6 @@ class LocalContext {
  private:
   v8::Persistent<v8::Context> context_;
 };
-
-namespace v8 {
-namespace internal {
-  template <typename T>
-  static T* NewArray(int size) {
-    T* result = new T[size];
-    do_check_true(result);
-    return result;
-  }
-
-
-  template <typename T>
-  static void DeleteArray(T* array) {
-    delete[] array;
-  }
-
-  struct Heap {
-    static void CollectAllGarbage(bool force_compaction) {
-      JS_GC(cx());
-    }
-  };
-
-  struct OS {
-    static double nan_value() {
-      return JSVAL_TO_DOUBLE(JS_GetNaNValue(cx()));
-    }
-  };
-} // namespace internal
-} // namespace v8
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests

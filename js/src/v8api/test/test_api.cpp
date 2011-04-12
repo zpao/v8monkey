@@ -249,6 +249,17 @@ void HandleCreatingCallback(v8::Persistent<v8::Value> handle, void*) {
   handle.Dispose();
 }
 
+static v8::Handle<Value> GetterWhichReturns42(Local<String> name,
+                                              const AccessorInfo& info) {
+  return v8_num(42);
+}
+
+static void SetterWhichSetsYOnThisTo23(Local<String> name,
+                                       Local<Value> value,
+                                       const AccessorInfo& info) {
+  info.This()->Set(v8_str("y"), v8_num(23));
+}
+
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
@@ -2623,7 +2634,50 @@ test_InterceptorOnConstructorPrototype()
 // from test-api.cc:12177
 void
 test_Bug618()
-{ }
+{
+  const char* source = "function C1() {"
+                       "  this.x = 23;"
+                       "};"
+                       "C1.prototype = P;";
+
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::Local<v8::Script> script;
+
+  // Use a simple object as prototype.
+  v8::Local<v8::Object> prototype = v8::Object::New();
+  prototype->Set(v8_str("y"), v8_num(42));
+  context->Global()->Set(v8_str("P"), prototype);
+
+  // This compile will add the code to the compilation cache.
+  CompileRun(source);
+
+  script = v8::Script::Compile(v8_str("new C1();"));
+  // Allow enough iterations for the inobject slack tracking logic
+  // to finalize instance size and install the fast construct stub.
+  for (int i = 0; i < 256; i++) {
+    v8::Handle<v8::Object> c1 = v8::Handle<v8::Object>::Cast(script->Run());
+    CHECK_EQ(23, c1->Get(v8_str("x"))->Int32Value());
+    CHECK_EQ(42, c1->Get(v8_str("y"))->Int32Value());
+  }
+
+  // Use an API object with accessors as prototype.
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetAccessor(v8_str("x"),
+                     GetterWhichReturns42,
+                     SetterWhichSetsYOnThisTo23);
+  context->Global()->Set(v8_str("P"), templ->NewInstance());
+
+  // This compile will get the code from the compilation cache.
+  CompileRun(source);
+
+  script = v8::Script::Compile(v8_str("new C1();"));
+  for (int i = 0; i < 10; i++) {
+    v8::Handle<v8::Object> c1 = v8::Handle<v8::Object>::Cast(script->Run());
+    CHECK_EQ(42, c1->Get(v8_str("x"))->Int32Value());
+    CHECK_EQ(23, c1->Get(v8_str("y"))->Int32Value());
+  }
+}
 
 // from test-api.cc:12243
 void
@@ -3057,7 +3111,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ScriptLineNumber),
   UNIMPLEMENTED_TEST(test_SetterOnConstructorPrototype),
   UNIMPLEMENTED_TEST(test_InterceptorOnConstructorPrototype),
-  UNIMPLEMENTED_TEST(test_Bug618),
+  TEST(test_Bug618),
   UNIMPLEMENTED_TEST(test_GCCallbacks),
   UNIMPLEMENTED_TEST(test_AddToJSFunctionResultCache),
   UNIMPLEMENTED_TEST(test_FillJSFunctionResultCache),

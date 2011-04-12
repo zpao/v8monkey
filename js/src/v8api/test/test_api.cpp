@@ -172,6 +172,20 @@ static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
   return result;
 }
 
+v8::Handle<Value> ThrowFromC(const v8::Arguments& args) {
+  // ApiTestFuzzer::Fuzz();
+  return v8::ThrowException(v8_str("konto"));
+}
+
+v8::Handle<Value> CCatcher(const v8::Arguments& args) {
+  if (args.Length() < 1) return v8::Boolean::New(false);
+  v8::HandleScope scope;
+  v8::TryCatch try_catch;
+  Local<Value> result = v8::Script::Compile(args[0]->ToString())->Run();
+  CHECK(!try_catch.HasCaught() || result.IsEmpty());
+  return v8::Boolean::New(try_catch.HasCaught());
+}
+
 v8::Handle<v8::Value> WithTryCatch(const v8::Arguments& args) {
   v8::TryCatch try_catch;
   return v8::Undefined();

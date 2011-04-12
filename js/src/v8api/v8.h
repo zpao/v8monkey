@@ -360,6 +360,11 @@ public:
   void SetCaptureMessage(bool value);
 };
 
+class ExtensionConfiguration {
+public:
+  ExtensionConfiguration(int nameCount, const char *names[]) {}
+};
+
 class Context : public internal::SecretObject<internal::GCReference> {
   Context(JSObject *global);
 public:
@@ -371,7 +376,10 @@ public:
   static Local<Context> GetEntered();
   static Local<Context> GetCurrent();
 
-  static Persistent<Context> New();
+  static Persistent<Context> New(
+      ExtensionConfiguration* config = NULL,
+      Handle<ObjectTemplate> global_template = Handle<ObjectTemplate>(),
+      Handle<Value> global_object = Handle<Value>());
 
   struct Scope {
     Scope(Handle<Context> ctx) :

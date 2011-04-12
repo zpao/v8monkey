@@ -157,7 +157,12 @@ void Context::Exit() {
   JS_SetGlobalObject(cx(), global);
 }
 
-Persistent<Context> Context::New() {
+Persistent<Context> Context::New(
+      ExtensionConfiguration* config,
+      Handle<ObjectTemplate> global_template,
+      Handle<Value> global_object) {
+  if (!global_template.IsEmpty() || !global_object.IsEmpty())
+    UNIMPLEMENTEDAPI(Persistent<Context>());
   JSObject *global = JS_NewGlobalObject(cx(), &global_class);
 
   JS_InitStandardClasses(cx(), global);

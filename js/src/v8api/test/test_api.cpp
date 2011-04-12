@@ -1122,7 +1122,13 @@ test_Equality()
 // from test-api.cc:2761
 void
 test_MultiRun()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  Local<Script> script = Script::Compile(v8_str("x"));
+  for (int i = 0; i < 10; i++)
+    script->Run();
+}
 
 // from test-api.cc:2779
 void
@@ -2693,7 +2699,7 @@ Test gTests[] = {
   TEST(test_TryCatchAndFinallyHidingException),
   UNIMPLEMENTED_TEST(test_TryCatchAndFinally),
   TEST(test_Equality),
-  UNIMPLEMENTED_TEST(test_MultiRun),
+  DISABLED_TEST(test_MultiRun, 43),
   TEST(test_SimplePropertyRead),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnAPIAccessor),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnDefineGetterSetter),

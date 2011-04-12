@@ -1,3 +1,6 @@
+#ifndef v8_v8_h__
+#define v8_v8_h__
+
 #include "jsapi.h"
 #include "jstl.h"
 #include "jshashtable.h"
@@ -914,3 +917,5 @@ Local<Object> Context::Global() {
 } // namespace v8
 
 namespace i = v8::internal;
+
+#endif // v8_v8_h__

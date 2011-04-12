@@ -1,4 +1,5 @@
-#pragma once
+#ifndef v8_v8_internal_h__
+#define v8_v8_internal_h__
 #include "v8.h"
 
 namespace v8 {
@@ -14,3 +15,5 @@ JSContext *cx();
 
 } // namespace internal
 } // namespace v8
+
+#endif // v8_v8_internal_h__

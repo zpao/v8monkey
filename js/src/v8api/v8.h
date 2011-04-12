@@ -307,6 +307,8 @@ class Exception {
 
 typedef void (*FatalErrorCallback)(const char* location, const char* message);
 
+Handle<Value> ThrowException(Handle<Value> exception);
+
 
 class V8 {
 public:
@@ -321,8 +323,6 @@ public:
   static int AdjustAmountOfExternalAllocatedMemory(int aChangeInBytes);
   static void AddGCPrologueCallback(GCPrologueCallback aCallback, GCType aGCTypeFilter = kGCTypeAll);
   static void LowMemoryNotification();
-
-  static Handle<Value> ThrowException(Handle<Value> exception);
 };
 
 class TryCatch {

@@ -77,7 +77,7 @@ bool V8::Dispose() {
   return true;
 }
 
-Handle<Value> V8::ThrowException(Handle<Value> exception) {
+Handle<Value> ThrowException(Handle<Value> exception) {
   jsval native = exception->native();
   JS_SetPendingException(cx(), native);
   JS_ReportPendingException(cx());

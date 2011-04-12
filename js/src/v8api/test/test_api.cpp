@@ -2213,7 +2213,27 @@ test_NoGlobalHandlesOrphaningDueToWeakCallback()
 // from test-api.cc:8950
 void
 test_CheckForCrossContextObjectLiterals()
-{ }
+{
+  v8::V8::Initialize();
+
+  const int nof = 2;
+  const char* sources[nof] = {
+    "try { [ 2, 3, 4 ].forEach(5); } catch(e) { e.toString(); }",
+    "Object()"
+  };
+
+  for (int i = 0; i < nof; i++) {
+    const char* source = sources[i];
+    { v8::HandleScope scope;
+      LocalContext context;
+      CompileRun(source);
+    }
+    { v8::HandleScope scope;
+      LocalContext context;
+      CompileRun(source);
+    }
+  }
+}
 
 // from test-api.cc:8983
 void
@@ -2967,7 +2987,7 @@ Test gTests[] = {
   TEST(test_NewPersistentHandleFromWeakCallback),
   TEST(test_DoNotUseDeletedNodesInSecondLevelGc),
   TEST(test_NoGlobalHandlesOrphaningDueToWeakCallback),
-  UNIMPLEMENTED_TEST(test_CheckForCrossContextObjectLiterals),
+  DISABLED_TEST(test_CheckForCrossContextObjectLiterals, 46),
   UNIMPLEMENTED_TEST(test_NestedHandleScopeAndContexts),
   UNIMPLEMENTED_TEST(test_ExternalAllocatedMemory),
   UNIMPLEMENTED_TEST(test_DisposeEnteredContext),

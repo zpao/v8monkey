@@ -222,6 +222,12 @@ namespace internal {
       JS_GC(cx());
     }
   };
+
+  struct OS {
+    static double nan_value() {
+      return JSVAL_TO_DOUBLE(JS_GetNaNValue(cx()));
+    }
+  };
 } // namespace internal
 } // namespace v8
 
@@ -1082,7 +1088,36 @@ test_TryCatchAndFinally()
 // from test-api.cc:2729
 void
 test_Equality()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  // Check that equality works at all before relying on CHECK_EQ
+  CHECK(v8_str("a")->Equals(v8_str("a")));
+  CHECK(!v8_str("a")->Equals(v8_str("b")));
+
+  CHECK_EQ(v8_str("a"), v8_str("a"));
+  CHECK_NE(v8_str("a"), v8_str("b"));
+  CHECK_EQ(v8_num(1), v8_num(1));
+  CHECK_EQ(v8_num(1.00), v8_num(1));
+  CHECK_NE(v8_num(1), v8_num(2));
+
+  // Assume String is not symbol.
+  CHECK(v8_str("a")->StrictEquals(v8_str("a")));
+  CHECK(!v8_str("a")->StrictEquals(v8_str("b")));
+  CHECK(!v8_str("5")->StrictEquals(v8_num(5)));
+  CHECK(v8_num(1)->StrictEquals(v8_num(1)));
+  CHECK(!v8_num(1)->StrictEquals(v8_num(2)));
+  CHECK(v8_num(0)->StrictEquals(v8_num(-0)));
+  Local<Value> not_a_number = v8_num(i::OS::nan_value());
+  CHECK(!not_a_number->StrictEquals(not_a_number));
+  CHECK(v8::False()->StrictEquals(v8::False()));
+  CHECK(!v8::False()->StrictEquals(v8::Undefined()));
+
+  v8::Handle<v8::Object> obj = v8::Object::New();
+  v8::Persistent<v8::Object> alias = v8::Persistent<v8::Object>::New(obj);
+  CHECK(alias->StrictEquals(obj));
+  alias.Dispose();
+}
 
 // from test-api.cc:2761
 void
@@ -2657,7 +2692,7 @@ Test gTests[] = {
   TEST(test_CatchExceptionFromWith),
   TEST(test_TryCatchAndFinallyHidingException),
   UNIMPLEMENTED_TEST(test_TryCatchAndFinally),
-  UNIMPLEMENTED_TEST(test_Equality),
+  TEST(test_Equality),
   UNIMPLEMENTED_TEST(test_MultiRun),
   TEST(test_SimplePropertyRead),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnAPIAccessor),

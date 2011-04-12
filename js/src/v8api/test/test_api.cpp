@@ -222,6 +222,33 @@ v8::Handle<v8::Value> WithTryCatch(const v8::Arguments& args) {
   return v8::Undefined();
 }
 
+v8::Persistent<v8::Object> some_object;
+v8::Persistent<v8::Object> bad_handle;
+
+void NewPersistentHandleCallback(v8::Persistent<v8::Value> handle, void*) {
+  v8::HandleScope scope;
+  bad_handle = v8::Persistent<v8::Object>::New(some_object);
+  handle.Dispose();
+}
+
+v8::Persistent<v8::Object> to_be_disposed;
+
+void DisposeAndForceGcCallback(v8::Persistent<v8::Value> handle, void*) {
+  to_be_disposed.Dispose();
+  i::Heap::CollectAllGarbage(false);
+  handle.Dispose();
+}
+
+void DisposingCallback(v8::Persistent<v8::Value> handle, void*) {
+  handle.Dispose();
+}
+
+void HandleCreatingCallback(v8::Persistent<v8::Value> handle, void*) {
+  v8::HandleScope scope;
+  v8::Persistent<v8::Object>::New(v8::Object::New());
+  handle.Dispose();
+}
+
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
@@ -2129,17 +2156,59 @@ test_DontLeakGlobalObjects()
 // from test-api.cc:8880
 void
 test_NewPersistentHandleFromWeakCallback()
-{ }
+{
+  LocalContext context;
+
+  v8::Persistent<v8::Object> handle1, handle2;
+  {
+    v8::HandleScope scope;
+    some_object = v8::Persistent<v8::Object>::New(v8::Object::New());
+    handle1 = v8::Persistent<v8::Object>::New(v8::Object::New());
+    handle2 = v8::Persistent<v8::Object>::New(v8::Object::New());
+  }
+  // Note: order is implementation dependent alas: currently
+  // global handle nodes are processed by PostGarbageCollectionProcessing
+  // in reverse allocation order, so if second allocated handle is deleted,
+  // weak callback of the first handle would be able to 'reallocate' it.
+  handle1.MakeWeak(NULL, NewPersistentHandleCallback);
+  handle2.Dispose();
+  i::Heap::CollectAllGarbage(false);
+}
 
 // from test-api.cc:8909
 void
 test_DoNotUseDeletedNodesInSecondLevelGc()
-{ }
+{
+  LocalContext context;
+
+  v8::Persistent<v8::Object> handle1, handle2;
+  {
+    v8::HandleScope scope;
+    handle1 = v8::Persistent<v8::Object>::New(v8::Object::New());
+    handle2 = v8::Persistent<v8::Object>::New(v8::Object::New());
+  }
+  handle1.MakeWeak(NULL, DisposeAndForceGcCallback);
+  to_be_disposed = handle2;
+  i::Heap::CollectAllGarbage(false);
+}
 
 // from test-api.cc:8934
 void
 test_NoGlobalHandlesOrphaningDueToWeakCallback()
-{ }
+{
+  LocalContext context;
+
+  v8::Persistent<v8::Object> handle1, handle2, handle3;
+  {
+    v8::HandleScope scope;
+    handle3 = v8::Persistent<v8::Object>::New(v8::Object::New());
+    handle2 = v8::Persistent<v8::Object>::New(v8::Object::New());
+    handle1 = v8::Persistent<v8::Object>::New(v8::Object::New());
+  }
+  handle2.MakeWeak(NULL, DisposingCallback);
+  handle3.MakeWeak(NULL, HandleCreatingCallback);
+  i::Heap::CollectAllGarbage(false);
+}
 
 // from test-api.cc:8950
 void
@@ -2895,9 +2964,9 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_RecursiveLocking),
   UNIMPLEMENTED_TEST(test_LockUnlockLock),
   UNIMPLEMENTED_TEST(test_DontLeakGlobalObjects),
-  UNIMPLEMENTED_TEST(test_NewPersistentHandleFromWeakCallback),
-  UNIMPLEMENTED_TEST(test_DoNotUseDeletedNodesInSecondLevelGc),
-  UNIMPLEMENTED_TEST(test_NoGlobalHandlesOrphaningDueToWeakCallback),
+  TEST(test_NewPersistentHandleFromWeakCallback),
+  TEST(test_DoNotUseDeletedNodesInSecondLevelGc),
+  TEST(test_NoGlobalHandlesOrphaningDueToWeakCallback),
   UNIMPLEMENTED_TEST(test_CheckForCrossContextObjectLiterals),
   UNIMPLEMENTED_TEST(test_NestedHandleScopeAndContexts),
   UNIMPLEMENTED_TEST(test_ExternalAllocatedMemory),

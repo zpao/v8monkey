@@ -172,6 +172,11 @@ static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
   return result;
 }
 
+v8::Handle<v8::Value> WithTryCatch(const v8::Arguments& args) {
+  v8::TryCatch try_catch;
+  return v8::Undefined();
+}
+
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
@@ -1083,7 +1088,22 @@ test_TryCatchAndFinallyHidingException()
 // from test-api.cc:2711
 void
 test_TryCatchAndFinally()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  context->Global()->Set(
+      v8_str("native_with_try_catch"),
+      v8::FunctionTemplate::New(WithTryCatch)->GetFunction());
+  v8::TryCatch try_catch;
+  CHECK(!try_catch.HasCaught());
+  CompileRun(
+      "try {\n"
+      "  throw new Error('a');\n"
+      "} finally {\n"
+      "  native_with_try_catch();\n"
+      "}\n");
+  CHECK(try_catch.HasCaught());
+}
 
 // from test-api.cc:2729
 void
@@ -2697,7 +2717,7 @@ Test gTests[] = {
   TEST(test_CatchZero),
   TEST(test_CatchExceptionFromWith),
   TEST(test_TryCatchAndFinallyHidingException),
-  UNIMPLEMENTED_TEST(test_TryCatchAndFinally),
+  DISABLED_TEST(test_TryCatchAndFinally, 44),
   TEST(test_Equality),
   DISABLED_TEST(test_MultiRun, 43),
   TEST(test_SimplePropertyRead),

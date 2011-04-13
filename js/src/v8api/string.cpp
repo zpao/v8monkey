@@ -133,6 +133,13 @@ int String::WriteUtf8(char* buffer,
   return static_cast<int>(bytesWritten);
 }
 
+// static
+Local<String>
+String::Empty()
+{
+  return String::New("", 0);
+}
+
 String::AsciiValue::AsciiValue(Handle<v8::Value> val) {
   // Set some defaults which will be used for empty values/strings
   mStr = NULL;

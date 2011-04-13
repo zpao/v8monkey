@@ -564,6 +564,8 @@ public:
                 int* nchars_ref = NULL,
                 WriteHints hints = NO_HINTS) const;
 
+  static Local<String> Empty();
+
   class Utf8Value {
     char* mStr;
     int mLength;

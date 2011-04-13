@@ -27,8 +27,8 @@ JSClass global_class = {
   JSCLASS_NO_OPTIONAL_MEMBERS
 };
 
-void notImplemented() {
-  fprintf(stderr, "Calling an unimplemented API!\n");
+void notImplemented(const char* functionName) {
+  fprintf(stderr, "Calling an unimplemented API: %s\n", functionName);
 }
 
 static JSObject* gCompartment = 0;

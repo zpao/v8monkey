@@ -34,9 +34,13 @@ template <class T> class Persistent;
 typedef void (*WeakReferenceCallback)(Persistent<Value> object,
                                       void* parameter);
 
+#ifdef __FUNCDNAME__
+#define __PRETTY_FUNCTION__ __FUNCDNAME__
+#endif
+
 #define UNIMPLEMENTEDAPI(...) \
   JS_BEGIN_MACRO \
-  v8::internal::notImplemented(); \
+  v8::internal::notImplemented(__PRETTY_FUNCTION__); \
   return __VA_ARGS__; \
   JS_END_MACRO
 
@@ -46,7 +50,7 @@ struct GCOps;
 class GCReferenceContainer;
 struct PersistentGCReference;
 
-void notImplemented();
+void notImplemented(const char* functionName);
 
 class GCReference {
   friend struct GCOps;

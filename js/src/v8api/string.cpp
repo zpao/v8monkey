@@ -30,6 +30,14 @@ String::New(const JSUint16* data,
   return Local<String>::New(&s);
 }
 
+// static
+Local<String>
+String::NewSymbol(const char* data,
+                  int length)
+{
+  UNIMPLEMENTEDAPI(NULL);
+}
+
 Local<String> String::FromJSID(jsid id) {
   jsval v;
   if (!JS_IdToValue(cx(), id, &v))

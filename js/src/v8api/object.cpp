@@ -323,33 +323,46 @@ Object::GetConstructorName()
 int
 Object::InternalFieldCount()
 {
-  UNIMPLEMENTEDAPI(0);
+  JSClass *cls = JS_GET_CLASS(cx(), *this);
+  if (!cls)
+    return -1;
+  return JSCLASS_RESERVED_SLOTS(cls);
 }
 
 Local<Value>
 Object::GetInternalField(int index)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  Value v;
+  if (!JS_GetReservedSlot(cx(), *this, index, &v.native())) {
+    return Local<Value>();
+  }
+  return Local<Value>::New(&v);
 }
 
 void
 Object::SetInternalField(int index,
                          Handle<Value> value)
 {
-  UNIMPLEMENTEDAPI();
+  (void) JS_SetReservedSlot(cx(), *this, index, value->native());
 }
 
 void*
 Object::GetPointerFromInternalField(int index)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  jsval v;
+  if (JS_GetReservedSlot(cx(), *this, index, &v)) {
+    return NULL;
+  }
+  // XXX: this assumes there was a ptr there
+  return JSVAL_TO_PRIVATE(v);
 }
 
 void
 Object::SetPointerInInternalField(int index,
                                   void* value)
 {
-  UNIMPLEMENTEDAPI();
+  jsval v = PRIVATE_TO_JSVAL(value);
+  (void) JS_SetReservedSlot(cx(), *this, index, v);
 }
 
 bool

@@ -135,6 +135,11 @@ struct JSIDHashPolicy
 struct HandleScope {
   HandleScope();
   ~HandleScope();
+
+  template <class T> Local<T> Close(Handle<T> value) {
+    internal::GCReference* ref = InternalClose(*value);
+    return Local<T>(reinterpret_cast<T*>(ref));
+  }
 private:
   friend class internal::GCReference;
   static internal::GCReference *CreateHandle(internal::GCReference r);
@@ -142,13 +147,11 @@ private:
 
   static HandleScope *sCurrent;
   size_t getHandleCount();
+  internal::GCReference* InternalClose(internal::GCReference*);
+  void Destroy();
 
   internal::GCReferenceContainer *mGCReferences;
   HandleScope *mPrevious;
-public:
-  template <class T> Local<T> Close(Handle<T> value) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
 };
 
 // Shamelessly taken from V8's v8.h

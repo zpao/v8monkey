@@ -18,11 +18,26 @@ test_ArrayConversion()
   Local<Value> argv[1] = { uncaught_exception_symbol_l  };
 }
 
+void
+test_HandleScope() {
+  HandleScope outer;
+  Local<Value> v;
+  {
+    HandleScope inner;
+    v = inner.Close(String::New("hey"));
+  }
+  do_check_true(!v.IsEmpty());
+  Local<String> s = v->ToString();
+  do_check_true(!s.IsEmpty());
+  do_check_true(s->Equals(v));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
 Test gTests[] = {
   TEST(test_ArrayConversion),
+  TEST(test_HandleScope),
 };
 
 const char* file = __FILE__;

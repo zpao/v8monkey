@@ -156,8 +156,24 @@ HandleScope::HandleScope() :
 }
 
 HandleScope::~HandleScope() {
-  sCurrent = mPrevious;
-  delete mGCReferences;
+  Destroy();
+}
+
+internal::GCReference* HandleScope::InternalClose(internal::GCReference* ref) {
+  JS_ASSERT(mPrevious);
+  JS_ASSERT(mGCReferences);
+  JS_ASSERT(sCurrent == this);
+  jsval v = ref->native();
+  Destroy();
+  return HandleScope::CreateHandle(v);
+}
+
+void HandleScope::Destroy() {
+  if (sCurrent == this) {
+    sCurrent = mPrevious;
+    delete mGCReferences;
+    mGCReferences = NULL;
+  }
 }
 
 internal::GCReference *HandleScope::CreateHandle(internal::GCReference r) {

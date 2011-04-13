@@ -594,6 +594,7 @@ public:
   static Local<String> New(const char *data, int length = -1);
   static Local<String> New(const JSUint16* data, int length = -1);
   static Local<String> NewSymbol(const char* data, int length = -1);
+  static Local<String> Concat(Handle<String> left, Handle<String> right);
   static Local<String> FromJSID(jsid id);
   static inline String* Cast(Value *v) {
     if (v->IsString())

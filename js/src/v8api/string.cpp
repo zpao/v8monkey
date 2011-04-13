@@ -38,6 +38,16 @@ String::NewSymbol(const char* data,
   UNIMPLEMENTEDAPI(NULL);
 }
 
+// static
+Local<String>
+String::Concat(Handle<String> left,
+               Handle<String> right)
+{
+  JSString* str = JS_ConcatStrings(cx(), **left, **right);
+  String s(str);
+  return Local<String>::New(&s);
+}
+
 Local<String> String::FromJSID(jsid id) {
   jsval v;
   if (!JS_IdToValue(cx(), id, &v))

@@ -281,14 +281,14 @@ ObjectTemplate::NewInstance()
   JSClass* cls = &PrivateData::Get(proto)->cls;
   JSObject* obj = JS_NewObject(cx(), cls, proto, NULL);
   if (!obj) {
-    return NULL;
+    return Local<Object>();
   }
 
   ObjectTemplateHandle* handle = new ObjectTemplateHandle(this);
   if (!JS_SetPrivate(cx(), obj, handle)) {
     delete handle;
     // TODO handle error better
-    return NULL;
+    return Local<Object>();
   }
 
   Object o(obj);

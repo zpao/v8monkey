@@ -40,7 +40,7 @@ FunctionTemplate::New(InvocationCallback callback,
                       Handle<Signature>)
 {
   if (callback) {
-    UNIMPLEMENTEDAPI(NULL);
+    UNIMPLEMENTEDAPI(Local<FunctionTemplate>());
   }
   FunctionTemplate ft;
   return Local<FunctionTemplate>::New(&ft);
@@ -49,7 +49,7 @@ FunctionTemplate::New(InvocationCallback callback,
 Local<Function>
 FunctionTemplate::GetFunction()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  UNIMPLEMENTEDAPI(Local<Function>());
 }
 
 void
@@ -62,7 +62,7 @@ FunctionTemplate::SetCallHandler(InvocationCallback callback,
 Local<ObjectTemplate>
 FunctionTemplate::InstanceTemplate()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  UNIMPLEMENTEDAPI(Local<ObjectTemplate>());
 }
 
 void
@@ -74,7 +74,7 @@ FunctionTemplate::Inherit(Handle<FunctionTemplate> parent)
 Local<ObjectTemplate>
 FunctionTemplate::PrototypeTemplate()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  UNIMPLEMENTEDAPI(Local<ObjectTemplate>());
 }
 
 void

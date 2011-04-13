@@ -230,7 +230,7 @@ Value::ToObject() const
     return Local<Object>::New(reinterpret_cast<Object*>(val));
   }
 
-  return NULL;
+  return Local<Object>();
 }
 
 bool Value::IsFunction() const {
@@ -606,7 +606,7 @@ Arguments::Arguments(JSContext* cx, JSObject* thisObj, int nargs, jsval* vp, Han
 
 Local<Value> Arguments::operator[](int i) const {
   if (i < 0 || i >= mLength)
-    return NULL;
+    return Local<Value>();
   Value v(mValues[i]);
   return Local<Value>::New(&v);
 }

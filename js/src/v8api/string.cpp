@@ -22,7 +22,7 @@ String::New(const JSUint16* data,
             int length)
 {
   if (length == -1) {
-    UNIMPLEMENTEDAPI(NULL);
+    UNIMPLEMENTEDAPI(Local<String>());
   }
   JSString* str =
     JS_NewUCStringCopyN(cx(), reinterpret_cast<const jschar*>(data), length);
@@ -35,7 +35,7 @@ Local<String>
 String::NewSymbol(const char* data,
                   int length)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  UNIMPLEMENTEDAPI(Local<String>());
 }
 
 // static
@@ -51,10 +51,10 @@ String::Concat(Handle<String> left,
 Local<String> String::FromJSID(jsid id) {
   jsval v;
   if (!JS_IdToValue(cx(), id, &v))
-    return NULL;
+    return Local<String>();
   JSString* str = JS_ValueToString(cx(), v);
   if (!str)
-    return NULL;
+    return Local<String>();
   String s(str);
   return Local<String>::New(&s);
 }

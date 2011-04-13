@@ -96,10 +96,10 @@ public:
   }
 
   static Local<Value> Call(Handle<Function> fun, Handle<Value> data = Handle<Value>()) {
-    UNIMPLEMENTEDAPI(NULL);
+    UNIMPLEMENTEDAPI(Local<Value>());
   }
   static Local<Value> GetMirror(Handle<Value> obj) {
-    UNIMPLEMENTEDAPI(NULL);
+    UNIMPLEMENTEDAPI(Local<Value>());
   }
 
   static bool EnableAgent(const char* name, int port, bool wait_for_connection = false) {
@@ -111,7 +111,7 @@ public:
   }
 
   static Local<Context> GetDebugContext() {
-    UNIMPLEMENTEDAPI(NULL);
+    UNIMPLEMENTEDAPI(Local<Context>());
   }
 
 };

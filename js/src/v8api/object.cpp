@@ -300,7 +300,7 @@ Object::SetPrototype(Handle<Value> prototype)
 Local<Object>
 Object::FindInstanceInPrototypeChain(Handle<FunctionTemplate> tmpl)
 {
-  UNIMPLEMENTEDAPI(NULL);
+  UNIMPLEMENTEDAPI(Local<Object>());
 }
 
 Local<String>

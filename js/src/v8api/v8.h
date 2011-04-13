@@ -639,7 +639,7 @@ public:
   class ExternalStringResource : public ExternalStringResourceBase {
   public:
     virtual ~ExternalStringResource() {}
-    virtual const uint16_t* data() const = 0;
+    virtual const JSUint16* data() const = 0;
     virtual size_t length() const = 0;
   protected:
     ExternalStringResource() {}

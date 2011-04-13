@@ -16,6 +16,20 @@ Local<String> String::New(const char *data,
   return Local<String>::New(&s);
 }
 
+// static
+Local<String>
+String::New(const JSUint16* data,
+            int length)
+{
+  if (length == -1) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
+  JSString* str =
+    JS_NewUCStringCopyN(cx(), reinterpret_cast<const jschar*>(data), length);
+  String s(str);
+  return Local<String>::New(&s);
+}
+
 Local<String> String::FromJSID(jsid id) {
   jsval v;
   if (!JS_IdToValue(cx(), id, &v))

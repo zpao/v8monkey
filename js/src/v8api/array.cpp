@@ -19,7 +19,7 @@ Array::CloneElementAt(JSUint32 index)
 {
   Local<Value> toBeCloned = Get(index);
   if (!toBeCloned->IsObject()) {
-    return NULL;
+    return Local<Object>();
   }
   return toBeCloned->ToObject()->Clone();
 }

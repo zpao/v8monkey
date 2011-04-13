@@ -145,7 +145,17 @@ private:
 
   internal::GCReferenceContainer *mGCReferences;
   HandleScope *mPrevious;
+public:
+  template <class T> Local<T> Close(Handle<T> value) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
 };
+
+// Shamelessly taken from V8's v8.h
+#define TYPE_CHECK(T, S)                                       \
+  while (false) {                                              \
+    *(static_cast<T* volatile*>(0)) = static_cast<S*>(0);      \
+  }
 
 template <typename T>
 class Handle {
@@ -155,7 +165,11 @@ public:
   Handle(T *val) : mVal(val) {}
 
   template <typename S>
-  Handle(Handle<S> h) : mVal(*h) {}
+  Handle(Handle<S> other) :
+    mVal(reinterpret_cast<T*>(*other))
+  {
+    TYPE_CHECK(T, S);
+  }
 
   bool IsEmpty() const {
     return mVal == 0;
@@ -186,7 +200,16 @@ template <typename T>
 class Local : public Handle<T> {
 public:
   Local() : Handle<T>() {}
-  Local(T *val) : Handle<T>(val) {}
+
+  template <typename S>
+  Local(S *val) : Handle<T>(val) {}
+
+  template <typename S>
+  Local(Local<S> other) :
+    Handle<T>(reinterpret_cast<T*>(*other))
+  {
+    TYPE_CHECK(T, S);
+  }
 
   static inline Local<T> New(Handle<T> other) {
     if (other.IsEmpty())
@@ -215,6 +238,13 @@ public:
 
   template <class S>
   Persistent(S *val) : Handle<T>(val) {}
+
+  template <typename S>
+  explicit Persistent(Persistent<S> other) :
+    Handle<T>(reinterpret_cast<T*>(*other))
+  {
+    TYPE_CHECK(T, S);
+  }
 
   void Dispose() {
     (*this)->Dispose();
@@ -350,7 +380,7 @@ public:
   Handle<Value> ReThrow();
 
   Local<Value> Exception() const {
-    return Local<Value>::New(*mException);
+    return Local<Value>::New(mException);
   }
   Local<Value> StackTrace() const;
 
@@ -564,6 +594,8 @@ public:
                 int* nchars_ref = NULL,
                 WriteHints hints = NO_HINTS) const;
 
+  static Local<String> Empty();
+
   class Utf8Value {
     char* mStr;
     int mLength;
@@ -590,6 +622,9 @@ public:
   };
 
   static Local<String> New(const char *data, int length = -1);
+  static Local<String> New(const JSUint16* data, int length = -1);
+  static Local<String> NewSymbol(const char* data, int length = -1);
+  static Local<String> Concat(Handle<String> left, Handle<String> right);
   static Local<String> FromJSID(jsid id);
   static inline String* Cast(Value *v) {
     if (v->IsString())
@@ -840,7 +875,7 @@ public:
     return Local<Object>::New(&o);
   }
   Local<Object> Holder() const {
-    UNIMPLEMENTEDAPI(NULL);
+    UNIMPLEMENTEDAPI(Local<Object>());
   }
   bool IsConstructCall() const;
   Local<Value> Data() const {
@@ -861,7 +896,7 @@ public:
   }
   Local<Object> This() const;
   Local<Object> Holder() const {
-    UNIMPLEMENTEDAPI(NULL);
+    UNIMPLEMENTEDAPI(Local<Object>());
   }
 };
 
@@ -921,6 +956,8 @@ public:
 Local<Object> Context::Global() {
   return Local<Object>::New(&InternalObject());
 }
+
+#undef TYPE_CHECK
 
 } // namespace v8
 

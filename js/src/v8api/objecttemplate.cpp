@@ -5,6 +5,50 @@ using namespace internal;
 
 namespace {
 
+JSBool
+o_DeleteProperty(JSContext* cx,
+                 JSObject* obj,
+                 jsid id,
+                 jsval* vp);
+
+JSBool
+o_GetProperty(JSContext* cx,
+              JSObject* obj,
+              jsid id,
+              jsval* vp);
+
+JSBool
+o_SetProperty(JSContext* cx,
+              JSObject* obj,
+              jsid id,
+              JSBool strict,
+              jsval* vp);
+
+void
+o_finalize(JSContext* cx,
+           JSObject* obj);
+
+JSClass gNewInstanceClass = {
+  NULL, // name
+  JSCLASS_HAS_PRIVATE, // flags
+  JS_PropertyStub, // addProperty
+  o_DeleteProperty, // delProperty
+  o_GetProperty, // getProperty
+  o_SetProperty, // setProperty
+  JS_EnumerateStub, // enumerate
+  JS_ResolveStub, // resolve
+  JS_ConvertStub, // convert
+  o_finalize, // finalize
+  NULL, // getObjectOps
+  NULL, // checkAccess
+  NULL, // call
+  NULL, // construct
+  NULL, // xdrObject
+  NULL, // hasInstance
+  NULL, // mark
+  NULL, // reservedSlots
+};
+
 struct PrivateData
 {
   PrivateData() :
@@ -17,7 +61,8 @@ struct PrivateData
     indexedSetter(NULL),
     indexedQuery(NULL),
     indexedDeleter(NULL),
-    indexedEnumerator(NULL)
+    indexedEnumerator(NULL),
+    cls(gNewInstanceClass)
   {
   }
 
@@ -51,6 +96,8 @@ struct PrivateData
   IndexedPropertyDeleter indexedDeleter;
   IndexedPropertyEnumerator indexedEnumerator;
   Persistent<Value> indexedData;
+
+  JSClass cls;
 };
 
 struct ObjectTemplateHandle
@@ -179,27 +226,6 @@ o_finalize(JSContext* cx,
   delete data;
 }
 
-JSClass gNewInstanceClass = {
-  NULL, // name
-  JSCLASS_HAS_PRIVATE, // flags
-  JS_PropertyStub, // addProperty
-  o_DeleteProperty, // delProperty
-  o_GetProperty, // getProperty
-  o_SetProperty, // setProperty
-  JS_EnumerateStub, // enumerate
-  JS_ResolveStub, // resolve
-  JS_ConvertStub, // convert
-  o_finalize, // finalize
-  NULL, // getObjectOps
-  NULL, // checkAccess
-  NULL, // call
-  NULL, // construct
-  NULL, // xdrObject
-  NULL, // hasInstance
-  NULL, // mark
-  NULL, // reservedSlots
-};
-
 void
 ot_finalize(JSContext* cx,
             JSObject* obj)
@@ -252,16 +278,17 @@ ObjectTemplate::NewInstance()
   // We've set everything we care about on our SecretObject, so we can assign
   // that to the prototype of our new object.
   JSObject* proto = InternalObject();
-  JSObject* obj = JS_NewObject(cx(), &gNewInstanceClass, proto, NULL);
+  JSClass* cls = &PrivateData::Get(proto)->cls;
+  JSObject* obj = JS_NewObject(cx(), cls, proto, NULL);
   if (!obj) {
-    return NULL;
+    return Local<Object>();
   }
 
   ObjectTemplateHandle* handle = new ObjectTemplateHandle(this);
   if (!JS_SetPrivate(cx(), obj, handle)) {
     delete handle;
     // TODO handle error better
-    return NULL;
+    return Local<Object>();
   }
 
   Object o(obj);
@@ -339,13 +366,18 @@ ObjectTemplate::SetAccessCheckCallbacks(NamedSecurityCallback named_handler,
 int
 ObjectTemplate::InternalFieldCount()
 {
-  UNIMPLEMENTEDAPI(0);
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  return JSCLASS_RESERVED_SLOTS(&pd->cls);
 }
 
 void
 ObjectTemplate::SetInternalFieldCount(int value)
 {
-  UNIMPLEMENTEDAPI();
+  JS_ASSERT(value >= 0 && value < (1 << JSCLASS_RESERVED_SLOTS_WIDTH));
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  JSClass* clasp = &pd->cls;
+  clasp->flags &= ~JSCLASS_RESERVED_SLOTS_MASK;
+  clasp->flags |= JSCLASS_HAS_RESERVED_SLOTS(value);
 }
 
 } // namespace v8

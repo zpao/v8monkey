@@ -139,15 +139,16 @@ private:
   friend class internal::GCReference;
   static internal::GCReference *CreateHandle(internal::GCReference r);
   static bool IsLocalReference(internal::GCReference *);
-  template <class T> Local<T> Close(Handle<T> value) {
-    UNIMPLEMENTEDAPI(NULL);
-  }
 
   static HandleScope *sCurrent;
   size_t getHandleCount();
 
   internal::GCReferenceContainer *mGCReferences;
   HandleScope *mPrevious;
+public:
+  template <class T> Local<T> Close(Handle<T> value) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
 };
 
 template <typename T>

@@ -628,6 +628,32 @@ public:
     int length() const { return mLength; }
   };
 
+  class ExternalStringResourceBase {
+  public:
+    virtual ~ExternalStringResourceBase() {}
+  protected:
+    ExternalStringResourceBase() {}
+    virtual void Dispose() { delete this; }
+  };
+
+  class ExternalStringResource : public ExternalStringResourceBase {
+  public:
+    virtual ~ExternalStringResource() {}
+    virtual const uint16_t* data() const = 0;
+    virtual size_t length() const = 0;
+  protected:
+    ExternalStringResource() {}
+  };
+
+  class ExternalAsciiStringResource : public ExternalStringResourceBase {
+  public:
+    virtual ~ExternalAsciiStringResource() {}
+    virtual const char* data() const = 0;
+    virtual size_t length() const = 0;
+  protected:
+    ExternalAsciiStringResource() {}
+  };
+
   static Local<String> New(const char *data, int length = -1);
   static Local<String> New(const JSUint16* data, int length = -1);
   static Local<String> NewSymbol(const char* data, int length = -1);

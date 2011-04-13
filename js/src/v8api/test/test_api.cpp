@@ -2624,7 +2624,39 @@ test_ScriptLineNumber()
 // from test-api.cc:12093
 void
 test_SetterOnConstructorPrototype()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetAccessor(v8_str("x"),
+                     GetterWhichReturns42,
+                     SetterWhichSetsYOnThisTo23);
+  LocalContext context;
+  context->Global()->Set(v8_str("P"), templ->NewInstance());
+  CompileRun("function C1() {"
+             "  this.x = 23;"
+             "};"
+             "C1.prototype = P;"
+             "function C2() {"
+             "  this.x = 23"
+             "};"
+             "C2.prototype = { };"
+             "C2.prototype.__proto__ = P;");
+
+  v8::Local<v8::Script> script;
+  script = v8::Script::Compile(v8_str("new C1();"));
+  for (int i = 0; i < 10; i++) {
+    v8::Handle<v8::Object> c1 = v8::Handle<v8::Object>::Cast(script->Run());
+    CHECK_EQ(42, c1->Get(v8_str("x"))->Int32Value());
+    CHECK_EQ(23, c1->Get(v8_str("y"))->Int32Value());
+  }
+
+  script = v8::Script::Compile(v8_str("new C2();"));
+  for (int i = 0; i < 10; i++) {
+    v8::Handle<v8::Object> c2 = v8::Handle<v8::Object>::Cast(script->Run());
+    CHECK_EQ(42, c2->Get(v8_str("x"))->Int32Value());
+    CHECK_EQ(23, c2->Get(v8_str("y"))->Int32Value());
+  }
+}
 
 // from test-api.cc:12143
 void
@@ -3109,7 +3141,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_Regress528),
   UNIMPLEMENTED_TEST(test_ScriptOrigin),
   UNIMPLEMENTED_TEST(test_ScriptLineNumber),
-  UNIMPLEMENTED_TEST(test_SetterOnConstructorPrototype),
+  TEST(test_SetterOnConstructorPrototype),
   UNIMPLEMENTED_TEST(test_InterceptorOnConstructorPrototype),
   TEST(test_Bug618),
   UNIMPLEMENTED_TEST(test_GCCallbacks),

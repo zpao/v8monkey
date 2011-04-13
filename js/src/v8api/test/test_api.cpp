@@ -2121,7 +2121,38 @@ test_IsConstructCall()
 // from test-api.cc:8474
 void
 test_ObjectProtoToString()
-{ }
+{
+  v8::HandleScope scope;
+  Local<v8::FunctionTemplate> templ = v8::FunctionTemplate::New();
+  templ->SetClassName(v8_str("MyClass"));
+
+  LocalContext context;
+
+  Local<String> customized_tostring = v8_str("customized toString");
+
+  // Replace Object.prototype.toString
+  v8_compile("Object.prototype.toString = function() {"
+                  "  return 'customized toString';"
+                  "}")->Run();
+
+  // Normal ToString call should call replaced Object.prototype.toString
+  Local<v8::Object> instance = templ->GetFunction()->NewInstance();
+  Local<String> value = instance->ToString();
+  CHECK(value->IsString() && value->Equals(customized_tostring));
+
+  // ObjectProtoToString should not call replace toString function.
+  value = instance->ObjectProtoToString();
+  CHECK(value->IsString() && value->Equals(v8_str("[object MyClass]")));
+
+  // Check global
+  value = context->Global()->ObjectProtoToString();
+  CHECK(value->IsString() && value->Equals(v8_str("[object global]")));
+
+  // Check ordinary object
+  Local<Value> object = v8_compile("new Object()")->Run();
+  value = object.As<v8::Object>()->ObjectProtoToString();
+  CHECK(value->IsString() && value->Equals(v8_str("[object Object]")));
+}
 
 // from test-api.cc:8508
 void
@@ -3060,7 +3091,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_NamedPropertyHandlerGetterAttributes),
   UNIMPLEMENTED_TEST(test_Overriding),
   UNIMPLEMENTED_TEST(test_IsConstructCall),
-  UNIMPLEMENTED_TEST(test_ObjectProtoToString),
+  DISABLED_TEST(test_ObjectProtoToString, 52),
   UNIMPLEMENTED_TEST(test_ObjectGetConstructorName),
   UNIMPLEMENTED_TEST(test_Threading),
   UNIMPLEMENTED_TEST(test_Threading2),

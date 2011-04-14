@@ -986,6 +986,13 @@ public:
   void SetInternalFieldCount(int value);
 };
 
+class Signature : public Data {
+public:
+  static Local<Signature> New(Handle<FunctionTemplate> receiver = Handle<FunctionTemplate>(), int argc = 0, Handle<FunctionTemplate> argv[] = 0) {
+    UNIMPLEMENTEDAPI(Local<Signature>());
+  }
+};
+
 Local<Object> Context::Global() {
   return Local<Object>::New(&InternalObject());
 }

@@ -656,7 +656,15 @@ test_CallbackExceptionRegression()
 // from test-api.cc:1518
 void
 test_FunctionPrototype()
-{ }
+{
+  v8::HandleScope scope;
+  Local<v8::FunctionTemplate> Foo = v8::FunctionTemplate::New();
+  Foo->PrototypeTemplate()->Set(v8_str("plak"), v8_num(321));
+  LocalContext env;
+  env->Global()->Set(v8_str("Foo"), Foo->GetFunction());
+  Local<Script> script = Script::Compile(v8_str("Foo.prototype.plak"));
+  CHECK_EQ(script->Run()->Int32Value(), 321);
+}
 
 // from test-api.cc:1529
 void
@@ -2901,7 +2909,7 @@ Test gTests[] = {
   TEST(test_UndefinedIsNotEnumerable),
   UNIMPLEMENTED_TEST(test_DeepCrossLanguageRecursion),
   UNIMPLEMENTED_TEST(test_CallbackExceptionRegression),
-  UNIMPLEMENTED_TEST(test_FunctionPrototype),
+  DISABLED_TEST(test_FunctionPrototype, 55),
   UNIMPLEMENTED_TEST(test_InternalFields),
   UNIMPLEMENTED_TEST(test_GlobalObjectInternalFields),
   UNIMPLEMENTED_TEST(test_InternalFieldsNativePointers),

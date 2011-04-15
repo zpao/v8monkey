@@ -669,7 +669,19 @@ test_FunctionPrototype()
 // from test-api.cc:1529
 void
 test_InternalFields()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+
+  Local<v8::FunctionTemplate> templ = v8::FunctionTemplate::New();
+  Local<v8::ObjectTemplate> instance_templ = templ->InstanceTemplate();
+  instance_templ->SetInternalFieldCount(1);
+  Local<v8::Object> obj = templ->GetFunction()->NewInstance();
+  CHECK_EQ(1, obj->InternalFieldCount());
+  CHECK(obj->GetInternalField(0)->IsUndefined());
+  obj->SetInternalField(0, v8_num(17));
+  CHECK_EQ(17, obj->GetInternalField(0)->Int32Value());
+}
 
 // from test-api.cc:1544
 void
@@ -2910,7 +2922,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DeepCrossLanguageRecursion),
   UNIMPLEMENTED_TEST(test_CallbackExceptionRegression),
   DISABLED_TEST(test_FunctionPrototype, 55),
-  UNIMPLEMENTED_TEST(test_InternalFields),
+  DISABLED_TEST(test_InternalFields, 56),
   UNIMPLEMENTED_TEST(test_GlobalObjectInternalFields),
   UNIMPLEMENTED_TEST(test_InternalFieldsNativePointers),
   UNIMPLEMENTED_TEST(test_InternalFieldsNativePointersAndExternal),

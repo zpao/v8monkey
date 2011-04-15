@@ -874,12 +874,10 @@ public:
 
 class Template : public internal::SecretObject<Data> {
 public:
-  // XXX v8 header says the second argument should be a Handle<Data>
-  void Set(Handle<String> name, Handle<Value> value,
+  void Set(Handle<String> name, Handle<Data> value,
            PropertyAttribute attribs = None);
 
-  // XXX v8 header says the second argument should be a Handle<Data>
-  void Set(const char* name, Handle<Value> value);
+  void Set(const char* name, Handle<Data> value);
 protected:
   Template(JSClass* clasp);
 

@@ -350,7 +350,7 @@ void*
 Object::GetPointerFromInternalField(int index)
 {
   jsval v;
-  if (JS_GetReservedSlot(cx(), *this, index, &v)) {
+  if (!JS_GetReservedSlot(cx(), *this, index, &v)) {
     return NULL;
   }
   // XXX: this assumes there was a ptr there

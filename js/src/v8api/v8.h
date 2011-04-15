@@ -416,6 +416,9 @@ public:
   void Exit();
 
   inline Local<Object> Global();
+  void DetachGlobal() {
+    UNIMPLEMENTEDAPI();
+  }
 
   static Local<Context> GetEntered();
   static Local<Context> GetCurrent();

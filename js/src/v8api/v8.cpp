@@ -161,11 +161,14 @@ Persistent<Context> Context::New(
       ExtensionConfiguration* config,
       Handle<ObjectTemplate> global_template,
       Handle<Value> global_object) {
-  if (!global_template.IsEmpty() || !global_object.IsEmpty())
+  if (!global_object.IsEmpty())
     UNIMPLEMENTEDAPI(Persistent<Context>());
   JSObject *global = JS_NewGlobalObject(cx(), &global_class);
 
   JS_InitStandardClasses(cx(), global);
+  if (!global_template.IsEmpty()) {
+    JS_SetPrototype(cx(), global, JSVAL_TO_OBJECT(global_template->native()));
+  }
 
   return Persistent<Context>(new Context(global));
 }

@@ -667,6 +667,22 @@ public:
     ExternalAsciiStringResource() {}
   };
 
+  static Local<String> NewExternal(ExternalStringResource* resource) {
+    UNIMPLEMENTEDAPI(Local<String>());
+  }
+  bool MakeExternal(ExternalStringResource* resource) {
+    UNIMPLEMENTEDAPI(false);
+  }
+  static Local<String> NewExternal(ExternalAsciiStringResource* resource) {
+    UNIMPLEMENTEDAPI(Local<String>());
+  }
+  bool MakeExternal(ExternalAsciiStringResource* resource) {
+    UNIMPLEMENTEDAPI(false);
+  }
+  bool CanMakeExternal() {
+    UNIMPLEMENTEDAPI(false);
+  }
+
   static Local<String> New(const char *data, int length = -1);
   static Local<String> New(const JSUint16* data, int length = -1);
   static Local<String> NewSymbol(const char* data, int length = -1);

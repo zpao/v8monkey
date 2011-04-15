@@ -4,10 +4,16 @@ namespace v8 {
 using namespace internal;
 
 namespace {
+const int kInstanceSlot = 0;
+const int kDataSlot = 1;
+const int kCallbackSlot = 2;
+const int kCallbackParitySlot = 3;
+const int kFunctionTemplateSlots = 4;
+} // anonymous namespace
 
-JSClass gFunctionTemplateClass = {
+JSClass FunctionTemplate::sFunctionTemplateClass = {
   "FunctionTemplate", // name
-  0, // flags
+  JSCLASS_HAS_RESERVED_SLOTS(kFunctionTemplateSlots), // flags
   JS_PropertyStub, // addProperty
   JS_PropertyStub, // delProperty
   JS_PropertyStub, // getProperty
@@ -26,11 +32,47 @@ JSClass gFunctionTemplateClass = {
   NULL, // reservedSlots
 };
 
-} // anonymous namespace
-
 FunctionTemplate::FunctionTemplate() :
-  Template(&gFunctionTemplateClass)
+  Template(JS_GetFunctionObject(JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, 0, 0)))
 {
+  Handle<ObjectTemplate> protoTemplate = ObjectTemplate::New();
+  Set("prototype", protoTemplate);
+  // Instance template
+  Local<ObjectTemplate> instanceTemplate = ObjectTemplate::New();
+  instanceTemplate->InternalObject().SetPrototype(Handle<Object>(&protoTemplate->InternalObject()));
+
+  Object ftData(JS_NewObject(cx(), &sFunctionTemplateClass, NULL, NULL));
+  ftData.SetInternalField(kInstanceSlot, Handle<Object>(&instanceTemplate->InternalObject()));
+  ftData.SetInternalField(kDataSlot, v8::Undefined());
+  ftData.SetPointerInInternalField(kCallbackSlot, NULL);
+  ftData.SetPointerInInternalField(kCallbackParitySlot, NULL);
+  InternalObject().SetInternalField(0, Handle<Object>(&ftData));
+}
+
+JSBool FunctionTemplate::CallCallback(JSContext *cx, uintN argc, jsval *vp) {
+  Object fnTemplateObj(JSVAL_TO_OBJECT(JS_CALLEE(cx, vp)));
+  Handle<Object> ftData = fnTemplateObj.GetInternalField(0).As<Object>();
+  Handle<Object> instanceTemplate = ftData->GetInternalField(kInstanceSlot).As<Object>();
+  JSIntPtr maskedCallback = reinterpret_cast<JSIntPtr>(ftData->GetPointerFromInternalField(kCallbackSlot));
+  JSIntPtr residual = reinterpret_cast<JSIntPtr>(ftData->GetPointerFromInternalField(kCallbackParitySlot));
+  InvocationCallback callback = reinterpret_cast<InvocationCallback>(maskedCallback | (residual >> 1));
+  Local<Value> data = ftData->GetInternalField(kDataSlot);
+
+  JSObject *thiz = NULL;
+  if (JS_IsConstructing(cx, vp)) {
+    thiz = JS_NewObject(cx, NULL, **instanceTemplate, NULL);
+  } else {
+    thiz = JS_THIS_OBJECT(cx, vp);
+  }
+  Arguments args(cx, fnTemplateObj, argc, JS_ARGV(cx, vp), data);
+  Handle<Value> ret;
+  if (callback) {
+    ret = callback(args);
+  } else {
+    ret = v8::Undefined();
+  }
+  JS_SET_RVAL(cx, vp, ret->native());
+  return !JS_IsExceptionPending(cx);
 }
 
 // static
@@ -39,30 +81,44 @@ FunctionTemplate::New(InvocationCallback callback,
                       Handle<Value> data,
                       Handle<Signature>)
 {
-  if (callback) {
-    UNIMPLEMENTEDAPI(Local<FunctionTemplate>());
-  }
   FunctionTemplate ft;
+  if (callback) {
+    ft.SetCallHandler(callback, data);
+  }
   return Local<FunctionTemplate>::New(&ft);
 }
 
 Local<Function>
 FunctionTemplate::GetFunction()
 {
-  UNIMPLEMENTEDAPI(Local<Function>());
+  Function *fn = reinterpret_cast<Function*>(&InternalObject());
+  return Local<Function>::New(fn);
 }
 
 void
 FunctionTemplate::SetCallHandler(InvocationCallback callback,
                                  Handle<Value> data)
 {
-  UNIMPLEMENTEDAPI();
+  Handle<Object> ftData = InternalObject().GetInternalField(0).As<Object>();
+  JSIntPtr ptrcallback = reinterpret_cast<JSIntPtr>(callback);
+  ftData->SetPointerInInternalField(kCallbackSlot, reinterpret_cast<void*>(ptrcallback & ~0x1));
+  ftData->SetPointerInInternalField(kCallbackParitySlot, reinterpret_cast<void*>((ptrcallback & 0x1) << 1));
+
+  if (data.IsEmpty()) {
+    // XXX: this is not correct
+    ftData->SetInternalField(kDataSlot, v8::Undefined());
+  } else {
+    ftData->SetInternalField(kDataSlot, data);
+  }
 }
 
 Local<ObjectTemplate>
 FunctionTemplate::InstanceTemplate()
 {
-  UNIMPLEMENTEDAPI(Local<ObjectTemplate>());
+  Local<Value> instance = InternalObject().GetInternalField(0);
+  if (instance.IsEmpty())
+    return Local<ObjectTemplate>();
+  return Local<ObjectTemplate>(reinterpret_cast<ObjectTemplate*>(*instance));
 }
 
 void
@@ -74,7 +130,10 @@ FunctionTemplate::Inherit(Handle<FunctionTemplate> parent)
 Local<ObjectTemplate>
 FunctionTemplate::PrototypeTemplate()
 {
-  UNIMPLEMENTEDAPI(Local<ObjectTemplate>());
+  Local<Value> proto = InternalObject().Get(String::New("prototype"));
+  if (proto.IsEmpty())
+    return Local<ObjectTemplate>();
+  return Local<ObjectTemplate>(reinterpret_cast<ObjectTemplate*>(*proto));
 }
 
 void

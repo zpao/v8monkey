@@ -737,6 +737,7 @@ private:
   friend class Script;
   friend class Template;
   friend class ObjectTemplate;
+  friend class FunctionTemplate;
   friend class Arguments;
   friend class AccessorInfo;
   friend class Message;
@@ -909,6 +910,7 @@ public:
   void Set(const char* name, Handle<Data> value);
 protected:
   Template(JSClass* clasp);
+  Template(JSObject* obj);
 
   friend class FunctionTemplate;
   friend class ObjectTemplate;
@@ -916,6 +918,7 @@ protected:
 
 class Arguments {
   friend class Object;
+  friend class FunctionTemplate;
   Arguments(JSContext* cx, JSObject* thisObj, int nargs, jsval* vals, Handle<Value> data);
 
   JSContext *mCtx;
@@ -986,6 +989,9 @@ typedef bool (*IndexedSecurityCallback)(Local<Object> host, JSUint32 index, Acce
 
 class FunctionTemplate : public Template {
   FunctionTemplate();
+
+  static JSClass sFunctionTemplateClass;
+  static JSBool CallCallback(JSContext *cx, uintN argc, jsval *vp);
 public:
   static Local<FunctionTemplate> New(InvocationCallback callback = 0, Handle<Value> data = Handle<Value>(), Handle<Signature> signature = Handle<Signature>());
   Local<Function> GetFunction ();

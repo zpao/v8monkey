@@ -201,6 +201,13 @@ public:
   inline Handle<S> As() const {
     return Handle<S>::Cast(*this);
   }
+
+  template <class S>
+  inline bool operator==(Handle<S> that) const {
+    if (mVal == 0) return *that == 0;
+    if (*that == 0) return false;
+    return (*this)->native() == that->native();
+  }
 };
 
 template <typename T>

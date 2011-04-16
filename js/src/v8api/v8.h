@@ -762,7 +762,7 @@ public:
   bool SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None, bool isJSAPIShared = false);
   Local<Array> GetPropertyNames();
   Local<Value> GetPrototype();
-  void SetPrototype(Handle<Value> prototype);
+  bool SetPrototype(Handle<Value> prototype);
   Local<Object> FindInstanceInPrototypeChain(Handle<FunctionTemplate> tmpl);
   Local<String> ObjectProtoToString();
   Local<String> GetConstructorName();

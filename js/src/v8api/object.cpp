@@ -286,15 +286,16 @@ Object::GetPrototype()
   return Local<Value>::New(&v);
 }
 
-void
+bool
 Object::SetPrototype(Handle<Value> prototype)
 {
   Handle<Object> h(prototype.As<Object>());
   if (h.IsEmpty()) {
     // XXX: indicate error? The V8API is unclear here
-    return;
+    // zpao: is false enough? it seems to make sense
+    return false;
   }
-  JS_SetPrototype(cx(), *this, **h);
+  return JS_SetPrototype(cx(), *this, **h) == JS_TRUE;
 }
 
 Local<Object>

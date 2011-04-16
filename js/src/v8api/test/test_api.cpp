@@ -262,13 +262,11 @@ static void SetterWhichSetsYOnThisTo23(Local<String> name,
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
-  // TODO use v8::ExtensionConfiguration again
-  LocalContext(//v8::ExtensionConfiguration* extensions = 0,
+  LocalContext(v8::ExtensionConfiguration* extensions = 0,
                v8::Handle<v8::ObjectTemplate> global_template =
                    v8::Handle<v8::ObjectTemplate>(),
                v8::Handle<v8::Value> global_object = v8::Handle<v8::Value>())
-    : context_(v8::Context::New()) {
-//    : context_(v8::Context::New(extensions, global_template, global_object)) {
+    : context_(v8::Context::New(extensions, global_template, global_object)) {
     context_->Enter();
   }
 

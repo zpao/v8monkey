@@ -1816,7 +1816,29 @@ test_Constructor()
 // from test-api.cc:6526
 void
 test_FunctionDescriptorException()
-{ }
+{
+  v8::HandleScope handle_scope;
+  LocalContext context;
+  Local<v8::FunctionTemplate> templ = v8::FunctionTemplate::New();
+  templ->SetClassName(v8_str("Fun"));
+  Local<Function> cons = templ->GetFunction();
+  context->Global()->Set(v8_str("Fun"), cons);
+  Local<Value> value = CompileRun(
+    "function test() {"
+    "  try {"
+    "    (new Fun()).blah()"
+    "  } catch (e) {"
+    "    var str = String(e);"
+    "    if (str.indexOf('TypeError') == -1) return 1;"
+    "    if (str.indexOf('[object Fun]') != -1) return 2;"
+    "    if (str.indexOf('#<Fun>') == -1) return 3;"
+    "    return 0;"
+    "  }"
+    "  return 4;"
+    "}"
+    "test();");
+  CHECK_EQ(0, value->Int32Value());
+}
 
 // from test-api.cc:6551
 void
@@ -3046,7 +3068,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_SetPrototypeThrows),
   UNIMPLEMENTED_TEST(test_GetterSetterExceptions),
   UNIMPLEMENTED_TEST(test_Constructor),
-  UNIMPLEMENTED_TEST(test_FunctionDescriptorException),
+  DISABLED_TEST(test_FunctionDescriptorException, 666),
   UNIMPLEMENTED_TEST(test_EvalAliasedDynamic),
   UNIMPLEMENTED_TEST(test_CrossEval),
   UNIMPLEMENTED_TEST(test_EvalInDetachedGlobal),

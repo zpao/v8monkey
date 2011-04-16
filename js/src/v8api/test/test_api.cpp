@@ -295,6 +295,12 @@ static v8::Handle<Value> InstanceFunctionCallback(const v8::Arguments& args) {
   return v8_num(12);
 }
 
+static v8::Handle<Value>
+GlobalObjectInstancePropertiesGet(Local<String> key, const AccessorInfo&) {
+  //ApiTestFuzzer::Fuzz();
+  return v8::Handle<Value>();
+}
+
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
@@ -1829,12 +1835,102 @@ test_InstanceProperties()
 // from test-api.cc:6190
 void
 test_GlobalObjectInstanceProperties()
-{ }
+{
+  v8::HandleScope handle_scope;
+
+  Local<Value> global_object;
+
+  Local<v8::FunctionTemplate> t = v8::FunctionTemplate::New();
+  t->InstanceTemplate()->SetNamedPropertyHandler(
+      GlobalObjectInstancePropertiesGet);
+  Local<ObjectTemplate> instance_template = t->InstanceTemplate();
+  instance_template->Set(v8_str("x"), v8_num(42));
+  instance_template->Set(v8_str("f"),
+                         v8::FunctionTemplate::New(InstanceFunctionCallback));
+
+  // The script to check how Crankshaft compiles missing global function
+  // invocations.  function g is not defined and should throw on call.
+  const char* script =
+      "function wrapper(call) {"
+      "  var x = 0, y = 1;"
+      "  for (var i = 0; i < 1000; i++) {"
+      "    x += i * 100;"
+      "    y += i * 100;"
+      "  }"
+      "  if (call) g();"
+      "}"
+      "for (var i = 0; i < 17; i++) wrapper(false);"
+      "var thrown = 0;"
+      "try { wrapper(true); } catch (e) { thrown = 1; };"
+      "thrown";
+
+  {
+    LocalContext env(NULL, instance_template);
+    // Hold on to the global object so it can be used again in another
+    // environment initialization.
+    global_object = env->Global();
+
+    Local<Value> value = Script::Compile(v8_str("x"))->Run();
+    CHECK_EQ(42, value->Int32Value());
+    value = Script::Compile(v8_str("f()"))->Run();
+    CHECK_EQ(12, value->Int32Value());
+    value = Script::Compile(v8_str(script))->Run();
+    CHECK_EQ(1, value->Int32Value());
+  }
+
+  {
+    // Create new environment reusing the global object.
+    LocalContext env(NULL, instance_template, global_object);
+    Local<Value> value = Script::Compile(v8_str("x"))->Run();
+    CHECK_EQ(42, value->Int32Value());
+    value = Script::Compile(v8_str("f()"))->Run();
+    CHECK_EQ(12, value->Int32Value());
+    value = Script::Compile(v8_str(script))->Run();
+    CHECK_EQ(1, value->Int32Value());
+  }
+}
 
 // from test-api.cc:6246
 void
 test_CallKnownGlobalReceiver()
-{ }
+{
+  v8::HandleScope handle_scope;
+
+  Local<Value> global_object;
+
+  Local<v8::FunctionTemplate> t = v8::FunctionTemplate::New();
+  Local<ObjectTemplate> instance_template = t->InstanceTemplate();
+
+  // The script to check that we leave global object not
+  // global object proxy on stack when we deoptimize from inside
+  // arguments evaluation.
+  // To provoke error we need to both force deoptimization
+  // from arguments evaluation and to force CallIC to take
+  // CallIC_Miss code path that can't cope with global proxy.
+  const char* script =
+      "function bar(x, y) { try { } finally { } }"
+      "function baz(x) { try { } finally { } }"
+      "function bom(x) { try { } finally { } }"
+      "function foo(x) { bar([x], bom(2)); }"
+      "for (var i = 0; i < 10000; i++) foo(1);"
+      "foo";
+
+  Local<Value> foo;
+  {
+    LocalContext env(NULL, instance_template);
+    // Hold on to the global object so it can be used again in another
+    // environment initialization.
+    global_object = env->Global();
+    foo = Script::Compile(v8_str(script))->Run();
+  }
+
+  {
+    // Create new environment reusing the global object.
+    LocalContext env(NULL, instance_template, global_object);
+    env->Global()->Set(v8_str("foo"), foo);
+    Local<Value> value = Script::Compile(v8_str("foo()"))->Run();
+  }
+}
 
 // from test-api.cc:6323
 void
@@ -3270,8 +3366,8 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_AccessControlInterceptorIC),
   UNIMPLEMENTED_TEST(test_Version),
   DISABLED_TEST(test_InstanceProperties, 666),
-  UNIMPLEMENTED_TEST(test_GlobalObjectInstanceProperties),
-  UNIMPLEMENTED_TEST(test_CallKnownGlobalReceiver),
+  DISABLED_TEST(test_GlobalObjectInstanceProperties, 666),
+  DISABLED_TEST(test_CallKnownGlobalReceiver, 666),
   DISABLED_TEST(test_ShadowObject, 666),
   DISABLED_TEST(test_HiddenPrototype, 666),
   DISABLED_TEST(test_SetPrototype, 666),

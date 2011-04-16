@@ -1791,7 +1791,48 @@ test_ShadowObject()
 // from test-api.cc:6368
 void
 test_HiddenPrototype()
-{ }
+{
+  v8::HandleScope handle_scope;
+  LocalContext context;
+
+  Local<v8::FunctionTemplate> t0 = v8::FunctionTemplate::New();
+  t0->InstanceTemplate()->Set(v8_str("x"), v8_num(0));
+  Local<v8::FunctionTemplate> t1 = v8::FunctionTemplate::New();
+  t1->SetHiddenPrototype(true);
+  t1->InstanceTemplate()->Set(v8_str("y"), v8_num(1));
+  Local<v8::FunctionTemplate> t2 = v8::FunctionTemplate::New();
+  t2->SetHiddenPrototype(true);
+  t2->InstanceTemplate()->Set(v8_str("z"), v8_num(2));
+  Local<v8::FunctionTemplate> t3 = v8::FunctionTemplate::New();
+  t3->InstanceTemplate()->Set(v8_str("u"), v8_num(3));
+
+  Local<v8::Object> o0 = t0->GetFunction()->NewInstance();
+  Local<v8::Object> o1 = t1->GetFunction()->NewInstance();
+  Local<v8::Object> o2 = t2->GetFunction()->NewInstance();
+  Local<v8::Object> o3 = t3->GetFunction()->NewInstance();
+
+  // Setting the prototype on an object skips hidden prototypes.
+  CHECK_EQ(0, o0->Get(v8_str("x"))->Int32Value());
+  o0->Set(v8_str("__proto__"), o1);
+  CHECK_EQ(0, o0->Get(v8_str("x"))->Int32Value());
+  CHECK_EQ(1, o0->Get(v8_str("y"))->Int32Value());
+  o0->Set(v8_str("__proto__"), o2);
+  CHECK_EQ(0, o0->Get(v8_str("x"))->Int32Value());
+  CHECK_EQ(1, o0->Get(v8_str("y"))->Int32Value());
+  CHECK_EQ(2, o0->Get(v8_str("z"))->Int32Value());
+  o0->Set(v8_str("__proto__"), o3);
+  CHECK_EQ(0, o0->Get(v8_str("x"))->Int32Value());
+  CHECK_EQ(1, o0->Get(v8_str("y"))->Int32Value());
+  CHECK_EQ(2, o0->Get(v8_str("z"))->Int32Value());
+  CHECK_EQ(3, o0->Get(v8_str("u"))->Int32Value());
+
+  // Getting the prototype of o0 should get the first visible one
+  // which is o3.  Therefore, z should not be defined on the prototype
+  // object.
+  Local<Value> proto = o0->Get(v8_str("__proto__"));
+  CHECK(proto->IsObject());
+  CHECK(proto.As<v8::Object>()->Get(v8_str("z"))->IsUndefined());
+}
 
 // from test-api.cc:6412
 void
@@ -3137,7 +3178,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_GlobalObjectInstanceProperties),
   UNIMPLEMENTED_TEST(test_CallKnownGlobalReceiver),
   UNIMPLEMENTED_TEST(test_ShadowObject),
-  UNIMPLEMENTED_TEST(test_HiddenPrototype),
+  DISABLED_TEST(test_HiddenPrototype, 666),
   DISABLED_TEST(test_SetPrototype, 666),
   UNIMPLEMENTED_TEST(test_SetPrototypeThrows),
   DISABLED_TEST(test_GetterSetterExceptions, 666),

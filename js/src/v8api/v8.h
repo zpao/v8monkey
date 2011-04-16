@@ -494,6 +494,9 @@ public:
   bool IsInt32() const { return JSVAL_IS_INT(mVal); }
   bool IsUint32() const;
   bool IsDate() const;
+  bool IsRegExp() const {
+    UNIMPLEMENTEDAPI(false);
+  }
 
   Local<Boolean> ToBoolean() const;
   Local<Number> ToNumber() const;
@@ -583,6 +586,30 @@ class Date : public Value {
     UNIMPLEMENTEDAPI(NULL);
   }
   static void DateTimeConfigurationChangeNotification();
+};
+
+
+class RegExp : public Value {
+public:
+  enum Flags {
+    kNone = 0,
+    kGlobal = 1,
+    kIgnoreCase = 2,
+    kMultiline = 4
+  };
+
+  static Local<RegExp> New(Handle<String> pattern, Flags flags) {
+    UNIMPLEMENTEDAPI(Local<RegExp>());
+  }
+  Local<String> GetSource() const {
+    UNIMPLEMENTEDAPI(Local<String>());
+  }
+  Flags GetFlags() const {
+    UNIMPLEMENTEDAPI(kNone);
+  }
+  static inline RegExp* Cast(v8::Value* obj) {
+    UNIMPLEMENTEDAPI(NULL);
+  }
 };
 
 

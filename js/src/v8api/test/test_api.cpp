@@ -73,6 +73,11 @@ namespace internal {
 ////////////////////////////////////////////////////////////////////////////////
 //// Helpers
 
+// V8 uses this to context switch when running their thread fuzzing tests
+struct ApiTestFuzzer {
+  static void Fuzz() { }
+};
+
 static inline v8::Local<v8::Value> v8_num(double x) {
   return v8::Number::New(x);
 }
@@ -150,14 +155,12 @@ static int StrNCmp16(uint16_t* a, uint16_t* b, int n) {
 }
 
 static v8::Handle<Value> GetFlabby(const v8::Arguments& args) {
-  // XXX Calls to ApiTestFuzzer::Fuzz have been commented out since
-  //     we aren't currently doing any thread fuzzing.
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   return v8_num(17.2);
 }
 
 static v8::Handle<Value> GetKnurd(Local<String> property, const AccessorInfo&) {
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   return v8_num(15.2);
 }
 
@@ -175,7 +178,7 @@ static void SetXValue(Local<String> name,
 
 static v8::Handle<Value> GetXValue(Local<String> name,
                                    const AccessorInfo& info) {
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   CHECK_EQ(info.Data(), v8_str("donut"));
   CHECK_EQ(name, v8_str("x"));
   return name;
@@ -185,7 +188,7 @@ static int signature_callback_count;
 
 static v8::Handle<Value> IncrementingSignatureCallback(
     const v8::Arguments& args) {
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   signature_callback_count++;
   v8::Handle<v8::Array> result = v8::Array::New(args.Length());
   for (int i = 0; i < args.Length(); i++)
@@ -194,7 +197,7 @@ static v8::Handle<Value> IncrementingSignatureCallback(
 }
 
 static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   v8::Handle<v8::Array> result = v8::Array::New(args.Length());
   for (int i = 0; i < args.Length(); i++) {
     result->Set(v8::Integer::New(i), args[i]);
@@ -203,7 +206,7 @@ static v8::Handle<Value> SignatureCallback(const v8::Arguments& args) {
 }
 
 v8::Handle<Value> ThrowFromC(const v8::Arguments& args) {
-  // ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   return v8::ThrowException(v8_str("konto"));
 }
 
@@ -260,7 +263,7 @@ static void SetterWhichSetsYOnThisTo23(Local<String> name,
 }
 
 static v8::Handle<Value> ShadowFunctionCallback(const v8::Arguments& args) {
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   return v8_num(42);
 }
 
@@ -275,7 +278,7 @@ static void ShadowYSetter(Local<String>, Local<Value>, const AccessorInfo&) {
 
 static v8::Handle<Value> ShadowYGetter(Local<String> name,
                                        const AccessorInfo& info) {
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   shadow_y_getter_call_count++;
   return v8_num(shadow_y);
 }
@@ -291,13 +294,13 @@ static v8::Handle<Value> ShadowNamedGet(Local<String> key,
 }
 
 static v8::Handle<Value> InstanceFunctionCallback(const v8::Arguments& args) {
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   return v8_num(12);
 }
 
 static v8::Handle<Value>
 GlobalObjectInstancePropertiesGet(Local<String> key, const AccessorInfo&) {
-  //ApiTestFuzzer::Fuzz();
+  ApiTestFuzzer::Fuzz();
   return v8::Handle<Value>();
 }
 

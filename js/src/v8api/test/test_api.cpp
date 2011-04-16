@@ -1860,7 +1860,27 @@ test_SetPrototypeThrows()
 // from test-api.cc:6490
 void
 test_GetterSetterExceptions()
-{ }
+{
+  v8::HandleScope handle_scope;
+  LocalContext context;
+  CompileRun(
+    "function Foo() { };"
+    "function Throw() { throw 5; };"
+    "var x = { };"
+    "x.__defineSetter__('set', Throw);"
+    "x.__defineGetter__('get', Throw);");
+  Local<v8::Object> x =
+      Local<v8::Object>::Cast(context->Global()->Get(v8_str("x")));
+  v8::TryCatch try_catch;
+  x->Set(v8_str("set"), v8::Integer::New(8));
+  x->Get(v8_str("get"));
+  x->Set(v8_str("set"), v8::Integer::New(8));
+  x->Get(v8_str("get"));
+  x->Set(v8_str("set"), v8::Integer::New(8));
+  x->Get(v8_str("get"));
+  x->Set(v8_str("set"), v8::Integer::New(8));
+  x->Get(v8_str("get"));
+}
 
 // from test-api.cc:6513
 void
@@ -3120,7 +3140,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_HiddenPrototype),
   DISABLED_TEST(test_SetPrototype, 666),
   UNIMPLEMENTED_TEST(test_SetPrototypeThrows),
-  UNIMPLEMENTED_TEST(test_GetterSetterExceptions),
+  DISABLED_TEST(test_GetterSetterExceptions, 666),
   UNIMPLEMENTED_TEST(test_Constructor),
   DISABLED_TEST(test_FunctionDescriptorException, 666),
   UNIMPLEMENTED_TEST(test_EvalAliasedDynamic),

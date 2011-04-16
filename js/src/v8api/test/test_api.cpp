@@ -259,6 +259,42 @@ static void SetterWhichSetsYOnThisTo23(Local<String> name,
   info.This()->Set(v8_str("y"), v8_num(23));
 }
 
+static v8::Handle<Value> ShadowFunctionCallback(const v8::Arguments& args) {
+  //ApiTestFuzzer::Fuzz();
+  return v8_num(42);
+}
+
+static int shadow_y;
+static int shadow_y_setter_call_count;
+static int shadow_y_getter_call_count;
+
+static void ShadowYSetter(Local<String>, Local<Value>, const AccessorInfo&) {
+  shadow_y_setter_call_count++;
+  shadow_y = 42;
+}
+
+static v8::Handle<Value> ShadowYGetter(Local<String> name,
+                                       const AccessorInfo& info) {
+  //ApiTestFuzzer::Fuzz();
+  shadow_y_getter_call_count++;
+  return v8_num(shadow_y);
+}
+
+static v8::Handle<Value> ShadowIndexedGet(uint32_t index,
+                                          const AccessorInfo& info) {
+  return v8::Handle<Value>();
+}
+
+static v8::Handle<Value> ShadowNamedGet(Local<String> key,
+                                        const AccessorInfo&) {
+  return v8::Handle<Value>();
+}
+
+static v8::Handle<Value> InstanceFunctionCallback(const v8::Arguments& args) {
+  //ApiTestFuzzer::Fuzz();
+  return v8_num(12);
+}
+
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
@@ -1769,7 +1805,26 @@ test_Version()
 // from test-api.cc:6161
 void
 test_InstanceProperties()
-{ }
+{
+  v8::HandleScope handle_scope;
+  LocalContext context;
+
+  Local<v8::FunctionTemplate> t = v8::FunctionTemplate::New();
+  Local<ObjectTemplate> instance = t->InstanceTemplate();
+
+  instance->Set(v8_str("x"), v8_num(42));
+  instance->Set(v8_str("f"),
+                v8::FunctionTemplate::New(InstanceFunctionCallback));
+
+  Local<Value> o = t->GetFunction()->NewInstance();
+
+  context->Global()->Set(v8_str("i"), o);
+  Local<Value> value = Script::Compile(v8_str("i.x"))->Run();
+  CHECK_EQ(42, value->Int32Value());
+
+  value = Script::Compile(v8_str("i.f()"))->Run();
+  CHECK_EQ(12, value->Int32Value());
+}
 
 // from test-api.cc:6190
 void
@@ -1784,7 +1839,49 @@ test_CallKnownGlobalReceiver()
 // from test-api.cc:6323
 void
 test_ShadowObject()
-{ }
+{
+  shadow_y = shadow_y_setter_call_count = shadow_y_getter_call_count = 0;
+  v8::HandleScope handle_scope;
+
+  Local<ObjectTemplate> global_template = v8::ObjectTemplate::New();
+  LocalContext context(NULL, global_template);
+
+  Local<v8::FunctionTemplate> t = v8::FunctionTemplate::New();
+  t->InstanceTemplate()->SetNamedPropertyHandler(ShadowNamedGet);
+  t->InstanceTemplate()->SetIndexedPropertyHandler(ShadowIndexedGet);
+  Local<ObjectTemplate> proto = t->PrototypeTemplate();
+  Local<ObjectTemplate> instance = t->InstanceTemplate();
+
+  // Only allow calls of f on instances of t.
+  Local<v8::Signature> signature = v8::Signature::New(t);
+  proto->Set(v8_str("f"),
+             v8::FunctionTemplate::New(ShadowFunctionCallback,
+                                       Local<Value>(),
+                                       signature));
+  proto->Set(v8_str("x"), v8_num(12));
+
+  instance->SetAccessor(v8_str("y"), ShadowYGetter, ShadowYSetter);
+
+  Local<Value> o = t->GetFunction()->NewInstance();
+  context->Global()->Set(v8_str("__proto__"), o);
+
+  Local<Value> value =
+      Script::Compile(v8_str("propertyIsEnumerable(0)"))->Run();
+  CHECK(value->IsBoolean());
+  CHECK(!value->BooleanValue());
+
+  value = Script::Compile(v8_str("x"))->Run();
+  CHECK_EQ(12, value->Int32Value());
+
+  value = Script::Compile(v8_str("f()"))->Run();
+  CHECK_EQ(42, value->Int32Value());
+
+  Script::Compile(v8_str("y = 42"))->Run();
+  CHECK_EQ(1, shadow_y_setter_call_count);
+  value = Script::Compile(v8_str("y"))->Run();
+  CHECK_EQ(1, shadow_y_getter_call_count);
+  CHECK_EQ(42, value->Int32Value());
+}
 
 // from test-api.cc:6368
 void
@@ -3172,10 +3269,10 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_AccessControlFlatten),
   UNIMPLEMENTED_TEST(test_AccessControlInterceptorIC),
   UNIMPLEMENTED_TEST(test_Version),
-  UNIMPLEMENTED_TEST(test_InstanceProperties),
+  DISABLED_TEST(test_InstanceProperties, 666),
   UNIMPLEMENTED_TEST(test_GlobalObjectInstanceProperties),
   UNIMPLEMENTED_TEST(test_CallKnownGlobalReceiver),
-  UNIMPLEMENTED_TEST(test_ShadowObject),
+  DISABLED_TEST(test_ShadowObject, 666),
   DISABLED_TEST(test_HiddenPrototype, 666),
   DISABLED_TEST(test_SetPrototype, 666),
   UNIMPLEMENTED_TEST(test_SetPrototypeThrows),

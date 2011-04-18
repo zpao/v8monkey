@@ -6,6 +6,8 @@
 namespace v8 {
 using namespace internal;
 
+JS_STATIC_ASSERT(sizeof(Object) == sizeof(GCReference));
+
 struct PropertyData {
   AccessorGetter getter;
   AccessorSetter setter;

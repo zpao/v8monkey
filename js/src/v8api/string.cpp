@@ -4,6 +4,8 @@
 namespace v8 {
 using namespace internal;
 
+JS_STATIC_ASSERT(sizeof(String) == sizeof(GCReference));
+
 Local<String> String::New(const char *data,
                           int length)
 {

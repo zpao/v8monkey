@@ -3,6 +3,8 @@
 namespace v8 {
 using namespace internal;
 
+JS_STATIC_ASSERT(sizeof(Template) == sizeof(GCReference));
+
 Template::Template(JSClass* clasp) :
   SecretObject<Data>(JS_NewObject(cx(), clasp, NULL, NULL))
 {

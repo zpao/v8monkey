@@ -3,6 +3,8 @@
 namespace v8 {
 using namespace internal;
 
+JS_STATIC_ASSERT(sizeof(ObjectTemplate) == sizeof(GCReference));
+
 namespace {
 
 JSBool

@@ -3,6 +3,8 @@
 namespace v8 {
 using namespace internal;
 
+JS_STATIC_ASSERT(sizeof(FunctionTemplate) == sizeof(GCReference));
+
 namespace {
 const int kInstanceSlot = 0;
 const int kDataSlot = 1;

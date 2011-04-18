@@ -193,6 +193,8 @@ bool SetResourceConstraints(ResourceConstraints *constraints) {
 //////////////////////////////////////////////////////////////////////////////
 //// Value class
 
+JS_STATIC_ASSERT(sizeof(Value) == sizeof(GCReference));
+
 Local<Boolean> Value::ToBoolean() const {
   JSBool b;
   if (!JS_ValueToBoolean(cx(), mVal, &b))
@@ -324,6 +326,8 @@ Value::StrictEquals(Handle<Value> other) const
 //////////////////////////////////////////////////////////////////////////////
 //// Boolean class
 
+JS_STATIC_ASSERT(sizeof(Boolean) == sizeof(GCReference));
+
 Handle<Boolean> Boolean::New(bool value) {
   static Boolean sTrue(true);
   static Boolean sFalse(false);
@@ -332,6 +336,8 @@ Handle<Boolean> Boolean::New(bool value) {
 
 //////////////////////////////////////////////////////////////////////////////
 //// Number class
+
+JS_STATIC_ASSERT(sizeof(Number) == sizeof(GCReference));
 
 Local<Number> Number::New(double d) {
   jsval val;
@@ -351,6 +357,8 @@ double Number::Value() const {
 
 //////////////////////////////////////////////////////////////////////////////
 //// Integer class
+
+JS_STATIC_ASSERT(sizeof(Integer) == sizeof(GCReference));
 
 Local<Integer> Integer::New(JSInt32 value) {
   jsval val = INT_TO_JSVAL(value);
@@ -372,9 +380,19 @@ JSInt64 Integer::Value() const {
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//// Int32 class
+
+JS_STATIC_ASSERT(sizeof(Int32) == sizeof(GCReference));
+
 JSInt32 Int32::Value() {
   return JSVAL_TO_INT(mVal);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+//// Uint32 class
+
+JS_STATIC_ASSERT(sizeof(Uint32) == sizeof(GCReference));
 
 JSUint32 Uint32::Value() {
   if (JSVAL_IS_INT(mVal)) {
@@ -386,6 +404,8 @@ JSUint32 Uint32::Value() {
 
 //////////////////////////////////////////////////////////////////////////////
 //// Date class
+
+JS_STATIC_ASSERT(sizeof(Date) == sizeof(GCReference));
 
 Local<Value> Date::New(double time) {
   // We floor the value since anything after the decimal is not used.
@@ -457,6 +477,8 @@ ScriptData* ScriptData::New(const char* data, int length) {
 
 //////////////////////////////////////////////////////////////////////////////
 //// Script class
+
+JS_STATIC_ASSERT(sizeof(Script) == sizeof(GCReference));
 
 Script::Script(JSObject *s)
 {
@@ -534,6 +556,8 @@ Local<Value> Script::Id() {
 
 //////////////////////////////////////////////////////////////////////////////
 //// Message class
+
+JS_STATIC_ASSERT(sizeof(Message) == sizeof(GCReference));
 
 namespace {
   JSClass message_class = {

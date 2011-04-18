@@ -59,7 +59,8 @@ JSBool FunctionTemplate::CallCallback(JSContext *cx, uintN argc, jsval *vp) {
   Local<Value> data = ftData->GetInternalField(kDataSlot);
 
   JSObject *thiz = NULL;
-  if (JS_IsConstructing(cx, vp)) {
+  bool isConstructing = JS_IsConstructing(cx, vp);
+  if (isConstructing) {
     thiz = JS_NewObject(cx, NULL, **instanceTemplate, NULL);
   } else {
     thiz = JS_THIS_OBJECT(cx, vp);
@@ -71,7 +72,11 @@ JSBool FunctionTemplate::CallCallback(JSContext *cx, uintN argc, jsval *vp) {
   } else {
     ret = v8::Undefined();
   }
-  JS_SET_RVAL(cx, vp, ret->native());
+  if (isConstructing) {
+    JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(thiz));
+  } else {
+    JS_SET_RVAL(cx, vp, ret->native());
+  }
   return !JS_IsExceptionPending(cx);
 }
 

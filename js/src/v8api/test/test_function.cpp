@@ -66,9 +66,9 @@ test_V8DocExample()
   instance_t->Set("instance_property", Number::New(3));
 
   v8::Local<v8::Function> function = t->GetFunction();
-  // XXX: look into this failure, file issue on it
-  //v8::Local<v8::Object> instance = function->NewInstance();
-}  
+  v8::Local<v8::Object> instance = function->NewInstance();
+  // TODO: test that we created the objects we were supposed to
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness

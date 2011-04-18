@@ -3351,7 +3351,7 @@ Test gTests[] = {
   TEST(test_CatchZero),
   TEST(test_CatchExceptionFromWith),
   TEST(test_TryCatchAndFinallyHidingException),
-  DISABLED_TEST(test_TryCatchAndFinally, 44),
+  TEST(test_TryCatchAndFinally),
   TEST(test_Equality),
   DISABLED_TEST(test_MultiRun, 43),
   TEST(test_SimplePropertyRead),

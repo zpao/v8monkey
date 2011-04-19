@@ -7,14 +7,14 @@ using namespace internal;
 JS_STATIC_ASSERT(sizeof(String) == sizeof(GCReference));
 
 Local<String>
-String::New(const char *data,
+String::New(const char* data,
             int length)
 {
   if (length == -1) {
     length = strlen(data);
   }
 
-  JSString *str = JS_NewStringCopyN(cx(), data, length);
+  JSString* str = JS_NewStringCopyN(cx(), data, length);
   String s(str);
   return Local<String>::New(&s);
 }

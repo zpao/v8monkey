@@ -3315,7 +3315,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DeepCrossLanguageRecursion),
   UNIMPLEMENTED_TEST(test_CallbackExceptionRegression),
   TEST(test_FunctionPrototype),
-  DISABLED_TEST(test_InternalFields, 56),
+  TEST(test_InternalFields),
   UNIMPLEMENTED_TEST(test_GlobalObjectInternalFields),
   UNIMPLEMENTED_TEST(test_InternalFieldsNativePointers),
   UNIMPLEMENTED_TEST(test_InternalFieldsNativePointersAndExternal),

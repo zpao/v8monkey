@@ -54,7 +54,7 @@ FunctionTemplate::FunctionTemplate() :
 JSBool FunctionTemplate::CallCallback(JSContext *cx, uintN argc, jsval *vp) {
   Object fnTemplateObj(JSVAL_TO_OBJECT(JS_CALLEE(cx, vp)));
   Handle<Object> ftData = fnTemplateObj.GetInternalField(0).As<Object>();
-  Handle<Object> instanceTemplate = ftData->GetInternalField(kInstanceSlot).As<Object>();
+  Handle<ObjectTemplate> instanceTemplate(reinterpret_cast<ObjectTemplate*>(*ftData->GetInternalField(kInstanceSlot)));
   JSIntPtr maskedCallback = reinterpret_cast<JSIntPtr>(ftData->GetPointerFromInternalField(kCallbackSlot));
   JSIntPtr residual = reinterpret_cast<JSIntPtr>(ftData->GetPointerFromInternalField(kCallbackParitySlot));
   InvocationCallback callback = reinterpret_cast<InvocationCallback>(maskedCallback | (residual >> 1));
@@ -63,7 +63,7 @@ JSBool FunctionTemplate::CallCallback(JSContext *cx, uintN argc, jsval *vp) {
   JSObject *thiz = NULL;
   bool isConstructing = JS_IsConstructing(cx, vp);
   if (isConstructing) {
-    thiz = JS_NewObject(cx, NULL, **instanceTemplate, NULL);
+    thiz = **instanceTemplate->NewInstance();
   } else {
     thiz = JS_THIS_OBJECT(cx, vp);
   }

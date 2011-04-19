@@ -679,6 +679,7 @@ public:
   protected:
     ExternalStringResourceBase() {}
     virtual void Dispose() { delete this; }
+    friend class String;
   };
 
   class ExternalStringResource : public ExternalStringResourceBase {
@@ -705,9 +706,7 @@ public:
   bool MakeExternal(ExternalStringResource* resource) {
     UNIMPLEMENTEDAPI(false);
   }
-  static Local<String> NewExternal(ExternalAsciiStringResource* resource) {
-    UNIMPLEMENTEDAPI(Local<String>());
-  }
+  static Local<String> NewExternal(ExternalAsciiStringResource* resource);
   bool MakeExternal(ExternalAsciiStringResource* resource) {
     UNIMPLEMENTEDAPI(false);
   }

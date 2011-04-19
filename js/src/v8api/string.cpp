@@ -81,6 +81,17 @@ String::FromJSID(jsid id)
   return Local<String>::New(&s);
 }
 
+// static
+Local<String>
+String::NewExternal(ExternalAsciiStringResource* external)
+{
+
+  // TODO (Issue #58) Do not copy the string here!
+  Local<String> str = String::New(external->data(), external->length());
+  external->Dispose();
+  return Local<String>::New(str);
+}
+
 int
 String::Length() const
 {

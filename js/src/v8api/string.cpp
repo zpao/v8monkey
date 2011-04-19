@@ -10,11 +10,13 @@ Local<String>
 String::New(const char* data,
             int length)
 {
+  JSString* str;
   if (length == -1) {
-    length = strlen(data);
+    str = JS_NewStringCopyZ(cx(), data);
   }
-
-  JSString* str = JS_NewStringCopyN(cx(), data, length);
+  else {
+    str = JS_NewStringCopyN(cx(), data, length);
+  }
   String s(str);
   return Local<String>::New(&s);
 }
@@ -24,11 +26,13 @@ Local<String>
 String::New(const JSUint16* data,
             int length)
 {
+  JSString* str;
   if (length == -1) {
-    UNIMPLEMENTEDAPI(Local<String>());
+    str = JS_NewUCStringCopyZ(cx(), data);
   }
-  JSString* str =
-    JS_NewUCStringCopyN(cx(), reinterpret_cast<const jschar*>(data), length);
+  else {
+    str = JS_NewUCStringCopyN(cx(), data, length);
+  }
   String s(str);
   return Local<String>::New(&s);
 }
@@ -38,10 +42,13 @@ Local<String>
 String::NewSymbol(const char* data,
                   int length)
 {
+  JSString* str;
   if (length == -1) {
-    UNIMPLEMENTEDAPI(Local<String>());
+    str = JS_NewStringCopyZ(cx(), data);
   }
-  JSString* str = JS_NewStringCopyN(cx(), data, length);
+  else {
+    str = JS_NewStringCopyN(cx(), data, length);
+  }
   // jsids are atomized, so we create one in a roundabout way.
   jsid id;
   (void)JS_ValueToId(cx(), STRING_TO_JSVAL(str), &id);

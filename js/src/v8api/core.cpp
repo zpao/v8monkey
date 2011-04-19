@@ -105,6 +105,9 @@ const char* V8::GetVersion() {
   return JS_VersionToString(version);
 }
 
+void V8::SetFlagsFromCommandLine(int* argc, char** argv, bool aRemoveFlags) {
+}
+
 static Local<Value> ConstructError(const char *name, Handle<String> message) {
   // XXX: this probably isn't correct in all cases
   Handle<Context> ctx = Context::GetCurrent();

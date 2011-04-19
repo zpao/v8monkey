@@ -3516,7 +3516,7 @@ Test gTests[] = {
   TEST(test_NewPersistentHandleFromWeakCallback),
   TEST(test_DoNotUseDeletedNodesInSecondLevelGc),
   TEST(test_NoGlobalHandlesOrphaningDueToWeakCallback),
-  DISABLED_TEST(test_CheckForCrossContextObjectLiterals, 46),
+  TEST(test_CheckForCrossContextObjectLiterals),
   UNIMPLEMENTED_TEST(test_NestedHandleScopeAndContexts),
   UNIMPLEMENTED_TEST(test_ExternalAllocatedMemory),
   UNIMPLEMENTED_TEST(test_DisposeEnteredContext),

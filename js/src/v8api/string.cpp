@@ -6,8 +6,9 @@ using namespace internal;
 
 JS_STATIC_ASSERT(sizeof(String) == sizeof(GCReference));
 
-Local<String> String::New(const char *data,
-                          int length)
+Local<String>
+String::New(const char *data,
+            int length)
 {
   if (length == -1) {
     length = strlen(data);
@@ -50,31 +51,40 @@ String::Concat(Handle<String> left,
   return Local<String>::New(&s);
 }
 
-Local<String> String::FromJSID(jsid id) {
+Local<String>
+String::FromJSID(jsid id)
+{
   jsval v;
-  if (!JS_IdToValue(cx(), id, &v))
+  if (!JS_IdToValue(cx(), id, &v)) {
     return Local<String>();
+  }
   JSString* str = JS_ValueToString(cx(), v);
-  if (!str)
+  if (!str) {
     return Local<String>();
+  }
   String s(str);
   return Local<String>::New(&s);
 }
 
-int String::Length() const {
+int
+String::Length() const
+{
   return JS_GetStringLength(*this);
 }
 
-int String::Utf8Length() const {
+int
+String::Utf8Length() const
+{
   size_t encodedLength = JS_GetStringEncodingLength(cx(),
                                                     *this);
   return static_cast<int>(encodedLength);
 }
 
-int String::Write(JSUint16* buffer,
-                  int start,
-                  int length,
-                  WriteHints hints) const
+int
+String::Write(JSUint16* buffer,
+              int start,
+              int length,
+              WriteHints hints) const
 {
   size_t internalLen;
   const jschar* chars =
@@ -91,10 +101,11 @@ int String::Write(JSUint16* buffer,
   return bytes / 2;
 }
 
-int String::WriteAscii(char* buffer,
-                       int start,
-                       int length,
-                       WriteHints hints) const
+int
+String::WriteAscii(char* buffer,
+                   int start,
+                   int length,
+                   WriteHints hints) const
 {
   size_t encodedLength = JS_GetStringEncodingLength(cx(),
                                                     *this);
@@ -124,10 +135,11 @@ int String::WriteAscii(char* buffer,
   return idx;
 }
 
-int String::WriteUtf8(char* buffer,
-                      int length,
-                      int* nchars_ref,
-                      WriteHints hints) const
+int
+String::WriteUtf8(char* buffer,
+                  int length,
+                  int* nchars_ref,
+                  WriteHints hints) const
 {
   // TODO handle -1 for length!
   size_t bytesWritten = JS_EncodeStringToBuffer(*this, buffer, length);
@@ -152,7 +164,8 @@ String::Empty()
   return String::New("", 0);
 }
 
-String::AsciiValue::AsciiValue(Handle<v8::Value> val) {
+String::AsciiValue::AsciiValue(Handle<v8::Value> val)
+{
   // Set some defaults which will be used for empty values/strings
   mStr = NULL;
   mLength = 0;
@@ -170,7 +183,8 @@ String::AsciiValue::AsciiValue(Handle<v8::Value> val) {
     mLength = str->WriteAscii(mStr, 0, len + 1);
   }
 }
-String::AsciiValue::~AsciiValue() {
+String::AsciiValue::~AsciiValue()
+{
   if (mStr)
     delete[] mStr;
 }
@@ -194,9 +208,11 @@ String::Utf8Value::Utf8Value(Handle<v8::Value> val)
     mLength = str->WriteUtf8(mStr, len + 1) - 1;
   }
 }
-String::Utf8Value::~Utf8Value() {
-  if (mStr)
+String::Utf8Value::~Utf8Value()
+{
+  if (mStr) {
     delete[] mStr;
+  }
 }
 
-}
+} // namespace v8

@@ -2,6 +2,7 @@
 #define v8_v8_h__
 
 #include "jsapi.h"
+#include "jsxdrapi.h"
 #include "jstl.h"
 #include "jshashtable.h"
 
@@ -901,14 +902,28 @@ public:
 };
 
 class ScriptData {
+  ScriptData() : mXdr(NULL), mData(NULL), mLen(0), mError(true) {}
+
+  void SerializeScriptObject(JSObject *scriptObj);
+  JSObject* GenerateScriptObject(void *data, int len);
+
+  JSXDRState *mXdr;
+  const char *mData;
+  uint32      mLen;
+  bool        mError;
+  JSObject   *mScript;
 public:
-  virtual ~ScriptData() { }
+  ~ScriptData();
   static ScriptData* PreCompile(const char* input, int length);
   static ScriptData* PreCompile(Handle<String> source);
   static ScriptData* New(const char* data, int length);
-  virtual int Length() = 0;
-  virtual const char* Data() = 0;
-  virtual bool HasError() = 0;
+  int Length();
+  const char* Data();
+  bool HasError();
+protected:
+  JSObject* ScriptObject();
+
+  friend class Script;
 };
 
 class Script : public internal::GCReference {

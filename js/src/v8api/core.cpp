@@ -108,6 +108,10 @@ const char* V8::GetVersion() {
 void V8::SetFlagsFromCommandLine(int* argc, char** argv, bool aRemoveFlags) {
 }
 
+void V8::SetFatalErrorHandler(FatalErrorCallback aCallback) {
+  UNIMPLEMENTEDAPI();
+}
+
 static Local<Value> ConstructError(const char *name, Handle<String> message) {
   // XXX: this probably isn't correct in all cases
   Handle<Context> ctx = Context::GetCurrent();

@@ -378,7 +378,7 @@ ObjectTemplate::SetInternalFieldCount(int value)
   JS_ASSERT(value >= 0 && value < (1 << JSCLASS_RESERVED_SLOTS_WIDTH));
   PrivateData* pd = PrivateData::Get(InternalObject());
   JSClass* clasp = &pd->cls;
-  clasp->flags &= ~JSCLASS_RESERVED_SLOTS_MASK;
+  clasp->flags &= ~(JSCLASS_RESERVED_SLOTS_MASK << JSCLASS_RESERVED_SLOTS_SHIFT);
   clasp->flags |= JSCLASS_HAS_RESERVED_SLOTS(value);
 }
 

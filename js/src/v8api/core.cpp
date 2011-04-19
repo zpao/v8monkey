@@ -100,6 +100,11 @@ bool V8::IdleNotification() {
   return true;
 }
 
+const char* V8::GetVersion() {
+  JSVersion version = JS_GetVersion(cx());
+  return JS_VersionToString(version);
+}
+
 static Local<Value> ConstructError(const char *name, Handle<String> message) {
   // XXX: this probably isn't correct in all cases
   Handle<Context> ctx = Context::GetCurrent();

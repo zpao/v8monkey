@@ -216,7 +216,12 @@ Local<String> Value::ToString() const {
 }
 
 Local<Uint32> Value::ToUint32() const {
-  JSUint32 i = this->Uint32Value();
+  if (!IsNumber()) {
+    return Local<Uint32>();
+  }
+
+  JSUint32 i = 0;
+  (void) JS_ValueToECMAUint32(cx(), mVal, &i);
   Uint32 v(i);
   return Local<Uint32>::New(&v);
 }
@@ -293,9 +298,10 @@ Value::IntegerValue() const
 JSUint32
 Value::Uint32Value() const
 {
-  JSUint32 i = 0;
-  JS_ValueToECMAUint32(cx(), mVal, &i);
-  return i;
+  Local<Uint32> n = ToUint32();
+  if (n.IsEmpty())
+    return 0;
+  return n->Value();
 }
 
 JSInt32

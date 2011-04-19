@@ -460,7 +460,7 @@ bool SetResourceConstraints(ResourceConstraints *constraints);
 
 class HeapStatistics {
  public:
-  HeapStatistics();
+  HeapStatistics() {}
   size_t total_heap_size() { UNIMPLEMENTEDAPI(0); }
   size_t total_heap_size_executable() { UNIMPLEMENTEDAPI(0); }
   size_t used_heap_size() { UNIMPLEMENTEDAPI(0); }

@@ -109,6 +109,10 @@ bool V8::IdleNotification() {
   return true;
 }
 
+void V8::GetHeapStatistics(HeapStatistics* aHeapStatistics) {
+  UNIMPLEMENTEDAPI();
+}
+
 const char* V8::GetVersion() {
   JSVersion version = JS_GetVersion(cx());
   return JS_VersionToString(version);
@@ -118,6 +122,19 @@ void V8::SetFlagsFromCommandLine(int* argc, char** argv, bool aRemoveFlags) {
 }
 
 void V8::SetFatalErrorHandler(FatalErrorCallback aCallback) {
+  UNIMPLEMENTEDAPI();
+}
+
+int V8::AdjustAmountOfExternalAllocatedMemory(int aChangeInBytes) {
+  static int externalMemory = 0;
+  return externalMemory += aChangeInBytes;
+}
+
+void V8::AddGCPrologueCallback(GCPrologueCallback aCallback, GCType aGCTypeFilter) {
+  UNIMPLEMENTEDAPI();
+}
+
+void V8::LowMemoryNotification() {
   UNIMPLEMENTEDAPI();
 }
 

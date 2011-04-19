@@ -371,6 +371,7 @@ public:
   static void LowMemoryNotification();
 private:
   static JSBool GCCallback(JSContext*, JSGCStatus);
+  static void ReportError(JSContext *ctx, const char *message, JSErrorReport *report);
 };
 
 class TryCatch {

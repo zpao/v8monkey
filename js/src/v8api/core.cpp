@@ -34,6 +34,7 @@ void notImplemented(const char* functionName) {
 static JSObject* gCompartment = 0;
 static JSCrossCompartmentCall *gCompartmentCall = 0;
 static bool gHasAttemptedInitialization = false;
+static FatalErrorCallback gFatalCallback = 0;
 
 }
 
@@ -115,7 +116,7 @@ void V8::SetFlagsFromCommandLine(int* argc, char** argv, bool aRemoveFlags) {
 }
 
 void V8::SetFatalErrorHandler(FatalErrorCallback aCallback) {
-  UNIMPLEMENTEDAPI();
+  gFatalCallback = aCallback;
 }
 
 int V8::AdjustAmountOfExternalAllocatedMemory(int aChangeInBytes) {
@@ -139,6 +140,17 @@ JSBool V8::GCCallback(JSContext *cx, JSGCStatus status) {
   return JS_FALSE;
 }
 
+void V8::ReportError(JSContext *ctx, const char *message, JSErrorReport *report) {
+  if (gFatalCallback) {
+    // TODO: figure this out
+    bool isFatal = false;
+    if (isFatal) {
+      // TODO: better location reporting?
+      gFatalCallback(report->filename, message);
+    }
+  }
+  TryCatch::ReportError(ctx, message, report);
+}
 
 static Local<Value> ConstructError(const char *name, Handle<String> message) {
   // XXX: this probably isn't correct in all cases

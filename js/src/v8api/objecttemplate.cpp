@@ -254,13 +254,14 @@ ObjectTemplate::New()
 Local<Object>
 ObjectTemplate::NewInstance()
 {
-  // We've set everything we care about on our SecretObject, so we can assign
+  // We've set everything we care about on our InternalObject, so we can assign
   // that to the prototype of our new object.
   JSObject* proto = InternalObject();
   JSClass* cls = &PrivateData::Get(proto)->cls;
   JSObject* obj = JS_NewObject(cx(), cls, proto, NULL);
   if (!obj) {
-    return Local<Object>();
+    // wtf?
+    UNIMPLEMENTEDAPI(Local<Object>());
   }
 
   ObjectTemplateHandle* handle = new ObjectTemplateHandle(this);

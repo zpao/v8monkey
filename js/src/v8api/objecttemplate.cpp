@@ -267,7 +267,7 @@ ObjectTemplate::NewInstance()
   if (!JS_SetPrivate(cx(), obj, handle)) {
     delete handle;
     // TODO handle error better
-    return Local<Object>();
+    UNIMPLEMENTEDAPI(Local<Object>());
   }
 
   Object o(obj);

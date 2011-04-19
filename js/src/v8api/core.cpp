@@ -33,13 +33,18 @@ void notImplemented(const char* functionName) {
 
 static JSObject* gCompartment = 0;
 static JSCrossCompartmentCall *gCompartmentCall = 0;
+static bool gHasAttemptedInitialization = false;
 
 }
 
 using namespace internal;
 
 bool V8::Initialize() {
+  if (gHasAttemptedInitialization)
+    return true;
+  gHasAttemptedInitialization = true;
   JS_SetCStringsAreUTF8();
+  JS_ASSERT(!gRuntime && !gRootContext && !gCompartment && !gCompartment && !gCompartmentCall);
   gRuntime = JS_NewRuntime(64 * MB);
   if(!gRuntime)
     return false;
@@ -57,7 +62,11 @@ bool V8::Initialize() {
   gRootContext = ctx;
 
   gCompartment = JS_NewCompartmentAndGlobalObject(ctx, &global_class, NULL);
+  if (!gCompartment)
+    return false;
   gCompartmentCall = JS_EnterCrossCompartmentCall(ctx, gCompartment);
+  if (!gCompartmentCall)
+    return false;
 
   (void) JS_AddObjectRoot(ctx, &gCompartment);
   return true;

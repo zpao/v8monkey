@@ -768,7 +768,6 @@ private:
   PrivateData& GetHiddenStore();
   friend class Context;
   friend class Script;
-  friend class ScriptData;
   friend class Template;
   friend class ObjectTemplate;
   friend class FunctionTemplate;

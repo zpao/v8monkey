@@ -24,14 +24,13 @@ JSClass FunctionTemplate::sFunctionTemplateClass = {
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert
   JS_FinalizeStub, // finalize
-  NULL, // getObjectOps
+  NULL, // unused
   NULL, // checkAccess
   NULL, // call
   NULL, // construct
   NULL, // xdrObject
   NULL, // hasInstance
-  NULL, // mark
-  NULL, // reservedSlots
+  NULL, // trace
 };
 
 FunctionTemplate::FunctionTemplate() :

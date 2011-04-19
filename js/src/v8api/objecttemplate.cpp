@@ -41,14 +41,13 @@ JSClass gNewInstanceClass = {
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert
   o_finalize, // finalize
-  NULL, // getObjectOps
+  NULL, // unused
   NULL, // checkAccess
   NULL, // call
   NULL, // construct
   NULL, // xdrObject
   NULL, // hasInstance
-  NULL, // mark
-  NULL, // reservedSlots
+  NULL, // trace
 };
 
 struct PrivateData
@@ -247,14 +246,13 @@ JSClass gObjectTemplateClass = {
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert
   ot_finalize, // finalize
-  NULL, // getObjectOps
+  NULL, // unused
   NULL, // checkAccess
   NULL, // call
   NULL, // construct
   NULL, // xdrObject
   NULL, // hasInstance
-  NULL, // mark
-  NULL, // reservedSlots
+  NULL, // trace
 };
 
 } // anonymous namespace

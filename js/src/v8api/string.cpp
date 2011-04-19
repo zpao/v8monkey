@@ -38,7 +38,14 @@ Local<String>
 String::NewSymbol(const char* data,
                   int length)
 {
-  UNIMPLEMENTEDAPI(Local<String>());
+  if (length == -1) {
+    UNIMPLEMENTEDAPI(Local<String>());
+  }
+  JSString* str = JS_NewStringCopyN(cx(), data, length);
+  // jsids are atomized, so we create one in a roundabout way.
+  jsid id;
+  (void)JS_ValueToId(cx(), STRING_TO_JSVAL(str), &id);
+  return String::FromJSID(id);
 }
 
 // static
@@ -51,6 +58,7 @@ String::Concat(Handle<String> left,
   return Local<String>::New(&s);
 }
 
+// static
 Local<String>
 String::FromJSID(jsid id)
 {

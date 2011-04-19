@@ -463,17 +463,120 @@ Handle<Integer> ScriptOrigin::ResourceColumnOffset() const {
 
 //////////////////////////////////////////////////////////////////////////////
 //// ScriptData class
+ScriptData::~ScriptData() {
+  if (!xdr)
+    return;
+  JS_XDRDestroy(xdr);
+}
+
+void ScriptData::SerializeScriptObject(JSObject *scriptObj) {
+  xdr = JS_XDRNewMem(cx(), JSXDR_ENCODE);
+  if (!xdr)
+    return;
+
+  if (!JS_XDRScriptObject(xdr, &scriptObj)) {
+    JS_XDRDestroy(xdr);
+    xdr = NULL;
+    return;
+  }
+
+  uint32 length;
+  void *buf = JS_XDRMemGetData(xdr, &length);
+  if (!buf) {
+    JS_XDRDestroy(xdr);
+    xdr = NULL;
+    return;
+  }
+
+  data = static_cast<const char*>(buf);
+  len = length;
+  error = false;
+}
 
 ScriptData* ScriptData::PreCompile(const char* input, int length) {
-  UNIMPLEMENTEDAPI(NULL);
-}
-ScriptData* ScriptData::PreCompile(Handle<String> source) {
-  UNIMPLEMENTEDAPI(NULL);
-}
-ScriptData* ScriptData::New(const char* data, int length) {
-  UNIMPLEMENTEDAPI(NULL);
+  JSObject *global = JS_GetGlobalObject(cx());
+  ScriptData *sd = new ScriptData();
+  JSObject *scriptObj = JS_CompileScript(cx(), global,
+                                         input, length, NULL, 0);
+  if (!scriptObj)
+    return sd;
+
+  if (sd)
+    sd->SerializeScriptObject(scriptObj);
+  return sd;
 }
 
+ScriptData* ScriptData::PreCompile(Handle<String> source) {
+  JS::Anchor<JSString*> anchor(JSVAL_TO_STRING(source->native()));
+  const jschar* chars;
+  size_t len;
+  chars = JS_GetStringCharsAndLength(cx(),
+                                     anchor.get(), &len);
+  JSObject *global = JS_GetGlobalObject(cx());
+  ScriptData *sd = new ScriptData();
+  JSObject *scriptObj = JS_CompileUCScript(cx(), global,
+                                           chars, len, NULL, 0);
+  if (!scriptObj)
+    return sd;
+
+  if (sd)
+    sd->SerializeScriptObject(scriptObj);
+  return sd;
+}
+
+ScriptData* ScriptData::New(const char* aData, int aLength) {
+  ScriptData *sd = new ScriptData();
+  if (!sd)
+    return NULL;
+
+  JSObject *script = sd->GenerateScriptObject((void *)aData, aLength);
+  sd->error = !script;
+
+  if (!script)
+    return sd;
+
+  sd->script = new Object(script);
+
+  return sd;
+}
+
+int ScriptData::Length() {
+  if (!data && *script)
+    SerializeScriptObject(**script);
+  return len;
+}
+
+const char* ScriptData::Data() {
+  if (!data && *script)
+    SerializeScriptObject(**script);
+  return data;
+}
+
+bool ScriptData::HasError() {
+  return error;
+}
+
+JSObject* ScriptData::ScriptObject() {
+  return **script;
+}
+
+JSObject* ScriptData::GenerateScriptObject(void *aData, int aLen) {
+  xdr = JS_XDRNewMem(cx(), JSXDR_DECODE);
+  if (!xdr)
+    return NULL;
+
+  JSErrorReporter older = JS_SetErrorReporter(cx(), NULL);
+  JS_XDRMemSetData(xdr, aData, aLen);
+
+  JSObject *scriptObj;
+  JS_XDRScriptObject(xdr, &scriptObj);
+
+  JS_XDRMemSetData(xdr, NULL, 0);
+  JS_SetErrorReporter(cx(), older);
+  JS_XDRDestroy(xdr);
+  xdr = NULL;
+  return scriptObj;
+}
 
 //////////////////////////////////////////////////////////////////////////////
 //// Script class
@@ -495,14 +598,22 @@ Handle<Object> Script::InternalObject() {
 }
 
 Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, Handle<String> scriptData, bool bindToCurrentContext) {
-  JS::Anchor<JSString*> anchor(JSVAL_TO_STRING(source->native()));
-  const jschar* chars;
-  size_t len;
-  chars = JS_GetStringCharsAndLength(cx(),
-                                     anchor.get(), &len);
+  JSObject* s = NULL;
 
-  JSObject* s = JS_CompileUCScript(cx(), NULL,
-                                   chars, len, NULL, NULL);
+  if (preData)
+    s = preData->ScriptObject();
+
+  if (!s) {
+    JS::Anchor<JSString*> anchor(JSVAL_TO_STRING(source->native()));
+    const jschar* chars;
+    size_t len;
+    chars = JS_GetStringCharsAndLength(cx(),
+                                       anchor.get(), &len);
+
+    s = JS_CompileUCScript(cx(), NULL,
+                           chars, len, NULL, 0);
+  }
+
   Script script(s);
   if (bindToCurrentContext) {
     script.InternalObject()->Set(String::New("global"), Context::GetCurrent()->Global());

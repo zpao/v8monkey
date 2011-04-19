@@ -67,6 +67,10 @@ namespace internal {
       return JSVAL_TO_DOUBLE(JS_GetNaNValue(cx()));
     }
   };
+
+  static size_t StrLength(const char *s) {
+    return strlen(s);
+  }
 } // namespace internal
 } // namespace v8
 
@@ -2737,27 +2741,83 @@ test_TurnOnAccessCheckAndRecompile()
 // from test-api.cc:9462
 void
 test_PreCompile()
-{ }
+{
+  // TODO(155): This test would break without the initialization of V8. This is
+  // a workaround for now to make this test not fail.
+  v8::V8::Initialize();
+  const char* script = "function foo(a) { return a+1; }";
+  v8::ScriptData* sd =
+      v8::ScriptData::PreCompile(script, i::StrLength(script));
+  CHECK_NE(sd->Length(), 0);
+  CHECK_NE(sd->Data(), NULL);
+  CHECK(!sd->HasError());
+  delete sd;
+}
 
 // from test-api.cc:9476
 void
 test_PreCompileWithError()
-{ }
+{
+  v8::V8::Initialize();
+  const char* script = "function foo(a) { return 1 * * 2; }";
+  v8::ScriptData* sd =
+      v8::ScriptData::PreCompile(script, i::StrLength(script));
+  CHECK(sd->HasError());
+  delete sd;
+}
 
 // from test-api.cc:9486
 void
 test_Regress31661()
-{ }
+{
+  v8::V8::Initialize();
+  const char* script = " The Definintive Guide";
+  v8::ScriptData* sd =
+      v8::ScriptData::PreCompile(script, i::StrLength(script));
+  CHECK(sd->HasError());
+  delete sd;
+}
 
 // from test-api.cc:9497
 void
 test_PreCompileSerialization()
-{ }
+{
+  v8::V8::Initialize();
+  const char* script = "function foo(a) { return a+1; }";
+  v8::ScriptData* sd =
+      v8::ScriptData::PreCompile(script, i::StrLength(script));
+
+  // Serialize.
+  int serialized_data_length = sd->Length();
+  char* serialized_data = i::NewArray<char>(serialized_data_length);
+  memcpy(serialized_data, sd->Data(), serialized_data_length);
+
+  // Deserialize.
+  v8::ScriptData* deserialized_sd =
+      v8::ScriptData::New(serialized_data, serialized_data_length);
+
+  // Verify that the original is the same as the deserialized.
+  CHECK_EQ(sd->Length(), deserialized_sd->Length());
+  CHECK_EQ(0, memcmp(sd->Data(), deserialized_sd->Data(), sd->Length()));
+  CHECK_EQ(sd->HasError(), deserialized_sd->HasError());
+
+  delete sd;
+  delete deserialized_sd;
+}
 
 // from test-api.cc:9523
 void
 test_PreCompileDeserializationError()
-{ }
+{
+  v8::V8::Initialize();
+  const char* data = "DONT CARE";
+  int invalid_size = 3;
+  v8::ScriptData* sd = v8::ScriptData::New(data, invalid_size);
+
+  CHECK_EQ(0, sd->Length());
+
+  delete sd;
+}
 
 // from test-api.cc:9536
 void
@@ -3532,11 +3592,11 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_AccessControlRepeatedContextCreation),
   UNIMPLEMENTED_TEST(test_TurnOnAccessCheck),
   UNIMPLEMENTED_TEST(test_TurnOnAccessCheckAndRecompile),
-  UNIMPLEMENTED_TEST(test_PreCompile),
-  UNIMPLEMENTED_TEST(test_PreCompileWithError),
-  UNIMPLEMENTED_TEST(test_Regress31661),
-  UNIMPLEMENTED_TEST(test_PreCompileSerialization),
-  UNIMPLEMENTED_TEST(test_PreCompileDeserializationError),
+  TEST(test_PreCompile),
+  TEST(test_PreCompileWithError),
+  TEST(test_Regress31661),
+  TEST(test_PreCompileSerialization),
+  TEST(test_PreCompileDeserializationError),
   UNIMPLEMENTED_TEST(test_PreCompileInvalidPreparseDataError),
   UNIMPLEMENTED_TEST(test_PreCompileAPIVariationsAreSame),
   UNIMPLEMENTED_TEST(test_DictionaryICLoadedFunction),

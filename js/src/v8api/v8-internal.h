@@ -11,8 +11,6 @@ void shutdown();
 void reportError(JSContext *ctx, const char *message, JSErrorReport *report);
 extern JSClass global_class;
 
-void CheckForWeakHandles();
-
 JSContext *cx();
 
 } // namespace internal

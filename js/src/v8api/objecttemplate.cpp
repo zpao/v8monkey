@@ -7,6 +7,82 @@ JS_STATIC_ASSERT(sizeof(ObjectTemplate) == sizeof(GCReference));
 
 namespace {
 
+extern JSClass gNewInstanceClass;
+
+struct PrivateData
+{
+  PrivateData() :
+    namedGetter(NULL),
+    namedSetter(NULL),
+    namedQuery(NULL),
+    namedDeleter(NULL),
+    namedEnumerator(NULL),
+    indexedGetter(NULL),
+    indexedSetter(NULL),
+    indexedQuery(NULL),
+    indexedDeleter(NULL),
+    indexedEnumerator(NULL),
+    cls(gNewInstanceClass)
+  {
+  }
+
+  static PrivateData* Get(JSContext* cx,
+                          JSObject* obj)
+  {
+    return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
+  }
+  static PrivateData* Get(JSObject* obj)
+  {
+    return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
+  }
+  static PrivateData* Get(Handle<ObjectTemplate> ot)
+  {
+    Object* obj = reinterpret_cast<Object*>(*ot);
+    return PrivateData::Get(*obj);
+  }
+
+  // Named Property Handler storage.
+  NamedPropertyGetter namedGetter;
+  NamedPropertySetter namedSetter;
+  NamedPropertyQuery namedQuery;
+  NamedPropertyDeleter namedDeleter;
+  NamedPropertyEnumerator namedEnumerator;
+  Persistent<Value> namedData;
+
+  // Indexed Property Handler storage.
+  IndexedPropertyGetter indexedGetter;
+  IndexedPropertySetter indexedSetter;
+  IndexedPropertyQuery indexedQuery;
+  IndexedPropertyDeleter indexedDeleter;
+  IndexedPropertyEnumerator indexedEnumerator;
+  Persistent<Value> indexedData;
+
+  JSClass cls;
+};
+
+struct ObjectTemplateHandle
+{
+  ObjectTemplateHandle(ObjectTemplate* ot) :
+    objectTemplate(ot)
+  {
+  }
+  static ObjectTemplateHandle* Get(JSContext* cx,
+                                   JSObject* obj)
+  {
+    return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+  }
+
+  static Local<ObjectTemplate> GetHandle(JSContext* cx,
+                                         JSObject* obj)
+  {
+    ObjectTemplateHandle* h =
+      static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+    return Local<ObjectTemplate>::New(h->objectTemplate);
+  }
+
+  Persistent<ObjectTemplate> objectTemplate;
+};
+
 JSBool
 o_DeleteProperty(JSContext* cx,
                  JSObject* obj,
@@ -128,80 +204,6 @@ JSClass gNewInstanceClass = {
   NULL, // xdrObject
   NULL, // hasInstance
   NULL, // trace
-};
-
-struct PrivateData
-{
-  PrivateData() :
-    namedGetter(NULL),
-    namedSetter(NULL),
-    namedQuery(NULL),
-    namedDeleter(NULL),
-    namedEnumerator(NULL),
-    indexedGetter(NULL),
-    indexedSetter(NULL),
-    indexedQuery(NULL),
-    indexedDeleter(NULL),
-    indexedEnumerator(NULL),
-    cls(gNewInstanceClass)
-  {
-  }
-
-  static PrivateData* Get(JSContext* cx,
-                          JSObject* obj)
-  {
-    return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
-  }
-  static PrivateData* Get(JSObject* obj)
-  {
-    return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
-  }
-  static PrivateData* Get(Handle<ObjectTemplate> ot)
-  {
-    Object* obj = reinterpret_cast<Object*>(*ot);
-    return PrivateData::Get(*obj);
-  }
-
-  // Named Property Handler storage.
-  NamedPropertyGetter namedGetter;
-  NamedPropertySetter namedSetter;
-  NamedPropertyQuery namedQuery;
-  NamedPropertyDeleter namedDeleter;
-  NamedPropertyEnumerator namedEnumerator;
-  Persistent<Value> namedData;
-
-  // Indexed Property Handler storage.
-  IndexedPropertyGetter indexedGetter;
-  IndexedPropertySetter indexedSetter;
-  IndexedPropertyQuery indexedQuery;
-  IndexedPropertyDeleter indexedDeleter;
-  IndexedPropertyEnumerator indexedEnumerator;
-  Persistent<Value> indexedData;
-
-  JSClass cls;
-};
-
-struct ObjectTemplateHandle
-{
-  ObjectTemplateHandle(ObjectTemplate* ot) :
-    objectTemplate(ot)
-  {
-  }
-  static ObjectTemplateHandle* Get(JSContext* cx,
-                                   JSObject* obj)
-  {
-    return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
-  }
-
-  static Local<ObjectTemplate> GetHandle(JSContext* cx,
-                                         JSObject* obj)
-  {
-    ObjectTemplateHandle* h =
-      static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
-    return Local<ObjectTemplate>::New(h->objectTemplate);
-  }
-
-  Persistent<ObjectTemplate> objectTemplate;
 };
 
 void

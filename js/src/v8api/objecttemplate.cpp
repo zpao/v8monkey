@@ -65,6 +65,7 @@ struct ObjectTemplateHandle
   ObjectTemplateHandle(ObjectTemplate* ot) :
     objectTemplate(ot)
   {
+    JS_ASSERT(ot);
   }
   static ObjectTemplateHandle* Get(JSContext* cx,
                                    JSObject* obj)
@@ -75,8 +76,8 @@ struct ObjectTemplateHandle
   static Local<ObjectTemplate> GetHandle(JSContext* cx,
                                          JSObject* obj)
   {
-    ObjectTemplateHandle* h =
-      static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+    ObjectTemplateHandle* h = ObjectTemplateHandle::Get(cx, obj);
+    JS_ASSERT(h);
     return Local<ObjectTemplate>::New(h->objectTemplate);
   }
 

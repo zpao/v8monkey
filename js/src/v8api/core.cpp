@@ -31,13 +31,6 @@ void notImplemented(const char* functionName) {
   fprintf(stderr, "Calling an unimplemented API: %s\n", functionName);
 }
 
-static JSBool GCCallback(JSContext *cx, JSGCStatus status) {
-  CheckForWeakHandles();
-  // TODO: what do I do here?
-  return JS_FALSE;
-}
-
-
 static JSObject* gCompartment = 0;
 static JSCrossCompartmentCall *gCompartmentCall = 0;
 static bool gHasAttemptedInitialization = false;
@@ -137,6 +130,15 @@ void V8::AddGCPrologueCallback(GCPrologueCallback aCallback, GCType aGCTypeFilte
 void V8::LowMemoryNotification() {
   UNIMPLEMENTEDAPI();
 }
+
+JSBool V8::GCCallback(JSContext *cx, JSGCStatus status) {
+  if (status == JSGC_MARK_END) {
+    PersistentGCReference::CheckForWeakHandles();
+  }
+  // TODO: what do I do here?
+  return JS_FALSE;
+}
+
 
 static Local<Value> ConstructError(const char *name, Handle<String> message) {
   // XXX: this probably isn't correct in all cases

@@ -7,6 +7,7 @@
 
 namespace v8 {
 // Define some classes first so we can use them before fully defined
+class V8;
 struct HandleScope;
 class Value;
 class Boolean;
@@ -103,6 +104,9 @@ private:
   PersistentGCReference *prev, *next;
 
   static PersistentGCReference *weakPtrs;
+  static void CheckForWeakHandles();
+
+  friend class v8::V8;
 };
 
 template <class Inherits>
@@ -365,6 +369,8 @@ public:
   static int AdjustAmountOfExternalAllocatedMemory(int aChangeInBytes);
   static void AddGCPrologueCallback(GCPrologueCallback aCallback, GCType aGCTypeFilter = kGCTypeAll);
   static void LowMemoryNotification();
+private:
+  static JSBool GCCallback(JSContext*, JSGCStatus);
 };
 
 class TryCatch {

@@ -101,7 +101,7 @@ namespace internal {
 
   PersistentGCReference *PersistentGCReference::weakPtrs = NULL;
 
-  void CheckForWeakHandles() {
+  void PersistentGCReference::CheckForWeakHandles() {
     PersistentGCReference *ref = weakPtrs;
     while (ref != NULL) {
       jsval v = ref->native();

@@ -89,6 +89,10 @@ Object::Set(Handle<Value> key,
     return false;
   }
 
+  // Can't set attributes on indexed properties
+  if (!key->ToUint32().IsEmpty())
+    return true;
+
   uintN js_attribs = 0;
   if (attribs & ReadOnly) {
     js_attribs |= JSPROP_READONLY;

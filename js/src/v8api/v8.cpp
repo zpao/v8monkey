@@ -470,38 +470,42 @@ Handle<Integer> ScriptOrigin::ResourceColumnOffset() const {
 //////////////////////////////////////////////////////////////////////////////
 //// ScriptData class
 ScriptData::~ScriptData() {
-  if (!xdr)
-    return;
-  JS_XDRDestroy(xdr);
+  if (mScript)
+    JS_RemoveObjectRoot(cx(), &mScript);
+  if (mXdr)
+    JS_XDRDestroy(mXdr);
 }
 
 void ScriptData::SerializeScriptObject(JSObject *scriptObj) {
-  xdr = JS_XDRNewMem(cx(), JSXDR_ENCODE);
-  if (!xdr)
+  mXdr = JS_XDRNewMem(cx(), JSXDR_ENCODE);
+  if (!mXdr)
     return;
 
-  if (!JS_XDRScriptObject(xdr, &scriptObj)) {
-    JS_XDRDestroy(xdr);
-    xdr = NULL;
+  if (!JS_XDRScriptObject(mXdr, &scriptObj)) {
+    JS_XDRDestroy(mXdr);
+    mXdr = NULL;
     return;
   }
 
   uint32 length;
-  void *buf = JS_XDRMemGetData(xdr, &length);
+  void *buf = JS_XDRMemGetData(mXdr, &length);
   if (!buf) {
-    JS_XDRDestroy(xdr);
-    xdr = NULL;
+    JS_XDRDestroy(mXdr);
+    mXdr = NULL;
     return;
   }
 
-  data = static_cast<const char*>(buf);
-  len = length;
-  error = false;
+  mData = static_cast<const char*>(buf);
+  mLen = length;
+  mError = false;
 }
 
 ScriptData* ScriptData::PreCompile(const char* input, int length) {
   JSObject *global = JS_GetGlobalObject(cx());
   ScriptData *sd = new ScriptData();
+  if (!sd)
+    return NULL;
+
   JSObject *scriptObj = JS_CompileScript(cx(), global,
                                          input, length, NULL, 0);
   if (!scriptObj)
@@ -520,6 +524,9 @@ ScriptData* ScriptData::PreCompile(Handle<String> source) {
                                      anchor.get(), &len);
   JSObject *global = JS_GetGlobalObject(cx());
   ScriptData *sd = new ScriptData();
+  if (!sd)
+    return NULL;
+
   JSObject *scriptObj = JS_CompileUCScript(cx(), global,
                                            chars, len, NULL, 0);
   if (!scriptObj)
@@ -535,52 +542,53 @@ ScriptData* ScriptData::New(const char* aData, int aLength) {
   if (!sd)
     return NULL;
 
-  JSObject *script = sd->GenerateScriptObject((void *)aData, aLength);
-  sd->error = !script;
+  sd->mScript = sd->GenerateScriptObject((void *)aData, aLength);
+  sd->mError = !sd->mScript;
 
-  if (!script)
+  if (!sd->mScript)
     return sd;
 
-  sd->script = new Object(script);
-
+  JS_AddObjectRoot(cx(), &sd->mScript);
   return sd;
 }
 
 int ScriptData::Length() {
-  if (!data && *script)
-    SerializeScriptObject(**script);
-  return len;
+  if (!mData && mScript)
+    SerializeScriptObject(mScript);
+  return mLen;
 }
 
 const char* ScriptData::Data() {
-  if (!data && *script)
-    SerializeScriptObject(**script);
-  return data;
+  if (!mData && mScript)
+    SerializeScriptObject(mScript);
+  return mData;
 }
 
 bool ScriptData::HasError() {
-  return error;
+  return mError;
 }
 
 JSObject* ScriptData::ScriptObject() {
-  return **script;
+  return mScript;
 }
 
 JSObject* ScriptData::GenerateScriptObject(void *aData, int aLen) {
-  xdr = JS_XDRNewMem(cx(), JSXDR_DECODE);
-  if (!xdr)
+  mXdr = JS_XDRNewMem(cx(), JSXDR_DECODE);
+  if (!mXdr)
     return NULL;
 
+  // Caller reports error via HasError if the script fails to deserialize
   JSErrorReporter older = JS_SetErrorReporter(cx(), NULL);
-  JS_XDRMemSetData(xdr, aData, aLen);
+  JS_XDRMemSetData(mXdr, aData, aLen);
 
   JSObject *scriptObj;
-  JS_XDRScriptObject(xdr, &scriptObj);
+  JS_XDRScriptObject(mXdr, &scriptObj);
 
-  JS_XDRMemSetData(xdr, NULL, 0);
+  JS_XDRMemSetData(mXdr, NULL, 0);
   JS_SetErrorReporter(cx(), older);
-  JS_XDRDestroy(xdr);
-  xdr = NULL;
+  JS_XDRDestroy(mXdr);
+  mXdr = NULL;
+
   return scriptObj;
 }
 

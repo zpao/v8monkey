@@ -904,16 +904,16 @@ public:
 };
 
 class ScriptData {
-  ScriptData() : xdr(NULL), data(NULL), len(0), error(true) {}
+  ScriptData() : mXdr(NULL), mData(NULL), mLen(0), mError(true) {}
 
   void SerializeScriptObject(JSObject *scriptObj);
   JSObject* GenerateScriptObject(void *data, int len);
 
-  JSXDRState *xdr;
-  const char *data;
-  uint32 len;
-  bool error;
-  Persistent<Object> script;
+  JSXDRState *mXdr;
+  const char *mData;
+  uint32      mLen;
+  bool        mError;
+  JSObject   *mScript;
 public:
   ~ScriptData();
   static ScriptData* PreCompile(const char* input, int length);

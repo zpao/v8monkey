@@ -31,6 +31,13 @@ void notImplemented(const char* functionName) {
   fprintf(stderr, "Calling an unimplemented API: %s\n", functionName);
 }
 
+static JSBool GCCallback(JSContext *cx, JSGCStatus status) {
+  CheckForWeakHandles();
+  // TODO: what do I do here?
+  return JS_FALSE;
+}
+
+
 static JSObject* gCompartment = 0;
 static JSCrossCompartmentCall *gCompartmentCall = 0;
 static bool gHasAttemptedInitialization = false;
@@ -69,6 +76,8 @@ bool V8::Initialize() {
     return false;
 
   (void) JS_AddObjectRoot(ctx, &gCompartment);
+
+  JS_SetGCCallback(cx(), GCCallback);
   return true;
 }
 

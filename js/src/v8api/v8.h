@@ -103,8 +103,6 @@ private:
   PersistentGCReference *prev, *next;
 
   static PersistentGCReference *weakPtrs;
-  static bool setupWeakRefs;
-  static JSBool GCCallback(JSContext *cx, JSGCStatus status);
 };
 
 template <class Inherits>

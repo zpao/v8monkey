@@ -80,10 +80,6 @@ namespace internal {
   {}
 
   void PersistentGCReference::MakeWeak(WeakReferenceCallback callback, void *context) {
-    if (!setupWeakRefs) {
-      JS_SetGCCallback(cx(), GCCallback);
-      setupWeakRefs = true;
-    }
     this->callback = callback;
     this->context = context;
     next = weakPtrs;
@@ -104,23 +100,19 @@ namespace internal {
   }
 
   PersistentGCReference *PersistentGCReference::weakPtrs = NULL;
-  bool PersistentGCReference::setupWeakRefs = false;
-  JSBool PersistentGCReference::GCCallback(JSContext *cx, JSGCStatus status) {
-    if (status == JSGC_MARK_END) {
-      PersistentGCReference *ref = weakPtrs;
-      while (ref != NULL) {
-        jsval v = ref->native();
-        ref->isNearDeath = JSVAL_IS_GCTHING(v) == JS_TRUE &&
-            JS_IsAboutToBeFinalized(cx, JSVAL_TO_GCTHING(v)) == JS_TRUE;
-        if (ref->isNearDeath && ref->callback) {
-          Persistent<Value> h(reinterpret_cast<Value*>(ref));
-          ref->callback(h, ref->context);
-        }
-        ref = ref->next;
+
+  void CheckForWeakHandles() {
+    PersistentGCReference *ref = weakPtrs;
+    while (ref != NULL) {
+      jsval v = ref->native();
+      ref->isNearDeath = JSVAL_IS_GCTHING(v) == JS_TRUE &&
+          JS_IsAboutToBeFinalized(cx(), JSVAL_TO_GCTHING(v)) == JS_TRUE;
+      if (ref->isNearDeath && ref->callback) {
+        Persistent<Value> h(reinterpret_cast<Value*>(ref));
+        ref->callback(h, ref->context);
       }
+      ref = ref->next;
     }
-    // TODO: what do I do here?
-    return JS_FALSE;
   }
 
   GCReference* GCReference::Globalize() {

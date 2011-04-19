@@ -11,123 +11,6 @@ JSBool
 o_DeleteProperty(JSContext* cx,
                  JSObject* obj,
                  jsid id,
-                 jsval* vp);
-
-JSBool
-o_GetProperty(JSContext* cx,
-              JSObject* obj,
-              jsid id,
-              jsval* vp);
-
-JSBool
-o_SetProperty(JSContext* cx,
-              JSObject* obj,
-              jsid id,
-              JSBool strict,
-              jsval* vp);
-
-void
-o_finalize(JSContext* cx,
-           JSObject* obj);
-
-JSClass gNewInstanceClass = {
-  NULL, // name
-  JSCLASS_HAS_PRIVATE, // flags
-  JS_PropertyStub, // addProperty
-  o_DeleteProperty, // delProperty
-  o_GetProperty, // getProperty
-  o_SetProperty, // setProperty
-  JS_EnumerateStub, // enumerate
-  JS_ResolveStub, // resolve
-  JS_ConvertStub, // convert
-  o_finalize, // finalize
-  NULL, // unused
-  NULL, // checkAccess
-  NULL, // call
-  NULL, // construct
-  NULL, // xdrObject
-  NULL, // hasInstance
-  NULL, // trace
-};
-
-struct PrivateData
-{
-  PrivateData() :
-    namedGetter(NULL),
-    namedSetter(NULL),
-    namedQuery(NULL),
-    namedDeleter(NULL),
-    namedEnumerator(NULL),
-    indexedGetter(NULL),
-    indexedSetter(NULL),
-    indexedQuery(NULL),
-    indexedDeleter(NULL),
-    indexedEnumerator(NULL),
-    cls(gNewInstanceClass)
-  {
-  }
-
-  static PrivateData* Get(JSContext* cx,
-                          JSObject* obj)
-  {
-    return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
-  }
-  static PrivateData* Get(JSObject* obj)
-  {
-    return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
-  }
-  static PrivateData* Get(Handle<ObjectTemplate> ot)
-  {
-    Object* obj = reinterpret_cast<Object*>(*ot);
-    return PrivateData::Get(*obj);
-  }
-
-  // Named Property Handler storage.
-  NamedPropertyGetter namedGetter;
-  NamedPropertySetter namedSetter;
-  NamedPropertyQuery namedQuery;
-  NamedPropertyDeleter namedDeleter;
-  NamedPropertyEnumerator namedEnumerator;
-  Persistent<Value> namedData;
-
-  // Indexed Property Handler storage.
-  IndexedPropertyGetter indexedGetter;
-  IndexedPropertySetter indexedSetter;
-  IndexedPropertyQuery indexedQuery;
-  IndexedPropertyDeleter indexedDeleter;
-  IndexedPropertyEnumerator indexedEnumerator;
-  Persistent<Value> indexedData;
-
-  JSClass cls;
-};
-
-struct ObjectTemplateHandle
-{
-  ObjectTemplateHandle(ObjectTemplate* ot) :
-    objectTemplate(ot)
-  {
-  }
-  static ObjectTemplateHandle* Get(JSContext* cx,
-                                   JSObject* obj)
-  {
-    return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
-  }
-
-  static Local<ObjectTemplate> GetHandle(JSContext* cx,
-                                         JSObject* obj)
-  {
-    ObjectTemplateHandle* h =
-      static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
-    return Local<ObjectTemplate>::New(h->objectTemplate);
-  }
-
-  Persistent<ObjectTemplate> objectTemplate;
-};
-
-JSBool
-o_DeleteProperty(JSContext* cx,
-                 JSObject* obj,
-                 jsid id,
                  jsval* vp)
 {
   Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
@@ -226,6 +109,100 @@ o_finalize(JSContext* cx,
   ObjectTemplateHandle* data = ObjectTemplateHandle::Get(cx, obj);
   delete data;
 }
+
+JSClass gNewInstanceClass = {
+  NULL, // name
+  JSCLASS_HAS_PRIVATE, // flags
+  JS_PropertyStub, // addProperty
+  o_DeleteProperty, // delProperty
+  o_GetProperty, // getProperty
+  o_SetProperty, // setProperty
+  JS_EnumerateStub, // enumerate
+  JS_ResolveStub, // resolve
+  JS_ConvertStub, // convert
+  o_finalize, // finalize
+  NULL, // unused
+  NULL, // checkAccess
+  NULL, // call
+  NULL, // construct
+  NULL, // xdrObject
+  NULL, // hasInstance
+  NULL, // trace
+};
+
+struct PrivateData
+{
+  PrivateData() :
+    namedGetter(NULL),
+    namedSetter(NULL),
+    namedQuery(NULL),
+    namedDeleter(NULL),
+    namedEnumerator(NULL),
+    indexedGetter(NULL),
+    indexedSetter(NULL),
+    indexedQuery(NULL),
+    indexedDeleter(NULL),
+    indexedEnumerator(NULL),
+    cls(gNewInstanceClass)
+  {
+  }
+
+  static PrivateData* Get(JSContext* cx,
+                          JSObject* obj)
+  {
+    return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
+  }
+  static PrivateData* Get(JSObject* obj)
+  {
+    return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
+  }
+  static PrivateData* Get(Handle<ObjectTemplate> ot)
+  {
+    Object* obj = reinterpret_cast<Object*>(*ot);
+    return PrivateData::Get(*obj);
+  }
+
+  // Named Property Handler storage.
+  NamedPropertyGetter namedGetter;
+  NamedPropertySetter namedSetter;
+  NamedPropertyQuery namedQuery;
+  NamedPropertyDeleter namedDeleter;
+  NamedPropertyEnumerator namedEnumerator;
+  Persistent<Value> namedData;
+
+  // Indexed Property Handler storage.
+  IndexedPropertyGetter indexedGetter;
+  IndexedPropertySetter indexedSetter;
+  IndexedPropertyQuery indexedQuery;
+  IndexedPropertyDeleter indexedDeleter;
+  IndexedPropertyEnumerator indexedEnumerator;
+  Persistent<Value> indexedData;
+
+  JSClass cls;
+};
+
+struct ObjectTemplateHandle
+{
+  ObjectTemplateHandle(ObjectTemplate* ot) :
+    objectTemplate(ot)
+  {
+  }
+  static ObjectTemplateHandle* Get(JSContext* cx,
+                                   JSObject* obj)
+  {
+    return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+  }
+
+  static Local<ObjectTemplate> GetHandle(JSContext* cx,
+                                         JSObject* obj)
+  {
+    ObjectTemplateHandle* h =
+      static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+    return Local<ObjectTemplate>::New(h->objectTemplate);
+  }
+
+  Persistent<ObjectTemplate> objectTemplate;
+};
 
 void
 ot_finalize(JSContext* cx,

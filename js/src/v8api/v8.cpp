@@ -757,28 +757,36 @@ Arguments::Arguments(JSContext* cx,
                      jsval* vp,
                      Handle<Value> data) :
   mCtx(cx),
-  mValues(vp),
+  mVp(vp),
+  mValues(JS_ARGV(cx, vp)),
   mThis(thisObj),
   mLength(nargs),
   mData(Local<Value>::New(*data))
 {
 }
 
-Local<Value> Arguments::operator[](int i) const {
-  if (i < 0 || i >= mLength)
+Local<Value>
+Arguments::operator[](int i) const
+{
+  if (i < 0 || i >= mLength) {
     return Local<Value>();
+  }
   Value v(mValues[i]);
   return Local<Value>::New(&v);
 }
 
-Local<Function> Arguments::Callee() const {
-  jsval callee = JS_CALLEE(mCtx, mValues);
+Local<Function>
+Arguments::Callee() const
+{
+  jsval callee = JS_CALLEE(mCtx, mVp);
   Function f(JSVAL_TO_OBJECT(callee));
   return Local<Function>::New(&f);
 }
 
-bool Arguments::IsConstructCall() const {
-  return JS_IsConstructing(mCtx, mValues);
+bool
+Arguments::IsConstructCall() const
+{
+  return JS_IsConstructing(mCtx, mVp);
 }
 
 AccessorInfo::AccessorInfo(Handle<Value> data, JSObject *obj) :

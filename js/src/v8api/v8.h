@@ -968,6 +968,7 @@ class Arguments {
   Arguments(JSContext* cx, JSObject* thisObj, int nargs, jsval* vals, Handle<Value> data);
 
   JSContext *mCtx;
+  jsval* mVp;
   jsval *mValues;
   JSObject *mThis;
   int mLength;

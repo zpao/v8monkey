@@ -77,7 +77,7 @@ FunctionTemplate::CallCallback(JSContext* cx,
   } else {
     thiz = JS_THIS_OBJECT(cx, vp);
   }
-  Arguments args(cx, fnTemplateObj, argc, JS_ARGV(cx, vp), data);
+  Arguments args(cx, fnTemplateObj, argc, vp, data);
   Handle<Value> ret;
   if (callback) {
     ret = callback(args);

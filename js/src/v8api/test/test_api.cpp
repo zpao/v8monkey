@@ -1683,7 +1683,27 @@ test_IndexedInterceptorWithAccessorCheckSwitchedOn()
 // from test-api.cc:3358
 void
 test_IndexedInterceptorWithDifferentIndices()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetIndexedPropertyHandler(IdentityIndexedPropertyGetter);
+
+  LocalContext context;
+  Local<v8::Object> obj = templ->NewInstance();
+  context->Global()->Set(v8_str("obj"), obj);
+
+  const char* code =
+      "try {"
+      "  for (var i = 0; i < 100; i++) {"
+      "    var v = obj[i];"
+      "    if (v != i) throw 'Wrong value ' + v + ' at iteration ' + i;"
+      "  }"
+      "  'PASSED'"
+      "} catch(e) {"
+      "  e"
+      "}";
+  ExpectString(code, "PASSED");
+}
 
 // from test-api.cc:3381
 void
@@ -3735,7 +3755,7 @@ Test gTests[] = {
   TEST(test_IndexedInterceptorWithNoSetter),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheck),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheckSwitchedOn),
-  UNIMPLEMENTED_TEST(test_IndexedInterceptorWithDifferentIndices),
+  TEST(test_IndexedInterceptorWithDifferentIndices),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithNegativeIndices),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithNotSmiLookup),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorGoingMegamorphic),

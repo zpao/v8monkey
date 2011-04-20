@@ -390,6 +390,33 @@ static v8::Handle<Value> ArgumentsTestCallback(const v8::Arguments& args) {
   return v8::Undefined();
 }
 
+static v8::Handle<Value> NoBlockGetterX(Local<String> name,
+                                        const AccessorInfo&) {
+  return v8::Handle<Value>();
+}
+
+static v8::Handle<Value> NoBlockGetterI(uint32_t index,
+                                        const AccessorInfo&) {
+  return v8::Handle<Value>();
+}
+
+static v8::Handle<v8::Boolean> PDeleter(Local<String> name,
+                                        const AccessorInfo&) {
+  if (!name->Equals(v8_str("foo"))) {
+    return v8::Handle<v8::Boolean>();  // not intercepted
+  }
+
+  return v8::False();  // intercepted, and don't delete the property
+}
+
+static v8::Handle<v8::Boolean> IDeleter(uint32_t index, const AccessorInfo&) {
+  if (index != 2) {
+    return v8::Handle<v8::Boolean>();  // not intercepted
+  }
+
+  return v8::False();  // intercepted, and don't delete the property
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -1919,7 +1946,30 @@ test_Arguments()
 // from test-api.cc:4309
 void
 test_Deleter()
-{ }
+{
+  v8::HandleScope scope;
+  v8::Handle<v8::ObjectTemplate> obj = ObjectTemplate::New();
+  obj->SetNamedPropertyHandler(NoBlockGetterX, NULL, NULL, PDeleter, NULL);
+  obj->SetIndexedPropertyHandler(NoBlockGetterI, NULL, NULL, IDeleter, NULL);
+  LocalContext context;
+  context->Global()->Set(v8_str("k"), obj->NewInstance());
+  CompileRun(
+    "k.foo = 'foo';"
+    "k.bar = 'bar';"
+    "k[2] = 2;"
+    "k[4] = 4;");
+  CHECK(v8_compile("delete k.foo")->Run()->IsFalse());
+  CHECK(v8_compile("delete k.bar")->Run()->IsTrue());
+
+  CHECK_EQ(v8_compile("k.foo")->Run(), v8_str("foo"));
+  CHECK(v8_compile("k.bar")->Run()->IsUndefined());
+
+  CHECK(v8_compile("delete k[2]")->Run()->IsFalse());
+  CHECK(v8_compile("delete k[4]")->Run()->IsTrue());
+
+  CHECK_EQ(v8_compile("k[2]")->Run(), v8_num(2));
+  CHECK(v8_compile("k[4]")->Run()->IsUndefined());
+}
 
 // from test-api.cc:4372
 void
@@ -3854,9 +3904,9 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ErrorWithMissingScriptInfo),
   UNIMPLEMENTED_TEST(test_WeakReference),
   UNIMPLEMENTED_TEST(test_NoWeakRefCallbacksInScavenge),
-  UNIMPLEMENTED_TEST(test_Deleter),
   UNIMPLEMENTED_TEST(test_Enumerators),
   DISABLED_TEST(test_Arguments, 69),
+  TEST(test_Deleter, 70),
   UNIMPLEMENTED_TEST(test_GetterHolders),
   UNIMPLEMENTED_TEST(test_PreInterceptorHolders),
   UNIMPLEMENTED_TEST(test_ObjectInstantiation),

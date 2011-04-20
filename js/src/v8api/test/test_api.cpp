@@ -358,6 +358,13 @@ static v8::Handle<Value> Get239Value(Local<String> name,
   return name;
 }
 
+static v8::Handle<Value> XPropertyGetter(Local<String> property,
+                                         const AccessorInfo& info) {
+  ApiTestFuzzer::Fuzz();
+  CHECK(info.Data()->IsUndefined());
+  return property;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -1549,7 +1556,18 @@ test_SimplePropertyWrite()
 // from test-api.cc:3088
 void
 test_NamedInterceptorPropertyRead()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetNamedPropertyHandler(XPropertyGetter);
+  LocalContext context;
+  context->Global()->Set(v8_str("obj"), templ->NewInstance());
+  Local<Script> script = Script::Compile(v8_str("obj.x"));
+  for (int i = 0; i < 10; i++) {
+    Local<Value> result = script->Run();
+    CHECK_EQ(result, v8_str("x"));
+  }
+}
 
 // from test-api.cc:3102
 void
@@ -3637,7 +3655,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DontDeleteAPIAccessorsCannotBeOverriden),
   TEST(test_ElementAPIAccessor),
   TEST(test_SimplePropertyWrite),
-  UNIMPLEMENTED_TEST(test_NamedInterceptorPropertyRead),
+  DISABLED_TEST(test_NamedInterceptorPropertyRead, 67),
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryIC),
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryICMultipleContext),
   UNIMPLEMENTED_TEST(test_NamedInterceptorMapTransitionRead),

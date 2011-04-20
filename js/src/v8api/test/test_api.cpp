@@ -371,6 +371,11 @@ static v8::Handle<Value> IdentityIndexedPropertyGetter(
   return v8::Integer::NewFromUnsigned(index);
 }
 
+static v8::Handle<Value> HandleLogDelegator(const v8::Arguments& args) {
+  ApiTestFuzzer::Fuzz();
+  return v8::Undefined();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -1799,7 +1804,16 @@ test_UndetectableString()
 // from test-api.cc:3764
 void
 test_GlobalObjectTemplate()
-{ }
+{
+  v8::HandleScope handle_scope;
+  Local<ObjectTemplate> global_template = ObjectTemplate::New();
+  global_template->Set(v8_str("JSNI_Log"),
+                       v8::FunctionTemplate::New(HandleLogDelegator));
+  v8::Persistent<Context> context = Context::New(0, global_template);
+  Context::Scope context_scope(context);
+  Script::Compile(v8_str("JSNI_Log('LOG')"))->Run();
+  context.Dispose();
+}
 
 // from test-api.cc:3782
 void
@@ -3803,7 +3817,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_UndetectableObject),
   UNIMPLEMENTED_TEST(test_ExtensibleOnUndetectable),
   UNIMPLEMENTED_TEST(test_UndetectableString),
-  UNIMPLEMENTED_TEST(test_GlobalObjectTemplate),
+  TEST(test_GlobalObjectTemplate),
   UNIMPLEMENTED_TEST(test_SimpleExtensions),
   UNIMPLEMENTED_TEST(test_UseEvalFromExtension),
   UNIMPLEMENTED_TEST(test_UseWithFromExtension),

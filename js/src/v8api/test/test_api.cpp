@@ -365,6 +365,12 @@ static v8::Handle<Value> XPropertyGetter(Local<String> property,
   return property;
 }
 
+static v8::Handle<Value> IdentityIndexedPropertyGetter(
+    uint32_t index,
+    const AccessorInfo& info) {
+  return v8::Integer::NewFromUnsigned(index);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -1619,7 +1625,25 @@ test_IndexedInterceptorWithIndexedAccessor()
 // from test-api.cc:3260
 void
 test_IndexedInterceptorWithGetOwnPropertyDescriptor()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetIndexedPropertyHandler(IdentityIndexedPropertyGetter);
+
+  LocalContext context;
+  context->Global()->Set(v8_str("obj"), templ->NewInstance());
+
+  // Check fast object case.
+  const char* fast_case_code =
+      "Object.getOwnPropertyDescriptor(obj, 0).value.toString()";
+  ExpectString(fast_case_code, "0");
+
+  // Check slow case.
+  const char* slow_case_code =
+      "obj.x = 1; delete obj.x;"
+      "Object.getOwnPropertyDescriptor(obj, 1).value.toString()";
+  ExpectString(slow_case_code, "1");
+}
 
 // from test-api.cc:3281
 void
@@ -3687,7 +3711,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryICMultipleContext),
   UNIMPLEMENTED_TEST(test_NamedInterceptorMapTransitionRead),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithIndexedAccessor),
-  UNIMPLEMENTED_TEST(test_IndexedInterceptorWithGetOwnPropertyDescriptor),
+  DISABLED_TEST(test_IndexedInterceptorWithGetOwnPropertyDescriptor, 65),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithNoSetter),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheck),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheckSwitchedOn),

@@ -4067,7 +4067,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheck),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheckSwitchedOn),
   TEST(test_IndexedInterceptorWithDifferentIndices),
-  DISABLED_TEST(test_IndexedInterceptorWithNegativeIndices, 68),
+  TEST(test_IndexedInterceptorWithNegativeIndices),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithNotSmiLookup),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorGoingMegamorphic),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorReceiverTurningSmi),

@@ -125,7 +125,7 @@ o_GetProperty(JSContext* cx,
   Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
   PrivateData* pd = PrivateData::Get(ot);
   JS_ASSERT(pd);
-  if (JSID_IS_INT(id) && pd->indexedGetter) {
+  if (JSID_IS_INT(id) && JSID_TO_INT(id) >= 0 && pd->indexedGetter) {
     const AccessorInfo info =
       AccessorInfo::MakeAccessorInfo(pd->indexedData, obj);
     Handle<Value> ret = pd->indexedGetter(JSID_TO_INT(id), info);

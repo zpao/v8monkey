@@ -1708,7 +1708,43 @@ test_IndexedInterceptorWithDifferentIndices()
 // from test-api.cc:3381
 void
 test_IndexedInterceptorWithNegativeIndices()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetIndexedPropertyHandler(IdentityIndexedPropertyGetter);
+
+  LocalContext context;
+  Local<v8::Object> obj = templ->NewInstance();
+  context->Global()->Set(v8_str("obj"), obj);
+
+  const char* code =
+      "try {"
+      "  for (var i = 0; i < 100; i++) {"
+      "    var expected = i;"
+      "    var key = i;"
+      "    if (i == 25) {"
+      "       key = -1;"
+      "       expected = undefined;"
+      "    }"
+      "    if (i == 50) {"
+      "       /* probe minimal Smi number on 32-bit platforms */"
+      "       key = -(1 << 30);"
+      "       expected = undefined;"
+      "    }"
+      "    if (i == 75) {"
+      "       /* probe minimal Smi number on 64-bit platforms */"
+      "       key = 1 << 31;"
+      "       expected = undefined;"
+      "    }"
+      "    var v = obj[key];"
+      "    if (v != expected) throw 'Wrong value ' + v + ' at iteration ' + i;"
+      "  }"
+      "  'PASSED'"
+      "} catch(e) {"
+      "  e"
+      "}";
+  ExpectString(code, "PASSED");
+}
 
 // from test-api.cc:3420
 void
@@ -3756,7 +3792,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheck),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheckSwitchedOn),
   TEST(test_IndexedInterceptorWithDifferentIndices),
-  UNIMPLEMENTED_TEST(test_IndexedInterceptorWithNegativeIndices),
+  DISABLED_TEST(test_IndexedInterceptorWithNegativeIndices, 68),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithNotSmiLookup),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorGoingMegamorphic),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorReceiverTurningSmi),

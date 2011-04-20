@@ -2139,7 +2139,23 @@ test_PreInterceptorHolders()
 // from test-api.cc:4509
 void
 test_ObjectInstantiation()
-{ }
+{
+  v8::HandleScope scope;
+  v8::Handle<v8::ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetAccessor(v8_str("t"), PGetter2);
+  LocalContext context;
+  context->Global()->Set(v8_str("o"), templ->NewInstance());
+  for (int i = 0; i < 100; i++) {
+    v8::HandleScope inner_scope;
+    v8::Handle<v8::Object> obj = templ->NewInstance();
+    CHECK_NE(obj, context->Global()->Get(v8_str("o")));
+    context->Global()->Set(v8_str("o2"), obj);
+    v8::Handle<Value> value =
+        Script::Compile(v8_str("o.__proto__ === o2.__proto__"))->Run();
+    CHECK_EQ(v8::True(), value);
+    context->Global()->Set(v8_str("o"), obj);
+  }
+}
 
 // from test-api.cc:4549
 void
@@ -4059,7 +4075,7 @@ Test gTests[] = {
   DISABLED_TEST(test_Enumerators, 71),
   DISABLED_TEST(test_GetterHolders, 72),
   UNIMPLEMENTED_TEST(test_PreInterceptorHolders),
-  UNIMPLEMENTED_TEST(test_ObjectInstantiation),
+  TEST(test_ObjectInstantiation),
   DISABLED_TEST(test_StringWrite, 16),
   UNIMPLEMENTED_TEST(test_ToArrayIndex),
   UNIMPLEMENTED_TEST(test_ErrorConstruction),

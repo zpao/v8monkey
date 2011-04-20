@@ -376,6 +376,20 @@ static v8::Handle<Value> HandleLogDelegator(const v8::Arguments& args) {
   return v8::Undefined();
 }
 
+v8::Handle<Function> args_fun;
+static v8::Handle<Value> ArgumentsTestCallback(const v8::Arguments& args) {
+  ApiTestFuzzer::Fuzz();
+  CHECK_EQ(args_fun, args.Callee());
+  CHECK_EQ(3, args.Length());
+  CHECK_EQ(v8::Integer::New(1), args[0]);
+  CHECK_EQ(v8::Integer::New(2), args[1]);
+  CHECK_EQ(v8::Integer::New(3), args[2]);
+  CHECK_EQ(v8::Undefined(), args[3]);
+  v8::HandleScope scope;
+  i::Heap::CollectAllGarbage(false);
+  return v8::Undefined();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -1893,7 +1907,14 @@ test_NoWeakRefCallbacksInScavenge()
 // from test-api.cc:4268
 void
 test_Arguments()
-{ }
+{
+  v8::HandleScope scope;
+  v8::Handle<v8::ObjectTemplate> global = ObjectTemplate::New();
+  global->Set(v8_str("f"), v8::FunctionTemplate::New(ArgumentsTestCallback));
+  LocalContext context(NULL, global);
+  args_fun = context->Global()->Get(v8_str("f")).As<Function>();
+  v8_compile("f(1, 2, 3)")->Run();
+}
 
 // from test-api.cc:4309
 void
@@ -3833,9 +3854,9 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ErrorWithMissingScriptInfo),
   UNIMPLEMENTED_TEST(test_WeakReference),
   UNIMPLEMENTED_TEST(test_NoWeakRefCallbacksInScavenge),
-  UNIMPLEMENTED_TEST(test_Arguments),
   UNIMPLEMENTED_TEST(test_Deleter),
   UNIMPLEMENTED_TEST(test_Enumerators),
+  DISABLED_TEST(test_Arguments, 69),
   UNIMPLEMENTED_TEST(test_GetterHolders),
   UNIMPLEMENTED_TEST(test_PreInterceptorHolders),
   UNIMPLEMENTED_TEST(test_ObjectInstantiation),

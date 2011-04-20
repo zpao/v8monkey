@@ -3655,7 +3655,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DontDeleteAPIAccessorsCannotBeOverriden),
   TEST(test_ElementAPIAccessor),
   TEST(test_SimplePropertyWrite),
-  DISABLED_TEST(test_NamedInterceptorPropertyRead, 67),
+  TEST(test_NamedInterceptorPropertyRead),
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryIC),
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryICMultipleContext),
   UNIMPLEMENTED_TEST(test_NamedInterceptorMapTransitionRead),

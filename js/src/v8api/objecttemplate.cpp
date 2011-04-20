@@ -307,7 +307,12 @@ ObjectTemplate::SetNamedPropertyHandler(NamedPropertyGetter getter,
   pd->namedQuery = query;
   pd->namedDeleter = deleter;
   pd->namedEnumerator = enumerator;
-  pd->namedData = Persistent<Value>::New(data);
+  if (data.IsEmpty()) {
+    pd->namedData = Persistent<Value>::New(Undefined());
+  }
+  else {
+    pd->namedData = Persistent<Value>::New(data);
+  }
 }
 
 void
@@ -325,7 +330,12 @@ ObjectTemplate::SetIndexedPropertyHandler(IndexedPropertyGetter getter,
   pd->indexedQuery = query;
   pd->indexedDeleter = deleter;
   pd->indexedEnumerator = enumerator;
-  pd->indexedData = Persistent<Value>::New(data);
+  if (data.IsEmpty()) {
+    pd->indexedData = Persistent<Value>::New(Undefined());
+  }
+  else {
+    pd->indexedData = Persistent<Value>::New(data);
+  }
 }
 
 void

@@ -652,7 +652,28 @@ test_GlobalPrototype()
 // from test-api.cc:1103
 void
 test_ObjectTemplate()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ1 = ObjectTemplate::New();
+  templ1->Set("x", v8_num(10));
+  templ1->Set("y", v8_num(13));
+  LocalContext env;
+  Local<v8::Object> instance1 = templ1->NewInstance();
+  env->Global()->Set(v8_str("p"), instance1);
+  CHECK(v8_compile("(p.x == 10)")->Run()->BooleanValue());
+  CHECK(v8_compile("(p.y == 13)")->Run()->BooleanValue());
+  Local<v8::FunctionTemplate> fun = v8::FunctionTemplate::New();
+  fun->PrototypeTemplate()->Set("nirk", v8_num(123));
+  Local<ObjectTemplate> templ2 = fun->InstanceTemplate();
+  templ2->Set("a", v8_num(12));
+  templ2->Set("b", templ1);
+  Local<v8::Object> instance2 = templ2->NewInstance();
+  env->Global()->Set(v8_str("q"), instance2);
+  CHECK(v8_compile("(q.nirk == 123)")->Run()->BooleanValue());
+  CHECK(v8_compile("(q.a == 12)")->Run()->BooleanValue());
+  CHECK(v8_compile("(q.b.x == 10)")->Run()->BooleanValue());
+  CHECK(v8_compile("(q.b.y == 13)")->Run()->BooleanValue());
+}
 
 // from test-api.cc:1139
 void
@@ -3365,7 +3386,7 @@ Test gTests[] = {
   TEST(test_Date),
   TEST(test_Boolean),
   UNIMPLEMENTED_TEST(test_GlobalPrototype),
-  UNIMPLEMENTED_TEST(test_ObjectTemplate),
+  TEST(test_ObjectTemplate),
   UNIMPLEMENTED_TEST(test_DescriptorInheritance),
   UNIMPLEMENTED_TEST(test_NamedPropertyHandlerGetter),
   UNIMPLEMENTED_TEST(test_IndexedPropertyHandlerGetter),

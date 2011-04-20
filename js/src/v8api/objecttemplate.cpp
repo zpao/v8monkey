@@ -63,10 +63,10 @@ struct PrivateData
 
 struct ObjectTemplateHandle
 {
-  ObjectTemplateHandle(ObjectTemplate* ot) :
-    objectTemplate(ot)
+  ObjectTemplateHandle(Handle<ObjectTemplate> ot) :
+    objectTemplate(Persistent<ObjectTemplate>::New(ot))
   {
-    JS_ASSERT(ot);
+    JS_ASSERT(!ot.IsEmpty());
   }
   static ObjectTemplateHandle* Get(JSContext* cx,
                                    JSObject* obj)

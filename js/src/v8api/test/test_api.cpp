@@ -336,6 +336,15 @@ class LocalContext {
   v8::Persistent<v8::Context> context_;
 };
 
+v8::Handle<Value> HandleF(const v8::Arguments& args) {
+  v8::HandleScope scope;
+  ApiTestFuzzer::Fuzz();
+  Local<v8::Array> result = v8::Array::New(args.Length());
+  for (int i = 0; i < args.Length(); i++)
+    result->Set(i, args[i]);
+  return scope.Close(result);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -947,7 +956,42 @@ test_Array()
 // from test-api.cc:1916
 void
 test_Vector()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> global = ObjectTemplate::New();
+  global->Set(v8_str("f"), v8::FunctionTemplate::New(HandleF));
+  LocalContext context(0, global);
+
+  const char* fun = "f()";
+  Local<v8::Array> a0 = CompileRun(fun).As<v8::Array>();
+  CHECK_EQ(0, a0->Length());
+
+  const char* fun2 = "f(11)";
+  Local<v8::Array> a1 = CompileRun(fun2).As<v8::Array>();
+  CHECK_EQ(1, a1->Length());
+  CHECK_EQ(11, a1->Get(0)->Int32Value());
+
+  const char* fun3 = "f(12, 13)";
+  Local<v8::Array> a2 = CompileRun(fun3).As<v8::Array>();
+  CHECK_EQ(2, a2->Length());
+  CHECK_EQ(12, a2->Get(0)->Int32Value());
+  CHECK_EQ(13, a2->Get(1)->Int32Value());
+
+  const char* fun4 = "f(14, 15, 16)";
+  Local<v8::Array> a3 = CompileRun(fun4).As<v8::Array>();
+  CHECK_EQ(3, a3->Length());
+  CHECK_EQ(14, a3->Get(0)->Int32Value());
+  CHECK_EQ(15, a3->Get(1)->Int32Value());
+  CHECK_EQ(16, a3->Get(2)->Int32Value());
+
+  const char* fun5 = "f(17, 18, 19, 20)";
+  Local<v8::Array> a4 = CompileRun(fun5).As<v8::Array>();
+  CHECK_EQ(4, a4->Length());
+  CHECK_EQ(17, a4->Get(0)->Int32Value());
+  CHECK_EQ(18, a4->Get(1)->Int32Value());
+  CHECK_EQ(19, a4->Get(2)->Int32Value());
+  CHECK_EQ(20, a4->Get(3)->Int32Value());
+}
 
 // from test-api.cc:1954
 void
@@ -3410,7 +3454,7 @@ Test gTests[] = {
   TEST(test_GetSetProperty),
   TEST(test_PropertyAttributes),
   TEST(test_Array),
-  UNIMPLEMENTED_TEST(test_Vector),
+  TEST(test_Vector),
   TEST(test_FunctionCall),
   UNIMPLEMENTED_TEST(test_OutOfMemory),
   UNIMPLEMENTED_TEST(test_OutOfMemoryNested),

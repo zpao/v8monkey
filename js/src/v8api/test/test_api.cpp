@@ -503,6 +503,20 @@ static v8::Handle<Value> PGetter2(Local<String> name,
   return v8::Undefined();
 }
 
+static v8::Handle<Value> YGetter(Local<String> name, const AccessorInfo& info) {
+  ApiTestFuzzer::Fuzz();
+  return v8_num(10);
+}
+
+static void YSetter(Local<String> name,
+                    Local<Value> value,
+                    const AccessorInfo& info) {
+  if (info.This()->Has(name)) {
+    info.This()->Delete(name);
+  }
+  info.This()->Set(name, value);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -2315,7 +2329,17 @@ test_ErrorConstruction()
 // from test-api.cc:4764
 void
 test_DeleteAccessor()
-{ }
+{
+  v8::HandleScope scope;
+  v8::Handle<v8::ObjectTemplate> obj = ObjectTemplate::New();
+  obj->SetAccessor(v8_str("y"), YGetter, YSetter);
+  LocalContext context;
+  v8::Handle<v8::Object> holder = obj->NewInstance();
+  context->Global()->Set(v8_str("holder"), holder);
+  v8::Handle<Value> result = CompileRun(
+      "holder.y = 11; holder.y = 12; holder.y");
+  CHECK_EQ(12, result->Uint32Value());
+}
 
 // from test-api.cc:4777
 void
@@ -4079,7 +4103,7 @@ Test gTests[] = {
   DISABLED_TEST(test_StringWrite, 16),
   UNIMPLEMENTED_TEST(test_ToArrayIndex),
   UNIMPLEMENTED_TEST(test_ErrorConstruction),
-  UNIMPLEMENTED_TEST(test_DeleteAccessor),
+  DISABLED_TEST(test_DeleteAccessor, 73),
   UNIMPLEMENTED_TEST(test_TypeSwitch),
   UNIMPLEMENTED_TEST(test_ApiUncaughtException),
   UNIMPLEMENTED_TEST(test_ExceptionInNativeScript),

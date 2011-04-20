@@ -192,7 +192,7 @@ o_finalize(JSContext* cx,
 }
 
 JSClass gNewInstanceClass = {
-  NULL, // name
+  "ObjectTemplate-Object", // name
   JSCLASS_HAS_PRIVATE, // flags
   JS_PropertyStub, // addProperty
   o_DeleteProperty, // delProperty

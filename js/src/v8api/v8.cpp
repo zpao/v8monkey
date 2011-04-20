@@ -751,8 +751,16 @@ void Message::PrintCurrentStackTrace(FILE*) {
 //////////////////////////////////////////////////////////////////////////////
 //// Arguments class
 
-Arguments::Arguments(JSContext* cx, JSObject* thisObj, int nargs, jsval* vp, Handle<Value> data) :
-  mCtx(cx), mValues(vp), mThis(thisObj), mLength(nargs), mData(Local<Value>::New(*data))
+Arguments::Arguments(JSContext* cx,
+                     JSObject* thisObj,
+                     int nargs,
+                     jsval* vp,
+                     Handle<Value> data) :
+  mCtx(cx),
+  mValues(vp),
+  mThis(thisObj),
+  mLength(nargs),
+  mData(Local<Value>::New(*data))
 {
 }
 

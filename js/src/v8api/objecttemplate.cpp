@@ -78,7 +78,7 @@ struct ObjectTemplateHandle
                                          JSObject* obj)
   {
     ObjectTemplateHandle* h = ObjectTemplateHandle::Get(cx, obj);
-    JS_ASSERT(h);
+    JS_ASSERT(h && !h->objectTemplate.IsEmpty());
     return Local<ObjectTemplate>::New(h->objectTemplate);
   }
 

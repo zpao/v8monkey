@@ -350,6 +350,14 @@ static v8::Handle<v8::Object> GetGlobalProperty(LocalContext* context,
   return v8::Handle<v8::Object>::Cast((*context)->Global()->Get(v8_str(name)));
 }
 
+static v8::Handle<Value> Get239Value(Local<String> name,
+                                     const AccessorInfo& info) {
+  ApiTestFuzzer::Fuzz();
+  CHECK_EQ(info.Data(), v8_str("donut"));
+  CHECK_EQ(name, v8_str("239"));
+  return name;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -1496,7 +1504,28 @@ test_DontDeleteAPIAccessorsCannotBeOverriden()
 // from test-api.cc:3025
 void
 test_ElementAPIAccessor()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  LocalContext context;
+
+  context->Global()->Set(v8_str("obj1"), templ->NewInstance());
+  CompileRun("var obj2 = {};");
+
+  CHECK(GetGlobalProperty(&context, "obj1")->SetAccessor(
+        v8_str("239"),
+        Get239Value, NULL,
+        v8_str("donut")));
+  CHECK(GetGlobalProperty(&context, "obj2")->SetAccessor(
+        v8_str("239"),
+        Get239Value, NULL,
+        v8_str("donut")));
+
+  ExpectString("obj1[239]", "239");
+  ExpectString("obj2[239]", "239");
+  ExpectString("obj1['239']", "239");
+  ExpectString("obj2['239']", "239");
+}
 
 // from test-api.cc:3063
 void
@@ -3606,7 +3635,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DefinePropertyOnDefineGetterSetter),
   DISABLED_TEST(test_DefineAPIAccessorOnObject, 66),
   UNIMPLEMENTED_TEST(test_DontDeleteAPIAccessorsCannotBeOverriden),
-  UNIMPLEMENTED_TEST(test_ElementAPIAccessor),
+  TEST(test_ElementAPIAccessor),
   TEST(test_SimplePropertyWrite),
   UNIMPLEMENTED_TEST(test_NamedInterceptorPropertyRead),
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryIC),

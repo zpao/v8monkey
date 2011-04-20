@@ -38,6 +38,7 @@ struct PrivateData
   static PrivateData* Get(Handle<ObjectTemplate> ot)
   {
     Object* obj = reinterpret_cast<Object*>(*ot);
+    JS_ASSERT(obj);
     return PrivateData::Get(*obj);
   }
 
@@ -300,6 +301,7 @@ ObjectTemplate::SetNamedPropertyHandler(NamedPropertyGetter getter,
                                         Handle<Value> data)
 {
   PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
   pd->namedGetter = getter;
   pd->namedSetter = setter;
   pd->namedQuery = query;
@@ -317,6 +319,7 @@ ObjectTemplate::SetIndexedPropertyHandler(IndexedPropertyGetter getter,
                                           Handle<Value> data)
 {
   PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
   pd->indexedGetter = getter;
   pd->indexedSetter = setter;
   pd->indexedQuery = query;
@@ -351,6 +354,7 @@ int
 ObjectTemplate::InternalFieldCount()
 {
   PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
   return JSCLASS_RESERVED_SLOTS(&pd->cls);
 }
 
@@ -359,6 +363,7 @@ ObjectTemplate::SetInternalFieldCount(int value)
 {
   JS_ASSERT(value >= 0 && value < (1 << JSCLASS_RESERVED_SLOTS_WIDTH));
   PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
   JSClass* clasp = &pd->cls;
   clasp->flags &= ~(JSCLASS_RESERVED_SLOTS_MASK << JSCLASS_RESERVED_SLOTS_SHIFT);
   clasp->flags |= JSCLASS_HAS_RESERVED_SLOTS(value);

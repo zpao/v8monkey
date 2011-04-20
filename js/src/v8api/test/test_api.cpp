@@ -450,6 +450,59 @@ static v8::Handle<v8::Array> IndexedEnum(const AccessorInfo&) {
   return result;
 }
 
+int p_getter_count;
+int p_getter_count2;
+
+static v8::Handle<Value> PGetter(Local<String> name, const AccessorInfo& info) {
+  ApiTestFuzzer::Fuzz();
+  p_getter_count++;
+  v8::Handle<v8::Object> global = Context::GetCurrent()->Global();
+  CHECK_EQ(info.Holder(), global->Get(v8_str("o1")));
+  if (name->Equals(v8_str("p1"))) {
+    CHECK_EQ(info.This(), global->Get(v8_str("o1")));
+  } else if (name->Equals(v8_str("p2"))) {
+    CHECK_EQ(info.This(), global->Get(v8_str("o2")));
+  } else if (name->Equals(v8_str("p3"))) {
+    CHECK_EQ(info.This(), global->Get(v8_str("o3")));
+  } else if (name->Equals(v8_str("p4"))) {
+    CHECK_EQ(info.This(), global->Get(v8_str("o4")));
+  }
+  return v8::Undefined();
+}
+
+static void RunHolderTest(v8::Handle<v8::ObjectTemplate> obj) {
+  ApiTestFuzzer::Fuzz();
+  LocalContext context;
+  context->Global()->Set(v8_str("o1"), obj->NewInstance());
+  CompileRun(
+    "o1.__proto__ = { };"
+    "var o2 = { __proto__: o1 };"
+    "var o3 = { __proto__: o2 };"
+    "var o4 = { __proto__: o3 };"
+    "for (var i = 0; i < 10; i++) o4.p4;"
+    "for (var i = 0; i < 10; i++) o3.p3;"
+    "for (var i = 0; i < 10; i++) o2.p2;"
+    "for (var i = 0; i < 10; i++) o1.p1;");
+}
+
+static v8::Handle<Value> PGetter2(Local<String> name,
+                                  const AccessorInfo& info) {
+  ApiTestFuzzer::Fuzz();
+  p_getter_count2++;
+  v8::Handle<v8::Object> global = Context::GetCurrent()->Global();
+  CHECK_EQ(info.Holder(), global->Get(v8_str("o1")));
+  if (name->Equals(v8_str("p1"))) {
+    CHECK_EQ(info.This(), global->Get(v8_str("o1")));
+  } else if (name->Equals(v8_str("p2"))) {
+    CHECK_EQ(info.This(), global->Get(v8_str("o2")));
+  } else if (name->Equals(v8_str("p3"))) {
+    CHECK_EQ(info.This(), global->Get(v8_str("o3")));
+  } else if (name->Equals(v8_str("p4"))) {
+    CHECK_EQ(info.This(), global->Get(v8_str("o4")));
+  }
+  return v8::Undefined();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -2066,7 +2119,17 @@ test_Enumerators()
 // from test-api.cc:4486
 void
 test_GetterHolders()
-{ }
+{
+  v8::HandleScope scope;
+  v8::Handle<v8::ObjectTemplate> obj = ObjectTemplate::New();
+  obj->SetAccessor(v8_str("p1"), PGetter);
+  obj->SetAccessor(v8_str("p2"), PGetter);
+  obj->SetAccessor(v8_str("p3"), PGetter);
+  obj->SetAccessor(v8_str("p4"), PGetter);
+  p_getter_count = 0;
+  RunHolderTest(obj);
+  CHECK_EQ(40, p_getter_count);
+}
 
 // from test-api.cc:4499
 void
@@ -3994,7 +4057,7 @@ Test gTests[] = {
   DISABLED_TEST(test_Arguments, 69),
   DISABLED_TEST(test_Deleter, 70),
   DISABLED_TEST(test_Enumerators, 71),
-  UNIMPLEMENTED_TEST(test_GetterHolders),
+  DISABLED_TEST(test_GetterHolders, 72),
   UNIMPLEMENTED_TEST(test_PreInterceptorHolders),
   UNIMPLEMENTED_TEST(test_ObjectInstantiation),
   DISABLED_TEST(test_StringWrite, 16),

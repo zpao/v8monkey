@@ -70,61 +70,12 @@ test_V8DocExample()
   // TODO: test that we created the objects we were supposed to
 }
 
-static
-Handle<Value>
-NodeFailureCallback(const Arguments& args)
-{
-  return True();
-}
-
-void
-test_NodeFailure()
-{
-  HandleScope handle_scope;
-  Persistent<Context> context = Context::New();
-  Context::Scope context_scope(context);
-
-  Local<FunctionTemplate> process_template = FunctionTemplate::New();
-  Local<FunctionTemplate> constructor_template =
-    Local<FunctionTemplate>::New(process_template);
-  constructor_template->SetClassName(String::NewSymbol("EventEmitter"));
-  Local<Object> process =
-    Local<Object>::New(process_template->GetFunction()->NewInstance());
-
-  bool rc;
-  rc = process->Set(String::NewSymbol("version"), String::New("1.0"));
-  do_check_true(rc);
-
-  rc = process->Set(String::NewSymbol("binding"),
-                    FunctionTemplate::New(NodeFailureCallback)->GetFunction());
-  do_check_true(rc);
-
-  rc = process->Set(String::NewSymbol("EventEmitter"),
-                    constructor_template->GetFunction());
-  do_check_true(rc);
-
-  const char* src =
-    "(function setup(process) {"
-    "   var retval = process.binding();"
-    "   return retval;"
-    "})";
-  Local<Script> script = Script::Compile(String::New(src));
-  Local<Value> func_val = script->Run();
-  do_check_true(func_val->IsFunction());
-  Local<Function> func = Local<Function>::Cast(func_val);
-  Local<Object> global = Context::GetCurrent()->Global();
-  Local<Value> args[1] = { Local<Value>::New(process) };
-  Local<Value> result = func->Call(global, 1, args);
-  do_check_eq(result, True());
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
 Test gTests[] = {
   TEST(test_BasicCall),
   TEST(test_V8DocExample),
-  TEST(test_NodeFailure),
 };
 
 const char* file = __FILE__;

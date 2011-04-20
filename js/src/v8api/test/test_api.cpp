@@ -345,6 +345,11 @@ v8::Handle<Value> HandleF(const v8::Arguments& args) {
   return scope.Close(result);
 }
 
+static v8::Handle<v8::Object> GetGlobalProperty(LocalContext* context,
+                                                char const* name) {
+  return v8::Handle<v8::Object>::Cast((*context)->Global()->Get(v8_str(name)));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -1410,7 +1415,78 @@ test_DefinePropertyOnDefineGetterSetter()
 // from test-api.cc:2893
 void
 test_DefineAPIAccessorOnObject()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  LocalContext context;
+
+  context->Global()->Set(v8_str("obj1"), templ->NewInstance());
+  CompileRun("var obj2 = {};");
+
+  CHECK(CompileRun("obj1.x")->IsUndefined());
+  CHECK(CompileRun("obj2.x")->IsUndefined());
+
+  CHECK(GetGlobalProperty(&context, "obj1")->
+      SetAccessor(v8_str("x"), GetXValue, NULL, v8_str("donut")));
+
+  ExpectString("obj1.x", "x");
+  CHECK(CompileRun("obj2.x")->IsUndefined());
+
+  CHECK(GetGlobalProperty(&context, "obj2")->
+      SetAccessor(v8_str("x"), GetXValue, NULL, v8_str("donut")));
+
+  ExpectString("obj1.x", "x");
+  ExpectString("obj2.x", "x");
+
+  ExpectTrue("Object.getOwnPropertyDescriptor(obj1, 'x').configurable");
+  ExpectTrue("Object.getOwnPropertyDescriptor(obj2, 'x').configurable");
+
+  CompileRun("Object.defineProperty(obj1, 'x',"
+             "{ get: function() { return 'y'; }, configurable: true })");
+
+  ExpectString("obj1.x", "y");
+  ExpectString("obj2.x", "x");
+
+  CompileRun("Object.defineProperty(obj2, 'x',"
+             "{ get: function() { return 'y'; }, configurable: true })");
+
+  ExpectString("obj1.x", "y");
+  ExpectString("obj2.x", "y");
+
+  ExpectTrue("Object.getOwnPropertyDescriptor(obj1, 'x').configurable");
+  ExpectTrue("Object.getOwnPropertyDescriptor(obj2, 'x').configurable");
+
+  CHECK(GetGlobalProperty(&context, "obj1")->
+      SetAccessor(v8_str("x"), GetXValue, NULL, v8_str("donut")));
+  CHECK(GetGlobalProperty(&context, "obj2")->
+      SetAccessor(v8_str("x"), GetXValue, NULL, v8_str("donut")));
+
+  ExpectString("obj1.x", "x");
+  ExpectString("obj2.x", "x");
+
+  ExpectTrue("Object.getOwnPropertyDescriptor(obj1, 'x').configurable");
+  ExpectTrue("Object.getOwnPropertyDescriptor(obj2, 'x').configurable");
+
+  // Define getters/setters, but now make them not configurable.
+  CompileRun("Object.defineProperty(obj1, 'x',"
+             "{ get: function() { return 'z'; }, configurable: false })");
+  CompileRun("Object.defineProperty(obj2, 'x',"
+             "{ get: function() { return 'z'; }, configurable: false })");
+
+  ExpectTrue("!Object.getOwnPropertyDescriptor(obj1, 'x').configurable");
+  ExpectTrue("!Object.getOwnPropertyDescriptor(obj2, 'x').configurable");
+
+  ExpectString("obj1.x", "z");
+  ExpectString("obj2.x", "z");
+
+  CHECK(!GetGlobalProperty(&context, "obj1")->
+      SetAccessor(v8_str("x"), GetXValue, NULL, v8_str("donut")));
+  CHECK(!GetGlobalProperty(&context, "obj2")->
+      SetAccessor(v8_str("x"), GetXValue, NULL, v8_str("donut")));
+
+  ExpectString("obj1.x", "z");
+  ExpectString("obj2.x", "z");
+}
 
 // from test-api.cc:2967
 void
@@ -3528,7 +3604,7 @@ Test gTests[] = {
   TEST(test_SimplePropertyRead),
   DISABLED_TEST(test_DefinePropertyOnAPIAccessor, 65),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnDefineGetterSetter),
-  UNIMPLEMENTED_TEST(test_DefineAPIAccessorOnObject),
+  DISABLED_TEST(test_DefineAPIAccessorOnObject, 66),
   UNIMPLEMENTED_TEST(test_DontDeleteAPIAccessorsCannotBeOverriden),
   UNIMPLEMENTED_TEST(test_ElementAPIAccessor),
   TEST(test_SimplePropertyWrite),

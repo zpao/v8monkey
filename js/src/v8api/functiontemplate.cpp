@@ -50,16 +50,27 @@ FunctionTemplate::FunctionTemplate() :
   InternalObject().SetInternalField(0, Handle<Object>(&ftData));
 }
 
-JSBool FunctionTemplate::CallCallback(JSContext *cx, uintN argc, jsval *vp) {
+JSBool
+FunctionTemplate::CallCallback(JSContext* cx,
+                               uintN argc,
+                               jsval* vp)
+{
   Object fnTemplateObj(JSVAL_TO_OBJECT(JS_CALLEE(cx, vp)));
   Handle<Object> ftData = fnTemplateObj.GetInternalField(0).As<Object>();
-  Handle<ObjectTemplate> instanceTemplate(reinterpret_cast<ObjectTemplate*>(*ftData->GetInternalField(kInstanceSlot)));
-  JSIntPtr maskedCallback = reinterpret_cast<JSIntPtr>(ftData->GetPointerFromInternalField(kCallbackSlot));
-  JSIntPtr residual = reinterpret_cast<JSIntPtr>(ftData->GetPointerFromInternalField(kCallbackParitySlot));
-  InvocationCallback callback = reinterpret_cast<InvocationCallback>(maskedCallback | (residual >> 1));
+  Handle<ObjectTemplate> instanceTemplate =
+    reinterpret_cast<ObjectTemplate*>(*ftData->GetInternalField(kInstanceSlot));
+  JSIntPtr maskedCallback = reinterpret_cast<JSIntPtr>(
+    ftData->GetPointerFromInternalField(kCallbackSlot)
+  );
+  JSIntPtr residual = reinterpret_cast<JSIntPtr>(
+    ftData->GetPointerFromInternalField(kCallbackParitySlot)
+  );
+  InvocationCallback callback = reinterpret_cast<InvocationCallback>(
+    maskedCallback | (residual >> 1)
+  );
   Local<Value> data = ftData->GetInternalField(kDataSlot);
 
-  JSObject *thiz = NULL;
+  JSObject* thiz = NULL;
   bool isConstructing = JS_IsConstructing(cx, vp);
   if (isConstructing) {
     thiz = **instanceTemplate->NewInstance();
@@ -70,12 +81,14 @@ JSBool FunctionTemplate::CallCallback(JSContext *cx, uintN argc, jsval *vp) {
   Handle<Value> ret;
   if (callback) {
     ret = callback(args);
-  } else {
+  }
+  else {
     ret = v8::Undefined();
   }
   if (isConstructing) {
     JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(thiz));
-  } else {
+  }
+  else {
     JS_SET_RVAL(cx, vp, ret->native());
   }
   return !JS_IsExceptionPending(cx);

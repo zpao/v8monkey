@@ -3906,7 +3906,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_NoWeakRefCallbacksInScavenge),
   UNIMPLEMENTED_TEST(test_Enumerators),
   DISABLED_TEST(test_Arguments, 69),
-  TEST(test_Deleter, 70),
+  DISABLED_TEST(test_Deleter, 70),
   UNIMPLEMENTED_TEST(test_GetterHolders),
   UNIMPLEMENTED_TEST(test_PreInterceptorHolders),
   UNIMPLEMENTED_TEST(test_ObjectInstantiation),

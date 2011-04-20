@@ -1354,7 +1354,53 @@ test_SimplePropertyRead()
 // from test-api.cc:2792
 void
 test_DefinePropertyOnAPIAccessor()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->SetAccessor(v8_str("x"), GetXValue, NULL, v8_str("donut"));
+  LocalContext context;
+  context->Global()->Set(v8_str("obj"), templ->NewInstance());
+
+  // Uses getOwnPropertyDescriptor to check the configurable status
+  Local<Script> script_desc
+    = Script::Compile(v8_str("var prop = Object.getOwnPropertyDescriptor( "
+                             "obj, 'x');"
+                             "prop.configurable;"));
+  Local<Value> result = script_desc->Run();
+  CHECK_EQ(result->BooleanValue(), true);
+
+  // Redefine get - but still configurable
+  Local<Script> script_define
+    = Script::Compile(v8_str("var desc = { get: function(){return 42; },"
+                             "            configurable: true };"
+                             "Object.defineProperty(obj, 'x', desc);"
+                             "obj.x"));
+  result = script_define->Run();
+  CHECK_EQ(result, v8_num(42));
+
+  // Check that the accessor is still configurable
+  result = script_desc->Run();
+  CHECK_EQ(result->BooleanValue(), true);
+
+  // Redefine to a non-configurable
+  script_define
+    = Script::Compile(v8_str("var desc = { get: function(){return 43; },"
+                             "             configurable: false };"
+                             "Object.defineProperty(obj, 'x', desc);"
+                             "obj.x"));
+  result = script_define->Run();
+  CHECK_EQ(result, v8_num(43));
+  result = script_desc->Run();
+  CHECK_EQ(result->BooleanValue(), false);
+
+  // Make sure that it is not possible to redefine again
+  v8::TryCatch try_catch;
+  result = script_define->Run();
+  CHECK(try_catch.HasCaught());
+  String::AsciiValue exception_value(try_catch.Exception());
+  CHECK_EQ(*exception_value,
+           "TypeError: Cannot redefine property: defineProperty");
+}
 
 // from test-api.cc:2840
 void
@@ -3480,7 +3526,7 @@ Test gTests[] = {
   TEST(test_Equality),
   DISABLED_TEST(test_MultiRun, 43),
   TEST(test_SimplePropertyRead),
-  UNIMPLEMENTED_TEST(test_DefinePropertyOnAPIAccessor),
+  DISABLED_TEST(test_DefinePropertyOnAPIAccessor, 65),
   UNIMPLEMENTED_TEST(test_DefinePropertyOnDefineGetterSetter),
   UNIMPLEMENTED_TEST(test_DefineAPIAccessorOnObject),
   UNIMPLEMENTED_TEST(test_DontDeleteAPIAccessorsCannotBeOverriden),

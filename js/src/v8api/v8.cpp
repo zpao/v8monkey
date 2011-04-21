@@ -659,7 +659,8 @@ Local<Script> Script::Compile(Handle<String> source, Handle<Value> fileName,
 Local<Value> Script::Run() {
   Handle<Value> boundGlobalValue = InternalObject()->Get(String::New("global"));
   Handle<Object> global;
-  if (boundGlobalValue.IsEmpty()) {
+  JS_ASSERT(!boundGlobalValue.IsEmpty());
+  if (boundGlobalValue->IsUndefined()) {
     global = Context::GetCurrent()->Global();
   } else {
     global = boundGlobalValue.As<Object>();

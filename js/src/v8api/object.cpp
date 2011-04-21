@@ -125,6 +125,7 @@ Object::ForceSet(Handle<Value> key,
                  Handle<Value> value,
                  PropertyAttribute attribute)
 {
+  // TODO implement this with JS_DefineProperty
   UNIMPLEMENTEDAPI(false);
 }
 

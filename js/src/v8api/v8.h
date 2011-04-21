@@ -510,10 +510,7 @@ public:
   Local<Object> ToObject() const;
   Local<Uint32> ToUint32() const;
   Local<Int32> ToInt32() const;
-  Local<Integer> ToInteger() const {
-    UNIMPLEMENTEDAPI(Local<Integer>());
-  }
-
+  Local<Integer> ToInteger() const;
   bool BooleanValue() const;
   double NumberValue() const;
   JSInt64 IntegerValue() const;

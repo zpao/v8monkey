@@ -138,7 +138,11 @@ Local<Context> Context::GetEntered() {
 
 Local<Context> Context::GetCurrent() {
   // XXX: This is probably not right
-  return Local<Context>::New(gContextChain->ctx);
+  if (gContextChain) {
+    return Local<Context>::New(gContextChain->ctx);
+  } else {
+    return Local<Context>();
+  }
 }
 
 void Context::Enter() {

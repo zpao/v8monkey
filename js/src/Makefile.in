@@ -287,6 +287,7 @@ CPPSRCS += \
 		v8api/template.cpp \
 		v8api/objecttemplate.cpp \
 		v8api/functiontemplate.cpp \
+		v8api/internal.cpp \
 		$(NULL)
 
 INSTALLED_HEADERS += \

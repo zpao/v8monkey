@@ -13,6 +13,16 @@ extern JSClass global_class;
 
 JSContext *cx();
 
+////////////////////////////////////////////////////////////////////////////////
+//// Debug Helpers
+
+#ifdef DEBUG
+void Dump(Handle<Object> obj);
+void Dump(Object& obj);
+void Dump(Handle<String> str);
+void Dump(String& str);
+#endif // DEBUG
+
 } // namespace internal
 } // namespace v8
 

@@ -8,21 +8,9 @@ using namespace internal;
 
 JS_STATIC_ASSERT(sizeof(Object) == sizeof(GCReference));
 
-struct PropertyData {
-  AccessorGetter getter;
-  AccessorSetter setter;
-  Handle<Value> data;
-};
-
-typedef js::HashMap<jsid, PropertyData, JSIDHashPolicy, js::SystemAllocPolicy> AccessorTable;
-
 struct Object::PrivateData {
   Persistent<Object> hiddenValues;
-  AccessorTable properties;
-
-  PrivateData() {
-    properties.init(10);
-  }
+  AccessorStorage properties;
 };
 
 typedef js::HashMap<JSObject*,Object::PrivateData*, js::DefaultHasher<JSObject*>, js::SystemAllocPolicy> ObjectPrivateDataMap;
@@ -48,9 +36,9 @@ JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   (void) JS_GetReservedSlot(cx, fnObj, 1, &name);
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
-  AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
-  AccessorInfo info(p->value.data, JS_THIS_OBJECT(cx, vp));
-  Handle<Value> result = p->value.getter(String::FromJSID(id), info);
+  AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
+  AccessorInfo info(data.data, JS_THIS_OBJECT(cx, vp));
+  Handle<Value> result = data.getter(String::FromJSID(id), info);
   JS_SET_RVAL(cx, vp, result->native());
   // XXX: this is usually correct
   return JS_TRUE;
@@ -69,10 +57,10 @@ JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
 
-  AccessorTable::Ptr p = o.GetHiddenStore().properties.lookup(id);
-  AccessorInfo info(p->value.data, JS_THIS_OBJECT(cx, vp));
+  AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
+  AccessorInfo info(data.data, JS_THIS_OBJECT(cx, vp));
   Value value(*JS_ARGV(cx, vp));
-  p->value.setter(String::FromJSID(id), &value, info);
+  data.setter(String::FromJSID(id), &value, info);
   // XXX: this is usually correct
   return JS_TRUE;
 }
@@ -231,11 +219,6 @@ Object::SetAccessor(Handle<String> name,
 
   jsid propid;
   JS_ValueToId(cx(), name->native(), &propid);
-  PropertyData prop = {
-    getter,
-    setter,
-    data
-  };
   JSFunction* getterFn = JS_NewFunction(cx(), JSAPIPropertyGetter, 0, 0, NULL, NULL);
   if (!getterFn)
     return false;
@@ -262,8 +245,7 @@ Object::SetAccessor(Handle<String> name,
     return false;
   }
   PrivateData &store = GetHiddenStore();
-  AccessorTable::AddPtr slot = store.properties.lookupForAdd(propid);
-  store.properties.add(slot, propid, prop);
+  store.properties.addAccessor(propid, getter, setter, data, attribs);
   return true;
 }
 

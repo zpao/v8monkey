@@ -17,6 +17,8 @@ AccessorStorage::addAccessor(jsid name,
                              Handle<Value> data,
                              PropertyAttribute attribute)
 {
+  JS_ASSERT(mStore.initialized());
+
   PropertyData container = {
     getter,
     setter,
@@ -30,6 +32,8 @@ AccessorStorage::addAccessor(jsid name,
 AccessorStorage::PropertyData
 AccessorStorage::get(jsid name)
 {
+  JS_ASSERT(mStore.initialized());
+
   AccessorTable::Ptr p = mStore.lookup(name);
   JS_ASSERT(p);
   return p->value;

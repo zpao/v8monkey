@@ -70,12 +70,28 @@ test_V8DocExample()
   // TODO: test that we created the objects we were supposed to
 }
 
+void
+test_Constructor()
+{
+  HandleScope handle_scope;
+  Handle<ObjectTemplate> templ = ObjectTemplate::New();
+  Handle<FunctionTemplate> fnT = v8::FunctionTemplate::New(AddOne);
+  templ->Set("AddOne", fnT);
+
+  Persistent<Context> context = Context::New(NULL, templ);
+  Handle<Script> script = Script::New(String::New("new AddOne(4);"));
+
+  Context::Scope scope(context);
+  script->Run();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
 Test gTests[] = {
   TEST(test_BasicCall),
   TEST(test_V8DocExample),
+  TEST(test_Constructor),
 };
 
 const char* file = __FILE__;

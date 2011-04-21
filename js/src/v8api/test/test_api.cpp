@@ -4094,7 +4094,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ErrorWithMissingScriptInfo),
   UNIMPLEMENTED_TEST(test_WeakReference),
   UNIMPLEMENTED_TEST(test_NoWeakRefCallbacksInScavenge),
-  DISABLED_TEST(test_Arguments, 69),
+  TEST(test_Arguments),
   DISABLED_TEST(test_Deleter, 70),
   DISABLED_TEST(test_Enumerators, 71),
   DISABLED_TEST(test_GetterHolders, 72),

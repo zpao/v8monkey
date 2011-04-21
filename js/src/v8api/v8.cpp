@@ -769,7 +769,7 @@ Local<Value>
 Arguments::operator[](int i) const
 {
   if (i < 0 || i >= mLength) {
-    return Local<Value>();
+    return Local<Value>::New(Undefined());
   }
   Value v(mValues[i]);
   return Local<Value>::New(&v);

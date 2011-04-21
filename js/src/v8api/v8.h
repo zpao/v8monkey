@@ -250,19 +250,11 @@ class Persistent : public Handle<T> {
   internal::PersistentGCReference *persistentRef() const {
     return reinterpret_cast<internal::PersistentGCReference*>(**this);
   }
-
-  explicit Persistent(T* val) :
-    Handle<T>(val)
-  {
-  }
 public:
   Persistent() : Handle<T>() {}
 
   template <class S>
-  Persistent(S* val) :
-    Handle<T>(reinterpret_cast<T*>(val->Globalize()))
-  {
-  }
+  Persistent(S *val) : Handle<T>(val) {}
 
   template <typename S>
   explicit Persistent(Persistent<S> other) :
@@ -292,10 +284,9 @@ public:
   }
 
   static Persistent<T> New(Handle<T> other) {
-    if (other.IsEmpty()) {
+    if (other.IsEmpty())
       return Persistent<T>();
-    }
-    return Persistent<T>(reinterpret_cast<T*>(other->Globalize()));
+    return reinterpret_cast<T*>(other->Globalize());
   }
 
   template <class S>

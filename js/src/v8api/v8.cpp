@@ -665,6 +665,8 @@ Local<Value> Script::Run() {
   } else {
     global = boundGlobalValue.As<Object>();
   }
+  JS_ASSERT(!global.IsEmpty());
+
   jsval js_retval;
   if (!JS_ExecuteScript(cx(), **global,
                         *this, &js_retval)) {

@@ -378,6 +378,7 @@ private:
 class TryCatch {
   friend class V8;
   friend class Script;
+  friend class Value;
   static void ReportError(JSContext *ctx, const char *message, JSErrorReport *report);
   static void CheckForException();
 
@@ -776,6 +777,7 @@ private:
   friend class AccessorInfo;
   friend class Message;
   friend class Function;
+  friend class Value;
 
   static JSBool JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp);
   static JSBool JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp);

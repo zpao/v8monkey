@@ -210,37 +210,55 @@ JS_STATIC_ASSERT(sizeof(Value) == sizeof(GCReference));
 
 Local<Boolean> Value::ToBoolean() const {
   JSBool b;
-  if (!JS_ValueToBoolean(cx(), mVal, &b))
+  if (!JS_ValueToBoolean(cx(), mVal, &b)) {
+    TryCatch::CheckForException();
     return Local<Boolean>();
+  }
 
   Boolean value(b);
   return Local<Boolean>::New(&value);
 }
 
 Local<Number> Value::ToNumber() const {
-  return Number::New(this->NumberValue());
+  double d;
+  if (!JS_ValueToNumber(cx(), mVal, &d)) {
+    TryCatch::CheckForException();
+    return Local<Number>();
+  }
+  return Number::New(d);
 }
 
 Local<String> Value::ToString() const {
   // TODO Allocate this in a way that doesn't leak
-  JSString *str(JS_ValueToString(cx(), mVal));
+  JSString *str = JS_ValueToString(cx(), mVal);
+  if (!str) {
+    TryCatch::CheckForException();
+    return Local<String>();
+  }
   String s(str);
   return Local<String>::New(&s);
 }
 
 Local<Uint32> Value::ToUint32() const {
+  JSUint32 i;
+  if (!JS_ValueToECMAUint32(cx(), mVal, &i)) {
+    TryCatch::CheckForException();
+    return Local<Uint32>();
+  }
+  // XXX this is somehow still needed to make test_PropertyAttributes pass.
   if (!IsNumber()) {
     return Local<Uint32>();
   }
-
-  JSUint32 i = 0;
-  (void) JS_ValueToECMAUint32(cx(), mVal, &i);
   Uint32 v(i);
   return Local<Uint32>::New(&v);
 }
 
 Local<Int32> Value::ToInt32() const {
-  JSInt32 i = this->Int32Value();
+  JSInt32 i;
+  if (!JS_ValueToECMAInt32(cx(), mVal, &i)) {
+    TryCatch::CheckForException();
+    return Local<Int32>();
+  }
   Int32 v(i);
   return Local<Int32>::New(&v);
 }
@@ -248,7 +266,12 @@ Local<Int32> Value::ToInt32() const {
 Local<Integer>
 Value::ToInteger() const
 {
-  JSInt64 i = this->IntegerValue();
+  // TODO should be supporting 64bit wide ints here
+  JSInt32 i;
+  if (!JS_ValueToECMAInt32(cx(), mVal, &i)) {
+    TryCatch::CheckForException();
+    return Local<Integer>();
+  }
   return Integer::New(i);
 }
 
@@ -260,7 +283,13 @@ Value::ToObject() const
     return Local<Object>::New(reinterpret_cast<Object*>(val));
   }
 
-  return Local<Object>();
+  JSObject *obj;
+  if (!JS_ValueToObject(cx(), mVal, &obj)) {
+    TryCatch::CheckForException();
+    return Local<Object>();
+  }
+  Object o(obj);
+  return Local<Object>::New(&o);
 }
 
 bool Value::IsFunction() const {
@@ -304,9 +333,11 @@ Value::BooleanValue() const
 double
 Value::NumberValue() const
 {
-  double d;
-  JS_ValueToNumber(cx(), mVal, &d);
-  return d;
+  Local<Number> n = ToNumber();
+  if (n.IsEmpty()) {
+    return 0; //XXX need NaN here
+  }
+  return n->Value();
 }
 
 JSInt64
@@ -317,8 +348,11 @@ Value::IntegerValue() const
     return JSVAL_TO_INT(mVal);
   }
 
-  // XXX It looks like V8 might throw an exception in this case
-  UNIMPLEMENTEDAPI(0);
+  Local<Number> n = ToInteger();
+  if (n.IsEmpty()) {
+    return 0;
+  }
+  return n->Value();
 }
 
 JSUint32
@@ -333,9 +367,10 @@ Value::Uint32Value() const
 JSInt32
 Value::Int32Value() const
 {
-  JSInt32 i = 0;
-  JS_ValueToECMAInt32(cx(), mVal, &i);
-  return i;
+  Local<Int32> n = ToInt32();
+  if (n.IsEmpty())
+    return 0;
+  return n->Value();
 }
 
 bool

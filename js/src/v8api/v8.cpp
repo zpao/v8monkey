@@ -28,12 +28,12 @@ void TryCatch::ReportError(JSContext *ctx, const char *message, JSErrorReport *r
     return;
 
   TryCatch *current = gExnChain->catcher;
-  JSExceptionState *state = JS_SaveExceptionState(cx());
   if (current->mCaptureMessage) {
-    v8::Message m(message, report);
-    current->mMessage = Persistent<v8::Message>::New(&m);
+    current->mFilename = report->filename ? strdup(report->filename) : NULL;
+    current->mLineBuffer = report->linebuf ? strdup(report->linebuf) : NULL;
+    current->mLineNo = report->lineno;
+    current->mMessage = strdup(message);
   }
-  JS_RestoreExceptionState(cx(), state);
 }
 
 void TryCatch::CheckForException() {
@@ -59,7 +59,11 @@ void TryCatch::CheckForException() {
 TryCatch::TryCatch() :
   mHasCaught(false),
   mCaptureMessage(true),
-  mRethrown(false)
+  mRethrown(false),
+  mFilename(NULL),
+  mLineBuffer(NULL),
+  mLineNo(0),
+  mMessage(NULL)
 {
   ExceptionHandlerChain *link = new ExceptionHandlerChain;
   link->catcher = this;
@@ -99,12 +103,17 @@ Local<Value> TryCatch::StackTrace() const {
 }
 
 Local<v8::Message> TryCatch::Message() const {
-  return Local<v8::Message>::New(*mMessage);
+  v8::Message msg(mMessage, mFilename, mLineBuffer, mLineNo);
+  return Local<v8::Message>::New(&msg);
 }
 
 void TryCatch::Reset() {
   mException.Dispose();
-  mMessage.Dispose();
+  free(mFilename);
+  free(mLineBuffer);
+  free(mMessage);
+  mFilename = mLineBuffer = mMessage = NULL;
+  mLineNo = 0;
 
   mHasCaught = false;
 }
@@ -713,16 +722,14 @@ namespace {
   };
 }
 
-Message::Message(const char *message, JSErrorReport *report) :
+Message::Message(const char* message, const char* filename, const char* linebuf, int lineno) :
   SecretObject<internal::GCReference>(JS_NewObject(cx(), &message_class, NULL, NULL))
 {
-  const char *filename = report->filename ? report->filename : "";
-  const char *linebuf = report->linebuf ? report->linebuf : "";
   Object &o = InternalObject();
-  o.Set(String::New("message"), String::New(message));
-  o.Set(String::New("filename"), String::New(filename));
-  o.Set(String::New("lineNumber"), Integer::New(report->lineno));
-  o.Set(String::New("line"), String::New(linebuf));
+  o.Set(String::New("message"), String::New(message ? message : ""));
+  o.Set(String::New("filename"), String::New(filename ? filename : ""));
+  o.Set(String::New("lineNumber"), Integer::New(lineno));
+  o.Set(String::New("line"), String::New(linebuf ? linebuf : ""));
 }
 
 Local<String> Message::Get() const {

@@ -303,7 +303,7 @@ public:
 class Message : public internal::SecretObject<internal::GCReference> {
   friend class TryCatch;
 
-  Message(const char *message, JSErrorReport *report);
+  Message(const char* message, const char* filename, const char* linebuf, int lineno);
 public:
   Local<String> Get() const;
   Local<String> GetSourceLine() const;
@@ -385,7 +385,12 @@ class TryCatch {
   bool mCaptureMessage;
   bool mRethrown;
   Persistent<Value> mException;
-  Persistent<v8::Message> mMessage;
+
+  // These fields are used to lazily create the Message
+  char* mFilename;
+  char* mLineBuffer;
+  int mLineNo;
+  char* mMessage;
 public:
   TryCatch();
   ~TryCatch();

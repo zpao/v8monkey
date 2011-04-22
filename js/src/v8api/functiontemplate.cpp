@@ -169,9 +169,16 @@ FunctionTemplate::SetHiddenPrototype(bool value)
 }
 
 bool
-FunctionTemplate::HasInstance(Handle<Value> object)
+FunctionTemplate::HasInstance(Handle<Value> v)
 {
-  UNIMPLEMENTEDAPI(false);
+  Handle<Object> object = v->ToObject();
+  if (object.IsEmpty())
+    return false;
+  Handle<Object> proto = object->GetPrototype().As<Object>();
+  if (proto.IsEmpty()) {
+    return false;
+  }
+  return InternalObject().Equals(proto);
 }
 
 } // namespace v8

@@ -4103,7 +4103,7 @@ Test gTests[] = {
   DISABLED_TEST(test_StringWrite, 16),
   UNIMPLEMENTED_TEST(test_ToArrayIndex),
   UNIMPLEMENTED_TEST(test_ErrorConstruction),
-  DISABLED_TEST(test_DeleteAccessor, 73),
+  TEST(test_DeleteAccessor),
   UNIMPLEMENTED_TEST(test_TypeSwitch),
   UNIMPLEMENTED_TEST(test_ApiUncaughtException),
   UNIMPLEMENTED_TEST(test_ExceptionInNativeScript),

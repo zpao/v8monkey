@@ -1,7 +1,9 @@
 #include "v8-internal.h"
 #include "jstl.h"
 #include "jshashtable.h"
+#include "mozilla/Util.h"
 #include <limits>
+using namespace mozilla;
 
 namespace v8 {
 using namespace internal;
@@ -36,8 +38,19 @@ JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   (void) JS_GetReservedSlot(cx, fnObj, 1, &name);
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
+
+  // We need to make sure that the object we pass to the getter is actually the
+  // object that has set the property.  The "This" property on AccessorInfo is
+  // actually the object in which the properties were set on, not the "this"
+  // object in JavaScript.
+  JSObject* thiz = JS_THIS_OBJECT(cx, vp);
+  JSPropertyDescriptor desc;
+  DebugOnly<JSBool> rc = JS_GetPropertyDescriptorById(cx, thiz, id, 0, &desc);
+  JS_ASSERT(rc);
+  thiz = desc.obj;
+
   AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
-  AccessorInfo info(data.data, JS_THIS_OBJECT(cx, vp));
+  AccessorInfo info(data.data, thiz);
   Handle<Value> result = data.getter(String::FromJSID(id), info);
   JS_SET_RVAL(cx, vp, result->native());
   // XXX: this is usually correct
@@ -57,8 +70,18 @@ JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
 
+  // We need to make sure that the object we pass to the getter is actually the
+  // object that has set the property.  The "This" property on AccessorInfo is
+  // actually the object in which the properties were set on, not the "this"
+  // object in JavaScript.
+  JSObject* thiz = JS_THIS_OBJECT(cx, vp);
+  JSPropertyDescriptor desc;
+  DebugOnly<JSBool> rc = JS_GetPropertyDescriptorById(cx, thiz, id, 0, &desc);
+  JS_ASSERT(rc);
+  thiz = desc.obj;
+
   AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
-  AccessorInfo info(data.data, JS_THIS_OBJECT(cx, vp));
+  AccessorInfo info(data.data, thiz);
   Value value(*JS_ARGV(cx, vp));
   data.setter(String::FromJSID(id), &value, info);
   // XXX: this is usually correct

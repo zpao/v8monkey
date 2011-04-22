@@ -82,6 +82,12 @@ struct ApiTestFuzzer {
   static void Fuzz() { }
 };
 
+// our own version, not copied from test-api.cc
+static bool IsNaN(double x) {
+  return x == i::OS::nan_value();
+}
+
+
 static inline v8::Local<v8::Value> v8_num(double x) {
   return v8::Number::New(x);
 }
@@ -306,6 +312,13 @@ static v8::Handle<Value>
 GlobalObjectInstancePropertiesGet(Local<String> key, const AccessorInfo&) {
   ApiTestFuzzer::Fuzz();
   return v8::Handle<Value>();
+}
+
+static void CheckUncle(v8::TryCatch* try_catch) {
+  CHECK(try_catch->HasCaught());
+  String::AsciiValue str_value(try_catch->Exception());
+  CHECK_EQ(*str_value, "uncle?");
+  try_catch->Reset();
 }
 
 // A LocalContext holds a reference to a v8::Context.
@@ -1335,7 +1348,58 @@ test_isNumberType()
 // from test-api.cc:2257
 void
 test_ConversionException()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  CompileRun(
+    "function TestClass() { };"
+    "TestClass.prototype.toString = function () { throw 'uncle?'; };"
+    "var obj = new TestClass();");
+  Local<Value> obj = env->Global()->Get(v8_str("obj"));
+
+  v8::TryCatch try_catch;
+
+  Local<Value> to_string_result = obj->ToString();
+  CHECK(to_string_result.IsEmpty());
+  CheckUncle(&try_catch);
+
+  Local<Value> to_number_result = obj->ToNumber();
+  CHECK(to_number_result.IsEmpty());
+  CheckUncle(&try_catch);
+
+  Local<Value> to_integer_result = obj->ToInteger();
+  CHECK(to_integer_result.IsEmpty());
+  CheckUncle(&try_catch);
+
+  Local<Value> to_uint32_result = obj->ToUint32();
+  CHECK(to_uint32_result.IsEmpty());
+  CheckUncle(&try_catch);
+
+  Local<Value> to_int32_result = obj->ToInt32();
+  CHECK(to_int32_result.IsEmpty());
+  CheckUncle(&try_catch);
+
+  Local<Value> to_object_result = v8::Undefined()->ToObject();
+  CHECK(to_object_result.IsEmpty());
+  CHECK(try_catch.HasCaught());
+  try_catch.Reset();
+
+  int32_t int32_value = obj->Int32Value();
+  CHECK_EQ(0, int32_value);
+  CheckUncle(&try_catch);
+
+  uint32_t uint32_value = obj->Uint32Value();
+  CHECK_EQ(0, uint32_value);
+  CheckUncle(&try_catch);
+
+  double number_value = obj->NumberValue();
+  CHECK_NE(0, IsNaN(number_value));
+  CheckUncle(&try_catch);
+
+  int64_t integer_value = obj->IntegerValue();
+  CHECK_EQ(0.0, static_cast<double>(integer_value));
+  CheckUncle(&try_catch);
+}
 
 // from test-api.cc:2327
 void
@@ -4033,7 +4097,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ConstructCall),
   TEST(test_ConversionNumber),
   TEST(test_isNumberType),
-  UNIMPLEMENTED_TEST(test_ConversionException),
+  DISABLED_TEST(test_ConversionException, 82),
   UNIMPLEMENTED_TEST(test_APICatch),
   UNIMPLEMENTED_TEST(test_APIThrowTryCatch),
   UNIMPLEMENTED_TEST(test_TryCatchInTryFinally),

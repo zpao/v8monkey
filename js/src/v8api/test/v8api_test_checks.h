@@ -199,6 +199,23 @@ void check_ne_helper(const char* aFile, int aLine,
   }
 }
 
+// mixed
+static inline void check_ne_helper(const char* aFile, int aLine,
+                                   int aExpected,
+                                   bool aActual)
+{
+  if (aExpected == 0 && aActual ||
+      aExpected != 0 && !aActual) {
+    gPassedTests++;
+  }
+  else {
+    std::ostringstream temp;
+    temp << aFile << " | Expected and Actual are equal:  '" << aExpected << "' ";
+    temp << " at line " << aLine;
+    fail(temp.str().c_str());
+  }
+}
+
 
 #define CHECK do_check_true
 #define CHECK_EQ(expected, actual) \

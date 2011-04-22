@@ -982,7 +982,8 @@ public:
     return Local<Object>::New(&o);
   }
   Local<Object> Holder() const {
-    UNIMPLEMENTEDAPI(Local<Object>());
+    // XXX: this is usually right
+    return This();
   }
   bool IsConstructCall() const;
   Local<Value> Data() const {

@@ -335,7 +335,7 @@ Value::NumberValue() const
 {
   Local<Number> n = ToNumber();
   if (n.IsEmpty()) {
-    return 0; //XXX need NaN here
+    return JSVAL_TO_DOUBLE(JS_GetNaNValue(cx()));
   }
   return n->Value();
 }

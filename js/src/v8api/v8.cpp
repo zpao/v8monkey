@@ -283,6 +283,16 @@ Value::ToObject() const
     return Local<Object>::New(reinterpret_cast<Object*>(val));
   }
 
+  // 'undefined' can't be converted to an object. Throw a TypeError.
+  if (JSVAL_IS_VOID(mVal)) {
+    Handle<String> msg = String::New("undefined has no properties");
+    Handle<Value> type_error = Exception::TypeError(msg);
+    ThrowException(type_error);
+
+    TryCatch::CheckForException();
+    return Local<Object>();
+  }
+
   JSObject *obj;
   if (!JS_ValueToObject(cx(), mVal, &obj)) {
     TryCatch::CheckForException();

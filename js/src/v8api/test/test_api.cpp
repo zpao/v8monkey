@@ -84,7 +84,9 @@ struct ApiTestFuzzer {
 
 // our own version, not copied from test-api.cc
 static bool IsNaN(double x) {
-  return x == i::OS::nan_value();
+  // Hack: IEEE floating point math says that NaN != NaN.
+  volatile double d = x;
+  return d != d;
 }
 
 

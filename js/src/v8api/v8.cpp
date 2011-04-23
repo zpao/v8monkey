@@ -108,10 +108,19 @@ Local<v8::Message> TryCatch::Message() const {
 }
 
 void TryCatch::Reset() {
-  mException.Dispose();
-  free(mFilename);
-  free(mLineBuffer);
-  free(mMessage);
+  if (!mException.IsEmpty()) {
+    mException.Dispose();
+    mException.Clear();
+  }
+  if (mFilename) {
+    free(mFilename);
+  }
+  if (mLineBuffer) {
+    free(mLineBuffer);
+  }
+  if (mMessage) {  
+    free(mMessage);
+  }
   mFilename = mLineBuffer = mMessage = NULL;
   mLineNo = 0;
 

@@ -3410,7 +3410,22 @@ test_TryCatchSourceInfo()
 // from test-api.cc:9108
 void
 test_CompilationCache()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::Handle<v8::String> source0 = v8::String::New("1234");
+  v8::Handle<v8::String> source1 = v8::String::New("1234");
+  v8::Handle<v8::Script> script0 =
+      v8::Script::Compile(source0, v8::String::New("test.js"));
+  v8::Handle<v8::Script> script1 =
+      v8::Script::Compile(source1, v8::String::New("test.js"));
+  v8::Handle<v8::Script> script2 =
+      v8::Script::Compile(source0);  // different origin
+  CHECK_EQ(1234, script0->Run()->Int32Value());
+  CHECK_EQ(1234, script1->Run()->Int32Value());
+  CHECK_EQ(1234, script2->Run()->Int32Value());
+}
+
 
 // from test-api.cc:9131
 void
@@ -4329,7 +4344,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_Regress54),
   UNIMPLEMENTED_TEST(test_CatchStackOverflow),
   UNIMPLEMENTED_TEST(test_TryCatchSourceInfo),
-  UNIMPLEMENTED_TEST(test_CompilationCache),
+  TEST(test_CompilationCache),
   UNIMPLEMENTED_TEST(test_CallbackFunctionName),
   DISABLED_TEST(test_DateAccess, 20),
   DISABLED_TEST(test_PropertyEnumeration, 22),

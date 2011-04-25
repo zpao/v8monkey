@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <math.h>
 #include "v8-internal.h"
+#include "mozilla/Util.h"
+using namespace mozilla;
 
 namespace v8 {
 using namespace internal;
@@ -40,6 +42,11 @@ void TryCatch::CheckForException() {
   if (!JS_IsExceptionPending(cx())) {
     return;
   }
+
+  // SpiderMonkey thinks we have an exception pending at this point.  We should
+  // have called TryCatch::ReportError to set it.  If we haven't, we'll crash!
+  DebugOnly<bool> reportErrorCalled = !!gExnChain;
+  JS_ASSERT(reportErrorCalled);
 
   TryCatch *current = gExnChain->catcher;
   current->mHasCaught = true;

@@ -4172,7 +4172,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_NamedInterceptorDictionaryICMultipleContext),
   UNIMPLEMENTED_TEST(test_NamedInterceptorMapTransitionRead),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithIndexedAccessor),
-  DISABLED_TEST(test_IndexedInterceptorWithGetOwnPropertyDescriptor, 65),
+  DISABLED_TEST(test_IndexedInterceptorWithGetOwnPropertyDescriptor, 85),
   TEST(test_IndexedInterceptorWithNoSetter),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheck),
   UNIMPLEMENTED_TEST(test_IndexedInterceptorWithAccessorCheckSwitchedOn),

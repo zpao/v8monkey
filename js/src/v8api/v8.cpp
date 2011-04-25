@@ -43,10 +43,10 @@ void TryCatch::CheckForException() {
     return;
   }
 
-  // SpiderMonkey thinks we have an exception pending at this point.  We should
-  // have called TryCatch::ReportError to set it.  If we haven't, we'll crash!
-  DebugOnly<bool> reportErrorCalled = !!gExnChain;
-  JS_ASSERT(reportErrorCalled);
+  // Make sure that we have a TryCatch somewhere on our stack, otherwise we will
+  // crash very soon!
+  DebugOnly<bool> TryCatchOnStack = !!gExnChain;
+  JS_ASSERT(TryCatchOnStack);
 
   TryCatch *current = gExnChain->catcher;
   current->mHasCaught = true;

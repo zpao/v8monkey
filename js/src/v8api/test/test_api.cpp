@@ -4161,7 +4161,7 @@ Test gTests[] = {
   TEST(test_Equality),
   TEST(test_MultiRun),
   TEST(test_SimplePropertyRead),
-  DISABLED_TEST(test_DefinePropertyOnAPIAccessor, 65),
+  DISABLED_TEST(test_DefinePropertyOnAPIAccessor, 83),
   DISABLED_TEST(test_DefinePropertyOnDefineGetterSetter, 65),
   DISABLED_TEST(test_DefineAPIAccessorOnObject, 66),
   UNIMPLEMENTED_TEST(test_DontDeleteAPIAccessorsCannotBeOverriden),

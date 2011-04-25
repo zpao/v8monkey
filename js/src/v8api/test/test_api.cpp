@@ -4159,7 +4159,7 @@ Test gTests[] = {
   TEST(test_TryCatchAndFinallyHidingException),
   TEST(test_TryCatchAndFinally),
   TEST(test_Equality),
-  TEST(test_MultiRun, 43),
+  TEST(test_MultiRun),
   TEST(test_SimplePropertyRead),
   DISABLED_TEST(test_DefinePropertyOnAPIAccessor, 65),
   DISABLED_TEST(test_DefinePropertyOnDefineGetterSetter, 65),

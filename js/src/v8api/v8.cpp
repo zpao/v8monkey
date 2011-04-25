@@ -743,20 +743,21 @@ Local<Script> Script::Compile(Handle<String> source, Handle<Value> fileName,
   return Compile(source, &origin);
 }
 
-Local<Value> Script::Run() {
+Local<Value>
+Script::Run() {
   Handle<Value> boundGlobalValue = InternalObject()->Get(String::New("global"));
   Handle<Object> global;
   JS_ASSERT(!boundGlobalValue.IsEmpty());
   if (boundGlobalValue->IsUndefined()) {
     global = Context::GetCurrent()->Global();
-  } else {
+  }
+  else {
     global = boundGlobalValue.As<Object>();
   }
   JS_ASSERT(!global.IsEmpty());
 
   jsval js_retval;
-  if (!JS_ExecuteScript(cx(), **global,
-                        *this, &js_retval)) {
+  if (!JS_ExecuteScript(cx(), **global, *this, &js_retval)) {
     TryCatch::CheckForException();
     return Local<Value>();
   }

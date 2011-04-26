@@ -34,7 +34,7 @@ JSClass FunctionTemplate::sFunctionTemplateClass = {
 };
 
 FunctionTemplate::FunctionTemplate() :
-  Template(JS_GetFunctionObject(JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, 0, 0)))
+  Template(&sFunctionTemplateClass)
 {
   Handle<ObjectTemplate> protoTemplate = ObjectTemplate::New();
   Set("prototype", protoTemplate);

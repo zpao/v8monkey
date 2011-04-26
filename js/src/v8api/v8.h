@@ -960,7 +960,6 @@ public:
   void Set(const char* name, Handle<Data> value);
 protected:
   Template(JSClass* clasp);
-  Template(JSObject* obj);
 
   friend class FunctionTemplate;
   friend class ObjectTemplate;

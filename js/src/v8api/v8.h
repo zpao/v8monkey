@@ -795,7 +795,7 @@ public:
   bool Delete(Handle<String> key);
   bool Delete(JSUint32 index);
   bool ForceDelete(Handle<String> key);
-  bool SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None, bool isJSAPIShared = false);
+  bool SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
   Local<Array> GetPropertyNames();
   Local<Value> GetPrototype();
   bool SetPrototype(Handle<Value> prototype);

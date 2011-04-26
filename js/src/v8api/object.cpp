@@ -232,8 +232,7 @@ Object::SetAccessor(Handle<String> name,
                     AccessorSetter setter,
                     Handle<Value> data,
                     AccessControl settings,
-                    PropertyAttribute attribs,
-                    bool isJSAPIShared)
+                    PropertyAttribute attribs)
 {
   if (settings != 0) {
     // We only currently support the default settings.
@@ -258,8 +257,6 @@ Object::SetAccessor(Handle<String> name,
   JS_SetReservedSlot(cx(), setterObj, 1, name->native());
 
   uintN attributes = JSPROP_GETTER | JSPROP_SETTER;
-  if (isJSAPIShared)
-    attributes |= JSPROP_SHARED;
   if (!JS_DefinePropertyById(cx(), *this, propid,
         JSVAL_VOID,
         (JSPropertyOp)getterObj,

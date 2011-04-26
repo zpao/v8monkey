@@ -323,6 +323,11 @@ static void CheckUncle(v8::TryCatch* try_catch) {
   try_catch->Reset();
 }
 
+static v8::Handle<Value> FunctionNameCallback(const v8::Arguments& args) {
+  ApiTestFuzzer::Fuzz();
+  return v8_num(42);
+}
+
 // A LocalContext holds a reference to a v8::Context.
 class LocalContext {
  public:
@@ -3430,7 +3435,17 @@ test_CompilationCache()
 // from test-api.cc:9131
 void
 test_CallbackFunctionName()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  Local<ObjectTemplate> t = ObjectTemplate::New();
+  t->Set(v8_str("asdf"), v8::FunctionTemplate::New(FunctionNameCallback));
+  context->Global()->Set(v8_str("obj"), t->NewInstance());
+  v8::Handle<v8::Value> value = CompileRun("obj.asdf.name");
+  CHECK(value->IsString());
+  v8::String::AsciiValue name(value);
+  CHECK_EQ("asdf", *name);
+}
 
 // from test-api.cc:9144
 void
@@ -4345,7 +4360,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_CatchStackOverflow),
   UNIMPLEMENTED_TEST(test_TryCatchSourceInfo),
   TEST(test_CompilationCache),
-  UNIMPLEMENTED_TEST(test_CallbackFunctionName),
+  DISABLED_TEST(test_CallbackFunctionName, 86),
   DISABLED_TEST(test_DateAccess, 20),
   DISABLED_TEST(test_PropertyEnumeration, 22),
   UNIMPLEMENTED_TEST(test_DisableAccessChecksWhileConfiguring),

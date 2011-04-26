@@ -42,6 +42,8 @@ struct PrivateData
     return PrivateData::Get(*obj);
   }
 
+  AccessorStorage accessors;
+
   // Named Property Handler storage.
   NamedPropertyGetter namedGetter;
   NamedPropertySetter namedSetter;
@@ -259,11 +261,13 @@ ObjectTemplate::New()
 Local<Object>
 ObjectTemplate::NewInstance()
 {
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
+
   // We've set everything we care about on our InternalObject, so we can assign
   // that to the prototype of our new object.
-  JSObject* proto = InternalObject();
-  JSClass* cls = &PrivateData::Get(proto)->cls;
-  JSObject* obj = JS_NewObject(cx(), cls, proto, NULL);
+  JSClass* cls = &pd->cls;
+  JSObject* obj = JS_NewObject(cx(), cls, NULL, NULL);
   if (!obj) {
     // wtf?
     UNIMPLEMENTEDAPI(Local<Object>());
@@ -277,6 +281,17 @@ ObjectTemplate::NewInstance()
   }
 
   Object o(obj);
+
+  // Set all things that were added with SetAccessor on the object.
+  AccessorStorage::Range accessors = pd->accessors.all();
+  while (!accessors.empty()) {
+    AccessorStorage::Entry& entry = accessors.front();
+    AccessorStorage::PropertyData& data = entry.value;
+    (void)o.SetAccessor(String::FromJSID(entry.key), data.getter, data.setter,
+                        data.data, DEFAULT, data.attribute);
+    accessors.popFront();
+  }
+
   return Local<Object>::New(&o);
 }
 
@@ -288,8 +303,11 @@ ObjectTemplate::SetAccessor(Handle<String> name,
                             AccessControl settings,
                             PropertyAttribute attribute)
 {
-  (void)InternalObject().SetAccessor(name, getter, setter, data, settings,
-                                     attribute, true);
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
+  jsid id;
+  (void)JS_ValueToId(cx(), name->native(), &id);
+  pd->accessors.addAccessor(id, getter, setter, data, attribute);
 }
 
 void

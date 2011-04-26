@@ -110,8 +110,11 @@ FunctionTemplate::New(InvocationCallback callback,
 Local<Function>
 FunctionTemplate::GetFunction()
 {
-  Function *fn = reinterpret_cast<Function*>(&InternalObject());
-  return Local<Function>::New(fn);
+  JSFunction* func =
+    JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, NULL, NULL);
+  JSObject* obj = JS_GetFunctionObject(func);
+  Object o(obj);
+  return Local<Function>::New(reinterpret_cast<Function*>(&o));
 }
 
 void

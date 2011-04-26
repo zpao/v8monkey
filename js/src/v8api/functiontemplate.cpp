@@ -139,8 +139,7 @@ FunctionTemplate::SetCallHandler(InvocationCallback callback,
 Local<ObjectTemplate>
 FunctionTemplate::InstanceTemplate()
 {
-  Handle<Object> ftData = InternalObject().GetInternalField(0).As<Object>();
-  Local<Value> instance = ftData->GetInternalField(kInstanceSlot);
+  Local<Value> instance = InternalObject().GetInternalField(kInstanceSlot);
   if (instance.IsEmpty())
     return Local<ObjectTemplate>();
   return Local<ObjectTemplate>(reinterpret_cast<ObjectTemplate*>(*instance));

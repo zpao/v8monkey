@@ -3263,7 +3263,35 @@ test_ObjectProtoToString()
 // from test-api.cc:8508
 void
 test_ObjectGetConstructorName()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  v8_compile("function Parent() {};"
+             "function Child() {};"
+             "Child.prototype = new Parent();"
+             "var outer = { inner: function() { } };" //XXXzpao naming this function properly stops the crash
+             "var p = new Parent();"
+             "var c = new Child();"
+             "var x = new outer.inner();")->Run();
+
+  Local<v8::Value> p = context->Global()->Get(v8_str("p"));
+  CHECK(p->IsObject() && p->ToObject()->GetConstructorName()->Equals(
+      v8_str("Parent")));
+
+  Local<v8::Value> c = context->Global()->Get(v8_str("c"));
+  //XXXzpao These checks were split into 2 separate ones each to better determine the failure.
+  //        When fixed, delete the lines marked XXX and uncomment the other lines.
+  /*CHECK(c->IsObject() && c->ToObject()->GetConstructorName()->Equals(
+      v8_str("Child")));*/
+  CHECK(c->IsObject()); //XXX
+  CHECK_EQ(v8_str("Child"), c->ToObject()->GetConstructorName()); //XXX
+
+  Local<v8::Value> x = context->Global()->Get(v8_str("x"));
+  /*CHECK(x->IsObject() && x->ToObject()->GetConstructorName()->Equals(
+      v8_str("outer.inner")));*/
+  CHECK(x->IsObject()); //XXX
+  CHECK_EQ(v8_str("outer.inner"), x->ToObject()->GetConstructorName()); //XXX
+}
 
 // from test-api.cc:8659
 void
@@ -4341,7 +4369,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_Overriding),
   UNIMPLEMENTED_TEST(test_IsConstructCall),
   DISABLED_TEST(test_ObjectProtoToString, 52),
-  UNIMPLEMENTED_TEST(test_ObjectGetConstructorName),
+  DISABLED_TEST(test_ObjectGetConstructorName, 87), //XXXzpao test has local mods
   UNIMPLEMENTED_TEST(test_Threading),
   UNIMPLEMENTED_TEST(test_Threading2),
   UNIMPLEMENTED_TEST(test_NestedLockers),

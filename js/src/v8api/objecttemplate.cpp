@@ -213,6 +213,16 @@ JSClass gNewInstanceClass = {
   NULL, // trace
 };
 
+JSBool
+ot_SetProperty(JSContext* cx,
+               JSObject* obj,
+               jsid id,
+               JSBool strict,
+               jsval* vp)
+{
+  return JS_StrictPropertyStub(cx, obj, id, strict, vp);
+}
+
 void
 ot_finalize(JSContext* cx,
             JSObject* obj)
@@ -227,7 +237,7 @@ JSClass gObjectTemplateClass = {
   JS_PropertyStub, // addProperty
   JS_PropertyStub, // delProperty
   JS_PropertyStub, // getProperty
-  JS_StrictPropertyStub, // setProperty
+  ot_SetProperty, // setProperty
   JS_EnumerateStub, // enumerate
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert

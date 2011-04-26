@@ -5,6 +5,7 @@ namespace internal {
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Accessor Storage
+
 AccessorStorage::AccessorStorage()
 {
   mStore.init(10);
@@ -41,6 +42,32 @@ AccessorStorage::get(jsid name) const
 
 AccessorStorage::Range
 AccessorStorage::all() const
+{
+  JS_ASSERT(mStore.initialized());
+
+  return mStore.all();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// Attribute Storage
+
+AttributeStorage::AttributeStorage()
+{
+  mStore.init(10);
+}
+
+void
+AttributeStorage::addAttribute(jsid name,
+                               Handle<Value> data)
+{
+  JS_ASSERT(mStore.initialized());
+
+  AttributeTable::AddPtr slot = mStore.lookupForAdd(name);
+  mStore.add(slot, name, Persistent<Value>::New(data));
+}
+
+AttributeStorage::Range
+AttributeStorage::all() const
 {
   JS_ASSERT(mStore.initialized());
 

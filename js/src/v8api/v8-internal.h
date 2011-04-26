@@ -45,6 +45,22 @@ private:
   AccessorTable mStore;
 };
 
+class AttributeStorage
+{
+  typedef js::HashMap<jsid, Persistent<Value>, JSIDHashPolicy, js::SystemAllocPolicy> AttributeTable;
+
+public:
+  AttributeStorage();
+  void addAttribute(jsid name, Handle<Value> value);
+
+  typedef AttributeTable::Entry Entry;
+  typedef AttributeTable::Range Range;
+  Range all() const;
+
+private:
+  AttributeTable mStore;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Debug Helpers
 

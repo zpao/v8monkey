@@ -114,6 +114,8 @@ FunctionTemplate::GetFunction()
     JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, NULL, NULL);
   JSObject* obj = JS_GetFunctionObject(func);
   Object o(obj);
+  Local<String> prototypeStr = String::NewSymbol("prototype");
+  (void)o.Set(prototypeStr, InternalObject().Get(prototypeStr));
   return Local<Function>::New(reinterpret_cast<Function*>(&o));
 }
 

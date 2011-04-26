@@ -30,13 +30,21 @@ AccessorStorage::addAccessor(jsid name,
 }
 
 AccessorStorage::PropertyData
-AccessorStorage::get(jsid name)
+AccessorStorage::get(jsid name) const
 {
   JS_ASSERT(mStore.initialized());
 
   AccessorTable::Ptr p = mStore.lookup(name);
   JS_ASSERT(p);
   return p->value;
+}
+
+AccessorStorage::Range
+AccessorStorage::all() const
+{
+  JS_ASSERT(mStore.initialized());
+
+  return mStore.all();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

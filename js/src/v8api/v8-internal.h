@@ -27,15 +27,21 @@ public:
     Persistent<Value> data;
     PropertyAttribute attribute;
   };
+private:
+  typedef js::HashMap<jsid, PropertyData, JSIDHashPolicy, js::SystemAllocPolicy> AccessorTable;
 
+public:
   AccessorStorage();
   void addAccessor(jsid name, AccessorGetter getter,
                    AccessorSetter setter, Handle<Value> data,
                    PropertyAttribute attribute);
-  PropertyData get(jsid name);
-private:
-  typedef js::HashMap<jsid, PropertyData, JSIDHashPolicy, js::SystemAllocPolicy> AccessorTable;
+  PropertyData get(jsid name) const;
 
+  typedef AccessorTable::Entry Entry;
+  typedef AccessorTable::Range Range;
+  Range all() const;
+
+private:
   AccessorTable mStore;
 };
 

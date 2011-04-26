@@ -43,6 +43,7 @@ struct PrivateData
   }
 
   AccessorStorage accessors;
+  AttributeStorage attributes;
 
   // Named Property Handler storage.
   NamedPropertyGetter namedGetter;
@@ -220,7 +221,16 @@ ot_SetProperty(JSContext* cx,
                JSBool strict,
                jsval* vp)
 {
-  return JS_StrictPropertyStub(cx, obj, id, strict, vp);
+  PrivateData* data = PrivateData::Get(cx, obj);
+  JS_ASSERT(data);
+
+  Value v(*vp);
+  Local<Value> value = Local<Value>::New(&v);
+  data->attributes.addAttribute(id, value);
+
+  // We do not actually set anything on our internal object!
+  *vp = JSVAL_VOID;
+  return JS_TRUE;
 }
 
 void
@@ -291,6 +301,14 @@ ObjectTemplate::NewInstance()
   }
 
   Object o(obj);
+
+  // Set all attributes that were added with Template::Set on the object.
+  AttributeStorage::Range attributes = pd->attributes.all();
+  while (!attributes.empty()) {
+    AttributeStorage::Entry& entry = attributes.front();
+    (void)o.Set(String::FromJSID(entry.key), entry.value);
+    attributes.popFront();
+  }
 
   // Set all things that were added with SetAccessor on the object.
   AccessorStorage::Range accessors = pd->accessors.all();

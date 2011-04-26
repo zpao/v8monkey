@@ -123,16 +123,15 @@ void
 FunctionTemplate::SetCallHandler(InvocationCallback callback,
                                  Handle<Value> data)
 {
-  Handle<Object> ftData = InternalObject().GetInternalField(0).As<Object>();
   JSIntPtr ptrcallback = reinterpret_cast<JSIntPtr>(callback);
-  ftData->SetPointerInInternalField(kCallbackSlot, reinterpret_cast<void*>(ptrcallback & ~0x1));
-  ftData->SetPointerInInternalField(kCallbackParitySlot, reinterpret_cast<void*>((ptrcallback & 0x1) << 1));
+  InternalObject().SetPointerInInternalField(kCallbackSlot, reinterpret_cast<void*>(ptrcallback & ~0x1));
+  InternalObject().SetPointerInInternalField(kCallbackParitySlot, reinterpret_cast<void*>((ptrcallback & 0x1) << 1));
 
   if (data.IsEmpty()) {
     // XXX: this is not correct
-    ftData->SetInternalField(kDataSlot, v8::Undefined());
+    InternalObject().SetInternalField(kDataSlot, v8::Undefined());
   } else {
-    ftData->SetInternalField(kDataSlot, data);
+    InternalObject().SetInternalField(kDataSlot, data);
   }
 }
 

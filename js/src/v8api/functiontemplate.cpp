@@ -42,12 +42,10 @@ FunctionTemplate::FunctionTemplate() :
   Local<ObjectTemplate> instanceTemplate = ObjectTemplate::New();
   instanceTemplate->InternalObject().SetPrototype(Handle<Object>(&protoTemplate->InternalObject()));
 
-  Object ftData(JS_NewObject(cx(), &sFunctionTemplateClass, NULL, NULL));
-  ftData.SetInternalField(kInstanceSlot, Handle<Object>(&instanceTemplate->InternalObject()));
-  ftData.SetInternalField(kDataSlot, v8::Undefined());
-  ftData.SetPointerInInternalField(kCallbackSlot, NULL);
-  ftData.SetPointerInInternalField(kCallbackParitySlot, NULL);
-  InternalObject().SetInternalField(0, Handle<Object>(&ftData));
+  InternalObject().SetInternalField(kInstanceSlot, Handle<Object>(&instanceTemplate->InternalObject()));
+  InternalObject().SetInternalField(kDataSlot, v8::Undefined());
+  InternalObject().SetPointerInInternalField(kCallbackSlot, NULL);
+  InternalObject().SetPointerInInternalField(kCallbackParitySlot, NULL);
 }
 
 JSBool
@@ -116,6 +114,8 @@ FunctionTemplate::GetFunction()
   Object o(obj);
   Local<String> prototypeStr = String::NewSymbol("prototype");
   (void)o.Set(prototypeStr, InternalObject().Get(prototypeStr));
+  Local<Value> thiz = Local<Value>::New(&InternalObject());
+  o.SetInternalField(0, thiz);
   return Local<Function>::New(reinterpret_cast<Function*>(&o));
 }
 

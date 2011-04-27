@@ -1050,7 +1050,7 @@ class FunctionTemplate : public Template {
   friend class ObjectTemplate;
 public:
   static Local<FunctionTemplate> New(InvocationCallback callback = 0, Handle<Value> data = Handle<Value>(), Handle<Signature> signature = Handle<Signature>());
-  Local<Function> GetFunction ();
+  Local<Function> GetFunction (JSObject* parent = NULL);
   void SetCallHandler(InvocationCallback callback, Handle<Value> data = Handle<Value>());
   Local<ObjectTemplate> InstanceTemplate();
   void Inherit(Handle<FunctionTemplate> parent);
@@ -1068,7 +1068,7 @@ class ObjectTemplate : public Template {
   friend class FunctionTemplate;
 public:
   static Local<ObjectTemplate> New();
-  Local<Object> NewInstance();
+  Local<Object> NewInstance(JSObject* parent = NULL);
   void SetAccessor(Handle<String> name, AccessorGetter getter, AccessorSetter setter = 0, Handle<Value> data = Handle<Value>(), AccessControl settings = DEFAULT, PropertyAttribute attribs = None);
   void SetNamedPropertyHandler(NamedPropertyGetter getter, NamedPropertySetter setter = 0, NamedPropertyQuery query = 0, NamedPropertyDeleter deleter = 0, NamedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>());
   void SetIndexedPropertyHandler(IndexedPropertyGetter getter, IndexedPropertySetter setter = 0, IndexedPropertyQuery query = 0, IndexedPropertyDeleter deleter = 0, IndexedPropertyEnumerator enumerator = 0, Handle<Value> data = Handle<Value>());

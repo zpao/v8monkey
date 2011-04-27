@@ -116,14 +116,14 @@ FunctionTemplate::New(InvocationCallback callback,
 }
 
 Local<Function>
-FunctionTemplate::GetFunction()
+FunctionTemplate::GetFunction(JSObject* parent)
 {
   JSFunction* func =
     JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, NULL, NULL);
   JSObject* obj = JS_GetFunctionObject(func);
   Object o(obj);
   Local<String> prototypeStr = String::NewSymbol("prototype");
-  (void)o.Set(prototypeStr, PrototypeTemplate()->NewInstance());
+  (void)o.Set(prototypeStr, PrototypeTemplate()->NewInstance(parent));
   Local<Value> thiz = Local<Value>::New(&InternalObject());
   o.SetInternalField(0, thiz);
   return Local<Function>::New(reinterpret_cast<Function*>(&o));

@@ -196,7 +196,7 @@ Persistent<Context> Context::New(
 
   JS_InitStandardClasses(cx(), global);
   if (!global_template.IsEmpty()) {
-    JS_SetPrototype(cx(), global, JSVAL_TO_OBJECT(global_template->native()));
+    JS_SetPrototype(cx(), global, **global_template->NewInstance(global));
   }
 
   return Persistent<Context>(new Context(global));

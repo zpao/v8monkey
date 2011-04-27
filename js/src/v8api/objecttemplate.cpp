@@ -308,7 +308,7 @@ ObjectTemplate::New()
 }
 
 Local<Object>
-ObjectTemplate::NewInstance()
+ObjectTemplate::NewInstance(JSObject* parent)
 {
   PrivateData* pd = PrivateData::Get(InternalObject());
   JS_ASSERT(pd);
@@ -319,7 +319,9 @@ ObjectTemplate::NewInstance()
   JSObject* proto = pd->prototype.IsEmpty()
                   ? NULL
                   : **pd->prototype->NewInstance();
-  JSObject* parent = **Context::GetCurrent()->Global();
+  if (!parent)
+    parent = **Context::GetCurrent()->Global();
+
   JSObject* obj = JS_NewObject(cx(), cls, proto, parent);
   if (!obj) {
     // wtf?
@@ -342,10 +344,10 @@ ObjectTemplate::NewInstance()
     Handle<Value> v = entry.value;
     if (FunctionTemplate::IsFunctionTemplate(v)) {
       FunctionTemplate *tmpl = reinterpret_cast<FunctionTemplate*>(*v);
-      v = tmpl->GetFunction();
+      v = tmpl->GetFunction(parent);
     } else if (IsObjectTemplate(v)) {
       ObjectTemplate *tmpl = reinterpret_cast<ObjectTemplate*>(*v);
-      v = tmpl->NewInstance();
+      v = tmpl->NewInstance(parent);
     }
     (void)o.Set(String::FromJSID(entry.key), v);
     attributes.popFront();

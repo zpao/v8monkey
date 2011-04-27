@@ -277,6 +277,17 @@ ObjectTemplate::ObjectTemplate() :
   (void)JS_SetPrivate(cx(), InternalObject(), data);
 }
 
+// static
+bool ObjectTemplate::IsObjectTemplate(Handle<Value> v) {
+  if (v.IsEmpty())
+    return false;
+  Handle<Object> o = v->ToObject();
+  if (o.IsEmpty())
+    return false;
+  JSObject *obj = **o;
+  return &gObjectTemplateClass == JS_GET_CLASS(cx(), obj);
+}
+
 void ObjectTemplate::SetPrototype(Handle<ObjectTemplate> o) {
   PrivateData* pd = PrivateData::Get(InternalObject());
   JS_ASSERT(pd);
@@ -327,6 +338,9 @@ ObjectTemplate::NewInstance()
     if (FunctionTemplate::IsFunctionTemplate(v)) {
       FunctionTemplate *tmpl = reinterpret_cast<FunctionTemplate*>(*v);
       v = tmpl->GetFunction();
+    } else if (IsObjectTemplate(v)) {
+      ObjectTemplate *tmpl = reinterpret_cast<ObjectTemplate*>(*v);
+      v = tmpl->NewInstance();
     }
     (void)o.Set(String::FromJSID(entry.key), v);
     attributes.popFront();

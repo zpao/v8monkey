@@ -1063,6 +1063,7 @@ public:
 class ObjectTemplate : public Template {
   ObjectTemplate();
 
+  static bool IsObjectTemplate(Handle<Value> v);
   void SetPrototype(Handle<ObjectTemplate> o);
   friend class FunctionTemplate;
 public:

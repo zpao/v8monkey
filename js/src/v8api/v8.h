@@ -264,7 +264,9 @@ public:
   }
 
   void Dispose() {
-    (*this)->Dispose();
+    if (!this->IsEmpty()) {
+      (*this)->Dispose();
+    }
   }
 
   inline void MakeWeak(void* parameters, WeakReferenceCallback callback) {

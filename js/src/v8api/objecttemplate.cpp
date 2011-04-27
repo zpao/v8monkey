@@ -81,6 +81,11 @@ struct ObjectTemplateHandle
   static ObjectTemplateHandle* Get(JSContext* cx,
                                    JSObject* obj)
   {
+    JSClass *cls = JS_GET_CLASS(cx, obj);
+    // For global objects, the template data lives on the prototype
+    if (cls->flags & JSCLASS_GLOBAL_FLAGS) {
+      obj = JS_GetPrototype(cx, obj);
+    }
     return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
   }
 

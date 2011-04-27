@@ -23,6 +23,7 @@ test_BasicCall()
   templ->Set("AddOne", fnT);
 
   Persistent<Context> context = Context::New(NULL, templ);
+  Context::Scope context_scope(context);
   Local<Value> addone = context->Global()->Get(String::New("AddOne"));
   do_check_true(!addone.IsEmpty());
   do_check_true(!addone->IsUndefined());

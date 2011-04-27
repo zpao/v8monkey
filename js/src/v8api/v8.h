@@ -1043,6 +1043,9 @@ class FunctionTemplate : public Template {
 
   static JSClass sFunctionTemplateClass;
   static JSBool CallCallback(JSContext *cx, uintN argc, jsval *vp);
+
+  static bool IsFunctionTemplate(Handle<Value> v);
+  friend class ObjectTemplate;
 public:
   static Local<FunctionTemplate> New(InvocationCallback callback = 0, Handle<Value> data = Handle<Value>(), Handle<Signature> signature = Handle<Signature>());
   Local<Function> GetFunction ();

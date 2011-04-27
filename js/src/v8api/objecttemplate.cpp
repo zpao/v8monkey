@@ -306,7 +306,12 @@ ObjectTemplate::NewInstance()
   AttributeStorage::Range attributes = pd->attributes.all();
   while (!attributes.empty()) {
     AttributeStorage::Entry& entry = attributes.front();
-    (void)o.Set(String::FromJSID(entry.key), entry.value);
+    Handle<Value> v = entry.value;
+    if (FunctionTemplate::IsFunctionTemplate(v)) {
+      FunctionTemplate *tmpl = reinterpret_cast<FunctionTemplate*>(*v);
+      v = tmpl->GetFunction();
+    }
+    (void)o.Set(String::FromJSID(entry.key), v);
     attributes.popFront();
   }
 

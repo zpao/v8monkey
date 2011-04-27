@@ -92,6 +92,16 @@ FunctionTemplate::CallCallback(JSContext* cx,
   return !JS_IsExceptionPending(cx);
 }
 
+bool FunctionTemplate::IsFunctionTemplate(Handle<Value> v) {
+  if (v.IsEmpty())
+    return false;
+  Handle<Object> o = v->ToObject();
+  if (o.IsEmpty())
+    return false;
+  JSObject *obj = **o;
+  return &sFunctionTemplateClass == JS_GET_CLASS(cx(), obj);
+}
+
 // static
 Local<FunctionTemplate>
 FunctionTemplate::New(InvocationCallback callback,

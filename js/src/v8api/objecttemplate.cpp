@@ -25,6 +25,11 @@ struct PrivateData
     cls(gNewInstanceClass)
   {
   }
+  ~PrivateData() {
+    namedData.Dispose();
+    indexedData.Dispose();
+    prototype.Dispose();
+  }
 
   static PrivateData* Get(JSContext* cx,
                           JSObject* obj)
@@ -60,6 +65,8 @@ struct PrivateData
   IndexedPropertyDeleter indexedDeleter;
   IndexedPropertyEnumerator indexedEnumerator;
   Persistent<Value> indexedData;
+
+  Persistent<ObjectTemplate> prototype;
 
   JSClass cls;
 };
@@ -270,6 +277,12 @@ ObjectTemplate::ObjectTemplate() :
   (void)JS_SetPrivate(cx(), InternalObject(), data);
 }
 
+void ObjectTemplate::SetPrototype(Handle<ObjectTemplate> o) {
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
+  pd->prototype = Persistent<ObjectTemplate>::New(o);
+}
+
 // static
 Local<ObjectTemplate>
 ObjectTemplate::New()
@@ -287,7 +300,11 @@ ObjectTemplate::NewInstance()
   // We've set everything we care about on our InternalObject, so we can assign
   // that to the prototype of our new object.
   JSClass* cls = &pd->cls;
-  JSObject* obj = JS_NewObject(cx(), cls, NULL, NULL);
+  JSObject* proto = pd->prototype.IsEmpty()
+                  ? NULL
+                  : **pd->prototype->NewInstance();
+  JSObject* parent = **Context::GetCurrent()->Global();
+  JSObject* obj = JS_NewObject(cx(), cls, proto, parent);
   if (!obj) {
     // wtf?
     UNIMPLEMENTEDAPI(Local<Object>());

@@ -40,7 +40,7 @@ FunctionTemplate::FunctionTemplate() :
   Set("prototype", protoTemplate);
   // Instance template
   Local<ObjectTemplate> instanceTemplate = ObjectTemplate::New();
-  instanceTemplate->InternalObject().SetPrototype(Handle<Object>(&protoTemplate->InternalObject()));
+  instanceTemplate->SetPrototype(protoTemplate);
 
   InternalObject().SetInternalField(kInstanceSlot, Handle<Object>(&instanceTemplate->InternalObject()));
   InternalObject().SetInternalField(kDataSlot, v8::Undefined());

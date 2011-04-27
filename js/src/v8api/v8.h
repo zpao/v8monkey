@@ -1062,6 +1062,9 @@ public:
 
 class ObjectTemplate : public Template {
   ObjectTemplate();
+
+  void SetPrototype(Handle<ObjectTemplate> o);
+  friend class FunctionTemplate;
 public:
   static Local<ObjectTemplate> New();
   Local<Object> NewInstance();

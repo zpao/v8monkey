@@ -11,7 +11,8 @@ const int kDataSlot = 1;
 const int kCallbackSlot = 2;
 const int kCallbackParitySlot = 3;
 const int kCachedFunction = 4;
-const int kFunctionTemplateSlots = 5;
+const int kFunctionName = 5;
+const int kFunctionTemplateSlots = 6;
 } // anonymous namespace
 
 JSClass FunctionTemplate::sFunctionTemplateClass = {
@@ -123,8 +124,12 @@ FunctionTemplate::GetFunction(JSObject* parent)
   if (!fn.IsEmpty()) {
     return Local<Function>::New(fn);
   }
+  Handle<Value> name = InternalObject().GetInternalField(kFunctionName);
+  if (name.IsEmpty())
+    name = String::Empty();
+  String::AsciiValue fnName(name);
   JSFunction* func =
-    JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, NULL, NULL);
+    JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, NULL, *fnName);
   JSObject* obj = JS_GetFunctionObject(func);
   Object o(obj);
   Local<String> prototypeStr = String::NewSymbol("prototype");
@@ -179,7 +184,7 @@ FunctionTemplate::PrototypeTemplate()
 void
 FunctionTemplate::SetClassName(Handle<String> name)
 {
-  UNIMPLEMENTEDAPI();
+  InternalObject().SetInternalField(kFunctionName, name);
 }
 
 void

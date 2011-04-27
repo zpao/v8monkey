@@ -86,6 +86,25 @@ test_Constructor()
   script->Run();
 }
 
+void
+test_Name()
+{
+  HandleScope handle_scope;
+  Handle<ObjectTemplate> templ = ObjectTemplate::New();
+  Handle<FunctionTemplate> fnT = v8::FunctionTemplate::New(AddOne);
+  templ->Set("AddOne", fnT);
+  fnT->SetClassName(String::NewSymbol("AddOne"));
+
+  Persistent<Context> context = Context::New(NULL, templ);
+  Handle<Script> script = Script::New(String::New("AddOne.name;"));
+
+  Context::Scope scope(context);
+  Handle<Value> v = script->Run();
+  do_check_true(!v.IsEmpty());
+  Handle<String> s = v->ToString();
+  do_check_eq(s, String::NewSymbol("AddOne"));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -93,6 +112,7 @@ Test gTests[] = {
   TEST(test_BasicCall),
   TEST(test_V8DocExample),
   TEST(test_Constructor),
+  TEST(test_Name),
 };
 
 const char* file = __FILE__;

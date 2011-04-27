@@ -80,11 +80,7 @@ using namespace mozilla::dom;
     if (!mCurrentNode)                                  \
         return NS_ERROR_UNEXPECTED
 
-txMozillaXMLOutput::txMozillaXMLOutput(const nsSubstring& aRootName,
-                                       PRInt32 aRootNsID,
-                                       txOutputFormat* aFormat,
-                                       nsIDOMDocument* aSourceDocument,
-                                       nsIDOMDocument* aResultDocument,
+txMozillaXMLOutput::txMozillaXMLOutput(txOutputFormat* aFormat,
                                        nsITransformObserver* aObserver)
     : mTreeDepth(0),
       mBadChildLevel(0),
@@ -104,8 +100,6 @@ txMozillaXMLOutput::txMozillaXMLOutput(const nsSubstring& aRootName,
 
     mOutputFormat.merge(*aFormat);
     mOutputFormat.setFromDefaults();
-
-    createResultDocument(aRootName, aRootNsID, aSourceDocument, aResultDocument);
 }
 
 txMozillaXMLOutput::txMozillaXMLOutput(txOutputFormat* aFormat,
@@ -827,36 +821,30 @@ void txMozillaXMLOutput::processHTTPEquiv(nsIAtom* aHeader, const nsString& aVal
 
 nsresult
 txMozillaXMLOutput::createResultDocument(const nsSubstring& aName, PRInt32 aNsID,
-                                         nsIDOMDocument* aSourceDocument,
-                                         nsIDOMDocument* aResultDocument)
+                                         nsIDOMDocument* aSourceDocument)
 {
     nsresult rv;
 
-    if (!aResultDocument) {
-        // Create the document
-        if (mOutputFormat.mMethod == eHTMLOutput) {
-            rv = NS_NewHTMLDocument(getter_AddRefs(mDocument));
-            NS_ENSURE_SUCCESS(rv, rv);
-        }
-        else {
-            // We should check the root name/namespace here and create the
-            // appropriate document
-            rv = NS_NewXMLDocument(getter_AddRefs(mDocument));
-            NS_ENSURE_SUCCESS(rv, rv);
-        }
-        // This should really be handled by nsIDocument::BeginLoad
-        mDocument->SetReadyStateInternal(nsIDocument::READYSTATE_LOADING);
-        nsCOMPtr<nsIDocument> source = do_QueryInterface(aSourceDocument);
-        NS_ENSURE_STATE(source);
-        PRBool hasHadScriptObject = PR_FALSE;
-        nsIScriptGlobalObject* sgo =
-          source->GetScriptHandlingObject(hasHadScriptObject);
-        NS_ENSURE_STATE(sgo || !hasHadScriptObject);
-        mDocument->SetScriptHandlingObject(sgo);
+    // Create the document
+    if (mOutputFormat.mMethod == eHTMLOutput) {
+        rv = NS_NewHTMLDocument(getter_AddRefs(mDocument));
+        NS_ENSURE_SUCCESS(rv, rv);
     }
     else {
-        mDocument = do_QueryInterface(aResultDocument);
+        // We should check the root name/namespace here and create the
+        // appropriate document
+        rv = NS_NewXMLDocument(getter_AddRefs(mDocument));
+        NS_ENSURE_SUCCESS(rv, rv);
     }
+    // This should really be handled by nsIDocument::BeginLoad
+    mDocument->SetReadyStateInternal(nsIDocument::READYSTATE_LOADING);
+    nsCOMPtr<nsIDocument> source = do_QueryInterface(aSourceDocument);
+    NS_ENSURE_STATE(source);
+    PRBool hasHadScriptObject = PR_FALSE;
+    nsIScriptGlobalObject* sgo =
+      source->GetScriptHandlingObject(hasHadScriptObject);
+    NS_ENSURE_STATE(sgo || !hasHadScriptObject);
+    mDocument->SetScriptHandlingObject(sgo);
 
     mCurrentNode = mDocument;
     mNodeInfoManager = mDocument->NodeInfoManager();
@@ -955,7 +943,7 @@ txMozillaXMLOutput::createResultDocument(const nsSubstring& aName, PRInt32 aNsID
             voidString.SetIsVoid(PR_TRUE);
             rv = NS_NewDOMDocumentType(getter_AddRefs(documentType),
                                        mNodeInfoManager, nsnull,
-                                       doctypeName, nsnull, nsnull,
+                                       doctypeName,
                                        mOutputFormat.mPublicId,
                                        mOutputFormat.mSystemId,
                                        voidString);

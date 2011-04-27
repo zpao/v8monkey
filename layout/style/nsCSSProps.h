@@ -329,6 +329,13 @@ public:
        *iter_ != eCSSProperty_UNKNOWN; ++iter_)
 
   // Keyword/Enum value tables
+#ifdef MOZ_CSS_ANIMATIONS
+  static const PRInt32 kAnimationDirectionKTable[];
+  static const PRInt32 kAnimationFillModeKTable[];
+  static const PRInt32 kAnimationIterationCountKTable[];
+  static const PRInt32 kAnimationPlayStateKTable[];
+  static const PRInt32 kAnimationTimingFunctionKTable[];
+#endif
   static const PRInt32 kAppearanceKTable[];
   static const PRInt32 kAzimuthKTable[];
   static const PRInt32 kBackgroundAttachmentKTable[];
@@ -401,7 +408,8 @@ public:
   static const PRInt32 kStackSizingKTable[];
   static const PRInt32 kTableLayoutKTable[];
   static const PRInt32 kTextAlignKTable[];
-  static const PRInt32 kTextDecorationKTable[];
+  static const PRInt32 kTextBlinkKTable[];
+  static const PRInt32 kTextDecorationLineKTable[];
   static const PRInt32 kTextDecorationStyleKTable[];
   static const PRInt32 kTextTransformKTable[];
   static const PRInt32 kTransitionTimingFunctionKTable[];

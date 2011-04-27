@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
- * ***** BEGIN LICENSE BLOCK *****
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Mozilla Public License Version
@@ -1172,6 +1171,9 @@ PRBool imgLoader::ValidateRequestWithNewChannel(imgRequest *request,
     rv = CreateNewProxyForRequest(request, aLoadGroup, aObserver,
                                   aLoadFlags, aExistingRequest, 
                                   reinterpret_cast<imgIRequest **>(aProxyRequest));
+    if (NS_FAILED(rv)) {
+      return PR_FALSE;
+    }
 
     if (*aProxyRequest) {
       imgRequestProxy* proxy = static_cast<imgRequestProxy*>(*aProxyRequest);
@@ -1693,6 +1695,10 @@ NS_IMETHODIMP imgLoader::LoadImage(nsIURI *aURI,
     LOG_MSG(gImgLog, "imgLoader::LoadImage", "creating proxy request.");
     rv = CreateNewProxyForRequest(request, aLoadGroup, aObserver,
                                   requestFlags, aRequest, _retval);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+
     imgRequestProxy *proxy = static_cast<imgRequestProxy *>(*_retval);
 
     // Make sure that OnStatus/OnProgress calls have the right request set, if
@@ -1731,7 +1737,6 @@ NS_IMETHODIMP imgLoader::LoadImageWithChannel(nsIChannel *channel, imgIDecoderOb
 {
   NS_ASSERTION(channel, "imgLoader::LoadImageWithChannel -- NULL channel pointer");
 
-  nsresult rv;
   nsRefPtr<imgRequest> request;
 
   nsCOMPtr<nsIURI> uri;
@@ -1801,6 +1806,7 @@ NS_IMETHODIMP imgLoader::LoadImageWithChannel(nsIChannel *channel, imgIDecoderOb
   // XXX: It looks like the wrong load flags are being passed in...
   requestFlags &= 0xFFFF;
 
+  nsresult rv = NS_OK;
   if (request) {
     // we have this in our cache already.. cancel the current (document) load
 
@@ -1821,11 +1827,6 @@ NS_IMETHODIMP imgLoader::LoadImageWithChannel(nsIChannel *channel, imgIDecoderOb
     request->Init(originalURI, uri, channel, channel, entry, NS_GetCurrentThread(), aCX);
 
     ProxyListener *pl = new ProxyListener(static_cast<nsIStreamListener *>(request.get()));
-    if (!pl) {
-      request->CancelAndAbort(NS_ERROR_OUT_OF_MEMORY);
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
     NS_ADDREF(pl);
 
     *listener = static_cast<nsIStreamListener*>(pl);

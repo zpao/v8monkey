@@ -36,9 +36,7 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#ifdef MOZ_IPC
 #include "base/basictypes.h"
-#endif
 
 #include "xpcmodule.h"
 #include "mozilla/ModuleUtils.h"
@@ -96,7 +94,6 @@
 #include "nsStyleSheetService.h"
 #include "nsXULPopupManager.h"
 #include "nsFocusManager.h"
-#include "nsIContentUtils.h"
 #include "ThirdPartyUtil.h"
 #include "mozilla/Services.h"
 
@@ -582,12 +579,6 @@ MAKE_CTOR(CreateVideoDocument,            nsIDocument,                 NS_NewVid
 #endif
 MAKE_CTOR(CreateFocusManager,             nsIFocusManager,      NS_NewFocusManager)
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsIContentUtils)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsIContentUtils2)
-#ifndef MOZ_ENABLE_LIBXUL
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsIContentUtils_MOZILLA_2_0_BRANCH)
-#endif
-
 MAKE_CTOR(CreateCanvasRenderingContext2D, nsIDOMCanvasRenderingContext2D, NS_NewCanvasRenderingContext2D)
 MAKE_CTOR(CreateCanvasRenderingContextWebGL, nsIDOMWebGLRenderingContext, NS_NewCanvasRenderingContextWebGL)
 
@@ -873,11 +864,6 @@ NS_DEFINE_NAMED_CID(NS_TEXTSERVICESDOCUMENT_CID);
 NS_DEFINE_NAMED_CID(NS_GEOLOCATION_SERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_GEOLOCATION_CID);
 NS_DEFINE_NAMED_CID(NS_FOCUSMANAGER_CID);
-NS_DEFINE_NAMED_CID(NS_ICONTENTUTILS_CID);
-NS_DEFINE_NAMED_CID(NS_ICONTENTUTILS2_CID);
-#ifndef MOZ_ENABLE_LIBXUL
-NS_DEFINE_NAMED_CID(NS_ICONTENTUTILS_MOZILLA_2_0_BRANCH_CID);
-#endif
 NS_DEFINE_NAMED_CID(CSPSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_EVENTLISTENERSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_GLOBALMESSAGEMANAGER_CID);
@@ -1027,11 +1013,6 @@ static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
   { &kNS_GEOLOCATION_SERVICE_CID, false, NULL, nsGeolocationServiceConstructor },
   { &kNS_GEOLOCATION_CID, false, NULL, nsGeolocationConstructor },
   { &kNS_FOCUSMANAGER_CID, false, NULL, CreateFocusManager },
-  { &kNS_ICONTENTUTILS_CID, false, NULL, nsIContentUtilsConstructor },
-  { &kNS_ICONTENTUTILS2_CID, false, NULL, nsIContentUtils2Constructor },
-#ifndef MOZ_ENABLE_LIBXUL
-  { &kNS_ICONTENTUTILS_MOZILLA_2_0_BRANCH_CID, false, NULL, nsIContentUtils_MOZILLA_2_0_BRANCHConstructor },
-#endif
   { &kCSPSERVICE_CID, false, NULL, CSPServiceConstructor },
   { &kNS_EVENTLISTENERSERVICE_CID, false, NULL, CreateEventListenerService },
   { &kNS_GLOBALMESSAGEMANAGER_CID, false, NULL, CreateGlobalMessageManager },
@@ -1175,11 +1156,6 @@ static const mozilla::Module::ContractIDEntry kLayoutContracts[] = {
   { "@mozilla.org/geolocation/service;1", &kNS_GEOLOCATION_SERVICE_CID },
   { "@mozilla.org/geolocation;1", &kNS_GEOLOCATION_CID },
   { "@mozilla.org/focus-manager;1", &kNS_FOCUSMANAGER_CID },
-  { "@mozilla.org/content/contentutils;1", &kNS_ICONTENTUTILS_CID },
-  { "@mozilla.org/content/contentutils2;1", &kNS_ICONTENTUTILS2_CID },
-#ifndef MOZ_ENABLE_LIBXUL
-  { "@mozilla.org/content/contentutils-moz2.0;1", &kNS_ICONTENTUTILS_MOZILLA_2_0_BRANCH_CID },
-#endif
   { CSPSERVICE_CONTRACTID, &kCSPSERVICE_CID },
   { NS_EVENTLISTENERSERVICE_CONTRACTID, &kNS_EVENTLISTENERSERVICE_CID },
   { NS_GLOBALMESSAGEMANAGER_CONTRACTID, &kNS_GLOBALMESSAGEMANAGER_CID },

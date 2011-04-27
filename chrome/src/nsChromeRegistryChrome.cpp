@@ -36,11 +36,9 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#ifdef MOZ_IPC
 #include "mozilla/dom/PContentParent.h"
 #include "RegistryMessageUtils.h"
 #include "nsResProtocolHandler.h"
-#endif
 
 #include "nsChromeRegistryChrome.h"
 
@@ -443,7 +441,6 @@ void nsChromeRegistryChrome::UpdateSelectedLocale()
   }
 }
 
-#ifdef MOZ_IPC
 static void
 SerializeURI(nsIURI* aURI,
              SerializedURI& aSerializedURI)
@@ -541,7 +538,6 @@ nsChromeRegistryChrome::CollectPackages(PLDHashTable *table,
   args->packages.AppendElement(chromePackage);
   return (PLDHashOperator)PL_DHASH_NEXT;
 }
-#endif
 
 static PRBool
 CanLoadResource(nsIURI* aResourceURI)
@@ -895,13 +891,6 @@ nsChromeRegistryChrome::ManifestContent(ManifestProcessingContext& cx, int linen
     entry->flags |= PLATFORM_PACKAGE;
   if (contentaccessible)
     entry->flags |= CONTENT_ACCESSIBLE;
-  if (cx.GetXPConnect()) {
-    nsCAutoString urlp("chrome://");
-    urlp.Append(package);
-    urlp.Append('/');
-
-    cx.GetXPConnect()->FlagSystemFilenamePrefix(urlp.get(), true);
-  }
 }
 
 void

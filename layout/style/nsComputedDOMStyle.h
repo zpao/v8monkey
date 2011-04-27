@@ -168,6 +168,8 @@ private:
   void GetImageRectString(nsIURI* aURI,
                           const nsStyleSides& aCropRect,
                           nsString& aString);
+  void AppendTimingFunction(nsDOMCSSValueList *aValueList,
+                            const nsTimingFunction& aTimingFunction);
 
   /* Properties queryable as CSSValues.
    * To avoid a name conflict with nsIDOM*CSS2Properties, these are all
@@ -306,8 +308,10 @@ private:
   /* Text Properties */
   nsIDOMCSSValue* DoGetLineHeight();
   nsIDOMCSSValue* DoGetTextAlign();
+  nsIDOMCSSValue* DoGetMozTextBlink();
   nsIDOMCSSValue* DoGetTextDecoration();
   nsIDOMCSSValue* DoGetMozTextDecorationColor();
+  nsIDOMCSSValue* DoGetMozTextDecorationLine();
   nsIDOMCSSValue* DoGetMozTextDecorationStyle();
   nsIDOMCSSValue* DoGetTextIndent();
   nsIDOMCSSValue* DoGetTextTransform();
@@ -365,6 +369,18 @@ private:
   nsIDOMCSSValue* DoGetTransitionDuration();
   nsIDOMCSSValue* DoGetTransitionDelay();
   nsIDOMCSSValue* DoGetTransitionTimingFunction();
+
+#ifdef MOZ_CSS_ANIMATIONS
+  /* CSS Animations */
+  nsIDOMCSSValue* DoGetAnimationName();
+  nsIDOMCSSValue* DoGetAnimationDuration();
+  nsIDOMCSSValue* DoGetAnimationDelay();
+  nsIDOMCSSValue* DoGetAnimationTimingFunction();
+  nsIDOMCSSValue* DoGetAnimationDirection();
+  nsIDOMCSSValue* DoGetAnimationFillMode();
+  nsIDOMCSSValue* DoGetAnimationIterationCount();
+  nsIDOMCSSValue* DoGetAnimationPlayState();
+#endif
 
   /* SVG properties */
   nsIDOMCSSValue* DoGetFill();

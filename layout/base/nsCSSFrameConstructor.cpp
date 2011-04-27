@@ -66,7 +66,7 @@
 #include "nsUnicharUtils.h"
 #include "nsStyleSet.h"
 #include "nsIViewManager.h"
-#include "nsIEventStateManager.h"
+#include "nsEventStates.h"
 #include "nsStyleConsts.h"
 #include "nsTableOuterFrame.h"
 #include "nsIDOMXULElement.h"
@@ -84,7 +84,6 @@
 #include "nsStyleChangeList.h"
 #include "nsIFormControl.h"
 #include "nsCSSAnonBoxes.h"
-#include "nsIDeviceContext.h"
 #include "nsTextFragment.h"
 #include "nsIAnonymousContentCreator.h"
 #include "nsFrameManager.h"
@@ -104,7 +103,6 @@
 #include "nsIDOMMutationEvent.h"
 #include "nsChildIterator.h"
 #include "nsCSSRendering.h"
-#include "nsISelectElement.h"
 #include "nsLayoutErrors.h"
 #include "nsLayoutUtils.h"
 #include "nsAutoPtr.h"
@@ -1332,8 +1330,8 @@ MoveChildrenTo(nsPresContext* aPresContext,
 
   if (aNewParent->HasView() || aOldParent->HasView() || !sameGrandParent) {
     // Move the frames into the new view
-    nsHTMLContainerFrame::ReparentFrameViewList(aPresContext, aFrameList,
-                                                aOldParent, aNewParent);
+    nsContainerFrame::ReparentFrameViewList(aPresContext, aFrameList,
+                                            aOldParent, aNewParent);
   }
 
   for (nsFrameList::Enumerator e(aFrameList); !e.AtEnd(); e.Next()) {
@@ -1908,7 +1906,7 @@ nsCSSFrameConstructor::ConstructTable(nsFrameConstructorState& aState,
   // Init the table outer frame and see if we need to create a view, e.g.
   // the frame is absolutely positioned  
   InitAndRestoreFrame(aState, content, geometricParent, nsnull, newFrame);  
-  nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+  nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
 
   // Create the inner table frame
   nsIFrame* innerFrame;
@@ -1988,7 +1986,7 @@ nsCSSFrameConstructor::ConstructTableRow(nsFrameConstructorState& aState,
     return NS_ERROR_OUT_OF_MEMORY;
   }
   InitAndRestoreFrame(aState, content, aParentFrame, nsnull, newFrame);
-  nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+  nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
 
   nsFrameItems childItems;
   nsresult rv;
@@ -2089,7 +2087,7 @@ nsCSSFrameConstructor::ConstructTableCell(nsFrameConstructorState& aState,
 
   // Initialize the table cell frame
   InitAndRestoreFrame(aState, content, aParentFrame, nsnull, newFrame);
-  nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+  nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
   
   // Resolve pseudo style and initialize the body cell frame
   nsRefPtr<nsStyleContext> innerPseudoStyle;
@@ -2439,7 +2437,7 @@ nsCSSFrameConstructor::ConstructDocElementFrame(Element*                 aDocEle
       processChildren = PR_TRUE;
 
       // See if we need to create a view
-      nsHTMLContainerFrame::CreateViewForFrame(contentFrame, PR_FALSE);
+      nsContainerFrame::CreateViewForFrame(contentFrame, PR_FALSE);
     } else {
       return NS_ERROR_FAILURE;
     }
@@ -2958,7 +2956,7 @@ nsCSSFrameConstructor::ConstructButtonFrame(nsFrameConstructorState& aState,
     return rv;
   }
   // See if we need to create a view
-  nsHTMLContainerFrame::CreateViewForFrame(buttonFrame, PR_FALSE);
+  nsContainerFrame::CreateViewForFrame(buttonFrame, PR_FALSE);
 
   nsRefPtr<nsStyleContext> innerBlockContext;
   innerBlockContext =
@@ -3086,7 +3084,7 @@ nsCSSFrameConstructor::ConstructSelectFrame(nsFrameConstructorState& aState,
                           aState.GetGeometricParent(aStyleDisplay, aParentFrame),
                           nsnull, comboboxFrame);
 
-      nsHTMLContainerFrame::CreateViewForFrame(comboboxFrame, PR_FALSE);
+      nsContainerFrame::CreateViewForFrame(comboboxFrame, PR_FALSE);
 
       rv = aState.AddChild(comboboxFrame, aFrameItems, content, styleContext,
                            aParentFrame);
@@ -3225,7 +3223,7 @@ nsCSSFrameConstructor::InitializeSelectFrame(nsFrameConstructorState& aState,
     }
   }
       
-  nsHTMLContainerFrame::CreateViewForFrame(scrollFrame, aBuildCombobox);
+  nsContainerFrame::CreateViewForFrame(scrollFrame, aBuildCombobox);
 
   BuildScrollFrame(aState, aContent, aStyleContext, scrolledFrame,
                    geometricParent, scrollFrame);
@@ -3276,7 +3274,7 @@ nsCSSFrameConstructor::ConstructFieldSetFrame(nsFrameConstructorState& aState,
 
   // See if we need to create a view, e.g. the frame is absolutely
   // positioned
-  nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+  nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
 
   // Resolve style and initialize the frame
   nsRefPtr<nsStyleContext> fieldsetContentStyle;
@@ -3757,8 +3755,8 @@ nsCSSFrameConstructor::ConstructFrameFromItemInternal(FrameConstructionItem& aIt
                                newFrame);
       NS_ASSERTION(NS_SUCCEEDED(rv), "InitAndRestoreFrame failed");
       // See whether we need to create a view
-      nsHTMLContainerFrame::CreateViewForFrame(newFrame,
-                                               (bits & FCDATA_FORCE_VIEW) != 0);
+      nsContainerFrame::CreateViewForFrame(newFrame,
+                                           (bits & FCDATA_FORCE_VIEW) != 0);
       frameToAddToList = newFrame;
     }
 
@@ -4236,7 +4234,7 @@ nsCSSFrameConstructor::BeginBuildingScrollFrame(nsFrameConstructorState& aState,
     InitAndRestoreFrame(aState, aContent, aParentFrame, nsnull, gfxScrollFrame);
 
     // Create a view
-    nsHTMLContainerFrame::CreateViewForFrame(gfxScrollFrame, PR_FALSE);
+    nsContainerFrame::CreateViewForFrame(gfxScrollFrame, PR_FALSE);
   }
 
   // if there are any anonymous children for the scroll frame, create
@@ -4918,7 +4916,7 @@ nsCSSFrameConstructor::ConstructSVGForeignObjectFrame(nsFrameConstructorState& a
 
   // We don't allow this frame to be out of flow
   InitAndRestoreFrame(aState, content, aParentFrame, nsnull, newFrame);
-  nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+  nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
 
   nsresult rv = aState.AddChild(newFrame, aFrameItems, content, styleContext,
                                 aParentFrame, PR_FALSE, PR_FALSE);
@@ -6191,16 +6189,16 @@ nsCSSFrameConstructor::ReframeTextIfNeeded(nsIContent* aParentContent,
 // to construct frames for those lazily.
 // The logic for this check is based on
 // nsGenericHTMLFormElement::UpdateEditableFormControlState and so must be kept
-// in sync with that. The presence of the NODE_MAY_HAVE_CONTENT_EDITABLE_ATTR
-// flag only indicates a contenteditable attribute, it doesn't indicate if it
-// is true or false, so we force eager construction in some cases when the node
-// is not editable, but that should be rare.
+// in sync with that.  MayHaveContentEditableAttr() being true only indicates
+// a contenteditable attribute, it doesn't indicate whether it is true or false,
+// so we force eager construction in some cases when the node is not editable,
+// but that should be rare.
 static inline PRBool
 IsActuallyEditable(nsIContent* aContainer, nsIContent* aChild)
 {
   return (aChild->IsEditable() &&
           (aContainer->IsEditable() ||
-           aChild->HasFlag(NODE_MAY_HAVE_CONTENT_EDITABLE_ATTR)));
+           aChild->MayHaveContentEditableAttr()));
 }
 
 // For inserts aChild should be valid, for appends it should be null.
@@ -8304,7 +8302,10 @@ nsCSSFrameConstructor::EndUpdate()
     RecalcQuotesAndCounters();
     NS_ASSERTION(mUpdateCount == 1, "Odd update count");
   }
-  --mUpdateCount;
+  // Negative update counts don't make sense
+  if (mUpdateCount > 0) {
+    --mUpdateCount;
+  }
 }
 
 void
@@ -8381,7 +8382,7 @@ nsCSSFrameConstructor::CreateContinuingOuterTableFrame(nsIPresShell*    aPresShe
 
   if (newFrame) {
     newFrame->Init(aContent, aParentFrame, aFrame);
-    nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+    nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
 
     // Create a continuing inner table frame, and if there's a caption then
     // replicate the caption
@@ -8427,7 +8428,7 @@ nsCSSFrameConstructor::CreateContinuingTableFrame(nsIPresShell* aPresShell,
 
   if (newFrame) {
     newFrame->Init(aContent, aParentFrame, aFrame);
-    nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+    nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
 
     // Replicate any header/footer frames
     nsFrameItems  childFrames;
@@ -8507,7 +8508,7 @@ nsCSSFrameConstructor::CreateContinuingFrame(nsPresContext* aPresContext,
 
     if (newFrame) {
       newFrame->Init(content, aParentFrame, aFrame);
-      nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+      nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
     }
     
   } else if (nsGkAtoms::inlineFrame == frameType) {
@@ -10646,7 +10647,7 @@ nsCSSFrameConstructor::ConstructBlock(nsFrameConstructorState& aState,
 
     InitAndRestoreFrame(aState, aContent, aParentFrame, nsnull, columnSetFrame);
     // See if we need to create a view
-    nsHTMLContainerFrame::CreateViewForFrame(columnSetFrame, PR_FALSE);
+    nsContainerFrame::CreateViewForFrame(columnSetFrame, PR_FALSE);
     blockStyle = mPresShell->StyleSet()->
       ResolveAnonymousBoxStyle(nsCSSAnonBoxes::columnContent, aStyleContext);
     parent = columnSetFrame;
@@ -10786,7 +10787,7 @@ nsCSSFrameConstructor::ConstructInline(nsFrameConstructorState& aState,
                                                   // this is part of the fix for bug 42372
 
   // Any inline frame might need a view (because of opacity, or fixed background)
-  nsHTMLContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
+  nsContainerFrame::CreateViewForFrame(newFrame, PR_FALSE);
 
   if (positioned) {                            
     // Relatively positioned frames becomes a container for child
@@ -10875,7 +10876,7 @@ nsCSSFrameConstructor::CreateIBSiblings(nsFrameConstructorState& aState,
                         PR_FALSE);
 
     // Any frame could have a view
-    nsHTMLContainerFrame::CreateViewForFrame(blockFrame, PR_FALSE);
+    nsContainerFrame::CreateViewForFrame(blockFrame, PR_FALSE);
 
     // Find the first non-block child which defines the end of our block kids
     // and the start of our next inline's kids

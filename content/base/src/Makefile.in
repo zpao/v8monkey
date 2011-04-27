@@ -178,14 +178,9 @@ EXTRA_COMPONENTS = \
 		contentSecurityPolicy.manifest \
 		contentAreaDropListener.js \
 		contentAreaDropListener.manifest \
-		$(NULL)
-
-ifdef MOZ_IPC
-EXTRA_COMPONENTS += \
 		messageWakeupService.js \
 		messageWakeupService.manifest \
 		$(NULL)
-endif
 
 EXTRA_JS_MODULES = \
 		CSPUtils.jsm \
@@ -211,6 +206,7 @@ INCLUDES	+= \
 		-I$(topsrcdir)/dom/ipc \
 		-I$(topsrcdir)/js/src/xpconnect/src \
 		-I$(topsrcdir)/caps/include \
+		-I$(topsrcdir)/netwerk/base/src \
 		$(NULL)
 
 DEFINES += -D_IMPL_NS_LAYOUT

@@ -50,7 +50,9 @@
 #include "nsINode.h"
 #include "nsPIDOMWindow.h"
 #include "nsDOMPopStateEvent.h"
+#include "nsDOMHashChangeEvent.h"
 #include "nsFrameLoader.h"
+#include "nsDOMTouchEvent.h"
 
 #define NS_TARGET_CHAIN_FORCE_CONTENT_DISPATCH  (1 << 0)
 #define NS_TARGET_CHAIN_WANTS_WILL_HANDLE_EVENT (1 << 1)
@@ -777,6 +779,11 @@ nsEventDispatcher::CreateEvent(nsPresContext* aPresContext,
     case NS_TRANSITION_EVENT:
       return NS_NewDOMTransitionEvent(aDOMEvent, aPresContext,
                                       static_cast<nsTransitionEvent*>(aEvent));
+#ifdef MOZ_CSS_ANIMATIONS
+    case NS_ANIMATION_EVENT:
+      return NS_NewDOMAnimationEvent(aDOMEvent, aPresContext,
+                                     static_cast<nsAnimationEvent*>(aEvent));
+#endif
     }
 
     // For all other types of events, create a vanilla event object.
@@ -856,12 +863,21 @@ nsEventDispatcher::CreateEvent(nsPresContext* aPresContext,
   // is probably wrong!
   if (aEventType.LowerCaseEqualsLiteral("transitionevent"))
     return NS_NewDOMTransitionEvent(aDOMEvent, aPresContext, nsnull);
+#ifdef MOZ_CSS_ANIMATIONS
+  if (aEventType.LowerCaseEqualsLiteral("animationevent"))
+    return NS_NewDOMAnimationEvent(aDOMEvent, aPresContext, nsnull);
+#endif
   if (aEventType.LowerCaseEqualsLiteral("popstateevent"))
     return NS_NewDOMPopStateEvent(aDOMEvent, aPresContext, nsnull);
   if (aEventType.LowerCaseEqualsLiteral("mozaudioavailableevent"))
     return NS_NewDOMAudioAvailableEvent(aDOMEvent, aPresContext, nsnull);
   if (aEventType.LowerCaseEqualsLiteral("closeevent"))
     return NS_NewDOMCloseEvent(aDOMEvent, aPresContext, nsnull);
+  if (aEventType.LowerCaseEqualsLiteral("touchevent") &&
+      nsDOMTouchEvent::PrefEnabled())
+    return NS_NewDOMTouchEvent(aDOMEvent, aPresContext, nsnull);
+  if (aEventType.LowerCaseEqualsLiteral("hashchangeevent"))
+    return NS_NewDOMHashChangeEvent(aDOMEvent, aPresContext, nsnull);
 
   return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
 }

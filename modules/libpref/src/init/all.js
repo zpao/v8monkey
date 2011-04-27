@@ -194,13 +194,15 @@ pref("gfx.color_management.rendering_intent", 0);
 pref("gfx.downloadable_fonts.enabled", true);
 pref("gfx.downloadable_fonts.fallback_delay", 3000);
 pref("gfx.downloadable_fonts.sanitize", true);
-#ifdef XP_MACOSX
-pref("gfx.downloadable_fonts.sanitize.preserve_otl_tables", false);
-#else
-pref("gfx.downloadable_fonts.sanitize.preserve_otl_tables", true);
-#endif
 
-pref("gfx.font_rendering.harfbuzz.level", 2);
+// see gfx/thebes/gfxUnicodeProperties.h for definitions of script bits
+#ifdef XP_MACOSX
+// use harfbuzz for default (0x01) + arabic (0x02) + hebrew (0x04)
+pref("gfx.font_rendering.harfbuzz.scripts", 7);
+#else
+// use harfbuzz for default (0x01) + arabic (0x02)
+pref("gfx.font_rendering.harfbuzz.scripts", 3);
+#endif
 
 #ifdef XP_WIN
 #ifndef WINCE
@@ -603,9 +605,9 @@ pref("javascript.options.relimit",          true);
 pref("javascript.options.tracejit.content",  true);
 pref("javascript.options.tracejit.chrome",   true);
 pref("javascript.options.methodjit.content", true);
-pref("javascript.options.methodjit.chrome",  false);
+pref("javascript.options.methodjit.chrome",  true);
 pref("javascript.options.jitprofiling.content", true);
-pref("javascript.options.jitprofiling.chrome",  false);
+pref("javascript.options.jitprofiling.chrome",  true);
 pref("javascript.options.methodjit_always", false);
 // This preference limits the memory usage of javascript.
 // If you want to change these values for your device,
@@ -693,8 +695,11 @@ pref("network.http.proxy.keep-alive", true);
 // the packet is lost or delayed on the route.
 pref("network.http.keep-alive.timeout", 115);
 
-// limit the absolute number of http connections.
-pref("network.http.max-connections", 30);
+// Limit the absolute number of http connections.
+// Note: the socket transport service will clamp the number below 256 if the OS
+// cannot allocate that many FDs, and it also always tries to reserve up to 250
+// file descriptors for things other than sockets.   
+pref("network.http.max-connections", 256);
 
 // limit the absolute number of http connections that can be established per
 // host.  if a http proxy server is enabled, then the "server" is the proxy
@@ -752,6 +757,11 @@ pref("network.http.prompt-temp-redirect", true);
 // in a DSCP environment this should be 40 (0x28, or AF11), per RFC-4594,
 // Section 4.8 "High-Throughput Data Service Class"
 pref("network.http.qos", 0);
+
+// The number of milliseconds after sending a SYN for an HTTP connection,
+// to wait before trying a different connection. 0 means do not use a second
+// connection.
+pref("network.http.connection-retry-timeout", 250);
 
 // default values for FTP
 // in a DSCP environment this should be 40 (0x28, or AF11), per RFC-4594,
@@ -1738,6 +1748,39 @@ pref("gfx.font_rendering.cleartype.use_for_downloadable_fonts", true);
 // use cleartype rendering for all fonts always (win xp only)
 pref("gfx.font_rendering.cleartype.always_use_for_content", false);
 
+// ClearType tuning parameters for directwrite/d2d.
+//
+// Allows overriding of underlying registry values in:
+//   HKCU/Software/Microsoft/Avalon.Graphics/<display> (contrast and level)
+//   HKLM/Software/Microsoft/Avalon.Graphics/<display> (gamma, pixel structure)
+// and selection of the ClearType/antialiasing mode.
+//
+// A value of -1 implies use the default value, otherwise value ranges 
+// follow registry settings:
+//   gamma [1000, 2200]  default: based on screen, typically 2200 (== 2.2)
+//   enhanced contrast [0, 1000] default: 50
+//   cleartype level [0, 100] default: 100
+//   pixel structure [0, 2] default: 0 (flat/RGB/BGR)
+//   rendering mode [0, 5] default: 0
+//     0 = use default for font & size;
+//     1 = aliased;
+//     2 = GDI Classic;
+//     3 = GDI Natural Widths;
+//     4 = Natural;
+//     5 = Natural Symmetric
+//
+// See:
+//   http://msdn.microsoft.com/en-us/library/aa970267.aspx
+//   http://msdn.microsoft.com/en-us/library/dd368190%28v=VS.85%29.aspx
+// Note: DirectWrite uses the "Enhanced Contrast Level" value rather than the 
+// "Text Contrast Level" value
+
+pref("gfx.font_rendering.cleartype_params.gamma", -1);
+pref("gfx.font_rendering.cleartype_params.enhanced_contrast", -1);
+pref("gfx.font_rendering.cleartype_params.cleartype_level", -1);
+pref("gfx.font_rendering.cleartype_params.pixel_structure", -1);
+pref("gfx.font_rendering.cleartype_params.rendering_mode", -1);
+
 pref("ui.key.menuAccessKeyFocuses", true);
 
 // override double-click word selection behavior.
@@ -1856,16 +1899,16 @@ pref("font.name-list.monospace.el", "Lucida Grande");
 pref("font.name-list.cursive.el", "Lucida Grande");
 pref("font.name-list.fantasy.el", "Lucida Grande");
 
-pref("font.name.serif.he", "Raanana");
-pref("font.name.sans-serif.he", "Arial Hebrew");
-pref("font.name.monospace.he", "Arial Hebrew");
-pref("font.name.cursive.he", "Corsiva Hebrew");
-pref("font.name.fantasy.he", "Corsiva Hebrew");
-pref("font.name-list.serif.he", "Raanana");
-pref("font.name-list.sans-serif.he", "Arial Hebrew");
-pref("font.name-list.monospace.he", "Arial Hebrew");
-pref("font.name-list.cursive.he", "Corsiva Hebrew");
-pref("font.name-list.fantasy.he", "Corsiva Hebrew");
+pref("font.name.serif.he", "Times New Roman");
+pref("font.name.sans-serif.he", "Arial");
+pref("font.name.monospace.he", "Courier New");
+pref("font.name.cursive.he", "Times New Roman");
+pref("font.name.fantasy.he", "Times New Roman");
+pref("font.name-list.serif.he", "Times New Roman");
+pref("font.name-list.sans-serif.he", "Arial");
+pref("font.name-list.monospace.he", "Courier New");
+pref("font.name-list.cursive.he", "Times New Roman");
+pref("font.name-list.fantasy.he", "Times New Roman");
 
 pref("font.name.serif.ja", "Hiragino Mincho Pro"); 
 pref("font.name.sans-serif.ja", "Hiragino Kaku Gothic Pro"); 

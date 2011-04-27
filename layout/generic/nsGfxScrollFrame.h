@@ -323,11 +323,9 @@ public:
   // If true, the resizer is collapsed and not displayed
   PRPackedBool mCollapsedResizer:1;
 
-#ifdef MOZ_IPC
   // If true, the layer should always be active because we always build a layer.
   // Used for asynchronous scrolling.
   PRPackedBool mShouldBuildLayer:1;
-#endif
 };
 
 /**
@@ -374,14 +372,14 @@ public:
                           const nsHTMLReflowMetrics& aDesiredSize);
   void PlaceScrollArea(const ScrollReflowState& aState,
                        const nsPoint& aScrollPosition);
-  nscoord GetIntrinsicVScrollbarWidth(nsIRenderingContext *aRenderingContext);
+  nscoord GetIntrinsicVScrollbarWidth(nsRenderingContext *aRenderingContext);
 
   virtual PRBool GetBorderRadii(nscoord aRadii[8]) const {
     return mInner.GetBorderRadii(aRadii);
   }
 
-  virtual nscoord GetMinWidth(nsIRenderingContext *aRenderingContext);
-  virtual nscoord GetPrefWidth(nsIRenderingContext *aRenderingContext);
+  virtual nscoord GetMinWidth(nsRenderingContext *aRenderingContext);
+  virtual nscoord GetPrefWidth(nsRenderingContext *aRenderingContext);
   NS_IMETHOD GetPadding(nsMargin& aPadding);
   virtual PRBool IsCollapsed(nsBoxLayoutState& aBoxLayoutState);
   
@@ -447,7 +445,7 @@ public:
     return mInner.GetDesiredScrollbarSizes(aState);
   }
   virtual nsMargin GetDesiredScrollbarSizes(nsPresContext* aPresContext,
-          nsIRenderingContext* aRC) {
+          nsRenderingContext* aRC) {
     nsBoxLayoutState bls(aPresContext, aRC, 0);
     return GetDesiredScrollbarSizes(&bls);
   }
@@ -587,7 +585,7 @@ public:
 
   // XXXldb Is this actually used?
 #if 0
-  virtual nscoord GetMinWidth(nsIRenderingContext *aRenderingContext);
+  virtual nscoord GetMinWidth(nsRenderingContext *aRenderingContext);
 #endif
 
   // Because there can be only one child frame, these two function return
@@ -682,7 +680,7 @@ public:
     return mInner.GetDesiredScrollbarSizes(aState);
   }
   virtual nsMargin GetDesiredScrollbarSizes(nsPresContext* aPresContext,
-          nsIRenderingContext* aRC) {
+          nsRenderingContext* aRC) {
     nsBoxLayoutState bls(aPresContext, aRC, 0);
     return GetDesiredScrollbarSizes(&bls);
   }

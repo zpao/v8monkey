@@ -65,9 +65,9 @@ function init(aEvent)
     // Pref is unset
   }
 
-  // Include the build ID if this is a "pre" (i.e. non-release) build
+  // Include the build ID if this is an "a#" (nightly or aurora) build
   let version = Services.appinfo.version;
-  if (version.indexOf("pre") != -1) {
+  if (/a\d+$/.test(version)) {
     let buildID = Services.appinfo.appBuildID;
     let buildDate = buildID.slice(0,4) + "-" + buildID.slice(4,6) + "-" + buildID.slice(6,8);
     document.getElementById("version").value += " (" + buildDate + ")";
@@ -87,6 +87,8 @@ function init(aEvent)
 #ifdef MOZ_UPDATER
   gAppUpdater = new appUpdater();
 #endif
+
+  gChannelSelector.init();
 
 #ifdef XP_MACOSX
   // it may not be sized at this point, and we need its width to calculate its position
@@ -572,3 +574,68 @@ appUpdater.prototype =
   }
 };
 #endif
+
+var gChannelSelector = {
+  validChannels: { release: 1, beta: 1, aurora: 1 },
+  
+  init: function() {
+    try {
+      this.channelValue = Services.prefs.getCharPref("app.update.desiredChannel");
+    } catch (e) {
+      let defaults = Services.prefs.getDefaultBranch("");
+      this.channelValue = defaults.getCharPref("app.update.channel");
+    }
+
+    // Only show channel selector UI on valid update channels.
+    if (this.channelValue in this.validChannels) {
+      document.getElementById("currentChannelText").hidden = false;
+      this.setChannelLabel(this.channelValue);
+      this.setChannelMenuitem(this.channelValue);
+    }
+  },
+
+  selectChannel: function(aSelectedItem) {
+    document.getElementById("channelDescriptionDeck").selectedPanel =
+      document.getElementById(aSelectedItem.value + "Description");
+  },
+
+  cancel: function() {
+    this.setChannelMenuitem(this.channelValue);
+    this.hide();
+  },
+
+  apply: function() {
+    this.channelValue = document.getElementById("channelMenulist").selectedItem.value;
+    this.setChannelLabel(this.channelValue);
+
+    // Change app update channel.
+    Services.prefs.setCharPref("app.update.desiredChannel", this.channelValue);
+
+    // App updater will look at app.update.desiredChannel for new channel value
+    // and will clear it when the update is complete.
+    gAppUpdater.isChecking = true;
+    gAppUpdater.checker.checkForUpdates(gAppUpdater.updateCheckListener, true);
+
+    this.hide();
+  },
+
+  show: function() {
+    document.getElementById("contentDeck").selectedPanel =
+      document.getElementById("channelSelector");
+  },
+
+  hide: function() {
+    document.getElementById("contentDeck").selectedPanel =
+      document.getElementById("detailsBox");  
+  },
+
+  setChannelLabel: function(aValue) {
+    let channelLabel = document.getElementById("currentChannel");
+    channelLabel.value = document.getElementById(aValue + "Menuitem").label;
+  },
+
+  setChannelMenuitem: function(aValue) {
+    document.getElementById("channelMenulist").selectedItem =
+      document.getElementById(aValue + "Menuitem");
+  }
+}

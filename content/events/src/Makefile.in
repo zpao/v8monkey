@@ -46,6 +46,10 @@ MODULE		= content
 LIBRARY_NAME	= gkconevents_s
 LIBXUL_LIBRARY  = 1
 
+EXPORTS		= \
+		nsEventStateManager.h \
+		$(NULL)
+		
 CPPSRCS		= \
 		nsEventListenerManager.cpp \
 		nsEventStateManager.cpp \
@@ -85,8 +89,14 @@ CPPSRCS		= \
 		nsDOMScrollAreaEvent.cpp \
 		nsDOMTransitionEvent.cpp \
 		nsDOMPopStateEvent.cpp \
+		nsDOMHashChangeEvent.cpp \
 		nsDOMCloseEvent.cpp \
+		nsDOMTouchEvent.cpp \
 		$(NULL)
+
+ifdef MOZ_CSS_ANIMATIONS
+CPPSRCS		+= nsDOMAnimationEvent.cpp 
+endif
 
 # we don't want the shared lib, but we want to force the creation of a static lib.
 FORCE_STATIC_LIB = 1

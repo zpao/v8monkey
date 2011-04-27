@@ -75,6 +75,81 @@ function initial_font_family_is_sans_serif()
 var gInitialFontFamilyIsSansSerif = initial_font_family_is_sans_serif();
 
 var gCSSProperties = {
+	"-moz-animation": {
+		domProp: "MozAnimation",
+		inherited: false,
+		type: CSS_TYPE_TRUE_SHORTHAND,
+		subproperties: [ "-moz-animation-name", "-moz-animation-duration", "-moz-animation-timing-function", "-moz-animation-delay", "-moz-animation-direction", "-moz-animation-fill-mode", "-moz-animation-iteration-count", "-moz-animation-play-state" ],
+		initial_values: [ "none none 0s 0s ease normal running 1.0", "none", "0s", "ease", "normal", "running", "1.0" ],
+		other_values: [ "bounce 1s linear 2s", "bounce 1s 2s linear", "bounce linear 1s 2s", "linear bounce 1s 2s", "linear 1s bounce 2s", "linear 1s 2s bounce", "1s bounce linear 2s", "1s bounce 2s linear", "1s 2s bounce linear", "1s linear bounce 2s", "1s linear 2s bounce", "1s 2s linear bounce", "bounce linear 1s", "bounce 1s linear", "linear bounce 1s", "linear 1s bounce", "1s bounce linear", "1s linear bounce", "1s 2s bounce", "1s bounce 2s", "bounce 1s 2s", "1s 2s linear", "1s linear 2s", "linear 1s 2s", "bounce 1s", "1s bounce", "linear 1s", "1s linear", "1s 2s", "2s 1s", "bounce", "linear", "1s", "height", "2s", "ease-in-out", "2s ease-in", "opacity linear", "ease-out 2s", "2s color, 1s bounce, 500ms height linear, 1s opacity 4s cubic-bezier(0.0, 0.1, 1.0, 1.0)", "1s \\32bounce linear 2s", "1s -bounce linear 2s", "1s -\\32bounce linear 2s", "1s \\32 0bounce linear 2s", "1s -\\32 0bounce linear 2s", "1s \\2bounce linear 2s", "1s -\\2bounce linear 2s", "2s, 1s bounce", "1s bounce, 2s", "2s all, 1s bounce", "1s bounce, 2s all", "1s bounce, 2s none", "2s none, 1s bounce", "2s bounce, 1s all", "2s all, 1s bounce" ],
+		invalid_values: [  "2s inherit", "inherit 2s", "2s bounce, 1s inherit", "2s inherit, 1s bounce", "2s initial" ]
+	},
+	"-moz-animation-delay": {
+		domProp: "MozAnimationDelay",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "0s", "0ms" ],
+		other_values: [ "1s", "250ms", "-100ms", "-1s", "1s, 250ms, 2.3s"],
+		invalid_values: [ "0", "0px" ]
+	},
+	"-moz-animation-direction": {
+		domProp: "MozAnimationDirection",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "normal" ],
+		other_values: [ "alternate", "normal, alternate", "alternate, normal", "normal, normal", "normal, normal, normal" ],
+		invalid_values: [ "normal normal", "inherit, normal" ]
+	},
+	"-moz-animation-duration": {
+		domProp: "MozAnimationDuration",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "0s", "0ms" ],
+		other_values: [ "1s", "250ms", "-1ms", "-2s", "1s, 250ms, 2.3s"],
+		invalid_values: [ "0", "0px" ]
+	},
+	"-moz-animation-fill-mode": {
+		domProp: "MozAnimationFillMode",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "none" ],
+		other_values: [ "forwards", "backwards", "both", "none, none", "forwards, backwards", "forwards, none", "none, both" ],
+		invalid_values: [ "all"]
+	},
+	"-moz-animation-iteration-count": {
+		domProp: "MozAnimationIterationCount",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "1" ],
+		other_values: [ "infinite", "0", "0.5", "7.75", "-0.0", "1, 2, 3", "infinite, 2", "1, infinite" ],
+		// negatives forbidden per
+		// http://lists.w3.org/Archives/Public/www-style/2011Mar/0355.html
+		invalid_values: [ "none", "-1", "-0.5", "-1, infinite", "infinite, -3" ]
+	},
+	"-moz-animation-name": {
+		domProp: "MozAnimationName",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "none" ],
+		other_values: [ "all", "ball", "mall", "color", "bounce, bubble, opacity", "foobar", "auto", "\\32bounce", "-bounce", "-\\32bounce", "\\32 0bounce", "-\\32 0bounce", "\\2bounce", "-\\2bounce" ],
+		invalid_values: [ "bounce, initial", "initial, bounce", "bounce, inherit", "inherit, bounce" ]
+	},
+	"-moz-animation-play-state": {
+		domProp: "MozAnimationPlayState",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "running" ],
+		other_values: [ "paused", "running, running", "paused, running", "paused, paused", "running, paused", "paused, running, running, running, paused, running" ],
+		invalid_values: [ "0" ]
+	},
+	"-moz-animation-timing-function": {
+		domProp: "MozAnimationTimingFunction",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "ease", "cubic-bezier(0.25, 0.1, 0.25, 1.0)" ],
+		other_values: [ "linear", "ease-in", "ease-out", "ease-in-out", "linear, ease-in, cubic-bezier(0.1, 0.2, 0.8, 0.9)", "cubic-bezier(0.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.25, 1.5, 0.75, -0.5)", "step-start", "step-end", "steps(1)", "steps(2, start)", "steps(386)", "steps(3, end)" ],
+		invalid_values: [ "none", "auto", "cubic-bezier(0.25, 0.1, 0.25)", "cubic-bezier(0.25, 0.1, 0.25, 0.25, 1.0)", "cubic-bezier(-0.5, 0.5, 0.5, 0.5)", "cubic-bezier(1.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.5, 0.5, -0.5, 0.5)", "cubic-bezier(0.5, 0.5, 1.5, 0.5)", "steps(2, step-end)", "steps(0)", "steps(-2)", "steps(0, step-end, 1)" ]
+	},
 	"-moz-appearance": {
 		domProp: "MozAppearance",
 		inherited: false,
@@ -931,15 +1006,6 @@ var gCSSProperties = {
 		other_values: [ "none", "menu", "tooltip", "sheet" ],
 		invalid_values: []
 	},
-	"azimuth": {
-		domProp: "azimuth",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "center", "0deg" ],
-		other_values: [ "center behind", "behind far-right", "left-side", "73deg", "90.1deg", "0.1deg" ],
-		invalid_values: [ "0deg behind", "behind 0deg", "90deg behind", "behind 90deg" ]
-	},
 	"background": {
 		domProp: "background",
 		inherited: false,
@@ -1670,34 +1736,6 @@ var gCSSProperties = {
 		other_values: [ "foo 1", "bar", "foo 3 bar baz 2", "\\32  1", "-\\32  1", "-c 1", "\\32 1", "-\\32 1", "\\2  1", "-\\2  1", "-c 1", "\\2 1", "-\\2 1" ],
 		invalid_values: []
 	},
-	"cue": {
-		domProp: "cue",
-		inherited: false,
-		backend_only: true,
-		type: CSS_TYPE_TRUE_SHORTHAND,
-		subproperties: [ "cue-before", "cue-after" ],
-		initial_values: [ "none", "none none" ],
-		other_values: [ "url(404.wav)", "url(404.wav) none", "none url(404.wav)" ],
-		invalid_values: []
-	},
-	"cue-after": {
-		domProp: "cueAfter",
-		inherited: false,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "none" ],
-		other_values: [ "url(404.wav)" ],
-		invalid_values: []
-	},
-	"cue-before": {
-		domProp: "cueBefore",
-		inherited: false,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "none" ],
-		other_values: [ "url(404.wav)" ],
-		invalid_values: []
-	},
 	"cursor": {
 		domProp: "cursor",
 		inherited: true,
@@ -1722,15 +1760,6 @@ var gCSSProperties = {
 		/* XXX none will really mess with other properties */
 		prerequisites: { "float": "none", "position": "static" },
 		other_values: [ "block", "list-item", "inline-block", "table", "inline-table", "table-row-group", "table-header-group", "table-footer-group", "table-row", "table-column-group", "table-column", "table-cell", "table-caption", "none" ],
-		invalid_values: []
-	},
-	"elevation": {
-		domProp: "elevation",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "level", "0deg" ],
-		other_values: [ "below", "above", "60deg", "higher", "lower", "-79deg", "0.33deg" ],
 		invalid_values: []
 	},
 	"empty-cells": {
@@ -2329,52 +2358,6 @@ var gCSSProperties = {
 		other_values: [ "avoid" ],
 		invalid_values: []
 	},
-	"pause": {
-		domProp: "pause",
-		inherited: false,
-		backend_only: true,
-		type: CSS_TYPE_TRUE_SHORTHAND,
-		subproperties: [ "pause-before", "pause-after" ],
-		initial_values: [ "0s", "0ms", "0s 0ms" ],
-		other_values: [ "1s", "200ms", "-2s", "50%", "-10%", "10% 200ms", "-3s -5%" ],
-		invalid_values: [ "0", "0px", "0 0", "0ms 0" ]
-	},
-	"pause-after": {
-		domProp: "pauseAfter",
-		inherited: false,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "0s", "0ms" ],
-		other_values: [ "1s", "200ms", "-2s", "50%", "-10%" ],
-		invalid_values: [ "0", "0px" ]
-	},
-	"pause-before": {
-		domProp: "pauseBefore",
-		inherited: false,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "0s", "0ms" ],
-		other_values: [ "1s", "200ms", "-2s", "50%", "-10%" ],
-		invalid_values: [ "0", "0px" ]
-	},
-	"pitch": {
-		domProp: "pitch",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "medium" ],
-		other_values: [ "x-low", "low", "high", "x-high" ],
-		invalid_values: []
-	},
-	"pitch-range": {
-		domProp: "pitchRange",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "50", "50.0" ],
-		other_values: [ "0", "100.0", "99.7", "47", "3.2" ],
-		invalid_values: [" -0.01", "100.2", "108", "-3" ]
-	},
 	"pointer-events": {
 		domProp: "pointerEvents",
 		inherited: true,
@@ -2400,15 +2383,6 @@ var gCSSProperties = {
 						  '"\\201C" "\\201D" "\\2018" "\\2019"' ],
 		other_values: [ "none", "'\"' '\"'" ],
 		invalid_values: []
-	},
-	"richness": {
-		domProp: "richness",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "50", "50.0" ],
-		other_values: [ "0", "100.0", "99.7", "47", "3.2" ],
-		invalid_values: [" -0.01", "100.2", "108", "-3" ]
 	},
 	"right": {
 		domProp: "right",
@@ -2441,62 +2415,6 @@ var gCSSProperties = {
 			"100mm 100mm 100mm"
 		]
 	},
-	"speak": {
-		domProp: "speak",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "normal" ],
-		other_values: [ "none", "spell-out" ],
-		invalid_values: []
-	},
-	"speak-header": {
-		domProp: "speakHeader",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "once" ],
-		other_values: [ "always" ],
-		invalid_values: []
-	},
-	"speak-numeral": {
-		domProp: "speakNumeral",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "continuous" ],
-		other_values: [ "digits" ],
-		invalid_values: []
-	},
-	"speak-punctuation": {
-		domProp: "speakPunctuation",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "none" ],
-		other_values: [ "code" ],
-		invalid_values: []
-	},
-	"speech-rate": {
-		domProp: "speechRate",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "medium" ],
-		other_values: [ "x-slow", "slow", "fast", "x-fast", "faster", "slower", "80", "500", "73.2" ],
-		invalid_values: [
-			// "0", "-80" // unclear
-		]
-	},
-	"stress": {
-		domProp: "stress",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "50", "50.0" ],
-		other_values: [ "0", "100.0", "99.7", "47", "3.2" ],
-		invalid_values: [" -0.01", "100.2", "108", "-3" ]
-	},
 	"table-layout": {
 		domProp: "tableLayout",
 		inherited: false,
@@ -2514,13 +2432,23 @@ var gCSSProperties = {
 		other_values: [ "center", "justify", "end" ],
 		invalid_values: []
 	},
-	"text-decoration": {
-		domProp: "textDecoration",
+	"-moz-text-blink": {
+		domProp: "MozTextBlink",
 		inherited: false,
 		type: CSS_TYPE_LONGHAND,
 		initial_values: [ "none" ],
-		other_values: [ "underline", "overline", "line-through", "blink line-through underline", "underline overline line-through blink", "-moz-anchor-decoration", "blink -moz-anchor-decoration" ],
-		invalid_values: [ "underline none", "none underline", "line-through blink line-through" ]
+		other_values: [ "blink" ],
+		invalid_values: [ "underline", "overline", "line-through", "none underline", "underline blink", "blink underline" ]
+	},
+	"text-decoration": {
+		domProp: "textDecoration",
+		inherited: false,
+		type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+		subproperties: [ "-moz-text-blink", "-moz-text-decoration-color", "-moz-text-decoration-line", "-moz-text-decoration-style" ],
+		initial_values: [ "none" ],
+		other_values: [ "underline", "overline", "line-through", "blink", "blink line-through underline", "underline overline line-through blink", "-moz-anchor-decoration", "blink -moz-anchor-decoration" ],
+		invalid_values: [ "none none", "underline none", "none underline", "blink none", "none blink", "line-through blink line-through", "underline overline line-through blink none", "underline overline line-throuh blink blink",
+		                  "underline red solid", "underline #ff0000", "solid underline", "red underline", "#ff0000 underline" ]
 	},
 	"-moz-text-decoration-color": {
 		domProp: "MozTextDecorationColor",
@@ -2530,6 +2458,14 @@ var gCSSProperties = {
 		initial_values: [ "currentColor", "-moz-use-text-color" ],
 		other_values: [ "green", "rgba(255,128,0,0.5)", "transparent" ],
 		invalid_values: [ "#0", "#00", "#0000", "#00000", "#0000000", "#00000000", "#000000000" ]
+	},
+	"-moz-text-decoration-line": {
+		domProp: "MozTextDecorationLine",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "none" ],
+		other_values: [ "underline", "overline", "line-through", "line-through underline", "underline overline line-through", "-moz-anchor-decoration", "-moz-anchor-decoration" ],
+		invalid_values: [ "none none", "underline none", "none underline", "line-through blink line-through", "underline overline line-through blink none", "underline overline line-throuh blink blink" ]
 	},
 	"-moz-text-decoration-style": {
 		domProp: "MozTextDecorationStyle",
@@ -2608,7 +2544,7 @@ var gCSSProperties = {
 		inherited: false,
 		type: CSS_TYPE_TRUE_SHORTHAND,
 		subproperties: [ "-moz-transition-property", "-moz-transition-duration", "-moz-transition-timing-function", "-moz-transition-delay" ],
-		initial_values: [ "all 0s ease 0s" ],
+		initial_values: [ "all 0s ease 0s", "all", "0s", "0s 0s", "ease" ],
 		other_values: [ "width 1s linear 2s", "width 1s 2s linear", "width linear 1s 2s", "linear width 1s 2s", "linear 1s width 2s", "linear 1s 2s width", "1s width linear 2s", "1s width 2s linear", "1s 2s width linear", "1s linear width 2s", "1s linear 2s width", "1s 2s linear width", "width linear 1s", "width 1s linear", "linear width 1s", "linear 1s width", "1s width linear", "1s linear width", "1s 2s width", "1s width 2s", "width 1s 2s", "1s 2s linear", "1s linear 2s", "linear 1s 2s", "width 1s", "1s width", "linear 1s", "1s linear", "1s 2s", "2s 1s", "width", "linear", "1s", "height", "2s", "ease-in-out", "2s ease-in", "opacity linear", "ease-out 2s", "2s color, 1s width, 500ms height linear, 1s opacity 4s cubic-bezier(0.0, 0.1, 1.0, 1.0)", "1s \\32width linear 2s", "1s -width linear 2s", "1s -\\32width linear 2s", "1s \\32 0width linear 2s", "1s -\\32 0width linear 2s", "1s \\2width linear 2s", "1s -\\2width linear 2s" ],
 		invalid_values: [ "2s, 1s width", "1s width, 2s", "2s all, 1s width", "1s width, 2s all", "1s width, 2s none", "2s none, 1s width", "2s inherit", "inherit 2s", "2s width, 1s inherit", "2s inherit, 1s width", "2s initial", "2s all, 1s width", "2s width, 1s all" ]
 	},
@@ -2641,8 +2577,8 @@ var gCSSProperties = {
 		inherited: false,
 		type: CSS_TYPE_LONGHAND,
 		initial_values: [ "ease", "cubic-bezier(0.25, 0.1, 0.25, 1.0)" ],
-		other_values: [ "linear", "ease-in", "ease-out", "ease-in-out", "linear, ease-in, cubic-bezier(0.1, 0.2, 0.8, 0.9)", "cubic-bezier(0.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.25, 1.5, 0.75, -0.5)" ],
-		invalid_values: [ "none", "auto", "cubic-bezier(0.25, 0.1, 0.25)", "cubic-bezier(0.25, 0.1, 0.25, 0.25, 1.0)", "cubic-bezier(-0.5, 0.5, 0.5, 0.5)", "cubic-bezier(1.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.5, 0.5, -0.5, 0.5)", "cubic-bezier(0.5, 0.5, 1.5, 0.5)" ]
+		other_values: [ "linear", "ease-in", "ease-out", "ease-in-out", "linear, ease-in, cubic-bezier(0.1, 0.2, 0.8, 0.9)", "cubic-bezier(0.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.25, 1.5, 0.75, -0.5)", "step-start", "step-end", "steps(1)", "steps(2, start)", "steps(386)", "steps(3, end)" ],
+		invalid_values: [ "none", "auto", "cubic-bezier(0.25, 0.1, 0.25)", "cubic-bezier(0.25, 0.1, 0.25, 0.25, 1.0)", "cubic-bezier(-0.5, 0.5, 0.5, 0.5)", "cubic-bezier(1.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.5, 0.5, -0.5, 0.5)", "cubic-bezier(0.5, 0.5, 1.5, 0.5)", "steps(2, step-end)", "steps(0)", "steps(-2)", "steps(0, step-end, 1)" ]
 	},
 	"unicode-bidi": {
 		domProp: "unicodeBidi",
@@ -2674,24 +2610,6 @@ var gCSSProperties = {
 		initial_values: [ "visible" ],
 		other_values: [ "hidden", "collapse" ],
 		invalid_values: []
-	},
-	"voice-family": {
-		domProp: "voiceFamily",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "male" ], /* arbitrary guess */
-		other_values: [ "female", "child", "Bob, male", "Jane, Juliet, female" ],
-		invalid_values: []
-	},
-	"volume": {
-		domProp: "volume",
-		inherited: true,
-		backend_only: true,
-		type: CSS_TYPE_LONGHAND,
-		initial_values: [ "50", "50.0", "medium" ],
-		other_values: [ "0", "100.0", "99.7", "47", "3.2", "silent", "x-soft", "soft", "loud", "x-loud" ],
-		invalid_values: [" -0.01", "100.2", "108", "-3" ]
 	},
 	"white-space": {
 		domProp: "whiteSpace",

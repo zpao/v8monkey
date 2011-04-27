@@ -136,7 +136,7 @@ public:
 
     NS_IMETHOD Traverse(void *p, nsCycleCollectionTraversalCallback &cb) = 0;
 
-    NS_IMETHOD RootAndUnlinkJSObjects(void *p) = 0;
+    NS_IMETHOD Root(void *p) = 0;
     NS_IMETHOD Unlink(void *p) = 0;
     NS_IMETHOD Unroot(void *p) = 0;
 };
@@ -148,7 +148,7 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsCycleCollectionParticipant,
 #define IMETHOD_VISIBILITY NS_COM_GLUE
 
 typedef void
-(* TraceCallback)(PRUint32 langID, void *p, void *closure);
+(* TraceCallback)(PRUint32 langID, void *p, const char *name, void *closure);
 
 class NS_NO_VTABLE nsScriptObjectTracer : public nsCycleCollectionParticipant
 {
@@ -164,7 +164,7 @@ class NS_COM_GLUE nsXPCOMCycleCollectionParticipant
 public:
     NS_IMETHOD Traverse(void *p, nsCycleCollectionTraversalCallback &cb);
 
-    NS_IMETHOD RootAndUnlinkJSObjects(void *p);
+    NS_IMETHOD Root(void *p);
     NS_IMETHOD Unlink(void *p);
     NS_IMETHOD Unroot(void *p);
 
@@ -242,31 +242,6 @@ public:
 
 #define NS_CYCLE_COLLECTION_UPCAST(obj, clazz)                                 \
   NS_CYCLE_COLLECTION_CLASSNAME(clazz)::Upcast(obj)
-
-///////////////////////////////////////////////////////////////////////////////
-// Helpers for implementing nsCycleCollectionParticipant::RootAndUnlinkJSObjects
-///////////////////////////////////////////////////////////////////////////////
-
-#define NS_IMPL_CYCLE_COLLECTION_ROOT_BEGIN(_class)                            \
-  NS_IMETHODIMP                                                                \
-  NS_CYCLE_COLLECTION_CLASSNAME(_class)::RootAndUnlinkJSObjects(void *p)       \
-  {                                                                            \
-    nsISupports *s = static_cast<nsISupports*>(p);                             \
-    NS_ASSERTION(CheckForRightISupports(s),                                    \
-                 "not the nsISupports pointer we expect");                     \
-    nsXPCOMCycleCollectionParticipant::RootAndUnlinkJSObjects(s);              \
-    _class *tmp = Downcast(s);
-
-#define NS_IMPL_CYCLE_COLLECTION_ROOT_BEGIN_NATIVE(_class, _root_function)     \
-  NS_IMETHODIMP                                                                \
-  NS_CYCLE_COLLECTION_CLASSNAME(_class)::RootAndUnlinkJSObjects(void *p)       \
-  {                                                                            \
-    _class *tmp = static_cast<_class*>(p);                                     \
-    tmp->_root_function();
-
-#define NS_IMPL_CYCLE_COLLECTION_ROOT_END                                      \
-    return NS_OK;                                                              \
-  }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Helpers for implementing nsCycleCollectionParticipant::Unlink
@@ -425,6 +400,15 @@ public:
                                                      _name "[i]");             \
     }
 
+#define NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSTARRAY_OF_NSCOMPTR(_field)         \
+    {                                                                          \
+      PRUint32 i, length = tmp->_field.Length();                               \
+      for (i = 0; i < length; ++i) {                                           \
+        NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, #_field "[i]");                 \
+        cb.NoteXPCOMChild(tmp->_field[i].get());                               \
+      }                                                                        \
+    }
+
 #define NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSTARRAY_MEMBER(_field,              \
                                                           _element_class)      \
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSTARRAY(tmp->_field, _element_class,    \
@@ -460,19 +444,19 @@ public:
   {                                                                            \
     _class *tmp = static_cast<_class*>(p);
 
-#define NS_IMPL_CYCLE_COLLECTION_TRACE_CALLBACK(_langID, _object)              \
+#define NS_IMPL_CYCLE_COLLECTION_TRACE_CALLBACK(_langID, _object, _name)       \
   if (_object)                                                                 \
-    aCallback(_langID, _object, aClosure);
+    aCallback(_langID, _object, _name, aClosure);
 
 #define NS_IMPL_CYCLE_COLLECTION_TRACE_MEMBER_CALLBACK(_langID, _field)        \
-  NS_IMPL_CYCLE_COLLECTION_TRACE_CALLBACK(_langID, tmp->_field)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_CALLBACK(_langID, tmp->_field, #_field)
 
-#define NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(_object)                    \
+#define NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(_object, _name)             \
   NS_IMPL_CYCLE_COLLECTION_TRACE_CALLBACK(nsIProgrammingLanguage::JAVASCRIPT,  \
-                                          _object)
+                                          _object, _name)
 
 #define NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(_field)              \
-  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(tmp->_field)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(tmp->_field, #_field)
 
 // NB: The (void)tmp; hack in the TRACE_END macro exists to support
 // implementations that don't need to do anything in their Trace method.
@@ -522,13 +506,13 @@ NS_CYCLE_COLLECTION_PARTICIPANT_INSTANCE
 
 // Cycle collector helper for classes that don't want to unlink anything.
 // Note: if this is used a lot it might make sense to have a base class that
-//       doesn't do anything in RootAndUnlinkJSObjects/Unlink/Unroot.
+//       doesn't do anything in Root/Unlink/Unroot.
 #define NS_DECL_CYCLE_COLLECTION_CLASS_NO_UNLINK(_class)                       \
 class NS_CYCLE_COLLECTION_INNERCLASS                                           \
  : public nsXPCOMCycleCollectionParticipant                                    \
 {                                                                              \
   NS_DECL_CYCLE_COLLECTION_CLASS_BODY_NO_UNLINK(_class, _class)                \
-  NS_IMETHOD RootAndUnlinkJSObjects(void *p)                                   \
+  NS_IMETHOD Root(void *p)                                                     \
   {                                                                            \
     return NS_OK;                                                              \
   }                                                                            \
@@ -547,7 +531,6 @@ NS_CYCLE_COLLECTION_PARTICIPANT_INSTANCE
 class NS_CYCLE_COLLECTION_INNERCLASS                                           \
  : public nsXPCOMCycleCollectionParticipant                                    \
 {                                                                              \
-  NS_IMETHOD RootAndUnlinkJSObjects(void *p);                                  \
   NS_DECL_CYCLE_COLLECTION_CLASS_BODY(_class, _base)                           \
   NS_IMETHOD_(void) Trace(void *p, TraceCallback cb, void *closure);           \
 };                                                                             \
@@ -596,7 +579,6 @@ class NS_CYCLE_COLLECTION_INNERCLASS                                           \
  : public NS_CYCLE_COLLECTION_CLASSNAME(_base_class)                           \
 {                                                                              \
 public:                                                                        \
-  NS_IMETHOD RootAndUnlinkJSObjects(void *p);                                  \
   NS_IMETHOD_(void) Trace(void *p, TraceCallback cb, void *closure);           \
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED_BODY(_class, _base_class)           \
 };                                                                             \
@@ -618,7 +600,7 @@ NS_CYCLE_COLLECTION_PARTICIPANT_INSTANCE
 
 #define NS_DECL_CYCLE_COLLECTION_NATIVE_CLASS_BODY                             \
   public:                                                                      \
-    NS_IMETHOD RootAndUnlinkJSObjects(void *n);                                \
+    NS_IMETHOD Root(void *n);                                                  \
     NS_IMETHOD Unlink(void *n);                                                \
     NS_IMETHOD Unroot(void *n);                                                \
     NS_IMETHOD Traverse(void *n,                                               \
@@ -643,7 +625,7 @@ NS_CYCLE_COLLECTION_PARTICIPANT_INSTANCE
 
 #define NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(_class, _root_function)           \
   NS_IMETHODIMP                                                                \
-  NS_CYCLE_COLLECTION_CLASSNAME(_class)::RootAndUnlinkJSObjects(void *p)       \
+  NS_CYCLE_COLLECTION_CLASSNAME(_class)::Root(void *p)                         \
   {                                                                            \
     _class *tmp = static_cast<_class*>(p);                                     \
     tmp->_root_function();                                                     \

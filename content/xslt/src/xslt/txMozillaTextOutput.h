@@ -54,18 +54,16 @@ class nsIContent;
 class txMozillaTextOutput : public txAOutputXMLEventHandler
 {
 public:
-    txMozillaTextOutput(nsIDOMDocument* aSourceDocument,
-                        nsIDOMDocument* aResultDocument,
-                        nsITransformObserver* aObserver);
+    txMozillaTextOutput(nsITransformObserver* aObserver);
     txMozillaTextOutput(nsIDOMDocumentFragment* aDest);
     virtual ~txMozillaTextOutput();
 
     TX_DECL_TXAXMLEVENTHANDLER
     TX_DECL_TXAOUTPUTXMLEVENTHANDLER
 
+    nsresult createResultDocument(nsIDOMDocument* aSourceDocument);
+
 private:
-    nsresult createResultDocument(nsIDOMDocument* aSourceDocument,
-                                  nsIDOMDocument* aResultDocument);
     nsresult createXHTMLElement(nsIAtom* aName, nsIContent** aResult);
 
     nsCOMPtr<nsIContent> mTextParent;

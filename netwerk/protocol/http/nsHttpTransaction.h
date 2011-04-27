@@ -44,7 +44,6 @@
 #include "nsAHttpTransaction.h"
 #include "nsAHttpConnection.h"
 #include "nsCOMPtr.h"
-#include "nsInt64.h"
 
 #include "nsIPipe.h"
 #include "nsIInputStream.h"
@@ -115,7 +114,6 @@ public:
     // attributes
     PRUint8                Caps()           { return mCaps; }
     nsHttpConnectionInfo  *ConnectionInfo() { return mConnInfo; }
-    nsHttpRequestHead     *RequestHead()    { return mRequestHead; }
     nsHttpResponseHead    *ResponseHead()   { return mHaveAllHeaders ? mResponseHead : nsnull; }
     nsISupports           *SecurityInfo()   { return mSecurityInfo; }
 
@@ -130,7 +128,6 @@ public:
     // Called to find out if the transaction generated a complete response.
     PRBool ResponseIsComplete() { return mResponseIsComplete; }
 
-    void   SetSSLConnectFailed() { mSSLConnectFailed = PR_TRUE; }
     PRBool    SSLConnectFailed() { return mSSLConnectFailed; }
 
     // These methods may only be used by the connection manager.
@@ -179,8 +176,8 @@ private:
 
     nsCString                       mLineBuf;         // may contain a partial line
 
-    nsInt64                         mContentLength;   // equals -1 if unknown
-    nsInt64                         mContentRead;     // count of consumed content bytes
+    PRInt64                         mContentLength;   // equals -1 if unknown
+    PRInt64                         mContentRead;     // count of consumed content bytes
 
     // After a 304/204 or other "no-content" style response we will skip over
     // up to MAX_INVALID_RESPONSE_BODY_SZ bytes when looking for the next
@@ -198,21 +195,22 @@ private:
     PRUint16                        mRestartCount;        // the number of times this transaction has been restarted
     PRUint8                         mCaps;
 
-    // state flags
-    PRUint32                        mClosed             : 1;
-    PRUint32                        mConnected          : 1;
-    PRUint32                        mHaveStatusLine     : 1;
-    PRUint32                        mHaveAllHeaders     : 1;
-    PRUint32                        mTransactionDone    : 1;
-    PRUint32                        mResponseIsComplete : 1;
-    PRUint32                        mDidContentStart    : 1;
-    PRUint32                        mNoContent          : 1; // expecting an empty entity body
-    PRUint32                        mSentData           : 1;
-    PRUint32                        mReceivedData       : 1;
-    PRUint32                        mStatusEventPending : 1;
-    PRUint32                        mHasRequestBody     : 1;
-    PRUint32                        mSSLConnectFailed   : 1;
-    PRUint32                        mHttpResponseMatched: 1;
+    // state flags, all logically boolean, but not packed together into a
+    // bitfield so as to avoid bitfield-induced races.  See bug 560579.
+    PRPackedBool                    mClosed;
+    PRPackedBool                    mConnected;
+    PRPackedBool                    mHaveStatusLine;
+    PRPackedBool                    mHaveAllHeaders;
+    PRPackedBool                    mTransactionDone;
+    PRPackedBool                    mResponseIsComplete;
+    PRPackedBool                    mDidContentStart;
+    PRPackedBool                    mNoContent; // expecting an empty entity body
+    PRPackedBool                    mSentData;
+    PRPackedBool                    mReceivedData;
+    PRPackedBool                    mStatusEventPending;
+    PRPackedBool                    mHasRequestBody;
+    PRPackedBool                    mSSLConnectFailed;
+    PRPackedBool                    mHttpResponseMatched;
 
     // mClosed           := transaction has been explicitly closed
     // mTransactionDone  := transaction ran to completion or was interrupted

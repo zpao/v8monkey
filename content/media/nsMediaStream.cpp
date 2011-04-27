@@ -70,7 +70,8 @@ nsMediaChannelStream::nsMediaChannelStream(nsMediaDecoder* aDecoder,
     mReopenOnError(PR_FALSE), mIgnoreClose(PR_FALSE),
     mCacheStream(this),
     mLock("nsMediaChannelStream.mLock"),
-    mCacheSuspendCount(0)
+    mCacheSuspendCount(0),
+    mIgnoreResume(PR_FALSE)
 {
 }
 
@@ -221,7 +222,7 @@ nsMediaChannelStream::OnStartRequest(nsIRequest* aRequest)
       if (NS_SUCCEEDED(rv)) {
         double duration = durationText.ToDouble(&ec);
         if (ec == NS_OK && duration >= 0) {
-          mDecoder->SetDuration(PRInt64(NS_round(duration*1000)));
+          mDecoder->SetDuration(duration);
         }
       }
     }
@@ -276,7 +277,10 @@ nsMediaChannelStream::OnStartRequest(nsIRequest* aRequest)
   mIgnoreClose = PR_FALSE;
   if (mSuspendCount > 0) {
     // Re-suspend the channel if it needs to be suspended
+    // No need to call PossiblySuspend here since the channel is
+    // definitely in the right state for us in OneStartRequest.
     mChannel->Suspend();
+    mIgnoreResume = PR_FALSE;
   }
 
   // Fires an initial progress event and sets up the stall counter so stall events
@@ -556,7 +560,7 @@ void nsMediaChannelStream::CloseChannel()
   if (mChannel) {
     if (mSuspendCount > 0) {
       // Resume the channel before we cancel it
-      mChannel->Resume();
+      PossiblyResume();
     }
     // The status we use here won't be passed to the decoder, since
     // we've already revoked the listener. It can however be passed
@@ -626,7 +630,7 @@ void nsMediaChannelStream::Suspend(PRBool aCloseImmediately)
         MutexAutoLock lock(mLock);
         mChannelStatistics.Stop(TimeStamp::Now());
       }
-      mChannel->Suspend();
+      PossiblySuspend();
       element->DownloadSuspended();
     }
   }
@@ -657,7 +661,7 @@ void nsMediaChannelStream::Resume()
       // if an error occurs after Resume, assume it's because the server
       // timed out the connection and we should reopen it.
       mReopenOnError = PR_TRUE;
-      mChannel->Resume();
+      PossiblyResume();
       element->DownloadResumed();
     } else {
       PRInt64 totalLength = mCacheStream.GetLength();
@@ -867,6 +871,29 @@ nsMediaChannelStream::GetLength()
   return mCacheStream.GetLength();
 }
 
+void
+nsMediaChannelStream::PossiblySuspend()
+{
+  PRBool isPending = PR_FALSE;
+  nsresult rv = mChannel->IsPending(&isPending);
+  if (NS_SUCCEEDED(rv) && isPending) {
+    mChannel->Suspend();
+    mIgnoreResume = PR_FALSE;
+  } else {
+    mIgnoreResume = PR_TRUE;
+  }
+}
+
+void
+nsMediaChannelStream::PossiblyResume()
+{
+  if (!mIgnoreResume) {
+    mChannel->Resume();
+  } else {
+    mIgnoreResume = PR_FALSE;
+  }
+}
+
 class nsMediaFileStream : public nsMediaStream
 {
 public:
@@ -977,7 +1004,7 @@ nsresult nsMediaFileStream::Open(nsIStreamListener** aStreamListener)
     *aStreamListener = nsnull;
   }
 
-  nsresult rv;
+  nsresult rv = NS_OK;
   if (aStreamListener) {
     // The channel is already open. We need a synchronous stream that
     // implements nsISeekableStream, so we have to find the underlying

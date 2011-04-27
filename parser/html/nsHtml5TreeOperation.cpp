@@ -260,9 +260,10 @@ nsHtml5TreeOperation::AppendToDocument(nsIContent* aNode,
 
   NS_ASSERTION(!nsContentUtils::IsSafeToRunScript(),
                "Someone forgot to block scripts");
-  nsContentUtils::AddScriptRunner(
-    new nsDocElementCreatedNotificationRunner(doc));
-
+  if (aNode->IsElement()) {
+    nsContentUtils::AddScriptRunner(
+        new nsDocElementCreatedNotificationRunner(doc));
+  }
   return rv;
 }
 
@@ -624,8 +625,6 @@ nsHtml5TreeOperation::Perform(nsHtml5TreeOpExecutor* aBuilder,
                             aBuilder->GetNodeInfoManager(),
                             nsnull,
                             name,
-                            nsnull,
-                            nsnull,
                             publicId,
                             systemId,
                             voidString);

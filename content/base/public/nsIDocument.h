@@ -79,7 +79,7 @@ class nsCSSStyleSheet;
 class nsIViewManager;
 class nsIDOMEvent;
 class nsIDOMEventTarget;
-class nsIDeviceContext;
+class nsDeviceContext;
 class nsIParser;
 class nsIDOMNode;
 class nsIDOMElement;
@@ -166,7 +166,7 @@ public:
       mIsBeingUsedAsImage(PR_FALSE),
       mPartID(0)
   {
-    mParentPtrBits |= PARENT_BIT_INDOCUMENT;
+    SetInDocument();
   }
 #endif
   

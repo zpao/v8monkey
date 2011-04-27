@@ -54,10 +54,10 @@
 #include "nsIMultiPartChannel.h"
 #include "nsIInputStreamTee.h"
 #include "nsPrintfCString.h"
-#include "nsIContentUtils.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIDocument.h"
 #include "nsIWebNavigation.h"
+#include "nsContentUtils.h"
 
 #define MAGIC_REQUEST_CONTEXT 0x01020304
 
@@ -672,9 +672,7 @@ nsPluginStreamListenerPeer::OnStartRequest(nsIRequest *request,
           mPluginInstance->Start();
           mOwner->CreateWidget();
           // If we've got a native window, the let the plugin know about it.
-          nsCOMPtr<nsIPluginInstanceOwner_MOZILLA_2_0_BRANCH> owner = do_QueryInterface(mOwner);
-          if (owner)
-            owner->SetWindow();
+          mOwner->SetWindow();
         }
       }
     }
@@ -876,9 +874,7 @@ nsresult nsPluginStreamListenerPeer::ServeStreamAsFile(nsIRequest *request,
       window->window = widget->GetNativeData(NS_NATIVE_PLUGIN_PORT);
     }
 #endif
-    nsCOMPtr<nsIPluginInstanceOwner_MOZILLA_2_0_BRANCH> owner = do_QueryInterface(mOwner);
-    if (owner)
-      owner->SetWindow();
+    mOwner->SetWindow();
   }
   
   mSeekable = PR_FALSE;
@@ -969,7 +965,7 @@ NS_IMETHODIMP nsPluginStreamListenerPeer::OnDataAvailable(nsIRequest *request,
       brr->GetStartRange(&absoluteOffset64);
       
       // XXX handle 64-bit for real
-      PRInt32 absoluteOffset = (PRInt32)nsInt64(absoluteOffset64);
+      PRInt32 absoluteOffset = (PRInt32)PRInt64(absoluteOffset64);
       
       // we need to track how much data we have forwarded to the
       // plugin.
@@ -1049,7 +1045,7 @@ NS_IMETHODIMP nsPluginStreamListenerPeer::OnStopRequest(nsIRequest *request,
     PRInt64 absoluteOffset64 = LL_ZERO;
     brr->GetStartRange(&absoluteOffset64);
     // XXX support 64-bit offsets
-    PRInt32 absoluteOffset = (PRInt32)nsInt64(absoluteOffset64);
+    PRInt32 absoluteOffset = (PRInt32)PRInt64(absoluteOffset64);
     
     nsPRUintKey key(absoluteOffset);
     
@@ -1427,9 +1423,7 @@ nsPluginStreamListenerPeer::AsyncOnChannelRedirect(nsIChannel *oldChannel, nsICh
         return rv;
       }
       if (method.EqualsLiteral("POST")) {
-        nsCOMPtr<nsIContentUtils2> contentUtils2 = do_GetService("@mozilla.org/content/contentutils2;1");
-        NS_ENSURE_TRUE(contentUtils2, NS_ERROR_FAILURE);
-        rv = contentUtils2->CheckSameOrigin(oldChannel, newChannel);
+        rv = nsContentUtils::CheckSameOrigin(oldChannel, newChannel);
         if (NS_FAILED(rv)) {
           return rv;
         }

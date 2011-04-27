@@ -78,7 +78,6 @@
 #include "gfxImageSurface.h"
 #include "gfxPlatform.h"
 #include "nsSVGForeignObjectFrame.h"
-#include "nsIFontMetrics.h"
 #include "nsIDOMSVGUnitTypes.h"
 #include "nsSVGEffects.h"
 #include "nsMathUtils.h"
@@ -199,40 +198,16 @@ NS_SMILEnabled()
 }
 #endif // MOZ_SMIL
 
-Element*
-nsSVGUtils::GetParentElement(nsIContent *aContent)
-{
-  // XXXbz I _think_ this is right.  We want to be using the binding manager
-  // that would have attached the binding that gives us our anonymous parent.
-  // That's the binding manager for the document we actually belong to, which
-  // is our owner doc.
-  nsIDocument* ownerDoc = aContent->GetOwnerDoc();
-  nsBindingManager* bindingManager =
-    ownerDoc ? ownerDoc->BindingManager() : nsnull;
-
-  if (bindingManager) {
-    // if we have a binding manager -- do we have an anonymous parent?
-    nsIContent *result = bindingManager->GetInsertionParent(aContent);
-    if (result) {
-      return result->AsElement();
-    }
-  }
-
-  // otherewise use the explicit one, whether it's null or not...
-  nsIContent* parent = aContent->GetParent();
-  return parent && parent->IsElement() ? parent->AsElement() : nsnull;
-}
-
 nsSVGSVGElement*
 nsSVGUtils::GetOuterSVGElement(nsSVGElement *aSVGElement)
 {
   nsIContent *element = nsnull;
-  nsIContent *ancestor = GetParentElement(aSVGElement);
+  nsIContent *ancestor = aSVGElement->GetFlattenedTreeParent();
 
   while (ancestor && ancestor->GetNameSpaceID() == kNameSpaceID_SVG &&
                      ancestor->Tag() != nsGkAtoms::foreignObject) {
     element = ancestor;
-    ancestor = GetParentElement(element);
+    ancestor = element->GetFlattenedTreeParent();
   }
 
   if (element && element->Tag() == nsGkAtoms::svg) {
@@ -312,7 +287,7 @@ nsSVGUtils::GetFontXHeight(nsStyleContext *aStyleContext)
   nsPresContext *presContext = aStyleContext->PresContext();
   NS_ABORT_IF_FALSE(presContext, "NULL pres context in GetFontXHeight");
 
-  nsCOMPtr<nsIFontMetrics> fontMetrics;
+  nsRefPtr<nsFontMetrics> fontMetrics;
   nsLayoutUtils::GetFontMetricsForStyleContext(aStyleContext,
                                                getter_AddRefs(fontMetrics));
 
@@ -322,8 +297,7 @@ nsSVGUtils::GetFontXHeight(nsStyleContext *aStyleContext)
     return 1.0f;
   }
 
-  nscoord xHeight;
-  fontMetrics->GetXHeight(xHeight);
+  nscoord xHeight = fontMetrics->XHeight();
   return nsPresContext::AppUnitsToFloatCSSPixels(xHeight) /
          presContext->TextZoom();
 }
@@ -465,7 +439,7 @@ nsSVGUtils::EstablishesViewport(nsIContent *aContent)
 already_AddRefed<nsIDOMSVGElement>
 nsSVGUtils::GetNearestViewportElement(nsIContent *aContent)
 {
-  nsIContent *element = GetParentElement(aContent);
+  nsIContent *element = aContent->GetFlattenedTreeParent();
 
   while (element && element->GetNameSpaceID() == kNameSpaceID_SVG) {
     if (EstablishesViewport(element)) {
@@ -474,7 +448,7 @@ nsSVGUtils::GetNearestViewportElement(nsIContent *aContent)
       }
       return nsCOMPtr<nsIDOMSVGElement>(do_QueryInterface(element)).forget();
     }
-    element = GetParentElement(element);
+    element = element->GetFlattenedTreeParent();
   }
   return nsnull;
 }
@@ -490,7 +464,7 @@ nsSVGUtils::GetCTM(nsSVGElement *aElement, PRBool aScreenCTM)
 
   gfxMatrix matrix = aElement->PrependLocalTransformTo(gfxMatrix());
   nsSVGElement *element = aElement;
-  nsIContent *ancestor = GetParentElement(aElement);
+  nsIContent *ancestor = aElement->GetFlattenedTreeParent();
 
   while (ancestor && ancestor->GetNameSpaceID() == kNameSpaceID_SVG &&
                      ancestor->Tag() != nsGkAtoms::foreignObject) {
@@ -508,7 +482,7 @@ nsSVGUtils::GetCTM(nsSVGElement *aElement, PRBool aScreenCTM)
         return matrix;
       }
     }
-    ancestor = GetParentElement(ancestor);      
+    ancestor = ancestor->GetFlattenedTreeParent();
   }
   if (!aScreenCTM) {
     // didn't find a nearestViewportElement
@@ -1166,6 +1140,26 @@ nsSVGUtils::ToAppPixelRect(nsPresContext *aPresContext, const gfxRect& rect)
                 aPresContext->DevPixelsToAppUnits(NSToIntCeil(rect.YMost()) - NSToIntFloor(rect.Y())));
 }
 
+gfxIntSize
+nsSVGUtils::ConvertToSurfaceSize(const gfxSize& aSize,
+                                 PRBool *aResultOverflows)
+{
+  gfxIntSize surfaceSize(ClampToInt(aSize.width), ClampToInt(aSize.height));
+
+  *aResultOverflows = surfaceSize.width != NS_round(aSize.width) ||
+    surfaceSize.height != NS_round(aSize.height);
+
+  if (!gfxASurface::CheckSurfaceSize(surfaceSize)) {
+    surfaceSize.width = NS_MIN(NS_SVG_OFFSCREEN_MAX_DIMENSION,
+                               surfaceSize.width);
+    surfaceSize.height = NS_MIN(NS_SVG_OFFSCREEN_MAX_DIMENSION,
+                                surfaceSize.height);
+    *aResultOverflows = PR_TRUE;
+  }
+
+  return surfaceSize;
+}
+
 gfxMatrix
 nsSVGUtils::ConvertSVGMatrixToThebes(nsIDOMSVGMatrix *aMatrix)
 {
@@ -1219,19 +1213,19 @@ nsSVGUtils::GetClipRectForFrame(nsIFrame *aFrame,
       gfxRect(clipPxRect.x, clipPxRect.y, clipPxRect.width, clipPxRect.height);
 
     if (NS_STYLE_CLIP_RIGHT_AUTO & disp->mClipFlags) {
-      clipRect.size.width = aWidth - clipRect.X();
+      clipRect.width = aWidth - clipRect.X();
     }
     if (NS_STYLE_CLIP_BOTTOM_AUTO & disp->mClipFlags) {
-      clipRect.size.height = aHeight - clipRect.Y();
+      clipRect.height = aHeight - clipRect.Y();
     }
 
     if (disp->mOverflowX != NS_STYLE_OVERFLOW_HIDDEN) {
-      clipRect.pos.x = aX;
-      clipRect.size.width = aWidth;
+      clipRect.x = aX;
+      clipRect.width = aWidth;
     }
     if (disp->mOverflowY != NS_STYLE_OVERFLOW_HIDDEN) {
-      clipRect.pos.y = aY;
-      clipRect.size.height = aHeight;
+      clipRect.y = aY;
+      clipRect.height = aHeight;
     }
      
     return clipRect;
@@ -1464,13 +1458,13 @@ nsSVGUtils::PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
   double dy = style_expansion * (fabs(ctm.yy) + fabs(ctm.yx));
 
   gfxRect strokeExtents = aPathExtents;
-  strokeExtents.Outset(dy, dx, dy, dx);
+  strokeExtents.Inflate(dx, dy);
   return strokeExtents;
 }
 
 // ----------------------------------------------------------------------
 
-nsSVGRenderState::nsSVGRenderState(nsIRenderingContext *aContext) :
+nsSVGRenderState::nsSVGRenderState(nsRenderingContext *aContext) :
   mRenderMode(NORMAL), mRenderingContext(aContext), mPaintingToWindow(PR_FALSE)
 {
   mGfxContext = aContext->ThebesContext();
@@ -1487,15 +1481,13 @@ nsSVGRenderState::nsSVGRenderState(gfxASurface *aSurface) :
   mGfxContext = new gfxContext(aSurface);
 }
 
-nsIRenderingContext*
+nsRenderingContext*
 nsSVGRenderState::GetRenderingContext(nsIFrame *aFrame)
 {
   if (!mRenderingContext) {
-    nsIDeviceContext* devCtx = aFrame->PresContext()->DeviceContext();
-    devCtx->CreateRenderingContextInstance(*getter_AddRefs(mRenderingContext));
-    if (!mRenderingContext)
-      return nsnull;
-    mRenderingContext->Init(devCtx, mGfxContext);
+    mRenderingContext = new nsRenderingContext();
+    mRenderingContext->Init(aFrame->PresContext()->DeviceContext(),
+                            mGfxContext);
   }
   return mRenderingContext;
 }

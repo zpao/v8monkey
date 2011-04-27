@@ -61,7 +61,6 @@
 #include "nsIPresShell.h"
 #include "nsStyleContext.h"
 #include "nsIView.h"
-#include "nsIFontMetrics.h"
 #include "nsHTMLParts.h"
 #include "nsGkAtoms.h"
 #include "nsIDOMEvent.h"
@@ -89,6 +88,7 @@
 #include "nsCSSFrameConstructor.h"
 #include "nsCSSRendering.h"
 #include "FrameLayerBuilder.h"
+#include "nsRenderingContext.h"
 
 #ifdef IBMBIDI
 #include "nsBidiPresUtils.h"
@@ -569,7 +569,7 @@ nsBlockFrame::GetCaretBaseline() const
       return bp.top + firstLine->mFirstChild->GetCaretBaseline();
     }
   }
-  nsCOMPtr<nsIFontMetrics> fm;
+  nsRefPtr<nsFontMetrics> fm;
   nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm));
   return nsLayoutUtils::GetCenteredFontBaseline(fm, nsHTMLReflowState::
       CalcLineHeight(GetStyleContext(), contentRect.height)) +
@@ -674,8 +674,8 @@ static void ReparentFrame(nsIFrame* aFrame, nsIFrame* aOldParent,
 
   // When pushing and pulling frames we need to check for whether any
   // views need to be reparented
-  nsHTMLContainerFrame::ReparentFrameView(aFrame->PresContext(), aFrame,
-                                          aOldParent, aNewParent);
+  nsContainerFrame::ReparentFrameView(aFrame->PresContext(), aFrame,
+                                      aOldParent, aNewParent);
 }
  
 //////////////////////////////////////////////////////////////////////
@@ -701,7 +701,7 @@ nsBlockFrame::MarkIntrinsicWidthsDirty()
 }
 
 /* virtual */ nscoord
-nsBlockFrame::GetMinWidth(nsIRenderingContext *aRenderingContext)
+nsBlockFrame::GetMinWidth(nsRenderingContext *aRenderingContext)
 {
   nsIFrame* firstInFlow = GetFirstContinuation();
   if (firstInFlow != this)
@@ -778,7 +778,7 @@ nsBlockFrame::GetMinWidth(nsIRenderingContext *aRenderingContext)
 }
 
 /* virtual */ nscoord
-nsBlockFrame::GetPrefWidth(nsIRenderingContext *aRenderingContext)
+nsBlockFrame::GetPrefWidth(nsRenderingContext *aRenderingContext)
 {
   nsIFrame* firstInFlow = GetFirstContinuation();
   if (firstInFlow != this)
@@ -859,8 +859,9 @@ nsRect
 nsBlockFrame::ComputeTightBounds(gfxContext* aContext) const
 {
   // be conservative
-  if (GetStyleContext()->HasTextDecorations())
+  if (GetStyleContext()->HasTextDecorationLines()) {
     return GetVisualOverflowRect();
+  }
   return ComputeSimpleTightBounds(aContext);
 }
 
@@ -2368,13 +2369,12 @@ nsBlockFrame::ReflowDirtyLines(nsBlockReflowState& aState)
         metrics.ascent = metrics.height;
       }
 
-      nsIRenderingContext *rc = aState.mReflowState.rendContext;
+      nsRenderingContext *rc = aState.mReflowState.rendContext;
       nsLayoutUtils::SetFontFromStyle(rc, GetStyleContext());
-      nsCOMPtr<nsIFontMetrics> fm;
-      rc->GetFontMetrics(*getter_AddRefs(fm));
 
       nscoord minAscent =
-        nsLayoutUtils::GetCenteredFontBaseline(fm, aState.mMinLineHeight);
+        nsLayoutUtils::GetCenteredFontBaseline(rc->FontMetrics(),
+                                               aState.mMinLineHeight);
       nscoord minDescent = aState.mMinLineHeight - minAscent;
 
       aState.mY += NS_MAX(minAscent, metrics.ascent) +
@@ -5922,7 +5922,7 @@ nsBlockFrame::ReflowPushedFloats(nsBlockReflowState& aState,
 
       // Invalidate if there was a position or size change
       nsRect rect = f->GetRect();
-      if (rect != oldRect) {
+      if (!rect.IsEqualInterior(oldRect)) {
         nsRect dirtyRect = oldOverflow;
         dirtyRect.MoveBy(oldRect.x, oldRect.y);
         Invalidate(dirtyRect);
@@ -6736,6 +6736,7 @@ nsBlockFrame::RenumberListsFor(nsPresContext* aPresContext,
 
   // if the frame is a placeholder, then get the out of flow frame
   nsIFrame* kid = nsPlaceholderFrame::GetRealFrameFor(aKid);
+  const nsStyleDisplay* display = kid->GetStyleDisplay();
 
   // drill down through any wrappers to the real frame
   kid = kid->GetContentInsertionFrame();
@@ -6749,7 +6750,6 @@ nsBlockFrame::RenumberListsFor(nsPresContext* aPresContext,
   // If the frame is a list-item and the frame implements our
   // block frame API then get its bullet and set the list item
   // ordinal.
-  const nsStyleDisplay* display = kid->GetStyleDisplay();
   if (NS_STYLE_DISPLAY_LIST_ITEM == display->mDisplay) {
     // Make certain that the frame is a block frame in case
     // something foreign has crept in.

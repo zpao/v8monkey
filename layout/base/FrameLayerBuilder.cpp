@@ -47,6 +47,7 @@
 #include "nsCSSFrameConstructor.h"
 #include "gfxUtils.h"
 #include "nsImageFrame.h"
+#include "nsRenderingContext.h"
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -958,6 +959,7 @@ ContainerState::PopThebesLayerData()
       layer = imageLayer;
     } else {
       nsRefPtr<ColorLayer> colorLayer = CreateOrRecycleColorLayer();
+      colorLayer->SetIsFixedPosition(data->mLayer->GetIsFixedPosition());
       colorLayer->SetColor(data->mSolidColor);
 
       // Copy transform
@@ -1308,17 +1310,28 @@ ContainerState::ProcessDisplayItems(const nsDisplayList& aList,
     nsDisplayItem::LayerState layerState =
       item->GetLayerState(mBuilder, mManager);
 
+    nsIFrame* activeScrolledRoot =
+      nsLayoutUtils::GetActiveScrolledRootFor(item, mBuilder);
+
     // Assign the item to a layer
     if (layerState == LAYER_ACTIVE_FORCE ||
+        layerState == LAYER_ACTIVE_EMPTY ||
         layerState == LAYER_ACTIVE && (aClip.mRoundedClipRects.IsEmpty() ||
         // We can use the visible rect here only because the item has its own
         // layer, like the comment below.
         !aClip.IsRectClippedByRoundedCorner(item->GetVisibleRect()))) {
+
+      // LAYER_ACTIVE_EMPTY means the layer is created just for its metadata.
+      // We should never see an empty layer with any visible content!
+      NS_ASSERTION(layerState != LAYER_ACTIVE_EMPTY ||
+                   itemVisibleRect.IsEmpty(),
+                   "State is LAYER_ACTIVE_EMPTY but visible rect is not.");
+
       // If the item would have its own layer but is invisible, just hide it.
       // Note that items without their own layers can't be skipped this
       // way, since their ThebesLayer may decide it wants to draw them
       // into its buffer even if they're currently covered.
-      if (itemVisibleRect.IsEmpty()) {
+      if (itemVisibleRect.IsEmpty() && layerState != LAYER_ACTIVE_EMPTY) {
         InvalidateForLayerChange(item, nsnull);
         continue;
       }
@@ -1331,6 +1344,9 @@ ContainerState::ProcessDisplayItems(const nsDisplayList& aList,
         InvalidateForLayerChange(item, ownLayer);
         continue;
       }
+
+      ownLayer->SetIsFixedPosition(!nsLayoutUtils::ScrolledByViewportScrolling(
+                                      activeScrolledRoot, mBuilder));
 
       // Update that layer's clip and visible rects.
       NS_ASSERTION(ownLayer->Manager() == mManager, "Wrong manager");
@@ -1363,24 +1379,12 @@ ContainerState::ProcessDisplayItems(const nsDisplayList& aList,
       mNewChildLayers.AppendElement(ownLayer);
       mBuilder->LayerBuilder()->AddLayerDisplayItem(ownLayer, item);
     } else {
-      nsIFrame* f = item->GetUnderlyingFrame();
-      nsIFrame* activeScrolledRoot =
-        nsLayoutUtils::GetActiveScrolledRootFor(f, mBuilder->ReferenceFrame());
-      if (item->IsFixedAndCoveringViewport(mBuilder)) {
-        // Make its active scrolled root be the active scrolled root of
-        // the enclosing viewport, since it shouldn't be scrolled by scrolled
-        // frames in its document. InvalidateFixedBackgroundFramesFromList in
-        // nsGfxScrollFrame will not repaint this item when scrolling occurs.
-        nsIFrame* viewportFrame =
-          nsLayoutUtils::GetClosestFrameOfType(f, nsGkAtoms::viewportFrame);
-        NS_ASSERTION(viewportFrame, "no viewport???");
-        activeScrolledRoot =
-          nsLayoutUtils::GetActiveScrolledRootFor(viewportFrame, mBuilder->ReferenceFrame());
-      }
-
       nsRefPtr<ThebesLayer> thebesLayer =
         FindThebesLayerFor(item, itemVisibleRect, itemDrawRect, aClip,
                            activeScrolledRoot);
+
+      thebesLayer->SetIsFixedPosition(!nsLayoutUtils::ScrolledByViewportScrolling(
+                                         activeScrolledRoot, mBuilder));
 
       InvalidateForLayerChange(item, thebesLayer);
 
@@ -1438,7 +1442,7 @@ PRBool
 FrameLayerBuilder::NeedToInvalidateFixedDisplayItem(nsDisplayListBuilder* aBuilder,
                                                     nsDisplayItem* aItem)
 {
-  return !aItem->IsFixedAndCoveringViewport(aBuilder) ||
+  return !aItem->ShouldFixToViewport(aBuilder) ||
       !HasRetainedLayerFor(aItem->GetUnderlyingFrame(), aItem->GetPerFrameKey());
 }
 
@@ -1647,7 +1651,7 @@ FrameLayerBuilder::BuildContainerLayerFor(nsDisplayListBuilder* aBuilder,
   state.Finish(&flags);
 
   nsRect bounds = state.GetChildrenBounds();
-  NS_ASSERTION(bounds == aChildren.GetBounds(aBuilder), "Wrong bounds");
+  NS_ASSERTION(bounds.IsEqualInterior(aChildren.GetBounds(aBuilder)), "Wrong bounds");
   nsIntRect pixBounds = bounds.ToOutsidePixels(appUnitsPerDevPixel);
   containerLayer->SetVisibleRegion(pixBounds);
   // Make sure that rounding the visible region out didn't add any area
@@ -1888,11 +1892,7 @@ FrameLayerBuilder::DrawThebesLayer(ThebesLayer* aLayer,
     }
   }
 
-  nsRefPtr<nsIRenderingContext> rc;
-  nsresult rv =
-    presContext->DeviceContext()->CreateRenderingContextInstance(*getter_AddRefs(rc));
-  if (NS_FAILED(rv))
-    return;
+  nsRefPtr<nsRenderingContext> rc = new nsRenderingContext();
   rc->Init(presContext->DeviceContext(), aContext);
 
   Clip currentClip;

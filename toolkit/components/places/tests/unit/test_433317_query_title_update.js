@@ -15,7 +15,7 @@
  *
  * The Original Code is Bug 433317 code.
  *
- * The Initial Developer of the Original Code is Mozilla Corp.
+ * The Initial Developer of the Original Code is the Mozilla Foundation.
  * Portions created by the Initial Developer are Copyright (C) 2008
  * the Initial Developer. All Rights Reserved.
  *
@@ -65,4 +65,6 @@ function run_test() {
 
   // confirm the node was updated
   do_check_eq(queryNode.title, "foo");
+
+  root.containerOpen = false;
 }

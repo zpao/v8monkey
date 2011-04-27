@@ -37,10 +37,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#ifdef MOZ_IPC
 #include "base/basictypes.h"
 #include "IPC/IPCMessageUtils.h"
-#endif
 #include "nsCOMPtr.h"
 #include "nsDOMUIEvent.h"
 #include "nsIPresShell.h"
@@ -49,7 +47,7 @@
 #include "nsIDOMNode.h"
 #include "nsIContent.h"
 #include "nsContentUtils.h"
-#include "nsIEventStateManager.h"
+#include "nsEventStateManager.h"
 #include "nsIFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsIScrollableFrame.h"
@@ -260,7 +258,7 @@ nsDOMUIEvent::GetRangeParent(nsIDOMNode** aRangeParent)
   nsIFrame* targetFrame = nsnull;
 
   if (mPresContext) {
-    mPresContext->EventStateManager()->GetEventTarget(&targetFrame);
+    targetFrame = mPresContext->EventStateManager()->GetEventTarget();
   }
 
   *aRangeParent = nsnull;
@@ -288,7 +286,7 @@ nsDOMUIEvent::GetRangeOffset(PRInt32* aRangeOffset)
   nsIFrame* targetFrame = nsnull;
 
   if (mPresContext) {
-    mPresContext->EventStateManager()->GetEventTarget(&targetFrame);
+    targetFrame = mPresContext->EventStateManager()->GetEventTarget();
   }
 
   if (targetFrame) {
@@ -336,8 +334,7 @@ nsDOMUIEvent::GetLayerPoint()
     return mLayerPoint;
   }
   // XXX I'm not really sure this is correct; it's my best shot, though
-  nsIFrame* targetFrame;
-  mPresContext->EventStateManager()->GetEventTarget(&targetFrame);
+  nsIFrame* targetFrame = mPresContext->EventStateManager()->GetEventTarget();
   if (!targetFrame)
     return mLayerPoint;
   nsIFrame* layer = nsLayoutUtils::GetClosestLayer(targetFrame);
@@ -394,7 +391,6 @@ nsDOMUIEvent::DuplicatePrivateData()
   return rv;
 }
 
-#ifdef MOZ_IPC
 void
 nsDOMUIEvent::Serialize(IPC::Message* aMsg, PRBool aSerializeInterfaceType)
 {
@@ -416,7 +412,6 @@ nsDOMUIEvent::Deserialize(const IPC::Message* aMsg, void** aIter)
   NS_ENSURE_TRUE(IPC::ReadParam(aMsg, aIter, &mDetail), PR_FALSE);
   return PR_TRUE;
 }
-#endif
 
 nsresult NS_NewDOMUIEvent(nsIDOMEvent** aInstancePtrResult,
                           nsPresContext* aPresContext,

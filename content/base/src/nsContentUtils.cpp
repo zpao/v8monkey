@@ -58,7 +58,6 @@
 #include "nsIDOMScriptObjectFactory.h"
 #include "nsDOMCID.h"
 #include "nsContentUtils.h"
-#include "nsIContentUtils.h"
 #include "nsIXPConnect.h"
 #include "nsIContent.h"
 #include "mozilla/dom/Element.h"
@@ -211,6 +210,7 @@ static NS_DEFINE_CID(kXTFServiceCID, NS_XTFSERVICE_CID);
 #ifdef MOZ_MEDIA
 #include "nsHTMLMediaElement.h"
 #endif
+#include "nsDOMTouchEvent.h"
 
 using namespace mozilla::dom;
 using namespace mozilla::layers;
@@ -688,6 +688,12 @@ nsContentUtils::InitializeEventTable() {
     { nsGkAtoms::onMozTouchUp,                  NS_MOZTOUCH_UP, EventNameType_None, NS_MOZTOUCH_EVENT },
 
     { nsGkAtoms::ontransitionend,               NS_TRANSITION_END, EventNameType_None, NS_TRANSITION_EVENT }
+#ifdef MOZ_CSS_ANIMATIONS
+    ,
+    { nsGkAtoms::onanimationstart,              NS_ANIMATION_START, EventNameType_None, NS_ANIMATION_EVENT },
+    { nsGkAtoms::onanimationend,                NS_ANIMATION_END, EventNameType_None, NS_ANIMATION_EVENT },
+    { nsGkAtoms::onanimationiteration,          NS_ANIMATION_ITERATION, EventNameType_None, NS_ANIMATION_EVENT }
+#endif
   };
 
   sAtomEventTable = new nsDataHashtable<nsISupportsHashKey, EventNameMapping>;
@@ -720,6 +726,35 @@ nsContentUtils::InitializeEventTable() {
 
   return PR_TRUE;
 }
+
+void
+nsContentUtils::InitializeTouchEventTable()
+{
+  static PRBool sEventTableInitialized = PR_FALSE;
+  if (!sEventTableInitialized && sAtomEventTable && sStringEventTable) {
+    sEventTableInitialized = PR_TRUE;
+    static const EventNameMapping touchEventArray[] = {
+      { nsGkAtoms::ontouchstart, NS_USER_DEFINED_EVENT, EventNameType_All, NS_INPUT_EVENT },
+      { nsGkAtoms::ontouchend, NS_USER_DEFINED_EVENT, EventNameType_All, NS_INPUT_EVENT },
+      { nsGkAtoms::ontouchmove, NS_USER_DEFINED_EVENT, EventNameType_All, NS_INPUT_EVENT },
+      { nsGkAtoms::ontouchenter, NS_USER_DEFINED_EVENT, EventNameType_All, NS_INPUT_EVENT },
+      { nsGkAtoms::ontouchleave, NS_USER_DEFINED_EVENT, EventNameType_All, NS_INPUT_EVENT },
+      { nsGkAtoms::ontouchcancel, NS_USER_DEFINED_EVENT, EventNameType_All, NS_INPUT_EVENT }
+    };
+    for (PRUint32 i = 0; i < NS_ARRAY_LENGTH(touchEventArray); ++i) {
+      if (!sAtomEventTable->Put(touchEventArray[i].mAtom, touchEventArray[i]) ||
+          !sStringEventTable->Put(Substring(nsDependentAtomString(touchEventArray[i].mAtom), 2),
+                                  touchEventArray[i])) {
+        delete sAtomEventTable;
+        sAtomEventTable = nsnull;
+        delete sStringEventTable;
+        sStringEventTable = nsnull;
+        return;
+      }
+    }
+  }
+}
+
 
 /**
  * Access a cached parser service. Don't addref. We need only one
@@ -2138,11 +2173,17 @@ nsContentUtils::GenerateStateKey(nsIContent* aContent,
 
   if (!generatedUniqueKey) {
     // Either we didn't have a form control or we aren't in an HTML document so
-    // we can't figure out form info.  First append a character that is not "d"
-    // or "f" to disambiguate from the case when we were a form control in an
-    // HTML document.
-    KeyAppendString(NS_LITERAL_CSTRING("o"), aKey);
-    
+    // we can't figure out form info.  Append the tag name if it's an element
+    // to avoid restoring state for one type of element on another type.
+    if (aContent->IsElement()) {
+      KeyAppendString(nsDependentAtomString(aContent->Tag()), aKey);
+    }
+    else {
+      // Append a character that is not "d" or "f" to disambiguate from
+      // the case when we were a form control in an HTML document.
+      KeyAppendString(NS_LITERAL_CSTRING("o"), aKey);
+    }
+
     // Now start at aContent and append the indices of it and all its ancestors
     // in their containers.  That should at least pin down its position in the
     // DOM...
@@ -2172,21 +2213,13 @@ nsContentUtils::NewURIWithDocumentCharset(nsIURI** aResult,
 
 // static
 PRBool
-nsContentUtils::BelongsInForm(nsIDOMHTMLFormElement *aForm,
+nsContentUtils::BelongsInForm(nsIContent *aForm,
                               nsIContent *aContent)
 {
   NS_PRECONDITION(aForm, "Must have a form");
   NS_PRECONDITION(aContent, "Must have a content node");
 
-  nsCOMPtr<nsIContent> form(do_QueryInterface(aForm));
-
-  if (!form) {
-    NS_ERROR("This should not happen, form is not an nsIContent!");
-
-    return PR_TRUE;
-  }
-
-  if (form == aContent) {
+  if (aForm == aContent) {
     // A form does not belong inside itself, so we return false here
 
     return PR_FALSE;
@@ -2195,7 +2228,7 @@ nsContentUtils::BelongsInForm(nsIDOMHTMLFormElement *aForm,
   nsIContent* content = aContent->GetParent();
 
   while (content) {
-    if (content == form) {
+    if (content == aForm) {
       // aContent is contained within the form so we return true.
 
       return PR_TRUE;
@@ -2212,7 +2245,7 @@ nsContentUtils::BelongsInForm(nsIDOMHTMLFormElement *aForm,
     content = content->GetParent();
   }
 
-  if (form->GetChildCount() > 0) {
+  if (aForm->GetChildCount() > 0) {
     // The form is a container but aContent wasn't inside the form,
     // return false
 
@@ -2223,7 +2256,7 @@ nsContentUtils::BelongsInForm(nsIDOMHTMLFormElement *aForm,
   // we check whether the content comes after the form.  If it does,
   // return true.  If it does not, then it couldn't have been inside
   // the form in the HTML.
-  if (PositionIsBefore(form, aContent)) {
+  if (PositionIsBefore(aForm, aContent)) {
     // We could be in this form!
     // In the future, we may want to get document.forms, look at the
     // form after aForm, and if aContent is after that form after
@@ -3318,6 +3351,17 @@ nsContentUtils::GetEventId(nsIAtom* aName)
     return mapping.mId;
 
   return NS_USER_DEFINED_EVENT;
+}
+
+// static
+PRUint32
+nsContentUtils::GetEventCategory(const nsAString& aName)
+{
+  EventNameMapping mapping;
+  if (sStringEventTable->Get(aName, &mapping))
+    return mapping.mStructType;
+
+  return NS_EVENT;
 }
 
 nsIAtom*
@@ -4698,21 +4742,22 @@ nsContentUtils::RemoveScriptBlocker()
 
   PRUint32 firstBlocker = sRunnersCountAtFirstBlocker;
   PRUint32 lastBlocker = (PRUint32)sBlockedScriptRunners->Count();
+  PRUint32 originalFirstBlocker = firstBlocker;
+  PRUint32 blockersCount = lastBlocker - firstBlocker;
   sRunnersCountAtFirstBlocker = 0;
   NS_ASSERTION(firstBlocker <= lastBlocker,
                "bad sRunnersCountAtFirstBlocker");
 
   while (firstBlocker < lastBlocker) {
     nsCOMPtr<nsIRunnable> runnable = (*sBlockedScriptRunners)[firstBlocker];
-    sBlockedScriptRunners->RemoveObjectAt(firstBlocker);
-    --lastBlocker;
+    ++firstBlocker;
 
     runnable->Run();
-    NS_ASSERTION(lastBlocker == (PRUint32)sBlockedScriptRunners->Count() &&
-                 sRunnersCountAtFirstBlocker == 0,
+    NS_ASSERTION(sRunnersCountAtFirstBlocker == 0,
                  "Bad count");
     NS_ASSERTION(!sScriptBlockerCount, "This is really bad");
   }
+  sBlockedScriptRunners->RemoveObjectsAt(originalFirstBlocker, blockersCount);
 }
 
 /* static */
@@ -4986,6 +5031,32 @@ nsContentUtils::URIIsLocalFile(nsIURI *aURI)
                                 nsIProtocolHandler::URI_IS_LOCAL_FILE,
                                 &isFile)) &&
          isFile;
+}
+
+nsresult
+nsContentUtils::SplitURIAtHash(nsIURI *aURI,
+                               nsACString &aBeforeHash,
+                               nsACString &aAfterHash)
+{
+  // See bug 225910 for why we can't do this using nsIURL.
+
+  aBeforeHash.Truncate();
+  aAfterHash.Truncate();
+
+  NS_ENSURE_ARG_POINTER(aURI);
+
+  nsCAutoString spec;
+  nsresult rv = aURI->GetSpec(spec);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  PRInt32 index = spec.FindChar('#');
+  if (index == -1) {
+    index = spec.Length();
+  }
+
+  aBeforeHash.Assign(Substring(spec, 0, index));
+  aAfterHash.Assign(Substring(spec, index));
+  return NS_OK;
 }
 
 /* static */
@@ -6161,7 +6232,8 @@ private:
 };
 
 static void
-DebugWrapperTraceCallback(PRUint32 langID, void *p, void *closure)
+DebugWrapperTraceCallback(PRUint32 langID, void *p, const char *name,
+                          void *closure)
 {
   DebugWrapperTraversalCallback* callback =
     static_cast<DebugWrapperTraversalCallback*>(closure);
@@ -6416,23 +6488,9 @@ nsContentUtils::AllowXULXBLForPrincipal(nsIPrincipal* aPrincipal)
           IsSitePermAllow(princURI, "allowXULXBL"));
 }
 
-NS_IMPL_ISUPPORTS1(nsIContentUtils, nsIContentUtils)
-
-PRBool
-nsIContentUtils::IsSafeToRunScript()
-{
-  return nsContentUtils::IsSafeToRunScript();
-}
-
-PRBool
-nsIContentUtils::ParseIntMarginValue(const nsAString& aString, nsIntMargin& result)
-{
-  return nsContentUtils::ParseIntMarginValue(aString, result);
-}
-
 already_AddRefed<nsIDocumentLoaderFactory>
-nsIContentUtils::FindInternalContentViewer(const char* aType,
-                                           ContentViewerType* aLoaderType)
+nsContentUtils::FindInternalContentViewer(const char* aType,
+                                          ContentViewerType* aLoaderType)
 {
   if (aLoaderType) {
     *aLoaderType = TYPE_UNSUPPORTED;
@@ -6456,7 +6514,7 @@ nsIContentUtils::FindInternalContentViewer(const char* aType,
         *aLoaderType = TYPE_PLUGIN;
       else
       *aLoaderType = TYPE_UNKNOWN;
-    }   
+    }
     return docFactory.forget();
   }
 
@@ -6494,35 +6552,3 @@ nsIContentUtils::FindInternalContentViewer(const char* aType,
 
   return NULL;
 }
-
-NS_IMPL_ISUPPORTS1(nsIContentUtils2, nsIContentUtils2)
-
-nsIInterfaceRequestor*
-nsIContentUtils2::GetSameOriginChecker()
-{
-  return nsContentUtils::GetSameOriginChecker();
-}
-
-nsresult
-nsIContentUtils2::CheckSameOrigin(nsIChannel *aOldChannel, nsIChannel *aNewChannel)
-{
-  return nsContentUtils::CheckSameOrigin(aOldChannel, aNewChannel);
-}
-
-#ifndef MOZ_ENABLE_LIBXUL
-
-NS_IMPL_ISUPPORTS1(nsIContentUtils_MOZILLA_2_0_BRANCH, nsIContentUtils_MOZILLA_2_0_BRANCH)
-
-nsresult
-nsIContentUtils_MOZILLA_2_0_BRANCH::DispatchTrustedEvent(nsIDocument* aDoc,
-                                                         nsISupports* aTarget,
-                                                         const nsAString& aEventName,
-                                                         PRBool aCanBubble,
-                                                         PRBool aCancelable,
-                                                         PRBool *aDefaultAction)
-{
-  return nsContentUtils::DispatchTrustedEvent(aDoc, aTarget, aEventName,
-                                              aCanBubble, aCancelable, aDefaultAction);
-}
-
-#endif

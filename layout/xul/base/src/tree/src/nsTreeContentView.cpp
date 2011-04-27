@@ -42,7 +42,7 @@
 #include "nsTreeContentView.h"
 #include "nsChildIterator.h"
 #include "nsIDOMClassInfo.h"
-#include "nsIEventStateManager.h"
+#include "nsEventStates.h"
 #include "nsINodeInfo.h"
 #include "nsIXULSortService.h"
 #include "nsContentUtils.h"
@@ -1143,7 +1143,7 @@ nsTreeContentView::SerializeItem(nsIContent* aContent, PRInt32 aParentIndex,
       row->SetOpen(PR_TRUE);
       nsIContent* child =
         nsTreeUtils::GetImmediateChild(aContent, nsGkAtoms::treechildren);
-      if (child) {
+      if (child && child->IsXUL()) {
         // Now, recursively serialize our child.
         PRInt32 count = aRows.Length();
         PRInt32 index = 0;
@@ -1201,7 +1201,7 @@ nsTreeContentView::GetIndexInSubtree(nsIContent* aContainer,
                                    nsGkAtoms::_true, eCaseMatters)) {
             nsIContent* child =
               nsTreeUtils::GetImmediateChild(content, nsGkAtoms::treechildren);
-            if (child)
+            if (child && child->IsXUL())
               GetIndexInSubtree(child, aContent, aIndex);
           }
         }
@@ -1222,7 +1222,7 @@ nsTreeContentView::EnsureSubtree(PRInt32 aIndex)
 
   nsIContent* child;
   child = nsTreeUtils::GetImmediateChild(row->mContent, nsGkAtoms::treechildren);
-  if (! child) {
+  if (!child || !child->IsXUL()) {
     return 0;
   }
 

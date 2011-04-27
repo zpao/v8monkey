@@ -88,6 +88,14 @@ XPIDLSRCS =					\
 	nsIDOMPopStateEvent.idl			\
 	nsIDOMCloseEvent.idl			\
 	nsIDOMEventException.idl		\
+	nsIDOMTouchEvent.idl			\
+	nsIDOMHashChangeEvent.idl		\
 	$(NULL)
+
+ifdef MOZ_CSS_ANIMATIONS
+XPIDLSRCS +=					\
+	nsIDOMAnimationEvent.idl		\
+	$(NULL)
+endif
 
 include $(topsrcdir)/config/rules.mk

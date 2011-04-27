@@ -66,12 +66,9 @@ public:
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
   NS_IMETHOD DoAction(PRUint8 index);
 
-  // nsAccessNode
-  virtual PRBool Init();
-
   // nsAccessible
   virtual PRUint32 NativeRole();
-  virtual nsresult GetStateInternal(PRUint32 *aState, PRUint32 *aExtraState);
+  virtual PRUint64 NativeState();
 
 protected:
 
@@ -99,7 +96,7 @@ public:
 
   // nsAccessible
   virtual PRUint32 NativeRole();
-  virtual nsresult GetStateInternal(PRUint32 *aState, PRUint32 *aExtraState);
+  virtual PRUint64 NativeState();
 };
 
 /**
@@ -118,7 +115,7 @@ public:
 
   // nsAccessible
   virtual PRUint32 NativeRole();
-  virtual nsresult GetStateInternal(PRUint32 *aState, PRUint32 *aExtraState);
+  virtual PRUint64 NativeState();
 
 private:
   PRBool DropmarkerOpen(PRBool aToggleOpen);
@@ -167,9 +164,9 @@ public:
   nsXULRadioButtonAccessible(nsIContent *aContent, nsIWeakReference *aShell);
 
   // nsAccessible
-  virtual nsresult GetStateInternal(PRUint32 *aState, PRUint32 *aExtraState);
   virtual void GetPositionAndSizeInternal(PRInt32 *aPosInSet,
                                           PRInt32 *aSetSize);
+  virtual PRUint64 NativeState();
 };
 
 /**
@@ -182,7 +179,7 @@ public:
 
   // nsAccessible
   virtual PRUint32 NativeRole();
-  virtual nsresult GetStateInternal(PRUint32 *aState, PRUint32 *aExtraState);
+  virtual PRUint64 NativeState();
 };
 
 /**
@@ -237,7 +234,7 @@ public:
 
   // nsAccessible
   virtual PRUint32 NativeRole();
-  virtual nsresult GetStateInternal(PRUint32 *aState, PRUint32 *aExtraState);
+  virtual PRUint64 NativeState();
 };
 
 /**
@@ -262,9 +259,9 @@ public:
   NS_IMETHOD GetAssociatedEditor(nsIEditor **aEditor);
 
   // nsAccessible
-  virtual nsresult GetARIAState(PRUint32 *aState, PRUint32 *aExtraState);
+  virtual void ApplyARIAState(PRUint64* aState);
   virtual PRUint32 NativeRole();
-  virtual nsresult GetStateInternal(PRUint32 *aState, PRUint32 *aExtraState);
+  virtual PRUint64 NativeState();
   virtual PRBool GetAllowsAnonChildAccessibles();
 
 protected:

@@ -383,7 +383,10 @@ class GeckoSurfaceView
             outAttrs.imeOptions = EditorInfo.IME_ACTION_SEND;
         else if (mIMEActionHint != null && mIMEActionHint.length() != 0)
             outAttrs.actionLabel = mIMEActionHint;
-            
+
+        if (mIMELandscapeFS == false)
+            outAttrs.imeOptions |= EditorInfo.IME_FLAG_NO_EXTRACT_UI;
+
         inputConnection.reset();
         return inputConnection;
     }
@@ -616,6 +619,7 @@ class GeckoSurfaceView
     public static final int IME_STATE_DISABLED = 0;
     public static final int IME_STATE_ENABLED = 1;
     public static final int IME_STATE_PASSWORD = 2;
+    public static final int IME_STATE_PLUGIN = 3;
 
     GeckoInputConnection inputConnection;
     KeyListener mKeyListener;
@@ -624,6 +628,7 @@ class GeckoSurfaceView
     int mIMEState;
     String mIMETypeHint;
     String mIMEActionHint;
+    boolean mIMELandscapeFS;
 
     // Software rendering
     ByteBuffer mSoftwareBuffer;

@@ -81,7 +81,6 @@
 #include "nsIHTMLCollection.h"
 
 #include "nsIConstraintValidation.h"
-#include "nsIEventStateManager.h"
 
 #include "nsIDOMHTMLButtonElement.h"
 
@@ -122,20 +121,15 @@ public:
   // nsIDOMHTMLCollection interface
   NS_DECL_NSIDOMHTMLCOLLECTION
 
-  virtual nsIContent* GetNodeAt(PRUint32 aIndex, nsresult* aResult)
+  virtual nsIContent* GetNodeAt(PRUint32 aIndex)
   {
     FlushPendingNotifications();
-
-    *aResult = NS_OK;
 
     return mElements.SafeElementAt(aIndex, nsnull);
   }
   virtual nsISupports* GetNamedItem(const nsAString& aName,
-                                    nsWrapperCache **aCache,
-                                    nsresult* aResult)
+                                    nsWrapperCache **aCache)
   {
-    *aResult = NS_OK;
-
     nsISupports *item = NamedItemInternal(aName, PR_TRUE);
     *aCache = nsnull;
     return item;
@@ -2055,8 +2049,6 @@ nsHTMLFormElement::WalkRadioGroup(const nsAString& aName,
 {
   nsresult rv = NS_OK;
 
-  PRBool stopIterating = PR_FALSE;
-
   if (aName.IsEmpty()) {
     //
     // XXX If the name is empty, it's not stored in the control list.  There
@@ -2071,8 +2063,7 @@ nsHTMLFormElement::WalkRadioGroup(const nsAString& aName,
         if (controlContent) {
           if (controlContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::name,
                                           EmptyString(), eCaseMatters)) {
-            aVisitor->Visit(control, &stopIterating);
-            if (stopIterating) {
+            if (!aVisitor->Visit(control)) {
               break;
             }
           }
@@ -2094,7 +2085,7 @@ nsHTMLFormElement::WalkRadioGroup(const nsAString& aName,
       nsCOMPtr<nsIFormControl> formControl(do_QueryInterface(item));
       if (formControl) {
         if (formControl->GetType() == NS_FORM_INPUT_RADIO) {
-          aVisitor->Visit(formControl, &stopIterating);
+          aVisitor->Visit(formControl);
         }
       } else {
         nsCOMPtr<nsIDOMNodeList> nodeList(do_QueryInterface(item));
@@ -2107,8 +2098,7 @@ nsHTMLFormElement::WalkRadioGroup(const nsAString& aName,
             nsCOMPtr<nsIFormControl> formControl(do_QueryInterface(node));
             if (formControl) {
               if (formControl->GetType() == NS_FORM_INPUT_RADIO) {
-                aVisitor->Visit(formControl, &stopIterating);
-                if (stopIterating) {
+                if (!aVisitor->Visit(formControl)) {
                   break;
                 }
               }
@@ -2293,8 +2283,8 @@ NS_INTERFACE_TABLE_HEAD(nsFormControlList)
 NS_INTERFACE_MAP_END
 
 
-NS_IMPL_CYCLE_COLLECTING_ADDREF_AMBIGUOUS(nsFormControlList, nsIHTMLCollection)
-NS_IMPL_CYCLE_COLLECTING_RELEASE_AMBIGUOUS(nsFormControlList, nsIHTMLCollection)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(nsFormControlList)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(nsFormControlList)
 
 
 // nsIDOMHTMLCollection interface
@@ -2310,12 +2300,11 @@ nsFormControlList::GetLength(PRUint32* aLength)
 NS_IMETHODIMP
 nsFormControlList::Item(PRUint32 aIndex, nsIDOMNode** aReturn)
 {
-  nsresult rv;
-  nsISupports* item = GetNodeAt(aIndex, &rv);
+  nsISupports* item = GetNodeAt(aIndex);
   if (!item) {
     *aReturn = nsnull;
 
-    return rv;
+    return NS_OK;
   }
 
   return CallQueryInterface(item, aReturn);
@@ -2398,7 +2387,7 @@ nsFormControlList::AddElementToTable(nsGenericHTMLFormElement* aChild,
 
       // Found an element, create a list, add the element to the list and put
       // the list in the hash
-      nsBaseContentList *list = new nsBaseContentList();
+      nsSimpleContentList *list = new nsSimpleContentList(mForm);
       NS_ENSURE_TRUE(list, NS_ERROR_OUT_OF_MEMORY);
 
       NS_ASSERTION(content->GetParent(), "Item in list without parent");
@@ -2422,7 +2411,7 @@ nsFormControlList::AddElementToTable(nsGenericHTMLFormElement* aChild,
       NS_ENSURE_TRUE(nodeList, NS_ERROR_FAILURE);
 
       // Upcast, uggly, but it works!
-      nsBaseContentList *list = static_cast<nsBaseContentList *>
+      nsSimpleContentList *list = static_cast<nsSimpleContentList *>
                                            ((nsIDOMNodeList *)nodeList.get());
 
       NS_ASSERTION(list->Length() > 1,

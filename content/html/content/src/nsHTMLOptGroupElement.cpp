@@ -41,11 +41,9 @@
 #include "nsStyleConsts.h"
 #include "nsIFrame.h"
 #include "nsIFormControlFrame.h"
-#include "nsIEventStateManager.h"
+#include "nsEventStates.h"
 #include "nsIDocument.h"
 
-#include "nsISelectElement.h"
-#include "nsIDOMHTMLSelectElement.h"
 #include "nsEventDispatcher.h"
 #include "nsHTMLSelectElement.h"
 

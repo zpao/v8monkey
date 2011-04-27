@@ -86,7 +86,7 @@
 #include "nsString.h"
 #include "nsUnicharUtils.h"
 #include "nsGkAtoms.h"
-#include "nsIEventStateManager.h"
+#include "nsEventStateManager.h"
 #include "nsIDOMEvent.h"
 #include "nsIDOMNSEvent.h"
 #include "nsDOMCSSDeclaration.h"
@@ -266,10 +266,8 @@ private:
 
 NS_IMPL_CYCLE_COLLECTION_1(nsGenericHTMLElementTearoff, mElement)
 
-NS_IMPL_CYCLE_COLLECTING_ADDREF_AMBIGUOUS(nsGenericHTMLElementTearoff,
-                                          nsIDOMNSHTMLElement)
-NS_IMPL_CYCLE_COLLECTING_RELEASE_AMBIGUOUS(nsGenericHTMLElementTearoff,
-                                           nsIDOMNSHTMLElement)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(nsGenericHTMLElementTearoff)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(nsGenericHTMLElementTearoff)
 
 NS_INTERFACE_TABLE_HEAD(nsGenericHTMLElementTearoff)
   NS_INTERFACE_TABLE_INHERITED2(nsGenericHTMLElementTearoff,
@@ -467,6 +465,8 @@ nsGenericHTMLElement::SetClassName(const nsAString& aClassName)
   SetAttr(kNameSpaceID_None, nsGkAtoms::_class, aClassName, PR_TRUE);
   return NS_OK;
 }
+
+NS_IMPL_STRING_ATTR(nsGenericHTMLElement, AccessKey, accesskey)
 
 static PRBool
 IsBody(nsIContent *aContent)
@@ -948,7 +948,8 @@ nsGenericHTMLElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (aDocument) {
-    if (HasFlag(NODE_HAS_NAME)) {
+    RegAccessKey();
+    if (HasName()) {
       aDocument->
         AddToNameTable(this, GetParsedAttr(nsGkAtoms::name)->GetAtomValue());
     }
@@ -966,6 +967,10 @@ nsGenericHTMLElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 void
 nsGenericHTMLElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
 {
+  if (IsInDoc()) {
+    UnregAccessKey();
+  }
+
   RemoveFromNameTable();
 
   if (GetContentEditableValue() == eTrue) {
@@ -1051,9 +1056,8 @@ nsGenericHTMLElement::CheckHandleEventForAnchorsPreconditions(nsEventChainVisito
   //Need to check if we hit an imagemap area and if so see if we're handling
   //the event on that map or on a link farther up the tree.  If we're on a
   //link farther up, do nothing.
-  nsCOMPtr<nsIContent> target;
-  aVisitor.mPresContext->EventStateManager()->
-    GetEventTargetContent(aVisitor.mEvent, getter_AddRefs(target));
+  nsCOMPtr<nsIContent> target = aVisitor.mPresContext->EventStateManager()->
+    GetEventTargetContent(aVisitor.mEvent);
 
   return !target || !IsArea(target) || IsArea(this);
 }
@@ -1185,10 +1189,17 @@ nsGenericHTMLElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 {
   PRBool contentEditable = aNameSpaceID == kNameSpaceID_None &&
                            aName == nsGkAtoms::contenteditable;
-  PRInt32 change;
+  PRBool accessKey = aName == nsGkAtoms::accesskey && 
+                     aNameSpaceID == kNameSpaceID_None;
+
+  PRInt32 change = 0;
   if (contentEditable) {
     change = GetContentEditableValue() == eTrue ? -1 : 0;
-    SetFlags(NODE_MAY_HAVE_CONTENT_EDITABLE_ATTR);
+    SetMayHaveContentEditableAttr();
+  }
+
+  if (accessKey) {
+    UnregAccessKey();
   }
 
   nsresult rv = nsStyledElement::SetAttr(aNameSpaceID, aName, aPrefix, aValue,
@@ -1203,6 +1214,11 @@ nsGenericHTMLElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
     ChangeEditableState(change);
   }
 
+  if (accessKey && !aValue.IsEmpty()) {
+    SetFlags(NODE_HAS_ACCESSKEY);
+    RegAccessKey();
+  }
+
   return NS_OK;
 }
 
@@ -1211,18 +1227,23 @@ nsGenericHTMLElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttribute,
                                 PRBool aNotify)
 {
   PRBool contentEditable = PR_FALSE;
-  PRInt32 contentEditableChange;
+  PRInt32 contentEditableChange = 0;
 
   // Check for event handlers
   if (aNameSpaceID == kNameSpaceID_None) {
     if (aAttribute == nsGkAtoms::name) {
       // Have to do this before clearing flag. See RemoveFromNameTable
       RemoveFromNameTable();
-      UnsetFlags(NODE_HAS_NAME);
+      ClearHasName();
     }
     else if (aAttribute == nsGkAtoms::contenteditable) {
       contentEditable = PR_TRUE;
       contentEditableChange = GetContentEditableValue() == eTrue ? -1 : 0;
+    }
+    else if (aAttribute == nsGkAtoms::accesskey) {
+      // Have to unregister before clearing flag. See UnregAccessKey
+      UnregAccessKey();
+      UnsetFlags(NODE_HAS_ACCESSKEY);
     }
     else if (nsContentUtils::IsEventAttributeName(aAttribute,
                                                   EventNameType_HTML)) {
@@ -1287,14 +1308,14 @@ nsGenericHTMLElement::ParseAttribute(PRInt32 aNamespaceID,
       // not that it has an emptystring as the name.
       RemoveFromNameTable();
       if (aValue.IsEmpty()) {
-        UnsetFlags(NODE_HAS_NAME);
+        ClearHasName();
         return PR_FALSE;
       }
 
       aResult.ParseAtom(aValue);
 
       if (CanHaveName(Tag())) {
-        SetFlags(NODE_HAS_NAME);
+        SetHasName();
         AddToNameTable(aResult.GetAtomValue());
       }
       
@@ -3231,6 +3252,38 @@ nsGenericHTMLElement::Focus()
   return fm ? fm->SetFocus(elem, 0) : NS_OK;
 }
 
+nsresult nsGenericHTMLElement::Click()
+{
+  if (HasFlag(NODE_HANDLING_CLICK))
+    return NS_OK;
+
+  // Strong in case the event kills it
+  nsCOMPtr<nsIDocument> doc = GetCurrentDoc();
+
+  nsCOMPtr<nsIPresShell> shell = nsnull;
+  nsRefPtr<nsPresContext> context = nsnull;
+  if (doc) {
+    shell = doc->GetShell();
+    if (shell) {
+      context = shell->GetPresContext();
+    }
+  }
+
+  SetFlags(NODE_HANDLING_CLICK);
+
+  // Click() is never called from native code, but it may be
+  // called from chrome JS. Mark this event trusted if Click()
+  // is called from chrome code.
+  nsMouseEvent event(nsContentUtils::IsCallerChrome(),
+                     NS_MOUSE_CLICK, nsnull, nsMouseEvent::eReal);
+  event.inputSource = nsIDOMNSMouseEvent::MOZ_SOURCE_UNKNOWN;
+
+  nsEventDispatcher::Dispatch(this, context, &event);
+
+  UnsetFlags(NODE_HANDLING_CLICK);
+  return NS_OK;
+}
+
 PRBool
 nsGenericHTMLElement::IsHTMLFocusable(PRBool aWithMouse,
                                       PRBool *aIsFocusable,
@@ -3299,7 +3352,7 @@ nsGenericHTMLElement::RegUnRegAccessKey(PRBool aDoReg)
   nsPresContext *presContext = GetPresContext();
 
   if (presContext) {
-    nsIEventStateManager *esm = presContext->EventStateManager();
+    nsEventStateManager *esm = presContext->EventStateManager();
 
     // Register or unregister as appropriate.
     if (aDoReg) {

@@ -474,7 +474,7 @@ nsSVGGlyphFrame::GetCoveredRegion()
 NS_IMETHODIMP
 nsSVGGlyphFrame::UpdateCoveredRegion()
 {
-  mRect.Empty();
+  mRect.SetEmpty();
 
   gfxMatrix matrix = GetCanvasTM();
   if (matrix.IsSingular()) {
@@ -491,11 +491,11 @@ nsSVGGlyphFrame::UpdateCoveredRegion()
     return NS_OK;
   }
 
-  SetMatrixPropagation(PR_FALSE);
+  mPropagateTransform = PR_FALSE;
   CharacterIterator iter(this, PR_TRUE);
   iter.SetInitialMatrix(tmpCtx);
   AddBoundingBoxesToPath(&iter, tmpCtx);
-  SetMatrixPropagation(PR_TRUE);
+  mPropagateTransform = PR_TRUE;
   tmpCtx->IdentityMatrix();
 
   // Be careful when replacing the following logic to get the fill and stroke
@@ -1479,7 +1479,7 @@ nsSVGGlyphFrame::NotifyGlyphMetricsChange()
 PRBool
 nsSVGGlyphFrame::GetGlobalTransform(gfxMatrix *aMatrix)
 {
-  if (!GetMatrixPropagation()) {
+  if (!mPropagateTransform) {
     aMatrix->Reset();
     return PR_TRUE;
   }
@@ -1636,23 +1636,6 @@ nsSVGGlyphFrame::EnsureTextRun(float *aDrawScale, float *aMetricsScale,
   *aDrawScale = float(size/textRunSize);
   *aMetricsScale = (*aDrawScale)/GetTextRunUnitsFactor();
   return PR_TRUE;
-}
-
-NS_IMETHODIMP
-nsSVGGlyphFrame::SetMatrixPropagation(PRBool aPropagate)
-{
-  if (aPropagate) {
-    AddStateBits(NS_STATE_SVG_PROPAGATE_TRANSFORM);
-  } else {
-    RemoveStateBits(NS_STATE_SVG_PROPAGATE_TRANSFORM);
-  }
-  return NS_OK;
-}
-
-PRBool
-nsSVGGlyphFrame::GetMatrixPropagation()
-{
-  return (GetStateBits() & NS_STATE_SVG_PROPAGATE_TRANSFORM) != 0;
 }
 
 //----------------------------------------------------------------------

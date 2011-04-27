@@ -45,13 +45,12 @@
 #include "nsFormControlFrame.h" // for COMPARE macro
 #include "nsGkAtoms.h"
 #include "nsIFormControl.h"
-#include "nsIDeviceContext.h" 
 #include "nsIDocument.h"
-#include "nsIDOMHTMLCollection.h" 
-#include "nsIDOMHTMLOptionsCollection.h" 
+#include "nsIDOMHTMLCollection.h"
+#include "nsIDOMHTMLOptionsCollection.h"
 #include "nsIDOMNSHTMLOptionCollectn.h"
 #include "nsIDOMHTMLSelectElement.h"
-#include "nsIDOMHTMLOptionElement.h" 
+#include "nsIDOMHTMLOptionElement.h"
 #include "nsComboboxControlFrame.h"
 #include "nsIViewManager.h"
 #include "nsIDOMHTMLOptGroupElement.h"
@@ -60,7 +59,7 @@
 #include "nsHTMLParts.h"
 #include "nsIDOMEventTarget.h"
 #include "nsEventDispatcher.h"
-#include "nsIEventStateManager.h"
+#include "nsEventStateManager.h"
 #include "nsIEventListenerManager.h"
 #include "nsIDOMKeyEvent.h"
 #include "nsIDOMMouseEvent.h"
@@ -69,7 +68,7 @@
 #include "nsISupportsPrimitives.h"
 #include "nsIComponentManager.h"
 #include "nsILookAndFeel.h"
-#include "nsIFontMetrics.h"
+#include "nsFontMetrics.h"
 #include "nsIScrollableFrame.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIDOMNSEvent.h"
@@ -79,7 +78,7 @@
 #ifdef ACCESSIBILITY
 #include "nsAccessibilityService.h"
 #endif
-#include "nsISelectElement.h"
+#include "nsHTMLSelectElement.h"
 #include "nsIPrivateDOMEvent.h"
 #include "nsCSSRendering.h"
 #include "nsITheme.h"
@@ -88,7 +87,6 @@
 #include "nsIDOMKeyListener.h"
 #include "nsLayoutUtils.h"
 #include "nsDisplayList.h"
-#include "nsIEventStateManager.h"
 
 // Constants
 const nscoord kMaxDropDownRows          = 20; // This matches the setting for 4.x browsers
@@ -262,7 +260,7 @@ nsListControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
  * @param aPt the offset of this frame, relative to the rendering reference
  * frame
  */
-void nsListControlFrame::PaintFocus(nsIRenderingContext& aRC, nsPoint aPt)
+void nsListControlFrame::PaintFocus(nsRenderingContext& aRC, nsPoint aPt)
 {
   if (mFocused != this) return;
 
@@ -285,10 +283,8 @@ void nsListControlFrame::PaintFocus(nsIRenderingContext& aRC, nsPoint aPt)
 
   nsCOMPtr<nsIContent> focusedContent;
 
-  nsCOMPtr<nsIDOMHTMLSelectElement> selectDOMElement(do_QueryInterface(mContent));
-  NS_ASSERTION(selectDOMElement, "Can't be null");
-
-  nsCOMPtr<nsISelectElement> selectElement(do_QueryInterface(mContent));
+  nsRefPtr<nsHTMLSelectElement> selectElement =
+    nsHTMLSelectElement::FromContent(mContent);
   NS_ASSERTION(selectElement, "Can't be null");
 
   // If we have a selected index then get that child frame
@@ -299,20 +295,17 @@ void nsListControlFrame::PaintFocus(nsIRenderingContext& aRC, nsPoint aPt)
       childframe = focusedContent->GetPrimaryFrame();
     }
   } else {
-    nsCOMPtr<nsIDOMHTMLSelectElement> selectHTMLElement(do_QueryInterface(mContent));
-    NS_ASSERTION(selectElement, "Can't be null");
-
     // Since there isn't a selected item we need to show a focus ring around the first
     // non-disabled item and skip all the option group elements (nodes)
     nsCOMPtr<nsIDOMNode> node;
 
     PRUint32 length;
-    selectHTMLElement->GetLength(&length);
+    selectElement->GetLength(&length);
     if (length) {
       // find the first non-disabled item
       PRBool isDisabled = PR_TRUE;
-      for (PRInt32 i=0;i<PRInt32(length) && isDisabled;i++) {
-        if (NS_FAILED(selectDOMElement->Item(i, getter_AddRefs(node))) || !node) {
+      for (PRUint32 i = 0; i < length && isDisabled; i++) {
+        if (NS_FAILED(selectElement->Item(i, getter_AddRefs(node))) || !node) {
           break;
         }
         if (NS_FAILED(selectElement->IsOptionDisabled(i, &isDisabled))) {
@@ -491,7 +484,7 @@ nsListControlFrame::CalcHeightOfARow()
 }
 
 nscoord
-nsListControlFrame::GetPrefWidth(nsIRenderingContext *aRenderingContext)
+nsListControlFrame::GetPrefWidth(nsRenderingContext *aRenderingContext)
 {
   nscoord result;
   DISPLAY_PREF_WIDTH(this, result);
@@ -507,7 +500,7 @@ nsListControlFrame::GetPrefWidth(nsIRenderingContext *aRenderingContext)
 }
 
 nscoord
-nsListControlFrame::GetMinWidth(nsIRenderingContext *aRenderingContext)
+nsListControlFrame::GetMinWidth(nsRenderingContext *aRenderingContext)
 {
   nscoord result;
   DISPLAY_MIN_WIDTH(this, result);
@@ -1521,7 +1514,8 @@ nsListControlFrame::SetOptionsSelectedFromFrame(PRInt32 aStartIndex,
                                                 PRBool aValue,
                                                 PRBool aClearAll)
 {
-  nsCOMPtr<nsISelectElement> selectElement(do_QueryInterface(mContent));
+  nsRefPtr<nsHTMLSelectElement> selectElement =
+    nsHTMLSelectElement::FromContent(mContent);
   PRBool wasChanged = PR_FALSE;
 #ifdef DEBUG
   nsresult rv = 
@@ -1552,18 +1546,25 @@ nsListControlFrame::ToggleOptionSelectedFromFrame(PRInt32 aIndex)
   }
 
   PRBool value = PR_FALSE;
-  nsresult rv = option->GetSelected(&value);
+#ifdef DEBUG
+  nsresult rv =
+#endif
+    option->GetSelected(&value);
 
   NS_ASSERTION(NS_SUCCEEDED(rv), "GetSelected failed");
-  nsCOMPtr<nsISelectElement> selectElement(do_QueryInterface(mContent));
+  nsRefPtr<nsHTMLSelectElement> selectElement =
+    nsHTMLSelectElement::FromContent(mContent);
   PRBool wasChanged = PR_FALSE;
-  rv = selectElement->SetOptionsSelectedByIndex(aIndex,
-                                                aIndex,
-                                                !value,
-                                                PR_FALSE,
-                                                PR_FALSE,
-                                                PR_TRUE,
-                                                &wasChanged);
+#ifdef DEBUG
+  rv =
+#endif
+    selectElement->SetOptionsSelectedByIndex(aIndex,
+                                             aIndex,
+                                             !value,
+                                             PR_FALSE,
+                                             PR_FALSE,
+                                             PR_TRUE,
+                                             &wasChanged);
 
   NS_ASSERTION(NS_SUCCEEDED(rv), "SetSelected failed");
 
@@ -1845,7 +1846,8 @@ nsListControlFrame::GetHeightOfARow()
 nsresult
 nsListControlFrame::IsOptionDisabled(PRInt32 anIndex, PRBool &aIsDisabled)
 {
-  nsCOMPtr<nsISelectElement> sel(do_QueryInterface(mContent));
+  nsRefPtr<nsHTMLSelectElement> sel =
+    nsHTMLSelectElement::FromContent(mContent);
   if (sel) {
     sel->IsOptionDisabled(anIndex, &aIsDisabled);
     return NS_OK;
@@ -1874,11 +1876,11 @@ nscoord
 nsListControlFrame::CalcFallbackRowHeight()
 {
   nscoord rowHeight = 0;
-  
-  nsCOMPtr<nsIFontMetrics> fontMet;
+
+  nsRefPtr<nsFontMetrics> fontMet;
   nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fontMet));
   if (fontMet) {
-    fontMet->GetHeight(rowHeight);
+    rowHeight = fontMet->MaxHeight();
   }
 
   return rowHeight;
@@ -2069,9 +2071,8 @@ nsListControlFrame::GetIndexFromDOMEvent(nsIDOMEvent* aMouseEvent,
     }
   }
 
-  nsCOMPtr<nsIContent> content;
-  PresContext()->EventStateManager()->
-    GetEventTargetContent(nsnull, getter_AddRefs(content));
+  nsCOMPtr<nsIContent> content = PresContext()->EventStateManager()->
+    GetEventTargetContent(nsnull);
 
   nsCOMPtr<nsIContent> optionContent = GetOptionFromContent(content);
   if (optionContent) {

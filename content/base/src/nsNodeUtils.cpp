@@ -252,9 +252,8 @@ nsNodeUtils::LastRelease(nsINode* aNode)
                                          NodeWillBeDestroyed, (aNode));
     }
 
-    PtrBits flags = slots->mFlags | NODE_DOESNT_HAVE_SLOTS;
     delete slots;
-    aNode->mFlagsOrSlots = flags;
+    aNode->mSlots = nsnull;
   }
 
   // Kill properties first since that may run external code, so we want to
@@ -559,6 +558,9 @@ nsNodeUtils::CloneAndAdopt(nsINode *aNode, PRBool aClone, PRBool aDeep,
             window->SetHasAudioAvailableEventListeners();
           }
 #endif
+          if (elm->MayHaveTouchEventListener()) {
+            window->SetHasTouchEventListeners();
+          }
         }
       }
     }

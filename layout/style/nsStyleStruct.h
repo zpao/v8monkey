@@ -81,8 +81,8 @@ struct nsCSSValueList;
 #define NS_STYLE_INHERIT_MASK             0x00ffffff
 
 // Additional bits for nsStyleContext's mBits:
-// See nsStyleContext::HasTextDecorations
-#define NS_STYLE_HAS_TEXT_DECORATIONS     0x01000000
+// See nsStyleContext::HasTextDecorationLines
+#define NS_STYLE_HAS_TEXT_DECORATION_LINES 0x01000000
 // See nsStyleContext::HasPseudoElementData.
 #define NS_STYLE_HAS_PSEUDO_ELEMENT_DATA  0x02000000
 // See nsStyleContext::RelevantLinkIsVisited
@@ -802,14 +802,14 @@ struct nsStyleBorder {
   {
     nscoord roundedWidth =
       NS_ROUND_BORDER_TO_PIXELS(aBorderWidth, mTwipsPerPixel);
-    mBorder.side(aSide) = roundedWidth;
+    mBorder.Side(aSide) = roundedWidth;
     if (HasVisibleStyle(aSide))
-      mComputedBorder.side(aSide) = roundedWidth;
+      mComputedBorder.Side(aSide) = roundedWidth;
   }
 
   void SetBorderImageWidthOverride(mozilla::css::Side aSide, nscoord aBorderWidth)
   {
-    mBorderImageWidth.side(aSide) =
+    mBorderImageWidth.Side(aSide) =
       NS_ROUND_BORDER_TO_PIXELS(aBorderWidth, mTwipsPerPixel);
   }
 
@@ -834,7 +834,7 @@ struct nsStyleBorder {
   // value is rounded to the nearest device pixel by NS_ROUND_BORDER_TO_PIXELS.
   nscoord GetActualBorderWidth(mozilla::css::Side aSide) const
   {
-    return GetActualBorder().side(aSide);
+    return GetActualBorder().Side(aSide);
   }
 
   PRUint8 GetBorderStyle(mozilla::css::Side aSide) const
@@ -848,8 +848,8 @@ struct nsStyleBorder {
     NS_ASSERTION(aSide <= NS_SIDE_LEFT, "bad side");
     mBorderStyle[aSide] &= ~BORDER_STYLE_MASK;
     mBorderStyle[aSide] |= (aStyle & BORDER_STYLE_MASK);
-    mComputedBorder.side(aSide) =
-      (HasVisibleStyle(aSide) ? mBorder.side(aSide) : 0);
+    mComputedBorder.Side(aSide) =
+      (HasVisibleStyle(aSide) ? mBorder.Side(aSide) : 0);
   }
 
   // Defined in nsStyleStructInlines.h
@@ -1210,7 +1210,8 @@ struct nsStyleTextReset {
 
   nsStyleCoord  mVerticalAlign;         // [reset] coord, percent, calc, enum (see nsStyleConsts.h)
 
-  PRUint8 mTextDecoration;              // [reset] see nsStyleConsts.h
+  PRUint8 mTextBlink;                   // [reset] see nsStyleConsts.h
+  PRUint8 mTextDecorationLine;          // [reset] see nsStyleConsts.h
   PRUint8 mUnicodeBidi;                 // [reset] see nsStyleConsts.h
 protected:
   PRUint8 mTextDecorationStyle;         // [reset] see nsStyleConsts.h
@@ -1309,6 +1310,8 @@ struct nsStyleVisibility {
 };
 
 struct nsTimingFunction {
+  enum Type { Function, StepStart, StepEnd };
+
   explicit nsTimingFunction(PRInt32 aTimingFunctionType
                               = NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE)
   {
@@ -1316,26 +1319,72 @@ struct nsTimingFunction {
   }
 
   nsTimingFunction(float x1, float y1, float x2, float y2)
-    : mX1(x1)
-    , mY1(y1)
-    , mX2(x2)
-    , mY2(y2)
-  {}
-
-  float mX1;
-  float mY1;
-  float mX2;
-  float mY2;
-
-  PRBool operator==(const nsTimingFunction& aOther) const
+    : mType(Function)
   {
-    return !(*this != aOther);
+    mFunc.mX1 = x1;
+    mFunc.mY1 = y1;
+    mFunc.mX2 = x2;
+    mFunc.mY2 = y2;
   }
 
-  PRBool operator!=(const nsTimingFunction& aOther) const
+  nsTimingFunction(Type aType, PRUint32 aSteps)
+    : mType(aType)
   {
-    return mX1 != aOther.mX1 || mY1 != aOther.mY1 ||
-           mX2 != aOther.mX2 || mY2 != aOther.mY2;
+    NS_ABORT_IF_FALSE(mType == StepStart || mType == StepEnd, "wrong type");
+    mSteps = aSteps;
+  }
+
+  nsTimingFunction(const nsTimingFunction& aOther)
+  {
+    *this = aOther;
+  }
+
+  Type mType;
+  union {
+    struct {
+      float mX1;
+      float mY1;
+      float mX2;
+      float mY2;
+    } mFunc;
+    PRUint32 mSteps;
+  };
+
+  nsTimingFunction&
+  operator=(const nsTimingFunction& aOther)
+  {
+    if (&aOther == this)
+      return *this;
+
+    mType = aOther.mType;
+
+    if (mType == Function) {
+      mFunc.mX1 = aOther.mFunc.mX1;
+      mFunc.mY1 = aOther.mFunc.mY1;
+      mFunc.mX2 = aOther.mFunc.mX2;
+      mFunc.mY2 = aOther.mFunc.mY2;
+    } else {
+      mSteps = aOther.mSteps;
+    }
+
+    return *this;
+  }
+
+  bool operator==(const nsTimingFunction& aOther) const
+  {
+    if (mType != aOther.mType) {
+      return false;
+    }
+    if (mType == Function) {
+      return mFunc.mX1 == aOther.mFunc.mX1 && mFunc.mY1 == aOther.mFunc.mY1 &&
+             mFunc.mX2 == aOther.mFunc.mX2 && mFunc.mY2 == aOther.mFunc.mY2;
+    }
+    return mSteps == aOther.mSteps;
+  }
+
+  bool operator!=(const nsTimingFunction& aOther) const
+  {
+    return !(*this == aOther);
   }
 
 private:
@@ -1350,7 +1399,6 @@ struct nsTransition {
 
   // Delay and Duration are in milliseconds
 
-  nsTimingFunction& GetTimingFunction() { return mTimingFunction; }
   const nsTimingFunction& GetTimingFunction() const { return mTimingFunction; }
   float GetDelay() const { return mDelay; }
   float GetDuration() const { return mDuration; }
@@ -1373,6 +1421,8 @@ struct nsTransition {
       mUnknownProperty = aOther.mUnknownProperty;
     }
 
+  nsTimingFunction& TimingFunctionSlot() { return mTimingFunction; }
+
 private:
   nsTimingFunction mTimingFunction;
   float mDuration;
@@ -1381,6 +1431,49 @@ private:
   nsCOMPtr<nsIAtom> mUnknownProperty; // used when mProperty is
                                       // eCSSProperty_UNKNOWN
 };
+
+#ifdef MOZ_CSS_ANIMATIONS
+struct nsAnimation {
+  nsAnimation() { /* leaves uninitialized; see also SetInitialValues */ }
+  explicit nsAnimation(const nsAnimation& aCopy);
+
+  void SetInitialValues();
+
+  // Delay and Duration are in milliseconds
+
+  const nsTimingFunction& GetTimingFunction() const { return mTimingFunction; }
+  float GetDelay() const { return mDelay; }
+  float GetDuration() const { return mDuration; }
+  const nsString& GetName() const { return mName; }
+  PRUint8 GetDirection() const { return mDirection; }
+  PRUint8 GetFillMode() const { return mFillMode; }
+  PRUint8 GetPlayState() const { return mPlayState; }
+  float GetIterationCount() const { return mIterationCount; }
+
+  void SetTimingFunction(const nsTimingFunction& aTimingFunction)
+    { mTimingFunction = aTimingFunction; }
+  void SetDelay(float aDelay) { mDelay = aDelay; }
+  void SetDuration(float aDuration) { mDuration = aDuration; }
+  void SetName(const nsSubstring& aName) { mName = aName; }
+  void SetDirection(PRUint8 aDirection) { mDirection = aDirection; }
+  void SetFillMode(PRUint8 aFillMode) { mFillMode = aFillMode; }
+  void SetPlayState(PRUint8 aPlayState) { mPlayState = aPlayState; }
+  void SetIterationCount(float aIterationCount)
+    { mIterationCount = aIterationCount; }
+
+  nsTimingFunction& TimingFunctionSlot() { return mTimingFunction; }
+
+private:
+  nsTimingFunction mTimingFunction;
+  float mDuration;
+  float mDelay;
+  nsString mName; // empty string for 'none'
+  PRUint8 mDirection;
+  PRUint8 mFillMode;
+  PRUint8 mPlayState;
+  float mIterationCount; // NS_IEEEPositiveInfinity() means infinite
+};
+#endif
 
 struct nsStyleDisplay {
   nsStyleDisplay();
@@ -1436,6 +1529,20 @@ struct nsStyleDisplay {
            mTransitionDurationCount,
            mTransitionDelayCount,
            mTransitionPropertyCount;
+
+#ifdef MOZ_CSS_ANIMATIONS
+  nsAutoTArray<nsAnimation, 1> mAnimations; // [reset]
+  // The number of elements in mAnimations that are not from repeating
+  // a list due to another property being longer.
+  PRUint32 mAnimationTimingFunctionCount,
+           mAnimationDurationCount,
+           mAnimationDelayCount,
+           mAnimationNameCount,
+           mAnimationDirectionCount,
+           mAnimationFillModeCount,
+           mAnimationPlayStateCount,
+           mAnimationIterationCountCount;
+#endif
 
   PRBool IsBlockInside() const {
     return NS_STYLE_DISPLAY_BLOCK == mDisplay ||

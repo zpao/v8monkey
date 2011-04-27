@@ -310,7 +310,24 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(IDBCursor)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mScriptContext)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_IMPL_CYCLE_COLLECTION_ROOT_BEGIN(IDBCursor)
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(IDBCursor)
+  NS_ASSERTION(tmp->mHaveCachedPrimaryKey ||
+               JSVAL_IS_VOID(tmp->mCachedPrimaryKey),
+               "Should have a cached primary key");
+  NS_ASSERTION(tmp->mHaveCachedValue || JSVAL_IS_VOID(tmp->mCachedValue),
+               "Should have a cached value");
+  if (JSVAL_IS_GCTHING(tmp->mCachedValue)) {
+    void *gcThing = JSVAL_TO_GCTHING(tmp->mCachedValue);
+    NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(gcThing, "mCachedValue")
+  }
+  if (JSVAL_IS_GCTHING(tmp->mCachedPrimaryKey)) {
+    void *gcThing = JSVAL_TO_GCTHING(tmp->mCachedPrimaryKey);
+    NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(gcThing, "mCachedPrimaryKey")
+  }
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(IDBCursor)
+  // Don't unlink mObjectStore, mIndex, or mTransaction!
   if (tmp->mRooted) {
     NS_DROP_JS_OBJECTS(tmp, IDBCursor);
     tmp->mCachedPrimaryKey = JSVAL_VOID;
@@ -320,26 +337,6 @@ NS_IMPL_CYCLE_COLLECTION_ROOT_BEGIN(IDBCursor)
     tmp->mRooted = false;
     tmp->mHaveValue = false;
   }
-NS_IMPL_CYCLE_COLLECTION_ROOT_END
-
-NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(IDBCursor)
-  NS_ASSERTION(tmp->mHaveCachedPrimaryKey ||
-               JSVAL_IS_VOID(tmp->mCachedPrimaryKey),
-               "Should have a cached primary key");
-  NS_ASSERTION(tmp->mHaveCachedValue || JSVAL_IS_VOID(tmp->mCachedValue),
-               "Should have a cached value");
-  if (JSVAL_IS_GCTHING(tmp->mCachedValue)) {
-    void *gcThing = JSVAL_TO_GCTHING(tmp->mCachedValue);
-    NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(gcThing)
-  }
-  if (JSVAL_IS_GCTHING(tmp->mCachedPrimaryKey)) {
-    void *gcThing = JSVAL_TO_GCTHING(tmp->mCachedPrimaryKey);
-    NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(gcThing)
-  }
-NS_IMPL_CYCLE_COLLECTION_TRACE_END
-
-NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(IDBCursor)
-  // Don't unlink mObjectStore, mIndex, or mTransaction!
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mRequest)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mOwner)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mScriptContext)

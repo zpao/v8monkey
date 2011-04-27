@@ -61,8 +61,6 @@ public:
 
     virtual gfxFont* CopyWithAntialiasOption(AntialiasOption anAAOption);
 
-    virtual nsString GetUniqueName();
-
     virtual const gfxFont::Metrics& GetMetrics();
 
     virtual PRUint32 GetSpaceGlyph();
@@ -99,6 +97,8 @@ protected:
     cairo_font_face_t *CairoFontFace();
 
     cairo_scaled_font_t *CairoScaledFont();
+
+    gfxFloat MeasureGlyphWidth(PRUint16 aGlyph);
 
     static void DestroyBlobFunc(void* userArg);
 

@@ -52,9 +52,8 @@ nsSVGGeometryFrame::Init(nsIContent* aContent,
                          nsIFrame* aParent,
                          nsIFrame* aPrevInFlow)
 {
-  AddStateBits((aParent->GetStateBits() &
-                (NS_STATE_SVG_NONDISPLAY_CHILD | NS_STATE_SVG_CLIPPATH_CHILD)) |
-               NS_STATE_SVG_PROPAGATE_TRANSFORM);
+  AddStateBits(aParent->GetStateBits() &
+               (NS_STATE_SVG_NONDISPLAY_CHILD | NS_STATE_SVG_CLIPPATH_CHILD));
   nsresult rv = nsSVGGeometryFrameBase::Init(aContent, aParent, aPrevInFlow);
   return rv;
 }
@@ -68,8 +67,10 @@ nsSVGGeometryFrame::GetPaintServer(const nsStyleSVGPaint *aPaint,
   if (aPaint->mType != eStyleSVGPaintType_Server)
     return nsnull;
 
+  nsIFrame *frame = mContent->IsNodeOfType(nsINode::eTEXT) ?
+                      GetParent() : this;
   nsSVGPaintingProperty *property =
-    nsSVGEffects::GetPaintingProperty(aPaint->mPaint.mPaintServer, this, aType);
+    nsSVGEffects::GetPaintingProperty(aPaint->mPaint.mPaintServer, frame, aType);
   if (!property)
     return nsnull;
   nsIFrame *result = property->GetReferencedFrame();

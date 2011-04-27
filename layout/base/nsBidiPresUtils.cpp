@@ -44,7 +44,7 @@
 #include "nsTextFragment.h"
 #include "nsGkAtoms.h"
 #include "nsPresContext.h"
-#include "nsIRenderingContext.h"
+#include "nsRenderingContext.h"
 #include "nsIServiceManager.h"
 #include "nsFrameManager.h"
 #include "nsBidiFrames.h"
@@ -56,7 +56,9 @@
 #include "nsContainerFrame.h"
 #include "nsFirstLetterFrame.h"
 #include "gfxUnicodeProperties.h"
-#include "nsIThebesFontMetrics.h"
+
+#undef NOISY_BIDI
+#undef REALLY_NOISY_BIDI
 
 using namespace mozilla;
 
@@ -140,7 +142,7 @@ SplitInlineAncestors(nsIFrame*     aFrame)
     nsFrameList tail = container->StealFramesAfter(frame);
 
     // Reparent views as necessary
-    rv = nsHTMLContainerFrame::ReparentFrameViewList(presContext, tail, parent, newParent);
+    rv = nsContainerFrame::ReparentFrameViewList(presContext, tail, parent, newParent);
     if (NS_FAILED(rv)) {
       return rv;
     }
@@ -424,6 +426,17 @@ nsBidiPresUtils::Resolve(nsBlockFrame* aBlockFrame)
     }
   }
   
+#ifdef DEBUG
+#ifdef NOISY_BIDI
+  printf("Before Resolve(), aBlockFrame=0x%p, mBuffer='%s', frameCount=%d\n",
+         (void*)aBlockFrame, NS_ConvertUTF16toUTF8(mBuffer).get(), frameCount);
+#ifdef REALLY_NOISY_BIDI
+  printf(" block frame tree=:\n");
+  aBlockFrame->List(stdout, 0);
+#endif
+#endif
+#endif
+
   for (; ;) {
     if (fragmentLength <= 0) {
       // Get the next frame from mLogicalFrames
@@ -607,6 +620,15 @@ nsBidiPresUtils::Resolve(nsBlockFrame* aBlockFrame)
       }
     }
   } // for
+
+#ifdef DEBUG
+#ifdef REALLY_NOISY_BIDI
+  printf("---\nAfter Resolve(), frameTree =:\n");
+  aBlockFrame->List(stdout, 0);
+  printf("===\n");
+#endif
+#endif
+
   return mSuccess;
 }
 
@@ -1628,14 +1650,14 @@ nsresult nsBidiPresUtils::ProcessText(const PRUnichar*       aText,
 
 class NS_STACK_CLASS nsIRenderingContextBidiProcessor : public nsBidiPresUtils::BidiProcessor {
 public:
-  nsIRenderingContextBidiProcessor(nsIRenderingContext* aCtx,
-                                   nsIRenderingContext* aTextRunConstructionContext,
+  nsIRenderingContextBidiProcessor(nsRenderingContext* aCtx,
+                                   nsRenderingContext* aTextRunConstructionContext,
                                    const nsPoint&       aPt)
     : mCtx(aCtx), mTextRunConstructionContext(aTextRunConstructionContext), mPt(aPt) { }
 
   ~nsIRenderingContextBidiProcessor()
   {
-    mCtx->SetRightToLeftText(PR_FALSE);
+    mCtx->SetTextRunRTL(PR_FALSE);
   }
 
   virtual void SetText(const PRUnichar* aText,
@@ -1649,24 +1671,19 @@ public:
 
   virtual nscoord GetWidth()
   {
-    nscoord width;
-    mTextRunConstructionContext->GetWidth(mText, mLength, width, nsnull);
-    return width;
+    return mTextRunConstructionContext->GetWidth(mText, mLength);
   }
 
   virtual void DrawText(nscoord aXOffset,
                         nscoord)
   {
-    nsCOMPtr<nsIFontMetrics> metrics;
-    mCtx->GetFontMetrics(*getter_AddRefs(metrics));
-    nsIThebesFontMetrics* fm = static_cast<nsIThebesFontMetrics*>(metrics.get());
-    fm->DrawString(mText, mLength, mPt.x + aXOffset, mPt.y,
-                   mCtx, mTextRunConstructionContext);
+    mCtx->FontMetrics()->DrawString(mText, mLength, mPt.x + aXOffset, mPt.y,
+                                    mCtx, mTextRunConstructionContext);
   }
 
 private:
-  nsIRenderingContext* mCtx;
-  nsIRenderingContext* mTextRunConstructionContext;
+  nsRenderingContext* mCtx;
+  nsRenderingContext* mTextRunConstructionContext;
   nsPoint mPt;
   const PRUnichar* mText;
   PRInt32 mLength;
@@ -1677,8 +1694,8 @@ nsresult nsBidiPresUtils::ProcessTextForRenderingContext(const PRUnichar*       
                                                          PRInt32                aLength,
                                                          nsBidiDirection        aBaseDirection,
                                                          nsPresContext*         aPresContext,
-                                                         nsIRenderingContext&   aRenderingContext,
-                                                         nsIRenderingContext&   aTextRunConstructionContext,
+                                                         nsRenderingContext&   aRenderingContext,
+                                                         nsRenderingContext&   aTextRunConstructionContext,
                                                          Mode                   aMode,
                                                          nscoord                aX,
                                                          nscoord                aY,

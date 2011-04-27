@@ -1,24 +1,5 @@
 #aboutDialog {
-  padding-top: 0;
-  -moz-padding-end: 0;
-  padding-bottom: 10px;
-  -moz-padding-start: 0;
-  width: 600px;
-}
-
-#clientBox {
-  background-color: #F7F7F7;
-  color: #222222;
-}
-
-#leftBox {
-  background-image: url("chrome://branding/content/about-logo.png");
-  background-repeat: no-repeat;
-  /* min-width and min-height create room for the logo */
-  min-width: 210px;
-  min-height: 210px;
-  margin-top:20px;
-  -moz-margin-start: 30px;
+  width: 620px;
 }
 
 #rightBox {
@@ -27,8 +8,6 @@
   /* padding-top creates room for the wordmark */
   padding-top: 38px;
   margin-top:20px;
-  -moz-margin-end: 30px;
-  -moz-margin-start: 30px;
 }
 
 #rightBox:-moz-locale-dir(rtl) {
@@ -40,7 +19,7 @@
 }
 
 #version {
-  margin-top: 5px;
+  margin-top: 10px;
   -moz-margin-start: 0;
 }
 
@@ -58,10 +37,6 @@
   -moz-padding-start: 0;
 }
 
-#updateBox {
-  margin-bottom: 10px;
-}
-
 #updateButton,
 #updateDeck > hbox > label {
   -moz-margin-start: 0;
@@ -69,7 +44,6 @@
 }
 
 #updateDeck > hbox > label:not([class="text-link"]) {
-  color: #909090;
   font-style:italic;
 }
 
@@ -93,9 +67,38 @@
   margin: 0 40px;
 }
 
-#trademark {
-  font-size: xx-small;
-  text-align: center;
-  color: #999999;
+#currentChannel {
+  margin: 0;
+  padding: 0;
+  font-weight: bold;
+}
+
+#channelSelector {
   margin-top: 10px;
+}
+
+#channelSelectorStart {
+  -moz-margin-start: 0;
+}
+
+#channelMenulist {
+  margin: 0;
+}
+
+.channel-description {
+  margin: 10px 0;
+}
+
+#detailsBox,
+#channelSelector,
+.channel-description {
+  -moz-transition: opacity 250ms;
+}
+
+#contentDeck:not([selectedIndex="0"]) > #detailsBox,
+#contentDeck:not([selectedIndex="1"]) > #channelSelector,
+#channelDescriptionDeck:not([selectedIndex="0"]) > #releaseDescription,
+#channelDescriptionDeck:not([selectedIndex="1"]) > #betaDescription,
+#channelDescriptionDeck:not([selectedIndex="2"]) > #auroraDescription {
+  opacity: 0;
 }

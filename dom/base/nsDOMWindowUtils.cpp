@@ -46,9 +46,9 @@
 #include "nsGlobalWindow.h"
 #include "nsIDocument.h"
 #include "nsFocusManager.h"
-#include "nsIEventStateManager.h"
 #include "nsEventStateManager.h"
 #include "nsFrameManager.h"
+#include "nsRefreshDriver.h"
 
 #include "nsIScrollableFrame.h"
 
@@ -299,7 +299,7 @@ nsDOMWindowUtils::SetDisplayPortForElement(float aXPx, float aYPx,
 
   nsRect lastDisplayPort;
   if (nsLayoutUtils::GetDisplayPort(content, &lastDisplayPort) &&
-      displayport == lastDisplayPort) {
+      displayport.IsEqualInterior(lastDisplayPort)) {
     return NS_OK;
   }
 
@@ -1645,6 +1645,30 @@ ComputeAnimationValue(nsCSSProperty aProperty,
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::AdvanceTimeAndRefresh(PRInt64 aMilliseconds)
+{
+  if (!IsUniversalXPConnectCapable()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  GetPresContext()->RefreshDriver()->AdvanceTimeAndRefresh(aMilliseconds);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::RestoreNormalRefresh()
+{
+  if (!IsUniversalXPConnectCapable()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  GetPresContext()->RefreshDriver()->RestoreNormalRefresh();
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMWindowUtils::ComputeAnimationDistance(nsIDOMElement* aElement,
                                            const nsAString& aProperty,
                                            const nsAString& aValue1,
@@ -1837,3 +1861,16 @@ nsDOMWindowUtils::LeafLayersPartitionWindow(PRBool* aResult)
 #endif
   return NS_OK;
 }
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetMayHaveTouchEventListeners(PRBool* aResult)
+{
+  if (!IsUniversalXPConnectCapable()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  nsPIDOMWindow* innerWindow = mWindow->GetCurrentInnerWindow();
+  *aResult = innerWindow ? innerWindow->HasTouchEventListeners() : PR_FALSE;
+  return NS_OK;
+}
+

@@ -37,14 +37,12 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#ifdef MOZ_IPC
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/PAudioChild.h"
 #include "mozilla/dom/AudioChild.h"
 #include "mozilla/Monitor.h"
 #include "nsXULAppAPI.h"
 using namespace mozilla::dom;
-#endif
 
 #include <stdio.h>
 #include <math.h>
@@ -53,6 +51,7 @@ using namespace mozilla::dom;
 #include "nsAutoPtr.h"
 #include "nsAudioStream.h"
 #include "nsAlgorithm.h"
+#include "VideoUtils.h"
 extern "C" {
 #include "sydneyaudio/sydney_audio.h"
 }
@@ -65,7 +64,7 @@ extern "C" {
 
 // Android's audio backend is not available in content processes, so audio must
 // be remoted to the parent chrome process.
-#if defined(ANDROID) && defined(MOZ_IPC)
+#if defined(ANDROID)
 #define REMOTE_AUDIO 1
 #endif
 
@@ -76,7 +75,6 @@ PRLogModuleInfo* gAudioStreamLog = nsnull;
 #endif
 
 #define FAKE_BUFFER_SIZE 176400
-#define MILLISECONDS_PER_SECOND 1000
 
 class nsAudioStreamLocal : public nsAudioStream
 {
@@ -122,7 +120,6 @@ class nsAudioStreamLocal : public nsAudioStream
 
 };
 
-#ifdef MOZ_IPC
 class nsAudioStreamRemote : public nsAudioStream
 {
  public:
@@ -294,7 +291,6 @@ class AudioShutdownEvent : public nsRunnable
   
   nsRefPtr<AudioChild> mAudioChild;
 };
-#endif // MOZ_IPC
 
 
 void nsAudioStream::InitLibrary()
@@ -555,7 +551,7 @@ PRInt64 nsAudioStreamLocal::GetPosition()
 {
   PRInt64 sampleOffset = GetSampleOffset();
   if (sampleOffset >= 0) {
-    return ((MILLISECONDS_PER_SECOND * sampleOffset) / mRate / mChannels);
+    return ((USECS_PER_S * sampleOffset) / mRate / mChannels);
   }
   return -1;
 }
@@ -570,7 +566,7 @@ PRInt64 nsAudioStreamLocal::GetSampleOffset()
 #if defined(XP_WIN)
   positionType = SA_POSITION_WRITE_HARDWARE;
 #endif
-  PRInt64 position = 0;
+  int64_t position = 0;
   if (sa_stream_get_position(static_cast<sa_stream_t*>(mAudioHandle),
                              positionType, &position) == SA_SUCCESS) {
     return position / sizeof(short);
@@ -596,8 +592,6 @@ PRInt32 nsAudioStreamLocal::GetMinWriteSamples()
 
   return static_cast<PRInt32>(samples);
 }
-
-#ifdef MOZ_IPC
 
 nsAudioStreamRemote::nsAudioStreamRemote()
  : mAudioChild(NULL),
@@ -724,7 +718,7 @@ PRInt64 nsAudioStreamRemote::GetPosition()
 {
   PRInt64 sampleOffset = GetSampleOffset();
   if (sampleOffset >= 0) {
-    return ((MILLISECONDS_PER_SECOND * sampleOffset) / mRate / mChannels);
+    return ((USECS_PER_S * sampleOffset) / mRate / mChannels);
   }
   return 0;
 }
@@ -740,7 +734,7 @@ nsAudioStreamRemote::GetSampleOffset()
     return 0;
 
   PRInt64 time   = mAudioChild->GetLastKnownSampleOffsetTime();
-  PRInt64 result = offset + (mRate * mChannels * (PR_IntervalNow() - time) / MILLISECONDS_PER_SECOND);
+  PRInt64 result = offset + (mRate * mChannels * (PR_IntervalNow() - time) / USECS_PER_S);
 
   return result;
 }
@@ -750,5 +744,3 @@ nsAudioStreamRemote::IsPaused()
 {
   return mPaused;
 }
-
-#endif // MOZ_IPC

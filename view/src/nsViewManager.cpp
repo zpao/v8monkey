@@ -53,7 +53,6 @@
 #include "nsIPrefBranch.h"
 #include "nsIPrefService.h"
 #include "nsRegion.h"
-#include "nsInt64.h"
 #include "nsHashtable.h"
 #include "nsCOMArray.h"
 #include "nsThreadUtils.h"
@@ -212,7 +211,7 @@ nsViewManager::CreateRegion(nsIRegion* *result)
 
 // We don't hold a reference to the presentation context because it
 // holds a reference to us.
-NS_IMETHODIMP nsViewManager::Init(nsIDeviceContext* aContext)
+NS_IMETHODIMP nsViewManager::Init(nsDeviceContext* aContext)
 {
   NS_PRECONDITION(nsnull != aContext, "null ptr");
 
@@ -303,7 +302,7 @@ void nsViewManager::DoSetWindowDimensions(nscoord aWidth, nscoord aHeight)
   nsRect newDim(0, 0, aWidth, aHeight);
   mRootView->GetDimensions(oldDim);
   // We care about resizes even when one dimension is already zero.
-  if (!oldDim.IsExactEqual(newDim)) {
+  if (!oldDim.IsEqualEdges(newDim)) {
     // Don't resize the widget. It is already being set elsewhere.
     mRootView->SetDimensions(newDim, PR_TRUE, PR_FALSE);
     if (mObserver)
@@ -442,20 +441,11 @@ void nsViewManager::RenderViews(nsView *aView, nsIWidget *aWidget,
                                 PRBool aPaintDefaultBackground,
                                 PRBool aWillSendDidPaint)
 {
-  nsView* displayRoot = GetDisplayRootFor(aView);
-  // Make sure we call Paint from the view manager that owns displayRoot.
-  // (Bug 485275)
-  nsViewManager* displayRootVM = displayRoot->GetViewManager();
-  if (displayRootVM && displayRootVM != this) {
-    displayRootVM->
-      RenderViews(aView, aWidget, aRegion, aIntRegion, aPaintDefaultBackground,
-                  aWillSendDidPaint);
-    return;
-  }
+  NS_ASSERTION(GetDisplayRootFor(aView) == aView,
+               "Widgets that we paint must all be display roots");
 
   if (mObserver) {
-    nsRegion region = ConvertRegionBetweenViews(aRegion, aView, displayRoot);
-    mObserver->Paint(displayRoot, aView, aWidget, region, aIntRegion,
+    mObserver->Paint(aView, aWidget, aRegion, aIntRegion,
                      aPaintDefaultBackground, aWillSendDidPaint);
     if (!gFirstPaintTimestamp)
       gFirstPaintTimestamp = PR_Now();
@@ -1362,7 +1352,7 @@ NS_IMETHODIMP nsViewManager::ResizeView(nsIView *aView, const nsRect &aRect, PRB
   nsRect oldDimensions;
 
   view->GetDimensions(oldDimensions);
-  if (!oldDimensions.IsExactEqual(aRect)) {
+  if (!oldDimensions.IsEqualEdges(aRect)) {
     // resize the view.
     // Prevent Invalidation of hidden views 
     if (view->GetVisibility() == nsViewVisibility_kHide) {  
@@ -1531,7 +1521,7 @@ NS_IMETHODIMP nsViewManager::GetViewObserver(nsIViewObserver *&aObserver)
     return NS_ERROR_NO_INTERFACE;
 }
 
-NS_IMETHODIMP nsViewManager::GetDeviceContext(nsIDeviceContext *&aContext)
+NS_IMETHODIMP nsViewManager::GetDeviceContext(nsDeviceContext *&aContext)
 {
   NS_IF_ADDREF(mContext);
   aContext = mContext;

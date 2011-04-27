@@ -389,6 +389,9 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsXULDocument, nsXMLDocument)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsXULDocument, nsXMLDocument)
+    delete tmp->mTemplateBuilderTable;
+    tmp->mTemplateBuilderTable = nsnull;
+    //XXX We should probably unlink all the objects we traverse.
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_ADDREF_INHERITED(nsXULDocument, nsXMLDocument)
@@ -1845,6 +1848,9 @@ nsXULDocument::SetTemplateBuilderFor(nsIContent* aContent,
                                      nsIXULTemplateBuilder* aBuilder)
 {
     if (! mTemplateBuilderTable) {
+        if (!aBuilder) {
+            return NS_OK;
+        }
         mTemplateBuilderTable = new BuilderTable;
         if (! mTemplateBuilderTable || !mTemplateBuilderTable->Init()) {
             mTemplateBuilderTable = nsnull;
@@ -4056,6 +4062,11 @@ nsXULDocument::OverlayForwardReference::Merge(nsIContent* aTargetNode,
         }
 
         rv = aTargetNode->SetAttr(nameSpaceID, attr, prefix, value, aNotify);
+        if (!NS_FAILED(rv) && !aNotify)
+            rv = mDocument->BroadcastAttributeChangeFromOverlay(aTargetNode,
+                                                                nameSpaceID,
+                                                                attr, prefix,
+                                                                value);
         if (NS_FAILED(rv)) return rv;
     }
 
@@ -4221,6 +4232,47 @@ nsXULDocument::TemplateBuilderHookup::Resolve()
 
 
 //----------------------------------------------------------------------
+
+nsresult
+nsXULDocument::BroadcastAttributeChangeFromOverlay(nsIContent* aNode,
+                                                   PRInt32 aNameSpaceID,
+                                                   nsIAtom* aAttribute,
+                                                   nsIAtom* aPrefix,
+                                                   const nsAString& aValue)
+{
+    nsresult rv = NS_OK;
+
+    if (!mBroadcasterMap || !CanBroadcast(aNameSpaceID, aAttribute))
+        return rv;
+
+    nsCOMPtr<nsIDOMElement> domele = do_QueryInterface(aNode);
+    if (!domele)
+        return rv;
+
+    BroadcasterMapEntry* entry = static_cast<BroadcasterMapEntry*>
+        (PL_DHashTableOperate(mBroadcasterMap, domele.get(), PL_DHASH_LOOKUP));
+    if (!PL_DHASH_ENTRY_IS_BUSY(entry))
+        return rv;
+
+    // We've got listeners: push the value.
+    PRInt32 i;
+    for (i = entry->mListeners.Count() - 1; i >= 0; --i) {
+        BroadcastListener* bl = static_cast<BroadcastListener*>
+            (entry->mListeners[i]);
+
+        if ((bl->mAttribute != aAttribute) &&
+            (bl->mAttribute != nsGkAtoms::_asterix))
+            continue;
+
+        nsCOMPtr<nsIContent> l = do_QueryReferent(bl->mListener);
+        if (l) {
+            rv = l->SetAttr(aNameSpaceID, aAttribute,
+                            aPrefix, aValue, PR_FALSE);
+            if (NS_FAILED(rv)) return rv;
+        }
+    }
+    return rv;
+}
 
 nsresult
 nsXULDocument::FindBroadcaster(Element* aElement,

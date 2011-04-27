@@ -52,7 +52,6 @@
 #include "nsImageLoader.h"
 #include "nsIContent.h"
 #include "nsIFrame.h"
-#include "nsIRenderingContext.h"
 #include "nsIURL.h"
 #include "nsIDocument.h"
 #include "nsStyleContext.h"
@@ -95,8 +94,13 @@
 #include "nsIDOMEventTarget.h"
 #include "nsObjectFrame.h"
 #include "nsTransitionManager.h"
+#ifdef MOZ_CSS_ANIMATIONS
+#include "nsAnimationManager.h"
+#endif
 #include "mozilla/dom/Element.h"
 #include "nsIFrameMessageManager.h"
+#include "FrameLayerBuilder.h"
+#include "nsDOMMediaQueryList.h"
 
 #ifdef MOZ_SMIL
 #include "nsSMILAnimationController.h"
@@ -116,8 +120,7 @@
 //needed for resetting of image service color
 #include "nsLayoutCID.h"
 
-using mozilla::TimeDuration;
-using mozilla::TimeStamp;
+using namespace mozilla;
 using namespace mozilla::dom;
 
 static nscolor
@@ -252,12 +255,17 @@ nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
   NS_ASSERTION(mDocument, "Null document");
   mUserFontSet = nsnull;
   mUserFontSetDirty = PR_TRUE;
+
+  PR_INIT_CLIST(&mDOMMediaQueryLists);
 }
 
 nsPresContext::~nsPresContext()
 {
   NS_PRECONDITION(!mShell, "Presshell forgot to clear our mShell pointer");
   SetShell(nsnull);
+
+  NS_ABORT_IF_FALSE(PR_CLIST_IS_EMPTY(&mDOMMediaQueryLists),
+                    "must not have media query lists left");
 
   // Disconnect the refresh driver *after* the transition manager, which
   // needs it.
@@ -346,8 +354,8 @@ TraverseImageLoader(const void * aKey, nsRefPtr<nsImageLoader>& aData,
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsPresContext)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mDocument);
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(mDeviceContext); // worth bothering?
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(mEventManager);
+  // NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(mDeviceContext); // not xpcom
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR_AMBIGUOUS(mEventManager, nsIObserver);
   // NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(mLookAndFeel); // a service
   // NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(mLanguage); // an atom
 
@@ -772,6 +780,26 @@ nsPresContext::GetUserPreferences()
 }
 
 void
+nsPresContext::AppUnitsPerDevPixelChanged()
+{
+  nsIFrame* rootFrame = mShell->FrameManager()->GetRootFrame();
+  if (rootFrame) {
+    // FrameLayerBuilder caches invalidation-related values that depend on the
+    // appunits-per-dev-pixel ratio, so ensure that all ThebesLayer drawing
+    // is completely flushed.
+    FrameLayerBuilder::InvalidateThebesLayersInSubtree(rootFrame);
+  }
+
+  mDeviceContext->FlushFontCache();
+
+  // All cached style data must be recomputed.
+  if (HasCachedStyleData()) {
+    MediaFeatureValuesChanged(PR_TRUE);
+    RebuildAllStyleData(NS_STYLE_HINT_REFLOW);
+  }
+}
+
+void
 nsPresContext::PreferenceChanged(const char* aPrefName)
 {
   nsDependentCString prefName(aPrefName);
@@ -779,8 +807,6 @@ nsPresContext::PreferenceChanged(const char* aPrefName)
       prefName.EqualsLiteral("layout.css.devPixelsPerPx")) {
     PRInt32 oldAppUnitsPerDevPixel = AppUnitsPerDevPixel();
     if (mDeviceContext->CheckDPIChange() && mShell) {
-      mDeviceContext->FlushFontCache();
-
       // Re-fetch the view manager's window dimensions in case there's a deferred
       // resize which hasn't affected our mVisibleArea yet
       nscoord oldWidthAppUnits, oldHeightAppUnits;
@@ -793,8 +819,7 @@ nsPresContext::PreferenceChanged(const char* aPrefName)
       nscoord height = NSToCoordRound(oldHeightDevPixels*AppUnitsPerDevPixel());
       vm->SetWindowDimensions(width, height);
 
-      MediaFeatureValuesChanged(PR_TRUE);
-      RebuildAllStyleData(NS_STYLE_HINT_REFLOW);
+      AppUnitsPerDevPixelChanged();
     }
     return;
   }
@@ -863,7 +888,7 @@ nsPresContext::UpdateAfterPreferencesChanged()
 }
 
 nsresult
-nsPresContext::Init(nsIDeviceContext* aDeviceContext)
+nsPresContext::Init(nsDeviceContext* aDeviceContext)
 {
   NS_ASSERTION(!mInitialized, "attempt to reinit pres context");
   NS_ENSURE_ARG(aDeviceContext);
@@ -896,6 +921,12 @@ nsPresContext::Init(nsIDeviceContext* aDeviceContext)
   mTransitionManager = new nsTransitionManager(this);
   if (!mTransitionManager)
     return NS_ERROR_OUT_OF_MEMORY;
+
+#ifdef MOZ_CSS_ANIMATIONS
+  mAnimationManager = new nsAnimationManager(this);
+  if (!mAnimationManager)
+    return NS_ERROR_OUT_OF_MEMORY;
+#endif
 
   if (mDocument->GetDisplayDocument()) {
     NS_ASSERTION(mDocument->GetDisplayDocument()->GetShell() &&
@@ -1059,6 +1090,12 @@ nsPresContext::SetShell(nsIPresShell* aShell)
       mTransitionManager->Disconnect();
       mTransitionManager = nsnull;
     }
+#ifdef MOZ_CSS_ANIMATIONS
+    if (mAnimationManager) {
+      mAnimationManager->Disconnect();
+      mAnimationManager = nsnull;
+    }
+#endif
   }
 }
 
@@ -1262,10 +1299,10 @@ nsPresContext::SetImageAnimationModeExternal(PRUint16 aMode)
   SetImageAnimationModeInternal(aMode);
 }
 
-already_AddRefed<nsIFontMetrics>
+already_AddRefed<nsFontMetrics>
 nsPresContext::GetMetricsFor(const nsFont& aFont, PRBool aUseUserFontSet)
 {
-  nsIFontMetrics* metrics = nsnull;
+  nsFontMetrics* metrics = nsnull;
   mDeviceContext->GetMetricsFor(aFont, mLanguage,
                                 aUseUserFontSet ? GetUserFontSet() : nsnull,
                                 metrics);
@@ -1314,15 +1351,14 @@ nsPresContext::SetFullZoom(float aZoom)
   if (!mShell || mFullZoom == aZoom) {
     return;
   }
+
   // Re-fetch the view manager's window dimensions in case there's a deferred
   // resize which hasn't affected our mVisibleArea yet
   nscoord oldWidthAppUnits, oldHeightAppUnits;
   mShell->GetViewManager()->GetWindowDimensions(&oldWidthAppUnits, &oldHeightAppUnits);
   float oldWidthDevPixels = oldWidthAppUnits / float(mCurAppUnitsPerDevPixel);
   float oldHeightDevPixels = oldHeightAppUnits / float(mCurAppUnitsPerDevPixel);
-  if (mDeviceContext->SetPixelScale(aZoom)) {
-    mDeviceContext->FlushFontCache();
-  }
+  mDeviceContext->SetPixelScale(aZoom);
 
   NS_ASSERTION(!mSupressResizeReflow, "two zooms happening at the same time? impossible!");
   mSupressResizeReflow = PR_TRUE;
@@ -1331,10 +1367,8 @@ nsPresContext::SetFullZoom(float aZoom)
   mShell->GetViewManager()->
     SetWindowDimensions(NSToCoordRound(oldWidthDevPixels * AppUnitsPerDevPixel()),
                         NSToCoordRound(oldHeightDevPixels * AppUnitsPerDevPixel()));
-  if (HasCachedStyleData()) {
-    MediaFeatureValuesChanged(PR_TRUE);
-    RebuildAllStyleData(NS_STYLE_HINT_REFLOW);
-  }
+
+  AppUnitsPerDevPixelChanged();
 
   mSupressResizeReflow = PR_FALSE;
 
@@ -1381,12 +1415,20 @@ void
 nsPresContext::SetupBorderImageLoaders(nsIFrame* aFrame,
                                        const nsStyleBorder* aStyleBorder)
 {
+  // We get called the first time we try to draw a border-image, and
+  // also when the border image changes (including when it changes from
+  // non-null to null).
+  imgIRequest *borderImage = aStyleBorder->GetBorderImage();
+  if (!borderImage) {
+    SetImageLoaders(aFrame, BORDER_IMAGE, nsnull);
+    return;
+  }
+
   PRUint32 actions = nsImageLoader::ACTION_REDRAW_ON_LOAD;
   if (aStyleBorder->ImageBorderDiffers())
     actions |= nsImageLoader::ACTION_REFLOW_ON_LOAD;
   nsRefPtr<nsImageLoader> loader =
-    nsImageLoader::Create(aFrame, aStyleBorder->GetBorderImage(),
-                          actions, nsnull);
+    nsImageLoader::Create(aFrame, borderImage, actions, nsnull);
   SetImageLoaders(aFrame, BORDER_IMAGE, loader);
 }
 
@@ -1611,6 +1653,9 @@ nsPresContext::RebuildAllStyleData(nsChangeHint aExtraHint)
   }
 
   RebuildUserFontSet();
+#ifdef MOZ_CSS_ANIMATIONS
+  AnimationManager()->KeyframesListIsDirty();
+#endif
 
   mShell->FrameConstructor()->RebuildAllStyleData(aExtraHint);
 }
@@ -1634,11 +1679,64 @@ nsPresContext::MediaFeatureValuesChanged(PRBool aCallerWillRebuildStyleData)
       !aCallerWillRebuildStyleData) {
     RebuildAllStyleData(nsChangeHint(0));
   }
+
+  if (!nsContentUtils::IsSafeToRunScript()) {
+    NS_ABORT_IF_FALSE(mDocument->IsBeingUsedAsImage(),
+                      "How did we get here?  Are we failing to notify "
+                      "listeners that we should notify?");
+    return;
+  }
+
+  // Media query list listeners should be notified from a queued task
+  // (in HTML5 terms), although we also want to notify them on certain
+  // flushes.  (We're already running off an event.)
+  //
+  // Note that we do this after the new style from media queries in
+  // style sheets has been computed.
+
+  if (!PR_CLIST_IS_EMPTY(&mDOMMediaQueryLists)) {
+    // We build a list of all the notifications we're going to send
+    // before we send any of them.  (The spec says the notifications
+    // should be a queued task, so any removals that happen during the
+    // notifications shouldn't affect what gets notified.)  Furthermore,
+    // we hold strong pointers to everything we're going to make
+    // notification calls to, since each notification involves calling
+    // arbitrary script that might otherwise destroy these objects, or,
+    // for that matter, |this|.
+    //
+    // Note that we intentionally send the notifications to media query
+    // list in the order they were created and, for each list, to the
+    // listeners in the order added.
+    nsDOMMediaQueryList::NotifyList notifyList;
+    for (PRCList *l = PR_LIST_HEAD(&mDOMMediaQueryLists);
+         l != &mDOMMediaQueryLists; l = PR_NEXT_LINK(l)) {
+      nsDOMMediaQueryList *mql = static_cast<nsDOMMediaQueryList*>(l);
+      mql->MediumFeaturesChanged(notifyList);
+    }
+
+    if (!notifyList.IsEmpty()) {
+      nsPIDOMWindow *win = mDocument->GetInnerWindow();
+      nsCOMPtr<nsPIDOMEventTarget> et = do_QueryInterface(win);
+      nsCxPusher pusher;
+
+      for (PRUint32 i = 0, i_end = notifyList.Length(); i != i_end; ++i) {
+        if (pusher.RePush(et)) {
+          nsDOMMediaQueryList::HandleChangeData &d = notifyList[i];
+          d.listener->HandleChange(d.mql);
+        }
+      }
+    }
+
+    // NOTE:  When |notifyList| goes out of scope, our destructor could run.
+  }
 }
 
 void
 nsPresContext::PostMediaFeatureValuesChangedEvent()
 {
+  // FIXME: We should probably replace this event with use of
+  // nsRefreshDriver::AddStyleFlushObserver (except the pres shell would
+  // need to track whether it's been added).
   if (!mPendingMediaFeatureValuesChanged) {
     nsCOMPtr<nsIRunnable> ev =
       NS_NewRunnableMethod(this, &nsPresContext::HandleMediaFeatureValuesChangedEvent);
@@ -1656,6 +1754,19 @@ nsPresContext::HandleMediaFeatureValuesChangedEvent()
   if (mPendingMediaFeatureValuesChanged && mShell) {
     MediaFeatureValuesChanged(PR_FALSE);
   }
+}
+
+void
+nsPresContext::MatchMedia(const nsAString& aMediaQueryList,
+                          nsIDOMMediaQueryList** aResult)
+{
+  nsRefPtr<nsDOMMediaQueryList> result =
+    new nsDOMMediaQueryList(this, aMediaQueryList);
+
+  // Insert the new item at the end of the linked list.
+  PR_INSERT_BEFORE(result, &mDOMMediaQueryLists);
+
+  result.forget(aResult);
 }
 
 void
@@ -1740,177 +1851,6 @@ nsPresContext::HasAuthorSpecifiedRules(nsIFrame *aFrame, PRUint32 ruleTypeMask) 
                                         UseDocumentColors());
 }
 
-static void
-InsertFontFaceRule(nsCSSFontFaceRule *aRule, gfxUserFontSet* aFontSet,
-                   PRUint8 aSheetType)
-{
-  NS_ABORT_IF_FALSE(aRule->GetType() == nsICSSRule::FONT_FACE_RULE,
-                    "InsertFontFaceRule passed a non-fontface CSS rule");
-
-  // aRule->List();
-
-  nsAutoString fontfamily;
-  nsCSSValue val;
-
-  PRUint32 unit;
-  PRUint32 weight = NS_STYLE_FONT_WEIGHT_NORMAL;
-  PRUint32 stretch = NS_STYLE_FONT_STRETCH_NORMAL;
-  PRUint32 italicStyle = FONT_STYLE_NORMAL;
-  nsString featureSettings, languageOverride;
-
-  // set up family name
-  aRule->GetDesc(eCSSFontDesc_Family, val);
-  unit = val.GetUnit();
-  if (unit == eCSSUnit_String) {
-    val.GetStringValue(fontfamily);
-  } else {
-    NS_ASSERTION(unit == eCSSUnit_Null,
-                 "@font-face family name has unexpected unit");
-    // If there is no family name, this rule cannot contribute a
-    // usable font, so there is no point in processing it further.
-    return;
-  }
-
-  // set up weight
-  aRule->GetDesc(eCSSFontDesc_Weight, val);
-  unit = val.GetUnit();
-  if (unit == eCSSUnit_Integer || unit == eCSSUnit_Enumerated) {
-    weight = val.GetIntValue();
-  } else if (unit == eCSSUnit_Normal) {
-    weight = NS_STYLE_FONT_WEIGHT_NORMAL;
-  } else {
-    NS_ASSERTION(unit == eCSSUnit_Null,
-                 "@font-face weight has unexpected unit");
-  }
-
-  // set up stretch
-  aRule->GetDesc(eCSSFontDesc_Stretch, val);
-  unit = val.GetUnit();
-  if (unit == eCSSUnit_Enumerated) {
-    stretch = val.GetIntValue();
-  } else if (unit == eCSSUnit_Normal) {
-    stretch = NS_STYLE_FONT_STRETCH_NORMAL;
-  } else {
-    NS_ASSERTION(unit == eCSSUnit_Null,
-                 "@font-face stretch has unexpected unit");
-  }
-
-  // set up font style
-  aRule->GetDesc(eCSSFontDesc_Style, val);
-  unit = val.GetUnit();
-  if (unit == eCSSUnit_Enumerated) {
-    italicStyle = val.GetIntValue();
-  } else if (unit == eCSSUnit_Normal) {
-    italicStyle = FONT_STYLE_NORMAL;
-  } else {
-    NS_ASSERTION(unit == eCSSUnit_Null,
-                 "@font-face style has unexpected unit");
-  }
-
-  // set up font features
-  aRule->GetDesc(eCSSFontDesc_FontFeatureSettings, val);
-  unit = val.GetUnit();
-  if (unit == eCSSUnit_Normal) {
-    // empty feature string
-  } else if (unit == eCSSUnit_String) {
-    val.GetStringValue(featureSettings);
-  } else {
-    NS_ASSERTION(unit == eCSSUnit_Null,
-                 "@font-face font-feature-settings has unexpected unit");
-  }
-
-  // set up font language override
-  aRule->GetDesc(eCSSFontDesc_FontLanguageOverride, val);
-  unit = val.GetUnit();
-  if (unit == eCSSUnit_Normal) {
-    // empty feature string
-  } else if (unit == eCSSUnit_String) {
-    val.GetStringValue(languageOverride);
-  } else {
-    NS_ASSERTION(unit == eCSSUnit_Null,
-                 "@font-face font-language-override has unexpected unit");
-  }
-
-  // set up src array
-  nsTArray<gfxFontFaceSrc> srcArray;
-
-  aRule->GetDesc(eCSSFontDesc_Src, val);
-  unit = val.GetUnit();
-  if (unit == eCSSUnit_Array) {
-    nsCSSValue::Array *srcArr = val.GetArrayValue();
-    size_t numSrc = srcArr->Count();
-    
-    for (size_t i = 0; i < numSrc; i++) {
-      val = srcArr->Item(i);
-      unit = val.GetUnit();
-      gfxFontFaceSrc *face = srcArray.AppendElements(1);
-      if (!face)
-        return;
-            
-      switch (unit) {
-       
-      case eCSSUnit_Local_Font:
-        val.GetStringValue(face->mLocalName);
-        face->mIsLocal = PR_TRUE;
-        face->mURI = nsnull;
-        face->mFormatFlags = 0;
-        break;
-      case eCSSUnit_URL:
-        face->mIsLocal = PR_FALSE;
-        face->mURI = val.GetURLValue();
-        NS_ASSERTION(face->mURI, "null url in @font-face rule");
-        face->mReferrer = val.GetURLStructValue()->mReferrer;
-        face->mOriginPrincipal = val.GetURLStructValue()->mOriginPrincipal;
-        NS_ASSERTION(face->mOriginPrincipal, "null origin principal in @font-face rule");
-        
-        // agent and user stylesheets are treated slightly differently,
-        // the same-site origin check and access control headers are
-        // enforced against the sheet principal rather than the document
-        // principal to allow user stylesheets to include @font-face rules
-        face->mUseOriginPrincipal = (aSheetType == nsStyleSet::eUserSheet ||
-                                     aSheetType == nsStyleSet::eAgentSheet);
-                                     
-        face->mLocalName.Truncate();
-        face->mFormatFlags = 0;
-        while (i + 1 < numSrc && (val = srcArr->Item(i+1), 
-                 val.GetUnit() == eCSSUnit_Font_Format)) {
-          nsDependentString valueString(val.GetStringBufferValue());
-          if (valueString.LowerCaseEqualsASCII("woff")) {
-            face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_WOFF; 
-          } else if (valueString.LowerCaseEqualsASCII("opentype")) {
-            face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_OPENTYPE; 
-          } else if (valueString.LowerCaseEqualsASCII("truetype")) {
-            face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_TRUETYPE; 
-          } else if (valueString.LowerCaseEqualsASCII("truetype-aat")) {
-            face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_TRUETYPE_AAT; 
-          } else if (valueString.LowerCaseEqualsASCII("embedded-opentype")) {
-            face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_EOT;   
-          } else if (valueString.LowerCaseEqualsASCII("svg")) {
-            face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_SVG;   
-          } else {
-            // unknown format specified, mark to distinguish from the 
-            // case where no format hints are specified
-            face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_UNKNOWN;
-          }
-          i++;
-        }
-        break;
-      default:
-        NS_ASSERTION(unit == eCSSUnit_Local_Font || unit == eCSSUnit_URL,
-                     "strange unit type in font-face src array");
-        break;
-      }
-     }
-  } else {
-    NS_ASSERTION(unit == eCSSUnit_Null, "@font-face src has unexpected unit");
-  }
-  
-  if (!fontfamily.IsEmpty() && srcArray.Length() > 0) {
-    aFontSet->AddFontFace(fontfamily, srcArray, weight, stretch, italicStyle,
-                          featureSettings, languageOverride);
-  }
-}
-
 gfxUserFontSet*
 nsPresContext::GetUserFontSetInternal()
 {
@@ -1951,8 +1891,9 @@ nsPresContext::GetUserFontSetExternal()
 void
 nsPresContext::FlushUserFontSet()
 {
-  if (!mShell)
+  if (!mShell) {
     return; // we've been torn down
+  }
 
   if (!mGetUserFontSetCalled) {
     return; // No one cares about this font set yet, but we want to be careful
@@ -1962,59 +1903,36 @@ nsPresContext::FlushUserFontSet()
 
   if (mUserFontSetDirty) {
     if (gfxPlatform::GetPlatform()->DownloadableFontsEnabled()) {
-      nsRefPtr<gfxUserFontSet> oldUserFontSet = mUserFontSet;
-
       nsTArray<nsFontFaceRuleContainer> rules;
-      if (!mShell->StyleSet()->AppendFontFaceRules(this, rules))
-        return;
-
-      PRBool differ;
-      if (rules.Length() == mFontFaceRules.Length()) {
-        differ = PR_FALSE;
-        for (PRUint32 i = 0, i_end = rules.Length(); i < i_end; ++i) {
-          if (rules[i].mRule != mFontFaceRules[i].mRule ||
-              rules[i].mSheetType != mFontFaceRules[i].mSheetType) {
-            differ = PR_TRUE;
-            break;
-          }
-        }
-      } else {
-        differ = PR_TRUE;
-      }
-
-      // Only rebuild things if the set of @font-face rules is different.
-      if (differ) {
+      if (!mShell->StyleSet()->AppendFontFaceRules(this, rules)) {
         if (mUserFontSet) {
           mUserFontSet->Destroy();
           NS_RELEASE(mUserFontSet);
         }
-
-        if (rules.Length() > 0) {
-          nsUserFontSet *fs = new nsUserFontSet(this);
-          if (!fs)
-            return;
-          mUserFontSet = fs;
-          NS_ADDREF(mUserFontSet);
-
-          for (PRUint32 i = 0, i_end = rules.Length(); i < i_end; ++i) {
-            InsertFontFaceRule(rules[i].mRule, fs, rules[i].mSheetType);
-          }
-        }
+        return;
       }
 
-#ifdef DEBUG
-      PRBool success =
-#endif
-        rules.SwapElements(mFontFaceRules);
-      NS_ASSERTION(success, "should never fail given both are heap arrays");
+      PRBool changed = PR_FALSE;
 
-      if (mGetUserFontSetCalled && oldUserFontSet != mUserFontSet) {
-        // If we've changed, created, or destroyed a user font set, we
-        // need to trigger a style change reflow.
-        // We need to enqueue a style change reflow (for later) to
-        // reflect that we're dropping @font-face rules.  (However,
-        // without a reflow, nothing will happen to start any downloads
-        // that are needed.)
+      if (rules.Length() == 0) {
+        if (mUserFontSet) {
+          mUserFontSet->Destroy();
+          NS_RELEASE(mUserFontSet);
+          changed = PR_TRUE;
+        }
+      } else {
+        if (!mUserFontSet) {
+          mUserFontSet = new nsUserFontSet(this);
+          NS_ADDREF(mUserFontSet);
+        }
+        changed = mUserFontSet->UpdateRules(rules);
+      }
+
+      // We need to enqueue a style change reflow (for later) to
+      // reflect that we're modifying @font-face rules.  (However,
+      // without a reflow, nothing will happen to start any downloads
+      // that are needed.)
+      if (changed) {
         UserFontSetUpdated();
       }
     }
@@ -2807,6 +2725,16 @@ nsRootPresContext::RootForgetUpdatePluginGeometryFrame(nsIFrame* aFrame)
   if (aFrame == mUpdatePluginGeometryForFrame) {
     mUpdatePluginGeometryForFrame->PresContext()->
       SetContainsUpdatePluginGeometryFrame(PR_FALSE);
+    mUpdatePluginGeometryForFrame = nsnull;
+  }
+}
+
+void
+nsRootPresContext::RootForgetUpdatePluginGeometryFrameForPresContext(
+  nsPresContext* aPresContext)
+{
+  if (aPresContext->GetContainsUpdatePluginGeometryFrame()) {
+    aPresContext->SetContainsUpdatePluginGeometryFrame(PR_FALSE);
     mUpdatePluginGeometryForFrame = nsnull;
   }
 }

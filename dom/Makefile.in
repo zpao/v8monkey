@@ -80,16 +80,11 @@ DIRS += \
   base \
   src \
   locales \
-  plugins \
+  plugins/ipc \
   indexedDB \
   system \
-  $(NULL)
-
-ifdef MOZ_IPC
-DIRS += \
   ipc \
   $(NULL)
-endif
 
 ifdef ENABLE_TESTS
 DIRS += tests

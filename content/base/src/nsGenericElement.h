@@ -95,8 +95,7 @@ typedef PRUptrdiff PtrBits;
  * and Item to its existing child list.
  * @see nsIDOMNodeList
  */
-class nsChildContentList : public nsINodeList,
-                           public nsWrapperCache
+class nsChildContentList : public nsINodeList
 {
 public:
   nsChildContentList(nsINode* aNode)
@@ -118,25 +117,9 @@ public:
     mNode = nsnull;
   }
 
-  nsINode* GetParentObject()
+  virtual nsINode* GetParentObject()
   {
     return mNode;
-  }
-
-  static nsChildContentList* FromSupports(nsISupports* aSupports)
-  {
-    nsINodeList* list = static_cast<nsINodeList*>(aSupports);
-#ifdef DEBUG
-    {
-      nsCOMPtr<nsINodeList> list_qi = do_QueryInterface(aSupports);
-
-      // If this assertion fires the QI implementation for the object in
-      // question doesn't use the nsINodeList pointer as the nsISupports
-      // pointer. That must be fixed, or we'll crash...
-      NS_ASSERTION(list_qi == list, "Uh, fix QI!");
-    }
-#endif
-    return static_cast<nsChildContentList*>(list);
   }
 
 private:
@@ -506,7 +489,6 @@ public:
   NS_IMETHOD GetAttributes(nsIDOMNamedNodeMap** aAttributes);
   NS_IMETHOD GetNamespaceURI(nsAString& aNamespaceURI);
   NS_IMETHOD GetPrefix(nsAString& aPrefix);
-  NS_IMETHOD SetPrefix(const nsAString& aPrefix);
   NS_IMETHOD Normalize();
   NS_IMETHOD IsSupported(const nsAString& aFeature,
                          const nsAString& aVersion, PRBool* aReturn);
@@ -943,7 +925,7 @@ public:
   class nsDOMSlots : public nsINode::nsSlots
   {
   public:
-    nsDOMSlots(PtrBits aFlags);
+    nsDOMSlots();
     virtual ~nsDOMSlots();
 
     /**
@@ -1024,14 +1006,14 @@ protected:
    * Add/remove this element to the documents id cache
    */
   void AddToIdTable(nsIAtom* aId) {
-    NS_ASSERTION(HasFlag(NODE_HAS_ID), "Node lacking NODE_HAS_ID flag");
+    NS_ASSERTION(HasID(), "Node doesn't have an ID?");
     nsIDocument* doc = GetCurrentDoc();
     if (doc && (!IsInAnonymousSubtree() || doc->IsXUL())) {
       doc->AddToIdTable(this, aId);
     }
   }
   void RemoveFromIdTable() {
-    if (HasFlag(NODE_HAS_ID)) {
+    if (HasID()) {
       nsIDocument* doc = GetCurrentDoc();
       if (doc) {
         nsIAtom* id = DoGetID();

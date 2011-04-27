@@ -15,7 +15,7 @@
  *
  * The Original Code is Bug 454977 code.
  *
- * The Initial Developer of the Original Code is Mozilla Corp.
+ * The Initial Developer of the Original Code is the Mozilla Foundation.
  * Portions created by the Initial Developer are Copyright (C) 2009
  * the Initial Developer. All Rights Reserved.
  *
@@ -56,7 +56,9 @@ function uri_in_db(aURI) {
   var result = hs.executeQuery(query, options);
   var root = result.root;
   root.containerOpen = true;
-  return (root.childCount == 1);
+  var cc = root.childCount;
+  root.containerOpen = false;
+  return (cc == 1);
 }
 
 // main

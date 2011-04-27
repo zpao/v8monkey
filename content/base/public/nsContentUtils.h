@@ -132,6 +132,7 @@ class nsPresContext;
 class nsIChannel;
 struct nsIntMargin;
 class nsPIDOMWindow;
+class nsIDocumentLoaderFactory;
 
 #ifndef have_PrefChangedFunc_typedef
 typedef int (*PR_CALLBACK PrefChangedFunc)(const char *, void *);
@@ -564,7 +565,7 @@ public:
    * since this can happen due to content fixup when a form spans table rows or
    * table cells.
    */
-  static PRBool BelongsInForm(nsIDOMHTMLFormElement *aForm,
+  static PRBool BelongsInForm(nsIContent *aForm,
                               nsIContent *aContent);
 
   static nsresult CheckQName(const nsAString& aQualifiedName,
@@ -741,20 +742,6 @@ public:
     nsNodeInfoManager *niMgr = aNodeInfo->NodeInfoManager();
 
     *aResult = niMgr->GetNodeInfo(aName, aNodeInfo->GetPrefixAtom(),
-                                  aNodeInfo->NamespaceID()).get();
-    return *aResult ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  /**
-   * Convenience method to create a new nodeinfo that differs only by prefix
-   * from aNodeInfo.
-   */
-  static nsresult PrefixChanged(nsINodeInfo *aNodeInfo, nsIAtom *aPrefix,
-                                nsINodeInfo** aResult)
-  {
-    nsNodeInfoManager *niMgr = aNodeInfo->NodeInfoManager();
-
-    *aResult = niMgr->GetNodeInfo(aNodeInfo->NameAtom(), aPrefix,
                                   aNodeInfo->NamespaceID()).get();
     return *aResult ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
   }
@@ -1005,6 +992,15 @@ public:
   static PRUint32 GetEventId(nsIAtom* aName);
 
   /**
+   * Return the category for the event with the given name. The name is the
+   * event name *without* the 'on' prefix. Returns NS_EVENT if the event
+   * is not known to be in any particular category.
+   *
+   * @param aName the event name to look up
+   */
+  static PRUint32 GetEventCategory(const nsAString& aName);
+
+  /**
    * Return the event id and atom for the event with the given name.
    * The name is the event name *without* the 'on' prefix.
    * Returns NS_USER_DEFINED_EVENT on the aEventID if the
@@ -1176,6 +1172,12 @@ public:
     }
   }
 
+  static void DropScriptObject(PRUint32 aLangID, void *aObject,
+                               const char *name, void *aClosure)
+  {
+    DropScriptObject(aLangID, aObject, aClosure);
+  }
+
   /**
    * Unbinds the content from the tree and nulls it out if it's not null.
    */
@@ -1282,7 +1284,7 @@ public:
     if (aCache->PreservingWrapper()) {
       aCallback(nsIProgrammingLanguage::JAVASCRIPT,
                 aCache->GetWrapperPreserveColor(),
-                aClosure);
+                "Preserved wrapper", aClosure);
     }
   }
 
@@ -1418,6 +1420,14 @@ public:
    * Return true if aURI is a local file URI (i.e. file://).
    */
   static PRBool URIIsLocalFile(nsIURI *aURI);
+
+  /**
+   * Given a URI, return set beforeHash to the part before the '#', and
+   * afterHash to the remainder of the URI, including the '#'.
+   */
+  static nsresult SplitURIAtHash(nsIURI *aURI,
+                                 nsACString &aBeforeHash,
+                                 nsACString &aAfterHash);
 
   /**
    * Get the application manifest URI for this document.  The manifest URI
@@ -1755,6 +1765,23 @@ public:
    */
   static bool AllowXULXBLForPrincipal(nsIPrincipal* aPrincipal);
 
+  enum ContentViewerType
+  {
+      TYPE_UNSUPPORTED,
+      TYPE_CONTENT,
+      TYPE_PLUGIN,
+      TYPE_UNKNOWN
+  };
+
+  static already_AddRefed<nsIDocumentLoaderFactory>
+  FindInternalContentViewer(const char* aType,
+                            ContentViewerType* aLoaderType = nsnull);
+
+  /**
+   * Calling this adds support for
+   * ontouch* event handler DOM attributes.
+   */
+  static void InitializeTouchEventTable();
 private:
   static PRBool InitializeEventTable();
 

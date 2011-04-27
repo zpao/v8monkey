@@ -40,7 +40,6 @@
 #include <android/log.h>
 #include <math.h>
 
-#ifdef MOZ_IPC
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/unused.h"
@@ -48,15 +47,14 @@
 using mozilla::dom::ContentParent;
 using mozilla::dom::ContentChild;
 using mozilla::unused;
-#endif
 
 #include "nsAppShell.h"
 #include "nsIdleService.h"
 #include "nsWindow.h"
 #include "nsIObserverService.h"
+#include "nsIPrefService.h"
 
-#include "nsIDeviceContext.h"
-#include "nsIRenderingContext.h"
+#include "nsRenderingContext.h"
 #include "nsIDOMSimpleGestureEvent.h"
 
 #include "nsWidgetAtoms.h"
@@ -84,7 +82,6 @@ NS_IMPL_ISUPPORTS_INHERITED0(nsWindow, nsBaseWidget)
 static gfxIntSize gAndroidBounds;
 static gfxIntSize gAndroidScreenBounds;
 
-#ifdef MOZ_IPC
 class ContentCreationNotifier;
 static nsCOMPtr<ContentCreationNotifier> gContentCreationNotifier;
 // A helper class to send updates when content processes
@@ -119,7 +116,6 @@ class ContentCreationNotifier : public nsIObserver
 
 NS_IMPL_ISUPPORTS1(ContentCreationNotifier,
                    nsIObserver)
-#endif
 
 static PRBool gMenu;
 static PRBool gMenuConsumed;
@@ -202,7 +198,7 @@ nsWindow::Create(nsIWidget *aParent,
                  nsNativeWidget aNativeParent,
                  const nsIntRect &aRect,
                  EVENT_CALLBACK aHandleEventFunction,
-                 nsIDeviceContext *aContext,
+                 nsDeviceContext *aContext,
                  nsIAppShell *aAppShell,
                  nsIToolkit *aToolkit,
                  nsWidgetInitData *aInitData)
@@ -771,7 +767,6 @@ nsWindow::OnGlobalAndroidEvent(AndroidGeckoEvent *ae)
             gAndroidScreenBounds.width = newScreenWidth;
             gAndroidScreenBounds.height = newScreenHeight;
 
-#ifdef MOZ_IPC
             if (XRE_GetProcessType() != GeckoProcessType_Default)
                 break;
 
@@ -796,7 +791,6 @@ nsWindow::OnGlobalAndroidEvent(AndroidGeckoEvent *ae)
                 else
                     obs->RemoveObserver(notifier, "ipc:content-created");
             }
-#endif
         }
 
         case AndroidGeckoEvent::MOTION_EVENT: {
@@ -1075,11 +1069,9 @@ nsWindow::InitEvent(nsGUIEvent& event, nsIntPoint* aPoint)
 gfxIntSize
 nsWindow::GetAndroidScreenBounds()
 {
-#ifdef MOZ_IPC
     if (XRE_GetProcessType() == GeckoProcessType_Content) {
         return ContentChild::GetSingleton()->GetScreenSize();
     }
-#endif
     return gAndroidScreenBounds;
 }
 
@@ -1749,9 +1741,25 @@ nsWindow::ResetInputState()
 NS_IMETHODIMP
 nsWindow::SetInputMode(const IMEContext& aContext)
 {
-    ALOGIME("IME: SetInputMode: s=%d", aContext.mStatus);
+    ALOGIME("IME: SetInputMode: s=%d trusted=%d", aContext.mStatus, aContext.mReason);
 
     mIMEContext = aContext;
+
+    // Ensure that opening the virtual keyboard is allowed for this specific
+    // IMEContext depending on the content.ime.strict.policy pref
+    if (aContext.mStatus != nsIWidget::IME_STATUS_DISABLED && 
+        aContext.mStatus != nsIWidget::IME_STATUS_PLUGIN) {
+      nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
+
+      PRBool useStrictPolicy = PR_FALSE;
+      if (NS_SUCCEEDED(prefs->GetBoolPref("content.ime.strict_policy", &useStrictPolicy))) {
+        if (useStrictPolicy && !aContext.FocusMovedByUser() && 
+            aContext.FocusMovedInContentProcess()) {
+          return NS_OK;
+        }
+      }
+    }
+
     AndroidBridge::NotifyIMEEnabled(int(aContext.mStatus), aContext.mHTMLInputType, aContext.mActionHint);
     return NS_OK;
 }

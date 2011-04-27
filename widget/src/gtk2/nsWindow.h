@@ -40,9 +40,7 @@
 #ifndef __nsWindow_h__
 #define __nsWindow_h__
 
-#ifdef MOZ_IPC
-#  include "mozilla/ipc/SharedMemorySysV.h"
-#endif
+#include "mozilla/ipc/SharedMemorySysV.h"
 
 #include "nsAutoPtr.h"
 
@@ -139,7 +137,7 @@ public:
                               nsNativeWidget   aNativeParent,
                               const nsIntRect  &aRect,
                               EVENT_CALLBACK   aHandleEventFunction,
-                              nsIDeviceContext *aContext,
+                              nsDeviceContext *aContext,
                               nsIAppShell      *aAppShell,
                               nsIToolkit       *aToolkit,
                               nsWidgetInitData *aInitData);

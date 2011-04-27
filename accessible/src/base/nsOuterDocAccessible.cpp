@@ -38,6 +38,7 @@
 
 #include "nsOuterDocAccessible.h"
 
+#include "States.h"
 #include "nsAccUtils.h"
 #include "nsDocAccessible.h"
 
@@ -66,14 +67,10 @@ nsOuterDocAccessible::NativeRole()
   return nsIAccessibleRole::ROLE_INTERNAL_FRAME;
 }
 
-nsresult
-nsOuterDocAccessible::GetStateInternal(PRUint32 *aState, PRUint32 *aExtraState)
+PRUint64
+nsOuterDocAccessible::NativeState()
 {
-  nsresult rv = nsAccessible::GetStateInternal(aState, aExtraState);
-  NS_ENSURE_A11Y_SUCCESS(rv, rv);
-
-  *aState &= ~nsIAccessibleStates::STATE_FOCUSABLE;
-  return NS_OK;
+  return nsAccessible::NativeState() & ~states::FOCUSABLE;
 }
 
 nsAccessible*
@@ -92,7 +89,7 @@ nsOuterDocAccessible::GetChildAtPoint(PRInt32 aX, PRInt32 aY,
   nsAccessible* child = GetChildAt(0);
   NS_ENSURE_TRUE(child, nsnull);
 
-  if (aWhichChild = eDeepestChild)
+  if (aWhichChild == eDeepestChild)
     return child->GetChildAtPoint(aX, aY, eDeepestChild);
   return child;
 }

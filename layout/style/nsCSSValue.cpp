@@ -691,11 +691,12 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
       nsStyleUtil::AppendEscapedCSSIdent(buffer, aResult);
     }
   }
-  else if (eCSSUnit_Array <= unit && unit <= eCSSUnit_Cubic_Bezier) {
+  else if (eCSSUnit_Array <= unit && unit <= eCSSUnit_Steps) {
     switch (unit) {
       case eCSSUnit_Counter:  aResult.AppendLiteral("counter(");  break;
       case eCSSUnit_Counters: aResult.AppendLiteral("counters("); break;
       case eCSSUnit_Cubic_Bezier: aResult.AppendLiteral("cubic-bezier("); break;
+      case eCSSUnit_Steps: aResult.AppendLiteral("steps("); break;
       default: break;
     }
 
@@ -716,6 +717,21 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
           aResult.AppendLiteral(" ");
         else
           aResult.AppendLiteral(", ");
+      }
+      if (unit == eCSSUnit_Steps && i == 1) {
+        NS_ABORT_IF_FALSE(array->Item(i).GetUnit() == eCSSUnit_Enumerated &&
+                          (array->Item(i).GetIntValue() ==
+                            NS_STYLE_TRANSITION_TIMING_FUNCTION_STEP_START ||
+                           array->Item(i).GetIntValue() ==
+                            NS_STYLE_TRANSITION_TIMING_FUNCTION_STEP_END),
+                          "unexpected value");
+        if (array->Item(i).GetIntValue() ==
+              NS_STYLE_TRANSITION_TIMING_FUNCTION_STEP_START) {
+          aResult.AppendLiteral("start");
+        } else {
+          aResult.AppendLiteral("end");
+        }
+        continue;
       }
       nsCSSProperty prop =
         ((eCSSUnit_Counter <= unit && unit <= eCSSUnit_Counters) &&
@@ -774,28 +790,20 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
     aResult.AppendInt(GetIntValue(), 10);
   }
   else if (eCSSUnit_Enumerated == unit) {
-    if (eCSSProperty_text_decoration == aProperty) {
+    if (eCSSProperty_text_decoration_line == aProperty) {
       PRInt32 intValue = GetIntValue();
-      if (NS_STYLE_TEXT_DECORATION_NONE == intValue) {
+      if (NS_STYLE_TEXT_DECORATION_LINE_NONE == intValue) {
         AppendASCIItoUTF16(nsCSSProps::LookupPropertyValue(aProperty, intValue),
                            aResult);
       } else {
         // Ignore the "override all" internal value.
         // (It doesn't have a string representation.)
-        intValue &= ~NS_STYLE_TEXT_DECORATION_OVERRIDE_ALL;
+        intValue &= ~NS_STYLE_TEXT_DECORATION_LINE_OVERRIDE_ALL;
         nsStyleUtil::AppendBitmaskCSSValue(
           aProperty, intValue,
-          NS_STYLE_TEXT_DECORATION_UNDERLINE,
-          NS_STYLE_TEXT_DECORATION_PREF_ANCHORS,
+          NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE,
+          NS_STYLE_TEXT_DECORATION_LINE_PREF_ANCHORS,
           aResult);
-      }
-    }
-    else if (eCSSProperty_azimuth == aProperty) {
-      PRInt32 intValue = GetIntValue();
-      AppendASCIItoUTF16(nsCSSProps::LookupPropertyValue(aProperty, (intValue & ~NS_STYLE_AZIMUTH_BEHIND)), aResult);
-      if ((NS_STYLE_AZIMUTH_BEHIND & intValue) != 0) {
-        aResult.Append(PRUnichar(' '));
-        AppendASCIItoUTF16(nsCSSProps::LookupPropertyValue(aProperty, NS_STYLE_AZIMUTH_BEHIND), aResult);
       }
     }
     else if (eCSSProperty_marks == aProperty) {
@@ -981,6 +989,7 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
     case eCSSUnit_Array:        break;
     case eCSSUnit_Attr:
     case eCSSUnit_Cubic_Bezier:
+    case eCSSUnit_Steps:
     case eCSSUnit_Counter:
     case eCSSUnit_Counters:     aResult.Append(PRUnichar(')'));    break;
     case eCSSUnit_Local_Font:   break;

@@ -36,19 +36,16 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-// NOTE: alphabetically ordered
 #include "nsTextAccessibleWrap.h"
 #include "ISimpleDOMText_i.c"
 
 #include "nsCoreUtils.h"
 #include "nsDocAccessible.h"
-
-#include "nsIFontMetrics.h"
 #include "nsIFrame.h"
+#include "nsFontMetrics.h"
 #include "nsPresContext.h"
-#include "nsIPresShell.h"
-#include "nsIRenderingContext.h"
-#include "nsIComponentManager.h"
+
+#include "gfxFont.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsTextAccessibleWrap Accessible
@@ -253,48 +250,28 @@ STDMETHODIMP nsTextAccessibleWrap::get_fontFamily(
 __try {
   *aFontFamily = NULL;
 
-  nsIFrame *frame = GetFrame();
-  nsCOMPtr<nsIPresShell> presShell = GetPresShell();
-  if (!frame || !presShell || !presShell->GetPresContext()) {
+  nsIFrame* frame = GetFrame();
+  if (!frame) {
     return E_FAIL;
   }
 
-  nsCOMPtr<nsIRenderingContext> rc = presShell->GetReferenceRenderingContext();
-  if (!rc) {
-    return E_FAIL;
-  }
+  nsRefPtr<nsFontMetrics> fm;
+  frame->PresContext()->DeviceContext()->
+    GetMetricsFor(frame->GetStyleFont()->mFont,
+                  frame->GetStyleVisibility()->mLanguage,
+                  frame->PresContext()->GetUserFontSet(),
+                  *getter_AddRefs(fm));
 
-  const nsStyleFont *font = frame->GetStyleFont();
-
-  const nsStyleVisibility *visibility = frame->GetStyleVisibility();
-
-  if (NS_FAILED(rc->SetFont(font->mFont, visibility->mLanguage,
-                            presShell->GetPresContext()->GetUserFontSet()))) {
-    return E_FAIL;
-  }
-
-  nsCOMPtr<nsIDeviceContext> deviceContext;
-  rc->GetDeviceContext(*getter_AddRefs(deviceContext));
-  if (!deviceContext) {
-    return E_FAIL;
-  }
-
-  nsCOMPtr<nsIFontMetrics> fm;
-  rc->GetFontMetrics(*getter_AddRefs(fm));
-  if (!fm) {
-    return E_FAIL;
-  }
-
-  nsAutoString fontFamily;
-  deviceContext->FirstExistingFont(fm->Font(), fontFamily);
-  if (fontFamily.IsEmpty())
+  const nsString& name = fm->GetThebesFontGroup()->GetFontAt(0)->GetName();
+  if (name.IsEmpty())
     return S_FALSE;
 
-  *aFontFamily = ::SysAllocStringLen(fontFamily.get(), fontFamily.Length());
+  *aFontFamily = ::SysAllocStringLen(name.get(), name.Length());
   if (!*aFontFamily)
     return E_OUTOFMEMORY;
 
-} __except(FilterA11yExceptions(::GetExceptionCode(), GetExceptionInformation())) { }
+} __except(FilterA11yExceptions(::GetExceptionCode(),
+                                GetExceptionInformation())) { }
 
   return S_OK;
 }

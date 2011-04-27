@@ -44,6 +44,7 @@
 #include "nsCSSProperty.h"
 #include "nsColor.h"
 #include "nsCOMArray.h"
+#include "nsCOMPtr.h"
 
 class nsICSSRule;
 class nsCSSStyleSheet;
@@ -52,6 +53,9 @@ class nsIURI;
 class nsIUnicharInputStream;
 struct nsCSSSelectorList;
 class nsMediaList;
+#ifdef MOZ_CSS_ANIMATIONS
+class nsCSSKeyframeRule;
+#endif
 
 namespace mozilla {
 namespace css {
@@ -77,11 +81,6 @@ private:
   nsCSSParser& operator=(nsCSSParser const&);
 
 public:
-  // If this is false, memory allocation failed in the constructor
-  // and all other methods will crash.
-  operator bool() const
-  { return !!mImpl; }
-
   // Set a style sheet for the parser to fill in. The style sheet must
   // implement the nsCSSStyleSheet interface.  Null can be passed in to clear
   // out an existing stylesheet reference.
@@ -193,6 +192,26 @@ public:
                                nsIURI*             aURL,
                                PRUint32            aLineNumber,
                                nsCSSSelectorList** aSelectorList);
+
+#ifdef MOZ_CSS_ANIMATIONS
+  /*
+   * Parse a keyframe rule (which goes inside an @keyframes rule).
+   * Return it if the parse was successful.
+   */
+  already_AddRefed<nsCSSKeyframeRule>
+  ParseKeyframeRule(const nsSubstring& aBuffer,
+                    nsIURI*            aURL,
+                    PRUint32           aLineNumber);
+
+  /*
+   * Parse a selector list for a keyframe rule.  Return whether
+   * the parse succeeded.
+   */
+  bool ParseKeyframeSelectorString(const nsSubstring& aSelectorString,
+                                   nsIURI*            aURL,
+                                   PRUint32           aLineNumber,
+                                   nsTArray<float>&   aSelectorList);
+#endif
 
 protected:
   // This is a CSSParserImpl*, but if we expose that type name in this

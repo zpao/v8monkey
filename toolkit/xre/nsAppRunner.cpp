@@ -56,13 +56,15 @@
 #include <QtGui/QInputContext>
 #endif // MOZ_WIDGET_QT
 
-#ifdef MOZ_IPC
 #include "mozilla/dom/ContentParent.h"
 using mozilla::dom::ContentParent;
-#endif
 
 #include "nsAppRunner.h"
 #include "nsUpdateDriver.h"
+
+#ifdef MOZ_INSTRUMENT_EVENT_LOOP
+#include "EventTracer.h"
+#endif
 
 #ifdef XP_MACOSX
 #include "MacLaunchHelper.h"
@@ -209,9 +211,7 @@ using mozilla::dom::ContentParent;
 #include "nsIPrefService.h"
 #endif
 
-#ifdef MOZ_IPC
 #include "base/command_line.h"
-#endif
 
 #include "mozilla/FunctionTimer.h"
 
@@ -778,7 +778,6 @@ nsXULAppInfo::GetProcessType(PRUint32* aResult)
 NS_IMETHODIMP
 nsXULAppInfo::EnsureContentProcess()
 {
-#ifdef MOZ_IPC
   if (XRE_GetProcessType() != GeckoProcessType_Default)
     return NS_ERROR_NOT_AVAILABLE;
 
@@ -786,9 +785,6 @@ nsXULAppInfo::EnsureContentProcess()
   if (!c)
     return NS_ERROR_NOT_AVAILABLE;
   return NS_OK;
-#else
-  return NS_ERROR_NOT_AVAILABLE;
-#endif
 }
 
 NS_IMETHODIMP
@@ -3752,6 +3748,13 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
           nativeApp->Enable();
         }
 
+#ifdef MOZ_INSTRUMENT_EVENT_LOOP
+        bool event_tracing_running = false;
+        if (PR_GetEnv("MOZ_INSTRUMENT_EVENT_LOOP")) {
+          event_tracing_running = mozilla::InitEventTracing();
+        }
+#endif /* MOZ_INSTRUMENT_EVENT_LOOP */
+
         NS_TIME_FUNCTION_MARK("Next: Run");
 
         NS_TIME_FUNCTION_MARK("appStartup->Run");
@@ -3770,6 +3773,11 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
         NS_TIME_FUNCTION_MARK("Next: Finish");
 
         NS_TIME_FUNCTION_MARK("appStartup->Run done");
+
+#ifdef MOZ_INSTRUMENT_EVENT_LOOP
+        if (event_tracing_running)
+          mozilla::ShutdownEventTracing();
+#endif
 
         // Check for an application initiated restart.  This is one that
         // corresponds to nsIAppStartup.quit(eRestart)
@@ -3851,8 +3859,6 @@ XRE_InitCommandLine(int aArgc, char* aArgv[])
 {
   nsresult rv = NS_OK;
 
-#if defined(MOZ_IPC)
-
 #if defined(OS_WIN)
   CommandLine::Init(aArgc, aArgv);
 #else
@@ -3886,7 +3892,6 @@ XRE_InitCommandLine(int aArgc, char* aArgv[])
       free(canonArgs[i]);
   delete[] canonArgs;
 #endif
-#endif
 
 #ifdef MOZ_OMNIJAR
   const char *omnijarPath = nsnull;
@@ -3914,9 +3919,7 @@ XRE_DeinitCommandLine()
 {
   nsresult rv = NS_OK;
 
-#if defined(MOZ_IPC)
   CommandLine::Terminate();
-#endif
 
   return rv;
 }
@@ -3924,11 +3927,7 @@ XRE_DeinitCommandLine()
 GeckoProcessType
 XRE_GetProcessType()
 {
-#ifdef MOZ_IPC
   return mozilla::startup::sChildProcessType;
-#else
-  return GeckoProcessType_Default;
-#endif
 }
 
 void

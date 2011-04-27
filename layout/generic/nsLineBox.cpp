@@ -503,9 +503,8 @@ nsLineBox::SetOverflowAreas(const nsOverflowAreas& aOverflowAreas)
     NS_ASSERTION(aOverflowAreas.Overflow(otype).height >= 0,
                  "illegal height for combined area");
   }
-  // REVIEW: should this use IsExactEqual?
-  if (aOverflowAreas.VisualOverflow() != mBounds ||
-      aOverflowAreas.ScrollableOverflow() != mBounds) {
+  if (!aOverflowAreas.VisualOverflow().IsEqualInterior(mBounds) ||
+      !aOverflowAreas.ScrollableOverflow().IsEqualEdges(mBounds)) {
     if (!mData) {
       if (IsInline()) {
         mInlineData = new ExtraInlineData(mBounds);
@@ -660,10 +659,8 @@ nsLineIterator::CheckLineOrder(PRInt32                  aLine,
     *aLastVisual = nsnull;
     return NS_OK;
   }
-  
-  nsPresContext* presContext = line->mFirstChild->PresContext();
 
-  nsBidiPresUtils* bidiUtils = presContext->GetBidiUtils();
+  nsBidiPresUtils* bidiUtils = line->mFirstChild->PresContext()->GetBidiUtils();
 
   nsIFrame* leftmostFrame;
   nsIFrame* rightmostFrame;

@@ -66,7 +66,7 @@ interface nsITransferable;
 interface nsIQueryContentEventResult;
 interface nsIDOMWindow;
 
-[scriptable, uuid(da529d62-ba27-480c-bb37-766ad083179a)]
+[scriptable, uuid(663e33d7-eca2-42e8-af92-5df6a5e222df)]
 interface nsIDOMWindowUtils : nsISupports {
 
   /**
@@ -825,6 +825,32 @@ interface nsIDOMWindowUtils : nsISupports {
                                  in gfxContext aThebesContext);
 
   /**
+   * advanceTimeAndRefresh allows the caller to take over the refresh
+   * driver timing for a window.  A call to advanceTimeAndRefresh does
+   * three things:
+   *  (1) It marks the refresh driver for this presentation so that it
+   *      no longer refreshes on its own, but is instead driven entirely
+   *      by the caller (except for the refresh that happens when a
+   *      document comes out of the bfcache).
+   *  (2) It advances the refresh driver's current refresh time by the
+   *      argument given.  Negative advances are permitted.
+   *  (3) It does a refresh (i.e., notifies refresh observers) at that
+   *      new time.
+   *
+   * Note that this affects other connected docshells of the same type
+   * in the same docshell tree, such as parent frames.
+   *
+   * When callers have completed their use of advanceTimeAndRefresh,
+   * they must call restoreNormalRefresh.
+   */
+  void advanceTimeAndRefresh(in long long aMilliseconds);
+
+  /**
+   * Undoes the effects of advanceTimeAndRefresh.
+   */
+  void restoreNormalRefresh();
+
+  /**
    * Method for testing nsStyleAnimation::ComputeDistance.
    *
    * Returns the distance between the two values as reported by
@@ -855,4 +881,9 @@ interface nsIDOMWindowUtils : nsISupports {
    * the bounds of the window. Always returns true in non-DEBUG builds.
    */
   boolean leafLayersPartitionWindow();
+
+  /**
+   * true if the (current inner) window may have event listeners for touch events.
+   */
+  readonly attribute boolean mayHaveTouchEventListeners;
 };

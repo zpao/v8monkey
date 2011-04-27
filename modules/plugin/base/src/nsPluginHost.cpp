@@ -133,7 +133,6 @@
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsIFile.h"
 #include "nsPluginDirServiceProvider.h"
-#include "nsInt64.h"
 #include "nsPluginError.h"
 
 #include "nsUnicharUtils.h"
@@ -432,9 +431,8 @@ nsPluginHost::~nsPluginHost()
   sInst = nsnull;
 }
 
-NS_IMPL_ISUPPORTS5(nsPluginHost,
+NS_IMPL_ISUPPORTS4(nsPluginHost,
                    nsIPluginHost,
-                   nsIPluginHost_MOZILLA_2_0_BRANCH,
                    nsIObserver,
                    nsITimerCallback,
                    nsISupportsWeakReference)
@@ -1109,9 +1107,7 @@ nsPluginHost::DoInstantiateEmbeddedPlugin(const char *aMimeType, nsIURI* aURL,
     aOwner->CreateWidget();
 
     // If we've got a native window, the let the plugin know about it.
-    nsCOMPtr<nsIPluginInstanceOwner_MOZILLA_2_0_BRANCH> owner = do_QueryInterface(aOwner);
-    if (owner)
-      owner->SetWindow();
+    aOwner->SetWindow();
 
     // create an initial stream with data
     // don't make the stream if it's a java applet or we don't have SRC or DATA attribute
@@ -1186,15 +1182,12 @@ NS_IMETHODIMP nsPluginHost::InstantiateFullPagePlugin(const char *aMimeType,
       aOwner->CreateWidget();
 
       // If we've got a native window, the let the plugin know about it.
-      nsCOMPtr<nsIPluginInstanceOwner_MOZILLA_2_0_BRANCH> owner = do_QueryInterface(aOwner);
-      if (owner)
-        owner->SetWindow();
+      aOwner->SetWindow();
 
       rv = NewFullPagePluginStream(aURI, instance, aStreamListener);
 
       // If we've got a native window, the let the plugin know about it.
-      if (owner)
-        owner->SetWindow();
+      aOwner->SetWindow();
     }
   }
 
@@ -1249,9 +1242,7 @@ nsresult nsPluginHost::FindStoppedPluginForURL(nsIURI* aURL,
     aOwner->CreateWidget();
 
     // If we've got a native window, the let the plugin know about it.
-    nsCOMPtr<nsIPluginInstanceOwner_MOZILLA_2_0_BRANCH> owner = do_QueryInterface(aOwner);
-    if (owner)
-      owner->SetWindow();
+    aOwner->SetWindow();
 
     return NS_OK;
   }
@@ -1741,11 +1732,7 @@ static nsresult CreateNPAPIPlugin(nsPluginTag *aPluginTag,
                                   nsNPAPIPlugin **aOutNPAPIPlugin)
 {
   // If this is an in-process plugin we'll need to load it here if we haven't already.
-#ifdef MOZ_IPC
   if (!nsNPAPIPlugin::RunPluginOOP(aPluginTag)) {
-#else
-  if (!aPluginTag->mLibrary) {
-#endif
     if (aPluginTag->mFullPath.IsEmpty())
       return NS_ERROR_FAILURE;
     nsCOMPtr<nsILocalFile> file = do_CreateInstance("@mozilla.org/file/local;1");
@@ -2890,7 +2877,7 @@ nsPluginHost::ReadPluginInfo()
   if (NS_FAILED(rv))
     return rv;
 
-  PRInt32 flen = nsInt64(fileSize);
+  PRInt32 flen = PRInt64(fileSize);
   if (flen == 0) {
     NS_WARNING("Plugins Registry Empty!");
     return NS_OK; // ERROR CONDITION
@@ -4028,7 +4015,6 @@ NS_IMETHODIMP nsPluginHost::Notify(nsITimer* timer)
   return NS_ERROR_FAILURE;
 }
 
-#ifdef MOZ_IPC
 #ifdef XP_WIN
 // Re-enable any top level browser windows that were disabled by modal dialogs
 // displayed by the crashed plugin.
@@ -4138,7 +4124,6 @@ nsPluginHost::PluginCrashed(nsNPAPIPlugin* aPlugin,
   CheckForDisabledWindows();
 #endif
 }
-#endif
 
 nsNPAPIPluginInstance*
 nsPluginHost::FindInstance(const char *mimetype)

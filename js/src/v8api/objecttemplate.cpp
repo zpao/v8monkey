@@ -25,6 +25,11 @@ struct PrivateData
     cls(gNewInstanceClass)
   {
   }
+  ~PrivateData() {
+    namedData.Dispose();
+    indexedData.Dispose();
+    prototype.Dispose();
+  }
 
   static PrivateData* Get(JSContext* cx,
                           JSObject* obj)
@@ -42,6 +47,9 @@ struct PrivateData
     return PrivateData::Get(*obj);
   }
 
+  AccessorStorage accessors;
+  AttributeStorage attributes;
+
   // Named Property Handler storage.
   NamedPropertyGetter namedGetter;
   NamedPropertySetter namedSetter;
@@ -58,6 +66,8 @@ struct PrivateData
   IndexedPropertyEnumerator indexedEnumerator;
   Persistent<Value> indexedData;
 
+  Persistent<ObjectTemplate> prototype;
+
   JSClass cls;
 };
 
@@ -71,6 +81,11 @@ struct ObjectTemplateHandle
   static ObjectTemplateHandle* Get(JSContext* cx,
                                    JSObject* obj)
   {
+    JSClass *cls = JS_GET_CLASS(cx, obj);
+    // For global objects, the template data lives on the prototype
+    if (cls->flags & JSCLASS_GLOBAL_FLAGS) {
+      obj = JS_GetPrototype(cx, obj);
+    }
     return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
   }
 
@@ -211,6 +226,25 @@ JSClass gNewInstanceClass = {
   NULL, // trace
 };
 
+JSBool
+ot_SetProperty(JSContext* cx,
+               JSObject* obj,
+               jsid id,
+               JSBool strict,
+               jsval* vp)
+{
+  PrivateData* data = PrivateData::Get(cx, obj);
+  JS_ASSERT(data);
+
+  Value v(*vp);
+  Local<Value> value = Local<Value>::New(&v);
+  data->attributes.addAttribute(id, value);
+
+  // We do not actually set anything on our internal object!
+  *vp = JSVAL_VOID;
+  return JS_TRUE;
+}
+
 void
 ot_finalize(JSContext* cx,
             JSObject* obj)
@@ -225,7 +259,7 @@ JSClass gObjectTemplateClass = {
   JS_PropertyStub, // addProperty
   JS_PropertyStub, // delProperty
   JS_PropertyStub, // getProperty
-  JS_StrictPropertyStub, // setProperty
+  ot_SetProperty, // setProperty
   JS_EnumerateStub, // enumerate
   JS_ResolveStub, // resolve
   JS_ConvertStub, // convert
@@ -249,6 +283,23 @@ ObjectTemplate::ObjectTemplate() :
 }
 
 // static
+bool ObjectTemplate::IsObjectTemplate(Handle<Value> v) {
+  if (v.IsEmpty())
+    return false;
+  Handle<Object> o = v->ToObject();
+  if (o.IsEmpty())
+    return false;
+  JSObject *obj = **o;
+  return &gObjectTemplateClass == JS_GET_CLASS(cx(), obj);
+}
+
+void ObjectTemplate::SetPrototype(Handle<ObjectTemplate> o) {
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
+  pd->prototype = Persistent<ObjectTemplate>::New(o);
+}
+
+// static
 Local<ObjectTemplate>
 ObjectTemplate::New()
 {
@@ -257,13 +308,21 @@ ObjectTemplate::New()
 }
 
 Local<Object>
-ObjectTemplate::NewInstance()
+ObjectTemplate::NewInstance(JSObject* parent)
 {
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
+
   // We've set everything we care about on our InternalObject, so we can assign
   // that to the prototype of our new object.
-  JSObject* proto = InternalObject();
-  JSClass* cls = &PrivateData::Get(proto)->cls;
-  JSObject* obj = JS_NewObject(cx(), cls, proto, NULL);
+  JSClass* cls = &pd->cls;
+  JSObject* proto = pd->prototype.IsEmpty()
+                  ? NULL
+                  : **pd->prototype->NewInstance();
+  if (!parent)
+    parent = **Context::GetCurrent()->Global();
+
+  JSObject* obj = JS_NewObject(cx(), cls, proto, parent);
   if (!obj) {
     // wtf?
     UNIMPLEMENTEDAPI(Local<Object>());
@@ -277,6 +336,33 @@ ObjectTemplate::NewInstance()
   }
 
   Object o(obj);
+
+  // Set all attributes that were added with Template::Set on the object.
+  AttributeStorage::Range attributes = pd->attributes.all();
+  while (!attributes.empty()) {
+    AttributeStorage::Entry& entry = attributes.front();
+    Handle<Value> v = entry.value;
+    if (FunctionTemplate::IsFunctionTemplate(v)) {
+      FunctionTemplate *tmpl = reinterpret_cast<FunctionTemplate*>(*v);
+      v = tmpl->GetFunction(parent);
+    } else if (IsObjectTemplate(v)) {
+      ObjectTemplate *tmpl = reinterpret_cast<ObjectTemplate*>(*v);
+      v = tmpl->NewInstance(parent);
+    }
+    (void)o.Set(String::FromJSID(entry.key), v);
+    attributes.popFront();
+  }
+
+  // Set all things that were added with SetAccessor on the object.
+  AccessorStorage::Range accessors = pd->accessors.all();
+  while (!accessors.empty()) {
+    AccessorStorage::Entry& entry = accessors.front();
+    AccessorStorage::PropertyData& data = entry.value;
+    (void)o.SetAccessor(String::FromJSID(entry.key), data.getter, data.setter,
+                        data.data, DEFAULT, data.attribute);
+    accessors.popFront();
+  }
+
   return Local<Object>::New(&o);
 }
 
@@ -288,8 +374,11 @@ ObjectTemplate::SetAccessor(Handle<String> name,
                             AccessControl settings,
                             PropertyAttribute attribute)
 {
-  (void)InternalObject().SetAccessor(name, getter, setter, data, settings,
-                                     attribute, true);
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
+  jsid id;
+  (void)JS_ValueToId(cx(), name->native(), &id);
+  pd->accessors.addAccessor(id, getter, setter, data, attribute);
 }
 
 void

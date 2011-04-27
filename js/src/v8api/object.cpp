@@ -39,18 +39,8 @@ JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
 
-  // We need to make sure that the object we pass to the getter is actually the
-  // object that has set the property.  The "This" property on AccessorInfo is
-  // actually the object in which the properties were set on, not the "this"
-  // object in JavaScript.
-  JSObject* thiz = JS_THIS_OBJECT(cx, vp);
-  JSPropertyDescriptor desc;
-  DebugOnly<JSBool> rc = JS_GetPropertyDescriptorById(cx, thiz, id, 0, &desc);
-  JS_ASSERT(rc);
-  thiz = desc.obj;
-
   AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
-  AccessorInfo info(data.data, thiz);
+  AccessorInfo info(data.data, JS_THIS_OBJECT(cx, vp));
   Handle<Value> result = data.getter(String::FromJSID(id), info);
   JS_SET_RVAL(cx, vp, result->native());
   // XXX: this is usually correct
@@ -70,18 +60,8 @@ JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
 
-  // We need to make sure that the object we pass to the getter is actually the
-  // object that has set the property.  The "This" property on AccessorInfo is
-  // actually the object in which the properties were set on, not the "this"
-  // object in JavaScript.
-  JSObject* thiz = JS_THIS_OBJECT(cx, vp);
-  JSPropertyDescriptor desc;
-  DebugOnly<JSBool> rc = JS_GetPropertyDescriptorById(cx, thiz, id, 0, &desc);
-  JS_ASSERT(rc);
-  thiz = desc.obj;
-
   AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
-  AccessorInfo info(data.data, thiz);
+  AccessorInfo info(data.data, JS_THIS_OBJECT(cx, vp));
   Value value(*JS_ARGV(cx, vp));
   data.setter(String::FromJSID(id), &value, info);
   // XXX: this is usually correct
@@ -232,8 +212,7 @@ Object::SetAccessor(Handle<String> name,
                     AccessorSetter setter,
                     Handle<Value> data,
                     AccessControl settings,
-                    PropertyAttribute attribs,
-                    bool isJSAPIShared)
+                    PropertyAttribute attribs)
 {
   if (settings != 0) {
     // We only currently support the default settings.
@@ -257,9 +236,7 @@ Object::SetAccessor(Handle<String> name,
   JS_SetReservedSlot(cx(), setterObj, 0, native());
   JS_SetReservedSlot(cx(), setterObj, 1, name->native());
 
-  uintN attributes = JSPROP_GETTER | JSPROP_SETTER;
-  if (isJSAPIShared)
-    attributes |= JSPROP_SHARED;
+  uintN attributes = JSPROP_GETTER | JSPROP_SETTER | JSPROP_SHARED;
   if (!JS_DefinePropertyById(cx(), *this, propid,
         JSVAL_VOID,
         (JSPropertyOp)getterObj,

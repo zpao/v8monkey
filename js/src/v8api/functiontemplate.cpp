@@ -10,7 +10,8 @@ const int kInstanceSlot = 0;
 const int kDataSlot = 1;
 const int kCallbackSlot = 2;
 const int kCallbackParitySlot = 3;
-const int kFunctionTemplateSlots = 4;
+const int kCachedFunction = 4;
+const int kFunctionTemplateSlots = 5;
 } // anonymous namespace
 
 JSClass FunctionTemplate::sFunctionTemplateClass = {
@@ -118,6 +119,10 @@ FunctionTemplate::New(InvocationCallback callback,
 Local<Function>
 FunctionTemplate::GetFunction(JSObject* parent)
 {
+  Local<Function> fn = InternalObject().GetInternalField(kCachedFunction).As<Function>();
+  if (!fn.IsEmpty()) {
+    return Local<Function>::New(fn);
+  }
   JSFunction* func =
     JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, NULL, NULL);
   JSObject* obj = JS_GetFunctionObject(func);
@@ -126,7 +131,9 @@ FunctionTemplate::GetFunction(JSObject* parent)
   (void)o.Set(prototypeStr, PrototypeTemplate()->NewInstance(parent));
   Local<Value> thiz = Local<Value>::New(&InternalObject());
   o.SetInternalField(0, thiz);
-  return Local<Function>::New(reinterpret_cast<Function*>(&o));
+  fn = Local<Function>::New(reinterpret_cast<Function*>(&o));
+  InternalObject().SetInternalField(kCachedFunction, fn);
+  return fn;
 }
 
 void

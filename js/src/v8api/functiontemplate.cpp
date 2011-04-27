@@ -123,7 +123,7 @@ FunctionTemplate::GetFunction()
   JSObject* obj = JS_GetFunctionObject(func);
   Object o(obj);
   Local<String> prototypeStr = String::NewSymbol("prototype");
-  (void)o.Set(prototypeStr, InternalObject().Get(prototypeStr));
+  (void)o.Set(prototypeStr, PrototypeTemplate()->NewInstance());
   Local<Value> thiz = Local<Value>::New(&InternalObject());
   o.SetInternalField(0, thiz);
   return Local<Function>::New(reinterpret_cast<Function*>(&o));

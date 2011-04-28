@@ -123,7 +123,8 @@ ArrayBuffer::class_finalize(JSContext *cx, JSObject *obj)
 {
     ArrayBuffer *abuf = ArrayBuffer::fromJSObject(obj);
     if (abuf) {
-        abuf->freeStorage(cx);
+        if (!abuf->isExternal)
+            abuf->freeStorage(cx);
         cx->delete_(abuf);
     }
 }
@@ -187,6 +188,7 @@ ArrayBuffer::allocateStorage(JSContext *cx, uint32 nbytes)
     }
 
     byteLength = nbytes;
+    isExternal = false;
     return true;
 }
 

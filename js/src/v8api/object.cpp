@@ -1,6 +1,8 @@
 #include "v8-internal.h"
 #include "jstl.h"
 #include "jshashtable.h"
+#include "jsobj.h"
+#include "jstypedarray.h"
 #include "mozilla/Util.h"
 #include <limits>
 using namespace mozilla;
@@ -521,31 +523,50 @@ Object::SetIndexedPropertiesToExternalArrayData(void* data,
                                                 ExternalArrayType array_type,
                                                 int number_of_elements)
 {
-  UNIMPLEMENTEDAPI();
+  JS_ASSERT(HasIndexedPropertiesInExternalArrayData());
+  JS_ASSERT (array_type == GetIndexedPropertiesExternalArrayDataType());
+  if (number_of_elements < 0)
+    return;
+  js::TypedArray* arr = js::TypedArray::fromJSObject(*this);
+  // Hardcoded for bytes now
+  size_t elemSize = arr->slotWidth();
+  size_t bufferSize = elemSize * number_of_elements;
+  js::ArrayBuffer* buffer = arr->buffer;
+  buffer->freeStorage(cx());
+  buffer->data = data;
+  buffer->byteLength = bufferSize;
+  buffer->isExternal = true;
 }
 
 bool
 Object::HasIndexedPropertiesInExternalArrayData()
 {
-  UNIMPLEMENTEDAPI(false);
+  return js_IsTypedArray(*this);
 }
 
 void*
 Object::GetIndexedPropertiesExternalArrayData()
 {
-  UNIMPLEMENTEDAPI(NULL);
+  JS_ASSERT(HasIndexedPropertiesInExternalArrayData());
+  js::TypedArray* arr = js::TypedArray::fromJSObject(*this);
+  // XXX: take arr->byteOffset into account?
+  return arr->data;
+
 }
 
 ExternalArrayType
 Object::GetIndexedPropertiesExternalArrayDataType()
 {
-  UNIMPLEMENTEDAPI(kExternalByteArray);
+  JS_ASSERT(HasIndexedPropertiesInExternalArrayData());
+  return kExternalUnsignedByteArray;
 }
 
 int
 Object::GetIndexedPropertiesExternalArrayDataLength()
 {
-  UNIMPLEMENTEDAPI(0);
+  JS_ASSERT(HasIndexedPropertiesInExternalArrayData());
+  js::TypedArray* arr = js::TypedArray::fromJSObject(*this);
+  return arr->byteLength;
 }
 
 Object::Object(JSObject *obj) :

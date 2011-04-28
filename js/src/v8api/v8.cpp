@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <math.h>
 #include "v8-internal.h"
+#include "jstypedarray.h"
 #include "mozilla/Util.h"
 using namespace mozilla;
 
@@ -195,6 +196,7 @@ Persistent<Context> Context::New(
   JSObject *global = JS_NewGlobalObject(cx(), &global_class);
 
   JS_InitStandardClasses(cx(), global);
+  (void)js_InitTypedArrayClasses(cx(), global);
   if (!global_template.IsEmpty()) {
     JS_SetPrototype(cx(), global, **global_template->NewInstance(global));
   }

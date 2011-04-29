@@ -74,6 +74,11 @@ FunctionTemplate::CallCallback(JSContext* cx,
   bool isConstructing = JS_IsConstructing(cx, vp);
   if (isConstructing) {
     thiz = **instanceTemplate->NewInstance();
+    Handle<Value> proto = fnTemplateObj.Get(String::NewSymbol("prototype"));
+    if (!proto.IsEmpty() && proto->IsObject()) {
+      Handle<Object> o = proto->ToObject();
+      (void) JS_SetPrototype(cx, thiz, **o);
+    }
   } else {
     thiz = JS_THIS_OBJECT(cx, vp);
   }

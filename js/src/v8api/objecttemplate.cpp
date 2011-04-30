@@ -8,6 +8,11 @@ JS_STATIC_ASSERT(sizeof(ObjectTemplate) == sizeof(GCReference));
 namespace {
 
 extern JSClass gNewInstanceClass;
+JSBool
+o_DeleteProperty(JSContext* cx,
+                 JSObject* obj,
+                 jsid id,
+                 jsval* vp);
 
 struct PrivateData
 {
@@ -38,7 +43,7 @@ struct PrivateData
   }
   static PrivateData* Get(JSObject* obj)
   {
-    return static_cast<PrivateData*>(JS_GetPrivate(cx(), obj));
+    return Get(cx(), obj);
   }
   static PrivateData* Get(Handle<ObjectTemplate> ot)
   {
@@ -81,12 +86,20 @@ struct ObjectTemplateHandle
   static ObjectTemplateHandle* Get(JSContext* cx,
                                    JSObject* obj)
   {
-    JSClass *cls = JS_GET_CLASS(cx, obj);
-    // For global objects, the template data lives on the prototype
-    if (cls->flags & JSCLASS_GLOBAL_FLAGS) {
-      obj = JS_GetPrototype(cx, obj);
+    ObjectTemplateHandle* data = NULL;
+    // XXX: this doesn't work correctly if there are multiple
+    // instantiated objects in the proto chain
+    JSObject* o = obj;
+    while (o != NULL) {
+      JSClass* cls = JS_GET_CLASS(cx, o);
+      if (cls->delProperty == o_DeleteProperty) {
+        data = static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, o));
+        break;
+      }
+      o = JS_GetPrototype(cx, o);
     }
-    return static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, obj));
+    JS_ASSERT(data);
+    return data;
   }
 
   static Local<ObjectTemplate> GetHandle(JSContext* cx,

@@ -148,6 +148,7 @@ struct HandleScope {
     return Local<T>(reinterpret_cast<T*>(ref));
   }
 private:
+  friend class V8;
   friend class internal::GCReference;
   static internal::GCReference *CreateHandle(internal::GCReference r);
   static bool IsLocalReference(internal::GCReference *);

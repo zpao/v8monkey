@@ -36,6 +36,9 @@ static JSCrossCompartmentCall *gCompartmentCall = 0;
 static bool gHasAttemptedInitialization = false;
 static FatalErrorCallback gFatalCallback = 0;
 
+bool disposed() {
+  return gHasAttemptedInitialization && !gRuntime;
+}
 }
 
 using namespace internal;

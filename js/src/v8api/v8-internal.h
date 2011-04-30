@@ -13,6 +13,7 @@ void reportError(JSContext *ctx, const char *message, JSErrorReport *report);
 extern JSClass global_class;
 
 JSContext *cx();
+bool disposed();
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Accessor Storage

@@ -180,6 +180,9 @@ void Context::Enter() {
 }
 
 void Context::Exit() {
+  // Sometimes a context scope can hang around after V8::Dispose is called
+  if (v8::internal::disposed())
+    return;
   ContextChain *link = gContextChain;
   gContextChain = gContextChain->next;
   delete link;

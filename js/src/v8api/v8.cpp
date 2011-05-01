@@ -720,6 +720,10 @@ Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, Script
                            chars, len, NULL, 0);
   }
 
+  if (!s) {
+    return Local<Script>();
+  }
+
   Script script(s);
   if (bindToCurrentContext) {
     script.InternalObject()->Set(String::New("global"), Context::GetCurrent()->Global());

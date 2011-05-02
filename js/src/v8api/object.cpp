@@ -3,6 +3,7 @@
 #include "jshashtable.h"
 #include "jsobj.h"
 #include "jstypedarray.h"
+#include "jsproxy.h"
 #include "mozilla/Util.h"
 #include <limits>
 using namespace mozilla;
@@ -518,6 +519,19 @@ Object::GetIndexedPropertiesPixelDataLength()
   UNIMPLEMENTEDAPI(0);
 }
 
+static JSObject* grabTypedArray(JSObject* obj) {
+  if (js_IsTypedArray(obj))
+    return obj;
+  if (!obj->isObjectProxy())
+    return NULL;
+  jsid name = INTERNED_STRING_TO_JSID(JS_InternString(cx(), "rawArray"));
+  js::Value v;
+  js::JSProxy::get(cx(), obj, obj, name, &v);
+  if (v.isObjectOrNull())
+    return v.toObjectOrNull();
+  return NULL;
+}
+
 void
 Object::SetIndexedPropertiesToExternalArrayData(void* data,
                                                 ExternalArrayType array_type,
@@ -527,7 +541,7 @@ Object::SetIndexedPropertiesToExternalArrayData(void* data,
   JS_ASSERT (array_type == GetIndexedPropertiesExternalArrayDataType());
   if (number_of_elements < 0)
     return;
-  js::TypedArray* arr = js::TypedArray::fromJSObject(*this);
+  js::TypedArray* arr = js::TypedArray::fromJSObject(grabTypedArray(*this));
   // Hardcoded for bytes now
   size_t elemSize = arr->slotWidth();
   size_t bufferSize = elemSize * number_of_elements;
@@ -541,14 +555,14 @@ Object::SetIndexedPropertiesToExternalArrayData(void* data,
 bool
 Object::HasIndexedPropertiesInExternalArrayData()
 {
-  return js_IsTypedArray(*this);
+  return grabTypedArray(*this) != NULL;
 }
 
 void*
 Object::GetIndexedPropertiesExternalArrayData()
 {
   JS_ASSERT(HasIndexedPropertiesInExternalArrayData());
-  js::TypedArray* arr = js::TypedArray::fromJSObject(*this);
+  js::TypedArray* arr = js::TypedArray::fromJSObject(grabTypedArray(*this));
   // XXX: take arr->byteOffset into account?
   return arr->data;
 
@@ -565,7 +579,7 @@ int
 Object::GetIndexedPropertiesExternalArrayDataLength()
 {
   JS_ASSERT(HasIndexedPropertiesInExternalArrayData());
-  js::TypedArray* arr = js::TypedArray::fromJSObject(*this);
+  js::TypedArray* arr = js::TypedArray::fromJSObject(grabTypedArray(*this));
   return arr->byteLength;
 }
 

@@ -27,6 +27,10 @@ AccessorStorage::addAccessor(jsid name,
     attribute,
   };
   AccessorTable::AddPtr slot = mStore.lookupForAdd(name);
+  if (slot.found()) {
+    mStore.remove(slot);
+    slot = mStore.lookupForAdd(name);
+  }
   mStore.add(slot, name, container);
 }
 
@@ -63,6 +67,10 @@ AttributeStorage::addAttribute(jsid name,
   JS_ASSERT(mStore.initialized());
 
   AttributeTable::AddPtr slot = mStore.lookupForAdd(name);
+  if (slot.found()) {
+    mStore.remove(slot);
+    slot = mStore.lookupForAdd(name);
+  }
   mStore.add(slot, name, Persistent<Value>::New(data));
 }
 

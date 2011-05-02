@@ -14,6 +14,17 @@ using namespace internal;
 JS_STATIC_ASSERT(sizeof(Object) == sizeof(GCReference));
 
 struct Object::PrivateData {
+  PrivateData() :
+    hiddenValues(Persistent<Object>::New(Object::New()))
+  {
+  }
+
+  ~PrivateData()
+  {
+    JS_ASSERT(!hiddenValues.IsEmpty());
+    hiddenValues.Dispose();
+  }
+
   Persistent<Object> hiddenValues;
   AccessorStorage properties;
 };

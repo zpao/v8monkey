@@ -140,7 +140,7 @@ FunctionTemplate::CallCallback(JSContext* cx,
   if (callback) {
     ret = callback(args);
   }
-  else {
+  if (ret.IsEmpty()) {
     ret = v8::Undefined();
   }
   if (isConstructing) {

@@ -451,6 +451,7 @@ Object::SetHiddenValue(Handle<String> key,
                        Handle<Value> value)
 {
   PrivateData& pd = GetHiddenStore();
+  JS_ASSERT(!pd.hiddenValues.IsEmpty());
   return pd.hiddenValues->Set(key, value);
 }
 
@@ -458,6 +459,7 @@ Local<Value>
 Object::GetHiddenValue(Handle<String> key)
 {
   PrivateData& pd = GetHiddenStore();
+  JS_ASSERT(!pd.hiddenValues.IsEmpty());
   return pd.hiddenValues->Get(key);
 }
 
@@ -465,6 +467,7 @@ bool
 Object::DeleteHiddenValue(Handle<String> key)
 {
   PrivateData& pd = GetHiddenStore();
+  JS_ASSERT(!pd.hiddenValues.IsEmpty());
   return pd.hiddenValues->Delete(key);
 }
 

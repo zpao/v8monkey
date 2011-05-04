@@ -11,6 +11,18 @@ AccessorStorage::AccessorStorage()
   mStore.init(10);
 }
 
+AccessorStorage::~AccessorStorage()
+{
+  JS_ASSERT(mStore.initialized());
+
+  Range r = mStore.all();
+  while (!r.empty()) {
+    PropertyData& attr = r.front().value;
+    JS_ASSERT(!attr.data.IsEmpty());
+    attr.data.Dispose();
+  }
+}
+
 void
 AccessorStorage::addAccessor(jsid name,
                              AccessorGetter getter,

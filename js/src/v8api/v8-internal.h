@@ -33,6 +33,7 @@ private:
 
 public:
   AccessorStorage();
+  ~AccessorStorage();
   void addAccessor(jsid name, AccessorGetter getter,
                    AccessorSetter setter, Handle<Value> data,
                    PropertyAttribute attribute);

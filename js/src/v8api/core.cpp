@@ -82,6 +82,8 @@ bool V8::Initialize() {
 
 // TODO: call this
 bool V8::Dispose() {
+  DestroyObjectInernals();
+
   // Unwind the context scopes
   Local<Context> ctx;
   while (!(ctx = Context::GetCurrent()).IsEmpty()) {

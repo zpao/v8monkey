@@ -74,6 +74,18 @@ AttributeStorage::AttributeStorage()
   mStore.init(10);
 }
 
+AttributeStorage::~AttributeStorage()
+{
+  JS_ASSERT(mStore.initialized());
+
+  Range r = mStore.all();
+  while (!r.empty()) {
+    Persistent<Value>& val = r.front().value;
+    JS_ASSERT(!val.IsEmpty());
+    val.Dispose();
+  }
+}
+
 void
 AttributeStorage::addAttribute(jsid name,
                                Handle<Value> data)

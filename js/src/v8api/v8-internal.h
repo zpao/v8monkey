@@ -53,6 +53,7 @@ class AttributeStorage
 
 public:
   AttributeStorage();
+  ~AttributeStorage();
   void addAttribute(jsid name, Handle<Value> value);
 
   typedef AttributeTable::Entry Entry;

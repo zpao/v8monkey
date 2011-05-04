@@ -115,12 +115,12 @@ String::Write(JSUint16* buffer,
   size_t internalLen;
   const jschar* chars =
     JS_GetStringCharsZAndLength(cx(), *this, &internalLen);
-  if (!chars || internalLen >= static_cast<size_t>(start)) {
+  if (!chars || internalLen < static_cast<size_t>(start)) {
     return 0;
   }
-  size_t bytes = std::min<size_t>(length, internalLen - start) * 2;
+  size_t bytes = std::min<size_t>(length, internalLen - start) * sizeof(JSUint16);
   if (length == -1) {
-    bytes = (internalLen - start) * 2;
+    bytes = (internalLen - start) * sizeof(JSUint16);
   }
   (void)memcpy(buffer, &chars[start], bytes);
 

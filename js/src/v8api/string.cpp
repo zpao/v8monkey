@@ -150,11 +150,22 @@ String::WriteAscii(char* buffer,
   // [0, effectiveLength) is the range to write to
   int i = 0;
   for (int idx = start; i < effectiveLength && idx < end; i++, idx++) {
-    if (static_cast<unsigned int>(tmp[idx]) > 0x7F) {
+    unsigned char first = static_cast<unsigned char>(tmp[idx]);
+    if (first > 0x7F) {
+      if (first < 0xE0) {
+        char second = tmp[++idx] & ~0x80;
+        unsigned int ch = (static_cast<unsigned int>(first & ~0xC0) << 6) | second;
+        if (ch == (0xff & ch)) {
+          buffer[i] = ch;
+          continue;
+        }
+        // Doesn't fit into a single byte, fall through
+      }
       i--;
       continue;
+    } else {
+      buffer[i] = tmp[idx];
     }
-    buffer[i] = tmp[idx];
   }
   // If we have enough space for the NULL terminator, set it.
   if (i < effectiveLength) {

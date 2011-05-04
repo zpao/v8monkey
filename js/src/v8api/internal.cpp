@@ -28,6 +28,8 @@ AccessorStorage::addAccessor(jsid name,
   };
   AccessorTable::AddPtr slot = mStore.lookupForAdd(name);
   if (slot.found()) {
+    JS_ASSERT(!slot->value.data.IsEmpty());
+    slot->value.data.Dispose();
     mStore.remove(slot);
     slot = mStore.lookupForAdd(name);
   }

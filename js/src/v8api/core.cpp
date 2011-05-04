@@ -28,7 +28,9 @@ JSClass global_class = {
 };
 
 void notImplemented(const char* functionName) {
+#ifdef DEBUG
   fprintf(stderr, "Calling an unimplemented API: %s\n", functionName);
+#endif
 }
 
 static JSObject* gCompartment = 0;

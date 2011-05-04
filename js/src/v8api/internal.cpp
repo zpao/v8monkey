@@ -70,6 +70,8 @@ AttributeStorage::addAttribute(jsid name,
 
   AttributeTable::AddPtr slot = mStore.lookupForAdd(name);
   if (slot.found()) {
+    JS_ASSERT(!slot->value.IsEmpty());
+    slot->value.Dispose();
     mStore.remove(slot);
     slot = mStore.lookupForAdd(name);
   }

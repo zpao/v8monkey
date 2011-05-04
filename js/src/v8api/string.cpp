@@ -140,25 +140,29 @@ String::WriteAscii(char* buffer,
 
   // No easy way to convert UTF-8 to ASCII, so just drop characters that are
   // not ASCII.
-  int end = start + written;
-  if (length == -1) {
-    length = written;
+  int effectiveLength = length;
+  if (effectiveLength == -1) {
+    // Assume enough storage to fit the string + null
+    effectiveLength = written + 1;
   }
-  int idx = 0;
-  for (int i = start; i < end; i++) {
-    if (static_cast<unsigned int>(tmp[i]) > 0x7F) {
+  int end = start + encodedLength;
+  // [start,end) is the range to read from
+  // [0, effectiveLength) is the range to write to
+  int i = 0;
+  for (int idx = start; i < effectiveLength && idx < end; i++, idx++) {
+    if (static_cast<unsigned int>(tmp[idx]) > 0x7F) {
+      i--;
       continue;
     }
-    buffer[idx] = tmp[i];
-    idx++;
+    buffer[i] = tmp[idx];
   }
   // If we have enough space for the NULL terminator, set it.
-  if (idx <= length && length > 0) {
-    buffer[idx] = '\0';
+  if (i < effectiveLength) {
+    buffer[i] = '\0';
   }
 
   delete[] tmp;
-  return idx;
+  return i;
 }
 
 int

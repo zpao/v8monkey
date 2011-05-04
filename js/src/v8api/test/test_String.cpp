@@ -221,6 +221,7 @@ Test gTests[] = {
   TEST(test_AsciiValue_length),
   TEST(test_Utf8Value_length),
   TEST(test_WriteAsciiEmpty),
+  TEST(test_PartialWriteAscii),
 };
 
 const char* file = __FILE__;

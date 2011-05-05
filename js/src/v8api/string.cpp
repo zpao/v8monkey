@@ -17,6 +17,9 @@ String::New(const char* data,
   else {
     str = JS_NewStringCopyN(cx(), data, length);
   }
+  if (!str) {
+    return Local<String>();
+  }
   String s(str);
   return Local<String>::New(&s);
 }
@@ -32,6 +35,9 @@ String::New(const JSUint16* data,
   }
   else {
     str = JS_NewUCStringCopyN(cx(), data, length);
+  }
+  if (!str) {
+    return Local<String>();
   }
   String s(str);
   return Local<String>::New(&s);

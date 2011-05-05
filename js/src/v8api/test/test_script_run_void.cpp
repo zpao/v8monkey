@@ -43,6 +43,8 @@ test_script_err()
   // Enter the created context for compiling.
   Context::Scope context_scope(context);
 
+  TryCatch trycatch;
+
   // Create a string containing the JavaScript source code.
   Handle<String> source = String::New("a b");
 
@@ -50,6 +52,7 @@ test_script_err()
   Handle<Script> script = Script::Compile(source);
 
   do_check_true(script.IsEmpty());
+  do_check_true(trycatch.HasCaught());
 
   // Dispose the persistent context.
   context.Dispose();

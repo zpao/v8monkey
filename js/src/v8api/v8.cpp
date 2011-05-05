@@ -721,6 +721,7 @@ Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, Script
   }
 
   if (!s) {
+    TryCatch::CheckForException();
     return Local<Script>();
   }
 

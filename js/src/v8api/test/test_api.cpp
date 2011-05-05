@@ -4432,7 +4432,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ConstructCall),
   TEST(test_ConversionNumber),
   TEST(test_isNumberType),
-  DISABLED_TEST(test_ConversionException, 82),
+  TEST(test_ConversionException),
   UNIMPLEMENTED_TEST(test_APICatch),
   UNIMPLEMENTED_TEST(test_APIThrowTryCatch),
   UNIMPLEMENTED_TEST(test_TryCatchInTryFinally),

@@ -58,12 +58,39 @@ test_script_err()
   context.Dispose();
 }
 
+void
+test_script_origin()
+{
+  HandleScope handle_scope;
+  Persistent<Context> context = Context::New();
+
+  Context::Scope context_scope(context);
+
+  Handle<String> source = String::New("throw new Error;");
+  ScriptOrigin origin(String::New("foo"), Integer::New(12));
+
+  Handle<Script> script = Script::Compile(source, &origin);
+  TryCatch trycatch;
+  trycatch.SetCaptureMessage(true);
+
+  Handle<Value> result = script->Run();
+  do_check_true(result.IsEmpty());
+  do_check_true(trycatch.HasCaught());
+  do_check_true(trycatch.Exception()->IsObject());
+  Handle<v8::Message> msg = trycatch.Message();
+  do_check_true(!msg.IsEmpty());
+  do_check_eq(12, msg->GetLineNumber());
+  do_check_true(String::New("foo")->Equals(msg->GetScriptResourceName()));
+
+  context.Dispose();
+}
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
 Test gTests[] = {
   TEST(test_script_run_void),
   TEST(test_script_err),
+  TEST(test_script_origin),
 };
 
 const char* file = __FILE__;

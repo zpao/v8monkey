@@ -65,7 +65,8 @@ ft_finalize(JSContext* cx,
 
 } // anonymous namespace
 
-JSClass FunctionTemplate::sFunctionTemplateClass = {
+namespace internal {
+JSClass sFunctionTemplateClass = {
   "FunctionTemplate", // name
   JSCLASS_HAS_PRIVATE |
   JSCLASS_HAS_RESERVED_SLOTS(kFunctionTemplateSlots), // flags
@@ -85,6 +86,17 @@ JSClass FunctionTemplate::sFunctionTemplateClass = {
   NULL, // hasInstance
   NULL, // trace
 };
+
+bool IsFunctionTemplate(Handle<Value> v) {
+  if (v.IsEmpty())
+    return false;
+  Handle<Object> o = v->ToObject();
+  if (o.IsEmpty())
+    return false;
+  JSObject *obj = **o;
+  return &sFunctionTemplateClass == JS_GET_CLASS(cx(), obj);
+}
+}
 
 FunctionTemplate::FunctionTemplate() :
   Template(&sFunctionTemplateClass)
@@ -152,16 +164,6 @@ FunctionTemplate::CallCallback(JSContext* cx,
   return !JS_IsExceptionPending(cx);
 }
 
-bool FunctionTemplate::IsFunctionTemplate(Handle<Value> v) {
-  if (v.IsEmpty())
-    return false;
-  Handle<Object> o = v->ToObject();
-  if (o.IsEmpty())
-    return false;
-  JSObject *obj = **o;
-  return &sFunctionTemplateClass == JS_GET_CLASS(cx(), obj);
-}
-
 // static
 Local<FunctionTemplate>
 FunctionTemplate::New(InvocationCallback callback,
@@ -203,10 +205,10 @@ FunctionTemplate::GetFunction(JSObject* parent)
   while (!attributes.empty()) {
     AttributeStorage::Entry& entry = attributes.front();
     Handle<Value> v = entry.value;
-    if (FunctionTemplate::IsFunctionTemplate(v)) {
+    if (IsFunctionTemplate(v)) {
       FunctionTemplate *tmpl = reinterpret_cast<FunctionTemplate*>(*v);
       v = tmpl->GetFunction(parent);
-    } else if (ObjectTemplate::IsObjectTemplate(v)) {
+    } else if (IsObjectTemplate(v)) {
       ObjectTemplate *tmpl = reinterpret_cast<ObjectTemplate*>(*v);
       v = tmpl->NewInstance(parent);
     }

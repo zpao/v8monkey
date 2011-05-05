@@ -295,15 +295,8 @@ JSClass gObjectTemplateClass = {
 
 } // anonymous namespace
 
-ObjectTemplate::ObjectTemplate() :
-  Template(&gObjectTemplateClass)
-{
-  PrivateData* data = new PrivateData();
-  (void)JS_SetPrivate(cx(), InternalObject(), data);
-}
-
-// static
-bool ObjectTemplate::IsObjectTemplate(Handle<Value> v) {
+namespace internal {
+bool IsObjectTemplate(Handle<Value> v) {
   if (v.IsEmpty())
     return false;
   Handle<Object> o = v->ToObject();
@@ -312,7 +305,16 @@ bool ObjectTemplate::IsObjectTemplate(Handle<Value> v) {
   JSObject *obj = **o;
   return &gObjectTemplateClass == JS_GET_CLASS(cx(), obj);
 }
+}
 
+ObjectTemplate::ObjectTemplate() :
+  Template(&gObjectTemplateClass)
+{
+  PrivateData* data = new PrivateData();
+  (void)JS_SetPrivate(cx(), InternalObject(), data);
+}
+
+// static
 void ObjectTemplate::SetPrototype(Handle<ObjectTemplate> o) {
   PrivateData* pd = PrivateData::Get(InternalObject());
   JS_ASSERT(pd);
@@ -362,7 +364,7 @@ ObjectTemplate::NewInstance(JSObject* parent)
   while (!attributes.empty()) {
     AttributeStorage::Entry& entry = attributes.front();
     Handle<Value> v = entry.value;
-    if (FunctionTemplate::IsFunctionTemplate(v)) {
+    if (IsFunctionTemplate(v)) {
       FunctionTemplate *tmpl = reinterpret_cast<FunctionTemplate*>(*v);
       v = tmpl->GetFunction(parent);
     } else if (IsObjectTemplate(v)) {

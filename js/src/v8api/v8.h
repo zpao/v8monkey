@@ -53,6 +53,8 @@ class GCReferenceContainer;
 struct PersistentGCReference;
 
 void notImplemented(const char* functionName);
+bool IsFunctionTemplate(Handle<Value> v);
+bool IsObjectTemplate(Handle<Value> v);
 
 class GCReference {
   friend struct GCOps;
@@ -1048,10 +1050,8 @@ typedef bool (*IndexedSecurityCallback)(Local<Object> host, JSUint32 index, Acce
 class FunctionTemplate : public Template {
   FunctionTemplate();
 
-  static JSClass sFunctionTemplateClass;
   static JSBool CallCallback(JSContext *cx, uintN argc, jsval *vp);
 
-  static bool IsFunctionTemplate(Handle<Value> v);
   friend class ObjectTemplate;
 public:
   static Local<FunctionTemplate> New(InvocationCallback callback = 0, Handle<Value> data = Handle<Value>(), Handle<Signature> signature = Handle<Signature>());
@@ -1068,7 +1068,6 @@ public:
 class ObjectTemplate : public Template {
   ObjectTemplate();
 
-  static bool IsObjectTemplate(Handle<Value> v);
   void SetPrototype(Handle<ObjectTemplate> o);
   friend class FunctionTemplate;
 public:

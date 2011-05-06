@@ -4608,7 +4608,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_RecursiveLocking),
   UNIMPLEMENTED_TEST(test_LockUnlockLock),
   UNIMPLEMENTED_TEST(test_DontLeakGlobalObjects),
-  TEST(test_NewPersistentHandleFromWeakCallback),
+  UNWANTED_TEST(test_NewPersistentHandleFromWeakCallback),
   TEST(test_DoNotUseDeletedNodesInSecondLevelGc),
   TEST(test_NoGlobalHandlesOrphaningDueToWeakCallback),
   TEST(test_CheckForCrossContextObjectLiterals),

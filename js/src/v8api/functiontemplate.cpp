@@ -55,6 +55,13 @@ ft_SetProperty(JSContext* cx,
 }
 
 void
+ft_Trace(JSTracer* tracer, JSObject* obj) {
+  PrivateData* data = PrivateData::Get(tracer->context, obj);
+  JS_ASSERT(data);
+  data->attributes.trace(tracer);
+}
+
+void
 ft_finalize(JSContext* cx,
             JSObject* obj)
 {
@@ -83,7 +90,7 @@ JSClass FunctionTemplate::sFunctionTemplateClass = {
   NULL, // construct
   NULL, // xdrObject
   NULL, // hasInstance
-  NULL, // trace
+  ft_Trace, // trace
 };
 
 FunctionTemplate::FunctionTemplate() :
@@ -203,7 +210,7 @@ FunctionTemplate::GetFunction(JSObject* parent)
   AttributeStorage::Range attributes = pd->attributes.all();
   while (!attributes.empty()) {
     AttributeStorage::Entry& entry = attributes.front();
-    Handle<Value> v = entry.value;
+    Handle<Value> v = entry.value.get();
     if (FunctionTemplate::IsFunctionTemplate(v)) {
       FunctionTemplate *tmpl = reinterpret_cast<FunctionTemplate*>(*v);
       v = tmpl->GetFunction(parent);

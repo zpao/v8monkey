@@ -77,6 +77,7 @@ bool V8::Initialize() {
   (void) JS_AddObjectRoot(ctx, &gCompartment);
 
   JS_SetGCCallback(cx(), GCCallback);
+  JS_SetExtraGCRoots(gRuntime, TraceObjectInternals, NULL);
   return true;
 }
 

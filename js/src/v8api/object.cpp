@@ -41,6 +41,18 @@ static ObjectPrivateDataMap& privateDataMap() {
 }
 
 void
+internal::TraceObjectInternals(JSTracer* tracer, void*) {
+  if (!gPrivateDataMap) {
+    return;
+  }
+  ObjectPrivateDataMap::Range r = gPrivateDataMap->all();
+  while (!r.empty()) {
+    r.front().value->properties.trace(tracer);
+    r.popFront();
+  }
+}
+
+void
 internal::DestroyObjectInernals()
 {
   if (!gPrivateDataMap) {
@@ -68,7 +80,7 @@ JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   (void) JS_ValueToId(cx, name, &id);
 
   AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
-  AccessorInfo info(data.data, JS_THIS_OBJECT(cx, vp));
+  AccessorInfo info(data.data.get(), JS_THIS_OBJECT(cx, vp));
   Handle<Value> result = data.getter(String::FromJSID(id), info);
   JS_SET_RVAL(cx, vp, result->native());
   // XXX: this is usually correct
@@ -89,7 +101,7 @@ JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   (void) JS_ValueToId(cx, name, &id);
 
   AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
-  AccessorInfo info(data.data, JS_THIS_OBJECT(cx, vp));
+  AccessorInfo info(data.data.get(), JS_THIS_OBJECT(cx, vp));
   Value value(*JS_ARGV(cx, vp));
   data.setter(String::FromJSID(id), &value, info);
   // XXX: this is usually correct

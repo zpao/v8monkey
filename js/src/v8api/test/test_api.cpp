@@ -4610,7 +4610,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_DontLeakGlobalObjects),
   UNWANTED_TEST(test_NewPersistentHandleFromWeakCallback),
   UNWANTED_TEST(test_DoNotUseDeletedNodesInSecondLevelGc),
-  TEST(test_NoGlobalHandlesOrphaningDueToWeakCallback),
+  UNWANTED_TEST(test_NoGlobalHandlesOrphaningDueToWeakCallback),
   TEST(test_CheckForCrossContextObjectLiterals),
   UNIMPLEMENTED_TEST(test_NestedHandleScopeAndContexts),
   UNIMPLEMENTED_TEST(test_ExternalAllocatedMemory),

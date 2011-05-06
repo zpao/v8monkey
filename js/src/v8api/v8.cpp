@@ -204,7 +204,8 @@ Persistent<Context> Context::New(
     JS_SetPrototype(cx(), global, **global_template->NewInstance(global));
   }
 
-  return Persistent<Context>(new Context(global));
+  Context ctx(global);
+  return Persistent<Context>::New(&ctx);
 }
 
 //////////////////////////////////////////////////////////////////////////////

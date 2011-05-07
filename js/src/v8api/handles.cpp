@@ -124,6 +124,13 @@ namespace internal {
       }
       ref = next;
     }
+    ref = weakPtrs;
+    while (ref != NULL) {
+      PersistentGCReference *next = ref->next;
+      if (ref->isNearDeath)
+        delete ref;
+      ref = next;
+    }
   }
 
   GCReference* GCReference::Globalize() {

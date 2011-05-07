@@ -88,6 +88,7 @@ public:
 // that Persistent handles are never copied around in memory.
 struct PersistentGCReference : public GCReference {
   PersistentGCReference(GCReference *ref);
+  ~PersistentGCReference();
 
   bool IsWeak() const {
     return prev != NULL || next != NULL;
@@ -96,7 +97,7 @@ struct PersistentGCReference : public GCReference {
     return isNearDeath;
   }
   void MakeWeak(WeakReferenceCallback callback, void *context);
-  void ClearWeak();
+  void ClearWeak(bool reroot=true);
 
 private:
   WeakReferenceCallback callback;

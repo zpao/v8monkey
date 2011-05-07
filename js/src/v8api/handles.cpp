@@ -79,6 +79,11 @@ namespace internal {
     prev(NULL), next(NULL)
   {}
 
+  PersistentGCReference::~PersistentGCReference() {
+    // Don't reroot since we are disappearing
+    ClearWeak(false);
+  }
+
   void PersistentGCReference::MakeWeak(WeakReferenceCallback callback, void *context) {
     this->callback = callback;
     this->context = context;
@@ -88,15 +93,18 @@ namespace internal {
     unroot(cx());
   }
 
-  void PersistentGCReference::ClearWeak() {
+  void PersistentGCReference::ClearWeak(bool reroot) {
     if (next)
       next->prev = prev;
     if (prev)
       prev->next = next;
-    if (weakPtrs == this)
+    if (weakPtrs == this) {
+      JS_ASSERT(prev == NULL);
       weakPtrs = next;
+    }
     prev = next = NULL;
-    root(cx());
+    if (reroot)
+      root(cx());
   }
 
   PersistentGCReference *PersistentGCReference::weakPtrs = NULL;

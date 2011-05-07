@@ -178,9 +178,10 @@ FunctionTemplate::New(InvocationCallback callback,
 Local<Function>
 FunctionTemplate::GetFunction(JSObject* parent)
 {
+  HandleScope scope;
   Local<Function> fn = InternalObject().GetInternalField(kCachedFunction).As<Function>();
   if (!fn.IsEmpty()) {
-    return Local<Function>::New(fn);
+    return scope.Close(Local<Function>::New(fn));
   }
   Handle<Value> name = InternalObject().GetInternalField(kFunctionName);
   if (name.IsEmpty())
@@ -214,7 +215,7 @@ FunctionTemplate::GetFunction(JSObject* parent)
     attributes.popFront();
   }
 
-  return fn;
+  return scope.Close(fn);
 }
 
 void

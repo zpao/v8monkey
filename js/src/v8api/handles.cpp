@@ -88,6 +88,8 @@ namespace internal {
     this->callback = callback;
     this->context = context;
     next = weakPtrs;
+    if (next)
+      next->prev = this;
     prev = NULL;
     weakPtrs = this;
     unroot(cx());

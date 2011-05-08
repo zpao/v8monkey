@@ -225,11 +225,6 @@ public:
   }
   void AddedToRadioGroup();
   void WillRemoveFromRadioGroup();
-  /**
-   * Get the radio group container for this button (form or document)
-   * @return the radio group container (or null if no form or document)
-   */
-  virtual already_AddRefed<nsIRadioGroupContainer> GetRadioGroupContainer();
 
  /**
    * Helper function returning the currently selected button in the radio group.
@@ -368,23 +363,6 @@ protected:
    */
   static PRBool IsValidEmailAddressList(const nsAString& aValue);
 
-  /**
-   * This helper method returns true if the aPattern pattern matches aValue.
-   * aPattern should not contain leading and trailing slashes (/).
-   * The pattern has to match the entire value not just a subset.
-   * aDocument must be a valid pointer (not null).
-   *
-   * This is following the HTML5 specification:
-   * http://dev.w3.org/html5/spec/forms.html#attr-input-pattern
-   *
-   * @param aValue    the string to check.
-   * @param aPattern  the string defining the pattern.
-   * @param aDocument the owner document of the element.
-   * @result          whether the given string is matches the pattern.
-   */
-  static PRBool IsPatternMatching(nsAString& aValue, nsAString& aPattern,
-                                  nsIDocument* aDocument);
-
   // Helper method
   nsresult SetValueInternal(const nsAString& aValue,
                             PRBool aUserInput,
@@ -408,16 +386,6 @@ protected:
                                     PRBool aShouldInvalidate);
 
   nsresult GetSelectionRange(PRInt32* aSelectionStart, PRInt32* aSelectionEnd);
-
-  /**
-   * Get the name if it exists and return whether it did exist
-   * @param aName the name returned [OUT]
-   * @param true if the name is empty, false otherwise
-   */
-  PRBool GetNameIfExists(nsAString& aName) {
-    GetAttr(kNameSpaceID_None, nsGkAtoms::name, aName);
-    return !aName.IsEmpty();
-  }
 
   /**
    * Called when an attribute is about to be changed
@@ -593,6 +561,14 @@ protected:
         return false;
     }
   }
+
+  /**
+   * Returns the radio group container if the element has one, null otherwise.
+   * The radio group container will be the form owner if there is one.
+   * The current document otherwise.
+   * @return the radio group container if the element has one, null otherwise.
+   */
+  nsIRadioGroupContainer* GetRadioGroupContainer() const;
 
   nsCOMPtr<nsIControllers> mControllers;
 

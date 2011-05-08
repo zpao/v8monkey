@@ -299,6 +299,8 @@ pref("browser.urlbar.match.url", "@");
 // 2 = only bookmarks, 3 = visited bookmarks, 1+16 = history matching in the url
 pref("browser.urlbar.default.behavior", 0);
 
+pref("browser.urlbar.formatting.enabled", true);
+
 // Number of milliseconds to wait for the http headers (and thus
 // the Content-Disposition filename) before giving up and falling back to 
 // picking a filename without that info in hand so that the user sees some
@@ -345,10 +347,6 @@ pref("browser.search.update.log", false);
 
 // Check whether we need to perform engine updates every 6 hours
 pref("browser.search.update.interval", 21600);
-
-// Whether or not microsummary and generator updates are enabled
-pref("browser.microsummary.enabled", true);
-pref("browser.microsummary.updateGenerators", true);
 
 // enable search suggestions by default
 pref("browser.search.suggest.enabled", true);

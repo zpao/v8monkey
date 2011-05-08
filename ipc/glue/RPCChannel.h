@@ -207,6 +207,18 @@ protected:
      */
     bool OnMaybeDequeueOne();
 
+    /**
+     * The "remote view of stack depth" can be different than the
+     * actual stack depth when there are out-of-turn replies.  When we
+     * receive one, our actual RPC stack depth doesn't decrease, but
+     * the other side (that sent the reply) thinks it has.  So, the
+     * "view" returned here is |stackDepth| minus the number of
+     * out-of-turn replies.
+     *
+     * Only called from the worker thread.
+     */
+    size_t RemoteViewOfStackDepth(size_t stackDepth) const;
+
     void Incall(const Message& call, size_t stackDepth);
     void DispatchIncall(const Message& call);
 
@@ -311,7 +323,7 @@ protected:
 
     // Called from both threads
     size_t StackDepth() const {
-        mMutex.AssertCurrentThreadOwns();
+        mMonitor.AssertCurrentThreadOwns();
         return mStack.size();
     }
 
@@ -425,7 +437,7 @@ protected:
     //  !mCxxStackFrames.empty() => RPCChannel code on C++ stack
     //
     // This member is only accessed on the worker thread, and so is
-    // not protected by mMutex.  It is managed exclusively by the
+    // not protected by mMonitor.  It is managed exclusively by the
     // helper |class CxxStackFrame|.
     std::vector<RPCFrame> mCxxStackFrames;
 

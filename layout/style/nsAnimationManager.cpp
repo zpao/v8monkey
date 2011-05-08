@@ -159,6 +159,10 @@ ElementAnimationsPropertyDtor(void           *aObject,
                               void           *aData)
 {
   ElementAnimations *ea = static_cast<ElementAnimations*>(aPropertyValue);
+#ifdef DEBUG
+  NS_ABORT_IF_FALSE(!ea->mCalledPropertyDtor, "can't call dtor twice");
+  ea->mCalledPropertyDtor = true;
+#endif
   delete ea;
 }
 
@@ -172,13 +176,13 @@ ElementAnimations::EnsureStyleRuleFor(TimeStamp aRefreshTime,
     return;
   }
 
-  mNeedsRefreshes = false;
-
   // mStyleRule may be null and valid, if we have no style to apply.
   if (mStyleRuleRefreshTime.IsNull() ||
       mStyleRuleRefreshTime != aRefreshTime) {
     mStyleRuleRefreshTime = aRefreshTime;
     mStyleRule = nsnull;
+    // We'll set mNeedsRefreshes to true below in all cases where we need them.
+    mNeedsRefreshes = false;
 
     // FIXME(spec): assume that properties in higher animations override
     // those in lower ones.
@@ -666,9 +670,9 @@ nsAnimationManager::BuildAnimations(nsStyleContext* aStyleContext,
     keyframes.Init(16); // FIXME: make infallible!
     for (PRUint32 ruleIdx = 0, ruleEnd = rule->StyleRuleCount();
          ruleIdx != ruleEnd; ++ruleIdx) {
-      nsICSSRule* cssRule = rule->GetStyleRuleAt(ruleIdx);
+      css::Rule* cssRule = rule->GetStyleRuleAt(ruleIdx);
       NS_ABORT_IF_FALSE(cssRule, "must have rule");
-      NS_ABORT_IF_FALSE(cssRule->GetType() == nsICSSRule::KEYFRAME_RULE,
+      NS_ABORT_IF_FALSE(cssRule->GetType() == css::Rule::KEYFRAME_RULE,
                         "must be keyframe rule");
       nsCSSKeyframeRule *kfRule = static_cast<nsCSSKeyframeRule*>(cssRule);
 

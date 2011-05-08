@@ -487,6 +487,11 @@ var BrowserUI = {
       }, 0);
     });
 
+    // Only load IndexedDB.js when we actually need it. A general fix will happen in bug 647079.
+    messageManager.addMessageListener("IndexedDB:Prompt", function(aMessage) {
+      return IndexedDB.receiveMessage(aMessage);
+    });
+
     // Delay the panel UI and Sync initialization.
     window.addEventListener("UIReadyDelayed", function(aEvent) {
       window.removeEventListener(aEvent.type, arguments.callee, false);
@@ -1097,8 +1102,13 @@ var BrowserUI = {
   },
 
   isCommandEnabled : function(cmd) {
+    // disable all commands during the first-run sidebar discovery
+    let broadcaster = document.getElementById("bcast_uidiscovery");
+    if (broadcaster && broadcaster.getAttribute("mode") == "discovery")
+      return false;
+
     let elem = document.getElementById(cmd);
-    if (elem && (elem.getAttribute("disabled") == "true"))
+    if (elem && elem.getAttribute("disabled") == "true")
       return false;
     return true;
   },

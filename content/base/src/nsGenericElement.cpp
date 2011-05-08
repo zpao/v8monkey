@@ -92,7 +92,6 @@
 
 #include "nsBindingManager.h"
 #include "nsXBLBinding.h"
-#include "nsIDOMViewCSS.h"
 #include "nsIXBLService.h"
 #include "nsPIDOMWindow.h"
 #include "nsIBoxObject.h"
@@ -2017,7 +2016,7 @@ nsDOMEventRTTearoff::AddEventListener(const nsAString& aType,
                                       nsIDOMEventListener *aListener,
                                       PRBool useCapture)
 {
-  return AddEventListener(aType, aListener, useCapture, PR_FALSE, 0);
+  return AddEventListener(aType, aListener, useCapture, PR_FALSE, 1);
 }
 
 NS_IMETHODIMP
@@ -2086,7 +2085,7 @@ nsDOMEventRTTearoff::AddEventListener(const nsAString& aType,
                                       PRBool aWantsUntrusted,
                                       PRUint8 optional_argc)
 {
-  NS_ASSERTION(!aWantsUntrusted || optional_argc > 0,
+  NS_ASSERTION(!aWantsUntrusted || optional_argc > 1,
                "Won't check if this is chrome, you want to set "
                "aWantsUntrusted to PR_FALSE or make the aWantsUntrusted "
                "explicit by making optional_argc non-zero.");
@@ -2098,7 +2097,7 @@ nsDOMEventRTTearoff::AddEventListener(const nsAString& aType,
   PRInt32 flags = aUseCapture ? NS_EVENT_FLAG_CAPTURE : NS_EVENT_FLAG_BUBBLE;
 
   if (aWantsUntrusted ||
-      (optional_argc == 0 &&
+      (optional_argc < 2 &&
        !nsContentUtils::IsChromeDoc(mNode->GetOwnerDoc()))) {
     flags |= NS_PRIV_EVENT_UNTRUSTED_PERMITTED;
   }
@@ -2170,14 +2169,14 @@ nsGenericElement::~nsGenericElement()
 NS_IMETHODIMP
 nsGenericElement::GetNodeName(nsAString& aNodeName)
 {
-  mNodeInfo->GetQualifiedName(aNodeName);
+  aNodeName = mNodeInfo->QualifiedNameCorrectedCase();
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsGenericElement::GetLocalName(nsAString& aLocalName)
 {
-  mNodeInfo->GetLocalName(aLocalName);
+  mNodeInfo->GetName(aLocalName);
   return NS_OK;
 }
 
@@ -2283,18 +2282,15 @@ nsGenericElement::InternalIsSupported(nsISupports* aObject,
         PL_strcmp(v, "3.0") == 0) {
       *aReturn = PR_TRUE;
     }
-  }
-#ifdef MOZ_SVG
-  else if (PL_strcasecmp(f, "SVGEvents") == 0 ||
-           PL_strcasecmp(f, "SVGZoomEvents") == 0 ||
-           nsSVGFeatures::HaveFeature(aFeature)) {
+  } else if (PL_strcasecmp(f, "SVGEvents") == 0 ||
+             PL_strcasecmp(f, "SVGZoomEvents") == 0 ||
+             nsSVGFeatures::HaveFeature(aObject, aFeature)) {
     if (aVersion.IsEmpty() ||
         PL_strcmp(v, "1.0") == 0 ||
         PL_strcmp(v, "1.1") == 0) {
       *aReturn = PR_TRUE;
     }
   }
-#endif /* MOZ_SVG */
 #ifdef MOZ_SMIL
   else if (NS_SMILEnabled() && PL_strcasecmp(f, "TimeControl") == 0) {
     if (aVersion.IsEmpty() || PL_strcmp(v, "1.0") == 0) {
@@ -2380,7 +2376,7 @@ nsGenericElement::HasChildNodes(PRBool* aReturn)
 NS_IMETHODIMP
 nsGenericElement::GetTagName(nsAString& aTagName)
 {
-  mNodeInfo->GetQualifiedName(aTagName);
+  aTagName = mNodeInfo->QualifiedNameCorrectedCase();
   return NS_OK;
 }
 
@@ -5115,9 +5111,7 @@ nsGenericElement::List(FILE* out, PRInt32 aIndent,
 
   fputs(aPrefix.get(), out);
 
-  nsAutoString buf;
-  mNodeInfo->GetQualifiedName(buf);
-  fputs(NS_LossyConvertUTF16toASCII(buf).get(), out);
+  fputs(NS_LossyConvertUTF16toASCII(mNodeInfo->QualifiedName()).get(), out);
 
   fprintf(out, "@%p", (void *)this);
 
@@ -5205,8 +5199,7 @@ nsGenericElement::DumpContent(FILE* out, PRInt32 aIndent,
   PRInt32 indent;
   for (indent = aIndent; --indent >= 0; ) fputs("  ", out);
 
-  nsAutoString buf;
-  mNodeInfo->GetQualifiedName(buf);
+  const nsString& buf = mNodeInfo->QualifiedName();
   fputs("<", out);
   fputs(NS_LossyConvertUTF16toASCII(buf).get(), out);
 

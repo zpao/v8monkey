@@ -7,7 +7,7 @@ Components.utils.import("resource://gre/modules/AddonUpdateChecker.jsm");
 Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/NetUtil.jsm");
 
-const RELATIVE_DIR = "browser/mobile/chrome/";
+const RELATIVE_DIR = "browser/mobile/chrome/tests/";
 const TESTROOT     = "http://example.com/" + RELATIVE_DIR;
 const TESTROOT2    = "http://example.org/" + RELATIVE_DIR;
 const PREF_LOGGING_ENABLED            = "extensions.logging.enabled";
@@ -19,6 +19,8 @@ const PREF_GETADDONS_GETSEARCHRESULTS    = "extensions.getAddons.search.url";
 const PREF_GETADDONS_GETRECOMMENDED      = "extensions.getAddons.recommended.url";
 const PREF_GETADDONS_BROWSERECOMMENDED   = "extensions.getAddons.recommended.browseURL";
 const PREF_GETADDONS_UPDATE              = "extensions.update.url";
+const PREF_ADDONS_LOGGING                = "extensions.logging.enabled";
+const PREF_ADDONS_SECURITY               = "extensions.checkUpdateSecurity";
 const SEARCH_URL = TESTROOT + "browser_details.xml";
 const ADDON_IMG = "chrome://browser/skin/images/alert-addons-30.png";
 
@@ -76,7 +78,8 @@ function test() {
   Services.prefs.setCharPref(PREF_GETADDONS_BROWSESEARCHRESULTS, TESTROOT + "browser_install.xml");
   Services.prefs.setCharPref(PREF_GETADDONS_GETSEARCHRESULTS,    TESTROOT + "browser_install.xml");
   Services.prefs.setCharPref(PREF_GETADDONS_UPDATE,              TESTROOT + "browser_upgrade.rdf");
-  Services.prefs.setBoolPref("extensions.checkUpdateSecurity", false);
+  Services.prefs.setBoolPref(PREF_ADDONS_SECURITY, false);
+  Services.prefs.setBoolPref(PREF_ADDONS_LOGGING, true);
   run_next_test();
 }
 
@@ -84,10 +87,14 @@ function end_test() {
   close_manager();
   Services.prefs.clearUserPref(PREF_GETADDONS_GETRECOMMENDED);
   Services.prefs.clearUserPref(PREF_GETADDONS_BROWSERECOMMENDED);
-  Services.prefs.clearUserPref(PREF_GETADDONS_GETSEARCHRESULTS);
   Services.prefs.clearUserPref(PREF_GETADDONS_BROWSESEARCHRESULTS);
-  finish();
+  Services.prefs.clearUserPref(PREF_GETADDONS_GETSEARCHRESULTS);
+  Services.prefs.clearUserPref(PREF_GETADDONS_UPDATE);
+  Services.prefs.clearUserPref(PREF_ADDONS_SECURITY);
+  Services.prefs.clearUserPref(PREF_ADDONS_LOGGING);
 }
+
+registerCleanupFunction(end_test);
 
 function add_test(test) {
   gPendingTests.push(test);
@@ -98,8 +105,7 @@ function run_next_test() {
     info("Test " + gTestsRun + " took " + (Date.now() - gTestStart) + "ms");
 
   if (gPendingTests.length == 0) {
-    end_test();
-    return;
+    finish();
   }
 
   gTestsRun++;
@@ -354,47 +360,47 @@ function testPrompt(aTitle, aMessage, aButtons, aCallback) {
 // Installs an addon via the urlbar.
 function installFromURLBar(aAddon) {
   return function() {
+    AddonManager.addInstallListener({
+      onInstallEnded: function (install) {
+        AddonManager.removeInstallListener(this);
+        checkInstallNotification(!aAddon.bootstrapped, function() {
+          open_manager(true, function() {
+            isRestartShown(!aAddon.bootstrapped, false, function() {
+              let elt = get_addon_element(aAddon.id);
+              if (aAddon.bootstrapped) {
+                checkAddonListing(aAddon, elt, "local");
+                var button = document.getAnonymousElementByAttribute(elt, "anonid", "uninstall-button");
+                ok(!!button, "Extension has uninstall button");
+
+                var updateButton = document.getElementById("addons-update-all");
+                is(updateButton.disabled, false, "Update button is enabled");
+
+                ExtensionsView.uninstall(elt);
+
+                elt = get_addon_element(aAddon.id);
+                ok(!elt, "Addon element removed during uninstall");
+                Browser.closeTab(gCurrentTab);
+                close_manager(run_next_test);
+              } else {
+                ok(!elt, "Extension not in list");
+                AddonManager.getAllInstalls(function(aInstalls) {
+                  for(var i = 0; i < aInstalls.length; i++) {
+                    aInstalls[i].cancel();
+                  }
+                  Browser.closeTab(gCurrentTab);
+                  close_manager(run_next_test);
+                });
+              }
+            });
+          });
+        });
+      }
+    });
     loadUrl(gTestURL, function() {
       loadUrl(aAddon.sourceURL, null, false);
       checkInstallAlert(true, function() {
         checkDownloadNotification(function() {
-          checkInstallPopup(aAddon.name, function() {
-            checkInstallNotification(!aAddon.bootstrapped, function() {
-              open_manager(true, function() {
-                isRestartShown(!aAddon.bootstrapped, false, function() {
-                  let elt = get_addon_element(aAddon.id);
-                  if (aAddon.bootstrapped) {
-                    checkAddonListing(aAddon, elt, "local");
-                    var button = document.getAnonymousElementByAttribute(elt, "anonid", "uninstall-button");
-                    ok(!!button, "Extension has uninstall button");
-
-                    var updateButton = document.getElementById("addons-update-all");
-                    is(updateButton.disabled, false, "Update button is enabled");
-
-                    ExtensionsView.uninstall(elt);
-                    waitForAndContinue(function() {
-                      let elt = get_addon_element(aAddon.id);
-                      ok(!elt, "Addon element removed during uninstall");
-                      Browser.closeTab(gCurrentTab);
-                      close_manager(run_next_test);
-                    }, function() {
-                      let elt = get_addon_element(aAddon.id);
-                      return !elt;
-                    });
-                  } else {
-                    ok(!elt, "Extension not in list");
-                    AddonManager.getAllInstalls(function(aInstalls) {
-                      for(var i = 0; i < aInstalls.length; i++) {
-                        aInstalls[i].cancel();
-                      }
-                      Browser.closeTab(gCurrentTab);
-                      close_manager(run_next_test);
-                    });
-                  }
-                });
-              });
-            });
-          });
+          checkInstallPopup(aAddon.name, function() { });
         });
       });
     }, true);

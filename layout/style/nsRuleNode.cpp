@@ -1198,6 +1198,13 @@ nsRuleNode::nsRuleNode(nsPresContext* aContext, nsRuleNode* aParent,
     mParent->AddRef();
     aContext->StyleSet()->RuleNodeUnused();
   }
+
+  // nsStyleSet::GetContext depends on there being only one animation
+  // rule.
+  NS_ABORT_IF_FALSE(IsRoot() || GetLevel() != nsStyleSet::eAnimationSheet ||
+                    mParent->IsRoot() ||
+                    mParent->GetLevel() != nsStyleSet::eAnimationSheet,
+                    "must be only one rule at animation level");
 }
 
 nsRuleNode::~nsRuleNode()
@@ -3345,6 +3352,11 @@ nsRuleNode::ComputeTextData(void* aStartStruct,
   SetDiscrete(*aRuleData->ValueForWordWrap(), text->mWordWrap, canStoreInRuleTree,
               SETDSC_ENUMERATED, parentText->mWordWrap,
               NS_STYLE_WORDWRAP_NORMAL, 0, 0, 0, 0);
+
+  // hyphens: enum, inherit, initial
+  SetDiscrete(*aRuleData->ValueForHyphens(), text->mHyphens, canStoreInRuleTree,
+              SETDSC_ENUMERATED, parentText->mHyphens,
+              NS_STYLE_HYPHENS_MANUAL, 0, 0, 0, 0);
 
   COMPUTE_END_INHERITED(Text, text)
 }

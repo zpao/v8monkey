@@ -1698,7 +1698,7 @@ GK_ATOM(onMozTouchMove, "onMozTouchMove")
 GK_ATOM(onMozTouchUp, "onMozTouchUp")
 
 // orientation support
-GK_ATOM(onMozOrientation, "onMozOrientation")
+GK_ATOM(ondeviceorientation, "ondeviceorientation")
 
 //---------------------------------------------------------------------------
 // Special atoms
@@ -1748,7 +1748,6 @@ GK_ATOM(pageBreakFrame, "PageBreakFrame")
 GK_ATOM(pageContentFrame, "PageContentFrame")
 GK_ATOM(placeholderFrame, "PlaceholderFrame")
 GK_ATOM(popupSetFrame, "PopupSetFrame")
-GK_ATOM(positionedInlineFrame, "PositionedInlineFrame")
 GK_ATOM(canvasFrame, "CanvasFrame")
 GK_ATOM(rootFrame, "RootFrame")
 GK_ATOM(scrollFrame, "ScrollFrame")

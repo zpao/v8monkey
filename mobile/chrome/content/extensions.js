@@ -324,7 +324,9 @@ var ExtensionsView = {
       let strings = Strings.browser;
       let anyUpdateable = false;
       for (let i = 0; i < items.length; i++) {
-        let listitem = self._createLocalAddon(items[i]);
+        let listitem = self.getElementForAddon(items[i].id)
+        if (!listitem)
+          listitem = self._createLocalAddon(items[i]);
         if ((items[i].permissions & AddonManager.PERM_CAN_UPGRADE) > 0)
           anyUpdateable = true;
 

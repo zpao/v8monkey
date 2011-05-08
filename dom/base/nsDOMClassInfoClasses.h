@@ -76,7 +76,7 @@ DOMCI_CLASS(MouseScrollEvent)
 DOMCI_CLASS(DragEvent)
 DOMCI_CLASS(KeyboardEvent)
 DOMCI_CLASS(PopupBlockedEvent)
-DOMCI_CLASS(OrientationEvent)
+DOMCI_CLASS(DeviceOrientationEvent)
 
 // HTML classes
 DOMCI_CLASS(HTMLDocument)
@@ -156,7 +156,6 @@ DOMCI_CLASS(MediaList)
 DOMCI_CLASS(StyleSheetList)
 DOMCI_CLASS(CSSStyleSheet)
 DOMCI_CLASS(CSSStyleDeclaration)
-DOMCI_CLASS(ComputedCSSStyleDeclaration)
 DOMCI_CLASS(ROCSSPrimitiveValue)
 
 // Range classes

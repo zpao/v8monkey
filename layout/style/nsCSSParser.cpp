@@ -178,9 +178,9 @@ nsCSSProps::kParserVariantTable[eCSSProperty_COUNT_no_shorthands] = {
 namespace {
 
 // Rule processing function
-typedef void (* RuleAppendFunc) (nsICSSRule* aRule, void* aData);
-static void AppendRuleToArray(nsICSSRule* aRule, void* aArray);
-static void AppendRuleToSheet(nsICSSRule* aRule, void* aParser);
+typedef void (* RuleAppendFunc) (css::Rule* aRule, void* aData);
+static void AppendRuleToArray(css::Rule* aRule, void* aArray);
+static void AppendRuleToSheet(css::Rule* aRule, void* aParser);
 
 // Your basic top-down recursive descent style parser
 // The exposed methods and members of this class are precisely those
@@ -227,7 +227,7 @@ public:
                      nsIURI*                 aSheetURL,
                      nsIURI*                 aBaseURL,
                      nsIPrincipal*           aSheetPrincipal,
-                     nsCOMArray<nsICSSRule>& aResult);
+                     nsCOMArray<css::Rule>&  aResult);
 
   nsresult ParseProperty(const nsCSSProperty aPropID,
                          const nsAString& aPropValue,
@@ -270,8 +270,8 @@ protected:
   class nsAutoParseCompoundProperty;
   friend class nsAutoParseCompoundProperty;
 
-  void AppendRule(nsICSSRule* aRule);
-  friend void AppendRuleToSheet(nsICSSRule*, void*); // calls AppendRule
+  void AppendRule(css::Rule* aRule);
+  friend void AppendRuleToSheet(css::Rule*, void*); // calls AppendRule
 
   /**
    * This helper class automatically calls SetParsingCompoundProperty in its
@@ -703,12 +703,12 @@ public:
   CSSParserImpl* mNextFree;
 };
 
-static void AppendRuleToArray(nsICSSRule* aRule, void* aArray)
+static void AppendRuleToArray(css::Rule* aRule, void* aArray)
 {
-  static_cast<nsCOMArray<nsICSSRule>*>(aArray)->AppendObject(aRule);
+  static_cast<nsCOMArray<css::Rule>*>(aArray)->AppendObject(aRule);
 }
 
-static void AppendRuleToSheet(nsICSSRule* aRule, void* aParser)
+static void AppendRuleToSheet(css::Rule* aRule, void* aParser)
 {
   CSSParserImpl* parser = (CSSParserImpl*) aParser;
   parser->AppendRule(aRule);
@@ -921,15 +921,15 @@ CSSParserImpl::Parse(nsIUnicharInputStream* aInput,
 
   PRInt32 ruleCount = mSheet->StyleRuleCount();
   if (0 < ruleCount) {
-    nsICSSRule* lastRule = nsnull;
+    css::Rule* lastRule = nsnull;
     mSheet->GetStyleRuleAt(ruleCount - 1, lastRule);
     if (lastRule) {
       switch (lastRule->GetType()) {
-        case nsICSSRule::CHARSET_RULE:
-        case nsICSSRule::IMPORT_RULE:
+        case css::Rule::CHARSET_RULE:
+        case css::Rule::IMPORT_RULE:
           mSection = eCSSSection_Import;
           break;
-        case nsICSSRule::NAMESPACE_RULE:
+        case css::Rule::NAMESPACE_RULE:
           mSection = eCSSSection_NameSpace;
           break;
         default:
@@ -1076,7 +1076,7 @@ CSSParserImpl::ParseRule(const nsAString&        aRule,
                          nsIURI*                 aSheetURI,
                          nsIURI*                 aBaseURI,
                          nsIPrincipal*           aSheetPrincipal,
-                         nsCOMArray<nsICSSRule>& aResult)
+                         nsCOMArray<css::Rule>&  aResult)
 {
   NS_PRECONDITION(aSheetPrincipal, "Must have principal here!");
   AssertInitialState();
@@ -1238,7 +1238,8 @@ CSSParserImpl::ParseColorString(const nsSubstring& aBuffer,
   InitScanner(aBuffer, aURI, aLineNumber, aURI, nsnull);
 
   nsCSSValue value;
-  PRBool colorParsed = ParseColor(value);
+  // Parse a color, and check that there's nothing else after it.
+  PRBool colorParsed = ParseColor(value) && !GetToken(PR_TRUE);
   nsresult rv = mScanner.GetLowLevelError();
   OUTPUT_ERROR();
   ReleaseScanner();
@@ -1645,7 +1646,7 @@ CSSParserImpl::ParseCharsetRule(RuleAppendFunc aAppendFunc,
     return PR_FALSE;
   }
 
-  nsCOMPtr<nsICSSRule> rule = new css::CharsetRule(charset);
+  nsRefPtr<css::CharsetRule> rule = new css::CharsetRule(charset);
   (*aAppendFunc)(rule, aData);
 
   return PR_TRUE;
@@ -2116,7 +2117,8 @@ CSSParserImpl::ParseMozDocumentRule(RuleAppendFunc aAppendFunc, void* aData)
         !(eCSSToken_URL == mToken.mType ||
           (eCSSToken_Function == mToken.mType &&
            (mToken.mIdent.LowerCaseEqualsLiteral("url-prefix") ||
-            mToken.mIdent.LowerCaseEqualsLiteral("domain"))))) {
+            mToken.mIdent.LowerCaseEqualsLiteral("domain") ||
+            mToken.mIdent.LowerCaseEqualsLiteral("regexp"))))) {
       REPORT_UNEXPECTED_TOKEN(PEMozDocRuleBadFunc);
       delete urls;
       return PR_FALSE;
@@ -2126,6 +2128,21 @@ CSSParserImpl::ParseMozDocumentRule(RuleAppendFunc aAppendFunc, void* aData)
     if (mToken.mType == eCSSToken_URL) {
       cur->func = css::DocumentRule::eURL;
       CopyUTF16toUTF8(mToken.mIdent, cur->url);
+    } else if (mToken.mIdent.LowerCaseEqualsLiteral("regexp")) {
+      // regexp() is different from url-prefix() and domain() (but
+      // probably the way they *should* have been* in that it requires a
+      // string argument, and doesn't try to behave like url().
+      cur->func = css::DocumentRule::eRegExp;
+      GetToken(PR_TRUE);
+      // copy before we know it's valid (but before ExpectSymbol changes
+      // mToken.mIdent)
+      CopyUTF16toUTF8(mToken.mIdent, cur->url);
+      if (eCSSToken_String != mToken.mType || !ExpectSymbol(')', PR_TRUE)) {
+        REPORT_UNEXPECTED_TOKEN(PEMozDocRuleNotString);
+        SkipUntil(')');
+        delete urls;
+        return PR_FALSE;
+      }
     } else {
       if (mToken.mIdent.LowerCaseEqualsLiteral("url-prefix")) {
         cur->func = css::DocumentRule::eURLPrefix;
@@ -2565,7 +2582,7 @@ CSSParserImpl::PopGroup()
 }
 
 void
-CSSParserImpl::AppendRule(nsICSSRule* aRule)
+CSSParserImpl::AppendRule(css::Rule* aRule)
 {
   PRUint32 count = mGroupStack.Length();
   if (0 < count) {
@@ -8787,7 +8804,7 @@ nsCSSParser::ParseRule(const nsAString&        aRule,
                        nsIURI*                 aSheetURI,
                        nsIURI*                 aBaseURI,
                        nsIPrincipal*           aSheetPrincipal,
-                       nsCOMArray<nsICSSRule>& aResult)
+                       nsCOMArray<css::Rule>&  aResult)
 {
   return static_cast<CSSParserImpl*>(mImpl)->
     ParseRule(aRule, aSheetURI, aBaseURI, aSheetPrincipal, aResult);

@@ -96,7 +96,7 @@ nsRefreshDriver::GetRefreshTimerType() const
     return nsITimer::TYPE_ONE_SHOT;
   }
   if (HaveAnimationFrameListeners() || sPrecisePref) {
-    return nsITimer::TYPE_REPEATING_PRECISE;
+    return nsITimer::TYPE_REPEATING_PRECISE_CAN_SKIP;
   }
   return nsITimer::TYPE_REPEATING_SLACK;
 }
@@ -126,14 +126,22 @@ nsRefreshDriver::AdvanceTimeAndRefresh(PRInt64 aMilliseconds)
   mTestControllingRefreshes = true;
   mMostRecentRefreshEpochTime += aMilliseconds * 1000;
   mMostRecentRefresh += TimeDuration::FromMilliseconds(aMilliseconds);
-  Notify(nsnull);
+  nsCxPusher pusher;
+  if (pusher.PushNull()) {
+    Notify(nsnull);
+    pusher.Pop();
+  }
 }
 
 void
 nsRefreshDriver::RestoreNormalRefresh()
 {
   mTestControllingRefreshes = false;
-  Notify(nsnull); // will call UpdateMostRecentRefresh()
+  nsCxPusher pusher;
+  if (pusher.PushNull()) {
+    Notify(nsnull); // will call UpdateMostRecentRefresh()
+    pusher.Pop();
+  }
 }
 
 TimeStamp
@@ -197,7 +205,7 @@ nsRefreshDriver::EnsureTimerStarted(bool aAdjustingTimer)
   }
 
   PRInt32 timerType = GetRefreshTimerType();
-  mTimerIsPrecise = (timerType == nsITimer::TYPE_REPEATING_PRECISE);
+  mTimerIsPrecise = (timerType == nsITimer::TYPE_REPEATING_PRECISE_CAN_SKIP);
 
   nsresult rv = mTimer->InitWithCallback(this,
                                          GetRefreshTimerInterval(),
@@ -279,6 +287,8 @@ nsRefreshDriver::Notify(nsITimer *aTimer)
 {
   NS_PRECONDITION(!mFrozen, "Why are we notified while frozen?");
   NS_PRECONDITION(mPresContext, "Why are we notified after disconnection?");
+  NS_PRECONDITION(!nsContentUtils::GetCurrentJSContext(),
+                  "Shouldn't have a JSContext on the stack");
 
   if (mTestControllingRefreshes && aTimer) {
     // Ignore real refreshes from our timer (but honor the others).
@@ -391,7 +401,7 @@ nsRefreshDriver::Notify(nsITimer *aTimer)
 
   if (mThrottled ||
       (mTimerIsPrecise !=
-       (GetRefreshTimerType() == nsITimer::TYPE_REPEATING_PRECISE))) {
+       (GetRefreshTimerType() == nsITimer::TYPE_REPEATING_PRECISE_CAN_SKIP))) {
     // Stop the timer now and restart it here.  Stopping is in the mThrottled
     // case ok because either it's already one-shot, and it just fired, and all
     // we need to do is null it out, or it's repeating and we need to reset it

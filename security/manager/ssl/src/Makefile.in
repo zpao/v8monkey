@@ -50,11 +50,11 @@ LIBRARY_NAME	= pipnss
 IS_COMPONENT	= 1
 MODULE_NAME	= NSS
 EXPORT_LIBRARY	= 1
-META_COMPONENT	= crypto
 GRE_MODULE	= 1
 LIBXUL_LIBRARY	= 1
 
 CPPSRCS = 				\
+	nsCERTValInParamWrapper.cpp     \
 	nsNSSCleaner.cpp                \
 	nsCertOverrideService.cpp   \
 	nsRecentBadCerts.cpp \

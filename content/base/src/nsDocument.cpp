@@ -75,8 +75,6 @@
 #include "nsDOMAttribute.h"
 #include "nsIDOMDOMStringList.h"
 #include "nsIDOMDOMImplementation.h"
-#include "nsIDOMDocumentView.h"
-#include "nsIDOMAbstractView.h"
 #include "nsIDOMDocumentXBL.h"
 #include "mozilla/FunctionTimer.h"
 #include "nsGenericElement.h"
@@ -1595,6 +1593,12 @@ nsDocument::~nsDocument()
   if (mStyleSheetSetList) {
     mStyleSheetSetList->Disconnect();
   }
+
+#ifdef MOZ_SMIL
+  if (mAnimationController) {
+    mAnimationController->Disconnect();
+  }
+#endif // MOZ_SMIL
 
   mParentDocument = nsnull;
 
@@ -5071,16 +5075,14 @@ nsDocument::CreateTreeWalker(nsIDOMNode *aRoot,
 
 
 NS_IMETHODIMP
-nsDocument::GetDefaultView(nsIDOMAbstractView** aDefaultView)
+nsDocument::GetDefaultView(nsIDOMWindow** aDefaultView)
 {
-  nsPIDOMWindow* win = GetWindow();
-  if (win) {
-    return CallQueryInterface(win, aDefaultView);
-  }
-
   *aDefaultView = nsnull;
-
-  return NS_OK;
+  nsPIDOMWindow* win = GetWindow();
+  if (!win) {
+    return NS_OK;
+  }
+  return CallQueryInterface(win, aDefaultView);
 }
 
 NS_IMETHODIMP
@@ -5527,7 +5529,7 @@ nsDocument::GetAnimationController()
   if (!NS_SMILEnabled() || mLoadedAsData || mLoadedAsInteractiveData)
     return nsnull;
 
-  mAnimationController = NS_NewSMILAnimationController(this);
+  mAnimationController = new nsSMILAnimationController(this);
   
   // If there's a presContext then check the animation mode and pause if
   // necessary.
@@ -6290,7 +6292,7 @@ nsDocument::AddEventListener(const nsAString& aType,
                              PRBool aUseCapture, PRBool aWantsUntrusted,
                              PRUint8 optional_argc)
 {
-  NS_ASSERTION(!aWantsUntrusted || optional_argc > 0,
+  NS_ASSERTION(!aWantsUntrusted || optional_argc > 1,
                "Won't check if this is chrome, you want to set "
                "aWantsUntrusted to PR_FALSE or make the aWantsUntrusted "
                "explicit by making optional_argc non-zero.");
@@ -6301,7 +6303,7 @@ nsDocument::AddEventListener(const nsAString& aType,
   PRInt32 flags = aUseCapture ? NS_EVENT_FLAG_CAPTURE : NS_EVENT_FLAG_BUBBLE;
 
   if (aWantsUntrusted ||
-      (optional_argc == 0 && !nsContentUtils::IsChromeDoc(this))) {
+      (optional_argc < 2 && !nsContentUtils::IsChromeDoc(this))) {
     flags |= NS_PRIV_EVENT_UNTRUSTED_PERMITTED;
   }
 
@@ -8325,7 +8327,7 @@ nsDocument::SetImagesNeedAnimating(PRBool aAnimating)
 }
 
 NS_IMETHODIMP
-nsDocument::CreateTouch(nsIDOMAbstractView* aView,
+nsDocument::CreateTouch(nsIDOMWindow* aView,
                         nsIDOMEventTarget* aTarget,
                         PRInt32 aIdentifier,
                         PRInt32 aPageX,

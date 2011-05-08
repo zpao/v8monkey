@@ -4,11 +4,19 @@
 namespace v8 {
 namespace internal {
 
-static void printTraceName(JSTracer* trc, char *buf, size_t bufsize) {
+static
+void
+printTraceName(JSTracer* trc,
+               char* buf,
+               size_t bufsize)
+{
   JS_snprintf(buf, bufsize, "TracedObject(%p)", trc->debugPrintArg);
 }
 
-void traceValue(JSTracer* tracer, jsval val) {
+void
+traceValue(JSTracer* tracer,
+           jsval val)
+{
   JS_SET_TRACING_DETAILS(tracer, printTraceName, NULL, 0);
   if (JSVAL_IS_TRACEABLE(val)) {
     uint32 kind = JSVAL_TRACE_KIND(val);
@@ -67,7 +75,8 @@ AccessorStorage::all() const
 }
 
 void
-AccessorStorage::trace(JSTracer* tracer) {
+AccessorStorage::trace(JSTracer* tracer)
+{
   Range r = mStore.all();
   while (!r.empty()) {
     r.front().value.data.trace(tracer);
@@ -107,7 +116,8 @@ AttributeStorage::all() const
 }
 
 void
-AttributeStorage::trace(JSTracer* tracer) {
+AttributeStorage::trace(JSTracer* tracer)
+{
   Range r = mStore.all();
   while (!r.empty()) {
     r.front().value.trace(tracer);

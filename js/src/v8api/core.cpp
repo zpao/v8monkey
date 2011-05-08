@@ -83,7 +83,7 @@ bool V8::Initialize() {
 
 // TODO: call this
 bool V8::Dispose() {
-  DestroyObjectInernals();
+  DestroyObjectInternals();
 
   // Unwind the context scopes
   Local<Context> ctx;

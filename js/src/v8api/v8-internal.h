@@ -16,7 +16,8 @@ JSContext *cx();
 bool disposed();
 
 void TraceObjectInternals(JSTracer* tracer, void*);
-void DestroyObjectInernals();
+void DestroyObjectInternals();
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tracing helpers
 

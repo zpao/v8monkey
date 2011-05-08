@@ -55,7 +55,7 @@ internal::TraceObjectInternals(JSTracer* tracer,
 }
 
 void
-internal::DestroyObjectInernals()
+internal::DestroyObjectInternals()
 {
   if (!gPrivateDataMap) {
     return;

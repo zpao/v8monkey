@@ -208,7 +208,9 @@ o_SetProperty(JSContext* cx,
 }
 
 void
-o_Trace(JSTracer* tracer, JSObject* obj) {
+o_Trace(JSTracer* tracer,
+        JSObject* obj)
+{
   ObjectTemplateHandle* data = ObjectTemplateHandle::Get(tracer->context, obj);
   JS_ASSERT(data);
   data->objectTemplate.trace(tracer);
@@ -262,7 +264,9 @@ ot_SetProperty(JSContext* cx,
 }
 
 void
-ot_Trace(JSTracer* tracer, JSObject* obj) {
+ot_Trace(JSTracer* tracer,
+         JSObject* obj)
+{
   PrivateData* data = PrivateData::Get(tracer->context, obj);
   data->accessors.trace(tracer);
   data->attributes.trace(tracer);

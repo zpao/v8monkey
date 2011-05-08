@@ -11,7 +11,12 @@ Function::operator JSFunction*() const {
 
 Local<Object> Function::NewInstance() const {
   Object o(JS_New(cx(), JSVAL_TO_OBJECT(mVal), 0, NULL));
-  return Local<Object>::New(&o);
+  if (!o) {
+    TryCatch::CheckForException();
+    return Local<Object>();
+  } else {
+    return Local<Object>::New(&o);
+  }
 }
 
 Local<Object> Function::NewInstance(int argc, Handle<Value> argv[]) const {
@@ -20,7 +25,12 @@ Local<Object> Function::NewInstance(int argc, Handle<Value> argv[]) const {
     values[i] = argv[i]->native();
   Object o(JS_New(cx(), JSVAL_TO_OBJECT(mVal), argc, values));
   cx()->array_delete(values);
-  return Local<Object>::New(&o);
+  if (!o) {
+    TryCatch::CheckForException();
+    return Local<Object>();
+  } else {
+    return Local<Object>::New(&o);
+  }
 }
 
 Local<Value> Function::Call(Handle<Object> recv, int argc, Handle<Value> argv[]) const {

@@ -121,6 +121,7 @@ Object::Set(Handle<Value> key,
   jsval v = value->native();
 
   if (!JS_SetProperty(cx(), *this, *k, &v)) {
+    TryCatch::CheckForException();
     return false;
   }
 
@@ -152,7 +153,11 @@ Object::Set(JSUint32 index,
   }
 
   jsval& val = value->native();
-  return !!JS_SetElement(cx(), *this, index, &val);
+  if (!JS_SetElement(cx(), *this, index, &val)) {
+    TryCatch::CheckForException();
+    return false;
+  }
+  return true;
 }
 
 bool
@@ -173,6 +178,7 @@ Object::Get(Handle<Value> key) {
   if (JS_GetProperty(cx(), *this, *k, &v.native())) {
     return Local<Value>::New(&v);
   }
+  TryCatch::CheckForException();
   return Local<Value>();
 }
 
@@ -187,6 +193,7 @@ Object::Get(JSUint32 index)
   if (JS_GetElement(cx(), *this, index, &v.native())) {
     return Local<Value>::New(&v);
   }
+  TryCatch::CheckForException();
   return Local<Value>();
 }
 
@@ -200,6 +207,7 @@ Object::Has(Handle<String> key)
   if (JS_HasProperty(cx(), *this, *k, &found)) {
     return !!found;
   }
+  TryCatch::CheckForException();
   return false;
 }
 
@@ -214,6 +222,7 @@ Object::Has(JSUint32 index)
   if (JS_LookupElement(cx(), *this, index, &val)) {
     return !JSVAL_IS_VOID(val);
   }
+  TryCatch::CheckForException();
   return false;
 }
 
@@ -227,6 +236,7 @@ Object::Delete(Handle<String> key)
   if (JS_DeleteProperty2(cx(), *this, *k, &val)) {
     return val == JSVAL_TRUE;
   }
+  TryCatch::CheckForException();
   return false;
 }
 
@@ -241,6 +251,7 @@ Object::Delete(JSUint32 index)
   if (JS_DeleteElement2(cx(), *this, index, &val)) {
     return val == JSVAL_TRUE;
   }
+  TryCatch::CheckForException();
   return false;
 }
 
@@ -286,6 +297,7 @@ Object::SetAccessor(Handle<String> name,
         (JSPropertyOp)getterObj,
         (JSStrictPropertyOp)setterObj,
         attributes)) {
+    TryCatch::CheckForException();
     return false;
   }
   PrivateData &store = GetHiddenStore();
@@ -342,8 +354,10 @@ Object::ObjectProtoToString()
 {
   Object proto(JS_GetPrototype(cx(), *this));
   Handle<Function> toString = proto.Get(String::New("toString")).As<Function>();
-  if (toString.IsEmpty())
+  if (toString.IsEmpty()) {
+    TryCatch::CheckForException();
     return Local<String>();
+  }
   return toString->Call(this, 0, NULL).As<String>();
 }
 

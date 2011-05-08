@@ -66,7 +66,7 @@ ft_finalize(JSContext* cx,
             JSObject* obj)
 {
   PrivateData* data = PrivateData::Get(cx, obj);
-  delete data;
+  cx->delete_(data);
 }
 
 
@@ -96,7 +96,7 @@ JSClass FunctionTemplate::sFunctionTemplateClass = {
 FunctionTemplate::FunctionTemplate() :
   Template(&sFunctionTemplateClass)
 {
-  JS_SetPrivate(cx(), JSVAL_TO_OBJECT(mVal), new PrivateData);
+  JS_SetPrivate(cx(), JSVAL_TO_OBJECT(mVal), cx()->new_<PrivateData>());
 
   Handle<ObjectTemplate> protoTemplate = ObjectTemplate::New();
   Set("prototype", protoTemplate);

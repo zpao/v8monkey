@@ -53,11 +53,11 @@ void TryCatch::CheckForException() {
     Handle<String> fileName = exnObject->Get(String::NewSymbol("fileName")).As<String>();
     Handle<Integer> lineNumber = exnObject->Get(String::NewSymbol("lineNumber")).As<Integer>();
     if (!message.IsEmpty()) {
-      current->mMessage = new char[message->Length()+1];
+      current->mMessage = cx()->array_new<char>(message->Length() + 1);
       message->WriteAscii(current->mMessage);
     }
     if (!fileName.IsEmpty()) {
-      current->mFilename = new char[fileName->Length()+1];
+      current->mFilename = cx()->array_new<char>(fileName->Length() + 1);
       fileName->WriteAscii(current->mFilename);
     }
     if (!lineNumber.IsEmpty()) {
@@ -77,7 +77,7 @@ TryCatch::TryCatch() :
   mLineNo(0),
   mMessage(NULL)
 {
-  ExceptionHandlerChain *link = new ExceptionHandlerChain;
+  ExceptionHandlerChain *link = cx()->new_<ExceptionHandlerChain>();
   link->catcher = this;
   link->next = gExnChain;
   gExnChain = link;
@@ -87,7 +87,7 @@ TryCatch::~TryCatch() {
   ExceptionHandlerChain *link = gExnChain;
   JS_ASSERT(link->catcher == this);
   gExnChain = gExnChain->next;
-  delete link;
+  cx()->delete_(link);
 
   if (mRethrown) {
     JS_SetPendingException(cx(), mException->native());
@@ -124,8 +124,8 @@ void TryCatch::Reset() {
     mException.Dispose();
     mException.Clear();
   }
-  delete[] mFilename;
-  delete[] mMessage;
+  cx()->array_delete(mFilename);
+  cx()->array_delete(mMessage);
   if (mLineBuffer) {
     free(mLineBuffer);
   }
@@ -172,7 +172,7 @@ Local<Context> Context::GetCurrent() {
 }
 
 void Context::Enter() {
-  ContextChain *link = new ContextChain;
+  ContextChain *link = cx()->new_<ContextChain>();
   link->next = gContextChain;
   link->ctx = this;
   JS_SetGlobalObject(cx(), InternalObject());
@@ -185,7 +185,7 @@ void Context::Exit() {
     return;
   ContextChain *link = gContextChain;
   gContextChain = gContextChain->next;
-  delete link;
+  cx()->delete_(link);
   JSObject *global = gContextChain ? gContextChain->ctx->InternalObject() : NULL;
   JS_SetGlobalObject(cx(), global);
 }
@@ -595,7 +595,7 @@ void ScriptData::SerializeScriptObject(JSObject *scriptObj) {
 
 ScriptData* ScriptData::PreCompile(const char* input, int length) {
   JSObject *global = JS_GetGlobalObject(cx());
-  ScriptData *sd = new ScriptData();
+  ScriptData *sd = cx()->new_<ScriptData>();
   if (!sd)
     return NULL;
 
@@ -616,7 +616,7 @@ ScriptData* ScriptData::PreCompile(Handle<String> source) {
   chars = JS_GetStringCharsAndLength(cx(),
                                      anchor.get(), &len);
   JSObject *global = JS_GetGlobalObject(cx());
-  ScriptData *sd = new ScriptData();
+  ScriptData *sd = cx()->new_<ScriptData>();
   if (!sd)
     return NULL;
 
@@ -631,7 +631,7 @@ ScriptData* ScriptData::PreCompile(Handle<String> source) {
 }
 
 ScriptData* ScriptData::New(const char* aData, int aLength) {
-  ScriptData *sd = new ScriptData();
+  ScriptData *sd = cx()->new_<ScriptData>();
   if (!sd)
     return NULL;
 

@@ -221,7 +221,7 @@ o_finalize(JSContext* cx,
            JSObject* obj)
 {
   ObjectTemplateHandle* data = ObjectTemplateHandle::Get(cx, obj);
-  delete data;
+  cx->delete_(data);
 }
 
 JSClass gNewInstanceClass = {
@@ -280,7 +280,7 @@ ot_finalize(JSContext* cx,
             JSObject* obj)
 {
   PrivateData* data = PrivateData::Get(cx, obj);
-  delete data;
+  cx->delete_(data);
 }
 
 JSClass gObjectTemplateClass = {
@@ -308,7 +308,7 @@ JSClass gObjectTemplateClass = {
 ObjectTemplate::ObjectTemplate() :
   Template(&gObjectTemplateClass)
 {
-  PrivateData* data = new PrivateData();
+  PrivateData* data = cx()->new_<PrivateData>();
   (void)JS_SetPrivate(cx(), InternalObject(), data);
 }
 
@@ -358,9 +358,9 @@ ObjectTemplate::NewInstance(JSObject* parent)
     UNIMPLEMENTEDAPI(Local<Object>());
   }
 
-  ObjectTemplateHandle* handle = new ObjectTemplateHandle(this);
+  ObjectTemplateHandle* handle = cx()->new_<ObjectTemplateHandle>(this);
   if (!JS_SetPrivate(cx(), obj, handle)) {
-    delete handle;
+    cx()->delete_(handle);
     // TODO handle error better
     UNIMPLEMENTEDAPI(Local<Object>());
   }

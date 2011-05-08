@@ -1,7 +1,7 @@
 #ifndef v8_v8_internal_h__
 #define v8_v8_internal_h__
 #include "v8.h"
-#include "jshashtable.h"
+#include "jscntxt.h"
 
 namespace v8 {
 namespace internal {
@@ -32,11 +32,11 @@ public:
     *this = h;
   }
   Traced(const Traced<T> &t) :
-    mPtr(t.mPtr ? new T(*t.mPtr) : NULL)
+    mPtr(t.mPtr ? cx()->new_<T>(*t.mPtr) : NULL)
   {
   }
   ~Traced() {
-    delete mPtr;
+    cx()->delete_(mPtr);
   }
 
   operator bool() const {
@@ -49,21 +49,21 @@ public:
 
   Traced<T> &operator=(const Traced<T> &other) {
     if (!other.mPtr) {
-      delete mPtr;
+      cx()->delete_(mPtr);
       mPtr = NULL;
     } else if (mPtr) {
       *mPtr = *other.mPtr;
     } else {
-      mPtr = new T(*other.mPtr);
+      mPtr = cx()->new_<T>(*other.mPtr);
     }
     return *this;
   }
   void operator=(Handle<T> h) {
-    delete mPtr;
+    cx()->delete_(mPtr);
     if (h.IsEmpty()) {
       mPtr = NULL;
     } else {
-      mPtr = new T(**h);
+      mPtr = cx()->new_<T>(**h);
     }
   }
   Local<T> get() {

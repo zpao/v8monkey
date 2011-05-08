@@ -34,7 +34,7 @@ typedef js::HashMap<JSObject*,Object::PrivateData*, js::DefaultHasher<JSObject*>
 static ObjectPrivateDataMap *gPrivateDataMap = 0;
 static ObjectPrivateDataMap& privateDataMap() {
   if (!gPrivateDataMap) {
-    gPrivateDataMap = new ObjectPrivateDataMap;
+    gPrivateDataMap = cx()->new_<ObjectPrivateDataMap>();
     gPrivateDataMap->init(11);
   }
   return *gPrivateDataMap;
@@ -66,6 +66,8 @@ internal::DestroyObjectInternals()
     r.front().value->hiddenValues.Dispose();
     r.popFront();
   }
+
+  cx()->delete_(gPrivateDataMap);
 }
 
 JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
@@ -477,8 +479,7 @@ Object::GetHiddenStore()
   if (p.found()) {
     pd = p->value;
   } else {
-    // XXX this will leak.  Fix!
-    pd = new PrivateData();
+    pd = cx()->new_<PrivateData>();
     ObjectPrivateDataMap::AddPtr slot = privateDataMap().lookupForAdd(*this);
     privateDataMap().add(slot, *this, pd);
   }

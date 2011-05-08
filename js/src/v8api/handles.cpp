@@ -22,7 +22,7 @@ namespace internal {
       while (mUsedThisBlock--)
         SlotOps::onRemoveSlot(&mBlock->elements[mUsedThisBlock]);
 
-      delete mBlock;
+      cx()->delete_(mBlock);
       mUsedThisBlock = kBlockSize;
       mBlock = next;
     }
@@ -33,7 +33,7 @@ namespace internal {
     {}
     typename SlotOps::Slot *allocate() {
       if (mUsedThisBlock == kBlockSize || !mBlock) {
-        SlotBlock *block = new SlotBlock;
+        SlotBlock *block = cx()->new_<SlotBlock>();
         block->next = mBlock;
         mBlock = block;
         mUsedThisBlock = 0;
@@ -128,13 +128,13 @@ namespace internal {
     while (ref != NULL) {
       PersistentGCReference *next = ref->next;
       if (ref->isNearDeath)
-        delete ref;
+        cx()->delete_(ref);
       ref = next;
     }
   }
 
   GCReference* GCReference::Globalize() {
-    GCReference *r = new PersistentGCReference(this);
+    GCReference *r = cx()->new_<PersistentGCReference>(this);
     r->root(cx());
     return r;
   }
@@ -143,11 +143,11 @@ namespace internal {
       unroot(cx());
       // Yay no RTTI
       if (HandleScope::IsLocalReference(this)) {
-        delete this;
+        cx()->delete_(this);
       } else {
         PersistentGCReference *ref =
           reinterpret_cast<PersistentGCReference*>(this);
-        delete ref;
+        cx()->delete_(ref);
       }
   }
 
@@ -159,7 +159,7 @@ namespace internal {
 HandleScope *HandleScope::sCurrent = 0;
 
 HandleScope::HandleScope() :
-  mGCReferences(new internal::GCReferenceContainer),
+  mGCReferences(cx()->new_<internal::GCReferenceContainer>()),
   mPrevious(sCurrent)
 {
   sCurrent = this;
@@ -185,7 +185,7 @@ internal::GCReference* HandleScope::InternalClose(internal::GCReference* ref) {
 void HandleScope::Destroy() {
   if (sCurrent == this) {
     sCurrent = mPrevious;
-    delete mGCReferences;
+    cx()->delete_(mGCReferences);
     mGCReferences = NULL;
   }
 }

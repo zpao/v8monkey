@@ -24,18 +24,6 @@ void TryCatch::ReportError(JSContext *ctx, const char *message, JSErrorReport *r
             report->filename ? report->filename : "<no filename>",
             (unsigned int) report->lineno,
             message);
-    return;
-  }
-  // TODO: figure out if we care about other types of warnings
-  if (!JSREPORT_IS_EXCEPTION(report->flags))
-    return;
-
-  TryCatch *current = gExnChain->catcher;
-  if (current->mCaptureMessage) {
-    current->mFilename = report->filename ? strdup(report->filename) : NULL;
-    current->mLineBuffer = report->linebuf ? strdup(report->linebuf) : NULL;
-    current->mLineNo = report->lineno;
-    current->mMessage = strdup(message);
   }
 }
 
@@ -58,9 +46,25 @@ void TryCatch::CheckForException() {
     return;
   }
   current->mException = Persistent<Value>::New(&exn);
-  if (current->mCaptureMessage) {
-    JS_ReportPendingException(cx());
+  if (current->mCaptureMessage && exn.IsObject()) {
+    HandleScope scope;
+    Handle<Object> exnObject = exn.ToObject();
+    Handle<String> message = exnObject->Get(String::NewSymbol("message")).As<String>();
+    Handle<String> fileName = exnObject->Get(String::NewSymbol("fileName")).As<String>();
+    Handle<Integer> lineNumber = exnObject->Get(String::NewSymbol("lineNumber")).As<Integer>();
+    if (!message.IsEmpty()) {
+      current->mMessage = new char[message->Length()+1];
+      message->WriteAscii(current->mMessage);
+    }
+    if (!fileName.IsEmpty()) {
+      current->mFilename = new char[fileName->Length()+1];
+      fileName->WriteAscii(current->mFilename);
+    }
+    if (!lineNumber.IsEmpty()) {
+      current->mLineNo = lineNumber->Int32Value();
+    }
   }
+  JS_ClearPendingException(cx());
 }
 
 
@@ -120,14 +124,10 @@ void TryCatch::Reset() {
     mException.Dispose();
     mException.Clear();
   }
-  if (mFilename) {
-    free(mFilename);
-  }
+  delete[] mFilename;
+  delete[] mMessage;
   if (mLineBuffer) {
     free(mLineBuffer);
-  }
-  if (mMessage) {  
-    free(mMessage);
   }
   mFilename = mLineBuffer = mMessage = NULL;
   mLineNo = 0;

@@ -41,7 +41,9 @@ static ObjectPrivateDataMap& privateDataMap() {
 }
 
 void
-internal::TraceObjectInternals(JSTracer* tracer, void*) {
+internal::TraceObjectInternals(JSTracer* tracer,
+                               void*)
+{
   if (!gPrivateDataMap) {
     return;
   }

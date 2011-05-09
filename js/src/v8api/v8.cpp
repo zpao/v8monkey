@@ -64,7 +64,6 @@ void TryCatch::CheckForException() {
       current->mLineNo = lineNumber->Int32Value();
     }
   }
-  JS_ClearPendingException(cx());
 }
 
 
@@ -100,6 +99,7 @@ Handle<Value> TryCatch::ReThrow() {
   if (!HasCaught()) {
     return Handle<Value>();
   }
+  JS_ASSERT(!mRethrown);
   mRethrown = true;
   return Undefined();
 }
@@ -129,6 +129,10 @@ void TryCatch::Reset() {
   mFilename = mLineBuffer = mMessage = NULL;
   mLineNo = 0;
 
+  if (!mRethrown) {
+    JS_ClearPendingException(cx());
+    mRethrown = false;
+  }
 }
 
 void TryCatch::SetVerbose(bool value) {

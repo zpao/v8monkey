@@ -15,6 +15,14 @@ extern JSClass global_class;
 JSContext *cx();
 bool disposed();
 
+class ApiExceptionBoundary {
+public:
+  ApiExceptionBoundary();
+  ~ApiExceptionBoundary();
+
+  bool noExceptionOccured();
+};
+
 void TraceObjectInternals(JSTracer* tracer, void*);
 void DestroyObjectInternals();
 

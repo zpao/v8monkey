@@ -14,10 +14,33 @@ using namespace internal;
 namespace internal {
   struct ExceptionHandlerChain {
     TryCatch *catcher;
+    ApiExceptionBoundary *boundary;
     ExceptionHandlerChain *next;
   };
   static ExceptionHandlerChain *gExnChain = 0;
 }
+
+ApiExceptionBoundary::ApiExceptionBoundary()
+{
+  ExceptionHandlerChain *link = cx()->new_<ExceptionHandlerChain>();
+  link->catcher = NULL;
+  link->boundary = this;
+  link->next = gExnChain;
+  gExnChain = link;
+}
+
+ApiExceptionBoundary::~ApiExceptionBoundary() {
+  ExceptionHandlerChain *link = gExnChain;
+  JS_ASSERT(link->boundary == this);
+  gExnChain = gExnChain->next;
+  cx()->delete_(link);
+}
+
+bool ApiExceptionBoundary::noExceptionOccured() {
+  return !JS_IsExceptionPending(cx());
+}
+
+
 void TryCatch::ReportError(JSContext *ctx, const char *message, JSErrorReport *report) {
   if (!gExnChain) {
     fprintf(stderr, "%s:%u:%s\n",
@@ -36,6 +59,12 @@ void TryCatch::CheckForException() {
   // crash very soon!
   DebugOnly<bool> TryCatchOnStack = !!gExnChain;
   JS_ASSERT(TryCatchOnStack);
+
+  // We'll want to pass this exception back to JSAPI to see if it wants to
+  // handle it. We'll get another shot again if it didn't.
+  if (gExnChain->boundary) {
+    return;
+  }
 
   TryCatch *current = gExnChain->catcher;
 
@@ -77,6 +106,7 @@ TryCatch::TryCatch() :
 {
   ExceptionHandlerChain *link = cx()->new_<ExceptionHandlerChain>();
   link->catcher = this;
+  link->boundary = NULL;
   link->next = gExnChain;
   gExnChain = link;
 }

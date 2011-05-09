@@ -91,6 +91,45 @@ test_obj_defprop() {
   context.Dispose();
 }
 
+static Handle<Value> ReadExn(Local<String> propname, const AccessorInfo &info) {
+  return ThrowException(Integer::New(9));
+}
+
+static void WriteExn(Local<String> propname, Local<Value> v, const AccessorInfo &info) {
+  ThrowException(Integer::New(4));
+}
+
+void
+test_obj_propexn() {
+  HandleScope handle_scope;
+  Persistent<Context> context = Context::New();
+
+  Context::Scope context_scope(context);
+
+  Handle<Object> obj = Object::New();
+  obj->SetAccessor(String::New("myprop"), ReadExn, WriteExn);
+  Local<Object> global = context->Global();
+  global->Set(String::New("testobj"), obj);
+
+  Handle<String> source = String::New("var n = 0;"
+                                      "try { testobj.myprop; } catch (e) { n += e; };"
+                                      "try { testobj.myprop = (n+9); } catch (e) { n += e; }; n");
+
+  // Compile the source code.
+  Handle<Script> script = Script::Compile(source);
+
+  TryCatch trycatch;
+  // Run the script to get the result.
+  Handle<Value> result = script->Run();
+
+  do_check_false(result.IsEmpty());
+  do_check_true(result->IsInt32());
+  do_check_false(trycatch.HasCaught());
+  JSInt32 i = result->Int32Value();
+  do_check_eq(13, i);
+  context.Dispose();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -98,6 +137,7 @@ Test gTests[] = {
   TEST(test_obj_setprop),
   TEST(test_obj_getprop),
   TEST(test_obj_defprop),
+  TEST(test_obj_propexn),
 };
 
 const char* file = __FILE__;

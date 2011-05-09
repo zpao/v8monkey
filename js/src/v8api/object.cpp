@@ -71,6 +71,7 @@ internal::DestroyObjectInternals()
 }
 
 JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
+  ApiExceptionBoundary boundary;
   HandleScope scope;
   JSObject* fnObj = JSVAL_TO_OBJECT(JS_CALLEE(cx, vp));
   jsval accessorOwner;
@@ -87,11 +88,11 @@ JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   AccessorInfo info(data.data.get(), JS_THIS_OBJECT(cx, vp));
   Handle<Value> result = data.getter(String::FromJSID(id), info);
   JS_SET_RVAL(cx, vp, result->native());
-  // XXX: this is usually correct
-  return JS_TRUE;
+  return boundary.noExceptionOccured();
 }
 
 JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
+  ApiExceptionBoundary boundary;
   HandleScope scope;
   JSObject* fnObj = JSVAL_TO_OBJECT(JS_CALLEE(cx, vp));
   jsval accessorOwner;
@@ -108,8 +109,7 @@ JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   AccessorInfo info(data.data.get(), JS_THIS_OBJECT(cx, vp));
   Value value(*JS_ARGV(cx, vp));
   data.setter(String::FromJSID(id), &value, info);
-  // XXX: this is usually correct
-  return JS_TRUE;
+  return boundary.noExceptionOccured();
 }
 
 bool

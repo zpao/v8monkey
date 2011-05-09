@@ -115,6 +115,8 @@ FunctionTemplate::CallCallback(JSContext* cx,
                                uintN argc,
                                jsval* vp)
 {
+  ApiExceptionBoundary boundary;
+  HandleScope scope;
   Object fnTemplateObj(JSVAL_TO_OBJECT(JS_CALLEE(cx, vp)));
   Handle<Object> ftData = fnTemplateObj.GetInternalField(0).As<Object>();
   Handle<ObjectTemplate> instanceTemplate =
@@ -156,7 +158,7 @@ FunctionTemplate::CallCallback(JSContext* cx,
   else {
     JS_SET_RVAL(cx, vp, ret->native());
   }
-  return !JS_IsExceptionPending(cx);
+  return boundary.noExceptionOccured();
 }
 
 bool FunctionTemplate::IsFunctionTemplate(Handle<Value> v) {

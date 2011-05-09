@@ -38,7 +38,6 @@ void TryCatch::CheckForException() {
   JS_ASSERT(TryCatchOnStack);
 
   TryCatch *current = gExnChain->catcher;
-  current->mHasCaught = true;
 
   Value exn;
   if (!JS_GetPendingException(cx(), &exn.native())) {
@@ -46,6 +45,7 @@ void TryCatch::CheckForException() {
     return;
   }
   current->mException = Persistent<Value>::New(&exn);
+  JS_ASSERT(!current->mException.IsEmpty());
   if (current->mCaptureMessage && exn.IsObject()) {
     HandleScope scope;
     Handle<Object> exnObject = exn.ToObject();
@@ -69,7 +69,6 @@ void TryCatch::CheckForException() {
 
 
 TryCatch::TryCatch() :
-  mHasCaught(false),
   mCaptureMessage(true),
   mRethrown(false),
   mFilename(NULL),
@@ -92,8 +91,6 @@ TryCatch::~TryCatch() {
   if (mRethrown) {
     JS_SetPendingException(cx(), mException->native());
     CheckForException();
-  } else if (mHasCaught) {
-    JS_ClearPendingException(cx());
   }
 
   Reset();
@@ -132,7 +129,6 @@ void TryCatch::Reset() {
   mFilename = mLineBuffer = mMessage = NULL;
   mLineNo = 0;
 
-  mHasCaught = false;
 }
 
 void TryCatch::SetVerbose(bool value) {

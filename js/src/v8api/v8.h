@@ -392,7 +392,6 @@ class TryCatch {
   static void ReportError(JSContext *ctx, const char *message, JSErrorReport *report);
   static void CheckForException();
 
-  bool mHasCaught;
   bool mCaptureMessage;
   bool mRethrown;
   Persistent<Value> mException;
@@ -407,7 +406,7 @@ public:
   ~TryCatch();
 
   bool HasCaught() const {
-    return mHasCaught;
+    return !mException.IsEmpty();
   }
   bool CanContinue() const {
     return true;

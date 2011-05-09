@@ -637,6 +637,23 @@ v8::Handle<v8::Array> CheckThisNamedPropertyEnumerator(
   return v8::Handle<v8::Array>();
 }
 
+static v8::Handle<Value> handle_call(const v8::Arguments& args) {
+  ApiTestFuzzer::Fuzz();
+  return v8_num(102);
+}
+
+static v8::Handle<Value> construct_call(const v8::Arguments& args) {
+  ApiTestFuzzer::Fuzz();
+  args.This()->Set(v8_str("x"), v8_num(1));
+  args.This()->Set(v8_str("y"), v8_num(2));
+  return args.This();
+}
+
+static v8::Handle<Value> Return239(Local<String> name, const AccessorInfo&) {
+  ApiTestFuzzer::Fuzz();
+  return v8_num(239);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
 
@@ -916,7 +933,45 @@ test_GlobalProperties()
 // from test-api.cc:776
 void
 test_FunctionTemplate()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  {
+    Local<v8::FunctionTemplate> fun_templ =
+        v8::FunctionTemplate::New(handle_call);
+    Local<Function> fun = fun_templ->GetFunction();
+    env->Global()->Set(v8_str("obj"), fun);
+    Local<Script> script = v8_compile("obj()");
+    CHECK_EQ(102, script->Run()->Int32Value());
+  }
+  // Use SetCallHandler to initialize a function template, should work like the
+  // previous one.
+  {
+    Local<v8::FunctionTemplate> fun_templ = v8::FunctionTemplate::New();
+    fun_templ->SetCallHandler(handle_call);
+    Local<Function> fun = fun_templ->GetFunction();
+    env->Global()->Set(v8_str("obj"), fun);
+    Local<Script> script = v8_compile("obj()");
+    CHECK_EQ(102, script->Run()->Int32Value());
+  }
+  // Test constructor calls.
+  {
+    Local<v8::FunctionTemplate> fun_templ =
+        v8::FunctionTemplate::New(construct_call);
+    fun_templ->SetClassName(v8_str("funky"));
+    fun_templ->InstanceTemplate()->SetAccessor(v8_str("m"), Return239);
+    Local<Function> fun = fun_templ->GetFunction();
+    env->Global()->Set(v8_str("obj"), fun);
+    Local<Script> script = v8_compile("var s = new obj(); s.x");
+    CHECK_EQ(1, script->Run()->Int32Value());
+
+    Local<Value> result = v8_compile("(new obj()).toString()")->Run();
+    CHECK_EQ(v8_str("[object funky]"), result);
+
+    result = v8_compile("(new obj()).m")->Run();
+    CHECK_EQ(239, result->Int32Value());
+  }
+}
 
 // from test-api.cc:844
 void
@@ -4485,7 +4540,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ExternalStringWithDisposeHandling),
   UNIMPLEMENTED_TEST(test_StringConcat),
   TEST(test_GlobalProperties),
-  UNIMPLEMENTED_TEST(test_FunctionTemplate),
+  DISABLED_TEST(test_FunctionTemplate, 95),
   UNIMPLEMENTED_TEST(test_ExternalWrap),
   UNIMPLEMENTED_TEST(test_FindInstanceInPrototypeChain),
   TEST(test_TinyInteger),

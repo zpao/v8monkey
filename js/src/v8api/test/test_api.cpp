@@ -670,12 +670,112 @@ test_Handles()
 // from test-api.cc:150
 void
 test_ReceiverSignature()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::Handle<v8::FunctionTemplate> fun = v8::FunctionTemplate::New();
+  v8::Handle<v8::Signature> sig = v8::Signature::New(fun);
+  fun->PrototypeTemplate()->Set(
+      v8_str("m"),
+      v8::FunctionTemplate::New(IncrementingSignatureCallback,
+                                v8::Handle<Value>(),
+                                sig));
+  env->Global()->Set(v8_str("Fun"), fun->GetFunction());
+  signature_callback_count = 0;
+  CompileRun(
+      "var o = new Fun();"
+      "o.m();");
+  CHECK_EQ(1, signature_callback_count);
+  v8::Handle<v8::FunctionTemplate> sub_fun = v8::FunctionTemplate::New();
+  sub_fun->Inherit(fun);
+  env->Global()->Set(v8_str("SubFun"), sub_fun->GetFunction());
+  CompileRun(
+      "var o = new SubFun();"
+      "o.m();");
+  CHECK_EQ(2, signature_callback_count);
+
+  v8::TryCatch try_catch;
+  CompileRun(
+      "var o = { };"
+      "o.m = Fun.prototype.m;"
+      "o.m();");
+  CHECK_EQ(2, signature_callback_count);
+  CHECK(try_catch.HasCaught());
+  try_catch.Reset();
+  v8::Handle<v8::FunctionTemplate> unrel_fun = v8::FunctionTemplate::New();
+  sub_fun->Inherit(fun);
+  env->Global()->Set(v8_str("UnrelFun"), unrel_fun->GetFunction());
+  CompileRun(
+      "var o = new UnrelFun();"
+      "o.m = Fun.prototype.m;"
+      "o.m();");
+  CHECK_EQ(2, signature_callback_count);
+  CHECK(try_catch.HasCaught());
+}
 
 // from test-api.cc:196
 void
 test_ArgumentSignature()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::Handle<v8::FunctionTemplate> cons = v8::FunctionTemplate::New();
+  cons->SetClassName(v8_str("Cons"));
+  v8::Handle<v8::Signature> sig =
+      v8::Signature::New(v8::Handle<v8::FunctionTemplate>(), 1, &cons);
+  v8::Handle<v8::FunctionTemplate> fun =
+      v8::FunctionTemplate::New(SignatureCallback, v8::Handle<Value>(), sig);
+  env->Global()->Set(v8_str("Cons"), cons->GetFunction());
+  env->Global()->Set(v8_str("Fun1"), fun->GetFunction());
+
+  v8::Handle<Value> value1 = CompileRun("Fun1(4) == '';");
+  CHECK(value1->IsTrue());
+
+  v8::Handle<Value> value2 = CompileRun("Fun1(new Cons()) == '[object Cons]';");
+  CHECK(value2->IsTrue());
+
+  v8::Handle<Value> value3 = CompileRun("Fun1() == '';");
+  CHECK(value3->IsTrue());
+
+  v8::Handle<v8::FunctionTemplate> cons1 = v8::FunctionTemplate::New();
+  cons1->SetClassName(v8_str("Cons1"));
+  v8::Handle<v8::FunctionTemplate> cons2 = v8::FunctionTemplate::New();
+  cons2->SetClassName(v8_str("Cons2"));
+  v8::Handle<v8::FunctionTemplate> cons3 = v8::FunctionTemplate::New();
+  cons3->SetClassName(v8_str("Cons3"));
+
+  v8::Handle<v8::FunctionTemplate> args[3] = { cons1, cons2, cons3 };
+  v8::Handle<v8::Signature> wsig =
+      v8::Signature::New(v8::Handle<v8::FunctionTemplate>(), 3, args);
+  v8::Handle<v8::FunctionTemplate> fun2 =
+      v8::FunctionTemplate::New(SignatureCallback, v8::Handle<Value>(), wsig);
+
+  env->Global()->Set(v8_str("Cons1"), cons1->GetFunction());
+  env->Global()->Set(v8_str("Cons2"), cons2->GetFunction());
+  env->Global()->Set(v8_str("Cons3"), cons3->GetFunction());
+  env->Global()->Set(v8_str("Fun2"), fun2->GetFunction());
+  v8::Handle<Value> value4 = CompileRun(
+      "Fun2(new Cons1(), new Cons2(), new Cons3()) =="
+      "'[object Cons1],[object Cons2],[object Cons3]'");
+  CHECK(value4->IsTrue());
+
+  v8::Handle<Value> value5 = CompileRun(
+      "Fun2(new Cons1(), new Cons2(), 5) == '[object Cons1],[object Cons2],'");
+  CHECK(value5->IsTrue());
+
+  v8::Handle<Value> value6 = CompileRun(
+      "Fun2(new Cons3(), new Cons2(), new Cons1()) == ',[object Cons2],'");
+  CHECK(value6->IsTrue());
+
+  v8::Handle<Value> value7 = CompileRun(
+      "Fun2(new Cons1(), new Cons2(), new Cons3(), 'd') == "
+      "'[object Cons1],[object Cons2],[object Cons3],d';");
+  CHECK(value7->IsTrue());
+
+  v8::Handle<Value> value8 = CompileRun(
+      "Fun2(new Cons1(), new Cons2()) == '[object Cons1],[object Cons2]'");
+  CHECK(value8->IsTrue());
+}
 
 // from test-api.cc:258
 void
@@ -4366,8 +4466,8 @@ test_DefinePropertyPostDetach()
 
 Test gTests[] = {
   TEST(test_Handles),
-  UNIMPLEMENTED_TEST(test_ReceiverSignature),
-  UNIMPLEMENTED_TEST(test_ArgumentSignature),
+  DISABLED_TEST(test_ReceiverSignature, 79),
+  DISABLED_TEST(test_ArgumentSignature, 79),
   TEST(test_HulIgennem),
   TEST(test_Access),
   TEST(test_AccessElement),

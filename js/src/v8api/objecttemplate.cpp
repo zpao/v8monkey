@@ -115,6 +115,7 @@ o_DeleteProperty(JSContext* cx,
                  jsid id,
                  jsval* vp)
 {
+  ApiExceptionBoundary boundary;
   Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
   PrivateData* pd = PrivateData::Get(ot);
   JS_ASSERT(pd);
@@ -124,7 +125,7 @@ o_DeleteProperty(JSContext* cx,
     Handle<Boolean> ret = pd->indexedDeleter(JSID_TO_INT(id), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();
-      return JS_TRUE;
+      return boundary.noExceptionOccured();
     }
   }
   else if (JSID_IS_STRING(id) && pd->namedDeleter) {
@@ -133,11 +134,11 @@ o_DeleteProperty(JSContext* cx,
     Handle<Boolean> ret = pd->namedDeleter(String::FromJSID(id), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();
-      return JS_TRUE;
+      return boundary.noExceptionOccured();
     }
   }
 
-  return JS_PropertyStub(cx, obj, id, vp);
+  return JS_PropertyStub(cx, obj, id, vp) && boundary.noExceptionOccured();
 }
 
 JSBool
@@ -146,6 +147,7 @@ o_GetProperty(JSContext* cx,
               jsid id,
               jsval* vp)
 {
+  ApiExceptionBoundary boundary;
   Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
   PrivateData* pd = PrivateData::Get(ot);
   JS_ASSERT(pd);
@@ -155,7 +157,7 @@ o_GetProperty(JSContext* cx,
     Handle<Value> ret = pd->indexedGetter(JSID_TO_INT(id), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();
-      return JS_TRUE;
+      return boundary.noExceptionOccured();
     }
   }
   else if (JSID_IS_STRING(id) && pd->namedGetter) {
@@ -164,11 +166,11 @@ o_GetProperty(JSContext* cx,
     Handle<Value> ret = pd->namedGetter(String::FromJSID(id), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();
-      return JS_TRUE;
+      return boundary.noExceptionOccured();
     }
   }
 
-  return JS_PropertyStub(cx, obj, id, vp);
+  return JS_PropertyStub(cx, obj, id, vp) && boundary.noExceptionOccured();
 }
 
 JSBool
@@ -178,6 +180,7 @@ o_SetProperty(JSContext* cx,
               JSBool strict,
               jsval* vp)
 {
+  ApiExceptionBoundary boundary;
   Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
   PrivateData* pd = PrivateData::Get(ot);
   JS_ASSERT(pd);
@@ -189,7 +192,7 @@ o_SetProperty(JSContext* cx,
     Handle<Value> ret = pd->indexedSetter(idx, Local<Value>(&val), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();
-      return JS_TRUE;
+      return boundary.noExceptionOccured();
     }
   }
   else if (JSID_IS_STRING(id) && pd->namedSetter) {
@@ -200,11 +203,11 @@ o_SetProperty(JSContext* cx,
       pd->namedSetter(String::FromJSID(id), Local<Value>(&val), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();
-      return JS_TRUE;
+      return boundary.noExceptionOccured();
     }
   }
 
-  return JS_StrictPropertyStub(cx, obj, id, strict, vp);
+  return JS_StrictPropertyStub(cx, obj, id, strict, vp) && boundary.noExceptionOccured();
 }
 
 void

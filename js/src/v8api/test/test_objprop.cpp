@@ -130,6 +130,66 @@ test_obj_propexn() {
   context.Dispose();
 }
 
+Handle<Value> NamedGetterThrows(Local<String> property, const AccessorInfo &info) {
+  return ThrowException(Integer::New(1));
+}
+Handle<Value> NamedSetterThrows(Local<String> property, Local<Value> value, const AccessorInfo &info) {
+  return ThrowException(Integer::New(2));
+}
+Handle<Boolean> NamedDeleterThrows(Local<String> property, const AccessorInfo &info) {
+  ThrowException(Integer::New(3));
+  return True();
+}
+
+Handle<Value> IndexedGetterThrows(JSUint32 index, const AccessorInfo &info) {
+  return ThrowException(Integer::New(4));
+}
+Handle<Value> IndexedSetterThrows(JSUint32 index, Local<Value> value, const AccessorInfo &info) {
+  return ThrowException(Integer::New(5));
+}
+
+Handle<Boolean> IndexedDeleterThrows(JSUint32 index, const AccessorInfo &info) {
+  ThrowException(Integer::New(6));
+  return True();
+}
+
+void
+test_obj_tmplexn() {
+  HandleScope scope;
+
+  Persistent<Context> context = Context::New();
+  Context::Scope context_scope(context);
+
+  Handle<ObjectTemplate> tmpl = ObjectTemplate::New();
+  tmpl->SetNamedPropertyHandler(NamedGetterThrows, NamedSetterThrows, 0, NamedDeleterThrows);
+  tmpl->SetIndexedPropertyHandler(IndexedGetterThrows, IndexedSetterThrows, 0, IndexedDeleterThrows);
+  Handle<Object> obj = tmpl->NewInstance();
+  Local<Object> global = context->Global();
+  global->Set(String::New("testobj"), obj);
+
+  Handle<String> source = String::New("var n = 0;"
+                                      "try { testobj.myprop; } catch (e) { n += e; };"
+                                      "try { testobj.myprop = (n+9); } catch (e) { n += e; }"
+                                      "try { delete testobj.myprop; } catch (e) { n += e; };"
+                                      "try { testobj[4]; } catch (e) { n += e; };"
+                                      "try { testobj[5] = (n+9); } catch (e) { n += e; }"
+                                      "try { delete testobj[6]; } catch (e) { n += e; }; n");
+
+  // Compile the source code.
+  Handle<Script> script = Script::Compile(source);
+
+  TryCatch trycatch;
+  // Run the script to get the result.
+  Handle<Value> result = script->Run();
+
+  do_check_false(result.IsEmpty());
+  do_check_true(result->IsInt32());
+  do_check_false(trycatch.HasCaught());
+  JSInt32 i = result->Int32Value();
+  do_check_eq(i, 21);
+  context.Dispose();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Test Harness
 
@@ -138,6 +198,7 @@ Test gTests[] = {
   TEST(test_obj_getprop),
   TEST(test_obj_defprop),
   TEST(test_obj_propexn),
+  TEST(test_obj_tmplexn),
 };
 
 const char* file = __FILE__;

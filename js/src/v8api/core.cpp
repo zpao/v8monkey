@@ -130,7 +130,13 @@ HeapStatistics::HeapStatistics() :
 {}
 
 void V8::GetHeapStatistics(HeapStatistics* aHeapStatistics) {
-  UNIMPLEMENTEDAPI();
+  size_t limit = JS_GetGCParameter(rt(), JSGC_MAX_BYTES);
+  size_t used = JS_GetGCParameter(rt(), JSGC_BYTES);
+
+  aHeapStatistics->set_heap_size_limit(limit);
+  aHeapStatistics->set_used_heap_size(used);
+
+  // TODO: fill in the remaining stats
 }
 
 const char* V8::GetVersion() {

@@ -4071,7 +4071,37 @@ test_ApplyInterruption()
 // from test-api.cc:9905
 void
 test_ObjectClone()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+
+  const char* sample =
+    "var rv = {};"      \
+    "rv.alpha = 'hello';" \
+    "rv.beta = 123;"     \
+    "rv;";
+
+  // Create an object, verify basics.
+  Local<Value> val = CompileRun(sample);
+  CHECK(val->IsObject());
+  Local<v8::Object> obj = val.As<v8::Object>();
+  obj->Set(v8_str("gamma"), v8_str("cloneme"));
+
+  CHECK_EQ(v8_str("hello"), obj->Get(v8_str("alpha")));
+  CHECK_EQ(v8::Integer::New(123), obj->Get(v8_str("beta")));
+  CHECK_EQ(v8_str("cloneme"), obj->Get(v8_str("gamma")));
+
+  // Clone it.
+  Local<v8::Object> clone = obj->Clone();
+  CHECK_EQ(v8_str("hello"), clone->Get(v8_str("alpha")));
+  CHECK_EQ(v8::Integer::New(123), clone->Get(v8_str("beta")));
+  CHECK_EQ(v8_str("cloneme"), clone->Get(v8_str("gamma")));
+
+  // Set a property on the clone, verify each object.
+  clone->Set(v8_str("beta"), v8::Integer::New(456));
+  CHECK_EQ(v8::Integer::New(123), obj->Get(v8_str("beta")));
+  CHECK_EQ(v8::Integer::New(456), clone->Get(v8_str("beta")));
+}
 
 // from test-api.cc:9988
 void
@@ -4822,7 +4852,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_CrossContextNew),
   UNIMPLEMENTED_TEST(test_RegExpInterruption),
   UNIMPLEMENTED_TEST(test_ApplyInterruption),
-  UNIMPLEMENTED_TEST(test_ObjectClone),
+  TEST(test_ObjectClone),
   UNIMPLEMENTED_TEST(test_MorphCompositeStringTest),
   UNIMPLEMENTED_TEST(test_CompileExternalTwoByteSource),
   UNIMPLEMENTED_TEST(test_RegExpStringModification),

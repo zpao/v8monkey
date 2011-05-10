@@ -122,6 +122,13 @@ bool V8::IdleNotification() {
   return true;
 }
 
+HeapStatistics::HeapStatistics() :
+  total_heap_size_(0),
+  total_heap_size_executable_(0),
+  used_heap_size_(0),
+  heap_size_limit_(0)
+{}
+
 void V8::GetHeapStatistics(HeapStatistics* aHeapStatistics) {
   UNIMPLEMENTEDAPI();
 }

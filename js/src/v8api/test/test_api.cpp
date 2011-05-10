@@ -4680,7 +4680,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_AccessControlFlatten),
   UNIMPLEMENTED_TEST(test_AccessControlInterceptorIC),
   UNIMPLEMENTED_TEST(test_Version),
-  DISABLED_TEST(test_InstanceProperties, 666),
+  TEST(test_InstanceProperties),
   DISABLED_TEST(test_GlobalObjectInstanceProperties, 666),
   DISABLED_TEST(test_CallKnownGlobalReceiver, 666),
   DISABLED_TEST(test_ShadowObject, 666),

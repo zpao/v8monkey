@@ -1851,10 +1851,39 @@ void
 test_ExceptionOrder()
 { }
 
+v8::Handle<Value> ThrowValue(const v8::Arguments& args) {
+  ApiTestFuzzer::Fuzz();
+  CHECK_EQ(1, args.Length());
+  return v8::ThrowException(args[0]);
+}
+
 // from test-api.cc:2642
 void
 test_ThrowValues()
-{ }
+{
+  v8::HandleScope scope;
+  Local<ObjectTemplate> templ = ObjectTemplate::New();
+  templ->Set(v8_str("Throw"), v8::FunctionTemplate::New(ThrowValue));
+  LocalContext context(0, templ);
+  v8::Handle<v8::Array> result = v8::Handle<v8::Array>::Cast(CompileRun(
+    "function Run(obj) {"
+    "  try {"
+    "    Throw(obj);"
+    "  } catch (e) {"
+    "    return e;"
+    "  }"
+    "  return 'no exception';"
+    "}"
+    "[Run('str'), Run(1), Run(0), Run(null), Run(void 0)];"));
+  CHECK_EQ(5, result->Length());
+  CHECK(result->Get(v8::Integer::New(0))->IsString());
+  CHECK(result->Get(v8::Integer::New(1))->IsNumber());
+  CHECK_EQ(1, result->Get(v8::Integer::New(1))->Int32Value());
+  CHECK(result->Get(v8::Integer::New(2))->IsNumber());
+  CHECK_EQ(0, result->Get(v8::Integer::New(2))->Int32Value());
+  CHECK(result->Get(v8::Integer::New(3))->IsNull());
+  CHECK(result->Get(v8::Integer::New(4))->IsUndefined());
+}
 
 // from test-api.cc:2668
 void
@@ -4597,7 +4626,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ExternalScriptException),
   TEST(test_EvalInTryFinally),
   UNIMPLEMENTED_TEST(test_ExceptionOrder),
-  UNIMPLEMENTED_TEST(test_ThrowValues),
+  TEST(test_ThrowValues),
   TEST(test_CatchZero),
   TEST(test_CatchExceptionFromWith),
   TEST(test_TryCatchAndFinallyHidingException),

@@ -318,6 +318,10 @@ Local<Int32> Value::ToInt32() const {
 Local<Integer>
 Value::ToInteger() const
 {
+  if (JSVAL_IS_INT(mVal)) {
+    return Integer::New(JSVAL_TO_INT(mVal));
+  }
+
   // TODO should be supporting 64bit wide ints here
   JSInt32 i;
   if (!JS_ValueToECMAInt32(cx(), mVal, &i)) {
@@ -406,7 +410,7 @@ JSInt64
 Value::IntegerValue() const
 {
   // There are no 64 bit integers, so just return the 32bit one
-  if (JSVAL_IS_INT(mVal) == JS_TRUE) {
+  if (JSVAL_IS_INT(mVal)) {
     return JSVAL_TO_INT(mVal);
   }
 

@@ -27,8 +27,13 @@ struct PrivateData
     indexedQuery(NULL),
     indexedDeleter(NULL),
     indexedEnumerator(NULL),
-    cls(gNewInstanceClass)
+    cls(gNewInstanceClass),
+    name(NULL)
   {
+  }
+
+  ~PrivateData() {
+    free(name);
   }
 
   static PrivateData* Get(JSContext* cx,
@@ -69,6 +74,7 @@ struct PrivateData
   Traced<ObjectTemplate> prototype;
 
   JSClass cls;
+  char* name;
 };
 
 struct ObjectTemplateHandle
@@ -330,6 +336,17 @@ void ObjectTemplate::SetPrototype(Handle<ObjectTemplate> o) {
   PrivateData* pd = PrivateData::Get(InternalObject());
   JS_ASSERT(pd);
   pd->prototype = o;
+}
+
+void ObjectTemplate::SetObjectName(Handle<String> s) {
+  PrivateData* pd = PrivateData::Get(InternalObject());
+  JS_ASSERT(pd);
+  String::AsciiValue str(s);
+  if (pd->name) {
+    free(pd->name);
+  }
+  pd->name = strdup(*str);
+  pd->cls.name = pd->name;
 }
 
 // static

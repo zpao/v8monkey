@@ -255,6 +255,7 @@ FunctionTemplate::SetClassName(Handle<String> name)
 {
   PrivateData* pd = PrivateData::Get(cx(), InternalObject());
   pd->name = name;
+  pd->instanceTemplate->SetObjectName(name);
 }
 
 void

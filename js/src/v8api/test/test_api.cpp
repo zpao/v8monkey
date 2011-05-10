@@ -4540,7 +4540,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ExternalStringWithDisposeHandling),
   UNIMPLEMENTED_TEST(test_StringConcat),
   TEST(test_GlobalProperties),
-  DISABLED_TEST(test_FunctionTemplate, 95),
+  TEST(test_FunctionTemplate),
   UNIMPLEMENTED_TEST(test_ExternalWrap),
   UNIMPLEMENTED_TEST(test_FindInstanceInPrototypeChain),
   TEST(test_TinyInteger),

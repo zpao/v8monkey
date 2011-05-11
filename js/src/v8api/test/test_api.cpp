@@ -4844,7 +4844,7 @@ Test gTests[] = {
   TEST(test_PreCompile),
   TEST(test_PreCompileWithError),
   TEST(test_Regress31661),
-  DISABLED_TEST(test_PreCompileSerialization, 60),
+  TEST(test_PreCompileSerialization),
   TEST(test_PreCompileDeserializationError),
   UNIMPLEMENTED_TEST(test_PreCompileInvalidPreparseDataError),
   UNIMPLEMENTED_TEST(test_PreCompileAPIVariationsAreSame),

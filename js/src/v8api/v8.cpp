@@ -297,10 +297,6 @@ Local<Uint32> Value::ToUint32() const {
     TryCatch::CheckForException();
     return Local<Uint32>();
   }
-  // XXX this is somehow still needed to make test_PropertyAttributes pass.
-  if (!IsNumber()) {
-    return Local<Uint32>();
-  }
   Uint32 v(i);
   return Local<Uint32>::New(&v);
 }

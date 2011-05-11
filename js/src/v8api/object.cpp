@@ -85,7 +85,7 @@ JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   (void) JS_ValueToId(cx, name, &id);
 
   AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
-  AccessorInfo info(data.data.get(), JS_THIS_OBJECT(cx, vp));
+  AccessorInfo info(data.data.get(), JS_THIS_OBJECT(cx, vp), o);
   Handle<Value> result = data.getter(String::FromJSID(id), info);
   JS_SET_RVAL(cx, vp, result->native());
   return boundary.noExceptionOccured();
@@ -106,7 +106,7 @@ JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   (void) JS_ValueToId(cx, name, &id);
 
   AccessorStorage::PropertyData data = o.GetHiddenStore().properties.get(id);
-  AccessorInfo info(data.data.get(), JS_THIS_OBJECT(cx, vp));
+  AccessorInfo info(data.data.get(), JS_THIS_OBJECT(cx, vp), o);
   Value value(*JS_ARGV(cx, vp));
   data.setter(String::FromJSID(id), &value, info);
   return boundary.noExceptionOccured();

@@ -1023,19 +1023,18 @@ public:
 
 class AccessorInfo {
   friend class Object;
-  AccessorInfo(Handle<Value> data, JSObject *obj);
+  AccessorInfo(Handle<Value> data, JSObject* obj, JSObject* holder);
 
   Handle<Value> mData;
   JSObject* mObj;
+  JSObject* mHolder;
 public:
-  static const AccessorInfo MakeAccessorInfo(Handle<Value> data, JSObject* obj);
+  static const AccessorInfo MakeAccessorInfo(Handle<Value> data, JSObject* obj, JSObject* holder = NULL);
   Local<Value> Data() const {
     return Local<Value>::New(mData);
   }
   Local<Object> This() const;
-  Local<Object> Holder() const {
-    UNIMPLEMENTEDAPI(Local<Object>());
-  }
+  Local<Object> Holder() const;
 };
 
 typedef Handle<Value> (*InvocationCallback)(const Arguments &args);

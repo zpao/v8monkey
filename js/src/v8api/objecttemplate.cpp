@@ -79,10 +79,12 @@ struct PrivateData
 
 struct ObjectTemplateHandle
 {
-  ObjectTemplateHandle(Handle<ObjectTemplate> ot) :
-    objectTemplate(ot)
+  ObjectTemplateHandle(Handle<ObjectTemplate> ot, JSObject* holder) :
+    objectTemplate(ot),
+    holder(holder)
   {
     JS_ASSERT(!ot.IsEmpty());
+    JS_ASSERT(holder != NULL);
   }
 
   static ObjectTemplateHandle* Get(JSContext* cx,
@@ -112,7 +114,18 @@ struct ObjectTemplateHandle
     return h->objectTemplate.get();
   }
 
+  static JSObject* GetHolder(JSContext* cx,
+                             JSObject* obj)
+  {
+    ObjectTemplateHandle* h = ObjectTemplateHandle::Get(cx, obj);
+    JS_ASSERT(h && h->holder);
+    return h->holder;
+  }
+
   Traced<ObjectTemplate> objectTemplate;
+  // It's ok not to trace this because holder is the only reference to this
+  // structure.
+  JSObject* holder;
 };
 
 JSBool
@@ -158,8 +171,9 @@ o_GetProperty(JSContext* cx,
   PrivateData* pd = PrivateData::Get(ot);
   JS_ASSERT(pd);
   if (JSID_IS_INT(id) && JSID_TO_INT(id) >= 0 && pd->indexedGetter) {
+    JSObject* holder = ObjectTemplateHandle::GetHolder(cx, obj);
     const AccessorInfo info =
-      AccessorInfo::MakeAccessorInfo(pd->indexedData.get(), obj);
+      AccessorInfo::MakeAccessorInfo(pd->indexedData.get(), obj, holder);
     Handle<Value> ret = pd->indexedGetter(JSID_TO_INT(id), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();
@@ -167,8 +181,9 @@ o_GetProperty(JSContext* cx,
     }
   }
   else if (JSID_IS_STRING(id) && pd->namedGetter) {
+    JSObject* holder = ObjectTemplateHandle::GetHolder(cx, obj);
     const AccessorInfo info =
-      AccessorInfo::MakeAccessorInfo(pd->namedData.get(), obj);
+      AccessorInfo::MakeAccessorInfo(pd->namedData.get(), obj, holder);
     Handle<Value> ret = pd->namedGetter(String::FromJSID(id), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();
@@ -378,7 +393,7 @@ ObjectTemplate::NewInstance(JSObject* parent)
     UNIMPLEMENTEDAPI(Local<Object>());
   }
 
-  ObjectTemplateHandle* handle = cx()->new_<ObjectTemplateHandle>(this);
+  ObjectTemplateHandle* handle = cx()->new_<ObjectTemplateHandle>(this, obj);
   if (!JS_SetPrivate(cx(), obj, handle)) {
     cx()->delete_(handle);
     // TODO handle error better

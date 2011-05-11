@@ -930,8 +930,8 @@ Arguments::IsConstructCall() const
   return JS_IsConstructing(mCtx, mVp);
 }
 
-AccessorInfo::AccessorInfo(Handle<Value> data, JSObject *obj) :
-  mData(data), mObj(obj)
+AccessorInfo::AccessorInfo(Handle<Value> data, JSObject* obj, JSObject* holder) :
+  mData(data), mObj(obj), mHolder(holder)
 {}
 
 Local<Object> AccessorInfo::This() const {
@@ -939,11 +939,17 @@ Local<Object> AccessorInfo::This() const {
   return Local<Object>::New(&o);
 }
 
+Local<Object> AccessorInfo::Holder() const {
+  Object o(mHolder);
+  return Local<Object>::New(&o);
+}
+
 const AccessorInfo
 AccessorInfo::MakeAccessorInfo(Handle<Value> data,
-                               JSObject* obj)
+                               JSObject* obj,
+                               JSObject* holder)
 {
-  return AccessorInfo(data, obj);
+  return AccessorInfo(data, obj, holder ? holder : obj);
 }
 
 }

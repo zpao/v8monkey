@@ -2917,7 +2917,14 @@ test_ExceptionInNativeScript()
 // from test-api.cc:4914
 void
 test_CompilationErrorUsingTryCatchHandler()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::TryCatch try_catch;
+  Script::Compile(v8_str("This doesn't &*&@#$&*^ compile."));
+  CHECK_NE(NULL, *try_catch.Exception());
+  CHECK(try_catch.HasCaught());
+}
 
 // from test-api.cc:4924
 void
@@ -4718,7 +4725,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_TypeSwitch),
   UNIMPLEMENTED_TEST(test_ApiUncaughtException),
   UNIMPLEMENTED_TEST(test_ExceptionInNativeScript),
-  UNIMPLEMENTED_TEST(test_CompilationErrorUsingTryCatchHandler),
+  TEST(test_CompilationErrorUsingTryCatchHandler),
   UNIMPLEMENTED_TEST(test_TryCatchFinallyUsingTryCatchHandler),
   UNIMPLEMENTED_TEST(test_SecurityHandler),
   UNIMPLEMENTED_TEST(test_SecurityChecks),

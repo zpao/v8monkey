@@ -177,6 +177,7 @@ void check_eq_helper(const char* aFile, int aLine,
     fail(temp.str().c_str());
   }
 }
+
 void check_ne_helper(const char* aFile, int aLine,
                      v8::Handle<v8::Value> aExpected,
                      v8::Handle<v8::Value> aActual)
@@ -197,6 +198,16 @@ void check_ne_helper(const char* aFile, int aLine,
     temp << " at line " << aLine;
     fail(temp.str().c_str());
   }
+}
+
+// Some tests use raw pointers...
+void check_ne_helper(const char* aFile, int aLine,
+                     v8::Value* aExpected,
+                     v8::Value* aActual)
+{
+  v8::Handle<v8::Value> expected(aExpected);
+  v8::Handle<v8::Value> actual(aActual);
+  check_ne_helper(aFile, aLine, expected, actual);
 }
 
 // mixed

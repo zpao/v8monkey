@@ -2860,7 +2860,29 @@ test_ToArrayIndex()
 // from test-api.cc:4723
 void
 test_ErrorConstruction()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+
+  v8::Handle<String> foo = v8_str("foo");
+  v8::Handle<String> message = v8_str("message");
+  v8::Handle<Value> range_error = v8::Exception::RangeError(foo);
+  CHECK(range_error->IsObject());
+  v8::Handle<v8::Object> range_obj = range_error.As<v8::Object>();
+  CHECK(range_error.As<v8::Object>()->Get(message)->Equals(foo));
+  v8::Handle<Value> reference_error = v8::Exception::ReferenceError(foo);
+  CHECK(reference_error->IsObject());
+  CHECK(reference_error.As<v8::Object>()->Get(message)->Equals(foo));
+  v8::Handle<Value> syntax_error = v8::Exception::SyntaxError(foo);
+  CHECK(syntax_error->IsObject());
+  CHECK(syntax_error.As<v8::Object>()->Get(message)->Equals(foo));
+  v8::Handle<Value> type_error = v8::Exception::TypeError(foo);
+  CHECK(type_error->IsObject());
+  CHECK(type_error.As<v8::Object>()->Get(message)->Equals(foo));
+  v8::Handle<Value> error = v8::Exception::Error(foo);
+  CHECK(error->IsObject());
+  CHECK(error.As<v8::Object>()->Get(message)->Equals(foo));
+}
 
 // from test-api.cc:4764
 void
@@ -4691,7 +4713,7 @@ Test gTests[] = {
   TEST(test_ObjectInstantiation),
   DISABLED_TEST(test_StringWrite, 16),
   TEST(test_ToArrayIndex),
-  UNIMPLEMENTED_TEST(test_ErrorConstruction),
+  TEST(test_ErrorConstruction),
   TEST(test_DeleteAccessor),
   UNIMPLEMENTED_TEST(test_TypeSwitch),
   UNIMPLEMENTED_TEST(test_ApiUncaughtException),

@@ -203,7 +203,7 @@ void check_ne_helper(const char* aFile, int aLine,
 // Some tests use raw pointers...
 void check_ne_helper(const char* aFile, int aLine,
                      v8::Value* aExpected,
-                     v8::Value* aActual)
+                     v8::Handle<v8::Value> aActual)
 {
   v8::Handle<v8::Value> expected(aExpected);
   v8::Handle<v8::Value> actual(aActual);

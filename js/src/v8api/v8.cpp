@@ -260,6 +260,13 @@ bool SetResourceConstraints(ResourceConstraints *constraints) {
 
 JS_STATIC_ASSERT(sizeof(Value) == sizeof(GCReference));
 
+Local<Uint32> Value::ToArrayIndex() const {
+  Local<Number> n = ToNumber();
+  if (n.IsEmpty() || !n->IsUint32())
+    return Local<Uint32>();
+  return n->ToUint32();
+}
+
 Local<Boolean> Value::ToBoolean() const {
   JSBool b;
   if (!JS_ValueToBoolean(cx(), mVal, &b)) {

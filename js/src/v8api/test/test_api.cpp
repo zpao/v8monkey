@@ -2827,7 +2827,35 @@ test_StringWrite()
 // from test-api.cc:4692
 void
 test_ToArrayIndex()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+
+  v8::Handle<String> str = v8_str("42");
+  v8::Handle<v8::Uint32> index = str->ToArrayIndex();
+  CHECK(!index.IsEmpty());
+  CHECK_EQ(42.0, index->Uint32Value());
+  str = v8_str("42asdf");
+  index = str->ToArrayIndex();
+  CHECK(index.IsEmpty());
+  str = v8_str("-42");
+  index = str->ToArrayIndex();
+  CHECK(index.IsEmpty());
+  str = v8_str("4294967295");
+  index = str->ToArrayIndex();
+  CHECK(!index.IsEmpty());
+  CHECK_EQ(4294967295.0, index->Uint32Value());
+  v8::Handle<v8::Number> num = v8::Number::New(1);
+  index = num->ToArrayIndex();
+  CHECK(!index.IsEmpty());
+  CHECK_EQ(1.0, index->Uint32Value());
+  num = v8::Number::New(-1);
+  index = num->ToArrayIndex();
+  CHECK(index.IsEmpty());
+  v8::Handle<v8::Object> obj = v8::Object::New();
+  index = obj->ToArrayIndex();
+  CHECK(index.IsEmpty());
+}
 
 // from test-api.cc:4723
 void
@@ -4662,7 +4690,7 @@ Test gTests[] = {
   DISABLED_TEST(test_PreInterceptorHolders, 97),
   TEST(test_ObjectInstantiation),
   DISABLED_TEST(test_StringWrite, 16),
-  UNIMPLEMENTED_TEST(test_ToArrayIndex),
+  TEST(test_ToArrayIndex),
   UNIMPLEMENTED_TEST(test_ErrorConstruction),
   TEST(test_DeleteAccessor),
   UNIMPLEMENTED_TEST(test_TypeSwitch),

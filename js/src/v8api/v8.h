@@ -533,6 +533,8 @@ public:
     UNIMPLEMENTEDAPI(false);
   }
 
+  Local<Uint32> ToArrayIndex() const;
+
   Local<Boolean> ToBoolean() const;
   Local<Number> ToNumber() const;
   Local<String> ToString() const;

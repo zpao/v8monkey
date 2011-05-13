@@ -2649,7 +2649,14 @@ test_GetterHolders()
 // from test-api.cc:4499
 void
 test_PreInterceptorHolders()
-{ }
+{
+  v8::HandleScope scope;
+  v8::Handle<v8::ObjectTemplate> obj = ObjectTemplate::New();
+  obj->SetNamedPropertyHandler(PGetter2);
+  p_getter_count2 = 0;
+  RunHolderTest(obj);
+  CHECK_EQ(40, p_getter_count2);
+}
 
 // from test-api.cc:4509
 void
@@ -4652,7 +4659,7 @@ Test gTests[] = {
   DISABLED_TEST(test_Deleter, 70),
   UNWANTED_TEST(test_Enumerators),
   TEST(test_GetterHolders),
-  UNIMPLEMENTED_TEST(test_PreInterceptorHolders),
+  DISABLED_TEST(test_PreInterceptorHolders, 97),
   TEST(test_ObjectInstantiation),
   DISABLED_TEST(test_StringWrite, 16),
   UNIMPLEMENTED_TEST(test_ToArrayIndex),

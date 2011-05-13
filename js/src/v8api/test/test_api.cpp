@@ -2929,7 +2929,24 @@ test_CompilationErrorUsingTryCatchHandler()
 // from test-api.cc:4924
 void
 test_TryCatchFinallyUsingTryCatchHandler()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+  v8::TryCatch try_catch;
+  Script::Compile(v8_str("try { throw ''; } catch (e) {}"))->Run();
+  CHECK(!try_catch.HasCaught());
+  Script::Compile(v8_str("try { throw ''; } finally {}"))->Run();
+  CHECK(try_catch.HasCaught());
+  try_catch.Reset();
+  Script::Compile(v8_str("(function() {"
+                         "try { throw ''; } finally { return; }"
+                         "})()"))->Run();
+  CHECK(!try_catch.HasCaught());
+  Script::Compile(v8_str("(function()"
+                         "  { try { throw ''; } finally { throw 0; }"
+                         "})()"))->Run();
+  CHECK(try_catch.HasCaught());
+}
 
 // from test-api.cc:4945
 void
@@ -4726,7 +4743,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ApiUncaughtException),
   UNIMPLEMENTED_TEST(test_ExceptionInNativeScript),
   TEST(test_CompilationErrorUsingTryCatchHandler),
-  UNIMPLEMENTED_TEST(test_TryCatchFinallyUsingTryCatchHandler),
+  TEST(test_TryCatchFinallyUsingTryCatchHandler),
   UNIMPLEMENTED_TEST(test_SecurityHandler),
   UNIMPLEMENTED_TEST(test_SecurityChecks),
   UNIMPLEMENTED_TEST(test_SecurityChecksForPrototypeChain),

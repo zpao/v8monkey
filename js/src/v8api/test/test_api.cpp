@@ -3031,7 +3031,9 @@ test_AccessControlInterceptorIC()
 // from test-api.cc:6150
 void
 test_Version()
-{ }
+{
+  v8::V8::GetVersion();
+}
 
 // from test-api.cc:6161
 void
@@ -4760,7 +4762,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_AccessControlIC),
   UNIMPLEMENTED_TEST(test_AccessControlFlatten),
   UNIMPLEMENTED_TEST(test_AccessControlInterceptorIC),
-  UNIMPLEMENTED_TEST(test_Version),
+  TEST(test_Version),
   TEST(test_InstanceProperties),
   DISABLED_TEST(test_GlobalObjectInstanceProperties, 666),
   DISABLED_TEST(test_CallKnownGlobalReceiver, 666),

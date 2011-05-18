@@ -304,10 +304,6 @@ Local<Uint32> Value::ToUint32() const {
     TryCatch::CheckForException();
     return Local<Uint32>();
   }
-  // XXX this is somehow still needed to make test_PropertyAttributes pass.
-  if (!IsNumber()) {
-    return Local<Uint32>();
-  }
   Uint32 v(i);
   return Local<Uint32>::New(&v);
 }
@@ -325,6 +321,10 @@ Local<Int32> Value::ToInt32() const {
 Local<Integer>
 Value::ToInteger() const
 {
+  if (JSVAL_IS_INT(mVal)) {
+    return Integer::New(JSVAL_TO_INT(mVal));
+  }
+
   // TODO should be supporting 64bit wide ints here
   JSInt32 i;
   if (!JS_ValueToECMAInt32(cx(), mVal, &i)) {
@@ -413,7 +413,7 @@ JSInt64
 Value::IntegerValue() const
 {
   // There are no 64 bit integers, so just return the 32bit one
-  if (JSVAL_IS_INT(mVal) == JS_TRUE) {
+  if (JSVAL_IS_INT(mVal)) {
     return JSVAL_TO_INT(mVal);
   }
 

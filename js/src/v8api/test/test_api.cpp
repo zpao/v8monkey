@@ -4314,7 +4314,20 @@ test_ExternalArrayInfo()
 // from test-api.cc:11457
 void
 test_ScriptContextDependence()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext c1;
+  const char *source = "foo";
+  v8::Handle<v8::Script> dep = v8::Script::Compile(v8::String::New(source));
+  v8::Handle<v8::Script> indep = v8::Script::New(v8::String::New(source));
+  c1->Global()->Set(v8::String::New("foo"), v8::Integer::New(100));
+  CHECK_EQ(dep->Run()->Int32Value(), 100);
+  CHECK_EQ(indep->Run()->Int32Value(), 100);
+  LocalContext c2;
+  c2->Global()->Set(v8::String::New("foo"), v8::Integer::New(101));
+  CHECK_EQ(dep->Run()->Int32Value(), 100);
+  CHECK_EQ(indep->Run()->Int32Value(), 101);
+}
 
 // from test-api.cc:11473
 void
@@ -4972,7 +4985,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ExternalFloatArray),
   UNIMPLEMENTED_TEST(test_ExternalArrays),
   UNIMPLEMENTED_TEST(test_ExternalArrayInfo),
-  UNIMPLEMENTED_TEST(test_ScriptContextDependence),
+  TEST(test_ScriptContextDependence),
   DISABLED_TEST(test_StackTrace, 666),
   UNIMPLEMENTED_TEST(test_CaptureStackTrace),
   UNIMPLEMENTED_TEST(test_CaptureStackTraceForUncaughtException),

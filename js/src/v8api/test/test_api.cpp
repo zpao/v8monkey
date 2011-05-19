@@ -4319,7 +4319,18 @@ test_ScriptContextDependence()
 // from test-api.cc:11473
 void
 test_StackTrace()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext context;
+  v8::TryCatch try_catch;
+  const char *source = "function foo() { FAIL.FAIL; }; foo();";
+  v8::Handle<v8::String> src = v8::String::New(source);
+  v8::Handle<v8::String> origin = v8::String::New("stack-trace-test");
+  v8::Script::New(src, origin)->Run();
+  CHECK(try_catch.HasCaught());
+  v8::String::Utf8Value stack(try_catch.StackTrace());
+  CHECK(strstr(*stack, "at foo (stack-trace-test") != NULL);
+}
 
 // from test-api.cc:11562
 void
@@ -4962,7 +4973,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ExternalArrays),
   UNIMPLEMENTED_TEST(test_ExternalArrayInfo),
   UNIMPLEMENTED_TEST(test_ScriptContextDependence),
-  UNIMPLEMENTED_TEST(test_StackTrace),
+  DISABLED_TEST(test_StackTrace, 666),
   UNIMPLEMENTED_TEST(test_CaptureStackTrace),
   UNIMPLEMENTED_TEST(test_CaptureStackTraceForUncaughtException),
   UNIMPLEMENTED_TEST(test_CaptureStackTraceForUncaughtExceptionAndSetters),

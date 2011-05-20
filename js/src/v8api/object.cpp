@@ -125,6 +125,9 @@ Object::Set(Handle<Value> key,
     return false;
   }
 
+  if (key->IsUint32())
+    return true;
+
   uintN js_attribs = 0;
   if (attribs & ReadOnly) {
     js_attribs |= JSPROP_READONLY;

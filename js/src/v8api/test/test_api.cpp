@@ -5058,7 +5058,7 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_ExternalArrays),
   UNIMPLEMENTED_TEST(test_ExternalArrayInfo),
   TEST(test_ScriptContextDependence),
-  DISABLED_TEST(test_StackTrace, 666),
+  DISABLED_TEST(test_StackTrace, 99),
   UNIMPLEMENTED_TEST(test_CaptureStackTrace),
   UNIMPLEMENTED_TEST(test_CaptureStackTraceForUncaughtException),
   UNIMPLEMENTED_TEST(test_CaptureStackTraceForUncaughtExceptionAndSetters),

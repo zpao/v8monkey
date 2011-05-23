@@ -2460,12 +2460,84 @@ test_Regress892105()
 // from test-api.cc:3619
 void
 test_UndetectableObject()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+
+  Local<v8::FunctionTemplate> desc =
+      v8::FunctionTemplate::New(0, v8::Handle<Value>());
+  desc->InstanceTemplate()->MarkAsUndetectable();  // undetectable
+
+  Local<v8::Object> obj = desc->GetFunction()->NewInstance();
+  env->Global()->Set(v8_str("undetectable"), obj);
+
+  ExpectString("undetectable.toString()", "[object Object]");
+  ExpectString("typeof undetectable", "undefined");
+  ExpectString("typeof(undetectable)", "undefined");
+  ExpectBoolean("typeof undetectable == 'undefined'", true);
+  ExpectBoolean("typeof undetectable == 'object'", false);
+  ExpectBoolean("if (undetectable) { true; } else { false; }", false);
+  ExpectBoolean("!undetectable", true);
+
+  ExpectObject("true&&undetectable", obj);
+  ExpectBoolean("false&&undetectable", false);
+  ExpectBoolean("true||undetectable", true);
+  ExpectObject("false||undetectable", obj);
+
+  ExpectObject("undetectable&&true", obj);
+  ExpectObject("undetectable&&false", obj);
+  ExpectBoolean("undetectable||true", true);
+  ExpectBoolean("undetectable||false", false);
+
+  ExpectBoolean("undetectable==null", true);
+  ExpectBoolean("null==undetectable", true);
+  ExpectBoolean("undetectable==undefined", true);
+  ExpectBoolean("undefined==undetectable", true);
+  ExpectBoolean("undetectable==undetectable", true);
+
+
+  ExpectBoolean("undetectable===null", false);
+  ExpectBoolean("null===undetectable", false);
+  ExpectBoolean("undetectable===undefined", false);
+  ExpectBoolean("undefined===undetectable", false);
+  ExpectBoolean("undetectable===undetectable", true);
+}
 
 // from test-api.cc:3664
 void
 test_ExtensibleOnUndetectable()
-{ }
+{
+  v8::HandleScope scope;
+  LocalContext env;
+
+  Local<v8::FunctionTemplate> desc =
+      v8::FunctionTemplate::New(0, v8::Handle<Value>());
+  desc->InstanceTemplate()->MarkAsUndetectable();  // undetectable
+
+  Local<v8::Object> obj = desc->GetFunction()->NewInstance();
+  env->Global()->Set(v8_str("undetectable"), obj);
+
+  Local<String> source = v8_str("undetectable.x = 42;"
+                                "undetectable.x");
+
+  Local<Script> script = Script::Compile(source);
+
+  CHECK_EQ(v8::Integer::New(42), script->Run());
+
+  ExpectBoolean("Object.isExtensible(undetectable)", true);
+
+  source = v8_str("Object.preventExtensions(undetectable);");
+  script = Script::Compile(source);
+  script->Run();
+  ExpectBoolean("Object.isExtensible(undetectable)", false);
+
+  source = v8_str("undetectable.y = 2000;");
+  script = Script::Compile(source);
+  v8::TryCatch try_catch;
+  Local<Value> result = script->Run();
+  CHECK(result.IsEmpty());
+  CHECK(try_catch.HasCaught());
+}
 
 // from test-api.cc:3699
 void
@@ -4795,8 +4867,8 @@ Test gTests[] = {
   UNIMPLEMENTED_TEST(test_MultiContexts),
   UNIMPLEMENTED_TEST(test_FunctionPrototypeAcrossContexts),
   UNIMPLEMENTED_TEST(test_Regress892105),
-  UNIMPLEMENTED_TEST(test_UndetectableObject),
-  UNIMPLEMENTED_TEST(test_ExtensibleOnUndetectable),
+  DISABLED_TEST(test_UndetectableObject, 98),
+  DISABLED_TEST(test_ExtensibleOnUndetectable, 98),
   UNIMPLEMENTED_TEST(test_UndetectableString),
   TEST(test_GlobalObjectTemplate),
   UNIMPLEMENTED_TEST(test_SimpleExtensions),

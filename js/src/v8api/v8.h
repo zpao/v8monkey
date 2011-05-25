@@ -53,8 +53,6 @@ class GCReferenceContainer;
 struct PersistentGCReference;
 
 void notImplemented(const char* functionName);
-bool IsFunctionTemplate(Handle<Value> v);
-bool IsObjectTemplate(Handle<Value> v);
 
 class GCReference {
   friend struct GCOps;

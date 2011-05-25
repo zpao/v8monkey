@@ -62,11 +62,7 @@ ft_finalize(JSContext* cx,
   delete data;
 }
 
-
-} // anonymous namespace
-
-namespace internal {
-JSClass sFunctionTemplateClass = {
+JSClass gFunctionTemplateClass = {
   "FunctionTemplate", // name
   JSCLASS_HAS_PRIVATE |
   JSCLASS_HAS_RESERVED_SLOTS(kFunctionTemplateSlots), // flags
@@ -87,6 +83,10 @@ JSClass sFunctionTemplateClass = {
   NULL, // trace
 };
 
+
+} // anonymous namespace
+
+namespace internal {
 bool IsFunctionTemplate(Handle<Value> v) {
   if (v.IsEmpty())
     return false;
@@ -94,12 +94,12 @@ bool IsFunctionTemplate(Handle<Value> v) {
   if (o.IsEmpty())
     return false;
   JSObject *obj = **o;
-  return &sFunctionTemplateClass == JS_GET_CLASS(cx(), obj);
+  return &gFunctionTemplateClass == JS_GET_CLASS(cx(), obj);
 }
 }
 
 FunctionTemplate::FunctionTemplate() :
-  Template(&sFunctionTemplateClass)
+  Template(&gFunctionTemplateClass)
 {
   JS_SetPrivate(cx(), JSVAL_TO_OBJECT(mVal), new PrivateData);
 

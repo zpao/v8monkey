@@ -314,7 +314,6 @@ ObjectTemplate::ObjectTemplate() :
   (void)JS_SetPrivate(cx(), InternalObject(), data);
 }
 
-// static
 void ObjectTemplate::SetPrototype(Handle<ObjectTemplate> o) {
   PrivateData* pd = PrivateData::Get(InternalObject());
   JS_ASSERT(pd);

@@ -103,8 +103,10 @@ public:
         for (PRUint32 i = 0; i < numFonts; i++) {
             gfxFontEntry *fe = mAvailableFonts[i];
             if (fe == aOldFontEntry) {
-                mAvailableFonts[i] = aNewFontEntry;
                 aOldFontEntry->SetFamily(nsnull);
+                // note that this may delete aOldFontEntry, if there's no
+                // other reference to it except from its family
+                mAvailableFonts[i] = aNewFontEntry;
                 aNewFontEntry->SetFamily(this);
                 return;
             }
@@ -203,7 +205,7 @@ public:
                                 
     // initialize the process that loads external font data, which upon 
     // completion will call OnLoadComplete method
-    virtual nsresult StartLoad(gfxFontEntry *aFontToLoad, 
+    virtual nsresult StartLoad(gfxProxyFontEntry *aProxy, 
                                const gfxFontFaceSrc *aFontFaceSrc) = 0;
 
     // when download has been completed, pass back data here
@@ -212,7 +214,7 @@ public:
     // reference was next in line)
     // Ownership of aFontData is passed in here; the font set must
     // ensure that it is eventually deleted with NS_Free().
-    PRBool OnLoadComplete(gfxFontEntry *aFontToLoad,
+    PRBool OnLoadComplete(gfxProxyFontEntry *aProxy,
                           const PRUint8 *aFontData, PRUint32 aLength,
                           nsresult aDownloadStatus);
 
@@ -235,9 +237,6 @@ protected:
     LoadStatus LoadNext(gfxProxyFontEntry *aProxyEntry);
 
     gfxMixedFontFamily *GetFamily(const nsAString& aName) const;
-
-    // remove family
-    void RemoveFamily(const nsAString& aFamilyName);
 
     // font families defined by @font-face rules
     nsRefPtrHashtable<nsStringHashKey, gfxMixedFontFamily> mFontFamilies;

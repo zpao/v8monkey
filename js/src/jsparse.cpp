@@ -91,7 +91,6 @@
 #endif
 
 #include "jsatominlines.h"
-#include "jsinterpinlines.h"
 #include "jsobjinlines.h"
 #include "jsregexpinlines.h"
 #include "jsscriptinlines.h"
@@ -185,14 +184,14 @@ JSParseNode::clear()
     pn_parens = false;
 }
 
-Parser::Parser(JSContext *cx, JSPrincipals *prin, JSStackFrame *cfp)
+Parser::Parser(JSContext *cx, JSPrincipals *prin, StackFrame *cfp)
   : js::AutoGCRooter(cx, PARSER),
     context(cx),
     aleFreeList(NULL),
     tokenStream(cx),
     principals(NULL),
     callerFrame(cfp),
-    callerVarObj(cfp ? &cfp->varobj(cx->stack().containingSegment(cfp)) : NULL),
+    callerVarObj(cfp ? &cx->stack.space().varObjForFrame(cfp) : NULL),
     nodeList(NULL),
     functionCount(0),
     traceListHead(NULL),
@@ -891,13 +890,13 @@ SetStaticLevel(JSTreeContext *tc, uintN staticLevel)
 /*
  * Compile a top-level script.
  */
-Compiler::Compiler(JSContext *cx, JSPrincipals *prin, JSStackFrame *cfp)
+Compiler::Compiler(JSContext *cx, JSPrincipals *prin, StackFrame *cfp)
   : parser(cx, prin, cfp)
 {
 }
 
 JSScript *
-Compiler::compileScript(JSContext *cx, JSObject *scopeChain, JSStackFrame *callerFrame,
+Compiler::compileScript(JSContext *cx, JSObject *scopeChain, StackFrame *callerFrame,
                         JSPrincipals *principals, uint32 tcflags,
                         const jschar *chars, size_t length,
                         const char *filename, uintN lineno, JSVersion version,
@@ -1490,7 +1489,7 @@ CheckStrictParameters(JSContext *cx, JSTreeContext *tc)
 
     /* Start with lastVariable(), not lastArgument(), for destructuring. */
     for (Shape::Range r = tc->bindings.lastVariable(); !r.empty(); r.popFront()) {
-        jsid id = r.front().id;
+        jsid id = r.front().propid;
         if (!JSID_IS_ATOM(id))
             continue;
 
@@ -3731,7 +3730,7 @@ PopStatement(JSTreeContext *tc)
         JS_ASSERT(!obj->isClonedBlock());
 
         for (Shape::Range r = obj->lastProperty()->all(); !r.empty(); r.popFront()) {
-            JSAtom *atom = JSID_TO_ATOM(r.front().id);
+            JSAtom *atom = JSID_TO_ATOM(r.front().propid);
 
             /* Beware the empty destructuring dummy. */
             if (atom == tc->parser->context->runtime->atomState.emptyAtom)
@@ -8762,7 +8761,7 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
             return NULL;
 
         JSObject *obj;
-        if (context->hasfp()) {
+        if (context->running()) {
             obj = RegExp::createObject(context, context->regExpStatics(),
                                        tokenStream.getTokenbuf().begin(),
                                        tokenStream.getTokenbuf().length(),

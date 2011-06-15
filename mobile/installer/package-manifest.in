@@ -32,6 +32,7 @@
 @BINPATH@/updater.ini
 #endif
 @BINPATH@/dictionaries/*
+@BINPATH@/hyphenation/*
 #ifdef XP_WIN32
 @BINPATH@/uninstall/helper.exe
 #endif
@@ -292,7 +293,6 @@
 @BINPATH@/components/nsBrowserGlue.js
 @BINPATH@/components/nsSetDefaultBrowser.manifest
 @BINPATH@/components/nsSetDefaultBrowser.js
-@BINPATH@/components/nsMicrosummaryService.js
 @BINPATH@/components/BrowserPlaces.manifest
 @BINPATH@/components/nsPrivateBrowsingService.manifest
 @BINPATH@/components/nsPrivateBrowsingService.js

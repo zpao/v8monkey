@@ -5,6 +5,7 @@
 #include "jsxdrapi.h"
 #include "jstl.h"
 #include "jshashtable.h"
+#include "jsutil.h"
 
 namespace v8 {
 // Define some classes first so we can use them before fully defined
@@ -88,6 +89,7 @@ public:
 // that Persistent handles are never copied around in memory.
 struct PersistentGCReference : public GCReference {
   PersistentGCReference(GCReference *ref);
+  ~PersistentGCReference();
 
   bool IsWeak() const {
     return prev != NULL || next != NULL;
@@ -96,7 +98,7 @@ struct PersistentGCReference : public GCReference {
     return isNearDeath;
   }
   void MakeWeak(WeakReferenceCallback callback, void *context);
-  void ClearWeak();
+  void ClearWeak(bool reroot=true);
 
 private:
   WeakReferenceCallback callback;
@@ -385,11 +387,11 @@ class TryCatch {
   friend class V8;
   friend class Script;
   friend class Value;
+  friend class Object;
   friend class Function;
   static void ReportError(JSContext *ctx, const char *message, JSErrorReport *report);
   static void CheckForException();
 
-  bool mHasCaught;
   bool mCaptureMessage;
   bool mRethrown;
   Persistent<Value> mException;
@@ -404,7 +406,7 @@ public:
   ~TryCatch();
 
   bool HasCaught() const {
-    return mHasCaught;
+    return !mException.IsEmpty();
   }
   bool CanContinue() const {
     return true;
@@ -481,11 +483,25 @@ bool SetResourceConstraints(ResourceConstraints *constraints);
 
 class HeapStatistics {
  public:
-  HeapStatistics() {}
-  size_t total_heap_size() { UNIMPLEMENTEDAPI(0); }
-  size_t total_heap_size_executable() { UNIMPLEMENTEDAPI(0); }
-  size_t used_heap_size() { UNIMPLEMENTEDAPI(0); }
-  size_t heap_size_limit() { UNIMPLEMENTEDAPI(0); }
+  HeapStatistics();
+  size_t total_heap_size() { UNIMPLEMENTEDAPI(total_heap_size_); }
+  size_t total_heap_size_executable() { UNIMPLEMENTEDAPI(total_heap_size_executable_); }
+  size_t used_heap_size() { return used_heap_size_; }
+  size_t heap_size_limit() { return heap_size_limit_; }
+ private:
+  void set_total_heap_size(size_t size) { total_heap_size_ = size; }
+  void set_total_heap_size_executable(size_t size) {
+    total_heap_size_executable_ = size;
+  }
+  void set_used_heap_size(size_t size) { used_heap_size_ = size; }
+  void set_heap_size_limit(size_t size) { heap_size_limit_ = size; }
+
+  size_t total_heap_size_;
+  size_t total_heap_size_executable_;
+  size_t used_heap_size_;
+  size_t heap_size_limit_;
+
+  friend class V8;
 };
 
 class Data : public internal::GCReference {
@@ -516,6 +532,8 @@ public:
   bool IsRegExp() const {
     UNIMPLEMENTEDAPI(false);
   }
+
+  Local<Uint32> ToArrayIndex() const;
 
   Local<Boolean> ToBoolean() const;
   Local<Number> ToNumber() const;
@@ -913,6 +931,7 @@ public:
 };
 
 class ScriptData {
+  JS_DECLARE_ALLOCATION_FRIENDS_FOR_PRIVATE_CONSTRUCTOR;
   ScriptData() : mXdr(NULL), mData(NULL), mLen(0), mError(true) {}
 
   void SerializeScriptObject(JSObject *scriptObj);
@@ -1006,19 +1025,18 @@ public:
 
 class AccessorInfo {
   friend class Object;
-  AccessorInfo(Handle<Value> data, JSObject *obj);
+  AccessorInfo(Handle<Value> data, JSObject* obj, JSObject* holder);
 
   Handle<Value> mData;
   JSObject* mObj;
+  JSObject* mHolder;
 public:
-  static const AccessorInfo MakeAccessorInfo(Handle<Value> data, JSObject* obj);
+  static const AccessorInfo MakeAccessorInfo(Handle<Value> data, JSObject* obj, JSObject* holder = NULL);
   Local<Value> Data() const {
     return Local<Value>::New(mData);
   }
   Local<Object> This() const;
-  Local<Object> Holder() const {
-    UNIMPLEMENTEDAPI(Local<Object>());
-  }
+  Local<Object> Holder() const;
 };
 
 typedef Handle<Value> (*InvocationCallback)(const Arguments &args);
@@ -1067,6 +1085,7 @@ class ObjectTemplate : public Template {
   ObjectTemplate();
 
   void SetPrototype(Handle<ObjectTemplate> o);
+  void SetObjectName(Handle<String> s);
   friend class FunctionTemplate;
 public:
   static Local<ObjectTemplate> New();

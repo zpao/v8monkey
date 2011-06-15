@@ -77,12 +77,13 @@ bool V8::Initialize() {
   (void) JS_AddObjectRoot(ctx, &gCompartment);
 
   JS_SetGCCallback(cx(), GCCallback);
+  JS_SetExtraGCRoots(gRuntime, TraceObjectInternals, NULL);
   return true;
 }
 
 // TODO: call this
 bool V8::Dispose() {
-  DestroyObjectInernals();
+  DestroyObjectInternals();
 
   // Unwind the context scopes
   Local<Context> ctx;
@@ -121,8 +122,21 @@ bool V8::IdleNotification() {
   return true;
 }
 
+HeapStatistics::HeapStatistics() :
+  total_heap_size_(0),
+  total_heap_size_executable_(0),
+  used_heap_size_(0),
+  heap_size_limit_(0)
+{}
+
 void V8::GetHeapStatistics(HeapStatistics* aHeapStatistics) {
-  UNIMPLEMENTEDAPI();
+  size_t limit = JS_GetGCParameter(rt(), JSGC_MAX_BYTES);
+  size_t used = JS_GetGCParameter(rt(), JSGC_BYTES);
+
+  aHeapStatistics->set_heap_size_limit(limit);
+  aHeapStatistics->set_used_heap_size(used);
+
+  // TODO: fill in the remaining stats
 }
 
 const char* V8::GetVersion() {

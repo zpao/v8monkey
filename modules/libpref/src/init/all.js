@@ -105,7 +105,7 @@ pref("dom.indexedDB.warningQuota", 50);
 // of content viewers to cache based on the amount of available memory.
 pref("browser.sessionhistory.max_total_viewers", -1);
 
-pref("browser.sessionhistory.optimize_eviction", false);
+pref("browser.sessionhistory.optimize_eviction", true);
 
 pref("ui.use_native_colors", true);
 pref("ui.use_native_popup_windows", false);
@@ -256,7 +256,7 @@ pref("accessibility.typeaheadfind.startlinksonly", false);
 pref("accessibility.typeaheadfind.timeout", 4000);
 pref("accessibility.typeaheadfind.enabletimeout", true);
 pref("accessibility.typeaheadfind.soundURL", "beep");
-pref("accessibility.typeaheadfind.enablesound", true);
+pref("accessibility.typeaheadfind.enablesound", false);
 pref("accessibility.typeaheadfind.prefillwithselection", true);
 
 // use Mac OS X Appearance panel text smoothing setting when rendering text, disabled by default
@@ -1018,7 +1018,6 @@ pref("converter.html2txt.structs",          true); // Output structured phrases 
 pref("converter.html2txt.header_strategy",  1); // 0 = no indention; 1 = indention, increased with header level; 2 = numbering and slight indention
 
 pref("intl.accept_languages",               "chrome://global/locale/intl.properties");
-pref("intl.accept_charsets",                "iso-8859-1,*,utf-8");
 pref("intl.menuitems.alwaysappendaccesskeys","chrome://global/locale/intl.properties");
 pref("intl.menuitems.insertseparatorbeforeaccesskeys","chrome://global/locale/intl.properties");
 pref("intl.charsetmenu.browser.static",     "chrome://global/locale/intl.properties");
@@ -1047,6 +1046,11 @@ pref("font.language.group",                 "chrome://global/locale/intl.propert
 pref("intl.uidirection.ar", "rtl");
 pref("intl.uidirection.he", "rtl");
 pref("intl.uidirection.fa", "rtl");
+
+// use en-US hyphenation by default for content tagged with plain lang="en"
+pref("intl.hyphenation-alias.en", "en-us");
+// and for other subtags of en-*, if no specific patterns are available
+pref("intl.hyphenation-alias.en-*", "en-us");
 
 pref("font.mathfont-family", "STIXNonUnicode, STIXSizeOneSym, STIXSize1, STIXGeneral, Standard Symbols L, DejaVu Sans, Cambria Math");
 
@@ -1212,12 +1216,6 @@ pref("bidi.numeral", 0);
 // 2 = OsBidisupport
 // 3 = disableBidisupport
 pref("bidi.support", 1);
-// ------------------
-//  Charset Mode
-// ------------------
-// 1 = doccharactersetBidi *
-// 2 = defaultcharactersetBidi
-pref("bidi.characterset", 1);
 // Whether delete and backspace should immediately delete characters not
 // visually adjacent to the caret, or adjust the visual position of the caret
 // on the first keypress and delete the character on a second keypress

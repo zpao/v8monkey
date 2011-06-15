@@ -118,7 +118,7 @@
 // objects alive during the unlinking.
 // 
 
-#if !defined(__MINGW32__) && !defined(WINCE)
+#if !defined(__MINGW32__)
 #ifdef WIN32
 #include <crtdbg.h>
 #include <errno.h>
@@ -1675,10 +1675,9 @@ GCGraphBuilder::NoteScriptChild(PRUint32 langID, void *child)
     }
 
     // skip over non-grey JS children
-    if (langID == nsIProgrammingLanguage::JAVASCRIPT) {
-        JSObject *obj = static_cast<JSObject*>(child);
-        if (!xpc_IsGrayGCThing(obj) && !WantAllTraces())
-            return;
+    if (langID == nsIProgrammingLanguage::JAVASCRIPT &&
+        !xpc_GCThingIsGrayCCThing(child) && !WantAllTraces()) {
+        return;
     }
 
     nsCycleCollectionParticipant *cp = mRuntimes[langID]->ToParticipant(child);
@@ -2771,6 +2770,13 @@ nsCycleCollector::Shutdown()
     // Here we want to run a final collection and then permanently
     // disable the collector because the program is shutting down.
 
+#ifdef DEBUG_CC
+    if (sCollector->mParams.mDrawGraphs) {
+        nsCOMPtr<nsICycleCollectorListener> listener =
+            new nsCycleCollectorLogger();
+        Collect(SHUTDOWN_COLLECTIONS(mParams), listener);
+    } else
+#endif
     Collect(SHUTDOWN_COLLECTIONS(mParams), nsnull);
 
 #ifdef DEBUG_CC

@@ -14,28 +14,39 @@ using namespace internal;
 namespace internal {
   struct ExceptionHandlerChain {
     TryCatch *catcher;
+    ApiExceptionBoundary *boundary;
     ExceptionHandlerChain *next;
   };
   static ExceptionHandlerChain *gExnChain = 0;
 }
+
+ApiExceptionBoundary::ApiExceptionBoundary()
+{
+  ExceptionHandlerChain *link = cx()->new_<ExceptionHandlerChain>();
+  link->catcher = NULL;
+  link->boundary = this;
+  link->next = gExnChain;
+  gExnChain = link;
+}
+
+ApiExceptionBoundary::~ApiExceptionBoundary() {
+  ExceptionHandlerChain *link = gExnChain;
+  JS_ASSERT(link->boundary == this);
+  gExnChain = gExnChain->next;
+  cx()->delete_(link);
+}
+
+bool ApiExceptionBoundary::noExceptionOccured() {
+  return !JS_IsExceptionPending(cx());
+}
+
+
 void TryCatch::ReportError(JSContext *ctx, const char *message, JSErrorReport *report) {
   if (!gExnChain) {
     fprintf(stderr, "%s:%u:%s\n",
             report->filename ? report->filename : "<no filename>",
             (unsigned int) report->lineno,
             message);
-    return;
-  }
-  // TODO: figure out if we care about other types of warnings
-  if (!JSREPORT_IS_EXCEPTION(report->flags))
-    return;
-
-  TryCatch *current = gExnChain->catcher;
-  if (current->mCaptureMessage) {
-    current->mFilename = report->filename ? strdup(report->filename) : NULL;
-    current->mLineBuffer = report->linebuf ? strdup(report->linebuf) : NULL;
-    current->mLineNo = report->lineno;
-    current->mMessage = strdup(message);
   }
 }
 
@@ -49,8 +60,13 @@ void TryCatch::CheckForException() {
   DebugOnly<bool> TryCatchOnStack = !!gExnChain;
   JS_ASSERT(TryCatchOnStack);
 
+  // We'll want to pass this exception back to JSAPI to see if it wants to
+  // handle it. We'll get another shot again if it didn't.
+  if (gExnChain->boundary) {
+    return;
+  }
+
   TryCatch *current = gExnChain->catcher;
-  current->mHasCaught = true;
 
   Value exn;
   if (!JS_GetPendingException(cx(), &exn.native())) {
@@ -58,14 +74,29 @@ void TryCatch::CheckForException() {
     return;
   }
   current->mException = Persistent<Value>::New(&exn);
-  if (current->mCaptureMessage) {
-    JS_ReportPendingException(cx());
+  JS_ASSERT(!current->mException.IsEmpty());
+  if (current->mCaptureMessage && exn.IsObject()) {
+    HandleScope scope;
+    Handle<Object> exnObject = exn.ToObject();
+    Handle<String> message = exnObject->Get(String::NewSymbol("message")).As<String>();
+    Handle<String> fileName = exnObject->Get(String::NewSymbol("fileName")).As<String>();
+    Handle<Integer> lineNumber = exnObject->Get(String::NewSymbol("lineNumber")).As<Integer>();
+    if (!message.IsEmpty()) {
+      current->mMessage = cx()->array_new<char>(message->Length() + 1);
+      message->WriteAscii(current->mMessage);
+    }
+    if (!fileName.IsEmpty()) {
+      current->mFilename = cx()->array_new<char>(fileName->Length() + 1);
+      fileName->WriteAscii(current->mFilename);
+    }
+    if (!lineNumber.IsEmpty()) {
+      current->mLineNo = lineNumber->Int32Value();
+    }
   }
 }
 
 
 TryCatch::TryCatch() :
-  mHasCaught(false),
   mCaptureMessage(true),
   mRethrown(false),
   mFilename(NULL),
@@ -73,8 +104,9 @@ TryCatch::TryCatch() :
   mLineNo(0),
   mMessage(NULL)
 {
-  ExceptionHandlerChain *link = new ExceptionHandlerChain;
+  ExceptionHandlerChain *link = cx()->new_<ExceptionHandlerChain>();
   link->catcher = this;
+  link->boundary = NULL;
   link->next = gExnChain;
   gExnChain = link;
 }
@@ -83,13 +115,11 @@ TryCatch::~TryCatch() {
   ExceptionHandlerChain *link = gExnChain;
   JS_ASSERT(link->catcher == this);
   gExnChain = gExnChain->next;
-  delete link;
+  cx()->delete_(link);
 
   if (mRethrown) {
     JS_SetPendingException(cx(), mException->native());
     CheckForException();
-  } else if (mHasCaught) {
-    JS_ClearPendingException(cx());
   }
 
   Reset();
@@ -99,6 +129,7 @@ Handle<Value> TryCatch::ReThrow() {
   if (!HasCaught()) {
     return Handle<Value>();
   }
+  JS_ASSERT(!mRethrown);
   mRethrown = true;
   return Undefined();
 }
@@ -120,19 +151,18 @@ void TryCatch::Reset() {
     mException.Dispose();
     mException.Clear();
   }
-  if (mFilename) {
-    free(mFilename);
-  }
+  cx()->array_delete(mFilename);
+  cx()->array_delete(mMessage);
   if (mLineBuffer) {
     free(mLineBuffer);
-  }
-  if (mMessage) {  
-    free(mMessage);
   }
   mFilename = mLineBuffer = mMessage = NULL;
   mLineNo = 0;
 
-  mHasCaught = false;
+  if (!mRethrown) {
+    JS_ClearPendingException(cx());
+    mRethrown = false;
+  }
 }
 
 void TryCatch::SetVerbose(bool value) {
@@ -172,7 +202,7 @@ Local<Context> Context::GetCurrent() {
 }
 
 void Context::Enter() {
-  ContextChain *link = new ContextChain;
+  ContextChain *link = cx()->new_<ContextChain>();
   link->next = gContextChain;
   link->ctx = this;
   JS_SetGlobalObject(cx(), InternalObject());
@@ -185,7 +215,7 @@ void Context::Exit() {
     return;
   ContextChain *link = gContextChain;
   gContextChain = gContextChain->next;
-  delete link;
+  cx()->delete_(link);
   JSObject *global = gContextChain ? gContextChain->ctx->InternalObject() : NULL;
   JS_SetGlobalObject(cx(), global);
 }
@@ -204,7 +234,8 @@ Persistent<Context> Context::New(
     JS_SetPrototype(cx(), global, **global_template->NewInstance(global));
   }
 
-  return Persistent<Context>(new Context(global));
+  Context ctx(global);
+  return Persistent<Context>::New(&ctx);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -228,6 +259,13 @@ bool SetResourceConstraints(ResourceConstraints *constraints) {
 //// Value class
 
 JS_STATIC_ASSERT(sizeof(Value) == sizeof(GCReference));
+
+Local<Uint32> Value::ToArrayIndex() const {
+  Local<Number> n = ToNumber();
+  if (n.IsEmpty() || !n->IsUint32())
+    return Local<Uint32>();
+  return n->ToUint32();
+}
 
 Local<Boolean> Value::ToBoolean() const {
   JSBool b;
@@ -266,10 +304,6 @@ Local<Uint32> Value::ToUint32() const {
     TryCatch::CheckForException();
     return Local<Uint32>();
   }
-  // XXX this is somehow still needed to make test_PropertyAttributes pass.
-  if (!IsNumber()) {
-    return Local<Uint32>();
-  }
   Uint32 v(i);
   return Local<Uint32>::New(&v);
 }
@@ -287,6 +321,10 @@ Local<Int32> Value::ToInt32() const {
 Local<Integer>
 Value::ToInteger() const
 {
+  if (JSVAL_IS_INT(mVal)) {
+    return Integer::New(JSVAL_TO_INT(mVal));
+  }
+
   // TODO should be supporting 64bit wide ints here
   JSInt32 i;
   if (!JS_ValueToECMAInt32(cx(), mVal, &i)) {
@@ -375,7 +413,7 @@ JSInt64
 Value::IntegerValue() const
 {
   // There are no 64 bit integers, so just return the 32bit one
-  if (JSVAL_IS_INT(mVal) == JS_TRUE) {
+  if (JSVAL_IS_INT(mVal)) {
     return JSVAL_TO_INT(mVal);
   }
 
@@ -594,7 +632,7 @@ void ScriptData::SerializeScriptObject(JSObject *scriptObj) {
 
 ScriptData* ScriptData::PreCompile(const char* input, int length) {
   JSObject *global = JS_GetGlobalObject(cx());
-  ScriptData *sd = new ScriptData();
+  ScriptData *sd = cx()->new_<ScriptData>();
   if (!sd)
     return NULL;
 
@@ -615,7 +653,7 @@ ScriptData* ScriptData::PreCompile(Handle<String> source) {
   chars = JS_GetStringCharsAndLength(cx(),
                                      anchor.get(), &len);
   JSObject *global = JS_GetGlobalObject(cx());
-  ScriptData *sd = new ScriptData();
+  ScriptData *sd = cx()->new_<ScriptData>();
   if (!sd)
     return NULL;
 
@@ -630,7 +668,7 @@ ScriptData* ScriptData::PreCompile(Handle<String> source) {
 }
 
 ScriptData* ScriptData::New(const char* aData, int aLength) {
-  ScriptData *sd = new ScriptData();
+  ScriptData *sd = cx()->new_<ScriptData>();
   if (!sd)
     return NULL;
 
@@ -899,8 +937,8 @@ Arguments::IsConstructCall() const
   return JS_IsConstructing(mCtx, mVp);
 }
 
-AccessorInfo::AccessorInfo(Handle<Value> data, JSObject *obj) :
-  mData(data), mObj(obj)
+AccessorInfo::AccessorInfo(Handle<Value> data, JSObject* obj, JSObject* holder) :
+  mData(data), mObj(obj), mHolder(holder)
 {}
 
 Local<Object> AccessorInfo::This() const {
@@ -908,11 +946,17 @@ Local<Object> AccessorInfo::This() const {
   return Local<Object>::New(&o);
 }
 
+Local<Object> AccessorInfo::Holder() const {
+  Object o(mHolder);
+  return Local<Object>::New(&o);
+}
+
 const AccessorInfo
 AccessorInfo::MakeAccessorInfo(Handle<Value> data,
-                               JSObject* obj)
+                               JSObject* obj,
+                               JSObject* holder)
 {
-  return AccessorInfo(data, obj);
+  return AccessorInfo(data, obj, holder ? holder : obj);
 }
 
 }

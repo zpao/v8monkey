@@ -1684,7 +1684,7 @@ NS_IMETHODIMP nsWindow::SetSizeMode(PRInt32 aMode) {
     ::ShowWindow(mWnd, mode);
     // we dispatch an activate event here to ensure that the right child window
     // is focused
-    if (mode == SW_RESTORE || mode == SW_MAXIMIZE)
+    if (mode == SW_RESTORE || mode == SW_MAXIMIZE || mode == SW_SHOW)
       DispatchFocusToTopLevelWindow(NS_ACTIVATE);
   }
   return rv;
@@ -2057,7 +2057,7 @@ nsWindow::UpdateGetWindowInfoCaptionStatus(PRBool aActiveCaption)
 
   if (!sGetWindowInfoPtrStub) {
     sUser32Intercept.Init("user32.dll");
-    if (!sUser32Intercept.AddHook("GetWindowInfo", (void*)GetWindowInfoHook,
+    if (!sUser32Intercept.AddHook("GetWindowInfo", reinterpret_cast<intptr_t>(GetWindowInfoHook),
                                   (void**) &sGetWindowInfoPtrStub))
       return;
   }

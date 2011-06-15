@@ -61,6 +61,10 @@ const kBrowserViewZoomLevelPrecision = 10000;
 
 const kDefaultBrowserWidth = 800;
 const kFallbackBrowserWidth = 980;
+
+// allow panning after this timeout on pages with registered touch listeners
+const kTouchTimeout = 300;
+
 const kDefaultMetadata = { autoSize: false, allowZoom: true, autoScale: true };
 
 // Override sizeToContent in the main window. It breaks things (bug 565887)
@@ -335,6 +339,19 @@ var Browser = {
     // Should we restore the previous session (crash or some other event)
     let ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
     if (ss.shouldRestore()) {
+      // Initial window resizes call functions that assume a tab is in the tab list
+      // and restored tabs are added too late. We add a dummy to to satisfy the resize
+      // code and then remove the dummy after the session has been restored.
+      let dummy = this.addTab("about:blank");
+      let dummyCleanup = {
+        observe: function() {
+          Services.obs.removeObserver(dummyCleanup, "sessionstore-windows-restored");
+          dummy.chromeTab.ignoreUndo = true;
+          Browser.closeTab(dummy, { forceClose: true });
+        }
+      };
+      Services.obs.addObserver(dummyCleanup, "sessionstore-windows-restored", false);
+
       ss.restoreLastSession();
 
       // Also open any commandline URLs, except the homepage
@@ -345,6 +362,7 @@ var Browser = {
     }
 
     messageManager.addMessageListener("Browser:ViewportMetadata", this);
+    messageManager.addMessageListener("Browser:CanCaptureMouse:Return", this);
     messageManager.addMessageListener("Browser:FormSubmit", this);
     messageManager.addMessageListener("Browser:KeyPress", this);
     messageManager.addMessageListener("Browser:ZoomToPoint:Return", this);
@@ -391,6 +409,9 @@ var Browser = {
                       (prompt.BUTTON_TITLE_CANCEL * prompt.BUTTON_POS_1);
 
         this._waitingToClose = true;
+#ifdef MOZ_PLATFORM_MAEMO
+        window.QueryInterface(Ci.nsIDOMChromeWindow).restore();
+#endif
         let pressed = prompt.confirmEx(window, title, message, buttons, closeText, null, null, checkText, warnOnClose);
         this._waitingToClose = false;
 
@@ -417,9 +438,9 @@ var Browser = {
       return true;
 
     // Let everyone know we are closing the last browser window
-    let closingCanceled = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
-    Services.obs.notifyObservers(closingCanceled, "browser-lastwindow-close-requested", null);
-    if (closingCanceled.data)
+    let closingCancelled = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
+    Services.obs.notifyObservers(closingCancelled, "browser-lastwindow-close-requested", null);
+    if (closingCancelled.data)
       return false;
 
     Services.obs.notifyObservers(null, "browser-lastwindow-close-granted", null);
@@ -679,7 +700,7 @@ var Browser = {
     tab.browser.messageManager.sendAsyncMessage("Browser:CanUnload", {});
   },
 
-  _doCloseTab: function _docloseTab(aTab) {
+  _doCloseTab: function _doCloseTab(aTab) {
     let nextTab = this._getNextTab(aTab);
     if (!nextTab)
        return;
@@ -906,8 +927,6 @@ var Browser = {
     if (!dy) dy = 0;
 
     let [leftSidebar, rightSidebar] = [Elements.tabs.getBoundingClientRect(), Elements.controls.getBoundingClientRect()];
-    if (leftSidebar.left > rightSidebar.left)
-      [rightSidebar, leftSidebar] = [leftSidebar, rightSidebar]; // switch in RTL case
 
     let visibleRect = new Rect(0, 0, window.innerWidth, 1);
     let leftRect = new Rect(Math.round(leftSidebar.left) - Math.round(dx), 0, Math.round(leftSidebar.width), 1);
@@ -942,18 +961,23 @@ var Browser = {
 
     let snappedX = 0;
 
+    // determine browser dir first to know which direction to snap to
+    let chromeReg = Cc["@mozilla.org/chrome/chrome-registry;1"].
+                      getService(Ci.nsIXULChromeRegistry);
+    let dirVal = chromeReg.isLocaleRTL("global") ? -1 : 1;
+
     if (leftvis != 0 && leftvis != 1) {
       if (leftvis >= 0.6666) {
-        snappedX = -((1 - leftvis) * leftw);
+        snappedX = -((1 - leftvis) * leftw) * dirVal;
       } else {
-        snappedX = leftvis * leftw;
+        snappedX = leftvis * leftw * dirVal;
       }
     }
     else if (ritevis != 0 && ritevis != 1) {
       if (ritevis >= 0.6666) {
-        snappedX = (1 - ritevis) * ritew;
+        snappedX = (1 - ritevis) * ritew * dirVal;
       } else {
-        snappedX = -ritevis * ritew;
+        snappedX = -ritevis * ritew * dirVal;
       }
     }
 
@@ -1113,14 +1137,19 @@ var Browser = {
     let browser = aMessage.target;
 
     switch (aMessage.name) {
-      case "Browser:ViewportMetadata":
+      case "Browser:ViewportMetadata": {
         let tab = this.getTabForBrowser(browser);
         // Some browser such as iframes loaded dynamically into the chrome UI
         // does not have any assigned tab
         if (tab)
           tab.updateViewportMetadata(json);
         break;
-
+      }
+      case "Browser:CanCaptureMouse:Return": {
+        let tab = this.getTabForBrowser(browser);
+        tab.contentMightCaptureMouse = json.contentMightCaptureMouse;
+        break;
+      }
       case "Browser:FormSubmit":
         browser.lastLocation = null;
         break;
@@ -1157,12 +1186,10 @@ var Browser = {
 
       case "scroll":
         if (browser == this.selectedBrowser) {
-          let view = browser.getRootView();
-          let position = view.getPosition();
-          if (position.x != 0)
+          if (json.x != 0)
             this.hideSidebars();
 
-          if (position.y != 0)
+          if (json.y != 0)
             this.hideTitlebar();
         }
         break;
@@ -1184,6 +1211,10 @@ Browser.MainDragger = function MainDragger() {
 
   Elements.browsers.addEventListener("PanBegin", this, false);
   Elements.browsers.addEventListener("PanFinished", this, false);
+
+  // allow pages to to override panning, but should
+  // still allow the sidebars to be panned out of view
+  this.contentMouseCapture = false;
 };
 
 Browser.MainDragger.prototype = {
@@ -1196,7 +1227,6 @@ Browser.MainDragger.prototype = {
     let bcr = browser.getBoundingClientRect();
     this._contentView = browser.getViewAt(clientX - bcr.left, clientY - bcr.top);
     this._stopAtSidebar = 0;
-    this._hitSidebar = false;
     if (this._sidebarTimeout) {
       clearTimeout(this._sidebarTimeout);
       this._sidebarTimeout = null;
@@ -1214,48 +1244,39 @@ Browser.MainDragger.prototype = {
   dragMove: function dragMove(dx, dy, scroller, aIsKinetic) {
     let doffset = new Point(dx, dy);
 
-    // First calculate any panning to take sidebars out of view
-    let panOffset = this._panControlsAwayOffset(doffset);
+    // If the sidebars are showing, we pan them out of the way before panning the content.
+    // The panning distance that should be used for the sidebars in is stored in sidebarOffset,
+    // and subtracted from doffset.
+    let sidebarOffset = this._getSidebarOffset(doffset);
 
-    // If we started at one sidebar, stop when we get to the other.
-    if (panOffset.x != 0 && !this._stopAtSidebar) {
-      this._stopAtSidebar = panOffset.x; // negative: stop at left; positive: stop at right
+    // If we started with one sidebar open, stop when we get to the other.
+    if (sidebarOffset.x != 0)
+      this._blockSidebars(sidebarOffset);
+
+    if (!this.contentMouseCapture)
+      this._panContent(doffset);
+
+    if (aIsKinetic && doffset.x != 0)
+      return false;
+
+    this._panChrome(doffset, sidebarOffset);
+
+    this._updateScrollbars();
+
+    return !doffset.equals(dx, dy);
+  },
+
+  _blockSidebars: function md_blockSidebars(aSidebarOffset) {
+    // only call this code once
+    if (!this._stopAtSidebar) {
+      this._stopAtSidebar = aSidebarOffset.x; // negative: stop at left; positive: stop at right
+
+      // after a timeout, we allow showing the sidebar, to give the appearance of some "friction" at the edge
       this._sidebarTimeout = setTimeout(function(self) {
         self._stopAtSidebar = 0;
         self._sidebarTimeout = null;
       }, 350, this);
     }
-
-    if (this._contentView && !this._contentView.isRoot()) {
-      this._panContentView(this._contentView, doffset);
-      // XXX we may need to have "escape borders" for iframe panning
-      // XXX does not deal with scrollables within scrollables
-    }
-
-    // Do content panning
-    this._panContentView(getBrowser().getRootView(), doffset);
-
-    if (this._hitSidebar && aIsKinetic)
-      return; // No kinetic panning after we've stopped at the sidebar.
-
-    // Any leftover panning in doffset would bring controls into view. Add to sidebar
-    // away panning for the total scroll offset.
-    let offsetX = doffset.x;
-    if ((this._stopAtSidebar > 0 && offsetX > 0) ||
-        (this._stopAtSidebar < 0 && offsetX < 0)) {
-      if (offsetX != panOffset.x)
-        this._hitSidebar = true;
-      doffset.x = panOffset.x;
-    } else {
-      doffset.add(panOffset);
-    }
-
-    Browser.tryFloatToolbar(doffset.x, 0);
-    this._panScroller(Browser.controlsScrollboxScroller, doffset);
-    this._panScroller(Browser.pageScrollboxScroller, doffset);
-    this._updateScrollbars();
-
-    return !doffset.equals(dx, dy);
   },
 
   handleEvent: function handleEvent(aEvent) {
@@ -1286,8 +1307,42 @@ Browser.MainDragger.prototype = {
     }
   },
 
+  _panContent: function md_panContent(aOffset) {
+    if (this._contentView && !this._contentView.isRoot()) {
+      this._panContentView(this._contentView, aOffset);
+      // XXX we may need to have "escape borders" for iframe panning
+      // XXX does not deal with scrollables within scrollables
+    }
+    // Do content panning
+    this._panContentView(getBrowser().getRootView(), aOffset);
+  },
+
+  _panChrome: function md_panChrome(aOffset, aSidebarOffset) {
+    // In order to prevent users from hiding one sidebar and followed by immediately bringing
+    // out the other one, we absorb sidebar pans here for a fixed time.
+    //
+    // Also, if users are panning a website then we allow them to pan away sidebars, but
+    // nothing more.
+    //
+    let offsetX = aOffset.x;
+    if (this.contentMouseCapture)
+      aOffset.set(aSidebarOffset);
+    else if ((this._stopAtSidebar > 0 && offsetX > 0) ||
+             (this._stopAtSidebar < 0 && offsetX < 0))
+      aOffset.x = aSidebarOffset.x;
+    else
+      aOffset.add(aSidebarOffset);
+
+    Browser.tryFloatToolbar(aOffset.x, 0);
+
+    // pan the sidebars
+    this._panScroller(Browser.controlsScrollboxScroller, aOffset);
+    // pan the urlbar
+    this._panScroller(Browser.pageScrollboxScroller, aOffset);
+  },
+
   /** Return offset that pans controls away from screen. Updates doffset with leftovers. */
-  _panControlsAwayOffset: function(doffset) {
+  _getSidebarOffset: function(doffset) {
     let x = 0, y = 0, rect;
 
     rect = Rect.fromRect(Browser.pageScrollbox.getBoundingClientRect()).map(Math.round);
@@ -1339,13 +1394,12 @@ Browser.MainDragger.prototype = {
       // the 'solution' for now is to reposition it if needed
       let x = 0;
       if (Browser.floatedWhileDragging) {
+        let [tabsVis, controlsVis, tabsW, controlsW] = Browser.computeSidebarVisibility();
+        let [tabsSidebar, controlsSidebar] = [Elements.tabs.getBoundingClientRect(), Elements.controls.getBoundingClientRect()];
+
         // Check if the sidebars are inverted (rtl)
-        let [leftVis, rightVis, leftW, rightW] = Browser.computeSidebarVisibility();
-        let [leftSidebar, rightSidebar] = [Elements.tabs.getBoundingClientRect(), Elements.controls.getBoundingClientRect()];
-        if (leftSidebar.left > rightSidebar.left)
-          x = Math.round(Math.max(0, rightW * rightVis));
-        else
-          x = Math.round(Math.max(0, leftW * leftVis)) * -1.0;
+        let direction = (tabsSidebar.left > controlsSidebar.left) ? 1 : -1;
+        x = Math.round(tabsW * tabsVis) * direction
       }
 
       this._verticalScrollbar.style.MozTransform = "translate(" + x + "px," + y + "px)";
@@ -1487,13 +1541,15 @@ Browser.WebProgress.prototype = {
         let json = aMessage.json;
         browser.getRootView().scrollTo(Math.floor(json.x * browser.scale),
                                        Math.floor(json.y * browser.scale));
-        Browser.pageScrollboxScroller.scrollTo(0, 0);
+        if (json.x == 0 && json.y == 0)
+          Browser.pageScrollboxScroller.scrollTo(0, 0);
       }
 
       aTab.scrolledAreaChanged();
       aTab.updateThumbnail();
 
       browser.messageManager.addMessageListener("MozScrolledAreaChanged", aTab.scrolledAreaChanged);
+      aTab.updateContentCapture();
     });
   }
 };
@@ -1590,6 +1646,7 @@ const ContentTouchHandler = {
     document.addEventListener("TapSingle", this, false);
     document.addEventListener("TapDouble", this, false);
     document.addEventListener("TapLong", this, false);
+    document.addEventListener("TapMove", this, false);
 
     document.addEventListener("PanBegin", this, false);
     document.addEventListener("PopupChanged", this, false);
@@ -1606,8 +1663,8 @@ const ContentTouchHandler = {
     //     a long tap, without waiting for child process.
     //
     messageManager.addMessageListener("Browser:ContextMenu", this);
-
     messageManager.addMessageListener("Browser:Highlight", this);
+    messageManager.addMessageListener("Browser:CaptureEvents", this);
   },
 
   handleEvent: function handleEvent(aEvent) {
@@ -1617,6 +1674,8 @@ const ContentTouchHandler = {
 
     switch (aEvent.type) {
       case "PanBegin":
+        getBrowser().messageManager.sendAsyncMessage("Browser:MouseCancel", {});
+        break;
       case "PopupChanged":
       case "CancelTouchSequence":
         this._clearPendingMessages();
@@ -1648,12 +1707,12 @@ const ContentTouchHandler = {
                 this.tapSingle(aEvent.clientX, aEvent.clientY, aEvent.modifiers);
                 aEvent.preventDefault();
               }
-            } else {
-              this.tapUp(aEvent.clientX, aEvent.clientY);
             }
+            this._dispatchMouseEvent("Browser:MouseUp", aEvent.clientX, aEvent.clientY);
             break;
           case "TapSingle":
             this.tapSingle(aEvent.clientX, aEvent.clientY, aEvent.modifiers);
+            this._dispatchMouseEvent("Browser:MouseUp", aEvent.clientX, aEvent.clientY);
             break;
           case "TapDouble":
             this.tapDouble(aEvent.clientX, aEvent.clientY, aEvent.modifiers);
@@ -1661,19 +1720,23 @@ const ContentTouchHandler = {
           case "TapLong":
             this.tapLong(aEvent.clientX, aEvent.clientY);
             break;
+          case "TapMove":
+            this.tapMove(aEvent.clientX, aEvent.clientY);
+            break;
         }
       }
     }
   },
 
   receiveMessage: function receiveMessage(aMessage) {
-    if (aMessage.json.messageId != this._messageId)
+    let json = aMessage.json;
+    if (json.messageId != this._messageId)
       return;
 
     switch (aMessage.name) {
       case "Browser:ContextMenu":
         // Long tap
-        let contextMenu = { name: aMessage.name, json: aMessage.json, target: aMessage.target };
+        let contextMenu = { name: aMessage.name, json: json, target: aMessage.target };
         if (ContextHelper.showPopup(contextMenu)) {
           // Stop all input sequences
           let event = document.createEvent("Events");
@@ -1681,6 +1744,24 @@ const ContentTouchHandler = {
           document.dispatchEvent(event);
         }
         break;
+      case "Browser:CaptureEvents": {
+        let tab = Browser.getTabForBrowser(aMessage.target);
+        tab.contentMightCaptureMouse = json.contentMightCaptureMouse;
+        if (this.touchTimeout) {
+          clearTimeout(this.touchTimeout);
+          this.touchTimeout = null;
+        }
+
+        if (json.click)
+          this.clickPrevented = true;
+        if (json.panning)
+          this.panningPrevented = true;
+
+        // We don't know if panning is allowed until the first touchmove event is processed.
+        if (this.canCancelPan && json.type == "touchmove")
+          Elements.browsers.customDragger.contentMouseCapture = this.panningPrevented;
+        break;
+      }
     }
   },
 
@@ -1714,6 +1795,27 @@ const ContentTouchHandler = {
     browser.messageManager.sendAsyncMessage(aName, json);
   },
 
+  touchTimeout: null,
+  canCancelPan: false,
+  clickPrevented: false,
+  panningPrevented: false,
+
+  updateCanCancel: function(aX, aY) {
+    let dpi = Browser.windowUtils.displayDPI;
+
+    const kSafetyX = Services.prefs.getIntPref("dom.w3c_touch_events.safetyX") / 240 * dpi;
+    const kSafetyY = Services.prefs.getIntPref("dom.w3c_touch_events.safetyY") / 240 * dpi;
+    let browser = getBrowser();
+    let bcr = browser.getBoundingClientRect();
+    let rect = new Rect(0, 0, window.innerWidth, window.innerHeight);
+    rect.restrictTo(Rect.fromRect(bcr));
+
+    // Check if the user touched near to one of the edges of the browser area
+    // or if the urlbar is showing
+    this.canCancelPan = (aX >= rect.left + kSafetyX) && (aX <= rect.right - kSafetyX) &&
+                        (aY >= rect.top  + kSafetyY) && bcr.top == 0;
+  },
+
   tapDown: function tapDown(aX, aY) {
     // Ensure that the content process has gets an activate event
     let browser = getBrowser();
@@ -1722,6 +1824,22 @@ const ContentTouchHandler = {
     try {
       fl.activateRemoteFrame();
     } catch (e) {}
+
+    // if the page might capture touch events, we give it the option
+    this.updateCanCancel(aX, aY);
+    this.clickPrevented = false;
+    this.panningPrevented = false;
+
+    let dragger = Elements.browsers.customDragger;
+    dragger.contentMouseCapture = this.canCancelPan && Browser.selectedTab.contentMightCaptureMouse;
+    if (this.touchTimeout) {
+      clearTimeout(this.touchTimeout);
+      this.touchTimeout = null;
+    }
+
+    if (dragger.contentMouseCapture)
+      this.touchTimeout = setTimeout(function() dragger.contentMouseCapture = false, kTouchTimeout);
+
     this._dispatchMouseEvent("Browser:MouseDown", aX, aY);
   },
 
@@ -1736,8 +1854,13 @@ const ContentTouchHandler = {
 
   tapSingle: function tapSingle(aX, aY, aModifiers) {
     // Cancel the mouse click if we are showing a context menu
-    if (!ContextHelper.popupState)
-      this._dispatchMouseEvent("Browser:MouseUp", aX, aY, { modifiers: aModifiers });
+    if (!ContextHelper.popupState && !this.clickPrevented)
+      this._dispatchMouseEvent("Browser:MouseClick", aX, aY, { modifiers: aModifiers });
+  },
+
+  tapMove: function tapMove(aX, aY) {
+    if (Browser.selectedTab.contentMightCaptureMouse)
+      this._dispatchMouseEvent("Browser:MouseMove", aX, aY);
   },
 
   tapDouble: function tapDouble(aX, aY, aModifiers) {
@@ -2299,9 +2422,10 @@ var ContentCrashObserver = {
     Browser.tabs.forEach(function(aTab) {
       if (aTab.browser.getAttribute("remote") == "true")
         aTab.resurrect();
-    })
+    });
 
     let dumpID = aSubject.hasKey("dumpID") ? aSubject.getProperty("dumpID") : null;
+    let crashedURL = Browser.selectedTab.browser.__SS_data.entries[0].url;
 
     // Execute the UI prompt after the notification has had a chance to return and close the child process
     setTimeout(function(self) {
@@ -2343,8 +2467,24 @@ var ContentCrashObserver = {
       }
 
       // Submit the report, if we have one and the user wants to submit it
-      if (submit.value && dumpID)
+      if (submit.value && dumpID) {
+        let directoryService = Cc["@mozilla.org/file/directory_service;1"].getService(Ci.nsIProperties);
+        let extra = directoryService.get("UAppData", Ci.nsIFile);
+        extra.append("Crash Reports");
+        extra.append("pending");
+        extra.append(dumpID + ".extra");
+        let foStream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
+        try {
+          // use 0x02 | 0x10 to open file for appending.
+          foStream.init(extra, 0x02 |  0x10, 0666, 0); 
+          let data = "URL=" + crashedURL + "\n";
+          foStream.write(data, data.length);
+          foStream.close();
+        } catch (x) {
+          dump (x);
+        }
         self.CrashSubmit.submit(dumpID, Elements.stack, null, null);
+      }
     }, 0, this);
   }
 };
@@ -2434,6 +2574,7 @@ function Tab(aURI, aParams) {
   this._chromeTab = null;
   this._metadata = null;
 
+  this.contentMightCaptureMouse = false;
   this.useFallbackWidth = false;
   this.owner = null;
 
@@ -2538,7 +2679,8 @@ Tab.prototype = {
 
     // Make sure the viewport height is not shorter than the window when
     // the page is zoomed out to show its full width.
-    viewportH = Math.max(viewportH, screenH * (browser.contentDocumentWidth / screenW));
+    if (viewportH * this.clampZoomLevel(this.getPageZoomLevel()) < screenH)
+      viewportH = Math.max(viewportH, screenH * (browser.contentDocumentWidth / screenW));
 
     if (browser.contentWindowWidth != viewportW || browser.contentWindowHeight != viewportH)
       browser.setWindowSize(viewportW, viewportH);
@@ -2720,7 +2862,7 @@ Tab.prototype = {
         // If the scale level has not changed we want to be sure the content
         // render correctly since the page refresh process could have been
         // stalled during page load. In this case if the page has the exact
-        // same width (like the same page, so by doing 'refresh') and the 
+        // same width (like the same page, so by doing 'refresh') and the
         // page was scrolled the content is just checkerboard at this point
         // and this call ensure we render it correctly.
         browser.getRootView()._updateCacheViewport();
@@ -2815,6 +2957,10 @@ Tab.prototype = {
     if (!this._browser)
       return false;
     return this._browser.getAttribute("type") == "content-primary";
+  },
+
+  updateContentCapture: function() {
+    this._browser.messageManager.sendAsyncMessage("Browser:CanCaptureMouse", {});
   },
 
   toString: function() {

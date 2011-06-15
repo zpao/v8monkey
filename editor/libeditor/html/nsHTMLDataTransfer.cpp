@@ -130,6 +130,8 @@
 #include "prmem.h"
 #include "nsStreamUtils.h"
 #include "nsIPrincipal.h"
+#include "nsIDocShell.h"
+#include "nsIDocShellTreeItem.h"
 
 const PRUnichar nbsp = 160;
 
@@ -1306,12 +1308,21 @@ NS_IMETHODIMP nsHTMLEditor::InsertFromTransferable(nsITransferable *transferable
 
     // Try to determine whether we should use a sanitizing fragment sink
     PRBool isSafe = PR_FALSE;
-    if (aSourceDoc) {
-      nsCOMPtr<nsIDOMDocument> destdomdoc;
-      rv = GetDocument(getter_AddRefs(destdomdoc));
-      NS_ENSURE_SUCCESS(rv, rv);
-      nsCOMPtr<nsIDocument> destdoc = do_QueryInterface(destdomdoc);
-      NS_ASSERTION(destdoc, "Where is our destination doc?");
+    nsCOMPtr<nsIDOMDocument> destdomdoc;
+    rv = GetDocument(getter_AddRefs(destdomdoc));
+    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIDocument> destdoc = do_QueryInterface(destdomdoc);
+    NS_ASSERTION(destdoc, "Where is our destination doc?");
+    nsCOMPtr<nsISupports> container = destdoc->GetContainer();
+    nsCOMPtr<nsIDocShellTreeItem> dsti(do_QueryInterface(container));
+    nsCOMPtr<nsIDocShellTreeItem> root;
+    if (dsti)
+      dsti->GetRootTreeItem(getter_AddRefs(root));
+    nsCOMPtr<nsIDocShell> docShell(do_QueryInterface(root));
+    PRUint32 appType;
+    if (docShell && NS_SUCCEEDED(docShell->GetAppType(&appType)))
+      isSafe = appType == nsIDocShell::APP_TYPE_EDITOR;
+    if (!isSafe && aSourceDoc) {
       nsCOMPtr<nsIDocument> srcdoc = do_QueryInterface(aSourceDoc);
       NS_ASSERTION(srcdoc, "Where is our source doc?");
 
@@ -1559,7 +1570,7 @@ NS_IMETHODIMP nsHTMLEditor::InsertFromDrop(nsIDOMEvent* aDropEvent)
       nsCOMPtr<nsIDOMMouseEvent> mouseEvent(do_QueryInterface(aDropEvent));
       if (mouseEvent)
 
-#if defined(XP_MAC) || defined(XP_MACOSX)
+#if defined(XP_MACOSX)
         mouseEvent->GetAltKey(&userWantsCopy);
 #else
         mouseEvent->GetCtrlKey(&userWantsCopy);

@@ -74,7 +74,7 @@ endif
 
 DEFINES += \
   -DANDROID_PACKAGE_NAME=$(ANDROID_PACKAGE_NAME) \
-  -DMOZ_APP_DISPLAYNAME=$(MOZ_APP_DISPLAYNAME) \
+  -DMOZ_APP_DISPLAYNAME="$(MOZ_APP_DISPLAYNAME)" \
   -DMOZ_APP_NAME=$(MOZ_APP_NAME) \
   -DMOZ_APP_VERSION=$(MOZ_APP_VERSION) \
   -DMOZ_CHILD_PROCESS_NAME=$(MOZ_CHILD_PROCESS_NAME) \
@@ -106,6 +106,7 @@ endif
 RES_LAYOUT = \
   res/layout/notification_progress.xml \
   res/layout/notification_progress_text.xml \
+  res/layout/notification_icon_text.xml \
   $(NULL)
 
 RES_VALUES = res/values/colors.xml res/values/themes.xml

@@ -40,7 +40,6 @@
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/PAudioChild.h"
 #include "mozilla/dom/AudioChild.h"
-#include "mozilla/Monitor.h"
 #include "nsXULAppAPI.h"
 using namespace mozilla::dom;
 
@@ -141,6 +140,7 @@ class nsAudioStreamRemote : public nsAudioStream
   PRBool IsPaused();
   PRInt32 GetMinWriteSamples();
 
+private:
   nsRefPtr<AudioChild> mAudioChild;
 
   SampleFormat mFormat;

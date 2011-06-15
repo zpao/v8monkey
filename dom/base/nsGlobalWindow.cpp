@@ -63,6 +63,7 @@
 #include "prmem.h"
 #include "jsapi.h"              // for JSAutoRequest
 #include "jsdbgapi.h"           // for JS_ClearWatchPointsForObject
+#include "jsfriendapi.h"        // for JS_GetFrameScopeChainRaw
 #include "nsReadableUtils.h"
 #include "nsDOMClassInfo.h"
 #include "nsJSEnvironment.h"
@@ -111,7 +112,6 @@
 #endif
 #include "nsIDOMDocument.h"
 #include "nsIDOMNSDocument.h"
-#include "nsIDOMDocumentView.h"
 #include "nsIDOMElement.h"
 #include "nsIDOMDocumentEvent.h"
 #include "nsIDOMEvent.h"
@@ -818,7 +818,7 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
     mCleanMessageManager(PR_FALSE),
     mNeedsFocus(PR_TRUE),
     mHasFocus(PR_FALSE),
-#if defined(XP_MAC) || defined(XP_MACOSX)
+#if defined(XP_MACOSX)
     mShowAccelerators(PR_FALSE),
     mShowFocusRings(PR_FALSE),
 #else
@@ -1334,8 +1334,6 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsGlobalWindow)
   NS_INTERFACE_MAP_ENTRY(nsIDOM3EventTarget)
   NS_INTERFACE_MAP_ENTRY(nsIDOMNSEventTarget)
   NS_INTERFACE_MAP_ENTRY(nsPIDOMWindow)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMViewCSS)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMAbstractView)
   NS_INTERFACE_MAP_ENTRY(nsIDOMStorageWindow)
   NS_INTERFACE_MAP_ENTRY(nsIDOMStorageIndexedDB)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
@@ -2428,28 +2426,6 @@ nsGlobalWindow::SetDocShell(nsIDocShell* aDocShell)
   if (mScreen)
     mScreen->SetDocShell(aDocShell);
 
-  // tell our member elements about the new browserwindow
-  nsCOMPtr<nsIWebBrowserChrome> browserChrome;
-  GetWebBrowserChrome(getter_AddRefs(browserChrome));
-  if (mMenubar) {
-    mMenubar->SetWebBrowserChrome(browserChrome);
-  }
-  if (mToolbar) {
-    mToolbar->SetWebBrowserChrome(browserChrome);
-  }
-  if (mLocationbar) {
-    mLocationbar->SetWebBrowserChrome(browserChrome);
-  }
-  if (mPersonalbar) {
-    mPersonalbar->SetWebBrowserChrome(browserChrome);
-  }
-  if (mStatusbar) {
-    mStatusbar->SetWebBrowserChrome(browserChrome);
-  }
-  if (mScrollbars) {
-    mScrollbars->SetWebBrowserChrome(browserChrome);
-  }
-
   if (!mDocShell) {
     MaybeForgiveSpamCount();
     CleanUp(PR_FALSE);
@@ -3084,15 +3060,10 @@ nsGlobalWindow::GetMenubar(nsIDOMBarProp** aMenubar)
   *aMenubar = nsnull;
 
   if (!mMenubar) {
-    mMenubar = new nsMenubarProp();
+    mMenubar = new nsMenubarProp(this);
     if (!mMenubar) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
-
-    nsCOMPtr<nsIWebBrowserChrome> browserChrome;
-    GetWebBrowserChrome(getter_AddRefs(browserChrome));
-
-    mMenubar->SetWebBrowserChrome(browserChrome);
   }
 
   NS_ADDREF(*aMenubar = mMenubar);
@@ -3108,15 +3079,10 @@ nsGlobalWindow::GetToolbar(nsIDOMBarProp** aToolbar)
   *aToolbar = nsnull;
 
   if (!mToolbar) {
-    mToolbar = new nsToolbarProp();
+    mToolbar = new nsToolbarProp(this);
     if (!mToolbar) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
-
-    nsCOMPtr<nsIWebBrowserChrome> browserChrome;
-    GetWebBrowserChrome(getter_AddRefs(browserChrome));
-
-    mToolbar->SetWebBrowserChrome(browserChrome);
   }
 
   NS_ADDREF(*aToolbar = mToolbar);
@@ -3132,15 +3098,10 @@ nsGlobalWindow::GetLocationbar(nsIDOMBarProp** aLocationbar)
   *aLocationbar = nsnull;
 
   if (!mLocationbar) {
-    mLocationbar = new nsLocationbarProp();
+    mLocationbar = new nsLocationbarProp(this);
     if (!mLocationbar) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
-
-    nsCOMPtr<nsIWebBrowserChrome> browserChrome;
-    GetWebBrowserChrome(getter_AddRefs(browserChrome));
-
-    mLocationbar->SetWebBrowserChrome(browserChrome);
   }
 
   NS_ADDREF(*aLocationbar = mLocationbar);
@@ -3156,15 +3117,10 @@ nsGlobalWindow::GetPersonalbar(nsIDOMBarProp** aPersonalbar)
   *aPersonalbar = nsnull;
 
   if (!mPersonalbar) {
-    mPersonalbar = new nsPersonalbarProp();
+    mPersonalbar = new nsPersonalbarProp(this);
     if (!mPersonalbar) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
-
-    nsCOMPtr<nsIWebBrowserChrome> browserChrome;
-    GetWebBrowserChrome(getter_AddRefs(browserChrome));
-
-    mPersonalbar->SetWebBrowserChrome(browserChrome);
   }
 
   NS_ADDREF(*aPersonalbar = mPersonalbar);
@@ -3180,15 +3136,10 @@ nsGlobalWindow::GetStatusbar(nsIDOMBarProp** aStatusbar)
   *aStatusbar = nsnull;
 
   if (!mStatusbar) {
-    mStatusbar = new nsStatusbarProp();
+    mStatusbar = new nsStatusbarProp(this);
     if (!mStatusbar) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
-
-    nsCOMPtr<nsIWebBrowserChrome> browserChrome;
-    GetWebBrowserChrome(getter_AddRefs(browserChrome));
-
-    mStatusbar->SetWebBrowserChrome(browserChrome);
   }
 
   NS_ADDREF(*aStatusbar = mStatusbar);
@@ -3208,11 +3159,6 @@ nsGlobalWindow::GetScrollbars(nsIDOMBarProp** aScrollbars)
     if (!mScrollbars) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
-
-    nsCOMPtr<nsIWebBrowserChrome> browserChrome;
-    GetWebBrowserChrome(getter_AddRefs(browserChrome));
-
-    mScrollbars->SetWebBrowserChrome(browserChrome);
   }
 
   NS_ADDREF(*aScrollbars = mScrollbars);
@@ -4145,7 +4091,7 @@ nsGlobalWindow::CheckSecurityLeftAndTop(PRInt32* aLeft, PRInt32* aTop)
       screen->GetAvailLeft(&screenLeft);
       screen->GetAvailWidth(&screenWidth);
       screen->GetAvailHeight(&screenHeight);
-#if defined(XP_MAC) || defined(XP_MACOSX)
+#if defined(XP_MACOSX)
       /* The mac's coordinate system is different from the assumed Windows'
          system. It offsets by the height of the menubar so that a window
          placed at (0,0) will be entirely visible. Unfortunately that
@@ -4485,7 +4431,7 @@ nsGlobalWindow::Dump(const nsAString& aStr)
 
   char *cstr = ToNewUTF8String(aStr);
 
-#if defined(XP_MAC) || defined(XP_MACOSX)
+#if defined(XP_MACOSX)
   // have to convert \r to \n so that printing to the console works
   char *c = cstr, *cEnd = cstr + strlen(cstr);
   while (c < cEnd) {
@@ -5852,13 +5798,13 @@ nsGlobalWindow::CallerInnerWindow()
   JSStackFrame *fp = nsnull;
   JS_FrameIterator(cx, &fp);
   if (fp) {
-    while (fp->isDummyFrame()) {
+    while (!JS_IsScriptFrame(cx, fp)) {
       if (!JS_FrameIterator(cx, &fp))
         break;
     }
 
     if (fp)
-      scope = &fp->scopeChain();
+      scope = JS_GetFrameScopeChainRaw(fp);
   }
 
   if (!scope)
@@ -7134,7 +7080,7 @@ nsGlobalWindow::AddEventListener(const nsAString& aType,
   FORWARD_TO_INNER_CREATE(AddEventListener, (aType, aListener, aUseCapture),
                           NS_ERROR_NOT_AVAILABLE);
 
-  return AddEventListener(aType, aListener, aUseCapture, PR_FALSE, 0);
+  return AddEventListener(aType, aListener, aUseCapture, PR_FALSE, 1);
 }
 
 NS_IMETHODIMP
@@ -7228,7 +7174,7 @@ nsGlobalWindow::AddEventListener(const nsAString& aType,
                                  PRBool aUseCapture, PRBool aWantsUntrusted,
                                  PRUint8 optional_argc)
 {
-  NS_ASSERTION(!aWantsUntrusted || optional_argc > 0,
+  NS_ASSERTION(!aWantsUntrusted || optional_argc > 1,
                "Won't check if this is chrome, you want to set "
                "aWantsUntrusted to PR_FALSE or make the aWantsUntrusted "
                "explicit by making optional_argc non-zero.");
@@ -7244,7 +7190,7 @@ nsGlobalWindow::AddEventListener(const nsAString& aType,
   PRInt32 flags = aUseCapture ? NS_EVENT_FLAG_CAPTURE : NS_EVENT_FLAG_BUBBLE;
 
   if (aWantsUntrusted ||
-      (optional_argc == 0 && !nsContentUtils::IsChromeDoc(mDoc))) {
+      (optional_argc < 2 && !nsContentUtils::IsChromeDoc(mDoc))) {
     flags |= NS_PRIV_EVENT_UNTRUSTED_PERMITTED;
   }
 
@@ -7826,10 +7772,10 @@ nsGlobalWindow::DispatchSyncPopState()
   }
 
   // Get the document's pending state object -- it contains the data we're
-  // going to send along with the popstate event.  The object is serialized as
-  // JSON.
+  // going to send along with the popstate event.  The object is serialized
+  // using structured clone.
   nsCOMPtr<nsIVariant> stateObj;
-  rv = mDoc->GetMozCurrentStateObject(getter_AddRefs(stateObj));
+  rv = mDoc->GetStateObject(getter_AddRefs(stateObj));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Obtain a presentation shell for use in creating a popstate event.
@@ -7940,10 +7886,6 @@ nsGlobalWindow::UpdateCanvasFocus(PRBool aFocusChanged, nsIContent* aNewContent)
   }
 }
 
-//*****************************************************************************
-// nsGlobalWindow::nsIDOMViewCSS
-//*****************************************************************************
-
 NS_IMETHODIMP
 nsGlobalWindow::GetComputedStyle(nsIDOMElement* aElt,
                                  const nsAString& aPseudoElt,
@@ -7978,27 +7920,6 @@ nsGlobalWindow::GetComputedStyle(nsIDOMElement* aElt,
   *aReturn = compStyle.forget().get();
 
   return NS_OK;
-}
-
-//*****************************************************************************
-// nsGlobalWindow::nsIDOMAbstractView
-//*****************************************************************************
-
-NS_IMETHODIMP
-nsGlobalWindow::GetDocument(nsIDOMDocumentView ** aDocumentView)
-{
-  NS_ENSURE_ARG_POINTER(aDocumentView);
-
-  nsresult rv = NS_OK;
-
-  if (mDocument) {
-    rv = CallQueryInterface(mDocument, aDocumentView);
-  }
-  else {
-    *aDocumentView = nsnull;
-  }
-
-  return rv;
 }
 
 //*****************************************************************************

@@ -135,7 +135,7 @@ PropertyCache::fill(JSContext *cx, JSObject *obj, uintN scopeIndex, uintN protoI
      * Optimize the cached vword based on our parameters and the current pc's
      * opcode format flags.
      */
-    pc = cx->regs->pc;
+    pc = cx->regs().pc;
     op = js_GetOpcode(cx, cx->fp()->script(), pc);
     cs = &js_CodeSpec[op];
     kshape = 0;
@@ -211,7 +211,7 @@ PropertyCache::fill(JSContext *cx, JSObject *obj, uintN scopeIndex, uintN protoI
             /* Best we can do is to cache shape (still a nice speedup). */
             vword.setShape(shape);
             if (adding &&
-                pobj->shape() == shape->shape) {
+                pobj->shape() == shape->shapeid) {
                 /*
                  * Our caller added a new property. We also know that a setter
                  * that js_NativeSet might have run has not mutated pobj, so
@@ -242,7 +242,7 @@ PropertyCache::fill(JSContext *cx, JSObject *obj, uintN scopeIndex, uintN protoI
                 JS_ASSERT(shape == pobj->lastProperty());
                 JS_ASSERT(!pobj->nativeEmpty());
 
-                kshape = shape->previous()->shape;
+                kshape = shape->previous()->shapeid;
 
                 /*
                  * When adding we predict no prototype object will later gain a
@@ -324,7 +324,7 @@ PropertyCache::fullTest(JSContext *cx, jsbytecode *pc, JSObject **objp, JSObject
     JSObject *obj, *pobj, *tmp;
     uint32 vcap;
 
-    JSStackFrame *fp = cx->fp();
+    StackFrame *fp = cx->fp();
 
     JS_ASSERT(this == &JS_PROPERTY_CACHE(cx));
     JS_ASSERT(uintN((fp->hasImacropc() ? fp->imacropc() : pc) - fp->script()->code)

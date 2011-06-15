@@ -22,6 +22,7 @@
 # Contributor(s):
 #   Ehsan Akhgari <ehsan.akhgari@gmail.com>
 #   Rob Campbell <rcampbell@mozilla.com>
+#   Steffen Wilberg <steffen.wilberg@web.de>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -314,11 +315,6 @@
                 </menu>
 #include browser-charsetmenu.inc
                 <menuseparator/>
-                <menuitem id="menu_pageSource"
-                          accesskey="&pageSourceCmd.accesskey;"
-                          label="&pageSourceCmd.label;"
-                          key="key_viewSource"
-                          command="View:PageSource"/>
                 <menuitem id="fullScreenItem"
                           accesskey="&fullScreenCmd.accesskey;"
                           label="&fullScreenCmd.label;"
@@ -379,16 +375,15 @@
                           oncommand="BrowserGoHome(event);"
                           onclick="checkForMiddleClick(this, event);"
                           key="goHome"/>
+                <menuseparator id="historyMenuHomeSeparator"
+                               class="show-only-for-keyboard"/>
                 <menuitem id="menu_showAllHistory"
                           label="&showAllHistoryCmd2.label;"
 #ifndef XP_MACOSX
                           key="showAllHistoryKb"
 #endif
                           command="Browser:ShowAllHistory"/>
-                <menuseparator id="startHistorySeparator"/>
-                <menuseparator id="endHistorySeparator"
-                               class="hide-if-empty-places-result"
-                               builder="end"/>
+                <menuseparator id="showAllHistorySeparator"/>
 #ifdef MOZ_SERVICES_SYNC
                 <menuitem id="sync-tabs-menuitem"
                           label="&syncTabsMenu.label;"
@@ -420,6 +415,8 @@
 #endif
                              onpopupshowing="document.getElementById('history-menu')._placesView.populateUndoWindowSubmenu();"/>
                 </menu>
+                <menuseparator id="startHistorySeparator"
+                               class="hide-if-empty-places-result"/>
               </menupopup>
             </menu>
 
@@ -441,6 +438,11 @@
                                if (!this.parentNode._placesView)
                                  new PlacesMenu(event, 'place:folder=BOOKMARKS_MENU');"
                tooltip="bhTooltip" popupsinherittooltip="true">
+      <menuitem id="bookmarksShowAll"
+                label="&showAllBookmarks2.label;"
+                command="Browser:ShowAllBookmarks"
+                key="manBookmarkKb"/>
+      <menuseparator id="organizeBookmarksSeparator"/>
       <menuitem id="menu_bookmarkThisPage"
                 label="&bookmarkThisPageCmd.label;"
                 command="Browser:AddBookmarkAs"
@@ -469,16 +471,12 @@
                 class="show-only-for-keyboard"
                 command="Browser:BookmarkAllTabs"
                 key="bookmarkAllTabsKb"/>
-      <menuitem id="bookmarksShowAll"
-                label="&showAllBookmarks2.label;"
-                command="Browser:ShowAllBookmarks"
-                key="manBookmarkKb"/>
-      <menuseparator id="organizeBookmarksSeparator"/>
+      <menuseparator id="bookmarksToolbarSeparator"/>
       <menu id="bookmarksToolbarFolderMenu"
             class="menu-iconic bookmark-item"
             label="&personalbarCmd.label;"
             container="true">
-        <menupopup id="bookmarksToolbarFolderPopup"  
+        <menupopup id="bookmarksToolbarFolderPopup"
 #ifndef XP_MACOSX
                    placespopup="true"
 #endif
@@ -486,7 +484,13 @@
                    onpopupshowing="if (!this.parentNode._placesView)
                                      new PlacesMenu(event, 'place:folder=TOOLBAR');"/>
       </menu>
-      <menuseparator/>
+      <menuseparator id="bookmarksMenuItemsSeparator"/>
+      <!-- Bookmarks menu items -->
+      <menuseparator builder="end"
+                     class="hide-if-empty-places-result"/>
+      <menuitem id="menu_unsortedBookmarks"
+                label="&unsortedBookmarksCmd.label;"
+                oncommand="PlacesCommandHook.showPlacesOrganizer('UnfiledBookmarks');"/>
     </menupopup>
   </menu>
 
@@ -530,24 +534,41 @@
                         oncommand="gSyncUI.doSync(event);"/>
 #endif
               <menuseparator id="devToolsSeparator"/>
-              <menuitem id="menu_pageinspect"
-                        type="checkbox"
-                        hidden="true"
-                        label="&inspectMenu.label;"
-                        accesskey="&inspectMenu.accesskey;"
-                        key="key_inspect"
-                        command="Tools:Inspect"/>
-              <menuitem id="javascriptConsole"
-                        hidden="true"
-                        label="&errorConsoleCmd.label;"
-                        accesskey="&errorConsoleCmd.accesskey;"
-                        key="key_errorConsole"
-                        oncommand="toJavaScriptConsole();"/>
-              <menuitem id="webConsole"
-                        label="&webConsoleCmd.label;"
-                        accesskey="&webConsoleCmd.accesskey;"
-                        key="key_webConsole"
-                        oncommand="HUDConsoleUI.toggleHUD();"/>
+              <menu id="webDeveloperMenu"
+                    label="&webDeveloperMenu.label;"
+                    accesskey="webDeveloperMenu.accesskey;">
+                <menupopup id="menuWebDeveloperPopup">
+                  <menuitem id="webConsole"
+                            label="&webConsoleCmd.label;"
+                            accesskey="&webConsoleCmd.accesskey;"
+                            key="key_webConsole"
+                            oncommand="HUDConsoleUI.toggleHUD();"/>
+                  <menuitem id="menu_pageinspect"
+                            type="checkbox"
+                            hidden="true"
+                            label="&inspectMenu.label;"
+                            accesskey="&inspectMenu.accesskey;"
+                            key="key_inspect"
+                            command="Tools:Inspect"/>
+                  <menuitem id="menu_scratchpad"
+                            hidden="true"
+                            label="&scratchpad.label;"
+                            accesskey="&scratchpad.accesskey;"
+                            key="key_scratchpad"
+                            command="Tools:Scratchpad"/>
+                  <menuitem id="menu_pageSource"
+                            accesskey="&pageSourceCmd.accesskey;"
+                            label="&pageSourceCmd.label;"
+                            key="key_viewSource"
+                            command="View:PageSource"/>
+                  <menuitem id="javascriptConsole"
+                            hidden="true"
+                            label="&errorConsoleCmd.label;"
+                            accesskey="&errorConsoleCmd.accesskey;"
+                            key="key_errorConsole"
+                            oncommand="toJavaScriptConsole();"/>
+                </menupopup>
+              </menu>
               <menuitem id="menu_pageInfo"
                         accesskey="&pageInfoCmd.accesskey;"
                         label="&pageInfoCmd.label;"

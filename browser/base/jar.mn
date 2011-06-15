@@ -2,7 +2,6 @@ browser.jar:
 %  content browser %content/browser/ contentaccessible=yes
 #ifdef XP_MACOSX
 %  overlay chrome://mozapps/content/downloads/downloads.xul chrome://browser/content/downloadManagerOverlay.xul
-%  overlay chrome://mozapps/content/extensions/extensions.xul chrome://browser/content/extensionsManagerOverlay.xul
 %  overlay chrome://global/content/console.xul chrome://browser/content/jsConsoleOverlay.xul
 %  overlay chrome://mozapps/content/update/updates.xul chrome://browser/content/softwareUpdateOverlay.xul
 #endif
@@ -30,6 +29,8 @@ browser.jar:
 *       content/browser/browser-tabPreviews.xml       (content/browser-tabPreviews.xml)
 *       content/browser/fullscreen-video.xhtml        (content/fullscreen-video.xhtml)
 *       content/browser/inspector.html                (content/inspector.html)
+*       content/browser/scratchpad.xul                (content/scratchpad.xul)
+*       content/browser/scratchpad.js                 (content/scratchpad.js)
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
 *       content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
 *       content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)
@@ -79,7 +80,6 @@ browser.jar:
 #ifdef XP_MACOSX
 *       content/browser/macBrowserOverlay.xul         (content/macBrowserOverlay.xul)
 *       content/browser/downloadManagerOverlay.xul    (content/downloadManagerOverlay.xul)
-*       content/browser/extensionsManagerOverlay.xul  (content/extensionsManagerOverlay.xul)
 *       content/browser/jsConsoleOverlay.xul          (content/jsConsoleOverlay.xul)
 *       content/browser/softwareUpdateOverlay.xul  (content/softwareUpdateOverlay.xul)
 #endif

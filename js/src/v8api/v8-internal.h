@@ -86,6 +86,9 @@ private:
   T* mPtr;
 };
 
+bool IsFunctionTemplate(Handle<Value> v);
+bool IsObjectTemplate(Handle<Value> v);
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Accessor Storage
 

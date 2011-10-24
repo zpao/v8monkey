@@ -3,8 +3,8 @@
 
 #include "jsapi.h"
 #include "jsxdrapi.h"
-#include "jstl.h"
-#include "jshashtable.h"
+// #include "jstl.h"
+// #include "jshashtable.h"
 #include "jsutil.h"
 
 namespace v8 {

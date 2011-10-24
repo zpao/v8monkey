@@ -1,6 +1,6 @@
 #include "v8-internal.h"
-#include "jstl.h"
-#include "jshashtable.h"
+// #include "jstl.h"
+// #include "jshashtable.h"
 #include "jsobj.h"
 #include "jstypedarray.h"
 #include "jsproxy.h"

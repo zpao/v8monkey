@@ -19,7 +19,7 @@ traceValue(JSTracer* tracer,
 {
   JS_SET_TRACING_DETAILS(tracer, printTraceName, NULL, 0);
   if (JSVAL_IS_TRACEABLE(val)) {
-    uint32 kind = JSVAL_TRACE_KIND(val);
+    JSGCTraceKind kind = JSVAL_TRACE_KIND(val);
     JS_CallTracer(tracer, JSVAL_TO_TRACEABLE(val), kind);
   }
 }

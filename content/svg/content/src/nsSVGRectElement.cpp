@@ -37,11 +37,15 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGPathGeometryElement.h"
 #include "nsIDOMSVGRectElement.h"
 #include "nsSVGLength2.h"
 #include "nsGkAtoms.h"
 #include "gfxContext.h"
+
+using namespace mozilla;
 
 typedef nsSVGPathGeometryElement nsSVGRectElementBase;
 
@@ -163,7 +167,7 @@ nsSVGElement::LengthAttributesInfo
 nsSVGRectElement::GetLengthInfo()
 {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              NS_ARRAY_LENGTH(sLengthInfo));
+                              ArrayLength(sLengthInfo));
 }
 
 //----------------------------------------------------------------------
@@ -192,8 +196,8 @@ nsSVGRectElement::ConstructPath(gfxContext *aCtx)
 
   /* If either the 'rx' or the 'ry' attribute isn't set, then we
      have to set it to the value of the other. */
-  PRBool hasRx = mLengthAttributes[RX].IsExplicitlySet();
-  PRBool hasRy = mLengthAttributes[RY].IsExplicitlySet();
+  bool hasRx = mLengthAttributes[RX].IsExplicitlySet();
+  bool hasRy = mLengthAttributes[RY].IsExplicitlySet();
   if (hasRx && !hasRy)
     ry = rx;
   else if (hasRy && !hasRx)

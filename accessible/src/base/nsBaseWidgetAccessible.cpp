@@ -40,7 +40,6 @@
 #include "nsBaseWidgetAccessible.h"
 
 #include "States.h"
-#include "nsAccessibilityAtoms.h"
 #include "nsAccessibilityService.h"
 #include "nsAccUtils.h"
 #include "nsCoreUtils.h"
@@ -52,6 +51,8 @@
 #include "nsIFrame.h"
 #include "nsINameSpaceManager.h"
 #include "nsIURI.h"
+
+using namespace mozilla::a11y;
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsLeafAccessible
@@ -69,8 +70,8 @@ NS_IMPL_ISUPPORTS_INHERITED0(nsLeafAccessible, nsAccessible)
 // nsLeafAccessible: nsAccessible public
 
 nsAccessible*
-nsLeafAccessible::GetChildAtPoint(PRInt32 aX, PRInt32 aY,
-                                  EWhichChildAtPoint aWhichChild)
+nsLeafAccessible::ChildAtPoint(PRInt32 aX, PRInt32 aY,
+                               EWhichChildAtPoint aWhichChild)
 {
   // Don't walk into leaf accessibles.
   return this;
@@ -93,9 +94,9 @@ nsLeafAccessible::CacheChildren()
 nsLinkableAccessible::
   nsLinkableAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
   nsAccessibleWrap(aContent, aShell),
-  mActionContent(nsnull),
-  mIsLink(PR_FALSE),
-  mIsOnclick(PR_FALSE)
+  mActionAcc(nsnull),
+  mIsLink(false),
+  mIsOnclick(false)
 {
 }
 
@@ -107,11 +108,7 @@ NS_IMPL_ISUPPORTS_INHERITED0(nsLinkableAccessible, nsAccessibleWrap)
 NS_IMETHODIMP
 nsLinkableAccessible::TakeFocus()
 {
-  nsAccessible *actionAcc = GetActionAccessible();
-  if (actionAcc)
-    return actionAcc->TakeFocus();
-
-  return nsAccessibleWrap::TakeFocus();
+  return mActionAcc ? mActionAcc->TakeFocus() : nsAccessibleWrap::TakeFocus();
 }
 
 PRUint64
@@ -120,8 +117,7 @@ nsLinkableAccessible::NativeState()
   PRUint64 states = nsAccessibleWrap::NativeState();
   if (mIsLink) {
     states |= states::LINKED;
-    nsAccessible* actionAcc = GetActionAccessible();
-    if (actionAcc->State() & states::TRAVERSED)
+    if (mActionAcc->State() & states::TRAVERSED)
       states |= states::TRAVERSED;
   }
 
@@ -137,23 +133,14 @@ nsLinkableAccessible::GetValue(nsAString& aValue)
   if (!aValue.IsEmpty())
     return NS_OK;
 
-  if (mIsLink) {
-    nsAccessible *actionAcc = GetActionAccessible();
-    if (actionAcc)
-      return actionAcc->GetValue(aValue);
-  }
-
-  return NS_ERROR_NOT_IMPLEMENTED;
+  return mIsLink ? mActionAcc->GetValue(aValue) : NS_ERROR_NOT_IMPLEMENTED;
 }
 
 
-NS_IMETHODIMP
-nsLinkableAccessible::GetNumActions(PRUint8 *aNumActions)
+PRUint8
+nsLinkableAccessible::ActionCount()
 {
-  NS_ENSURE_ARG_POINTER(aNumActions);
-
-  *aNumActions = mActionContent ? 1 : 0;
-  return NS_OK;
+  return (mIsOnclick || mIsLink) ? 1 : 0;
 }
 
 NS_IMETHODIMP
@@ -182,23 +169,15 @@ nsLinkableAccessible::DoAction(PRUint8 aIndex)
   if (aIndex != eAction_Jump)
     return NS_ERROR_INVALID_ARG;
 
-  nsAccessible *actionAcc = GetActionAccessible();
-  if (actionAcc)
-    return actionAcc->DoAction(aIndex);
-  
-  return nsAccessibleWrap::DoAction(aIndex);
+  return mActionAcc ? mActionAcc->DoAction(aIndex) :
+    nsAccessibleWrap::DoAction(aIndex);
 }
 
-NS_IMETHODIMP
-nsLinkableAccessible::GetKeyboardShortcut(nsAString& aKeyboardShortcut)
+KeyBinding
+nsLinkableAccessible::AccessKey() const
 {
-  aKeyboardShortcut.Truncate();
-
-  nsAccessible *actionAcc = GetActionAccessible();
-  if (actionAcc)
-    return actionAcc->GetKeyboardShortcut(aKeyboardShortcut);
-
-  return nsAccessible::GetKeyboardShortcut(aKeyboardShortcut);
+  return mActionAcc ?
+    mActionAcc->AccessKey() : nsAccessible::AccessKey();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,7 +186,9 @@ nsLinkableAccessible::GetKeyboardShortcut(nsAString& aKeyboardShortcut)
 void
 nsLinkableAccessible::Shutdown()
 {
-  mActionContent = nsnull;
+  mIsLink = false;
+  mIsOnclick = false;
+  mActionAcc = nsnull;
   nsAccessibleWrap::Shutdown();
 }
 
@@ -215,17 +196,14 @@ nsLinkableAccessible::Shutdown()
 // nsLinkableAccessible: HyperLinkAccessible
 
 already_AddRefed<nsIURI>
-nsLinkableAccessible::GetAnchorURI(PRUint32 aAnchorIndex)
+nsLinkableAccessible::AnchorURIAt(PRUint32 aAnchorIndex)
 {
   if (mIsLink) {
-    nsAccessible* link = GetActionAccessible();
-    if (link) {
-      NS_ASSERTION(link->IsHyperLink(),
-                   "nsIAccessibleHyperLink isn't implemented.");
+    NS_ASSERTION(mActionAcc->IsLink(),
+                 "nsIAccessibleHyperLink isn't implemented.");
 
-      if (link->IsHyperLink())
-        return link->GetAnchorURI(aAnchorIndex);
-    }
+    if (mActionAcc->IsLink())
+      return mActionAcc->AnchorURIAt(aAnchorIndex);
   }
 
   return nsnull;
@@ -241,53 +219,33 @@ nsLinkableAccessible::BindToParent(nsAccessible* aParent,
   nsAccessibleWrap::BindToParent(aParent, aIndexInParent);
 
   // Cache action content.
-  mActionContent = nsnull;
-  mIsLink = PR_FALSE;
-  mIsOnclick = PR_FALSE;
+  mActionAcc = nsnull;
+  mIsLink = false;
+  mIsOnclick = false;
 
-  nsIContent* walkUpContent = mContent;
-  PRBool isOnclick = nsCoreUtils::HasClickListener(walkUpContent);
-
-  if (isOnclick) {
-    mActionContent = walkUpContent;
-    mIsOnclick = PR_TRUE;
+  if (nsCoreUtils::HasClickListener(mContent)) {
+    mIsOnclick = true;
     return;
   }
 
-  while ((walkUpContent = walkUpContent->GetParent())) {
-    nsAccessible* walkUpAcc =
-      GetAccService()->GetAccessibleInWeakShell(walkUpContent, mWeakShell);
-
-    if (walkUpAcc && walkUpAcc->Role() == nsIAccessibleRole::ROLE_LINK &&
+  // XXX: The logic looks broken since the click listener may be registered
+  // on non accessible node in parent chain but this node is skipped when tree
+  // is traversed.
+  nsAccessible* walkUpAcc = this;
+  while ((walkUpAcc = walkUpAcc->Parent()) && !walkUpAcc->IsDoc()) {
+    if (walkUpAcc->Role() == nsIAccessibleRole::ROLE_LINK &&
         walkUpAcc->State() & states::LINKED) {
-      mIsLink = PR_TRUE;
-      mActionContent = walkUpContent;
+      mIsLink = true;
+      mActionAcc = walkUpAcc;
       return;
     }
 
-    isOnclick = nsCoreUtils::HasClickListener(walkUpContent);
-    if (isOnclick) {
-      mActionContent = walkUpContent;
-      mIsOnclick = PR_TRUE;
+    if (nsCoreUtils::HasClickListener(walkUpAcc->GetContent())) {
+      mActionAcc = walkUpAcc;
+      mIsOnclick = true;
       return;
     }
   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// nsLinkableAccessible: protected
-
-nsAccessible *
-nsLinkableAccessible::GetActionAccessible() const
-{
-  // Return accessible for the action content if it's different from node of
-  // this accessible. If the action accessible is not null then it is used to
-  // redirect methods calls otherwise we use method implementation from the
-  // base class.
-  if (!mActionContent || mContent == mActionContent)
-    return nsnull;
-
-  return GetAccService()->GetAccessibleInWeakShell(mActionContent, mWeakShell);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

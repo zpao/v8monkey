@@ -39,7 +39,7 @@
 #include "nsIDOMHTMLElement.idl"
 
 /**
- * The nsIDOMHTMLVideoElement interface is the interface to a HTML
+ * The nsIDOMHTMLSourceElement interface is the interface to a HTML
  * <source> element.
  *
  * For more information on this interface, please see
@@ -48,7 +48,7 @@
  * @status UNDER_DEVELOPMENT
  */
 
-[scriptable, uuid(ee69ccd4-5216-46cc-bfb4-b612d197ce29)]
+[scriptable, uuid(39812865-0a82-4729-84b9-1ad24b19aacb)]
 interface nsIDOMHTMLSourceElement : nsIDOMHTMLElement
 {
            attribute DOMString src;

@@ -50,119 +50,135 @@ const Cc = Components.classes;
 const Ci = Components.interfaces;
 
 const CHILD_SCRIPT = "chrome://specialpowers/content/specialpowers.js"
+const CHILD_SCRIPT_API = "chrome://specialpowers/content/specialpowersAPI.js"
+const CHILD_LOGGER_SCRIPT = "chrome://specialpowers/content/MozillaLogger.js"
 
-/**
- * Special Powers Exception - used to throw exceptions nicely
- **/
-function SpecialPowersException(aMsg) {
-  this.message = aMsg;
-  this.name = "SpecialPowersException";
-}
 
-SpecialPowersException.prototype.toString = function() {
-  return this.name + ': "' + this.message + '"';
-};
+// Glue to add in the observer API to this object.  This allows us to share code with chrome tests
+var loader = Components.classes["@mozilla.org/moz/jssubscript-loader;1"]
+                       .getService(Components.interfaces.mozIJSSubScriptLoader);
+loader.loadSubScript("chrome://specialpowers/content/SpecialPowersObserverAPI.js");
+
 
 /* XPCOM gunk */
-function SpecialPowersObserver() {}
+function SpecialPowersObserver() {
+  this._isFrameScriptLoaded = false;
+  this._messageManager = Cc["@mozilla.org/globalmessagemanager;1"].
+                         getService(Ci.nsIChromeFrameMessageManager);
+}
 
-SpecialPowersObserver.prototype = {
-  classDescription: "Special powers Observer for use in testing.",
-  classID:          Components.ID("{59a52458-13e0-4d93-9d85-a637344f29a1}"),
-  contractID:       "@mozilla.org/special-powers-observer;1",
-  QueryInterface:   XPCOMUtils.generateQI([Components.interfaces.nsIObserver]),
-  _xpcom_categories: [{category: "profile-after-change", service: true }],
-  isFrameScriptLoaded: false,
 
-  observe: function(aSubject, aTopic, aData)
+SpecialPowersObserver.prototype = new SpecialPowersObserverAPI();
+
+  SpecialPowersObserver.prototype.classDescription = "Special powers Observer for use in testing.";
+  SpecialPowersObserver.prototype.classID = Components.ID("{59a52458-13e0-4d93-9d85-a637344f29a1}");
+  SpecialPowersObserver.prototype.contractID = "@mozilla.org/special-powers-observer;1";
+  SpecialPowersObserver.prototype.QueryInterface = XPCOMUtils.generateQI([Components.interfaces.nsIObserver]);
+  SpecialPowersObserver.prototype._xpcom_categories = [{category: "profile-after-change", service: true }];
+
+  SpecialPowersObserver.prototype.observe = function(aSubject, aTopic, aData)
   {
-    if (aTopic == "profile-after-change") {
-      this.init();
-    } else if (!this.isFrameScriptLoaded && 
-               aTopic == "chrome-document-global-created") {
-     
-      var messageManager = Cc["@mozilla.org/globalmessagemanager;1"].
-                           getService(Ci.nsIChromeFrameMessageManager);
-      // Register for any messages our API needs us to handle
-      messageManager.addMessageListener("SPPrefService", this);
+    switch (aTopic) {
+      case "profile-after-change":
+        this.init();
+        break;
 
-      messageManager.loadFrameScript(CHILD_SCRIPT, true);
-      this.isFrameScriptLoaded = true;
-    } else if (aTopic == "xpcom-shutdown") {
-      this.uninit();
+      case "chrome-document-global-created":
+        if (!this._isFrameScriptLoaded) {
+          // Register for any messages our API needs us to handle
+          this._messageManager.addMessageListener("SPPrefService", this);
+          this._messageManager.addMessageListener("SPProcessCrashService", this);
+          this._messageManager.addMessageListener("SPPingService", this);
+          this._messageManager.addMessageListener("SpecialPowers.Quit", this);
+
+          this._messageManager.loadFrameScript(CHILD_LOGGER_SCRIPT, true);
+          this._messageManager.loadFrameScript(CHILD_SCRIPT_API, true);
+          this._messageManager.loadFrameScript(CHILD_SCRIPT, true);
+          this._isFrameScriptLoaded = true;
+        }
+        break;
+
+      case "xpcom-shutdown":
+        this.uninit();
+        break;
+
+      default:
+        this._observe(aSubject, aTopic, aData);
+        break;
     }
-  },
+  };
 
-  init: function()
+  SpecialPowersObserver.prototype._sendAsyncMessage = function(msgname, msg)
+  {
+    this._messageManager.sendAsyncMessage(msgname, msg);
+  };
+
+  SpecialPowersObserver.prototype._receiveMessage = function(aMessage) {
+    return this._receiveMessageAPI(aMessage);
+  };
+
+  SpecialPowersObserver.prototype.init = function()
   {
     var obs = Services.obs;
     obs.addObserver(this, "xpcom-shutdown", false);
     obs.addObserver(this, "chrome-document-global-created", false);
-  },
+  };
 
-  uninit: function()
+  SpecialPowersObserver.prototype.uninit = function()
   {
     var obs = Services.obs;
     obs.removeObserver(this, "chrome-document-global-created", false);
-  },
-  
+    this._removeProcessCrashObservers();
+  };
+
+  SpecialPowersObserver.prototype._addProcessCrashObservers = function() {
+    if (this._processCrashObserversRegistered) {
+      return;
+    }
+
+    var obs = Components.classes["@mozilla.org/observer-service;1"]
+                        .getService(Components.interfaces.nsIObserverService);
+
+    obs.addObserver(this, "plugin-crashed", false);
+    obs.addObserver(this, "ipc:content-shutdown", false);
+    this._processCrashObserversRegistered = true;
+  };
+
+  SpecialPowersObserver.prototype._removeProcessCrashObservers = function() {
+    if (!this._processCrashObserversRegistered) {
+      return;
+    }
+
+    var obs = Components.classes["@mozilla.org/observer-service;1"]
+                        .getService(Components.interfaces.nsIObserverService);
+
+    obs.removeObserver(this, "plugin-crashed");
+    obs.removeObserver(this, "ipc:content-shutdown");
+    this._processCrashObserversRegistered = false;
+  };
+
   /**
    * messageManager callback function
    * This will get requests from our API in the window and process them in chrome for it
    **/
-  receiveMessage: function(aMessage) {
+  SpecialPowersObserver.prototype.receiveMessage = function(aMessage) {
     switch(aMessage.name) {
-      case "SPPrefService":
-        var prefs = Services.prefs;
-        var prefType = aMessage.json.prefType.toUpperCase();
-        var prefName = aMessage.json.prefName;
-        var prefValue = "prefValue" in aMessage.json ? aMessage.json.prefValue : null;
-
-        if (aMessage.json.op == "get") {
-          if (!prefName || !prefType)
-            throw new SpecialPowersException("Invalid parameters for get in SPPrefService");
-        } else if (aMessage.json.op == "set") {
-          if (!prefName || !prefType  || prefValue === null)
-            throw new SpecialPowersException("Invalid parameters for set in SPPrefService");
-        } else if (aMessage.json.op == "clear") {
-          if (!prefName)
-            throw new SpecialPowersException("Invalid parameters for clear in SPPrefService");
-        } else {
-          throw new SpecialPowersException("Invalid operation for SPPrefService");
-        }
-        // Now we make the call
-        switch(prefType) {
-          case "BOOL":
-            if (aMessage.json.op == "get")
-              return(prefs.getBoolPref(prefName));
-            else 
-              return(prefs.setBoolPref(prefName, prefValue));
-          case "INT":
-            if (aMessage.json.op == "get") 
-              return(prefs.getIntPref(prefName));
-            else
-              return(prefs.setIntPref(prefName, prefValue));
-          case "CHAR":
-            if (aMessage.json.op == "get")
-              return(prefs.getCharPref(prefName));
-            else
-              return(prefs.setCharPref(prefName, prefValue));
-          case "COMPLEX":
-            if (aMessage.json.op == "get")
-              return(prefs.getComplexValue(prefName, prefValue[0]));
-            else
-              return(prefs.setComplexValue(prefName, prefValue[0], prefValue[1]));
-          case "":
-            if (aMessage.json.op == "clear") {
-              prefs.clearUserPref(prefName);
-              return;
-            }
+      case "SPPingService":
+        if (aMessage.json.op == "ping") {
+          aMessage.target
+                  .QueryInterface(Ci.nsIFrameLoaderOwner)
+                  .frameLoader
+                  .messageManager
+                  .sendAsyncMessage("SPPingService", { op: "pong" });
         }
         break;
+      case "SpecialPowers.Quit":
+        let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"].getService(Ci.nsIAppStartup);
+        appStartup.quit(Ci.nsIAppStartup.eForceQuit);
+        break;
       default:
-        throw new SpecialPowersException("Unrecognized Special Powers API");
+        return this._receiveMessage(aMessage);
     }
-  }
-};
+  };
 
 const NSGetFactory = XPCOMUtils.generateNSGetFactory([SpecialPowersObserver]);

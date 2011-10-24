@@ -61,11 +61,7 @@ EXPORTS		= $(srcdir)/nsJSProtocolHandler.h
 LOCAL_INCLUDES += \
 		-I$(srcdir) \
 		-I$(topsrcdir)/dom/base \
-
-EXTRA_DSO_LDOPTS = \
-		$(MOZ_COMPONENT_LIBS) \
-		$(MOZ_JS_LIBS) \
-		$(NULL)
+		-I$(topsrcdir)/netwerk/base/src \
 
 ifdef BUILD_DEBUG_GC
 DEFINES		+= -DDEBUG_GC

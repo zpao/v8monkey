@@ -61,7 +61,6 @@
 #include "nsLayoutCID.h"
 #include "nsNetUtil.h"
 #include "nsILocalFile.h"
-#include "nsIPrefService.h"
 #include "nsIViewManager.h"
 #include "nsIView.h"
 
@@ -95,7 +94,7 @@ nsRegressionTester::DumpFrameModel(nsIDOMWindow *aWindowToDump,
 #else
   nsresult    rv = NS_ERROR_NOT_AVAILABLE;
   PRUint32    busyFlags;
-  PRBool      stillLoading;
+  bool        stillLoading;
 
   nsCOMPtr<nsIDocShell> docShell;
   rv = GetDocShellFromWindow(aWindowToDump, getter_AddRefs(docShell));
@@ -128,7 +127,7 @@ nsRegressionTester::DumpFrameModel(nsIDOMWindow *aWindowToDump,
     if (viewer){
       nsCOMPtr<nsIContentViewerFile> viewerFile = do_QueryInterface(viewer);
       if (viewerFile) {
-         viewerFile->Print(PR_TRUE, fp, nsnull);
+         viewerFile->Print(true, fp, nsnull);
       }
     }
   }

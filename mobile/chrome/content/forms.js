@@ -77,17 +77,21 @@ function FormAssistant() {
   addEventListener("keypress", this, true);
   addEventListener("keyup", this, false);
   addEventListener("focus", this, true);
+  addEventListener("blur", this, true);
   addEventListener("pageshow", this, false);
   addEventListener("pagehide", this, false);
   addEventListener("submit", this, false);
 
-  this._enabled = Services.prefs.getBoolPref("formhelper.enabled");
+  this._enabled = Services.prefs.prefHasUserValue("formhelper.enabled") ?
+                    Services.prefs.getBoolPref("formhelper.enabled") : false;
 };
 
 FormAssistant.prototype = {
   _selectWrapper: null,
   _currentIndex: -1,
   _elements: [],
+
+  invalidSubmit: false,
 
   get currentElement() {
     return this._elements[this._currentIndex];
@@ -133,7 +137,7 @@ FormAssistant.prototype = {
   },
 
   _open: false,
-  open: function formHelperOpen(aElement) {
+  open: function formHelperOpen(aElement, aX, aY) {
     // if the click is on an option element we want to check if the parent is a valid target
     if (aElement instanceof HTMLOptionElement && aElement.parentNode instanceof HTMLSelectElement && !aElement.disabled) {
       aElement = aElement.parentNode;
@@ -148,6 +152,38 @@ FormAssistant.prototype = {
       if ((aElement instanceof HTMLInputElement || aElement instanceof HTMLButtonElement) &&
           passiveButtons[aElement.type] && !aElement.disabled)
         return false;
+
+      // Check for plugins element
+      if (aElement instanceof Ci.nsIDOMHTMLEmbedElement) {
+        aX = aX || 0;
+        aY = aY || 0;
+        this._executeDelayed(function(self) {
+          let utils = Util.getWindowUtils(aElement.ownerDocument.defaultView);
+          if (utils.IMEStatus == utils.IME_STATUS_PLUGIN) {
+            let jsvar = {
+              current: {
+                id: aElement.id,
+                name: aElement.name,
+                title: "plugin",
+                value: null,
+                maxLength: 0,
+                type: (aElement.getAttribute("type") || "").toLowerCase(),
+                choices: null,
+                isAutocomplete: false,
+                validationMessage: null,
+                list: null,
+                rect: getBoundingContentRect(aElement),
+                caretRect: new Rect(aX, aY, 1, 10),
+                editable: true
+              },
+              hasPrevious: false,
+              hasNext: false
+            };
+            sendAsyncMessage("FormAssist:Show", jsvar);
+          }
+        });
+        return false;
+      }
 
       return this.close();
     }
@@ -179,10 +215,12 @@ FormAssistant.prototype = {
       return false;
     }
 
-    // If form assistant is disabled but the element is a type of choice list
-    // we still want to show the simple select list
+    // There is some case where we still want some data to be send to the
+    // parent process even if form assistant is disabled:
+    //  - the element is a choice list
+    //  - the element has autocomplete suggestions
     this._enabled = Services.prefs.getBoolPref("formhelper.enabled");
-    if (!this._enabled && !this._isSelectElement(aElement))
+    if (!this._enabled && !this._isSelectElement(aElement) && !this._isAutocomplete(aElement))
       return this.close();
 
     if (this._enabled) {
@@ -210,7 +248,7 @@ FormAssistant.prototype = {
 
   receiveMessage: function receiveMessage(aMessage) {
     let currentElement = this.currentElement;
-    if ((!this._enabled && !getWrapperForElement(currentElement)) || !currentElement)
+    if ((!this._enabled && !this._isAutocomplete(currentElement) && !getWrapperForElement(currentElement)) || !currentElement)
       return;
 
     let json = aMessage.json;
@@ -256,6 +294,14 @@ FormAssistant.prototype = {
       }
 
       case "FormAssist:AutoComplete": {
+        try {
+          currentElement = currentElement.QueryInterface(Ci.nsIDOMNSEditableElement);
+          let imeEditor = currentElement.editor.QueryInterface(Ci.nsIEditorIMESupport);
+          if (imeEditor.composing)
+            imeEditor.forceCompositionEnd();
+        }
+        catch(e) {}
+
         currentElement.value = json.value;
 
         let event = currentElement.ownerDocument.createEvent("Events");
@@ -342,7 +388,23 @@ FormAssistant.prototype = {
           this.currentIndex = focusedIndex;
         break;
 
+      case "blur":
+        content.setTimeout(function(self) {
+          if (!self._open)
+            return;
+
+          // If the blurring causes focus be in no other element,
+          // we should close the form assistant.
+          let focusedElement = gFocusManager.getFocusedElementForWindow(content, true, {});
+          if (!focusedElement)
+            self.close();
+        }, 0, this);
+        break;
+
       case "text":
+        if (this._isValidatable(aEvent.target))
+          sendAsyncMessage("FormAssist:ValidationMessage", this._getJSON());
+
         if (this._isAutocomplete(aEvent.target))
           sendAsyncMessage("FormAssist:AutoComplete", this._getJSON());
         break;
@@ -429,6 +491,9 @@ FormAssistant.prototype = {
             break;
 
           default:
+            if (this._isValidatable(aEvent.target))
+              sendAsyncMessage("FormAssist:ValidationMessage", this._getJSON());
+
             if (this._isAutocomplete(aEvent.target))
               sendAsyncMessage("FormAssist:AutoComplete", this._getJSON());
             else if (currentElement && this._isSelectElement(currentElement))
@@ -503,8 +568,19 @@ FormAssistant.prototype = {
     return aElement;
   },
 
+  _isValidatable: function(aElement) {
+    return this.invalidSubmit &&
+           (aElement instanceof HTMLInputElement ||
+            aElement instanceof HTMLTextAreaElement ||
+            aElement instanceof HTMLSelectElement ||
+            aElement instanceof HTMLButtonElement);
+  },
+
   _isAutocomplete: function formHelperIsAutocomplete(aElement) {
     if (aElement instanceof HTMLInputElement) {
+      if (aElement.getAttribute("type") == "password")
+        return false;
+
       let autocomplete = aElement.getAttribute("autocomplete");
       let allowedValues = ["off", "false", "disabled"];
       if (allowedValues.indexOf(autocomplete) == -1)
@@ -578,7 +654,7 @@ FormAssistant.prototype = {
   },
 
   _isVisibleElement: function formHelperIsVisibleElement(aElement) {
-    let style = aElement.ownerDocument.defaultView.getComputedStyle(aElement, null);
+    let style = aElement ? aElement.ownerDocument.defaultView.getComputedStyle(aElement, null) : null;
     if (!style)
       return false;
 
@@ -710,6 +786,7 @@ FormAssistant.prototype = {
   _getJSON: function() {
     let element = this.currentElement;
     let choices = getListForElement(element);
+    let editable = (element instanceof HTMLInputElement && element.mozIsTextField(false)) || this._isEditable(element);
 
     let labels = this._getLabels();
     return {
@@ -721,10 +798,12 @@ FormAssistant.prototype = {
         maxLength: element.maxLength,
         type: (element.getAttribute("type") || "").toLowerCase(),
         choices: choices,
-        isAutocomplete: this._isAutocomplete(this.currentElement),
-        list: this._getListSuggestions(this.currentElement),
+        isAutocomplete: this._isAutocomplete(element),
+        validationMessage: this.invalidSubmit ? element.validationMessage : null,
+        list: this._getListSuggestions(element),
         rect: this._getRect(),
-        caretRect: this._getCaretRect()
+        caretRect: this._getCaretRect(),
+        editable: editable
       },
       hasPrevious: !!this._elements[this._currentIndex - 1],
       hasNext: !!this._elements[this._currentIndex + 1]

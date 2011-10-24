@@ -63,7 +63,7 @@ void NS_ShutdownLocalFile()
     nsLocalFile::GlobalShutdown();
 }
 
-#if !defined(XP_MACOSX) && !defined(XP_WIN)
+#if !defined(MOZ_WIDGET_COCOA) && !defined(XP_WIN)
 NS_IMETHODIMP
 nsLocalFile::InitWithFile(nsILocalFile *aFile)
 {
@@ -86,7 +86,7 @@ NS_IMETHODIMP
 nsLocalFile::CreateUnique(PRUint32 type, PRUint32 attributes)
 {
     nsresult rv;
-    PRBool longName;
+    bool longName;
 
 #ifdef XP_WIN
     nsAutoString pathName, leafName, rootName, suffix;

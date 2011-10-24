@@ -169,11 +169,14 @@ const char *linker_get_error(void)
  * This function is an empty stub where GDB locates a breakpoint to get notified
  * about linker activity.
  */
-extern void __attribute__((noinline)) rtld_db_dlactivity(void);
+static struct r_debug *_r_debug = NULL;
+static struct link_map *r_debug_insert = NULL;
 
-static struct r_debug _r_debug = {1, NULL, &rtld_db_dlactivity,
-                                  RT_CONSISTENT, 0};
-static struct link_map *r_debug_tail = 0;
+static inline void rtld_db_dlactivity(void)
+{
+    if (_r_debug)
+        _r_debug->r_brk();
+}
 
 static pthread_mutex_t _r_debug_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -188,36 +191,32 @@ static void insert_soinfo_into_debug_map(soinfo * info)
     map->l_name = (char*) info->name;
     map->l_ld = (uintptr_t)info->dynamic;
 
-    /* Stick the new library at the end of the list.
-     * gdb tends to care more about libc than it does
-     * about leaf libraries, and ordering it this way
-     * reduces the back-and-forth over the wire.
+    /* Stick the new library before libmozutils.so
      */
-    if (r_debug_tail) {
-        r_debug_tail->l_next = map;
-        map->l_prev = r_debug_tail;
-        map->l_next = 0;
-    } else {
-        _r_debug.r_map = map;
-        map->l_prev = 0;
-        map->l_next = 0;
-    }
-    r_debug_tail = map;
+    if (!_r_debug)
+        return;
+    map->l_next = r_debug_insert;
+    map->l_prev = r_debug_insert->l_prev;
+    r_debug_insert->l_prev->l_next = map;
+    r_debug_insert->l_prev = map;
 }
 
 static void remove_soinfo_from_debug_map(soinfo * info)
 {
     struct link_map * map = &(info->linkmap);
 
-    if (r_debug_tail == map)
-        r_debug_tail = map->l_prev;
+    if (r_debug_insert == map)
+        r_debug_insert = map->l_prev;
 
     if (map->l_prev) map->l_prev->l_next = map->l_next;
     if (map->l_next) map->l_next->l_prev = map->l_prev;
 }
 
-void notify_gdb_of_load(soinfo * info)
+static void notify_gdb_of_load(soinfo * info)
 {
+    if (!_r_debug)
+        return;
+
     if (info->flags & FLAG_EXE) {
         // GDB already knows about the main executable
         return;
@@ -225,19 +224,22 @@ void notify_gdb_of_load(soinfo * info)
 
     pthread_mutex_lock(&_r_debug_lock);
 
-    _r_debug.r_state = RT_ADD;
+    _r_debug->r_state = RT_ADD;
     rtld_db_dlactivity();
 
     insert_soinfo_into_debug_map(info);
 
-    _r_debug.r_state = RT_CONSISTENT;
+    _r_debug->r_state = RT_CONSISTENT;
     rtld_db_dlactivity();
 
     pthread_mutex_unlock(&_r_debug_lock);
 }
 
-void notify_gdb_of_unload(soinfo * info)
+static void notify_gdb_of_unload(soinfo * info)
 {
+    if (!_r_debug)
+        return;
+
     if (info->flags & FLAG_EXE) {
         // GDB already knows about the main executable
         return;
@@ -245,12 +247,12 @@ void notify_gdb_of_unload(soinfo * info)
 
     pthread_mutex_lock(&_r_debug_lock);
 
-    _r_debug.r_state = RT_DELETE;
+    _r_debug->r_state = RT_DELETE;
     rtld_db_dlactivity();
 
     remove_soinfo_from_debug_map(info);
 
-    _r_debug.r_state = RT_CONSISTENT;
+    _r_debug->r_state = RT_CONSISTENT;
     rtld_db_dlactivity();
 
     pthread_mutex_unlock(&_r_debug_lock);
@@ -258,9 +260,9 @@ void notify_gdb_of_unload(soinfo * info)
 
 void notify_gdb_of_libraries()
 {
-    _r_debug.r_state = RT_ADD;
+    _r_debug->r_state = RT_ADD;
     rtld_db_dlactivity();
-    _r_debug.r_state = RT_CONSISTENT;
+    _r_debug->r_state = RT_CONSISTENT;
     rtld_db_dlactivity();
 }
 
@@ -940,7 +942,8 @@ load_segments(int fd, size_t offset, void *header, soinfo *si)
             TRACE("[ %d - Trying to load segment from '%s' @ 0x%08x "
                   "(0x%08x). p_vaddr=0x%08x p_offset=0x%08x ]\n", pid, si->name,
                   (unsigned)tmp, len, phdr->p_vaddr, phdr->p_offset);
-            if (fd == -1 || PFLAGS_TO_PROT(phdr->p_flags) & PROT_WRITE) {
+            if (fd == -1 || ((si->flags & FLAG_MMAPPED) &&
+                             PFLAGS_TO_PROT(phdr->p_flags) & PROT_WRITE)) {
                 pbase = mmap(tmp, len, PROT_WRITE,
                              MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
                 if (pbase != MAP_FAILED) {
@@ -950,7 +953,7 @@ load_segments(int fd, size_t offset, void *header, soinfo *si)
                     DL_ERR("%s: Memcpy mapping of segment failed!", si->name);
             } else {
                 pbase = mmap(tmp, len, PFLAGS_TO_PROT(phdr->p_flags),
-                             MAP_SHARED | MAP_FIXED, fd,
+                             ((si->flags & FLAG_MMAPPED) ? MAP_SHARED : MAP_PRIVATE) | MAP_FIXED, fd,
                              offset + ((phdr->p_offset) & (~PAGE_MASK)));
             }
             if (pbase == MAP_FAILED) {
@@ -1240,7 +1243,7 @@ load_mapped_library(const char * name, int fd,
      * segments */
     si->base = req_base;
     si->size = ext_sz;
-    si->flags = 0;
+    si->flags = FLAG_MMAPPED;
     si->entry = 0;
     si->dynamic = (unsigned *)-1;
     if (alloc_mem_region(si) < 0)
@@ -1415,6 +1418,8 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
     /* crappy hack part 1: find the read only region */
     int cnt;
     void * ro_region_end = si->base;
+    unsigned lowest_text_rel = 0xffffffff;
+
     Elf32_Ehdr *ehdr = (Elf32_Ehdr *)si->base;
     Elf32_Phdr *phdr = (Elf32_Phdr *)((unsigned char *)si->base + ehdr->e_phoff);
     for (cnt = 0; cnt < ehdr->e_phnum; ++cnt, ++phdr) {
@@ -1427,9 +1432,7 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
     }
 
     void * remapped_page = NULL;
-    void * copy_page = mmap(NULL, PAGE_SIZE,
-                            PROT_READ | PROT_WRITE,
-                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void * copy_page = NULL;
 
     for (idx = 0; idx < count; ++idx) {
         unsigned type = ELF32_R_TYPE(rel->r_info);
@@ -1518,7 +1521,12 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
 
         /* crappy hack part 2: make this page writable */
         void * reloc_page = reloc & ~PAGE_MASK;
-        if (reloc < ro_region_end && reloc_page != remapped_page) {
+        if ((si->flags & FLAG_MMAPPED) &&
+            (reloc < ro_region_end && reloc_page != remapped_page)) {
+            if (copy_page == NULL)
+                copy_page = mmap(NULL, PAGE_SIZE,
+                                 PROT_READ | PROT_WRITE,
+                                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
             if (remapped_page != NULL)
                 mprotect(remapped_page, PAGE_SIZE, PROT_READ | PROT_EXEC);
             memcpy(copy_page, reloc_page, PAGE_SIZE);
@@ -1532,6 +1540,8 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
             memcpy(reloc_page, copy_page, PAGE_SIZE);
             remapped_page = reloc_page;
         }
+        if ((reloc < ro_region_end) && (reloc < lowest_text_rel))
+            lowest_text_rel = reloc & ~PAGE_MASK;
 
 /* TODO: This is ugly. Split up the relocations by arch into
  * different files.
@@ -1638,7 +1648,15 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
         }
         rel++;
     }
-    munmap(copy_page, PAGE_SIZE);
+    if (copy_page) {
+        munmap(copy_page, PAGE_SIZE);
+#if defined(ANDROID_ARM_LINKER)
+        /* If we have a copy_page, it means we applied text relocations,
+         * which, in turn, means we need to maintain Instruction and Data
+         * caches coherent */
+        cacheflush(lowest_text_rel, (unsigned) ro_region_end, 0);
+#endif
+    }
     return 0;
 }
 
@@ -1893,6 +1911,70 @@ static int nullify_closed_stdio (void)
     return return_value;
 }
 
+/* Performs a single (plt) relocation for the relocation at index num, and
+ * returns the resulting relocated address */
+static unsigned int plt_reloc(soinfo *si, unsigned int num)
+{
+    if (si->plt_rel) {
+      reloc_library(si, &si->plt_rel[num], 1);
+      return *(unsigned int *)(si->base + si->plt_rel[num].r_offset);
+    }
+#ifdef ANDROID_SH_LINKER
+    if (si->plt_rela) {
+      reloc_library_a(si, &si->plt_rela[num], 1);
+      return *(unsigned int *)(si->base + si->plt_rela[num].r_offset);
+    }
+#endif
+}
+
+/* As this function is only referenced from assembly, we need to tell the
+ * compiler not to throw it away */
+static unsigned int plt_reloc(soinfo *si, unsigned int num) __attribute__((used));
+
+#ifdef ANDROID_ARM_LINKER
+/* On ARM, the runtime symbol resolution function is called with
+ * - ip pointing to the function pointer to update in PLT_GOT
+ * - lr pointing to &PLT_GOT[2]
+ * - a pointer to the return address on top of the stack.
+ * Note that the stack, when this function is called, in unaligned
+ */
+__asm__ (
+    ".text\n"
+    ".align 2\n"
+    ".type runtime_reloc, %function\n"
+"runtime_reloc:\n"
+    /* We need to save r0-r3 because they are arguments we will be passing
+     * to the resolved function, and r4 to realign the stack */
+    "stmfd  sp!, {r0-r4}\n"
+    /* Prepare the call to plt_reloc.
+     * The first argument is the soinfo pointer, which we stored at
+     * PLT_GOT[1], which is at lr - 4. */
+    "ldr r0, [lr, #-4]\n"
+    /* The second argument is the index of the plt entry, starting from
+       PLT_GOT[3]. This is (ip - (lr + 4)) / 4. */
+    "sub r1, ip, lr\n"
+    "sub r1, #4\n"
+    "lsr r1, r1, #2\n"
+    /* Call plt_reloc */
+    "bl plt_reloc\n"
+    /* Store the resolved function address to ip to use after overwriting
+       r0. */
+    "mov ip, r0\n"
+    /* Restore r0-r3 to be used as arguments when calling the resolved
+     * function, r4 which we saved to realign the stack and lr which
+     * was saved by the plt trampoline. */
+    "ldmia sp!, {r0-r4,lr}\n"
+    /* Jump to the resolved function. */
+    "bx ip\n"
+);
+#else
+#define ANDROID_NO_RUNTIME_RELOC
+#endif
+
+#ifndef ANDROID_NO_RUNTIME_RELOC
+static void runtime_reloc() __attribute__((used));
+#endif
+
 static int link_image(soinfo *si, unsigned wr_offset)
 {
     unsigned *d;
@@ -2028,7 +2110,7 @@ static int link_image(soinfo *si, unsigned wr_offset)
             break;
         case DT_DEBUG:
             // Set the DT_DEBUG entry to the addres of _r_debug for GDB
-            *d = (int) &_r_debug;
+            *d = (int) _r_debug;
             break;
 #ifdef ANDROID_SH_LINKER
         case DT_RELA:
@@ -2136,10 +2218,23 @@ static int link_image(soinfo *si, unsigned wr_offset)
         }
     }
 
+#ifndef ANDROID_NO_RUNTIME_RELOC
+    /* Initialize GOT[1] and GOT[2], which are used by the PLT trampoline */
+    Elf32_Addr *got = (Elf32_Addr *)si->plt_got;
+    got[1] = (Elf32_Addr) si;
+    got[2] = (Elf32_Addr) runtime_reloc;
+#endif
+
     if(si->plt_rel) {
         DEBUG("[ %5d relocating %s plt ]\n", pid, si->name );
+#ifdef ANDROID_NO_RUNTIME_RELOC
         if(reloc_library(si, si->plt_rel, si->plt_rel_count))
             goto fail;
+#else
+        /* Relocate PLT GOT */
+        for (d = got + 3; d < got + 3 + si->plt_rel_count; d++)
+            *d += si->base;
+#endif
     }
     if(si->rel) {
         DEBUG("[ %5d relocating %s ]\n", pid, si->name );
@@ -2150,8 +2245,14 @@ static int link_image(soinfo *si, unsigned wr_offset)
 #ifdef ANDROID_SH_LINKER
     if(si->plt_rela) {
         DEBUG("[ %5d relocating %s plt ]\n", pid, si->name );
+#ifdef ANDROID_NO_RUNTIME_RELOC
         if(reloc_library_a(si, si->plt_rela, si->plt_rela_count))
             goto fail;
+#else
+        /* Relocate PLT GOT */
+        for (d = got + 3; d < got + 3 + si->plt_rela_count; d++)
+            *d += si->base;
+#endif
     }
     if(si->rela) {
         DEBUG("[ %5d relocating %s ]\n", pid, si->name );
@@ -2268,8 +2369,93 @@ static void * __tls_area[ANDROID_TLS_SLOTS];
 #ifdef MOZ_LINKER
 void simple_linker_init(void)
 {
+    int fd;
+    char buf[4096];
+    uintptr_t *auxv;
+    char *base;
+    int phnum = -1;
+    Elf32_Phdr *phdr;
+    Elf32_Dyn *dyn;
+    Elf32_Addr dyn_addr = 0;
+    struct r_debug *debug = NULL;
+    ssize_t len;
+
     pid = getpid();
     ba_init(&ba_nonprelink);
+
+    /* Get program headers location and size for program
+     * /proc/self/auxv contains ELF Auxiliary Vectors passed by the kernel */
+    fd = open("/proc/self/auxv", O_RDONLY);
+    if (fd < 0) {
+        DEBUG("Failed to open /proc/self/auxv\n");
+        return;
+    }
+    len = read(fd, buf, sizeof(buf));
+    if (len < sizeof(uintptr_t) * 2) {
+        DEBUG("Didn't read enough from /proc/self/auxv\n");
+        return;
+    }
+    close(fd);
+    auxv = (uintptr_t *) buf;
+    while ((void *)auxv < (void *)(buf + len) && *auxv) {
+        switch(*auxv) {
+        case AT_PHDR: {
+            phdr = (Elf32_Phdr*) auxv[1];
+            /* Assume the program base is at the beginning of the same page
+             * It should start with the ELF magic number */
+            base = (char *) (auxv[1] & ~0xfff);
+            if (memcmp(base, ELFMAG, 4)) {
+                DEBUG("Couldn't find program base\n");
+                return;
+            }
+            break;
+        }
+        case AT_PHNUM:
+            phnum = (int) auxv[1];
+            break;
+        }
+        auxv += 2;
+    }
+
+    /* Search for the program PT_DYNAMIC segment */
+    for (; phnum >= 0; phnum--, phdr++) {
+      /* Adjust base address with the virtual address of the PT_LOAD segment
+       * corresponding to offset 0 */
+      if (phdr->p_type == PT_LOAD && phdr->p_offset == 0)
+        base -= phdr->p_vaddr;
+      if (phdr->p_type == PT_DYNAMIC)
+        dyn_addr = phdr->p_vaddr;
+    }
+    if (!dyn_addr) {
+        DEBUG("Failed to find PT_DYNAMIC section in program\n");
+        return;
+    }
+    dyn = (Elf32_Dyn *) (dyn_addr + base);
+ 
+    /* Search for the DT_DEBUG information */
+    while (dyn->d_tag) {
+        if (dyn->d_tag == DT_DEBUG) {
+            debug = (struct r_debug *) dyn->d_un.d_ptr;
+            break;
+        }
+        dyn++;
+    }
+    if (!debug) {
+        DEBUG("Failed to find DT_DEBUG info in program\n");
+        return;
+    }
+
+    /* Find link_map info for ourselves, we will be inserting libraries we
+     * load before that */
+    struct link_map *map = debug->r_map;
+    while (map) {
+        if (strcmp(map->l_name, "libmozutils.so"))
+            r_debug_insert = map;
+        map = map->l_next;
+    }
+
+    if (r_debug_insert)
+        _r_debug = debug;
 }
 #else
 unsigned __linker_init(unsigned **elfdata)

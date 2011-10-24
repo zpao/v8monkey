@@ -84,7 +84,7 @@ nsEventShell::GetEventAttributes(nsINode *aNode,
   if (aNode != sEventTargetNode)
     return;
 
-  nsAccUtils::SetAccAttr(aAttributes, nsAccessibilityAtoms::eventFromInput,
+  nsAccUtils::SetAccAttr(aAttributes, nsGkAtoms::eventFromInput,
                          sEventFromUserInput ? NS_LITERAL_STRING("true") :
                                                NS_LITERAL_STRING("false"));
 }
@@ -92,5 +92,5 @@ nsEventShell::GetEventAttributes(nsINode *aNode,
 ////////////////////////////////////////////////////////////////////////////////
 // nsEventShell: private
 
-PRBool nsEventShell::sEventFromUserInput = PR_FALSE;
+bool nsEventShell::sEventFromUserInput = false;
 nsCOMPtr<nsINode> nsEventShell::sEventTargetNode;

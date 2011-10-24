@@ -38,18 +38,20 @@
 #ifndef nsMenuBarListener_h__
 #define nsMenuBarListener_h__
 
-#include "nsIDOMMouseMotionListener.h"
-#include "nsIDOMMouseListener.h"
-#include "nsIDOMKeyListener.h"
-#include "nsIDOMFocusListener.h"
+#include "nsIDOMEventListener.h"
 #include "nsIDOMEventTarget.h"
+
+// X.h defines KeyPress
+#ifdef KeyPress
+#undef KeyPress
+#endif
 
 class nsMenuBarFrame;
 class nsIDOMKeyEvent;
 
 /** editor Implementation of the DragListener interface
  */
-class nsMenuBarListener : public nsIDOMKeyListener, public nsIDOMFocusListener, public nsIDOMMouseListener
+class nsMenuBarListener : public nsIDOMEventListener
 {
 public:
   /** default constructor
@@ -61,25 +63,17 @@ public:
    
   NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent);
   
-  NS_IMETHOD KeyUp(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD KeyDown(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD KeyPress(nsIDOMEvent* aMouseEvent);
-  
-  NS_IMETHOD Focus(nsIDOMEvent* aEvent);
-  NS_IMETHOD Blur(nsIDOMEvent* aEvent);
-  
-  NS_IMETHOD MouseDown(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseUp(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseClick(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseDblClick(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseOver(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseOut(nsIDOMEvent* aMouseEvent);
+  nsresult KeyUp(nsIDOMEvent* aMouseEvent);
+  nsresult KeyDown(nsIDOMEvent* aMouseEvent);
+  nsresult KeyPress(nsIDOMEvent* aMouseEvent);
+  nsresult Blur(nsIDOMEvent* aEvent);
+  nsresult MouseDown(nsIDOMEvent* aMouseEvent);
 
   static nsresult GetMenuAccessKey(PRInt32* aAccessKey);
   
   NS_DECL_ISUPPORTS
 
-  static PRBool IsAccessKeyPressed(nsIDOMKeyEvent* event);
+  static bool IsAccessKeyPressed(nsIDOMKeyEvent* event);
 
 protected:
   static void InitAccessKey();
@@ -92,10 +86,10 @@ protected:
 
   nsMenuBarFrame* mMenuBarFrame; // The menu bar object.
   // Whether or not the ALT key is currently down.
-  PRPackedBool mAccessKeyDown;
+  bool mAccessKeyDown;
   // Whether or not the ALT key down is canceled by other action.
-  PRPackedBool mAccessKeyDownCanceled;
-  static PRBool mAccessKeyFocuses; // Does the access key by itself focus the menubar?
+  bool mAccessKeyDownCanceled;
+  static bool mAccessKeyFocuses; // Does the access key by itself focus the menubar?
   static PRInt32 mAccessKey;     // See nsIDOMKeyEvent.h for sample values
   static PRUint32 mAccessKeyMask;// Modifier mask for the access key
 };

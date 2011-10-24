@@ -42,6 +42,8 @@
 #include "nsIDOMSVGPoint.h"
 #include "nsDOMError.h"
 #include "nsIDOMSVGMatrix.h"
+#include "nsContentUtils.h" // NS_ENSURE_FINITE
+#include "DOMSVGMatrix.h"
 
 // See the architecture comment in DOMSVGPointList.h.
 
@@ -81,7 +83,7 @@ DOMSVGPoint::GetX(float* aX)
 {
 #ifdef MOZ_SMIL
   if (mIsAnimValItem && HasOwner()) {
-    Element()->FlushAnimations(); // May make HasOwner() == PR_FALSE
+    Element()->FlushAnimations(); // May make HasOwner() == false
   }
 #endif
   *aX = HasOwner() ? InternalItem().mX : mPt.mX;
@@ -99,7 +101,7 @@ DOMSVGPoint::SetX(float aX)
 
   if (HasOwner()) {
     InternalItem().mX = aX;
-    Element()->DidChangePointList(PR_TRUE);
+    Element()->DidChangePointList(true);
 #ifdef MOZ_SMIL
     if (mList->AttrIsAnimating()) {
       Element()->AnimationNeedsResample();
@@ -116,7 +118,7 @@ DOMSVGPoint::GetY(float* aY)
 {
 #ifdef MOZ_SMIL
   if (mIsAnimValItem && HasOwner()) {
-    Element()->FlushAnimations(); // May make HasOwner() == PR_FALSE
+    Element()->FlushAnimations(); // May make HasOwner() == false
   }
 #endif
   *aY = HasOwner() ? InternalItem().mY : mPt.mY;
@@ -134,7 +136,7 @@ DOMSVGPoint::SetY(float aY)
 
   if (HasOwner()) {
     InternalItem().mY = aY;
-    Element()->DidChangePointList(PR_TRUE);
+    Element()->DidChangePointList(true);
 #ifdef MOZ_SMIL
     if (mList->AttrIsAnimating()) {
       Element()->AnimationNeedsResample();
@@ -150,34 +152,29 @@ NS_IMETHODIMP
 DOMSVGPoint::MatrixTransform(nsIDOMSVGMatrix *matrix,
                              nsIDOMSVGPoint **_retval)
 {
-  if (!matrix)
+  nsCOMPtr<DOMSVGMatrix> domMatrix = do_QueryInterface(matrix);
+  if (!domMatrix)
     return NS_ERROR_DOM_SVG_WRONG_TYPE_ERR;
-
-  float a, b, c, d, e, f;
-  matrix->GetA(&a);
-  matrix->GetB(&b);
-  matrix->GetC(&c);
-  matrix->GetD(&d);
-  matrix->GetE(&e);
-  matrix->GetF(&f);
 
   float x = HasOwner() ? InternalItem().mX : mPt.mX;
   float y = HasOwner() ? InternalItem().mY : mPt.mY;
 
-  NS_ADDREF(*_retval = new DOMSVGPoint(a*x + c*y + e, b*x + d*y + f));
+  gfxPoint pt = domMatrix->Matrix().Transform(gfxPoint(x, y));
+  NS_ADDREF(*_retval = new DOMSVGPoint(pt));
+
   return NS_OK;
 }
 
 void
 DOMSVGPoint::InsertingIntoList(DOMSVGPointList *aList,
                                PRUint32 aListIndex,
-                               PRBool aIsAnimValItem)
+                               bool aIsAnimValItem)
 {
   NS_ABORT_IF_FALSE(!HasOwner(), "Inserting item that already has an owner");
 
   mList = aList;
   mListIndex = aListIndex;
-  mIsReadonly = PR_FALSE;
+  mIsReadonly = false;
   mIsAnimValItem = aIsAnimValItem;
 
   NS_ABORT_IF_FALSE(IndexIsValid(), "Bad index for DOMSVGPoint!");
@@ -189,7 +186,7 @@ DOMSVGPoint::RemovingFromList()
   mPt = InternalItem();
   mList = nsnull;
   NS_ABORT_IF_FALSE(!mIsReadonly, "mIsReadonly set for list");
-  mIsAnimValItem = PR_FALSE;
+  mIsAnimValItem = false;
 }
 
 SVGPoint&
@@ -199,7 +196,7 @@ DOMSVGPoint::InternalItem()
 }
 
 #ifdef DEBUG
-PRBool
+bool
 DOMSVGPoint::IndexIsValid()
 {
   return mListIndex < mList->InternalList().Length();

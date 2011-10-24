@@ -44,7 +44,7 @@
 #include "nsIDOMElement.h"
 #include "nsIDOMText.h"
 #include "nsIDocument.h"
-#include "nsIDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsIDOMDocument.h"
 #include "nsIDOMDocumentFragment.h"
 #include "nsIDOMNodeList.h"
@@ -224,14 +224,14 @@ txToFragmentHandlerFactory::createHandlerWith(txOutputFormat* aFormat,
                 format.mMethod = eXMLOutput;
             }
 
-            *aHandler = new txMozillaXMLOutput(&format, mFragment, PR_FALSE);
+            *aHandler = new txMozillaXMLOutput(&format, mFragment, false);
             break;
         }
 
         case eXMLOutput:
         case eHTMLOutput:
         {
-            *aHandler = new txMozillaXMLOutput(aFormat, mFragment, PR_FALSE);
+            *aHandler = new txMozillaXMLOutput(aFormat, mFragment, false);
             break;
         }
 
@@ -420,9 +420,9 @@ public:
     {
         return NS_ERROR_XPATH_UNKNOWN_FUNCTION;
     }
-    PRBool caseInsensitiveNameTests()
+    bool caseInsensitiveNameTests()
     {
-        return PR_FALSE;
+        return false;
     }
     void SetErrorOffset(PRUint32 aOffset)
     {
@@ -435,9 +435,9 @@ public:
         aResult = nsnull;
         return NS_ERROR_INVALID_ARG;
     }
-    PRBool isStripSpaceAllowed(const txXPathNode& aNode)
+    bool isStripSpaceAllowed(const txXPathNode& aNode)
     {
-        return PR_FALSE;
+        return false;
     }
     void* getPrivateContext()
     {
@@ -550,7 +550,7 @@ public:
   {
     nsCOMPtr<nsIDocument> document =
         do_QueryInterface(mProcessor->GetSourceContentModel());
-    document->UnblockOnload(PR_TRUE);
+    document->UnblockOnload(true);
   }
 
   NS_IMETHOD Run()
@@ -614,7 +614,7 @@ txMozillaXSLTProcessor::ImportStylesheet(nsIDOMNode *aStyle)
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (styleNode->IsElement()) {
-        mStylesheetDocument = styleNode->GetOwnerDoc();
+        mStylesheetDocument = styleNode->OwnerDoc();
         NS_ENSURE_TRUE(mStylesheetDocument, NS_ERROR_UNEXPECTED);
 
         mEmbeddedStylesheetRoot = static_cast<nsIContent*>(styleNode.get());
@@ -1265,7 +1265,8 @@ txMozillaXSLTProcessor::Initialize(nsISupports* aOwner, JSContext* cx,
     nsIScriptSecurityManager* secMan = nsContentUtils::GetSecurityManager();
     NS_ENSURE_TRUE(secMan, NS_ERROR_UNEXPECTED);
 
-    secMan->GetSubjectPrincipal(getter_AddRefs(prin));
+    nsresult rv = secMan->GetSubjectPrincipal(getter_AddRefs(prin));
+    NS_ENSURE_SUCCESS(rv, rv);
     NS_ENSURE_TRUE(prin, NS_ERROR_UNEXPECTED);
 
     return Init(prin);
@@ -1347,7 +1348,7 @@ txVariable::Convert(nsIVariant *aValue, txAExprResult** aResult)
         // Boolean
         case nsIDataType::VTYPE_BOOL:
         {
-            PRBool value;
+            bool value;
             nsresult rv = aValue->GetAsBool(&value);
             NS_ENSURE_SUCCESS(rv, rv);
 

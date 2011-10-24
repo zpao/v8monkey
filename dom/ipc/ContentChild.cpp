@@ -52,13 +52,14 @@
 #include "AudioChild.h"
 #endif
 
+#include "mozilla/dom/ExternalHelperAppChild.h"
+#include "mozilla/dom/PCrashReporterChild.h"
+#include "mozilla/dom/StorageChild.h"
+#include "mozilla/hal_sandbox/PHalChild.h"
 #include "mozilla/ipc/TestShellChild.h"
-#include "mozilla/net/NeckoChild.h"
 #include "mozilla/ipc/XPCShellEnvironment.h"
 #include "mozilla/jsipc/PContextWrapperChild.h"
-#include "mozilla/dom/ExternalHelperAppChild.h"
-#include "mozilla/dom/StorageChild.h"
-#include "mozilla/dom/PCrashReporterChild.h"
+#include "mozilla/net/NeckoChild.h"
 
 #if defined(MOZ_SYDNEYAUDIO)
 #include "nsAudioStream.h"
@@ -73,6 +74,8 @@
 #include "nsWeakReference.h"
 #include "nsIScriptError.h"
 #include "nsIConsoleService.h"
+#include "nsJSEnvironment.h"
+#include "SandboxHal.h"
 
 #include "History.h"
 #include "nsDocShellCID.h"
@@ -93,7 +96,7 @@
 #include "nsPermissionManager.h"
 #endif
 
-#include "nsAccelerometer.h"
+#include "nsDeviceMotion.h"
 
 #if defined(ANDROID)
 #include "APKOpen.h"
@@ -104,6 +107,11 @@
 #define getpid _getpid
 #endif
 
+#ifdef ACCESSIBILITY
+#include "nsIAccessibilityService.h"
+#endif
+
+using namespace mozilla::hal_sandbox;
 using namespace mozilla::ipc;
 using namespace mozilla::net;
 using namespace mozilla::places;
@@ -260,11 +268,15 @@ ContentChild::Init(MessageLoop* aIOLoop,
     Open(aChannel, aParentHandle, aIOLoop);
     sSingleton = this;
 
+#ifdef MOZ_CRASHREPORTER
+    SendPCrashReporterConstructor(CrashReporter::CurrentThreadId(),
+                                  XRE_GetProcessType());
 #if defined(ANDROID)
-    PCrashReporterChild* crashreporter = SendPCrashReporterConstructor();
+    PCrashReporterChild* crashreporter = ManagedPCrashReporterChild()[0];
+
     InfallibleTArray<Mapping> mappings;
     const struct mapping_info *info = getLibraryMapping();
-    while (info->name) {
+    while (info && info->name) {
         mappings.AppendElement(Mapping(nsDependentCString(info->name),
                                        nsDependentCString(info->file_id),
                                        info->base,
@@ -273,6 +285,7 @@ ContentChild::Init(MessageLoop* aIOLoop,
         info++;
     }
     crashreporter->SendAddLibraryMappings(mappings);
+#endif
 #endif
 
     return true;
@@ -298,36 +311,92 @@ ContentChild::AllocPMemoryReportRequest()
     return new MemoryReportRequestChild();
 }
 
+// This is just a wrapper for InfallibleTArray<MemoryReport> that implements
+// nsISupports, so it can be passed to nsIMemoryMultiReporter::CollectReports.
+class MemoryReportsWrapper : public nsISupports {
+public:
+    NS_DECL_ISUPPORTS
+    MemoryReportsWrapper(InfallibleTArray<MemoryReport> *r) : mReports(r) { }
+    InfallibleTArray<MemoryReport> *mReports;
+};
+NS_IMPL_ISUPPORTS0(MemoryReportsWrapper)
+
+class MemoryReportCallback : public nsIMemoryMultiReporterCallback
+{
+public:
+    NS_DECL_ISUPPORTS
+
+    MemoryReportCallback(const nsACString &aProcess)
+    : mProcess(aProcess)
+    {
+    }
+
+    NS_IMETHOD Callback(const nsACString &aProcess, const nsACString &aPath,
+                        PRInt32 aKind, PRInt32 aUnits, PRInt64 aAmount,
+                        const nsACString &aDescription,
+                        nsISupports *aiWrappedReports)
+    {
+        MemoryReportsWrapper *wrappedReports =
+            static_cast<MemoryReportsWrapper *>(aiWrappedReports);
+
+        MemoryReport memreport(mProcess, nsCString(aPath), aKind, aUnits,
+                               aAmount, nsCString(aDescription));
+        wrappedReports->mReports->AppendElement(memreport);
+        return NS_OK;
+    }
+private:
+    const nsCString mProcess;
+};
+NS_IMPL_ISUPPORTS1(
+  MemoryReportCallback
+, nsIMemoryMultiReporterCallback
+)
+
 bool
 ContentChild::RecvPMemoryReportRequestConstructor(PMemoryReportRequestChild* child)
 {
-    InfallibleTArray<MemoryReport> reports;
     
     nsCOMPtr<nsIMemoryReporterManager> mgr = do_GetService("@mozilla.org/memory-reporter-manager;1");
-    nsCOMPtr<nsISimpleEnumerator> r;
-    mgr->EnumerateReporters(getter_AddRefs(r));
 
-    PRBool more;
-    while (NS_SUCCEEDED(r->HasMoreElements(&more)) && more) {
-      nsCOMPtr<nsIMemoryReporter> report;
-      r->GetNext(getter_AddRefs(report));
+    InfallibleTArray<MemoryReport> reports;
+
+    static const int maxLength = 31;   // big enough; pid is only a few chars
+    nsPrintfCString process(maxLength, "Content (%d)", getpid());
+
+    // First do the vanilla memory reporters.
+    nsCOMPtr<nsISimpleEnumerator> e;
+    mgr->EnumerateReporters(getter_AddRefs(e));
+    bool more;
+    while (NS_SUCCEEDED(e->HasMoreElements(&more)) && more) {
+      nsCOMPtr<nsIMemoryReporter> r;
+      e->GetNext(getter_AddRefs(r));
 
       nsCString path;
+      PRInt32 kind;
+      PRInt32 units;
+      PRInt64 amount;
       nsCString desc;
-      PRInt64 memoryUsed;
-      report->GetPath(getter_Copies(path));
-      report->GetDescription(getter_Copies(desc));
-      report->GetMemoryUsed(&memoryUsed);
+      r->GetPath(path);
+      r->GetKind(&kind);
+      r->GetUnits(&units);
+      r->GetAmount(&amount);
+      r->GetDescription(desc);
 
-      static const int maxLength = 31;   // big enough; pid is only a few chars
-      MemoryReport memreport(nsPrintfCString(maxLength, "Content (%d)",
-                                             getpid()),
-                             path,
-                             desc,
-                             memoryUsed);
-
+      MemoryReport memreport(process, path, kind, units, amount, desc);
       reports.AppendElement(memreport);
+    }
 
+    // Then do the memory multi-reporters, by calling CollectReports on each
+    // one, whereupon the callback will turn each measurement into a
+    // MemoryReport.
+    mgr->EnumerateMultiReporters(getter_AddRefs(e));
+    nsRefPtr<MemoryReportsWrapper> wrappedReports =
+        new MemoryReportsWrapper(&reports);
+    nsRefPtr<MemoryReportCallback> cb = new MemoryReportCallback(process);
+    while (NS_SUCCEEDED(e->HasMoreElements(&more)) && more) {
+      nsCOMPtr<nsIMemoryMultiReporter> r;
+      e->GetNext(getter_AddRefs(r));
+      r->CollectReports(cb, wrappedReports);
     }
 
     child->Send__delete__(child, reports);
@@ -357,15 +426,33 @@ ContentChild::DeallocPBrowser(PBrowserChild* iframe)
 }
 
 PCrashReporterChild*
-ContentChild::AllocPCrashReporter()
+ContentChild::AllocPCrashReporter(const mozilla::dom::NativeThreadId& id,
+                                  const PRUint32& processType)
 {
+#ifdef MOZ_CRASHREPORTER
     return new CrashReporterChild();
+#else
+    return nsnull;
+#endif
 }
 
 bool
 ContentChild::DeallocPCrashReporter(PCrashReporterChild* crashreporter)
 {
     delete crashreporter;
+    return true;
+}
+
+PHalChild*
+ContentChild::AllocPHal()
+{
+    return CreateHalChild();
+}
+
+bool
+ContentChild::DeallocPHal(PHalChild* aHal)
+{
+    delete aHal;
     return true;
 }
 
@@ -476,7 +563,7 @@ ContentChild::RecvRegisterChrome(const InfallibleTArray<ChromePackage>& packages
 }
 
 bool
-ContentChild::RecvSetOffline(const PRBool& offline)
+ContentChild::RecvSetOffline(const bool& offline)
 {
   nsCOMPtr<nsIIOService> io (do_GetIOService());
   NS_ASSERTION(io, "IO Service can not be null");
@@ -606,7 +693,7 @@ ContentChild::RecvAsyncMessage(const nsString& aMsg, const nsString& aJSON)
   nsRefPtr<nsFrameMessageManager> cpm = nsFrameMessageManager::sChildProcessManager;
   if (cpm) {
     cpm->ReceiveMessage(static_cast<nsIContentFrameMessageManager*>(cpm.get()),
-                        aMsg, PR_FALSE, aJSON, nsnull, nsnull);
+                        aMsg, false, aJSON, nsnull, nsnull);
   }
   return true;
 }
@@ -627,8 +714,10 @@ bool
 ContentChild::RecvAddPermission(const IPC::Permission& permission)
 {
 #if MOZ_PERMISSIONS
-  nsRefPtr<nsPermissionManager> permissionManager =
-    nsPermissionManager::GetSingleton();
+  nsCOMPtr<nsIPermissionManager> permissionManagerIface =
+      do_GetService(NS_PERMISSIONMANAGER_CONTRACTID);
+  nsPermissionManager* permissionManager =
+      static_cast<nsPermissionManager*>(permissionManagerIface.get());
   NS_ABORT_IF_FALSE(permissionManager, 
                    "We have no permissionManager in the Content process !");
 
@@ -644,14 +733,16 @@ ContentChild::RecvAddPermission(const IPC::Permission& permission)
 
   return true;
 }
+
 bool
-ContentChild::RecvAccelerationChanged(const double& x, const double& y,
+ContentChild::RecvDeviceMotionChanged(const long int& type,
+                                      const double& x, const double& y,
                                       const double& z)
 {
-    nsCOMPtr<nsIAccelerometerUpdate> acu = 
-        do_GetService(NS_ACCELEROMETER_CONTRACTID);
-    if (acu)
-        acu->AccelerationChanged(x, y, z);
+    nsCOMPtr<nsIDeviceMotionUpdate> dmu = 
+        do_GetService(NS_DEVICE_MOTION_CONTRACTID);
+    if (dmu)
+        dmu->DeviceMotionChanged(type, x, y, z);
     return true;
 }
 
@@ -676,6 +767,18 @@ ContentChild::RecvFlushMemory(const nsString& reason)
   return true;
 }
 
+bool
+ContentChild::RecvActivateA11y()
+{
+#ifdef ACCESSIBILITY
+    // Start accessibility in content process if it's running in chrome
+    // process.
+    nsCOMPtr<nsIAccessibilityService> accService =
+        do_GetService("@mozilla.org/accessibilityService;1");
+#endif
+    return true;
+}
+
 nsString&
 ContentChild::GetIndexedDBPath()
 {
@@ -685,6 +788,29 @@ ContentChild::GetIndexedDBPath()
     }
 
     return *gIndexedDBPath;
+}
+
+bool
+ContentChild::RecvGarbageCollect()
+{
+    nsJSContext::GarbageCollectNow();
+    return true;
+}
+
+bool
+ContentChild::RecvCycleCollect()
+{
+    nsJSContext::GarbageCollectNow();
+    nsJSContext::CycleCollectNow();
+    return true;
+}
+
+bool
+ContentChild::RecvAppInfo(const nsCString& version, const nsCString& buildID)
+{
+    mAppInfo.version.Assign(version);
+    mAppInfo.buildID.Assign(buildID);
+    return true;
 }
 
 } // namespace dom

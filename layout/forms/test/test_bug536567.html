@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=536567
 -->
 <head>
   <title>Test for Bug 536567</title>
-  <script type="application/javascript" src="chrome://mochikit/content/MochiKit/packed.js"></script>
   <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
 </head>
@@ -18,7 +17,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=536567
 
 /** Test for Bug 536567 **/
 
-netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cu = Components.utils;
@@ -37,8 +35,6 @@ var homeDir = dirSvc.get("Desk", Ci.nsILocalFile);
 prefSvc.setBoolPref("browser.privatebrowsing.keep_current_session", true);
 
 function newDir() {
-  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-
   var dir = tmpDir.clone();
   dir.append("testdir" + Math.floor(Math.random() * 10000));
   dir.QueryInterface(Ci.nsILocalFile);
@@ -123,7 +119,7 @@ function runTest() {
     runTest();
   } else {
     index = test[2];
-    content.setAttribute ('src', domains[test[0]] + '/tests/layout/forms/test/bug536567_subframe.html');
+    content.setAttribute ('src', domains[test[0]] + '/chrome/layout/forms/test/bug536567_subframe.html');
   }
 }
 
@@ -137,8 +133,6 @@ function endTest() {
 }
 
 window.addEventListener("message", function(event) {
-  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-
   var test = tests[testIndex];
   var returned = -1;
   for (var i = 0; i < dirs.length; i++) {

@@ -150,12 +150,6 @@
 #define FILEVIEW_MODULE
 #endif
 
-#ifdef MOZ_STORAGE
-#define STORAGE_MODULE MODULE(mozStorageModule)
-#else
-#define STORAGE_MODULE
-#endif
-
 #ifdef MOZ_ZIPWRITER
 #define ZIPWRITER_MODULE MODULE(ZipWriterModule)
 #else
@@ -167,13 +161,6 @@
     MODULE(nsPlacesModule)
 #else
 #define PLACES_MODULES
-#endif
-
-#if (defined(MOZ_MORK) && defined(MOZ_XUL))
-#define MORK_MODULES \
-    MODULE(nsMorkModule)
-#else
-#define MORK_MODULES
 #endif
 
 #ifdef MOZ_XUL
@@ -221,6 +208,8 @@
 #define JSCTYPES_MODULE
 #endif
 
+#define JSREFLECT_MODULE MODULE(jsreflect)
+
 #define SERVICES_CRYPTO_MODULE MODULE(nsServicesCryptoModule)
 
 #ifndef MOZ_APP_COMPONENT_MODULES
@@ -264,9 +253,8 @@
     MODULE(Apprunner)                        \
     MODULE(CommandLineModule)                \
     FILEVIEW_MODULE                          \
-    STORAGE_MODULE                           \
+    MODULE(mozStorageModule)                 \
     PLACES_MODULES                           \
-    MORK_MODULES                             \
     XULENABLED_MODULES                       \
     MODULE(nsToolkitCompsModule)             \
     XREMOTE_MODULES                          \
@@ -280,10 +268,12 @@
     OSXPROXY_MODULE                          \
     WINDOWSPROXY_MODULE                      \
     JSCTYPES_MODULE                          \
+    JSREFLECT_MODULE                         \
     MODULE(jsperf)                           \
     SERVICES_CRYPTO_MODULE                   \
     MOZ_APP_COMPONENT_MODULES                \
     MODULE(nsTelemetryModule)                \
+    MODULE(jsdebugger)                       \
     /* end of list */
 
 #define MODULE(_name) \

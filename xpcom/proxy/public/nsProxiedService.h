@@ -82,11 +82,11 @@
 // static member functions from nsServiceManager.
 
 #define NS_WITH_PROXIED_SERVICE(T, var, cid, Q, rvAddr)     \
-    nsProxiedService _serv##var(cid, NS_GET_IID(T), Q, PR_FALSE, rvAddr);     \
+    nsProxiedService _serv##var(cid, NS_GET_IID(T), Q, false, rvAddr);     \
     T* var = (T*)(nsISupports*)_serv##var;
 
 #define NS_WITH_ALWAYS_PROXIED_SERVICE(T, var, cid, Q, rvAddr)     \
-    nsProxiedService _serv##var(cid, NS_GET_IID(T), Q, PR_TRUE, rvAddr);       \
+    nsProxiedService _serv##var(cid, NS_GET_IID(T), Q, true, rvAddr);       \
     T* var = (T*)(nsISupports*)_serv##var;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,7 +97,7 @@ class NS_STACK_CLASS nsProxiedService
 {
 public:
     nsProxiedService(const nsCID &aClass, const nsIID &aIID, 
-                     nsIEventTarget* aTarget, PRBool always, nsresult* rv)
+                     nsIEventTarget* aTarget, bool always, nsresult* rv)
     {
         nsCOMPtr<nsISupports> svc = do_GetService(aClass, rv);
         if (NS_SUCCEEDED(*rv))
@@ -105,7 +105,7 @@ public:
     }
 
     nsProxiedService(const char* aContractID, const nsIID &aIID, 
-                     nsIEventTarget* aTarget, PRBool always, nsresult* rv)
+                     nsIEventTarget* aTarget, bool always, nsresult* rv)
     {
         nsCOMPtr<nsISupports> svc = do_GetService(aContractID, rv);
         if (NS_SUCCEEDED(*rv))
@@ -120,7 +120,7 @@ public:
 private:
 
     void InitProxy(nsISupports *aObj, const nsIID &aIID,
-                   nsIEventTarget* aTarget, PRBool always, nsresult*rv)
+                   nsIEventTarget* aTarget, bool always, nsresult*rv)
     {
         PRInt32 proxyType = NS_PROXY_SYNC;
         if (always)

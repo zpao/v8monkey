@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *   Original Author: Daniel Glazman <glazman@netscape.com>
+ *   Ms2ger <ms2ger@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -62,7 +63,7 @@ typedef void (*nsProcessValueFunc)(const nsAString * aInputString, nsAString & a
 class nsHTMLCSSUtils
 {
 public:
-  nsHTMLCSSUtils();
+  explicit nsHTMLCSSUtils(nsHTMLEditor* aEditor);
   ~nsHTMLCSSUtils();
 
   enum nsCSSEditableProperty {
@@ -95,12 +96,9 @@ public:
     const char * defaultValue;
     const char * prependValue;
     const char * appendValue;
-    PRBool gettable;
-    PRBool caseSensitiveValue;
+    bool gettable;
+    bool caseSensitiveValue;
   };
-
-public:
-  nsresult    Init(nsHTMLEditor * aEditor);
 
   /** answers true if the given combination element_name/attribute_name
     * has a CSS equivalence in this implementation
@@ -110,7 +108,7 @@ public:
     * @param aProperty      [IN] an atom containing a HTML tag name
     * @param aAttribute     [IN] a string containing the name of a HTML attribute carried by the element above
     */
-  PRBool      IsCSSEditableProperty(nsIDOMNode * aNode, nsIAtom * aProperty, const nsAString * aAttribute);
+  bool        IsCSSEditableProperty(nsIDOMNode * aNode, nsIAtom * aProperty, const nsAString * aAttribute);
 
   /** adds/remove a CSS declaration to the STYLE atrribute carried by a given element
     *
@@ -122,11 +120,11 @@ public:
     */
   nsresult    SetCSSProperty(nsIDOMElement * aElement, nsIAtom * aProperty,
                              const nsAString & aValue,
-                             PRBool aSuppressTransaction);
+                             bool aSuppressTransaction);
   nsresult    SetCSSPropertyPixels(nsIDOMElement *aElement, nsIAtom *aProperty,
-                                   PRInt32 aIntValue, PRBool aSuppressTxn);
+                                   PRInt32 aIntValue, bool aSuppressTxn);
   nsresult    RemoveCSSProperty(nsIDOMElement * aElement, nsIAtom * aProperty,
-                                const nsAString & aPropertyValue, PRBool aSuppressTransaction);
+                                const nsAString & aPropertyValue, bool aSuppressTransaction);
 
   /** directly adds/remove a CSS declaration to the STYLE atrribute carried by
     * a given element without going through the txn manager
@@ -173,26 +171,26 @@ public:
      * @param aProperty     [IN] an atom containing a CSS property
      * @param aAttribute    [IN] pointer to an attribute name or null if this information is irrelevant
      */
-  PRBool      IsCSSInvertable(nsIAtom * aProperty, const nsAString * aAttribute);
+  bool        IsCSSInvertable(nsIAtom * aProperty, const nsAString * aAttribute);
 
   /** Get the default browser background color if we need it for GetCSSBackgroundColorState
     *
     * @param aColor         [OUT] the default color as it is defined in prefs
     */
-  nsresult    GetDefaultBackgroundColor(nsAString & aColor);
+  void        GetDefaultBackgroundColor(nsAString & aColor);
 
   /** Get the default length unit used for CSS Indent/Outdent
     *
     * @param aLengthUnit    [OUT] the default length unit as it is defined in prefs
     */
-  nsresult    GetDefaultLengthUnit(nsAString & aLengthUnit);
+  void        GetDefaultLengthUnit(nsAString & aLengthUnit);
 
   /** asnwers true if the element aElement carries an ID or a class
     *
     * @param aElement       [IN] a DOM element
     * @param aReturn        [OUT] the boolean answer
     */
-  nsresult    HasClassOrID(nsIDOMElement * aElement, PRBool & aReturn);
+  nsresult    HasClassOrID(nsIDOMElement * aElement, bool & aReturn);
 
   /** returns the list of values for the CSS equivalences to
     * the passed HTML style for the passed node
@@ -224,7 +222,7 @@ public:
   nsresult    IsCSSEquivalentToHTMLInlineStyleSet(nsIDOMNode * aNode,
                                                   nsIAtom * aHTMLProperty,
                                                   const nsAString * aAttribute,
-                                                  PRBool & aIsSet,
+                                                  bool & aIsSet,
                                                   nsAString & aValueString,
                                                   PRUint8 aStyleType);
 
@@ -244,7 +242,7 @@ public:
                                           const nsAString * aAttribute,
                                           const nsAString * aValue,
                                           PRInt32 * aCount,
-                                          PRBool aSuppressTransaction);
+                                          bool aSuppressTransaction);
 
   /** removes from the node the CSS inline styles equivalent to the HTML style
     *
@@ -259,7 +257,7 @@ public:
                                              nsIAtom *aHTMLProperty,
                                              const nsAString *aAttribute,
                                              const nsAString *aValue,
-                                             PRBool aSuppressTransaction);
+                                             bool aSuppressTransaction);
 
   /** parses a "xxxx.xxxxxuuu" string where x is a digit and u an alpha char
     * we need such a parser because nsIDOMCSSStyleDeclaration::GetPropertyCSSValue() is not
@@ -276,14 +274,14 @@ public:
     *
     * @param aIsCSSPrefChecked [IN] the new boolean state for the pref
     */
-  nsresult    SetCSSEnabled(PRBool aIsCSSPrefChecked);
+  nsresult    SetCSSEnabled(bool aIsCSSPrefChecked);
 
   /** retrieves the mIsCSSPrefChecked private member, true if the css pref is checked,
     * false if it is not
     *
     * @return                 the boolean value of the css pref
     */
-  PRBool      IsCSSPrefChecked();
+  bool        IsCSSPrefChecked();
 
   /** ElementsSameStyle compares two elements and checks if they have the same
     * specified CSS declarations in the STYLE attribute 
@@ -293,7 +291,7 @@ public:
     * @param aFirstNode           [IN] a DOM node
     * @param aSecondNode          [IN] a DOM node
     */
-  PRBool ElementsSameStyle(nsIDOMNode *aFirstNode, nsIDOMNode *aSecondNode);
+  bool ElementsSameStyle(nsIDOMNode *aFirstNode, nsIDOMNode *aSecondNode);
 
   /** get the specified inline styles (style attribute) for an element
     *
@@ -346,7 +344,7 @@ private:
                                  nsTArray<nsString> & cssValueArray,
                                  const CSSEquivTable * aEquivTable,
                                  const nsAString * aValue,
-                                 PRBool aGetOrRemoveRequest);
+                                 bool aGetOrRemoveRequest);
 
   /** retrieves the CSS declarations equivalent to the given HTML property/attribute/value
     * for a given node
@@ -367,7 +365,7 @@ private:
                                                  const nsAString *aValue,
                                                  nsTArray<nsIAtom*> & aPropertyArray,
                                                  nsTArray<nsString> & aValueArray,
-                                                 PRBool aGetOrRemoveRequest);
+                                                 bool aGetOrRemoveRequest);
 
   /** creates a Transaction for setting or removing a css property
     *
@@ -381,7 +379,7 @@ private:
                                    nsIAtom * aProperty,
                                    const nsAString & aValue,
                                    ChangeCSSInlineStyleTxn ** aTxn,
-                                   PRBool aRemoveProperty);
+                                   bool aRemoveProperty);
 
   /** back-end for GetSpecifiedProperty and GetComputedProperty
    *
@@ -400,11 +398,8 @@ private:
 
 private:
   nsHTMLEditor            *mHTMLEditor;
-  PRBool                  mIsCSSPrefChecked; 
-
+  bool                    mIsCSSPrefChecked; 
 };
-
-nsresult NS_NewHTMLCSSUtils(nsHTMLCSSUtils** aInstancePtrResult);
 
 #define NS_EDITOR_INDENT_INCREMENT_IN        0.4134f
 #define NS_EDITOR_INDENT_INCREMENT_CM        1.05f

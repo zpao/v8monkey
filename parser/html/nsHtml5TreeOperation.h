@@ -68,12 +68,12 @@ enum eHtml5TreeOperation {
   eTreeOpAppendCommentToDocument,
   eTreeOpAppendDoctypeToDocument,
   // Gecko-specific on-pop ops
+  eTreeOpMarkAsBroken,
   eTreeOpRunScript,
   eTreeOpRunScriptAsyncDefer,
   eTreeOpDoneAddingChildren,
   eTreeOpDoneCreatingElement,
   eTreeOpFlushPendingAppendNotifications,
-  eTreeOpSetDocumentCharset,
   eTreeOpNeedsCharsetSwitchTo,
   eTreeOpUpdateStyleSheet,
   eTreeOpProcessMeta,
@@ -82,9 +82,7 @@ enum eHtml5TreeOperation {
   eTreeOpStreamEnded,
   eTreeOpSetStyleLineNumber,
   eTreeOpSetScriptLineNumberAndFreeze,
-#ifdef MOZ_SVG
   eTreeOpSvgLoad,
-#endif
   eTreeOpStartLayout
 };
 
@@ -197,7 +195,7 @@ class nsHtml5TreeOperation {
                      nsIAtom* aName, 
                      nsHtml5HtmlAttributes* aAttributes,
                      nsIContent** aTarget,
-                     PRBool aFromNetwork) {
+                     bool aFromNetwork) {
       NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
         "Op code must be uninitialized when initializing.");
       NS_PRECONDITION(aName, "Initialized tree op with null name.");
@@ -294,7 +292,7 @@ class nsHtml5TreeOperation {
       mInt = aInt;
     }
 
-    inline PRBool IsRunScript() {
+    inline bool IsRunScript() {
       return mOpCode == eTreeOpRunScript;
     }
     
@@ -320,12 +318,12 @@ class nsHtml5TreeOperation {
   private:
 
     nsresult AppendTextToTextNode(const PRUnichar* aBuffer,
-                                  PRInt32 aLength,
+                                  PRUint32 aLength,
                                   nsIContent* aTextNode,
                                   nsHtml5TreeOpExecutor* aBuilder);
 
     nsresult AppendText(const PRUnichar* aBuffer,
-                        PRInt32 aLength,
+                        PRUint32 aLength,
                         nsIContent* aParent,
                         nsHtml5TreeOpExecutor* aBuilder);
 

@@ -45,6 +45,7 @@
 #include "cairo-win32.h"
 
 #include "gfxPlatformFontList.h"
+#include "gfxPlatform.h"
 
 
 /**
@@ -68,16 +69,20 @@ public:
      * family object.
      */
     gfxDWriteFontFamily(const nsAString& aName, 
-                               IDWriteFontFamily *aFamily)
-      : gfxFontFamily(aName), mDWFamily(aFamily) {}
+                        IDWriteFontFamily *aFamily)
+      : gfxFontFamily(aName), mDWFamily(aFamily), mForceGDIClassic(false) {}
     virtual ~gfxDWriteFontFamily();
     
     virtual void FindStyleVariations();
 
-    virtual void LocalizedName(nsAString& aLocalizedName); 
+    virtual void LocalizedName(nsAString& aLocalizedName);
+
+    void SetForceGDIClassic(bool aForce) { mForceGDIClassic = aForce; }
+
 protected:
     /** This font family's directwrite fontfamily object */
     nsRefPtr<IDWriteFontFamily> mDWFamily;
+    bool mForceGDIClassic;
 };
 
 /**
@@ -94,12 +99,13 @@ public:
      */
     gfxDWriteFontEntry(const nsAString& aFaceName,
                               IDWriteFont *aFont) 
-      : gfxFontEntry(aFaceName), mFont(aFont), mFontFile(nsnull)
+      : gfxFontEntry(aFaceName), mFont(aFont), mFontFile(nsnull),
+        mForceGDIClassic(false)
     {
         mItalic = (aFont->GetStyle() == DWRITE_FONT_STYLE_ITALIC ||
                    aFont->GetStyle() == DWRITE_FONT_STYLE_OBLIQUE);
         mStretch = FontStretchFromDWriteStretch(aFont->GetStretch());
-        PRUint16 weight = PR_ROUNDUP(aFont->GetWeight() - 50, 100);
+        PRUint16 weight = NS_ROUNDUP(aFont->GetWeight() - 50, 100);
 
         weight = NS_MAX<PRUint16>(100, weight);
         weight = NS_MIN<PRUint16>(900, weight);
@@ -123,14 +129,15 @@ public:
                               IDWriteFont *aFont,
                               PRUint16 aWeight,
                               PRInt16 aStretch,
-                              PRBool aItalic)
-      : gfxFontEntry(aFaceName), mFont(aFont), mFontFile(nsnull)
+                              bool aItalic)
+      : gfxFontEntry(aFaceName), mFont(aFont), mFontFile(nsnull),
+        mForceGDIClassic(false)
     {
         mWeight = aWeight;
         mStretch = aStretch;
         mItalic = aItalic;
-        mIsUserFont = PR_TRUE;
-        mIsLocalUserFont = PR_TRUE;
+        mIsUserFont = true;
+        mIsLocalUserFont = true;
         mIsCJK = UNINITIALIZED_VALUE;
     }
 
@@ -147,39 +154,43 @@ public:
                               IDWriteFontFile *aFontFile,
                               PRUint16 aWeight,
                               PRInt16 aStretch,
-                              PRBool aItalic)
-      : gfxFontEntry(aFaceName), mFont(nsnull), mFontFile(aFontFile)
+                              bool aItalic)
+      : gfxFontEntry(aFaceName), mFont(nsnull), mFontFile(aFontFile),
+        mForceGDIClassic(false)
     {
         mWeight = aWeight;
         mStretch = aStretch;
         mItalic = aItalic;
-        mIsUserFont = PR_TRUE;
+        mIsUserFont = true;
         mIsCJK = UNINITIALIZED_VALUE;
     }
 
     virtual ~gfxDWriteFontEntry();
 
-    virtual PRBool IsSymbolFont();
+    virtual bool IsSymbolFont();
 
     virtual nsresult GetFontTable(PRUint32 aTableTag,
                                   FallibleTArray<PRUint8>& aBuffer);
 
     nsresult ReadCMAP();
 
-    PRBool IsCJKFont();
+    bool IsCJKFont();
+
+    void SetForceGDIClassic(bool aForce) { mForceGDIClassic = aForce; }
+    bool GetForceGDIClassic() { return mForceGDIClassic; }
 
 protected:
     friend class gfxDWriteFont;
     friend class gfxDWriteFontList;
 
     virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle,
-                                        PRBool aNeedsBold);
+                                        bool aNeedsBold);
     
     nsresult CreateFontFace(
         IDWriteFontFace **aFontFace,
         DWRITE_FONT_SIMULATIONS aSimulations = DWRITE_FONT_SIMULATIONS_NONE);
 
-    static PRBool InitLogFont(IDWriteFont *aFont, LOGFONTW *aLogFont);
+    static bool InitLogFont(IDWriteFont *aFont, LOGFONTW *aLogFont);
 
     /**
      * A fontentry only needs to have either of these. If it has both only
@@ -189,7 +200,8 @@ protected:
     nsRefPtr<IDWriteFontFile> mFontFile;
     DWRITE_FONT_FACE_TYPE mFaceType;
 
-    PRBool mIsCJK;
+    PRInt8 mIsCJK;
+    bool mForceGDIClassic;
 };
 
 
@@ -205,7 +217,7 @@ public:
     virtual nsresult InitFontList();
 
     virtual gfxFontEntry* GetDefaultFont(const gfxFontStyle* aStyle,
-                                         PRBool& aNeedsBold);
+                                         bool& aNeedsBold);
 
     virtual gfxFontEntry* LookupLocalFont(const gfxProxyFontEntry *aProxyEntry,
                                           const nsAString& aFontName);
@@ -214,18 +226,20 @@ public:
                                            const PRUint8 *aFontData,
                                            PRUint32 aLength);
     
-    virtual PRBool ResolveFontName(const nsAString& aFontName,
+    virtual bool ResolveFontName(const nsAString& aFontName,
                                    nsAString& aResolvedFontName);
 
-    PRBool GetStandardFamilyName(const nsAString& aFontName,
+    bool GetStandardFamilyName(const nsAString& aFontName,
                                  nsAString& aFamilyName);
 
     IDWriteGdiInterop *GetGDIInterop() { return mGDIInterop; }
-    PRBool UseGDIFontTableAccess() { return mGDIFontTableAccess; }
+    bool UseGDIFontTableAccess() { return mGDIFontTableAccess; }
 
     virtual gfxFontFamily* FindFamily(const nsAString& aFamily);
 
     virtual void GetFontFamilyList(nsTArray<nsRefPtr<gfxFontFamily> >& aFamilyArray);
+
+    gfxFloat GetForceGDIClassicMaxFontSize() { return mForceGDIClassicMaxFontSize; }
 
 private:
     friend class gfxDWriteFontFamily;
@@ -248,11 +262,13 @@ private:
      */
     FontTable mFontSubstitutes;
 
-    PRBool mInitialized;
+    bool mInitialized;
     virtual nsresult DelayedInitFontList();
 
+    gfxFloat mForceGDIClassicMaxFontSize;
+
     // whether to use GDI font table access routines
-    PRBool mGDIFontTableAccess;
+    bool mGDIFontTableAccess;
     nsRefPtr<IDWriteGdiInterop> mGDIInterop;
 };
 

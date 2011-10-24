@@ -36,12 +36,14 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include <locale.h>
+
+#include "mozilla/Util.h"
+
 #include "nsIPlatformCharset.h"
 #include "pratom.h"
 #include "nsUConvPropertySearch.h"
 #include "nsCOMPtr.h"
 #include "nsReadableUtils.h"
-#include "nsLocaleCID.h"
 #include "nsIComponentManager.h"
 #include "nsIServiceManager.h"
 #include "nsIUnicodeDecoder.h"
@@ -60,6 +62,8 @@
 #include "nsPlatformCharset.h"
 #include "prinit.h"
 #include "nsUnicharUtils.h"
+
+using namespace mozilla;
 
 static const char* kUnixCharsets[][3] = {
 #include "unixcharset.properties.h"
@@ -83,7 +87,7 @@ nsPlatformCharset::ConvertLocaleToCharsetUsingDeprecatedConfig(nsAString& locale
     platformLocaleKey.AppendWithConversion(locale);
 
     nsresult res = nsUConvPropertySearch::SearchPropertyValue(kUnixCharsets,
-        NS_ARRAY_LENGTH(kUnixCharsets), platformLocaleKey, oResult);
+        ArrayLength(kUnixCharsets), platformLocaleKey, oResult);
     if (NS_SUCCEEDED(res))  {
       return NS_OK;
     }
@@ -91,7 +95,7 @@ nsPlatformCharset::ConvertLocaleToCharsetUsingDeprecatedConfig(nsAString& locale
     localeKey.AssignLiteral("locale.all.");
     localeKey.AppendWithConversion(locale);
     res = nsUConvPropertySearch::SearchPropertyValue(kUnixCharsets,
-        NS_ARRAY_LENGTH(kUnixCharsets), localeKey, oResult);
+        ArrayLength(kUnixCharsets), localeKey, oResult);
     if (NS_SUCCEEDED(res))  {
       return NS_OK;
     }

@@ -83,7 +83,7 @@ nsInternetCiter::GetCiteString(const nsAString& aInString, nsAString& aOutString
     {
       aOutString.Append(gt);
       // No space between >: this is ">>> " style quoting, for
-      // compatability with RFC 2646 and format=flowed.
+      // compatibility with RFC 2646 and format=flowed.
       if (*beginIter != gt)
         aOutString.Append(space);
     }
@@ -103,7 +103,7 @@ nsInternetCiter::GetCiteString(const nsAString& aInString, nsAString& aOutString
 nsresult
 nsInternetCiter::StripCitesAndLinebreaks(const nsAString& aInString,
                                          nsAString& aOutString,
-                                         PRBool aLinebreaksToo,
+                                         bool aLinebreaksToo,
                                          PRInt32* aCiteLevel)
 {
   if (aCiteLevel)
@@ -147,7 +147,7 @@ nsInternetCiter::StripCitesAndLinebreaks(const nsAString& aInString,
 nsresult
 nsInternetCiter::StripCites(const nsAString& aInString, nsAString& aOutString)
 {
-  return StripCitesAndLinebreaks(aInString, aOutString, PR_FALSE, 0);
+  return StripCitesAndLinebreaks(aInString, aOutString, false, 0);
 }
 
 static void AddCite(nsAString& aOutString, PRInt32 citeLevel)
@@ -172,7 +172,7 @@ BreakLine(nsAString& aOutString, PRUint32& outStringCol,
     outStringCol = 0;
 }
 
-static inline PRBool IsSpace(PRUnichar c)
+static inline bool IsSpace(PRUnichar c)
 {
   return (nsCRT::IsAsciiSpace(c) || (c == nl) || (c == cr) || (c == nbsp));
 }
@@ -180,7 +180,7 @@ static inline PRBool IsSpace(PRUnichar c)
 nsresult
 nsInternetCiter::Rewrap(const nsAString& aInString,
                         PRUint32 aWrapCol, PRUint32 aFirstLineOffset,
-                        PRBool aRespectNewlines,
+                        bool aRespectNewlines,
                         nsAString& aOutString)
 {
   // There shouldn't be returns in this string, only dom newlines.
@@ -299,7 +299,7 @@ nsInternetCiter::Rewrap(const nsAString& aInString,
     {
 #ifdef DEBUG_wrapping
       if (++loopcount > 1000)
-        NS_ASSERTION(PR_FALSE, "possible infinite loop in nsInternetCiter\n");
+        NS_ASSERTION(false, "possible infinite loop in nsInternetCiter\n");
 
       printf("Inner loop: '%s'\n",
              NS_LossyConvertUTF16toASCII(Substring(tString, posInString,

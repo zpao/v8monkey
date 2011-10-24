@@ -22,6 +22,7 @@
  *
  * Contributor(s):
  *   Shawn Wilsher <me@shawnwilsher.com> (Original Author)
+ *   Philipp von Weitershausen <philipp@weitershausen.de>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -48,7 +49,7 @@ interface nsIURI;
  *
  * @note See also: nsINavHistoryObserver
  */
-[scriptable, uuid(b96adaff-e02c-48da-a379-8af5d10e09af)]
+[scriptable, uuid(3b0953cd-f483-4908-8d91-282b6bda0453)]
 interface nsPIPlacesHistoryListenersNotifier : nsISupports
 {
   /**
@@ -61,7 +62,15 @@ interface nsPIPlacesHistoryListenersNotifier : nsISupports
    *        The time, in microseconds, that the page being expired was visited.
    * @param aWholeEntry
    *        Indicates if this is the last visit for this URI.
+   * @param aGUID
+   *        The unique ID associated with the page.
+   * @param aReason
+   *        Indicates the reason for the removal.
+   *        See nsINavHistoryObserver::REASON_* constants.
    */
-  void notifyOnPageExpired(in nsIURI aURI, in PRTime aVisitTime,
-                           in boolean aWholeEntry);
+  void notifyOnPageExpired(in nsIURI aURI,
+                           in PRTime aVisitTime,
+                           in boolean aWholeEntry,
+                           in ACString aGUID,
+                           in unsigned short aReason);
 };

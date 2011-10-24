@@ -48,9 +48,16 @@
   direction: ltr;
   unicode-bidi: embed;
 }
-bdo[dir] {
+bdi, bdi[dir], output, output[dir], [dir="auto"] { 
+  unicode-bidi: -moz-isolate;
+}
+bdo, bdo[dir] {
   unicode-bidi: bidi-override;
 }
+bdo[dir="auto"] {
+  unicode-bidi: bidi-override -moz-isolate;
+}
+textarea[dir="auto"], pre[dir="auto"] { unicode-bidi: -moz-plaintext; }
 
 /* To ensure http://www.w3.org/TR/REC-html40/struct/dirlang.html#style-bidi:
  *
@@ -87,7 +94,6 @@ header,
 hgroup,
 hr,
 html,
-isindex,
 li,
 listing,
 map,
@@ -109,7 +115,7 @@ thead,
 tr,
 ul,
 xmp {
-  unicode-bidi: embed;
+  unicode-bidi: -moz-isolate;
 }
 
 
@@ -125,7 +131,6 @@ form,
 header,
 hgroup,
 html,
-isindex,
 map,
 nav,
 section {
@@ -361,7 +366,7 @@ table[rules][rules="none"] > td,
 table[rules][rules="none"] > th
 {
   border-width: thin;
-  border-style: hidden;
+  border-style: none;
 }
 
 table[rules][rules="all"] > tr > td,
@@ -575,6 +580,10 @@ ul, menu, dir {
   -moz-padding-start: 40px;
 }
 
+menu[type="context"] {
+  display: none !important;
+}
+
 ol {
   display: block;
   list-style-type: decimal;
@@ -636,7 +645,7 @@ img:-moz-loading::before, input:-moz-loading::before,
 applet:-moz-empty-except-children-with-localname(param):-moz-broken::before,
 applet:-moz-empty-except-children-with-localname(param):-moz-user-disabled::before {
   content: -moz-alt-content !important;
-  unicode-bidi: embed;
+  unicode-bidi: -moz-isolate;
 }
 
 :-moz-any(object,applet):-moz-any(:-moz-broken,:-moz-user-disabled) > *|* {
@@ -694,76 +703,10 @@ canvas {
   -moz-user-select: none;
 }
 
-/* focusable content: anything w/ tabindex >=0 is focusable */
-abbr:-moz-focusring,
-acronym:-moz-focusring,
-address:-moz-focusring,
-applet:-moz-focusring,
-b:-moz-focusring,
-base:-moz-focusring,
-big:-moz-focusring,
-blockquote:-moz-focusring,
-br:-moz-focusring,
-canvas:-moz-focusring,
-caption:-moz-focusring,
-center:-moz-focusring,
-cite:-moz-focusring,
-code:-moz-focusring,
-col:-moz-focusring,
-colgroup:-moz-focusring,
-dd:-moz-focusring,
-del:-moz-focusring,
-dfn:-moz-focusring,
-dir:-moz-focusring,
-div:-moz-focusring,
-dl:-moz-focusring,
-dt:-moz-focusring,
-em:-moz-focusring,
-embed:-moz-focusring,
-fieldset:-moz-focusring,
-font:-moz-focusring,
-form:-moz-focusring,
-h1:-moz-focusring,
-h2:-moz-focusring,
-h3:-moz-focusring,
-h4:-moz-focusring,
-h5:-moz-focusring,
-h6:-moz-focusring,
-hr:-moz-focusring,
-i:-moz-focusring,
-img:-moz-focusring,
-ins:-moz-focusring,
-kbd:-moz-focusring,
-label:-moz-focusring,
-legend:-moz-focusring,
-li:-moz-focusring,
-link:-moz-focusring,
-menu:-moz-focusring,
-object:-moz-focusring,
-ol:-moz-focusring,
-p:-moz-focusring,
-pre:-moz-focusring,
-progress:-moz-focusring,
-q:-moz-focusring,
-s:-moz-focusring,
-samp:-moz-focusring,
-small:-moz-focusring,
-span:-moz-focusring,
-strike:-moz-focusring,
-strong:-moz-focusring,
-sub:-moz-focusring,
-sup:-moz-focusring,
-table:-moz-focusring,
-tbody:-moz-focusring,
-td:-moz-focusring,
-tfoot:-moz-focusring,
-th:-moz-focusring,
-thead:-moz-focusring,
-tr:-moz-focusring,
-tt:-moz-focusring,
-u:-moz-focusring,
-ul:-moz-focusring,
-var:-moz-focusring {
+/* focusable content: anything w/ tabindex >=0 is focusable, but we
+   skip drawing a focus outline on a few things that handle it
+   themselves. */
+:-moz-focusring:not(input):not(button):not(select):not(textarea):not(iframe):not(frame):not(body):not(html) {
   /* Don't specify the outline-color, we should always use initial value. */
    outline: 1px dotted;
 }
@@ -777,6 +720,11 @@ noembed, param {
 area {
   /* Don't give it frames other than its imageframe */
   display: none ! important;
+}
+
+iframe:-moz-full-screen {
+  /* iframes in full-screen mode don't show a border. */
+  border: none;
 }
 
 /* media elements */

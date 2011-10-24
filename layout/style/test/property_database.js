@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *   L. David Baron <dbaron@dbaron.org>, Mozilla Corporation (original author)
+ *   Mats Palmgren <matspal@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -444,8 +445,8 @@ var gCSSProperties = {
 		inherited: false,
 		type: CSS_TYPE_LONGHAND,
 		initial_values: [ "1" ],
-		other_values: [ "2", "100" ],
-		invalid_values: [ "1.0", "-1", "-1000", "0" ]
+		other_values: [ "2", "100", "0" ],
+		invalid_values: [ "1.0", "-1", "-1000" ]
 	},
 	"-moz-box-orient": {
 		domProp: "MozBoxOrient",
@@ -470,6 +471,16 @@ var gCSSProperties = {
 		initial_values: [ "content-box" ],
 		other_values: [ "border-box", "padding-box" ],
 		invalid_values: [ "margin-box", "content", "padding", "border", "margin" ]
+	},
+	"-moz-columns": {
+		domProp: "MozColumns",
+		inherited: false,
+		type: CSS_TYPE_TRUE_SHORTHAND,
+		subproperties: [ "-moz-column-count", "-moz-column-width" ],
+		initial_values: [ "auto", "auto auto" ],
+		other_values: [ "3", "20px", "2 10px", "10px 2", "2 auto", "auto 2", "auto 50px", "50px auto" ],
+		invalid_values: [ "5%", "-1px", "-1", "3 5", "10px 4px", "10 2px 5in", "30px -1",
+		                  "auto 3 5px", "5 auto 20px", "auto auto auto" ]
 	},
 	"-moz-column-count": {
 		domProp: "MozColumnCount",
@@ -920,7 +931,7 @@ var gCSSProperties = {
 		type: CSS_TYPE_LONGHAND,
 		prerequisites: { "width": "300px", "height": "50px" },
 		initial_values: [ "none" ],
-		other_values: [ "translatex(1px)", "translatex(4em)", "translatex(-4px)", "translatex(3px)", "translatex(0px) translatex(1px) translatex(2px) translatex(3px) translatex(4px)", "translatey(4em)", "translate(3px)", "translate(10px, -3px)", "rotate(45deg)", "rotate(45grad)", "rotate(45rad)", "rotate(0)", "scalex(10)", "scaley(10)", "scale(10)", "scale(10, 20)", "skewx(30deg)", "skewx(0)", "skewy(0)", "skewx(30grad)", "skewx(30rad)", "skewy(30deg)", "skewy(30grad)", "skewy(30rad)", "matrix(1, 2, 3, 4, 5px, 6em)", "rotate(45deg) scale(2, 1)", "skewx(45deg) skewx(-50grad)", "translate(0, 0) scale(1, 1) skewx(0) skewy(0) matrix(1, 0, 0, 1, 0, 0)", "translatex(50%)", "translatey(50%)", "translate(50%)", "translate(3%, 5px)", "translate(5px, 3%)", "matrix(1, 2, 3, 4, 5px, 6%)", "matrix(1, 2, 3, 4, 5%, 6px)", "matrix(1, 2, 3, 4, 5%, 6%)",
+		other_values: [ "translatex(1px)", "translatex(4em)", "translatex(-4px)", "translatex(3px)", "translatex(0px) translatex(1px) translatex(2px) translatex(3px) translatex(4px)", "translatey(4em)", "translate(3px)", "translate(10px, -3px)", "rotate(45deg)", "rotate(45grad)", "rotate(45rad)", "rotate(0)", "scalex(10)", "scaley(10)", "scale(10)", "scale(10, 20)", "skewx(30deg)", "skewx(0)", "skewy(0)", "skewx(30grad)", "skewx(30rad)", "skewy(30deg)", "skewy(30grad)", "skewy(30rad)", "matrix(1, 2, 3, 4, 5px, 6em)", "rotate(45deg) scale(2, 1)", "skewx(45deg) skewx(-50grad)", "translate(0, 0) scale(1, 1) skewx(0) skewy(0) matrix(1, 0, 0, 1, 0, 0)", "translatex(50%)", "translatey(50%)", "translate(50%)", "translate(3%, 5px)", "translate(5px, 3%)", "matrix(1, 2, 3, 4, 5px, 6%)", "matrix(1, 2, 3, 4, 5%, 6px)", "matrix(1, 2, 3, 4, 5%, 6%)", "matrix(1, 2, 3, 4, 5, 6)",
 			/* valid calc() values */
 			"translatex(-moz-calc(5px + 10%))",
 			"translatey(-moz-calc(0.25 * 5px + 10% / 3))",
@@ -928,15 +939,19 @@ var gCSSProperties = {
 			"translate(-moz-calc(5px - 3 * 10%), 50px)",
 			"translate(-50px, -moz-calc(5px - 10% * 3))",
 			"matrix(1, 0, 0, 1, -moz-calc(5px * 3), -moz-calc(10% - 3px))"
-		],
-		invalid_values: ["1px", "#0000ff", "red", "auto", "translatex(1px 1px)", "translatex(translatex(1px))", "translatex(#0000ff)", "translatex(red)", "translatey()", "matrix(1, 2, 3, 4, 5, 6)", "matrix(1px, 2px, 3px, 4px, 5px, 6px)", "scale(150%)", "skewx(red)", "matrix(1%, 0, 0, 0, 0px, 0px)", "matrix(0, 1%, 2, 3, 4px,5px)", "matrix(0, 1, 2%, 3, 4px, 5px)", "matrix(0, 1, 2, 3%, 4%, 5%)",
+		].concat(SpecialPowers.getBoolPref("layout.3d-transforms.enabled") ? [
+            "translatez(1px)", "translatez(4em)", "translatez(-4px)", "translatez(0px)", "translatez(2px) translatez(5px)", "translate3d(3px, 4px, 5px)", "translate3d(2em, 3px, 1em)", "translatex(2px) translate3d(4px, 5px, 6px) translatey(1px)", "scale3d(4, 4, 4)", "scale3d(-2, 3, -7)", "scalez(4)", "scalez(-6)", "rotate3d(2, 3, 4, 45deg)", "rotate3d(-3, 7, 0, 12rad)", "rotatex(15deg)", "rotatey(-12grad)", "rotatez(72rad)", "perspective(1000px)", "matrix3d(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)", "matrix3d(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13px, 14em, 15px, 16)", "matrix3d(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 20%, 10%, 15, 16)"
+		] : []),
+		invalid_values: ["1px", "#0000ff", "red", "auto", "translatex(1px 1px)", "translatex(translatex(1px))", "translatex(#0000ff)", "translatex(red)", "translatey()", "matrix(1px, 2px, 3px, 4px, 5px, 6px)", "scale(150%)", "skewx(red)", "matrix(1%, 0, 0, 0, 0px, 0px)", "matrix(0, 1%, 2, 3, 4px,5px)", "matrix(0, 1, 2%, 3, 4px, 5px)", "matrix(0, 1, 2, 3%, 4%, 5%)",
 			/* invalid calc() values */
 			"translatey(-moz-min(5px,10%))",
 			"translatex(-moz-max(5px,10%))",
 			"translate(10px, -moz-calc(min(5px,10%)))",
 			"translate(-moz-calc(max(5px,10%)), 10%)",
 			"matrix(1, 0, 0, 1, -moz-max(5px * 3), -moz-calc(10% - 3px))"
-		]
+		].concat(SpecialPowers.getBoolPref("layout.3d-transforms.enabled") ? [
+            "perspective(0px)", "perspective(-10px)", "matrix3d(dinosaur)", "matrix3d(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)", "matrix3d(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)", "matrix3d(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15%, 16)", "matrix3d(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16px)", "rotatey(words)", "rotatex(7)", "translate3d(3px, 4px, 1px, 7px)"
+		] : [])
 	},
 	"-moz-transform-origin": {
 		domProp: "MozTransformOrigin",
@@ -965,6 +980,57 @@ var gCSSProperties = {
 		invalid_values: ["red", "auto", "none", "0.5 0.5", "40px #0000ff",
 						 "border", "center red", "right diagonal",
 						 "#00ffff bottom"]
+	},
+    "-moz-perspective-origin": {
+        domProp: "MozPerspectiveOrigin",
+        inherited: false,
+        type: CSS_TYPE_LONGHAND,
+        /* no subproperties */
+        prerequisites: { "width": "10px", "height": "10px", "display": "block"},
+        initial_values: [ "50% 50%", "center", "center center" ],
+        other_values: [ "25% 25%", "5px 5px", "20% 3em", "0 0", "0in 1in",
+                        "top", "bottom","top left", "top right",
+                        "top center", "center left", "center right",
+                        "bottom left", "bottom right", "bottom center",
+                        "20% center", "5px center", "13in bottom",
+                        "left 50px", "right 13%", "center 40px",
+                        "-moz-calc(20px)",
+                        "-moz-calc(20px) 10px",
+                        "10px -moz-calc(20px)",
+                        "-moz-calc(20px) 25%",
+                        "25% -moz-calc(20px)",
+                        "-moz-calc(20px) -moz-calc(20px)",
+                        "-moz-calc(20px + 1em) -moz-calc(20px / 2)",
+                        "-moz-calc(20px + 50%) -moz-calc(50% - 10px)",
+                        "-moz-calc(-20px) -moz-calc(-50%)",
+                        "-moz-calc(-20%) -moz-calc(-50%)" ],
+        invalid_values: [ "red", "auto", "none", "0.5 0.5", "40px #0000ff",
+                          "border", "center red", "right diagonal",
+                          "#00ffff bottom"]
+    },
+    "-moz-perspective": {
+		domProp: "MozPerspective",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "none", "0" ],
+		other_values: [ "1000px", "500.2px", "-100px", "-27.2em" ],
+		invalid_values: [ "pants", "200" ]
+	},
+    "-moz-backface-visibility": {
+        domProp: "MozBackfaceVisibility",
+        inherited: false,
+        type: CSS_TYPE_LONGHAND,
+        initial_values: [ "visible" ],
+        other_values: [ "hidden" ],
+        invalid_values: [ "collapse" ]
+    },
+	"-moz-transform-style": {
+		domProp: "MozTransformStyle",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "flat" ],
+		other_values: [ "preserve-3d" ],
+		invalid_values: []
 	},
 	"-moz-user-focus": {
 		domProp: "MozUserFocus",
@@ -1356,8 +1422,7 @@ var gCSSProperties = {
 		domProp: "backgroundPosition",
 		inherited: false,
 		type: CSS_TYPE_LONGHAND,
-		/* is "0px 0px" an initial value or not? */
-		initial_values: [ "top left", "left top", "0% 0%", "0% top", "left 0%", "0px 0px" ],
+		initial_values: [ "top left", "left top", "0% 0%", "0% top", "left 0%" ],
 		other_values: [ "top", "left", "right", "bottom", "center", "center bottom", "bottom center", "center right", "right center", "center top", "top center", "center left", "left center", "right bottom", "bottom right", "50%", "top left, top left", "top left, top right", "top right, top left", "left top, 0% 0%", "10% 20%, 30%, 40%", "top left, bottom right", "right bottom, left top", "0%", "0px", "30px", "0%, 10%, 20%, 30%", "top, top, top, top, top",
 			"-moz-calc(20px)",
 			"-moz-calc(20px) 10px",
@@ -1368,7 +1433,8 @@ var gCSSProperties = {
 			"-moz-calc(20px + 1em) -moz-calc(20px / 2)",
 			"-moz-calc(20px + 50%) -moz-calc(50% - 10px)",
 			"-moz-calc(-20px) -moz-calc(-50%)",
-			"-moz-calc(-20%) -moz-calc(-50%)"
+			"-moz-calc(-20%) -moz-calc(-50%)",
+			"0px 0px"
 		],
 		invalid_values: [ "50% left", "top 50%" ]
 	},
@@ -1792,8 +1858,8 @@ var gCSSProperties = {
 		inherited: true,
 		type: CSS_TYPE_LONGHAND,
 		initial_values: [ (gInitialFontFamilyIsSansSerif ? "sans-serif" : "serif") ],
-		other_values: [ (gInitialFontFamilyIsSansSerif ? "serif" : "sans-serif"), "Times New Roman, serif", "'Times New Roman', serif", "cursive", "fantasy", "\"Times New Roman", "Times, \"Times New Roman" ],
-		invalid_values: [ "\"Times New\" Roman" ]
+		other_values: [ (gInitialFontFamilyIsSansSerif ? "serif" : "sans-serif"), "Times New Roman, serif", "'Times New Roman', serif", "cursive", "fantasy", "\\\"Times New Roman", "\"Times New Roman\"", "Times, \\\"Times New Roman", "Times, \"Times New Roman\"" ],
+		invalid_values: [ "\"Times New\" Roman", "\"Times New Roman\n", "Times, \"Times New Roman\n" ]
 	},
 	"-moz-font-feature-settings": {
 		domProp: "MozFontFeatureSettings",
@@ -2161,6 +2227,14 @@ var gCSSProperties = {
 		other_values: [ "0", "0.4", "0.0000", "-3" ],
 		invalid_values: [ "0px", "1px" ]
 	},
+	"-moz-orient": {
+		domProp: "MozOrient",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "horizontal" ],
+		other_values: [ "vertical" ],
+		invalid_values: [ "auto", "none" ]
+	},
 	"orphans": {
 		domProp: "orphans",
 		inherited: true,
@@ -2490,6 +2564,14 @@ var gCSSProperties = {
 		],
 		invalid_values: []
 	},
+	"text-overflow": {
+		domProp: "textOverflow",
+		inherited: false,
+		type: CSS_TYPE_LONGHAND,
+		initial_values: [ "clip" ],
+		other_values: [ "ellipsis", '""', "''", '"hello"', 'clip clip', 'ellipsis ellipsis', 'clip ellipsis', 'clip ""', '"hello" ""', '"" ellipsis' ],
+		invalid_values: [ "none", "auto", '"hello" inherit', 'inherit "hello"', 'clip initial', 'initial clip', 'initial inherit', 'inherit initial', 'inherit none']
+	},
 	"text-shadow": {
 		domProp: "textShadow",
 		inherited: true,
@@ -2585,8 +2667,8 @@ var gCSSProperties = {
 		inherited: false,
 		type: CSS_TYPE_LONGHAND,
 		initial_values: [ "normal" ],
-		other_values: [ "embed", "bidi-override" ],
-		invalid_values: [ "auto", "none" ]
+		other_values: [ "embed", "bidi-override", "-moz-isolate", "-moz-plaintext", "-moz-isolate bidi-override", "bidi-override -moz-isolate" ],
+		invalid_values: [ "auto", "none", "normal embed", "normal bidi-override", "normal -moz-isolate", "normal -moz-plaintext", "embed normal", "embed -moz-isolate", "embed bidi-override", "embed -moz-plaintext", "bidi-override normal", "bidi-override embed", "bidi-override -moz-plaintext", "-moz-isolate normal", "-moz-isolate embed", "-moz-isolate -moz-plaintext", "-moz-plaintext normal", "-moz-plaintext embed", "-moz-plaintext bidi-override", "-moz-plaintext -moz-isolate" ]
 	},
 	"vertical-align": {
 		domProp: "verticalAlign",

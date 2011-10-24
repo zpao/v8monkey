@@ -25,6 +25,7 @@
 #  Dan Mosedale <dmose@mozilla.org>
 #  Darin Fisher <darin@meer.net>
 #  Benjamin Smedberg <benjamin@smedbergs.us>
+#  Jared Wein <jwein@mozilla.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -79,24 +80,12 @@ ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 TK_LIBS := -framework Cocoa $(TK_LIBS)
 endif
 
-ifndef MOZ_ENABLE_LIBXUL
-ifeq (bundle,$(MOZ_FS_LAYOUT))
-LIBS += $(DIST)/bin/XUL
-else
-EXTRA_DSO_LIBS += xul
-endif
-endif
-
 LIBS += \
   $(EXTRA_DSO_LIBS) \
   $(DIST)/lib/$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
   $(XPCOM_LIBS) \
   $(NSPR_LIBS) \
   $(NULL)
-
-ifdef MOZ_JPROF
-LIBS += -ljprof
-endif
 
 ifndef MOZ_WINCONSOLE
 ifdef MOZ_DEBUG
@@ -141,15 +130,9 @@ endif
 RCFLAGS += -DXULRUNNER_ICO=\"$(DIST)/branding/xulrunner.ico\" -DDOCUMENT_ICO=\"$(DIST)/branding/document.ico\"
 endif
 
-LIBS += $(JEMALLOC_LIBS)
-
 include $(topsrcdir)/config/rules.mk
 
 DEFINES += -DXULRUNNER_ICO=\"$(DIST)/branding/xulrunner.ico\" -DDOCUMENT_ICO=\"$(DIST)/branding/document.ico\"
-
-ifeq ($(MOZ_WIDGET_TOOLKIT),photon)
-LIBS += -lphexlib
-endif
 
 ifeq ($(OS_ARCH),WINNT)
 #
@@ -190,19 +173,6 @@ GARBAGE += xulrunner
 endif
 endif
 
-ifneq (,$(filter gtk gtk2,$(MOZ_WIDGET_TOOLKIT)))
-
-ICON_FILES = \
-  $(DIST)/branding/document.png \
-  $(NULL)
-
-libs:: $(ICON_FILES)
-	$(INSTALL) $(IFLAGS1) $^ $(DIST)/bin/icons
-
-install::
-	$(SYSINSTALL) $(IFLAGS1) $(ICON_FILES) $(DESTDIR)$(mozappdir)/icons
-endif
-
 ifeq ($(MOZ_WIDGET_TOOLKIT),gtk2)
 libs::
 	$(INSTALL) $(IFLAGS1) $(DIST)/branding/default16.png $(DIST)/bin/chrome/icons/default
@@ -212,7 +182,7 @@ endif
 
 # XXX applications would need to supply this file
 #export:: brand.dtd.in
-#	$(PERL) $(topsrcdir)/config/preprocessor.pl $(DEFINES) $(ACDEFINES) $^ > brand.dtd
+#	$(PYTHON) $(topsrcdir)/config/Preprocessor.py $(DEFINES) $(ACDEFINES) $^ > brand.dtd
 
 export::
 	$(NSINSTALL) -D $(DIST)/branding
@@ -220,9 +190,6 @@ ifeq ($(OS_ARCH),WINNT)
 	cp $(srcdir)/xulrunner.ico   $(DIST)/branding/xulrunner.ico
 	cp $(srcdir)/xulrunner.ico   $(DIST)/branding/app.ico
 	cp $(srcdir)/document.ico  $(DIST)/branding/document.ico
-endif
-ifneq (,$(filter gtk gtk2,$(MOZ_WIDGET_TOOLKIT)))
-	cp $(srcdir)/document.png $(DIST)/branding/document.png
 endif
 ifeq ($(MOZ_WIDGET_TOOLKIT),gtk2)
 	cp $(srcdir)/default16.png   $(DIST)/branding/default16.png
@@ -238,11 +205,16 @@ ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 FRAMEWORK_NAME = XUL
 FRAMEWORK_VERSION = $(MOZILLA_VERSION)
 
-libs:: $(PROGRAM)
-	mkdir -p $(DIST)/$(FRAMEWORK_NAME).framework/Versions/$(FRAMEWORK_VERSION)/Resources
-	$(NSINSTALL) $(srcdir)/macbuild/InfoPlist.strings $(DIST)/$(FRAMEWORK_NAME).framework/Versions/$(FRAMEWORK_VERSION)/Resources
-	sed -e "s/APP_VERSION/$(APP_VERSION)/" $(srcdir)/macbuild/Info.plist.in > $(DIST)/$(FRAMEWORK_NAME).framework/Versions/$(FRAMEWORK_VERSION)/Info.plist
-	rsync -a $(DIST)/bin/ $(DIST)/$(FRAMEWORK_NAME).framework/Versions/$(FRAMEWORK_VERSION) --exclude mangle --exclude shlibsign
+FRAMEWORK_DIR = \
+   $(DIST)/$(FRAMEWORK_NAME).framework/Versions/$(FRAMEWORK_VERSION)
+
+$(FRAMEWORK_DIR)/Resources:
+	$(NSINSTALL) -D $@
+
+libs:: $(PROGRAM) $(FRAMEWORK_DIR)/Resources
+	$(NSINSTALL) $(srcdir)/macbuild/InfoPlist.strings $(FRAMEWORK_DIR)/Resources
+	sed -e "s/APP_VERSION/$(APP_VERSION)/" $(srcdir)/macbuild/Info.plist.in > $(FRAMEWORK_DIR)/Info.plist
+	rsync -av $(DIST)/bin/ $(FRAMEWORK_DIR) --exclude mangle --exclude shlibsign
 	rm -f $(DIST)/$(FRAMEWORK_NAME).framework/Versions/Current \
 	      $(DIST)/$(FRAMEWORK_NAME).framework/libxpcom.dylib \
 	      $(DIST)/$(FRAMEWORK_NAME).framework/XUL \

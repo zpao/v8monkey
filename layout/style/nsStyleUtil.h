@@ -56,23 +56,21 @@ enum nsFontSizeType {
 class nsStyleUtil {
 public:
   
-  static float GetScalingFactor(PRInt32 aScaler);
-
   static nscoord CalcFontPointSize(PRInt32 aHTMLSize, PRInt32 aBasePointSize, 
-                                   float aScalingFactor, nsPresContext* aPresContext,
+                                   nsPresContext* aPresContext,
                                    nsFontSizeType aFontSizeType = eFontSize_HTML);
 
   static nscoord FindNextSmallerFontSize(nscoord aFontSize, PRInt32 aBasePointSize, 
-                                         float aScalingFactor, nsPresContext* aPresContext,
+                                         nsPresContext* aPresContext,
                                          nsFontSizeType aFontSizeType = eFontSize_HTML);
 
   static nscoord FindNextLargerFontSize(nscoord aFontSize, PRInt32 aBasePointSize, 
-                                        float aScalingFactor, nsPresContext* aPresContext,
+                                        nsPresContext* aPresContext,
                                         nsFontSizeType aFontSizeType = eFontSize_HTML);
 
   static PRInt32 ConstrainFontWeight(PRInt32 aWeight);
 
- static PRBool DashMatchCompare(const nsAString& aAttributeValue,
+ static bool DashMatchCompare(const nsAString& aAttributeValue,
                                 const nsAString& aSelectorValue,
                                 const nsStringComparator& aComparator);
                                 
@@ -114,9 +112,9 @@ public:
   /*
    * Does this child count as significant for selector matching?
    */
-  static PRBool IsSignificantChild(nsIContent* aChild,
-                                   PRBool aTextIsSignificant,
-                                   PRBool aWhitespaceIsSignificant);
+  static bool IsSignificantChild(nsIContent* aChild,
+                                   bool aTextIsSignificant,
+                                   bool aWhitespaceIsSignificant);
 };
 
 

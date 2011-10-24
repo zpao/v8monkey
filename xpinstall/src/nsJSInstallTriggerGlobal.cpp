@@ -218,7 +218,7 @@ InstallTriggerGlobalUpdateEnabled(JSContext *cx, JSObject *obj, uintN argc, jsva
   if (scriptContext)
     globalObject = scriptContext->GetGlobalObject();
 
-  PRBool nativeRet = PR_FALSE;
+  bool nativeRet = false;
   if (globalObject)
     nativeThis->UpdateEnabled(globalObject, XPI_GLOBAL, &nativeRet);
 
@@ -256,8 +256,9 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
   }
   // get the principal.  if it doesn't exist, die.
   nsCOMPtr<nsIPrincipal> principal;
-  secman->GetSubjectPrincipal(getter_AddRefs(principal));
-  if (!principal)
+  nsresult rv = secman->GetSubjectPrincipal(getter_AddRefs(principal));
+
+  if (NS_FAILED(rv) || !principal)
   {
     JS_ReportError(cx, "Could not get the Subject Principal during InstallTrigger.Install()");
     return JS_FALSE;
@@ -277,7 +278,7 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
     }
   }
 
-  PRBool abortLoad = PR_FALSE;
+  bool abortLoad = false;
 
   // parse associative array of installs
   if ( argc >= 1 && JSVAL_IS_OBJECT(argv[0]) && JSVAL_TO_OBJECT(argv[0]) )
@@ -301,7 +302,7 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
         JSString * str = JS_ValueToString( cx, v );
         if (!str)
         {
-          abortLoad = PR_TRUE;
+          abortLoad = true;
           break;
         }
 
@@ -316,7 +317,7 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
           if (JS_GetProperty( cx, JSVAL_TO_OBJECT(v), "URL", &v2 ) && !JSVAL_IS_VOID(v2)) {
             JSString *str = JS_ValueToString(cx, v2);
             if (!str) {
-              abortLoad = PR_TRUE;
+              abortLoad = true;
               break;
             }
             URL = reinterpret_cast<const PRUnichar*>(JS_GetStringChars(str));
@@ -325,7 +326,7 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
           if (JS_GetProperty( cx, JSVAL_TO_OBJECT(v), "IconURL", &v2 ) && !JSVAL_IS_VOID(v2)) {
             JSString *str = JS_ValueToString(cx, v2);
             if (!str) {
-              abortLoad = PR_TRUE;
+              abortLoad = true;
               break;
             }
             iconURL = reinterpret_cast<const PRUnichar*>(JS_GetStringChars(str));
@@ -334,7 +335,7 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
           if (JS_GetProperty( cx, JSVAL_TO_OBJECT(v), "Hash", &v2) && !JSVAL_IS_VOID(v2)) {
             JSString *str = JS_ValueToString(cx, v2);
             if (!str || !hash.encode(cx, str)) {
-              abortLoad = PR_TRUE;
+              abortLoad = true;
               break;
             }
           }
@@ -343,7 +344,7 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
         {
           JSString *str = JS_ValueToString(cx, v);
           if (!str) {
-            abortLoad = PR_TRUE;
+            abortLoad = true;
             break;
           }
           URL = reinterpret_cast<const PRUnichar*>(JS_GetStringChars(str));
@@ -369,15 +370,15 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
             }
 
             // Make sure we're allowed to load this URL and the icon URL
-            nsresult rv = InstallTriggerCheckLoadURIFromScript(cx, xpiURL);
+            rv = InstallTriggerCheckLoadURIFromScript(cx, xpiURL);
             if (NS_FAILED(rv))
-                abortLoad = PR_TRUE;
+                abortLoad = true;
 
             if (!abortLoad && iconURL)
             {
                 rv = InstallTriggerCheckLoadURIFromScript(cx, icon);
                 if (NS_FAILED(rv))
-                    abortLoad = PR_TRUE;
+                    abortLoad = true;
             }
 
             if (!abortLoad)
@@ -390,11 +391,11 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
                     trigger->Add( item );
                 }
                 else
-                    abortLoad = PR_TRUE;
+                    abortLoad = true;
             }
         }
         else
-            abortLoad = PR_TRUE;
+            abortLoad = true;
       }
       JS_DestroyIdArray( cx, ida );
     }
@@ -404,17 +405,17 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
     if (!abortLoad && trigger->Size() > 0)
     {
         nsCOMPtr<nsIURI> checkuri;
-        nsresult rv = nativeThis->GetOriginatingURI(globalObject,
-                                                    getter_AddRefs(checkuri));
+        rv = nativeThis->GetOriginatingURI(globalObject,
+                                           getter_AddRefs(checkuri));
         if (NS_SUCCEEDED(rv))
         {
-            nsCOMPtr<nsIDOMWindowInternal> win(do_QueryInterface(globalObject));
+            nsCOMPtr<nsIDOMWindow> win = do_QueryInterface(globalObject);
             nsCOMPtr<nsIXPIInstallInfo> installInfo =
                 new nsXPIInstallInfo(win, checkuri, trigger, 0);
             if (installInfo)
             {
                 // installInfo now owns triggers
-                PRBool enabled = PR_FALSE;
+                bool enabled = false;
                 nativeThis->UpdateEnabled(checkuri, XPI_WHITELIST, &enabled);
                 if (!enabled)
                 {
@@ -433,7 +434,7 @@ InstallTriggerGlobalInstall(JSContext *cx, JSObject *obj, uintN argc, jsval *arg
                         trigger->SaveCallback( cx, argv[1] );
                     }
 
-                    PRBool result;
+                    bool result;
                     nativeThis->StartInstall(installInfo, &result);
                     *rval = BOOLEAN_TO_JSVAL(result);
                 }
@@ -530,14 +531,14 @@ InstallTriggerGlobalInstallChrome(JSContext *cx, JSObject *obj, uintN argc, jsva
             {
                 // trigger will free item when complete
                 trigger->Add(item.forget());
-                nsCOMPtr<nsIDOMWindowInternal> win(do_QueryInterface(globalObject));
+                nsCOMPtr<nsIDOMWindow> win = do_QueryInterface(globalObject);
                 nsCOMPtr<nsIXPIInstallInfo> installInfo =
                     new nsXPIInstallInfo(win, checkuri, trigger, chromeType);
                 if (installInfo)
                 {
                     // installInfo owns trigger now
                     trigger.forget();
-                    PRBool enabled = PR_FALSE;
+                    bool enabled = false;
                     nativeThis->UpdateEnabled(checkuri, XPI_WHITELIST,
                                               &enabled);
                     if (!enabled)
@@ -551,7 +552,7 @@ InstallTriggerGlobalInstallChrome(JSContext *cx, JSObject *obj, uintN argc, jsva
                     }
                     else
                     {
-                        PRBool nativeRet = PR_FALSE;
+                        bool nativeRet = false;
                         nativeThis->StartInstall(installInfo, &nativeRet);
                         *rval = BOOLEAN_TO_JSVAL(nativeRet);
                     }
@@ -574,7 +575,7 @@ InstallTriggerGlobalStartSoftwareUpdate(JSContext *cx, JSObject *obj, uintN argc
   if (!nativeThis)
     return JS_FALSE;
 
-  PRBool       nativeRet;
+  bool         nativeRet;
   PRInt32      flags = 0;
 
   *rval = JSVAL_FALSE;
@@ -636,14 +637,14 @@ InstallTriggerGlobalStartSoftwareUpdate(JSContext *cx, JSObject *obj, uintN argc
         {
             // trigger will free item when complete
             trigger->Add(item.forget());
-            nsCOMPtr<nsIDOMWindowInternal> win(do_QueryInterface(globalObject));
+            nsCOMPtr<nsIDOMWindow> win = do_QueryInterface(globalObject);
             nsCOMPtr<nsIXPIInstallInfo> installInfo =
                                 new nsXPIInstallInfo(win, checkuri, trigger, 0);
             if (installInfo)
             {
                 // From here trigger is owned by installInfo until passed on to nsXPInstallManager
                 trigger.forget();
-                PRBool enabled = PR_FALSE;
+                bool enabled = false;
                 nativeThis->UpdateEnabled(checkuri, XPI_WHITELIST, &enabled);
                 if (!enabled)
                 {
@@ -727,7 +728,7 @@ nsresult InitInstallTriggerGlobalClass(JSContext *jscontext, JSObject *global, v
 
     if (nsnull == proto) return NS_ERROR_FAILURE;
 
-    if ( PR_FALSE == JS_DefineConstDoubles(jscontext, proto, diff_constants) )
+    if ( false == JS_DefineConstDoubles(jscontext, proto, diff_constants) )
             return NS_ERROR_FAILURE;
 
     if (prototype != nsnull)
@@ -743,16 +744,16 @@ nsresult InitInstallTriggerGlobalClass(JSContext *jscontext, JSObject *global, v
 //
 nsresult NS_InitInstallTriggerGlobalClass(nsIScriptContext *aContext, void **aPrototype)
 {
-  JSContext *jscontext = (JSContext *)aContext->GetNativeContext();
+  JSContext *jscontext = aContext->GetNativeContext();
   JSObject *proto = nsnull;
   JSObject *constructor = nsnull;
   JSObject *global = JS_GetGlobalObject(jscontext);
   jsval vp;
 
-  if ((PR_TRUE != JS_LookupProperty(jscontext, global, "InstallTriggerGlobal", &vp)) ||
+  if ((true != JS_LookupProperty(jscontext, global, "InstallTriggerGlobal", &vp)) ||
       !JSVAL_IS_OBJECT(vp) ||
       ((constructor = JSVAL_TO_OBJECT(vp)) == nsnull) ||
-      (PR_TRUE != JS_LookupProperty(jscontext, JSVAL_TO_OBJECT(vp), "prototype", &vp)) ||
+      (true != JS_LookupProperty(jscontext, JSVAL_TO_OBJECT(vp), "prototype", &vp)) ||
       !JSVAL_IS_OBJECT(vp))
   {
     nsresult rv = InitInstallTriggerGlobalClass(jscontext, global, (void**)&proto);
@@ -788,7 +789,7 @@ NS_NewScriptInstallTriggerGlobal(nsIScriptContext *aContext,
 
   JSObject *proto;
   JSObject *parent = nsnull;
-  JSContext *jscontext = (JSContext *)aContext->GetNativeContext();
+  JSContext *jscontext = aContext->GetNativeContext();
   nsresult result = NS_OK;
   nsIDOMInstallTriggerGlobal *installTriggerGlobal;
 

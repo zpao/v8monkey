@@ -51,17 +51,26 @@
 #include "nsNetUtil.h"
 #include "nsCRT.h"
 
+#include "prlog.h"
+#include "prtime.h"
+#include "prprf.h"
+#include "prmem.h"
+
 #include "nsNativeCharsetUtils.h"
+
+#ifdef PR_LOGGING
+PRLogModuleInfo* gWin32SoundLog = nsnull;
+#endif
 
 class nsSoundPlayer: public nsRunnable {
 public:
-  nsSoundPlayer(nsISound *aSound, const wchar_t* aSoundName) :
+  nsSoundPlayer(nsSound *aSound, const wchar_t* aSoundName) :
     mSoundName(aSoundName), mSound(aSound)
   {
     Init();
   }
 
-  nsSoundPlayer(nsISound *aSound, const nsAString& aSoundName) :
+  nsSoundPlayer(nsSound *aSound, const nsAString& aSoundName) :
     mSoundName(aSoundName), mSound(aSound)
   {
     Init();
@@ -71,7 +80,7 @@ public:
 
 protected:
   nsString mSoundName;
-  nsISound *mSound; // Strong, but this will be released from SoundReleaser.
+  nsSound *mSound; // Strong, but this will be released from SoundReleaser.
   nsCOMPtr<nsIThread> mThread;
 
   void Init()
@@ -83,7 +92,7 @@ protected:
 
   class SoundReleaser: public nsRunnable {
   public:
-    SoundReleaser(nsISound* aSound) :
+    SoundReleaser(nsSound* aSound) :
       mSound(aSound)
     {
     }
@@ -91,7 +100,7 @@ protected:
     NS_DECL_NSIRUNNABLE
 
   protected:
-    nsISound *mSound;
+    nsSound *mSound;
   };
 };
 
@@ -101,7 +110,7 @@ nsSoundPlayer::Run()
   NS_PRECONDITION(!mSoundName.IsEmpty(), "Sound name should not be empty");
   ::PlaySoundW(mSoundName.get(), NULL, SND_NODEFAULT | SND_ALIAS | SND_ASYNC);
   nsCOMPtr<nsIRunnable> releaser = new SoundReleaser(mSound);
-  // Don't release nsISound from here, because here is not an owning thread of
+  // Don't release nsSound from here, because here is not an owning thread of
   // the nsSound. nsSound must be released in its owning thread.
   mThread->Dispatch(releaser, NS_DISPATCH_NORMAL);
   return NS_OK;
@@ -110,6 +119,7 @@ nsSoundPlayer::Run()
 NS_IMETHODIMP
 nsSoundPlayer::SoundReleaser::Run()
 {
+  mSound->ShutdownOldPlayerThread();
   NS_IF_RELEASE(mSound);
   return NS_OK;
 }
@@ -126,19 +136,31 @@ NS_IMPL_ISUPPORTS2(nsSound, nsISound, nsIStreamLoaderObserver)
 
 nsSound::nsSound()
 {
-  mLastSound = nsnull;
+#ifdef PR_LOGGING
+    if (!gWin32SoundLog) {
+      gWin32SoundLog = PR_NewLogModule("nsSound");
+    }
+#endif
+
+    mLastSound = nsnull;
 }
 
 nsSound::~nsSound()
 {
+  NS_ASSERTION(!mPlayerThread, "player thread is not null but should be");
   PurgeLastSound();
 }
 
-void nsSound::PurgeLastSound() {
+void nsSound::ShutdownOldPlayerThread()
+{
   if (mPlayerThread) {
     mPlayerThread->Shutdown();
     mPlayerThread = nsnull;
   }
+}
+
+void nsSound::PurgeLastSound() 
+{
   if (mLastSound) {
     // Halt any currently playing sound.
     ::PlaySound(nsnull, nsnull, SND_PURGE);
@@ -177,7 +199,8 @@ NS_IMETHODIMP nsSound::OnStreamComplete(nsIStreamLoader *aLoader,
         if (uri) {
           nsCAutoString uriSpec;
           uri->GetSpec(uriSpec);
-          printf("Failed to load %s\n", uriSpec.get());
+          PR_LOG(gWin32SoundLog, PR_LOG_ALWAYS,
+                 ("Failed to load %s\n", uriSpec.get()));
         }
       }
     }
@@ -185,6 +208,7 @@ NS_IMETHODIMP nsSound::OnStreamComplete(nsIStreamLoader *aLoader,
     return aStatus;
   }
 
+  ShutdownOldPlayerThread();
   PurgeLastSound();
 
   if (data && dataLen > 0) {
@@ -209,7 +233,8 @@ NS_IMETHODIMP nsSound::Play(nsIURL *aURL)
 #ifdef DEBUG_SOUND
   char *url;
   aURL->GetSpec(&url);
-  printf("%s\n", url);
+  PR_LOG(gWin32SoundLog, PR_LOG_ALWAYS,
+         ("%s\n", url));
 #endif
 
   nsCOMPtr<nsIStreamLoader> loader;
@@ -234,6 +259,7 @@ NS_IMETHODIMP nsSound::Init()
 
 NS_IMETHODIMP nsSound::PlaySystemSound(const nsAString &aSoundAlias)
 {
+  ShutdownOldPlayerThread();
   PurgeLastSound();
 
   if (!NS_IsMozAliasSound(aSoundAlias)) {
@@ -267,6 +293,7 @@ NS_IMETHODIMP nsSound::PlaySystemSound(const nsAString &aSoundAlias)
 
 NS_IMETHODIMP nsSound::PlayEventSound(PRUint32 aEventId)
 {
+  ShutdownOldPlayerThread();
   PurgeLastSound();
 
   const wchar_t *sound = nsnull;
@@ -285,6 +312,9 @@ NS_IMETHODIMP nsSound::PlayEventSound(PRUint32 aEventId)
       break;
     case EVENT_MENU_POPUP:
       sound = L"MenuPopup";
+      break;
+    case EVENT_EDITOR_MAX_LEN:
+      sound = L".Default";
       break;
     default:
       // Win32 plays no sounds at NS_SYSSOUND_PROMPT_DIALOG and

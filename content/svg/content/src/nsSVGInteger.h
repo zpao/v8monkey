@@ -48,21 +48,29 @@ public:
   void Init(PRUint8 aAttrEnum = 0xff, PRInt32 aValue = 0) {
     mAnimVal = mBaseVal = aValue;
     mAttrEnum = aAttrEnum;
-    mIsAnimated = PR_FALSE;
+    mIsAnimated = false;
+    mIsBaseSet = false;
   }
 
   nsresult SetBaseValueString(const nsAString& aValue,
-                              nsSVGElement *aSVGElement,
-                              PRBool aDoSetAttr);
+                              nsSVGElement *aSVGElement);
   void GetBaseValueString(nsAString& aValue);
 
-  void SetBaseValue(PRInt32 aValue, nsSVGElement *aSVGElement, PRBool aDoSetAttr);
+  void SetBaseValue(PRInt32 aValue, nsSVGElement *aSVGElement);
   PRInt32 GetBaseValue() const
     { return mBaseVal; }
 
   void SetAnimValue(int aValue, nsSVGElement *aSVGElement);
   int GetAnimValue() const
     { return mAnimVal; }
+
+  // Returns true if the animated value of this integer has been explicitly
+  // set (either by animation, or by taking on the base value which has been
+  // explicitly set by markup or a DOM call), false otherwise.
+  // If this returns false, the animated value is still valid, that is,
+  // useable, and represents the default base value of the attribute.
+  bool IsExplicitlySet() const
+    { return mIsAnimated || mIsBaseSet; }
   
   nsresult ToDOMAnimatedInteger(nsIDOMSVGAnimatedInteger **aResult,
                                 nsSVGElement* aSVGElement);
@@ -76,7 +84,8 @@ private:
   PRInt32 mAnimVal;
   PRInt32 mBaseVal;
   PRUint8 mAttrEnum; // element specified tracking for attribute
-  PRPackedBool mIsAnimated;
+  bool mIsAnimated;
+  bool mIsBaseSet;
 
 public:
   struct DOMAnimatedInteger : public nsIDOMSVGAnimatedInteger
@@ -93,7 +102,7 @@ public:
     NS_IMETHOD GetBaseVal(PRInt32* aResult)
       { *aResult = mVal->GetBaseValue(); return NS_OK; }
     NS_IMETHOD SetBaseVal(PRInt32 aValue)
-      { mVal->SetBaseValue(aValue, mSVGElement, PR_TRUE); return NS_OK; }
+      { mVal->SetBaseValue(aValue, mSVGElement); return NS_OK; }
 
     // Script may have modified animation parameters or timeline -- DOM getters
     // need to flush any resample requests to reflect these modifications.
@@ -124,7 +133,7 @@ public:
     virtual nsresult ValueFromString(const nsAString& aStr,
                                      const nsISMILAnimationElement* aSrcElement,
                                      nsSMILValue& aValue,
-                                     PRBool& aPreventCachingOfSandwich) const;
+                                     bool& aPreventCachingOfSandwich) const;
     virtual nsSMILValue GetBaseValue() const;
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);

@@ -127,7 +127,7 @@ typedef enum nsCharType nsCharType;
    *        IBMBIDI_NUMERAL_HINDICONTEXT: convert numbers in Arabic text to Hindi, otherwise to Arabic
    * @return the converted Unichar
    */
-  PRUnichar HandleNumberInChar(PRUnichar aChar, PRBool aPrevCharArabic, PRUint32 aNumFlag);
+  PRUnichar HandleNumberInChar(PRUnichar aChar, bool aPrevCharArabic, PRUint32 aNumFlag);
 
   /**
    * Scan a Unichar string, converting numbers to Arabic or Hindi forms in place
@@ -148,16 +148,16 @@ typedef enum nsCharType nsCharType;
 
   /**
    * Give a UTF-32 codepoint
-   * return PR_TRUE if the codepoint is a Bidi control character (LRE, RLE, PDF, LRO, RLO, LRM, RLM)
-   * return PR_FALSE, otherwise
+   * return true if the codepoint is a Bidi control character (LRE, RLE, PDF, LRO, RLO, LRM, RLM)
+   * return false, otherwise
    */
-  PRBool IsBidiControl(PRUint32 aChar);
+  bool IsBidiControl(PRUint32 aChar);
 
   /**
    * Give an nsString.
-   * @return PR_TRUE if the string contains right-to-left characters
+   * @return true if the string contains right-to-left characters
    */
-  PRBool HasRTLChars(const nsAString& aString);
+  bool HasRTLChars(const nsAString& aString);
 
 // --------------------------------------------------
 // IBMBIDI 

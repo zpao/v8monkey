@@ -7,14 +7,14 @@
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
   <script type="application/javascript"
-          src="chrome://mochikit/content/MochiKit/packed.js"></script>
-  <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
+  <script type="application/javascript"
+          src="../states.js"></script>
   <script type="application/javascript"
           src="../events.js"></script>
   <script type="application/javascript"
@@ -82,7 +82,7 @@
       // gets a time for initialization.
 
       gQueue = new eventQueue();
-      gQueue.push(new synthFocus("input", null, EVENT_FOCUS));
+      gQueue.push(new synthFocus("input"));
       gQueue.push(new spelledTextInvoker("input"));
       gQueue.invoke(); // Will call SimpleTest.finish();
     }

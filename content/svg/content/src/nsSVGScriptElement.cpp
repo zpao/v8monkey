@@ -37,6 +37,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGElement.h"
 #include "nsGkAtoms.h"
 #include "nsIDOMSVGScriptElement.h"
@@ -47,8 +49,9 @@
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsScriptElement.h"
-#include "nsIDOMText.h"
+#include "nsContentUtils.h"
 
+using namespace mozilla;
 using namespace mozilla::dom;
 
 typedef nsSVGElement nsSVGScriptElementBase;
@@ -85,17 +88,17 @@ public:
   virtual void FreezeUriAsyncDefer();
   
   // nsScriptElement
-  virtual PRBool HasScriptContent();
+  virtual bool HasScriptContent();
 
   // nsSVGElement specializations:
   virtual void DidChangeString(PRUint8 aAttrEnum);
 
   // nsIContent specializations:
-  virtual nsresult DoneAddingChildren(PRBool aHaveNotified);
-  virtual PRBool IsDoneAddingChildren();
+  virtual nsresult DoneAddingChildren(bool aHaveNotified);
+  virtual bool IsDoneAddingChildren();
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
-                              PRBool aCompileEventHandlers);
+                              bool aCompileEventHandlers);
 
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
 
@@ -110,7 +113,7 @@ protected:
 
 nsSVGElement::StringInfo nsSVGScriptElement::sStringInfo[1] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_XLink, PR_FALSE }
+  { &nsGkAtoms::href, kNameSpaceID_XLink, false }
 };
 
 NS_IMPL_NS_NEW_SVG_ELEMENT_CHECK_PARSER(Script)
@@ -182,7 +185,7 @@ nsSVGScriptElement::GetType(nsAString & aType)
 NS_IMETHODIMP
 nsSVGScriptElement::SetType(const nsAString & aType)
 {
-  return SetAttr(kNameSpaceID_None, nsGkAtoms::type, aType, PR_TRUE); 
+  return SetAttr(kNameSpaceID_None, nsGkAtoms::type, aType, true); 
 }
 
 //----------------------------------------------------------------------
@@ -207,7 +210,7 @@ nsSVGScriptElement::GetScriptType(nsAString& type)
 void
 nsSVGScriptElement::GetScriptText(nsAString& text)
 {
-  nsContentUtils::GetNodeTextContent(this, PR_FALSE, text);
+  nsContentUtils::GetNodeTextContent(this, false, text);
 }
 
 void
@@ -223,31 +226,28 @@ nsSVGScriptElement::FreezeUriAsyncDefer()
     return;
   }
 
-  // variation of this code in nsHTMLScriptElement - check if changes
-  // need to be transfered when modifying
-  nsAutoString src;
-  mStringAttributes[HREF].GetAnimValue(src, this);
-  // preserving bug 528444 here due to being unsure how to fix correctly
-  if (!src.IsEmpty()) {
+  if (mStringAttributes[HREF].IsExplicitlySet()) {
+    // variation of this code in nsHTMLScriptElement - check if changes
+    // need to be transfered when modifying
+    nsAutoString src;
+    mStringAttributes[HREF].GetAnimValue(src, this);
+
     nsCOMPtr<nsIURI> baseURI = GetBaseURI();
     NS_NewURI(getter_AddRefs(mUri), src, nsnull, baseURI);
     // At this point mUri will be null for invalid URLs.
-    mExternal = PR_TRUE;
+    mExternal = true;
   }
   
-  mFrozen = PR_TRUE;
+  mFrozen = true;
 }
 
 //----------------------------------------------------------------------
 // nsScriptElement methods
 
-PRBool
+bool
 nsSVGScriptElement::HasScriptContent()
 {
-  nsAutoString src;
-  mStringAttributes[HREF].GetAnimValue(src, this);
-  // preserving bug 528444 here due to being unsure how to fix correctly
-  return (mFrozen ? mExternal : !src.IsEmpty()) ||
+  return (mFrozen ? mExternal : mStringAttributes[HREF].IsExplicitlySet()) ||
          nsContentUtils::HasNonEmptyTextContent(this);
 }
 
@@ -268,16 +268,16 @@ nsSVGElement::StringAttributesInfo
 nsSVGScriptElement::GetStringInfo()
 {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              NS_ARRAY_LENGTH(sStringInfo));
+                              ArrayLength(sStringInfo));
 }
 
 //----------------------------------------------------------------------
 // nsIContent methods
 
 nsresult
-nsSVGScriptElement::DoneAddingChildren(PRBool aHaveNotified)
+nsSVGScriptElement::DoneAddingChildren(bool aHaveNotified)
 {
-  mDoneAddingChildren = PR_TRUE;
+  mDoneAddingChildren = true;
   nsresult rv = MaybeProcessScript();
   if (!mAlreadyStarted) {
     // Need to lose parser-insertedness here to allow another script to cause
@@ -287,7 +287,7 @@ nsSVGScriptElement::DoneAddingChildren(PRBool aHaveNotified)
   return rv;
 }
 
-PRBool
+bool
 nsSVGScriptElement::IsDoneAddingChildren()
 {
   return mDoneAddingChildren;
@@ -296,7 +296,7 @@ nsSVGScriptElement::IsDoneAddingChildren()
 nsresult
 nsSVGScriptElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                nsIContent* aBindingParent,
-                               PRBool aCompileEventHandlers)
+                               bool aCompileEventHandlers)
 {
   nsresult rv = nsSVGScriptElementBase::BindToTree(aDocument, aParent,
                                                    aBindingParent,

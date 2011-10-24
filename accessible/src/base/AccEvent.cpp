@@ -103,7 +103,7 @@ AccEvent::GetDocAccessible()
 {
   nsINode *node = GetNode();
   if (node)
-    return GetAccService()->GetDocAccessible(node->GetOwnerDoc());
+    return GetAccService()->GetDocAccessible(node->OwnerDoc());
 
   return nsnull;
 }
@@ -136,39 +136,10 @@ NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(AccEvent, Release)
 ////////////////////////////////////////////////////////////////////////////////
 // AccEvent protected methods
 
-nsAccessible *
+nsAccessible*
 AccEvent::GetAccessibleForNode() const
 {
-  if (!mNode)
-    return nsnull;
-
-  nsAccessible *accessible = GetAccService()->GetAccessible(mNode);
-
-#ifdef MOZ_XUL
-  // hack for xul tree table. We need a better way for firing delayed event
-  // against xul tree table. see bug 386821.
-  // There will be problem if some day we want to fire delayed event against
-  // the xul tree itself or an unselected treeitem.
-  nsCOMPtr<nsIContent> content(do_QueryInterface(mNode));
-  if (content && content->NodeInfo()->Equals(nsAccessibilityAtoms::tree,
-                                             kNameSpaceID_XUL)) {
-
-    nsCOMPtr<nsIDOMXULMultiSelectControlElement> multiSelect =
-      do_QueryInterface(mNode);
-
-    if (multiSelect) {
-      PRInt32 treeIndex = -1;
-      multiSelect->GetCurrentIndex(&treeIndex);
-      if (treeIndex >= 0) {
-        nsRefPtr<nsXULTreeAccessible> treeAcc = do_QueryObject(accessible);
-        if (treeAcc)
-          return treeAcc->GetTreeItemAccessible(treeIndex);
-      }
-    }
-  }
-#endif
-
-  return accessible;
+  return mNode ? GetAccService()->GetAccessible(mNode) : nsnull;
 }
 
 void
@@ -190,7 +161,7 @@ AccEvent::CaptureIsFromUserInput(EIsFromUserInput aIsFromUserInput)
 #endif
 
   if (aIsFromUserInput != eAutoDetect) {
-    mIsFromUserInput = aIsFromUserInput == eFromUserInput ? PR_TRUE : PR_FALSE;
+    mIsFromUserInput = aIsFromUserInput == eFromUserInput ? true : false;
     return;
   }
 
@@ -222,7 +193,7 @@ AccEvent::CaptureIsFromUserInput(EIsFromUserInput aIsFromUserInput)
 // decide how to coalesce events created via accessible (instead of node).
 AccStateChangeEvent::
   AccStateChangeEvent(nsAccessible* aAccessible, PRUint64 aState,
-                      PRBool aIsEnabled, EIsFromUserInput aIsFromUserInput):
+                      bool aIsEnabled, EIsFromUserInput aIsFromUserInput):
   AccEvent(nsIAccessibleEvent::EVENT_STATE_CHANGE, aAccessible,
            aIsFromUserInput, eAllowDupes),
   mState(aState), mIsEnabled(aIsEnabled)
@@ -230,15 +201,18 @@ AccStateChangeEvent::
 }
 
 AccStateChangeEvent::
-  AccStateChangeEvent(nsINode* aNode, PRUint64 aState, PRBool aIsEnabled):
-  AccEvent(::nsIAccessibleEvent::EVENT_STATE_CHANGE, aNode),
+  AccStateChangeEvent(nsINode* aNode, PRUint64 aState, bool aIsEnabled):
+  AccEvent(::nsIAccessibleEvent::EVENT_STATE_CHANGE, aNode,
+           eAutoDetect, eAllowDupes),
   mState(aState), mIsEnabled(aIsEnabled)
 {
 }
 
 AccStateChangeEvent::
   AccStateChangeEvent(nsINode* aNode, PRUint64 aState) :
-  AccEvent(::nsIAccessibleEvent::EVENT_STATE_CHANGE, aNode), mState(aState)
+  AccEvent(::nsIAccessibleEvent::EVENT_STATE_CHANGE, aNode,
+           eAutoDetect, eAllowDupes),
+  mState(aState)
 {
   // Use GetAccessibleForNode() because we do not want to store an accessible
   // since it leads to problems with delayed events in the case when
@@ -270,7 +244,7 @@ AccStateChangeEvent::CreateXPCOMObject()
 // XXX revisit this when coalescence is faster (eCoalesceFromSameSubtree)
 AccTextChangeEvent::
   AccTextChangeEvent(nsAccessible* aAccessible, PRInt32 aStart,
-                     const nsAString& aModifiedText, PRBool aIsInserted,
+                     const nsAString& aModifiedText, bool aIsInserted,
                      EIsFromUserInput aIsFromUserInput)
   : AccEvent(aIsInserted ?
              static_cast<PRUint32>(nsIAccessibleEvent::EVENT_TEXT_INSERTED) :
@@ -312,9 +286,9 @@ AccHideEvent::
   AccHideEvent(nsAccessible* aTarget, nsINode* aTargetNode) :
   AccMutationEvent(::nsIAccessibleEvent::EVENT_HIDE, aTarget, aTargetNode)
 {
-  mParent = mAccessible->GetParent();
-  mNextSibling = mAccessible->GetCachedNextSibling();
-  mPrevSibling = mAccessible->GetCachedPrevSibling();
+  mParent = mAccessible->Parent();
+  mNextSibling = mAccessible->NextSibling();
+  mPrevSibling = mAccessible->PrevSibling();
 }
 
 

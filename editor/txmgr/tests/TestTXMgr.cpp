@@ -561,18 +561,18 @@ public:
     return (mFlags & THROWS_REDO_ERROR_FLAG) ? NS_ERROR_FAILURE : NS_OK;
   }
 
-  NS_IMETHOD GetIsTransient(PRBool *aIsTransient)
+  NS_IMETHOD GetIsTransient(bool *aIsTransient)
   {
     if (aIsTransient)
-      *aIsTransient = (mFlags & TRANSIENT_FLAG) ? PR_TRUE : PR_FALSE;
+      *aIsTransient = (mFlags & TRANSIENT_FLAG) ? true : false;
 
     return NS_OK;
   }
 
-  NS_IMETHOD Merge(nsITransaction *aTransaction, PRBool *aDidMerge)
+  NS_IMETHOD Merge(nsITransaction *aTransaction, bool *aDidMerge)
   {
     if (aDidMerge)
-      *aDidMerge = (mFlags & MERGE_FLAG) ? PR_TRUE : PR_FALSE;
+      *aDidMerge = (mFlags & MERGE_FLAG) ? true : false;
 
     return NS_OK;
   }

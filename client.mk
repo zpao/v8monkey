@@ -1,3 +1,5 @@
+# -*- makefile -*-
+# vim:set ts=8 sw=8 sts=8 noet:
 # ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
@@ -23,6 +25,7 @@
 #   Benjamin Smedberg <bsmedberg@covad.net>
 #   Chase Phillips <chase@mozilla.org>
 #   Mark Mentovai <mark@moxienet.com>
+#   Joey Armstrong <joey@mozilla.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -95,14 +98,11 @@ endif
 AUTOCONF ?= $(shell which autoconf-2.13 autoconf2.13 autoconf213 2>/dev/null | grep -v '^no autoconf' | head -1)
 
 ifeq (,$(strip $(AUTOCONF)))
-AUTOCONF=$(error Couldn't find autoconf 2.13)
+AUTOCONF=$(error Could not find autoconf 2.13)
 endif
 
 MKDIR := mkdir
 SH := /bin/sh
-ifndef MAKE
-MAKE := gmake
-endif
 PERL ?= perl
 PYTHON ?= python
 
@@ -211,7 +211,7 @@ endif
 profiledbuild::
 	$(MAKE) -f $(TOPSRCDIR)/client.mk realbuild MOZ_PROFILE_GENERATE=1
 	$(MAKE) -C $(PGO_OBJDIR) package
-	OBJDIR=${PGO_OBJDIR} $(PROFILE_GEN_SCRIPT)
+	OBJDIR=${PGO_OBJDIR} JARLOG_DIR=${PGO_OBJDIR}/jarlog/en-US $(PROFILE_GEN_SCRIPT)
 	$(MAKE) -f $(TOPSRCDIR)/client.mk maybe_clobber_profiledbuild
 	$(MAKE) -f $(TOPSRCDIR)/client.mk realbuild MOZ_PROFILE_USE=1
 
@@ -268,6 +268,7 @@ else
 ####################################
 # Configure
 
+MAKEFILE      = $(wildcard $(OBJDIR)/Makefile)
 CONFIG_STATUS = $(wildcard $(OBJDIR)/config.status)
 CONFIG_CACHE  = $(wildcard $(OBJDIR)/config.cache)
 
@@ -278,6 +279,7 @@ EXTRA_CONFIG_DEPS := \
 	$(NULL)
 
 $(CONFIGURES): %: %.in $(EXTRA_CONFIG_DEPS)
+	@$(PYTHON) $(TOPSRCDIR)/js/src/config/check-sync-dirs.py $(TOPSRCDIR)/js/src/build $(TOPSRCDIR)/build
 	@echo Generating $@ using autoconf
 	cd $(@D); $(AUTOCONF)
 
@@ -315,7 +317,13 @@ endif
                \"$(MAKE) -f client.mk build\"" && exit 1 )
 	@touch $(OBJDIR)/Makefile
 
-$(OBJDIR)/Makefile $(OBJDIR)/config.status: $(CONFIG_STATUS_DEPS)
+ifneq (,$(MAKEFILE))
+$(OBJDIR)/Makefile: $(OBJDIR)/config.status
+
+$(OBJDIR)/config.status: $(CONFIG_STATUS_DEPS)
+else
+$(OBJDIR)/Makefile: $(CONFIG_STATUS_DEPS)
+endif
 	@$(MAKE) -f $(TOPSRCDIR)/client.mk configure
 
 ifneq (,$(CONFIG_STATUS))
@@ -346,6 +354,7 @@ endif
 # Build it
 
 realbuild::  $(OBJDIR)/Makefile $(OBJDIR)/config.status
+	@$(PYTHON) $(TOPSRCDIR)/js/src/config/check-sync-dirs.py $(TOPSRCDIR)/js/src/config $(TOPSRCDIR)/config
 	$(MOZ_MAKE)
 
 ####################################

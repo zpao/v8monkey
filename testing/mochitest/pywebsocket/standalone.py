@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Standalone Web Socket server.
+"""Standalone WebSocket server.
 
 Use this server to run mod_pywebsocket without Apache HTTP Server.
 
@@ -45,8 +45,8 @@ Usage:
 
 <document_root> is the path to the root directory of HTML files.
 
-<websock_handlers> is the path to the root directory of Web Socket handlers.
-See __init__.py for details of <websock_handlers> and how to write Web Socket
+<websock_handlers> is the path to the root directory of WebSocket handlers.
+See __init__.py for details of <websock_handlers> and how to write WebSocket
 handlers. If this path is relative, <document_root> is used as the base.
 
 <scan_dir> is a path under the root directory. If specified, only the handlers
@@ -80,18 +80,12 @@ try:
 except ImportError:
     pass
 
+from mod_pywebsocket import common
 from mod_pywebsocket import dispatch
 from mod_pywebsocket import handshake
 from mod_pywebsocket import memorizingfile
 from mod_pywebsocket import util
 
-
-_LOG_LEVELS = {
-    'debug': logging.DEBUG,
-    'info': logging.INFO,
-    'warn': logging.WARN,
-    'error': logging.ERROR,
-    'critical': logging.CRITICAL};
 
 _DEFAULT_LOG_MAX_BYTES = 1024 * 256
 _DEFAULT_LOG_BACKUP_COUNT = 5
@@ -100,6 +94,7 @@ _DEFAULT_REQUEST_QUEUE_SIZE = 128
 
 # 1024 is practically large enough to contain WebSocket handshake lines.
 _MAX_MEMORIZED_LINES = 1024
+
 
 def _print_warnings_if_any(dispatcher):
     warnings = dispatcher.source_warnings()
@@ -145,6 +140,8 @@ class _StandaloneConnection(object):
         """Get memorized lines."""
         return self._request_handler.rfile.get_memorized_lines()
 
+    def setblocking(self, blocking): 
+        self._request_handler.rfile._file._sock.setblocking(0)
 
 class _StandaloneRequest(object):
     """Mimic mod_python request."""
@@ -180,12 +177,16 @@ class _StandaloneRequest(object):
 
 
 class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
-    """HTTPServer specialized for Web Socket."""
+    """HTTPServer specialized for WebSocket."""
 
-    SocketServer.ThreadingMixIn.daemon_threads = True
+    daemon_threads = True
+    allow_reuse_address = True
 
     def __init__(self, server_address, RequestHandlerClass):
-        """Override SocketServer.BaseServer.__init__."""
+        """Override SocketServer.TCPServer.__init__ to set SSL enabled socket
+        object to self.socket before server_bind and server_activate, if
+        necessary.
+        """
 
         SocketServer.BaseServer.__init__(
                 self, server_address, RequestHandlerClass)
@@ -213,16 +214,21 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 
 
 class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
-    """CGIHTTPRequestHandler specialized for Web Socket."""
+    """CGIHTTPRequestHandler specialized for WebSocket."""
 
     def setup(self):
-        """Override SocketServer.StreamRequestHandler.setup."""
+        """Override SocketServer.StreamRequestHandler.setup to wrap rfile with
+        MemorizingFile.
+        """
 
-        self.connection = self.request
+        # Call superclass's setup to prepare rfile, wfile, etc. See setup
+        # definition on the root class SocketServer.StreamRequestHandler to
+        # understand what this does.
+        CGIHTTPServer.CGIHTTPRequestHandler.setup(self)
+
         self.rfile = memorizingfile.MemorizingFile(
-                socket._fileobject(self.request, 'rb', self.rbufsize),
-                max_memorized_lines=_MAX_MEMORIZED_LINES)
-        self.wfile = socket._fileobject(self.request, 'wb', self.wbufsize)
+            self.rfile,
+            max_memorized_lines=_MAX_MEMORIZED_LINES)
 
     def __init__(self, *args, **keywords):
         self._request = _StandaloneRequest(
@@ -258,6 +264,8 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                     # In this case, handshake has been successful, so just log
                     # the exception and return False.
                     logging.info('mod_pywebsocket: %s' % e)
+                    logging.info(
+                        'mod_pywebsocket: %s' % util.get_stack_trace())
                 return False
             except handshake.HandshakeError, e:
                 # Handshake for ws(s) failed. Assume http(s).
@@ -268,7 +276,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 return False
             except Exception, e:
                 logging.warning('mod_pywebsocket: %s' % e)
-                logging.info('mod_pywebsocket: %s' % util.get_stack_trace())
+                logging.warning('mod_pywebsocket: %s' % util.get_stack_trace())
                 return False
         return result
 
@@ -310,16 +318,17 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
 
 def _configure_logging(options):
     logger = logging.getLogger()
-    logger.setLevel(_LOG_LEVELS[options.log_level])
+    logger.setLevel(logging.getLevelName(options.log_level.upper()))
     if options.log_file:
         handler = logging.handlers.RotatingFileHandler(
                 options.log_file, 'a', options.log_max, options.log_count)
     else:
         handler = logging.StreamHandler()
     formatter = logging.Formatter(
-            "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s")
+            '[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
 
 def _alias_handlers(dispatcher, websock_handlers_map_file):
     """Set aliases specified in websock_handler_map_file in dispatcher.
@@ -346,7 +355,6 @@ def _alias_handlers(dispatcher, websock_handlers_map_file):
         fp.close()
 
 
-
 def _main():
     parser = optparse.OptionParser()
     parser.add_option('-H', '--server-host', '--server_host',
@@ -354,22 +362,22 @@ def _main():
                       default='',
                       help='server hostname to listen to')
     parser.add_option('-p', '--port', dest='port', type='int',
-                      default=handshake.DEFAULT_WEB_SOCKET_PORT,
+                      default=common.DEFAULT_WEB_SOCKET_PORT,
                       help='port to listen to')
     parser.add_option('-w', '--websock-handlers', '--websock_handlers',
                       dest='websock_handlers',
                       default='.',
-                      help='Web Socket handlers root directory.')
+                      help='WebSocket handlers root directory.')
     parser.add_option('-m', '--websock-handlers-map-file',
                       '--websock_handlers_map_file',
                       dest='websock_handlers_map_file',
                       default=None,
-                      help=('Web Socket handlers map file. '
+                      help=('WebSocket handlers map file. '
                             'Each line consists of alias_resource_path and '
                             'existing_resource_path, separated by spaces.'))
     parser.add_option('-s', '--scan-dir', '--scan_dir', dest='scan_dir',
                       default=None,
-                      help=('Web Socket handlers scan directory. '
+                      help=('WebSocket handlers scan directory. '
                             'Must be a directory under websock_handlers.'))
     parser.add_option('-d', '--document-root', '--document_root',
                       dest='document_root', default='.',
@@ -391,7 +399,8 @@ def _main():
                       default='', help='Log file.')
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
-                      choices=['debug', 'info', 'warn', 'error', 'critical'],
+                      choices=['debug', 'info', 'warning', 'warn', 'error',
+                               'critical'],
                       help='Log level.')
     parser.add_option('--log-max', '--log_max', dest='log_max', type='int',
                       default=_DEFAULT_LOG_MAX_BYTES,
@@ -428,8 +437,10 @@ def _main():
             if 'CYGWIN_PATH' in os.environ:
                 cygwin_path = os.environ['CYGWIN_PATH']
             util.wrap_popen3_for_win(cygwin_path)
+
             def __check_script(scriptpath):
                 return util.get_script_interp(scriptpath, cygwin_path)
+
             CGIHTTPServer.executable = __check_script
 
     if options.use_tls:
@@ -461,7 +472,8 @@ def _main():
                                  WebSocketRequestHandler)
         server.serve_forever()
     except Exception, e:
-        logging.critical(str(e))
+        logging.critical('mod_pywebsocket: %s' % e)
+        logging.critical('mod_pywebsocket: %s' % util.get_stack_trace())
         sys.exit(1)
 
 

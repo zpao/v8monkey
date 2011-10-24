@@ -44,14 +44,12 @@
 #include "nsISupports.h"
 #include "nsMargin.h"
 #include "nsRect.h"
-#include "nsBoundingMetrics.h" // for MOZ_MATHML
+#include "nsBoundingMetrics.h"
 
 //----------------------------------------------------------------------
 
 // Option flags
-#ifdef MOZ_MATHML
 #define NS_REFLOW_CALC_BOUNDING_METRICS  0x0001
-#endif
 
 /**
  * When we store overflow areas as an array of scrollable and visual
@@ -173,13 +171,13 @@ struct nsCollapsingMargin {
       {
       }
 
-    PRBool operator==(const nsCollapsingMargin& aOther)
+    bool operator==(const nsCollapsingMargin& aOther)
       {
         return mMostPos == aOther.mMostPos &&
           mMostNeg == aOther.mMostNeg;
       }
 
-    PRBool operator!=(const nsCollapsingMargin& aOther)
+    bool operator!=(const nsCollapsingMargin& aOther)
       {
         return !(*this == aOther);
       }
@@ -213,7 +211,7 @@ struct nsCollapsingMargin {
         mMostNeg = 0;
       }
 
-    PRBool IsZero() const
+    bool IsZero() const
       {
         return (mMostPos == 0) && (mMostNeg == 0);
       }
@@ -238,7 +236,6 @@ struct nsHTMLReflowMetrics {
 
   enum { ASK_FOR_BASELINE = nscoord_MAX };
 
-#ifdef MOZ_MATHML
   // Metrics that _exactly_ enclose the text to allow precise MathML placements.
   // If the NS_REFLOW_CALC_BOUNDING_METRICS flag is set, then the caller is 
   // requesting that you also compute additional details about your inner
@@ -246,7 +243,6 @@ struct nsHTMLReflowMetrics {
   // msup is the smallest rectangle that _exactly_ encloses both the text
   // of the base and the text of the superscript.
   nsBoundingMetrics mBoundingMetrics;  // [OUT]
-#endif
 
   // Carried out bottom margin values. This is the collapsed
   // (generational) bottom margin value.

@@ -92,7 +92,7 @@ nsINIParserFactory::CreateInstance(nsISupports* aOuter,
 }
 
 NS_IMETHODIMP
-nsINIParserFactory::LockFactory(PRBool aLock)
+nsINIParserFactory::LockFactory(bool aLock)
 {
   return NS_OK;
 }
@@ -100,13 +100,13 @@ nsINIParserFactory::LockFactory(PRBool aLock)
 NS_IMPL_ISUPPORTS1(nsINIParserImpl,
                    nsIINIParser)
 
-static PRBool
+static bool
 SectionCB(const char* aSection, void *aClosure)
 {
   nsTArray<nsCString> *strings = static_cast<nsTArray<nsCString>*>(aClosure);
 
   strings->AppendElement(nsDependentCString(aSection));
-  return PR_TRUE;
+  return true;
 }
 
 NS_IMETHODIMP
@@ -126,13 +126,13 @@ nsINIParserImpl::GetSections(nsIUTF8StringEnumerator* *aResult)
   return rv;
 }
 
-static PRBool
+static bool
 KeyCB(const char* aKey, const char *aValue, void *aClosure)
 {
   nsTArray<nsCString> *strings = static_cast<nsTArray<nsCString>*>(aClosure);
 
   strings->AppendElement(nsDependentCString(aKey));
-  return PR_TRUE;
+  return true;
 }
 
 NS_IMETHODIMP

@@ -99,6 +99,9 @@ protected:
      * 
      * @param proxy
      *        The PAC-style proxy string to parse.  This must not be null.
+     * @param aResolveFlags
+     *        The flags passed to Resolve or AsyncResolve that are stored in 
+     *        proxyInfo.
      * @param result
      *        Upon return this points to a newly allocated nsProxyInfo or null
      *        if the proxy string was invalid.
@@ -106,6 +109,7 @@ protected:
      * @return A pointer beyond the parsed proxy string (never null).
      */
     NS_HIDDEN_(const char *) ExtractProxyInfo(const char *proxy,
+                                              PRUint32 aResolveFlags,
                                               nsProxyInfo **result);
 
     /**
@@ -114,7 +118,7 @@ protected:
      * @param pacURI
      *        The URI spec of the PAC file to load.
      */
-    NS_HIDDEN_(nsresult) ConfigureFromPAC(const nsCString &pacURI, PRBool forceReload);
+    NS_HIDDEN_(nsresult) ConfigureFromPAC(const nsCString &pacURI, bool forceReload);
 
     /**
      * This method builds a list of nsProxyInfo objects from the given PAC-
@@ -122,10 +126,14 @@ protected:
      *
      * @param pacString
      *        The PAC-style proxy string to parse.  This may be empty.
+     * @param aResolveFlags
+     *        The flags passed to Resolve or AsyncResolve that are stored in 
+     *        proxyInfo.
      * @param result
      *        The resulting list of proxy info objects.
      */
     NS_HIDDEN_(void) ProcessPACString(const nsCString &pacString,
+                                      PRUint32 aResolveFlags,
                                       nsIProxyInfo **result);
 
     /**
@@ -168,7 +176,7 @@ protected:
      *
      * @return True if the specified proxy is disabled.
      */
-    NS_HIDDEN_(PRBool) IsProxyDisabled(nsProxyInfo *pi);
+    NS_HIDDEN_(bool) IsProxyDisabled(nsProxyInfo *pi);
 
     /**
      * This method queries the protocol handler for the given scheme to check
@@ -199,6 +207,8 @@ protected:
      *        The failover timeout for this proxy.
      * @param next
      *        The next proxy to try if this one fails.
+     * @param aResolveFlags
+     *        The flags passed to resolve (from nsIProtocolProxyService).
      * @param result
      *        The resulting nsIProxyInfo object.
      */
@@ -208,6 +218,7 @@ protected:
                                                PRUint32 flags,
                                                PRUint32 timeout,
                                                nsIProxyInfo *next,
+                                               PRUint32 aResolveFlags,
                                                nsIProxyInfo **result);
 
     /**
@@ -231,7 +242,7 @@ protected:
     NS_HIDDEN_(nsresult) Resolve_Internal(nsIURI *uri,
                                           const nsProtocolInfo &info,
                                           PRUint32 flags,
-                                          PRBool *usePAC, 
+                                          bool *usePAC, 
                                           nsIProxyInfo **result);
 
     /**
@@ -291,7 +302,7 @@ protected:
      *
      * @return True if the URI can use the specified proxy.
      */
-    NS_HIDDEN_(PRBool) CanUseProxy(nsIURI *uri, PRInt32 defaultPort);
+    NS_HIDDEN_(bool) CanUseProxy(nsIURI *uri, PRInt32 defaultPort);
 
 public:
     // The Sun Forte compiler and others implement older versions of the
@@ -313,7 +324,7 @@ protected:
 
     // simplified array of filters defined by this struct
     struct HostInfo {
-        PRBool  is_ipaddr;
+        bool    is_ipaddr;
         PRInt32 port;
         union {
             HostInfoIP   ip;
@@ -321,7 +332,7 @@ protected:
         };
 
         HostInfo()
-            : is_ipaddr(PR_FALSE)
+            : is_ipaddr(false)
             { /* other members intentionally uninitialized */ }
        ~HostInfo() {
             if (!is_ipaddr && name.host)
@@ -341,6 +352,9 @@ protected:
       // Chain deletion to simplify cleaning up the filter links
       ~FilterLink() { if (next) delete next; }
     };
+
+    // Indicates if local hosts (plain hostnames, no dots) should use the proxy
+    bool mFilterLocalHosts;
 
     // Holds an array of HostInfo objects
     nsTArray<nsAutoPtr<HostInfo> > mHostFiltersArray;
@@ -363,7 +377,7 @@ protected:
     nsCString                    mSOCKSProxyHost;
     PRInt32                      mSOCKSProxyPort;
     PRInt32                      mSOCKSProxyVersion;
-    PRBool                       mSOCKSProxyRemoteDNS;
+    bool                         mSOCKSProxyRemoteDNS;
 
     nsRefPtr<nsPACMan>           mPACMan;  // non-null if we are using PAC
     nsCOMPtr<nsISystemProxySettings> mSystemProxySettings;

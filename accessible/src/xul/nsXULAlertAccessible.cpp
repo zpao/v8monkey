@@ -39,6 +39,8 @@
 
 #include "States.h"
 
+using namespace mozilla::a11y;
+
 ////////////////////////////////////////////////////////////////////////////////
 // nsXULAlertAccessible
 ////////////////////////////////////////////////////////////////////////////////
@@ -70,4 +72,22 @@ nsXULAlertAccessible::GetName(nsAString& aName)
   // If we have both some screen readers will read the alert twice.
   aName.Truncate();
   return NS_OK;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Widgets
+
+bool
+nsXULAlertAccessible::IsWidget() const
+{
+  return true;
+}
+
+nsAccessible*
+nsXULAlertAccessible::ContainerWidget() const
+{
+  // If a part of colorpicker widget.
+  if (mParent && mParent->IsMenuButton())
+    return mParent;
+  return nsnull;
 }

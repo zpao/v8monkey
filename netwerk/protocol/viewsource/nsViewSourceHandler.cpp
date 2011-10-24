@@ -91,7 +91,7 @@ nsViewSourceHandler::NewURI(const nsACString &aSpec,
 
     nsCOMPtr<nsIURI> innerURI;
     nsresult rv = NS_NewURI(getter_AddRefs(innerURI),
-                            Substring(aSpec, colon + 1), aCharset);
+                            Substring(aSpec, colon + 1), aCharset, aBaseURI);
     if (NS_FAILED(rv))
         return rv;
 
@@ -117,7 +117,7 @@ nsViewSourceHandler::NewURI(const nsACString &aSpec,
 
     // Make the URI immutable so it's impossible to get it out of sync
     // with its inner URI.
-    ourURI->SetMutable(PR_FALSE);
+    ourURI->SetMutable(false);
 
     uri.swap(*aResult);
     return rv;
@@ -143,9 +143,9 @@ nsViewSourceHandler::NewChannel(nsIURI* uri, nsIChannel* *result)
 }
 
 NS_IMETHODIMP 
-nsViewSourceHandler::AllowPort(PRInt32 port, const char *scheme, PRBool *_retval)
+nsViewSourceHandler::AllowPort(PRInt32 port, const char *scheme, bool *_retval)
 {
     // don't override anything.  
-    *_retval = PR_FALSE;
+    *_retval = false;
     return NS_OK;
 }

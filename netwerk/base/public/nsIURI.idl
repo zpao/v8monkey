@@ -46,16 +46,16 @@
  *
  * This interface follows Tim Berners-Lee's URI spec (RFC2396) [1], where the
  * basic URI components are defined as such:
- * <pre> 
- *      ftp://username:password@hostname:portnumber/pathname
- *      \ /   \               / \      / \        /\       /
- *       -     ---------------   ------   --------  -------
- *       |            |             |        |         |
- *       |            |             |        |        Path
- *       |            |             |       Port         
- *       |            |            Host      /
- *       |         UserPass                 /
- *     Scheme                              /
+ * <pre>
+ *      ftp://username:password@hostname:portnumber/pathname#ref
+ *      \ /   \               / \      / \        /\         \ /
+ *       -     ---------------   ------   --------  |         -
+ *       |            |             |        |      |         |
+ *       |            |             |        |      |        Ref
+ *       |            |             |       Port    \        /
+ *       |            |            Host      /       --------
+ *       |         UserPass                 /	         |
+ *     Scheme                              /	        Path
  *       \                                /
  *        --------------------------------
  *                       |
@@ -63,6 +63,10 @@
  * </pre>
  * The definition of the URI components has been extended to allow for
  * internationalized domain names [2] and the more generic IRI structure [3].
+ *
+ * Note also that the RFC defines #-separated fragment identifiers as being
+ * "not part of the URI".  Despite this, we bundle them as part of the URI, for
+ * convenience.
  *
  * [1] http://www.ietf.org/rfc/rfc2396.txt
  * [2] http://www.ietf.org/internet-drafts/draft-ietf-idn-idna-06.txt
@@ -90,8 +94,14 @@
  *
  * The correct way to create an nsIURI from a string is via
  * nsIIOService.newURI.
+ *
+ * NOTE: nsBinaryInputStream::ReadObject contains a hackaround to intercept the
+ * old (pre-gecko6) nsIURI IID and swap in the current IID instead, in order
+ * for sessionstore to work after an upgrade.  If this IID is revved further,
+ * we will need to add additional checks there for all intermediate IIDs, until
+ * nsPrincipal is fixed to serialize its URIs as nsISupports (bug 662693).
  */
-[scriptable, uuid(07a22cc0-0ce5-11d3-9331-00104ba0fd40)]
+[scriptable, uuid(395fe045-7d18-4adb-a3fd-af98c8a1af11)]
 interface nsIURI : nsISupports
 {
     /************************************************************************
@@ -194,10 +204,7 @@ interface nsIURI : nsISupports
     boolean schemeIs(in string scheme);
 
     /**
-     * Clones the current URI.  For some protocols, this is more than just an
-     * optimization.  For example, under MacOS, the spec of a file URL does not
-     * necessarily uniquely identify a file since two volumes could share the
-     * same name.
+     * Clones the current URI.
      */
     nsIURI clone();
 
@@ -238,4 +245,40 @@ interface nsIURI : nsISupports
      * characters.
      */
     readonly attribute ACString originCharset;
+
+    /************************************************************************
+     * Additional attribute & methods added for .ref support:
+     */
+
+    /**
+     * Returns the reference portion (the part after the "#") of the URI.
+     * If there isn't one, an empty string is returned.
+     *
+     * Some characters may be escaped.
+     */
+    attribute AUTF8String ref;
+
+    /**
+     * URI equivalence test (not a strict string comparison), ignoring
+     * the value of the .ref member.
+     *
+     * eg. http://foo.com/# == http://foo.com/
+     *     http://foo.com/#aaa == http://foo.com/#bbb
+     */
+    boolean equalsExceptRef(in nsIURI other);
+
+    /**
+     * Clones the current URI, clearing the 'ref' attribute in the clone.
+     */
+    nsIURI cloneIgnoringRef();
+
+    /**
+     * returns a string for the current URI with the ref element cleared.
+     */
+   readonly attribute AUTF8String specIgnoringRef;
+
+    /**
+     * Returns if there is a reference portion (the part after the "#") of the URI.
+     */
+   readonly attribute boolean hasRef;
 };

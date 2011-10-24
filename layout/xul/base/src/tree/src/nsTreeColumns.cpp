@@ -46,7 +46,7 @@
 #include "nsTreeColumns.h"
 #include "nsTreeUtils.h"
 #include "nsStyleContext.h"
-#include "nsIDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsINodeInfo.h"
 #include "nsContentUtils.h"
 #include "nsTreeBodyFrame.h"
@@ -55,7 +55,6 @@
 nsTreeColumn::nsTreeColumn(nsTreeColumns* aColumns, nsIContent* aContent)
   : mContent(aContent),
     mColumns(aColumns),
-    mNext(nsnull),
     mPrevious(nsnull)
 {
   NS_ASSERTION(aContent &&
@@ -70,11 +69,21 @@ nsTreeColumn::~nsTreeColumn()
 {
   if (mNext) {
     mNext->SetPrevious(nsnull);
-    NS_RELEASE(mNext);
   }
 }
 
-NS_IMPL_CYCLE_COLLECTION_1(nsTreeColumn, mContent)
+NS_IMPL_CYCLE_COLLECTION_CLASS(nsTreeColumn)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsTreeColumn)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mContent)
+  if (tmp->mNext) {
+    tmp->mNext->SetPrevious(nsnull);
+    NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mNext)
+  }
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsTreeColumn)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mContent)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mNext)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsTreeColumn)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsTreeColumn)
@@ -102,26 +111,26 @@ nsTreeColumn::GetFrame()
   return mContent->GetPrimaryFrame();
 }
 
-PRBool
+bool
 nsTreeColumn::IsLastVisible(nsTreeBodyFrame* aBodyFrame)
 {
   NS_ASSERTION(GetFrame(), "should have checked for this already");
 
   // cyclers are fixed width, don't adjust them
   if (IsCycler())
-    return PR_FALSE;
+    return false;
 
   // we're certainly not the last visible if we're not visible
   if (GetFrame()->GetRect().width == 0)
-    return PR_FALSE;
+    return false;
 
   // try to find a visible successor
   for (nsTreeColumn *next = GetNext(); next; next = next->GetNext()) {
     nsIFrame* frame = next->GetFrame();
     if (frame && frame->GetRect().width > 0)
-      return PR_FALSE;
+      return false;
   }
-  return PR_TRUE;
+  return true;
 }
 
 nsresult
@@ -133,7 +142,7 @@ nsTreeColumn::GetRect(nsTreeBodyFrame* aBodyFrame, nscoord aY, nscoord aHeight, 
     return NS_ERROR_FAILURE;
   }
 
-  PRBool isRTL = aBodyFrame->GetStyleVisibility()->mDirection == NS_STYLE_DIRECTION_RTL;
+  bool isRTL = aBodyFrame->GetStyleVisibility()->mDirection == NS_STYLE_DIRECTION_RTL;
   *aResult = frame->GetRect();
   aResult->y = aY;
   aResult->height = aHeight;
@@ -237,28 +246,28 @@ nsTreeColumn::GetIndex(PRInt32* aIndex)
 }
 
 NS_IMETHODIMP
-nsTreeColumn::GetPrimary(PRBool* aPrimary)
+nsTreeColumn::GetPrimary(bool* aPrimary)
 {
   *aPrimary = IsPrimary();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsTreeColumn::GetCycler(PRBool* aCycler)
+nsTreeColumn::GetCycler(bool* aCycler)
 {
   *aCycler = IsCycler();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsTreeColumn::GetEditable(PRBool* aEditable)
+nsTreeColumn::GetEditable(bool* aEditable)
 {
   *aEditable = IsEditable();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsTreeColumn::GetSelectable(PRBool* aSelectable)
+nsTreeColumn::GetSelectable(bool* aSelectable)
 {
   *aSelectable = IsSelectable();
   return NS_OK;
@@ -596,7 +605,7 @@ nsTreeColumns::RestoreNaturalOrder()
     nsIContent *child = colsContent->GetChildAt(i);
     nsAutoString ordinal;
     ordinal.AppendInt(i);
-    child->SetAttr(kNameSpaceID_None, nsGkAtoms::ordinal, ordinal, PR_TRUE);
+    child->SetAttr(kNameSpaceID_None, nsGkAtoms::ordinal, ordinal, true);
   }
 
   nsTreeColumns::InvalidateColumns();
@@ -645,7 +654,7 @@ nsTreeColumns::EnsureColumns()
     if (!colFrame)
       return;
 
-    colFrame = colFrame->GetFirstChild(nsnull);
+    colFrame = colFrame->GetFirstPrincipalChild();
     if (!colFrame)
       return;
 

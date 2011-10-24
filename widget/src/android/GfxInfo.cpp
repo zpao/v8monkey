@@ -35,7 +35,6 @@
 
 #include "GfxInfo.h"
 #include "nsUnicharUtils.h"
-#include "nsPrintfCString.h"
 #include "mozilla/FunctionTimer.h"
 #include "prenv.h"
 #include "prprf.h"
@@ -43,11 +42,10 @@
 
 #include "AndroidBridge.h"
 
-#if defined(MOZ_CRASHREPORTER) && defined(MOZ_ENABLE_LIBXUL)
+#if defined(MOZ_CRASHREPORTER)
 #include "nsExceptionHandler.h"
 #include "nsICrashReporter.h"
 #define NS_CRASHREPORTER_CONTRACTID "@mozilla.org/toolkit/crash-reporter;1"
-#include "nsIPrefService.h"
 #endif
 
 using namespace mozilla::widget;
@@ -55,13 +53,19 @@ using namespace mozilla::widget;
 /* GetD2DEnabled and GetDwriteEnabled shouldn't be called until after gfxPlatform initialization
  * has occurred because they depend on it for information. (See bug 591561) */
 nsresult
-GfxInfo::GetD2DEnabled(PRBool *aEnabled)
+GfxInfo::GetD2DEnabled(bool *aEnabled)
 {
   return NS_ERROR_FAILURE;
 }
 
 nsresult
-GfxInfo::GetDWriteEnabled(PRBool *aEnabled)
+GfxInfo::GetDWriteEnabled(bool *aEnabled)
+{
+  return NS_ERROR_FAILURE;
+}
+
+nsresult
+GfxInfo::GetAzureEnabled(bool *aEnabled)
 {
   return NS_ERROR_FAILURE;
 }
@@ -93,18 +97,26 @@ GfxInfo::GetAdapterDescription(nsAString & aAdapterDescription)
   aAdapterDescription.AssignASCII(mozilla::gl::GetVendor());
   if (mozilla::AndroidBridge::Bridge()) {
       nsAutoString str;
-      aAdapterDescription.Append(NS_LITERAL_STRING(" "));
+      aAdapterDescription.Append(NS_LITERAL_STRING(", Model: '"));
       if (mozilla::AndroidBridge::Bridge()->GetStaticStringField("android/os/Build", "MODEL", str))
         aAdapterDescription.Append(str);
-      aAdapterDescription.Append(NS_LITERAL_STRING(" "));
+      aAdapterDescription.Append(NS_LITERAL_STRING("', Manufacturer: '"));
       if (mozilla::AndroidBridge::Bridge()->GetStaticStringField("android/os/Build", "MANUFACTURER", str))
         aAdapterDescription.Append(str);
-      aAdapterDescription.Append(NS_LITERAL_STRING(" "));
+      aAdapterDescription.Append(NS_LITERAL_STRING("', Hardware: '"));
       if (mozilla::AndroidBridge::Bridge()->GetStaticStringField("android/os/Build", "HARDWARE", str))
         aAdapterDescription.Append(str);
+      aAdapterDescription.Append(NS_LITERAL_STRING("'"));
   }
 
   return NS_OK;
+}
+
+/* readonly attribute DOMString adapterDescription2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDescription2(nsAString & aAdapterDescription)
+{
+  return NS_ERROR_FAILURE;
 }
 
 /* readonly attribute DOMString adapterRAM; */
@@ -115,12 +127,26 @@ GfxInfo::GetAdapterRAM(nsAString & aAdapterRAM)
   return NS_OK;
 }
 
+/* readonly attribute DOMString adapterRAM2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterRAM2(nsAString & aAdapterRAM)
+{
+  return NS_ERROR_FAILURE;
+}
+
 /* readonly attribute DOMString adapterDriver; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriver(nsAString & aAdapterDriver)
 {
   aAdapterDriver.AssignLiteral("");
   return NS_OK;
+}
+
+/* readonly attribute DOMString adapterDriver2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDriver2(nsAString & aAdapterDriver)
+{
+  return NS_ERROR_FAILURE;
 }
 
 /* readonly attribute DOMString adapterDriverVersion; */
@@ -131,12 +157,26 @@ GfxInfo::GetAdapterDriverVersion(nsAString & aAdapterDriverVersion)
   return NS_OK;
 }
 
+/* readonly attribute DOMString adapterDriverVersion2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDriverVersion2(nsAString & aAdapterDriverVersion)
+{
+  return NS_ERROR_FAILURE;
+}
+
 /* readonly attribute DOMString adapterDriverDate; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriverDate(nsAString & aAdapterDriverDate)
 {
   aAdapterDriverDate.AssignLiteral("");
   return NS_OK;
+}
+
+/* readonly attribute DOMString adapterDriverDate2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDriverDate2(nsAString & aAdapterDriverDate)
+{
+  return NS_ERROR_FAILURE;
 }
 
 /* readonly attribute unsigned long adapterVendorID; */
@@ -147,6 +187,13 @@ GfxInfo::GetAdapterVendorID(PRUint32 *aAdapterVendorID)
   return NS_OK;
 }
 
+/* readonly attribute unsigned long adapterVendorID2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterVendorID2(PRUint32 *aAdapterVendorID)
+{
+  return NS_ERROR_FAILURE;
+}
+
 /* readonly attribute unsigned long adapterDeviceID; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDeviceID(PRUint32 *aAdapterDeviceID)
@@ -155,11 +202,25 @@ GfxInfo::GetAdapterDeviceID(PRUint32 *aAdapterDeviceID)
   return NS_OK;
 }
 
+/* readonly attribute unsigned long adapterDeviceID2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDeviceID2(PRUint32 *aAdapterDeviceID)
+{
+  return NS_ERROR_FAILURE;
+}
+
+/* readonly attribute boolean isGPU2Active; */
+NS_IMETHODIMP
+GfxInfo::GetIsGPU2Active(bool* aIsGPU2Active)
+{
+  return NS_ERROR_FAILURE;
+}
+
 void
 GfxInfo::AddCrashReportAnnotations()
 {
 #if 0
-#if defined(MOZ_CRASHREPORTER) && defined(MOZ_ENABLE_LIBXUL)
+#if defined(MOZ_CRASHREPORTER)
   nsCAutoString deviceIDString, vendorIDString;
   PRUint32 deviceID, vendorID;
 
@@ -202,7 +263,7 @@ GfxInfo::GetFeatureStatusImpl(PRInt32 aFeature, PRInt32 *aStatus, nsAString & aS
 {
   PRInt32 status = nsIGfxInfo::FEATURE_NO_INFO;
 
-  aSuggestedDriverVersion.SetIsVoid(PR_TRUE);
+  aSuggestedDriverVersion.SetIsVoid(true);
 
   // For now, we don't implement the downloaded blacklist.
   if (aDriverInfo) {
@@ -211,13 +272,16 @@ GfxInfo::GetFeatureStatusImpl(PRInt32 aFeature, PRInt32 *aStatus, nsAString & aS
   }
 
   if (aFeature == FEATURE_OPENGL_LAYERS) {
-      nsAutoString str;
-      /* Whitelist Galaxy S phones */
-      if (mozilla::AndroidBridge::Bridge()->GetStaticStringField("android/os/Build", "HARDWARE", str)) {
-          if (str != NS_LITERAL_STRING("smdkc110")) {
-            status = FEATURE_BLOCKED_DEVICE;
-          }
-      }
+    /* XXX: Use this code when we're ready to whitelist devices. */
+    // nsAutoString str;
+    // /* Whitelist Galaxy S phones */
+    // if (mozilla::AndroidBridge::Bridge()->GetStaticStringField("android/os/Build", "HARDWARE", str)) {
+    //   if (str != NS_LITERAL_STRING("smdkc110")) {
+    //     status = FEATURE_BLOCKED_DEVICE;
+    //   }
+    // }
+
+    status = FEATURE_BLOCKED_DEVICE;
   }
 
   *aStatus = status;

@@ -47,6 +47,7 @@
 #include "nsIURI.h"
 #include "nsIFile.h"
 #include "nsISupportsImpl.h"
+#include "nsIScriptError.h"
 
 class nsIURI;
 class gfxMixedFontFamily;
@@ -54,10 +55,10 @@ class gfxMixedFontFamily;
 // parsed CSS @font-face rule information
 // lifetime: from when @font-face rule processed until font is loaded
 struct gfxFontFaceSrc {
-    PRPackedBool           mIsLocal;       // url or local
+    bool                   mIsLocal;       // url or local
 
     // if url, whether to use the origin principal or not
-    PRPackedBool           mUseOriginPrincipal;
+    bool                   mUseOriginPrincipal;
 
     // format hint flags, union of all possible formats
     // (e.g. TrueType, EOT, SVG, etc.)
@@ -71,12 +72,26 @@ struct gfxFontFaceSrc {
     
 };
 
-// subclassed to store platform-specific code cleaned out when font entry is deleted
-// lifetime: from when platform font is created until it is deactivated 
+// Subclassed to store platform-specific code cleaned out when font entry is
+// deleted.
+// Lifetime: from when platform font is created until it is deactivated.
+// If the platform does not need to add any platform-specific code/data here,
+// then the gfxUserFontSet will allocate a base gfxUserFontData and attach
+// to the entry to track the basic user font info fields here.
 class gfxUserFontData {
 public:
-    gfxUserFontData() { }
+    gfxUserFontData()
+        : mSrcIndex(0), mFormat(0), mMetaOrigLen(0)
+    { }
     virtual ~gfxUserFontData() { }
+
+    nsTArray<PRUint8> mMetadata;  // woff metadata block (compressed), if any
+    nsCOMPtr<nsIURI>  mURI;       // URI of the source, if it was url()
+    nsString          mLocalName; // font name used for the source, if local()
+    nsString          mRealName;  // original fullname from the font resource
+    PRUint32          mSrcIndex;  // index in the rule's source list
+    PRUint32          mFormat;    // format hint for the source used, if any
+    PRUint32          mMetaOrigLen; // length needed to decompress metadata
 };
 
 // initially contains a set of proxy font entry objects, replaced with
@@ -127,15 +142,15 @@ public:
     }
 
     // temp method to determine if all proxies are loaded
-    PRBool AllLoaded() 
+    bool AllLoaded() 
     {
         PRUint32 numFonts = mAvailableFonts.Length();
         for (PRUint32 i = 0; i < numFonts; i++) {
             gfxFontEntry *fe = mAvailableFonts[i];
             if (fe->mIsProxy)
-                return PR_FALSE;
+                return false;
         }
-        return PR_TRUE;
+        return true;
     }
 };
 
@@ -191,7 +206,7 @@ public:
     void AddFontFace(const nsAString& aFamilyName, gfxFontEntry* aFontEntry);
 
     // Whether there is a face with this family name
-    PRBool HasFamily(const nsAString& aFamilyName) const
+    bool HasFamily(const nsAString& aFamilyName) const
     {
         return GetFamily(aFamilyName) != nsnull;
     }
@@ -199,9 +214,9 @@ public:
     // lookup a font entry for a given style, returns null if not loaded
     gfxFontEntry *FindFontEntry(const nsAString& aName,
                                 const gfxFontStyle& aFontStyle,
-                                PRBool& aFoundFamily,
-                                PRBool& aNeedsBold,
-                                PRBool& aWaitForUserFont);
+                                bool& aFoundFamily,
+                                bool& aNeedsBold,
+                                bool& aWaitForUserFont);
                                 
     // initialize the process that loads external font data, which upon 
     // completion will call OnLoadComplete method
@@ -214,7 +229,7 @@ public:
     // reference was next in line)
     // Ownership of aFontData is passed in here; the font set must
     // ensure that it is eventually deleted with NS_Free().
-    PRBool OnLoadComplete(gfxProxyFontEntry *aProxy,
+    bool OnLoadComplete(gfxProxyFontEntry *aProxy,
                           const PRUint8 *aFontData, PRUint32 aLength,
                           nsresult aDownloadStatus);
 
@@ -238,10 +253,18 @@ protected:
 
     gfxMixedFontFamily *GetFamily(const nsAString& aName) const;
 
+    // report a problem of some kind (implemented in nsUserFontSet)
+    virtual nsresult LogMessage(gfxProxyFontEntry *aProxy,
+                                const char *aMessage,
+                                PRUint32 aFlags = nsIScriptError::errorFlag,
+                                nsresult aStatus = 0) = 0;
+
     // font families defined by @font-face rules
     nsRefPtrHashtable<nsStringHashKey, gfxMixedFontFamily> mFontFamilies;
 
     PRUint64        mGeneration;
+
+    static PRLogModuleInfo *sUserFontsLog;
 };
 
 // acts a placeholder until the real font is downloaded
@@ -261,7 +284,7 @@ public:
 
     virtual ~gfxProxyFontEntry();
 
-    virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle, PRBool aNeedsBold);
+    virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle, bool aNeedsBold);
 
     // note that code depends on the ordering of these values!
     enum LoadingState {

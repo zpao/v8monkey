@@ -57,6 +57,7 @@ const MOBILE_ANNO          = "MobileBookmarks";
 const EXCLUDEBACKUP_ANNO   = "places/excludeFromBackup";
 const SMART_BOOKMARKS_ANNO = "Places/SmartBookmark";
 const PARENT_ANNO          = "sync/parent";
+const ORGANIZERQUERY_ANNO  = "PlacesOrganizer/OrganizerQuery";
 const ANNOS_TO_TRACK = [DESCRIPTION_ANNO, SIDEBAR_ANNO,
                         FEEDURI_ANNO, SITEURI_ANNO];
 
@@ -67,7 +68,9 @@ Cu.import("resource://gre/modules/PlacesUtils.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://services-sync/engines.js");
 Cu.import("resource://services-sync/record.js");
+Cu.import("resource://services-sync/async.js");
 Cu.import("resource://services-sync/util.js");
+Cu.import("resource://services-sync/constants.js");
 
 Cu.import("resource://services-sync/main.js");      // For access to Service.
 
@@ -107,40 +110,44 @@ PlacesItem.prototype = {
   },
 
   __proto__: CryptoWrapper.prototype,
-  _logName: "Record.PlacesItem",
+  _logName: "Sync.Record.PlacesItem",
 };
 
-Utils.deferGetSet(PlacesItem, "cleartext", ["hasDupe", "parentid", "parentName",
-                                            "type"]);
+Utils.deferGetSet(PlacesItem,
+                  "cleartext",
+                  ["hasDupe", "parentid", "parentName", "type"]);
 
 function Bookmark(collection, id, type) {
   PlacesItem.call(this, collection, id, type || "bookmark");
 }
 Bookmark.prototype = {
   __proto__: PlacesItem.prototype,
-  _logName: "Record.Bookmark",
+  _logName: "Sync.Record.Bookmark",
 };
 
-Utils.deferGetSet(Bookmark, "cleartext", ["title", "bmkUri", "description",
-  "loadInSidebar", "tags", "keyword"]);
+Utils.deferGetSet(Bookmark,
+                  "cleartext",
+                  ["title", "bmkUri", "description",
+                   "loadInSidebar", "tags", "keyword"]);
 
 function BookmarkQuery(collection, id) {
   Bookmark.call(this, collection, id, "query");
 }
 BookmarkQuery.prototype = {
   __proto__: Bookmark.prototype,
-  _logName: "Record.BookmarkQuery",
+  _logName: "Sync.Record.BookmarkQuery",
 };
 
-Utils.deferGetSet(BookmarkQuery, "cleartext", ["folderName",
-                                               "queryId"]);
+Utils.deferGetSet(BookmarkQuery,
+                  "cleartext",
+                  ["folderName", "queryId"]);
 
 function BookmarkFolder(collection, id, type) {
   PlacesItem.call(this, collection, id, type || "folder");
 }
 BookmarkFolder.prototype = {
   __proto__: PlacesItem.prototype,
-  _logName: "Record.Folder",
+  _logName: "Sync.Record.Folder",
 };
 
 Utils.deferGetSet(BookmarkFolder, "cleartext", ["description", "title",
@@ -151,7 +158,7 @@ function Livemark(collection, id) {
 }
 Livemark.prototype = {
   __proto__: BookmarkFolder.prototype,
-  _logName: "Record.Livemark",
+  _logName: "Sync.Record.Livemark",
 };
 
 Utils.deferGetSet(Livemark, "cleartext", ["siteUri", "feedUri"]);
@@ -161,19 +168,11 @@ function BookmarkSeparator(collection, id) {
 }
 BookmarkSeparator.prototype = {
   __proto__: PlacesItem.prototype,
-  _logName: "Record.Separator",
+  _logName: "Sync.Record.Separator",
 };
 
 Utils.deferGetSet(BookmarkSeparator, "cleartext", "pos");
 
-
-function archiveBookmarks() {
-  // Some nightly builds of 3.7 don't have this function
-  try {
-    PlacesUtils.archiveBookmarksFile(null, true);
-  }
-  catch(ex) {}
-}
 
 let kSpecialIds = {
 
@@ -184,16 +183,18 @@ let kSpecialIds = {
 
   // Create the special mobile folder to store mobile bookmarks.
   createMobileRoot: function createMobileRoot() {
-    let root = Svc.Bookmark.placesRoot;
-    let mRoot = Svc.Bookmark.createFolder(root, "mobile", -1);
-    Svc.Annos.setItemAnnotation(mRoot, MOBILEROOT_ANNO, 1, 0,
-                                Svc.Annos.EXPIRE_NEVER);
+    let root = PlacesUtils.placesRootId;
+    let mRoot = PlacesUtils.bookmarks.createFolder(root, "mobile", -1);
+    PlacesUtils.annotations.setItemAnnotation(
+      mRoot, MOBILEROOT_ANNO, 1, 0, PlacesUtils.annotations.EXPIRE_NEVER);
+    PlacesUtils.annotations.setItemAnnotation(
+      mRoot, EXCLUDEBACKUP_ANNO, 1, 0, PlacesUtils.annotations.EXPIRE_NEVER);
     return mRoot;
   },
 
   findMobileRoot: function findMobileRoot(create) {
     // Use the (one) mobile root if it already exists.
-    let root = Svc.Annos.getItemsWithAnnotation(MOBILEROOT_ANNO, {});
+    let root = PlacesUtils.annotations.getItemsWithAnnotation(MOBILEROOT_ANNO, {});
     if (root.length != 0)
       return root[0];
 
@@ -223,11 +224,11 @@ let kSpecialIds = {
     return null;
   },
 
-  get menu()    Svc.Bookmark.bookmarksMenuFolder,
-  get places()  Svc.Bookmark.placesRoot,
-  get tags()    Svc.Bookmark.tagsFolder,
-  get toolbar() Svc.Bookmark.toolbarFolder,
-  get unfiled() Svc.Bookmark.unfiledBookmarksFolder,
+  get menu()    PlacesUtils.bookmarksMenuFolderId,
+  get places()  PlacesUtils.placesRootId,
+  get tags()    PlacesUtils.tagsFolderId,
+  get toolbar() PlacesUtils.toolbarFolderId,
+  get unfiled() PlacesUtils.unfiledBookmarksFolderId,
   get mobile()  this.findMobileRoot(true),
 };
 
@@ -241,125 +242,169 @@ BookmarksEngine.prototype = {
   _trackerObj: BookmarksTracker,
   version: 2,
 
-  _sync: Utils.batchSync("Bookmark", SyncEngine),
+  _sync: function _sync() {
+    let engine = this;
+    let batchEx = null;
+
+    // Try running sync in batch mode
+    PlacesUtils.bookmarks.runInBatchMode({
+      runBatched: function wrappedSync() {
+        try {
+          SyncEngine.prototype._sync.call(engine);
+        }
+        catch(ex) {
+          batchEx = ex;
+        }
+      }
+    }, null);
+
+    // Expose the exception if something inside the batch failed
+    if (batchEx != null) {
+      throw batchEx;
+    }
+  },
+
+  _guidMapFailed: false,
+  _buildGUIDMap: function _buildGUIDMap() {
+    let guidMap = {};
+    for (let guid in this._store.getAllIDs()) {
+      // Figure out with which key to store the mapping.
+      let key;
+      let id = this._store.idForGUID(guid);
+      switch (PlacesUtils.bookmarks.getItemType(id)) {
+        case PlacesUtils.bookmarks.TYPE_BOOKMARK:
+
+          // Smart bookmarks map to their annotation value.
+          let queryId;
+          try {
+            queryId = PlacesUtils.annotations.getItemAnnotation(
+              id, SMART_BOOKMARKS_ANNO);
+          } catch(ex) {}
+          
+          if (queryId)
+            key = "q" + queryId;
+          else
+            key = "b" + PlacesUtils.bookmarks.getBookmarkURI(id).spec + ":" +
+                  PlacesUtils.bookmarks.getItemTitle(id);
+          break;
+        case PlacesUtils.bookmarks.TYPE_FOLDER:
+          key = "f" + PlacesUtils.bookmarks.getItemTitle(id);
+          break;
+        case PlacesUtils.bookmarks.TYPE_SEPARATOR:
+          key = "s" + PlacesUtils.bookmarks.getItemIndex(id);
+          break;
+        default:
+          continue;
+      }
+
+      // The mapping is on a per parent-folder-name basis.
+      let parent = PlacesUtils.bookmarks.getFolderIdForItem(id);
+      if (parent <= 0)
+        continue;
+
+      let parentName = PlacesUtils.bookmarks.getItemTitle(parent);
+      if (guidMap[parentName] == null)
+        guidMap[parentName] = {};
+
+      // If the entry already exists, remember that there are explicit dupes.
+      let entry = new String(guid);
+      entry.hasDupe = guidMap[parentName][key] != null;
+
+      // Remember this item's GUID for its parent-name/key pair.
+      guidMap[parentName][key] = entry;
+      this._log.trace("Mapped: " + [parentName, key, entry, entry.hasDupe]);
+    }
+
+    return guidMap;
+  },
+
+  // Helper function to get a dupe GUID for an item.
+  _mapDupe: function _mapDupe(item) {
+    // Figure out if we have something to key with.
+    let key;
+    let altKey;
+    switch (item.type) {
+      case "query":
+        // Prior to Bug 610501, records didn't carry their Smart Bookmark
+        // anno, so we won't be able to dupe them correctly. This altKey
+        // hack should get them to dupe correctly.
+        if (item.queryId) {
+          key = "q" + item.queryId;
+          altKey = "b" + item.bmkUri + ":" + item.title;
+          break;
+        }
+        // No queryID? Fall through to the regular bookmark case.
+      case "bookmark":
+      case "microsummary":
+        key = "b" + item.bmkUri + ":" + item.title;
+        break;
+      case "folder":
+      case "livemark":
+        key = "f" + item.title;
+        break;
+      case "separator":
+        key = "s" + item.pos;
+        break;
+      default:
+        return;
+    }
+
+    // Figure out if we have a map to use!
+    // This will throw in some circumstances. That's fine.
+    let guidMap = this._guidMap;
+
+    // Give the GUID if we have the matching pair.
+    this._log.trace("Finding mapping: " + item.parentName + ", " + key);
+    let parent = guidMap[item.parentName];
+    
+    if (!parent) {
+      this._log.trace("No parent => no dupe.");
+      return undefined;
+    }
+      
+    let dupe = parent[key];
+    
+    if (dupe) {
+      this._log.trace("Mapped dupe: " + dupe);
+      return dupe;
+    }
+    
+    if (altKey) {
+      dupe = parent[altKey];
+      if (dupe) {
+        this._log.trace("Mapped dupe using altKey " + altKey + ": " + dupe);
+        return dupe;
+      }
+    }
+    
+    this._log.trace("No dupe found for key " + key + "/" + altKey + ".");
+    return undefined;
+  },
 
   _syncStartup: function _syncStart() {
     SyncEngine.prototype._syncStartup.call(this);
 
     // For first-syncs, make a backup for the user to restore
-    if (this.lastSync == 0)
-      archiveBookmarks();
+    if (this.lastSync == 0) {
+      PlacesUtils.archiveBookmarksFile(null, true);
+    }
 
-    // Lazily create a mapping of folder titles and separator positions to GUID
-    this.__defineGetter__("_lazyMap", function() {
-      delete this._lazyMap;
-
-      let lazyMap = {};
-      for (let guid in this._store.getAllIDs()) {
-        // Figure out what key to store the mapping
-        let key;
-        let id = this._store.idForGUID(guid);
-        switch (Svc.Bookmark.getItemType(id)) {
-          case Svc.Bookmark.TYPE_BOOKMARK:
-
-            // Smart bookmarks map to their annotation value.
-            let queryId;
-            try {
-              queryId = Svc.Annos.getItemAnnotation(id, SMART_BOOKMARKS_ANNO);
-            } catch(ex) {}
-            
-            if (queryId)
-              key = "q" + queryId;
-            else
-              key = "b" + Svc.Bookmark.getBookmarkURI(id).spec + ":" +
-                    Svc.Bookmark.getItemTitle(id);
-            break;
-          case Svc.Bookmark.TYPE_FOLDER:
-            key = "f" + Svc.Bookmark.getItemTitle(id);
-            break;
-          case Svc.Bookmark.TYPE_SEPARATOR:
-            key = "s" + Svc.Bookmark.getItemIndex(id);
-            break;
-          default:
-            continue;
-        }
-
-        // The mapping is on a per parent-folder-name basis
-        let parent = Svc.Bookmark.getFolderIdForItem(id);
-        if (parent <= 0)
-          continue;
-
-        let parentName = Svc.Bookmark.getItemTitle(parent);
-        if (lazyMap[parentName] == null)
-          lazyMap[parentName] = {};
-
-        // If the entry already exists, remember that there are explicit dupes
-        let entry = new String(guid);
-        entry.hasDupe = lazyMap[parentName][key] != null;
-
-        // Remember this item's guid for its parent-name/key pair
-        lazyMap[parentName][key] = entry;
-        this._log.trace("Mapped: " + [parentName, key, entry, entry.hasDupe]);
+    this.__defineGetter__("_guidMap", function() {
+      // Create a mapping of folder titles and separator positions to GUID.
+      // We do this lazily so that we don't do any work unless we reconcile
+      // incoming items.
+      let guidMap;
+      try {
+        guidMap = this._buildGUIDMap();
+      } catch (ex) {
+        this._log.warn("Got exception \"" + Utils.exceptionStr(ex) +
+                       "\" building GUID map." +
+                       " Skipping all other incoming items.");
+        throw {code: Engine.prototype.eEngineAbortApplyIncoming,
+               cause: ex};
       }
-
-      // Expose a helper function to get a dupe guid for an item
-      return this._lazyMap = function(item) {
-        // Figure out if we have something to key with
-        let key;
-        let altKey;
-        switch (item.type) {
-          case "query":
-            // Prior to Bug 610501, records didn't carry their Smart Bookmark
-            // anno, so we won't be able to dupe them correctly. This altKey
-            // hack should get them to dupe correctly.
-            if (item.queryId) {
-              key = "q" + item.queryId;
-              altKey = "b" + item.bmkUri + ":" + item.title;
-              break;
-            }
-            // No queryID? Fall through to the regular bookmark case.
-          case "bookmark":
-          case "microsummary":
-            key = "b" + item.bmkUri + ":" + item.title;
-            break;
-          case "folder":
-          case "livemark":
-            key = "f" + item.title;
-            break;
-          case "separator":
-            key = "s" + item.pos;
-            break;
-          default:
-            return;
-        }
-
-        // Give the guid if we have the matching pair
-        this._log.trace("Finding mapping: " + item.parentName + ", " + key);
-        let parent = lazyMap[item.parentName];
-        
-        if (!parent) {
-          this._log.trace("No parent => no dupe.");
-          return undefined;
-        }
-          
-        let dupe = parent[key];
-        
-        if (dupe) {
-          this._log.trace("Mapped dupe: " + dupe);
-          return dupe;
-        }
-        
-        if (altKey) {
-          dupe = parent[altKey];
-          if (dupe) {
-            this._log.trace("Mapped dupe using altKey " + altKey + ": " + dupe);
-            return dupe;
-          }
-        }
-        
-        this._log.trace("No dupe found for key " + key + "/" + altKey + ".");
-        return undefined;
-      };
+      delete this._guidMap;
+      return this._guidMap = guidMap;
     });
 
     this._store._childrenToOrder = {};
@@ -379,14 +424,18 @@ BookmarksEngine.prototype = {
 
   _syncFinish: function _syncFinish() {
     SyncEngine.prototype._syncFinish.call(this);
-    delete this._lazyMap;
     this._tracker._ensureMobileQuery();
+  },
+
+  _syncCleanup: function _syncCleanup() {
+    SyncEngine.prototype._syncCleanup.call(this);
+    delete this._guidMap;
   },
 
   _createRecord: function _createRecord(id) {
     // Create the record like normal but mark it as having dupes if necessary
     let record = SyncEngine.prototype._createRecord.call(this, id);
-    let entry = this._lazyMap(record);
+    let entry = this._mapDupe(record);
     if (entry != null && entry.hasDupe)
       record.hasDupe = true;
     return record;
@@ -396,7 +445,7 @@ BookmarksEngine.prototype = {
     // Don't bother finding a dupe if the incoming item has duplicates
     if (item.hasDupe)
       return;
-    return this._lazyMap(item);
+    return this._mapDupe(item);
   },
 
   _handleDupe: function _handleDupe(item, dupeId) {
@@ -415,50 +464,14 @@ function BookmarksStore(name) {
 
   // Explicitly nullify our references to our cached services so we don't leak
   Svc.Obs.add("places-shutdown", function() {
-    this.__bms = null;
-    this.__hsvc = null;
-    this.__ls = null;
-    this.__ts = null;
-    for each ([query, stmt] in Iterator(this._stmts))
+    for each ([query, stmt] in Iterator(this._stmts)) {
       stmt.finalize();
+    }
+    this._stmts = {};
   }, this);
 }
 BookmarksStore.prototype = {
   __proto__: Store.prototype,
-
-  __bms: null,
-  get _bms() {
-    if (!this.__bms)
-      this.__bms = Cc["@mozilla.org/browser/nav-bookmarks-service;1"].
-                   getService(Ci.nsINavBookmarksService);
-    return this.__bms;
-  },
-
-  __hsvc: null,
-  get _hsvc() {
-    if (!this.__hsvc)
-      this.__hsvc = Cc["@mozilla.org/browser/nav-history-service;1"].
-                    getService(Ci.nsINavHistoryService).
-                    QueryInterface(Ci.nsPIPlacesDatabase);
-    return this.__hsvc;
-  },
-
-  __ls: null,
-  get _ls() {
-    if (!this.__ls)
-      this.__ls = Cc["@mozilla.org/browser/livemark-service;2"].
-                  getService(Ci.nsILivemarkService);
-    return this.__ls;
-  },
-
-  __ts: null,
-  get _ts() {
-    if (!this.__ts)
-      this.__ts = Cc["@mozilla.org/browser/tagging-service;1"].
-                  getService(Ci.nsITaggingService);
-    return this.__ts;
-  },
-
 
   itemExists: function BStore_itemExists(id) {
     return this.idForGUID(id, true) > 0;
@@ -480,7 +493,8 @@ BookmarksStore.prototype = {
     let queriesRef    = {};
     let queryCountRef = {};
     let optionsRef    = {};
-    Svc.History.queryStringToQueries(uri, queriesRef, queryCountRef, optionsRef);
+    PlacesUtils.history.queryStringToQueries(uri, queriesRef, queryCountRef,
+                                             optionsRef);
     
     // We only process tag URIs.
     if (optionsRef.value.resultType != optionsRef.value.RESULTS_AS_TAG_CONTENTS)
@@ -489,10 +503,10 @@ BookmarksStore.prototype = {
     // Tag something to ensure that the tag exists.
     let tag = record.folderName;
     let dummyURI = Utils.makeURI("about:weave#BStore_preprocess");
-    this._ts.tagURI(dummyURI, [tag]);
+    PlacesUtils.tagging.tagURI(dummyURI, [tag]);
 
     // Look for the id of the tag, which might just have been added.
-    let tags = this._getNode(this._bms.tagsFolder);
+    let tags = this._getNode(PlacesUtils.tagsFolderId);
     if (!(tags instanceof Ci.nsINavHistoryQueryResultNode)) {
       this._log.debug("tags isn't an nsINavHistoryQueryResultNode; aborting.");
       return;
@@ -510,9 +524,8 @@ BookmarksStore.prototype = {
           for each (let q in queriesRef.value)
             q.setFolders([child.itemId], 1);
           
-          record.bmkUri = Svc.History.queriesToQueryString(queriesRef.value,
-                                                           queryCountRef.value,
-                                                           optionsRef.value);
+          record.bmkUri = PlacesUtils.history.queriesToQueryString(
+            queriesRef.value, queryCountRef.value, optionsRef.value);
           return;
         }
       }
@@ -573,8 +586,9 @@ BookmarksStore.prototype = {
 
       // Create an annotation to remember that it needs reparenting.
       if (record._orphan) {
-        Svc.Annos.setItemAnnotation(itemId, PARENT_ANNO, parentGUID, 0,
-                                    Svc.Annos.EXPIRE_NEVER);
+        PlacesUtils.annotations.setItemAnnotation(
+          itemId, PARENT_ANNO, parentGUID, 0,
+          PlacesUtils.annotations.EXPIRE_NEVER);
       }
     }
   },
@@ -583,8 +597,10 @@ BookmarksStore.prototype = {
    * Find all ids of items that have a given value for an annotation
    */
   _findAnnoItems: function BStore__findAnnoItems(anno, val) {
-    return Svc.Annos.getItemsWithAnnotation(anno, {}).filter(function(id)
-      Svc.Annos.getItemAnnotation(id, anno) == val);
+    return PlacesUtils.annotations.getItemsWithAnnotation(anno, {})
+                      .filter(function(id) {
+      return PlacesUtils.annotations.getItemAnnotation(id, anno) == val;
+    });
   },
 
   /**
@@ -599,7 +615,7 @@ BookmarksStore.prototype = {
     orphans.forEach(function(orphan) {
       // Move the orphan to the parent and drop the missing parent annotation
       if (this._reparentItem(orphan, parentId)) {
-        Svc.Annos.removeItemAnnotation(orphan, PARENT_ANNO);
+        PlacesUtils.annotations.removeItemAnnotation(orphan, PARENT_ANNO);
       }
     }, this);
   },
@@ -609,7 +625,8 @@ BookmarksStore.prototype = {
                     parentId);
     try {
       if (parentId > 0) {
-        Svc.Bookmark.moveItem(itemId, parentId, Svc.Bookmark.DEFAULT_INDEX);
+        PlacesUtils.bookmarks.moveItem(itemId, parentId,
+                                       PlacesUtils.bookmarks.DEFAULT_INDEX);
         return true;
       }
     } catch(ex) {
@@ -621,12 +638,12 @@ BookmarksStore.prototype = {
   // Turn a record's nsINavBookmarksService constant and other attributes into
   // a granular type for comparison.
   _recordType: function _recordType(itemId) {
-    let bms  = this._bms;
+    let bms  = PlacesUtils.bookmarks;
     let type = bms.getItemType(itemId);
 
     switch (type) {
       case bms.TYPE_FOLDER:
-        if (this._ls.isLivemark(itemId))
+        if (PlacesUtils.itemIsLivemark(itemId))
           return "livemark";
         return "folder";
 
@@ -662,42 +679,45 @@ BookmarksStore.prototype = {
     case "query":
     case "microsummary": {
       let uri = Utils.makeURI(record.bmkUri);
-      newId = this._bms.insertBookmark(record._parent, uri,
-                                       Svc.Bookmark.DEFAULT_INDEX, record.title);
+      newId = PlacesUtils.bookmarks.insertBookmark(
+        record._parent, uri, PlacesUtils.bookmarks.DEFAULT_INDEX, record.title);
       this._log.debug("created bookmark " + newId + " under " + record._parent
                       + " as " + record.title + " " + record.bmkUri);
 
       // Smart bookmark annotations are strings.
       if (record.queryId) {
-        Svc.Annos.setItemAnnotation(newId, SMART_BOOKMARKS_ANNO, record.queryId,
-                                    0, Svc.Annos.EXPIRE_NEVER);
+        PlacesUtils.annotations.setItemAnnotation(
+          newId, SMART_BOOKMARKS_ANNO, record.queryId, 0,
+          PlacesUtils.annotations.EXPIRE_NEVER);
       }
 
-      if (Utils.isArray(record.tags)) {
+      if (Array.isArray(record.tags)) {
         this._tagURI(uri, record.tags);
       }
-      this._bms.setKeywordForBookmark(newId, record.keyword);
+      PlacesUtils.bookmarks.setKeywordForBookmark(newId, record.keyword);
       if (record.description) {
-        Svc.Annos.setItemAnnotation(newId, DESCRIPTION_ANNO,
-                                    record.description, 0,
-                                    Svc.Annos.EXPIRE_NEVER);
+        PlacesUtils.annotations.setItemAnnotation(
+          newId, DESCRIPTION_ANNO, record.description, 0,
+          PlacesUtils.annotations.EXPIRE_NEVER);
       }
 
       if (record.loadInSidebar) {
-        Svc.Annos.setItemAnnotation(newId, SIDEBAR_ANNO, true, 0,
-                                    Svc.Annos.EXPIRE_NEVER);
+        PlacesUtils.annotations.setItemAnnotation(
+          newId, SIDEBAR_ANNO, true, 0,
+          PlacesUtils.annotations.EXPIRE_NEVER);
       }
 
     } break;
     case "folder":
-      newId = this._bms.createFolder(record._parent, record.title,
-                                     Svc.Bookmark.DEFAULT_INDEX);
+      newId = PlacesUtils.bookmarks.createFolder(
+        record._parent, record.title, PlacesUtils.bookmarks.DEFAULT_INDEX);
       this._log.debug("created folder " + newId + " under " + record._parent
                       + " as " + record.title);
 
       if (record.description) {
-        Svc.Annos.setItemAnnotation(newId, DESCRIPTION_ANNO, record.description,
-                                    0, Svc.Annos.EXPIRE_NEVER);
+        PlacesUtils.annotations.setItemAnnotation(
+          newId, DESCRIPTION_ANNO, record.description, 0,
+          PlacesUtils.annotations.EXPIRE_NEVER);
       }
 
       // record.children will be dealt with in _orderChildren.
@@ -708,7 +728,7 @@ BookmarksStore.prototype = {
         this._log.debug("No feed URI: skipping livemark record " + record.id);
         return;
       }
-      if (this._ls.isLivemark(record._parent)) {
+      if (PlacesUtils.itemIsLivemark(record._parent)) {
         this._log.debug("Invalid parent: skipping livemark record " + record.id);
         return;
       }
@@ -718,17 +738,16 @@ BookmarksStore.prototype = {
 
       // Use createLivemarkFolderOnly, not createLivemark, to avoid it
       // automatically updating during a sync.
-      newId = this._ls.createLivemarkFolderOnly(record._parent, record.title,
-                                                siteURI,
-                                                Utils.makeURI(record.feedUri),
-                                                Svc.Bookmark.DEFAULT_INDEX);
+      newId = PlacesUtils.livemarks.createLivemarkFolderOnly(
+        record._parent, record.title, siteURI, Utils.makeURI(record.feedUri),
+        PlacesUtils.bookmarks.DEFAULT_INDEX);
       this._log.debug("Created livemark " + newId + " under " + record._parent +
                       " as " + record.title + ", " + record.siteUri + ", " + 
                       record.feedUri + ", GUID " + record.id);
       break;
     case "separator":
-      newId = this._bms.insertSeparator(record._parent,
-                                        Svc.Bookmark.DEFAULT_INDEX);
+      newId = PlacesUtils.bookmarks.insertSeparator(
+        record._parent, PlacesUtils.bookmarks.DEFAULT_INDEX);
       this._log.debug("created separator " + newId + " under " + record._parent);
       break;
     case "item":
@@ -746,21 +765,20 @@ BookmarksStore.prototype = {
   // Factored out of `remove` to avoid redundant DB queries when the Places ID
   // is already known.
   removeById: function removeById(itemId, guid) {
-    let type = this._bms.getItemType(itemId);
+    let type = PlacesUtils.bookmarks.getItemType(itemId);
 
     switch (type) {
-    case this._bms.TYPE_BOOKMARK:
+    case PlacesUtils.bookmarks.TYPE_BOOKMARK:
       this._log.debug("  -> removing bookmark " + guid);
-      this._ts.untagURI(this._bms.getBookmarkURI(itemId), null);
-      this._bms.removeItem(itemId);
+      PlacesUtils.bookmarks.removeItem(itemId);
       break;
-    case this._bms.TYPE_FOLDER:
+    case PlacesUtils.bookmarks.TYPE_FOLDER:
       this._log.debug("  -> removing folder " + guid);
-      Svc.Bookmark.removeItem(itemId);
+      PlacesUtils.bookmarks.removeItem(itemId);
       break;
-    case this._bms.TYPE_SEPARATOR:
+    case PlacesUtils.bookmarks.TYPE_SEPARATOR:
       this._log.debug("  -> removing separator " + guid);
-      this._bms.removeItem(itemId);
+      PlacesUtils.bookmarks.removeItem(itemId);
       break;
     default:
       this._log.error("remove: Unknown item type: " + type);
@@ -808,49 +826,54 @@ BookmarksStore.prototype = {
 
     // Move the bookmark to a new parent or new position if necessary
     if (record._parent > 0 &&
-        Svc.Bookmark.getFolderIdForItem(itemId) != record._parent) {
+        PlacesUtils.bookmarks.getFolderIdForItem(itemId) != record._parent) {
       this._reparentItem(itemId, record._parent);
     }
 
     for (let [key, val] in Iterator(record.cleartext)) {
       switch (key) {
       case "title":
-        val = val || "";
-        this._bms.setItemTitle(itemId, val);
+        PlacesUtils.bookmarks.setItemTitle(itemId, val);
         break;
       case "bmkUri":
-        this._bms.changeBookmarkURI(itemId, Utils.makeURI(val));
+        PlacesUtils.bookmarks.changeBookmarkURI(itemId, Utils.makeURI(val));
         break;
       case "tags":
-        if (Utils.isArray(val)) {
-          this._tagURI(this._bms.getBookmarkURI(itemId), val);
+        if (Array.isArray(val)) {
+          this._tagURI(PlacesUtils.bookmarks.getBookmarkURI(itemId), val);
         }
         break;
       case "keyword":
-        this._bms.setKeywordForBookmark(itemId, val);
+        PlacesUtils.bookmarks.setKeywordForBookmark(itemId, val);
         break;
       case "description":
-        val = val || "";
-        Svc.Annos.setItemAnnotation(itemId, DESCRIPTION_ANNO, val, 0,
-                                    Svc.Annos.EXPIRE_NEVER);
+        if (val) {
+          PlacesUtils.annotations.setItemAnnotation(
+            itemId, DESCRIPTION_ANNO, val, 0,
+            PlacesUtils.annotations.EXPIRE_NEVER);
+        } else {
+          PlacesUtils.annotations.removeItemAnnotation(itemId, DESCRIPTION_ANNO);
+        }
         break;
       case "loadInSidebar":
         if (val) {
-          Svc.Annos.setItemAnnotation(itemId, SIDEBAR_ANNO, true, 0,
-                                      Svc.Annos.EXPIRE_NEVER);
+          PlacesUtils.annotations.setItemAnnotation(
+            itemId, SIDEBAR_ANNO, true, 0,
+            PlacesUtils.annotations.EXPIRE_NEVER);
         } else {
-          Svc.Annos.removeItemAnnotation(itemId, SIDEBAR_ANNO);
+          PlacesUtils.annotations.removeItemAnnotation(itemId, SIDEBAR_ANNO);
         }
         break;
       case "queryId":
-        Svc.Annos.setItemAnnotation(itemId, SMART_BOOKMARKS_ANNO, val, 0,
-                                    Svc.Annos.EXPIRE_NEVER);
+        PlacesUtils.annotations.setItemAnnotation(
+          itemId, SMART_BOOKMARKS_ANNO, val, 0,
+          PlacesUtils.annotations.EXPIRE_NEVER);
         break;
       case "siteUri":
-        this._ls.setSiteURI(itemId, Utils.makeURI(val));
+        PlacesUtils.livemarks.setSiteURI(itemId, Utils.makeURI(val));
         break;
       case "feedUri":
-        this._ls.setFeedURI(itemId, Utils.makeURI(val));
+        PlacesUtils.livemarks.setFeedURI(itemId, Utils.makeURI(val));
         break;
       }
     }
@@ -873,9 +896,10 @@ BookmarksStore.prototype = {
           // This code path could be optimized by caching the parent earlier.
           // Doing so should take in count any edge case due to reparenting
           // or parent invalidations though.
-          if (!parent)
-            parent = Svc.Bookmark.getFolderIdForItem(itemid);
-          Svc.Bookmark.moveItem(itemid, parent, idx - delta);
+          if (!parent) {
+            parent = PlacesUtils.bookmarks.getFolderIdForItem(itemid);
+          }
+          PlacesUtils.bookmarks.moveItem(itemid, parent, idx - delta);
         } catch (ex) {
           this._log.debug("Could not move item " + children[idx] + ": " + ex);
         }
@@ -895,9 +919,10 @@ BookmarksStore.prototype = {
   },
 
   _getNode: function BStore__getNode(folder) {
-    let query = this._hsvc.getNewQuery();
+    let query = PlacesUtils.history.getNewQuery();
     query.setFolders([folder], 1);
-    return this._hsvc.executeQuery(query, this._hsvc.getNewQueryOptions()).root;
+    return PlacesUtils.history.executeQuery(
+      query, PlacesUtils.history.getNewQueryOptions()).root;
   },
 
   _getTags: function BStore__getTags(uri) {
@@ -907,19 +932,19 @@ BookmarksStore.prototype = {
     } catch(e) {
       this._log.warn("Could not parse URI \"" + uri + "\": " + e);
     }
-    return this._ts.getTagsForURI(uri, {});
+    return PlacesUtils.tagging.getTagsForURI(uri, {});
   },
 
   _getDescription: function BStore__getDescription(id) {
     try {
-      return Svc.Annos.getItemAnnotation(id, DESCRIPTION_ANNO);
+      return PlacesUtils.annotations.getItemAnnotation(id, DESCRIPTION_ANNO);
     } catch (e) {
       return null;
     }
   },
 
   _isLoadInSidebar: function BStore__isLoadInSidebar(id) {
-    return Svc.Annos.itemHasAnnotation(id, SIDEBAR_ANNO);
+    return PlacesUtils.annotations.itemHasAnnotation(id, SIDEBAR_ANNO);
   },
 
   get _childGUIDsStm() {
@@ -934,7 +959,7 @@ BookmarksStore.prototype = {
   _getChildGUIDsForId: function _getChildGUIDsForId(itemid) {
     let stmt = this._childGUIDsStm;
     stmt.params.parent = itemid;
-    let rows = Utils.queryAsync(stmt, this._childGUIDsCols);
+    let rows = Async.querySpinningly(stmt, this._childGUIDsCols);
     return rows.map(function (row) {
       if (row.guid) {
         return row.guid;
@@ -954,10 +979,10 @@ BookmarksStore.prototype = {
       return record;
     }
 
-    let parent = Svc.Bookmark.getFolderIdForItem(placeId);
-    switch (this._bms.getItemType(placeId)) {
-    case this._bms.TYPE_BOOKMARK:
-      let bmkUri = this._bms.getBookmarkURI(placeId).spec;
+    let parent = PlacesUtils.bookmarks.getFolderIdForItem(placeId);
+    switch (PlacesUtils.bookmarks.getItemType(placeId)) {
+    case PlacesUtils.bookmarks.TYPE_BOOKMARK:
+      let bmkUri = PlacesUtils.bookmarks.getBookmarkURI(placeId).spec;
       if (bmkUri.search(/^place:/) == 0) {
         record = new BookmarkQuery(collection, id);
 
@@ -967,7 +992,7 @@ BookmarksStore.prototype = {
           // There might not be the tag yet when creating on a new client
           if (folder != null) {
             folder = folder[1];
-            record.folderName = this._bms.getItemTitle(folder);
+            record.folderName = PlacesUtils.bookmarks.getItemTitle(folder);
             this._log.trace("query id: " + folder + " = " + record.folderName);
           }
         }
@@ -975,7 +1000,7 @@ BookmarksStore.prototype = {
         
         // Persist the Smart Bookmark anno, if found.
         try {
-          let anno = Svc.Annos.getItemAnnotation(placeId, SMART_BOOKMARKS_ANNO);
+          let anno = PlacesUtils.annotations.getItemAnnotation(placeId, SMART_BOOKMARKS_ANNO);
           if (anno != null) {
             this._log.trace("query anno: " + SMART_BOOKMARKS_ANNO +
                             " = " + anno);
@@ -987,45 +1012,45 @@ BookmarksStore.prototype = {
       else {
         record = new Bookmark(collection, id);
       }
-      record.title = this._bms.getItemTitle(placeId);
+      record.title = PlacesUtils.bookmarks.getItemTitle(placeId);
 
-      record.parentName = Svc.Bookmark.getItemTitle(parent);
+      record.parentName = PlacesUtils.bookmarks.getItemTitle(parent);
       record.bmkUri = bmkUri;
       record.tags = this._getTags(record.bmkUri);
-      record.keyword = this._bms.getKeywordForBookmark(placeId);
+      record.keyword = PlacesUtils.bookmarks.getKeywordForBookmark(placeId);
       record.description = this._getDescription(placeId);
       record.loadInSidebar = this._isLoadInSidebar(placeId);
       break;
 
-    case this._bms.TYPE_FOLDER:
-      if (this._ls.isLivemark(placeId)) {
+    case PlacesUtils.bookmarks.TYPE_FOLDER:
+      if (PlacesUtils.itemIsLivemark(placeId)) {
         record = new Livemark(collection, id);
 
-        let siteURI = this._ls.getSiteURI(placeId);
+        let siteURI = PlacesUtils.livemarks.getSiteURI(placeId);
         if (siteURI != null)
           record.siteUri = siteURI.spec;
-        record.feedUri = this._ls.getFeedURI(placeId).spec;
+        record.feedUri = PlacesUtils.livemarks.getFeedURI(placeId).spec;
 
       } else {
         record = new BookmarkFolder(collection, id);
       }
 
       if (parent > 0)
-        record.parentName = Svc.Bookmark.getItemTitle(parent);
-      record.title = this._bms.getItemTitle(placeId);
+        record.parentName = PlacesUtils.bookmarks.getItemTitle(parent);
+      record.title = PlacesUtils.bookmarks.getItemTitle(placeId);
       record.description = this._getDescription(placeId);
       record.children = this._getChildGUIDsForId(placeId);
       break;
 
-    case this._bms.TYPE_SEPARATOR:
+    case PlacesUtils.bookmarks.TYPE_SEPARATOR:
       record = new BookmarkSeparator(collection, id);
       if (parent > 0)
-        record.parentName = Svc.Bookmark.getItemTitle(parent);
-      // Create a positioning identifier for the separator, used by _lazyMap
-      record.pos = Svc.Bookmark.getItemIndex(placeId);
+        record.parentName = PlacesUtils.bookmarks.getItemTitle(parent);
+      // Create a positioning identifier for the separator, used by _mapDupe
+      record.pos = PlacesUtils.bookmarks.getItemIndex(placeId);
       break;
 
-    case this._bms.TYPE_DYNAMIC_CONTAINER:
+    case PlacesUtils.bookmarks.TYPE_DYNAMIC_CONTAINER:
       record = new PlacesItem(collection, id);
       this._log.warn("Don't know how to serialize dynamic containers yet");
       break;
@@ -1033,7 +1058,7 @@ BookmarksStore.prototype = {
     default:
       record = new PlacesItem(collection, id);
       this._log.warn("Unknown item type, cannot serialize: " +
-                     this._bms.getItemType(placeId));
+                     PlacesUtils.bookmarks.getItemType(placeId));
     }
 
     record.parentid = this.GUIDForId(parent);
@@ -1044,12 +1069,14 @@ BookmarksStore.prototype = {
 
   _stmts: {},
   _getStmt: function(query) {
-    if (query in this._stmts)
+    if (query in this._stmts) {
       return this._stmts[query];
+    }
 
     this._log.trace("Creating SQL statement: " + query);
-    return this._stmts[query] = this._hsvc.DBConnection
-                                    .createAsyncStatement(query);
+    let db = PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
+                        .DBConnection;
+    return this._stmts[query] = db.createAsyncStatement(query);
   },
 
   get _frecencyStm() {
@@ -1076,7 +1103,7 @@ BookmarksStore.prototype = {
     let stmt = this._setGUIDStm;
     stmt.params.guid = guid;
     stmt.params.item_id = id;
-    Utils.queryAsync(stmt);
+    Async.querySpinningly(stmt);
     return guid;
   },
 
@@ -1097,7 +1124,7 @@ BookmarksStore.prototype = {
     stmt.params.item_id = id;
 
     // Use the existing GUID if it exists
-    let result = Utils.queryAsync(stmt, this._guidForIdCols)[0];
+    let result = Async.querySpinningly(stmt, this._guidForIdCols)[0];
     if (result && result.guid)
       return result.guid;
 
@@ -1123,7 +1150,7 @@ BookmarksStore.prototype = {
     // guid might be a String object rather than a string.
     stmt.params.guid = guid.toString();
 
-    let results = Utils.queryAsync(stmt, this._idForGUIDCols);
+    let results = Async.querySpinningly(stmt, this._idForGUIDCols);
     this._log.trace("Number of rows matching GUID " + guid + ": "
                     + results.length);
     
@@ -1147,10 +1174,10 @@ BookmarksStore.prototype = {
     if (record.parentid == "toolbar")
       index += 150;
 
-    // Add in the bookmark's frecency if we have something
+    // Add in the bookmark's frecency if we have something.
     if (record.bmkUri != null) {
       this._frecencyStm.params.url = record.bmkUri;
-      let result = Utils.queryAsync(this._frecencyStm, this._frecencyCols);
+      let result = Async.querySpinningly(this._frecencyStm, this._frecencyCols);
       if (result.length)
         index += result[0].frecency;
     }
@@ -1170,7 +1197,7 @@ BookmarksStore.prototype = {
     }
     
     if (node.type == node.RESULT_TYPE_FOLDER &&
-        !this._ls.isLivemark(node.itemId)) {
+        !PlacesUtils.itemIsLivemark(node.itemId)) {
       node.QueryInterface(Ci.nsINavHistoryQueryResultNode);
       node.containerOpen = true;
       try {
@@ -1190,15 +1217,15 @@ BookmarksStore.prototype = {
   },
 
   _tagURI: function BStore_tagURI(bmkURI, tags) {
-    // Filter out any null/undefined/empty tags
+    // Filter out any null/undefined/empty tags.
     tags = tags.filter(function(t) t);
 
-    // Temporarily tag a dummy uri to preserve tag ids when untagging
+    // Temporarily tag a dummy URI to preserve tag ids when untagging.
     let dummyURI = Utils.makeURI("about:weave#BStore_tagURI");
-    this._ts.tagURI(dummyURI, tags);
-    this._ts.untagURI(bmkURI, null);
-    this._ts.tagURI(bmkURI, tags);
-    this._ts.untagURI(dummyURI, null);
+    PlacesUtils.tagging.tagURI(dummyURI, tags);
+    PlacesUtils.tagging.untagURI(bmkURI, null);
+    PlacesUtils.tagging.tagURI(bmkURI, tags);
+    PlacesUtils.tagging.untagURI(dummyURI, null);
   },
 
   getAllIDs: function BStore_getAllIDs() {
@@ -1212,14 +1239,14 @@ BookmarksStore.prototype = {
   },
 
   wipe: function BStore_wipe() {
-    // Save a backup before clearing out all bookmarks
-    archiveBookmarks();
+    // Save a backup before clearing out all bookmarks.
+    PlacesUtils.archiveBookmarksFile(null, true);
 
     for each (let guid in kSpecialIds.guids)
       if (guid != "places") {
         let id = kSpecialIds.specialIdForGUID(guid);
         if (id)
-          this._bms.removeFolderChildren(id);
+          PlacesUtils.bookmarks.removeFolderChildren(id);
       }
   }
 };
@@ -1239,7 +1266,7 @@ BookmarksTracker.prototype = {
     switch (topic) {
       case "weave:engine:start-tracking":
         if (!this._enabled) {
-          Svc.Bookmark.addObserver(this, true);
+          PlacesUtils.bookmarks.addObserver(this, true);
           Svc.Obs.add("bookmarks-restore-begin", this);
           Svc.Obs.add("bookmarks-restore-success", this);
           Svc.Obs.add("bookmarks-restore-failed", this);
@@ -1248,18 +1275,12 @@ BookmarksTracker.prototype = {
         break;
       case "weave:engine:stop-tracking":
         if (this._enabled) {
-          Svc.Bookmark.removeObserver(this);
+          PlacesUtils.bookmarks.removeObserver(this);
           Svc.Obs.remove("bookmarks-restore-begin", this);
           Svc.Obs.remove("bookmarks-restore-success", this);
           Svc.Obs.remove("bookmarks-restore-failed", this);
           this._enabled = false;
         }
-        // Fall through to clean up.
-      case "places-shutdown":
-        // Explicitly nullify our references to our cached services so
-        // we don't leak
-        this.__ls = null;
-        this.__bms = null;
         break;
         
       case "bookmarks-restore-begin":
@@ -1273,7 +1294,7 @@ BookmarksTracker.prototype = {
         this._log.debug("Restore succeeded: wiping server and other clients.");
         Weave.Service.resetClient([this.name]);
         Weave.Service.wipeServer([this.name]);
-        Weave.Service.prepCommand("wipeEngine", [this.name]);
+        Clients.sendCommand("wipeEngine", [this.name]);
         break;
       case "bookmarks-restore-failed":
         this._log.debug("Tracking all items on failed import.");
@@ -1282,64 +1303,39 @@ BookmarksTracker.prototype = {
     }
   },
 
-  __bms: null,
-  get _bms() {
-    if (!this.__bms)
-      this.__bms = Cc["@mozilla.org/browser/nav-bookmarks-service;1"].
-                   getService(Ci.nsINavBookmarksService);
-    return this.__bms;
-  },
-
-  __ls: null,
-  get _ls() {
-    if (!this.__ls)
-      this.__ls = Cc["@mozilla.org/browser/livemark-service;2"].
-                  getService(Ci.nsILivemarkService);
-    return this.__ls;
-  },
-
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsINavBookmarkObserver,
     Ci.nsINavBookmarkObserver_MOZILLA_1_9_1_ADDITIONS,
     Ci.nsISupportsWeakReference
   ]),
 
-  _idForGUID: function _idForGUID(item_id) {
-    // Isn't indirection fun...
-    return Engines.get("bookmarks")._store.idForGUID(item_id);
-  },
-
-  _GUIDForId: function _GUIDForId(item_id) {
-    // Isn't indirection fun...
-    return Engines.get("bookmarks")._store.GUIDForId(item_id);
-  },
-
   /**
-   * Add a bookmark (places) id to be uploaded and bump up the sync score
+   * Add a bookmark GUID to be uploaded and bump up the sync score.
    *
-   * @param itemId
-   *        Places internal id of the bookmark to upload
+   * @param itemGuid
+   *        GUID of the bookmark to upload.
    */
-  _addId: function BMT__addId(itemId) {
-    if (this.addChangedID(this._GUIDForId(itemId)))
+  _add: function BMT__add(itemId, guid) {
+    guid = kSpecialIds.specialGUIDForId(itemId) || guid;
+    if (this.addChangedID(guid))
       this._upScore();
   },
 
-  /* Every add/remove/change is worth 10 points */
+  /* Every add/remove/change will trigger a sync for MULTI_DEVICE. */
   _upScore: function BMT__upScore() {
-    this.score += 10;
+    this.score += SCORE_INCREMENT_XLARGE;
   },
 
   /**
    * Determine if a change should be ignored: we're ignoring everything or the
-   * folder is for livemarks
+   * folder is for livemarks.
    *
    * @param itemId
    *        Item under consideration to ignore
    * @param folder (optional)
    *        Folder of the item being changed
    */
-  _ignore: function BMT__ignore(itemId, folder) {
+  _ignore: function BMT__ignore(itemId, folder, guid) {
     // Ignore unconditionally if the engine tells us to.
     if (this.ignoreAll)
       return true;
@@ -1347,19 +1343,19 @@ BookmarksTracker.prototype = {
     // Get the folder id if we weren't given one.
     if (folder == null) {
       try {
-        folder = this._bms.getFolderIdForItem(itemId);
+        folder = PlacesUtils.bookmarks.getFolderIdForItem(itemId);
       } catch (ex) {
         this._log.debug("getFolderIdForItem(" + itemId +
                         ") threw; calling _ensureMobileQuery.");
         // I'm guessing that gFIFI can throw, and perhaps that's why
         // _ensureMobileQuery is here at all. Try not to call it.
         this._ensureMobileQuery();
-        folder = this._bms.getFolderIdForItem(itemId);
+        folder = PlacesUtils.bookmarks.getFolderIdForItem(itemId);
       }
     }
 
     // Ignore livemark children.
-    if (this._ls.isLivemark(folder))
+    if (PlacesUtils.itemIsLivemark(folder))
       return true;
 
     // Ignore changes to tags (folders under the tags folder).
@@ -1368,41 +1364,44 @@ BookmarksTracker.prototype = {
       return true;
 
     // Ignore tag items (the actual instance of a tag for a bookmark).
-    if (this._bms.getFolderIdForItem(folder) == tags)
+    if (PlacesUtils.bookmarks.getFolderIdForItem(folder) == tags)
       return true;
 
     // Make sure to remove items that have the exclude annotation.
-    if (Svc.Annos.itemHasAnnotation(itemId, EXCLUDEBACKUP_ANNO)) {
-      this.removeChangedID(this._GUIDForId(itemId));
+    if (PlacesUtils.annotations.itemHasAnnotation(itemId, EXCLUDEBACKUP_ANNO)) {
+      this.removeChangedID(guid);
       return true;
     }
 
     return false;
   },
 
-  onItemAdded: function BMT_onEndUpdateBatch(itemId, folder, index) {
-    if (this._ignore(itemId, folder))
+  onItemAdded: function BMT_onItemAdded(itemId, folder, index,
+                                        itemType, uri, title, dateAdded,
+                                        guid, parentGuid) {
+    if (this._ignore(itemId, folder, guid))
       return;
 
     this._log.trace("onItemAdded: " + itemId);
-    this._addId(itemId);
-    this._addId(folder);
+    this._add(itemId, guid);
+    this._add(folder, parentGuid);
   },
 
-  onBeforeItemRemoved: function BMT_onBeforeItemRemoved(itemId) {
-    if (this._ignore(itemId))
+  onItemRemoved: function BMT_onItemRemoved(itemId, parentId, index, type, uri,
+                                            guid, parentGuid) {
+    if (this._ignore(itemId, parentId, guid))
       return;
 
     this._log.trace("onBeforeItemRemoved: " + itemId);
-    this._addId(itemId);
-    let folder = Svc.Bookmark.getFolderIdForItem(itemId);
-    this._addId(folder);
+    this._add(itemId, guid);
+    this._add(parentId, parentGuid);
   },
 
   _ensureMobileQuery: function _ensureMobileQuery() {
-    let anno = "PlacesOrganizer/OrganizerQuery";
-    let find = function(val) Svc.Annos.getItemsWithAnnotation(anno, {}).filter(
-      function(id) Svc.Annos.getItemAnnotation(id, anno) == val);
+    let find = function (val)
+      PlacesUtils.annotations.getItemsWithAnnotation(ORGANIZERQUERY_ANNO, {}).filter(
+        function (id) PlacesUtils.annotations.getItemAnnotation(id, ORGANIZERQUERY_ANNO) == val
+      );
 
     // Don't continue if the Library isn't ready
     let all = find(ALLBOOKMARKS_ANNO);
@@ -1417,21 +1416,22 @@ BookmarksTracker.prototype = {
     let title = Str.sync.get("mobile.label");
 
     // Don't add OR remove the mobile bookmarks if there's nothing.
-    if (Svc.Bookmark.getIdForItemAt(kSpecialIds.mobile, 0) == -1) {
+    if (PlacesUtils.bookmarks.getIdForItemAt(kSpecialIds.mobile, 0) == -1) {
       if (mobile.length != 0)
-        Svc.Bookmark.removeItem(mobile[0]);
+        PlacesUtils.bookmarks.removeItem(mobile[0]);
     }
     // Add the mobile bookmarks query if it doesn't exist
     else if (mobile.length == 0) {
-      let query = Svc.Bookmark.insertBookmark(all[0], queryURI, -1, title);
-      Svc.Annos.setItemAnnotation(query, anno, MOBILE_ANNO, 0,
-                                  Svc.Annos.EXPIRE_NEVER);
-      Svc.Annos.setItemAnnotation(query, EXCLUDEBACKUP_ANNO, 1, 0,
-                                  Svc.Annos.EXPIRE_NEVER);
+      let query = PlacesUtils.bookmarks.insertBookmark(all[0], queryURI, -1, title);
+      PlacesUtils.annotations.setItemAnnotation(query, ORGANIZERQUERY_ANNO, MOBILE_ANNO, 0,
+                                  PlacesUtils.annotations.EXPIRE_NEVER);
+      PlacesUtils.annotations.setItemAnnotation(query, EXCLUDEBACKUP_ANNO, 1, 0,
+                                  PlacesUtils.annotations.EXPIRE_NEVER);
     }
     // Make sure the existing title is correct
-    else if (Svc.Bookmark.getItemTitle(mobile[0]) != title)
-      Svc.Bookmark.setItemTitle(mobile[0], title);
+    else if (PlacesUtils.bookmarks.getItemTitle(mobile[0]) != title) {
+      PlacesUtils.bookmarks.setItemTitle(mobile[0], title);
+    }
 
     this.ignoreAll = false;
   },
@@ -1440,7 +1440,9 @@ BookmarksTracker.prototype = {
   // possible -- this handler gets called *every time* a bookmark changes, for
   // *each change*. That's particularly bad when a bunch of livemarks are
   // updated.
-  onItemChanged: function BMT_onItemChanged(itemId, property, isAnno, value) {
+  onItemChanged: function BMT_onItemChanged(itemId, property, isAnno, value,
+                                            lastModified, itemType, parentId,
+                                            guid, parentGuid) {
     // Quicker checks first.
     if (this.ignoreAll)
       return;
@@ -1453,32 +1455,34 @@ BookmarksTracker.prototype = {
     if (property == "favicon")
       return;
 
-    if (this._ignore(itemId))
+    if (this._ignore(itemId, parentId, guid))
       return;
 
     this._log.trace("onItemChanged: " + itemId +
                     (", " + property + (isAnno? " (anno)" : "")) +
                     (value ? (" = \"" + value + "\"") : ""));
-    this._addId(itemId);
+    this._add(itemId, guid);
   },
 
-  onItemMoved: function BMT_onItemMoved(itemId, oldParent, oldIndex, newParent, newIndex) {
-    if (this._ignore(itemId))
+  onItemMoved: function BMT_onItemMoved(itemId, oldParent, oldIndex,
+                                        newParent, newIndex, itemType,
+                                        guid, oldParentGuid, newParentGuid) {
+    if (this._ignore(itemId, newParent, guid))
       return;
 
     this._log.trace("onItemMoved: " + itemId);
-    this._addId(oldParent);
+    this._add(oldParent, oldParentGuid);
     if (oldParent != newParent) {
-      this._addId(itemId);
-      this._addId(newParent);
+      this._add(itemId, guid);
+      this._add(newParent, newParentGuid);
     }
 
     // Remove any position annotations now that the user moved the item
-    Svc.Annos.removeItemAnnotation(itemId, PARENT_ANNO);
+    PlacesUtils.annotations.removeItemAnnotation(itemId, PARENT_ANNO);
   },
 
-  onBeginUpdateBatch: function BMT_onBeginUpdateBatch() {},
-  onEndUpdateBatch: function BMT_onEndUpdateBatch() {},
-  onItemRemoved: function BMT_onItemRemoved(itemId, folder, index) {},
-  onItemVisited: function BMT_onItemVisited(itemId, aVisitID, time) {}
+  onBeginUpdateBatch: function () {},
+  onEndUpdateBatch: function () {},
+  onBeforeItemRemoved: function () {},
+  onItemVisited: function () {}
 };

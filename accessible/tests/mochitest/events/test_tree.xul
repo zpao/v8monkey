@@ -11,8 +11,6 @@
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="DOM TreeViewChanged/TreeRowCountChanged and a11y name change events.">
 
-  <script type="application/javascript" 
-          src="chrome://mochikit/content/MochiKit/packed.js" />
   <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
 
@@ -103,13 +101,15 @@
     {
       this.type = EVENT_NAME_CHANGE;
 
-      this.target getter = function()
+      function targetGetter()
       {
         var acc = getAccessible(gTree);
 
         var tableAcc = getAccessible(acc, [nsIAccessibleTable]);
         return tableAcc.getCellAt(aRow, aCol);
       }
+      Object.defineProperty(this, "target", { get: targetGetter });
+
       this.getID = function getID()
       {
         return aMsg + "name changed";
@@ -159,6 +159,11 @@
         new rowCountChangedChecker("insertRow: ", 0, 1),
         new treeInvalidatedChecker("insertRow", 0, 5, null, null)
       ];
+
+      this.getID = function insertRow_getID()
+      {
+        return "insert row";
+      }
     }
 
     /**
@@ -167,7 +172,7 @@
      */
     function invalidateColumn()
     {
-      this.invoke = function()
+      this.invoke = function invalidateColumn_invoke()
       {
         // Make sure accessibles for the tree is created because it makes
         // sure accessible events will be fired.
@@ -193,6 +198,11 @@
         new nameChangeChecker("invalidateColumn: ", 5, 0),
         new treeInvalidatedChecker("invalidateColumn", null, null, 0, 0)
       ];
+
+      this.getID = function invalidateColumn_getID()
+      {
+        return "invalidate column";
+      }
     }
 
     /**
@@ -202,7 +212,7 @@
      */
     function invalidateRow()
     {
-      this.invoke = function()
+      this.invoke = function invalidateRow_invoke()
       {
         // Fire 'TreeInvalidated' event by InvalidateRow()
         var colCount = gTree.columns.count;
@@ -221,6 +231,11 @@
         new nameChangeChecker("invalidateColumn: ", 1, 1),
         new treeInvalidatedChecker("invalidateColumn", 1, 1, null, null)
       ];
+
+      this.getID = function invalidateRow_getID()
+      {
+        return "invalidate row";
+      }
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -232,6 +247,7 @@
     var gQueue = null;
 
     // gA11yEventDumpID = "debug";
+    gA11yEventDumpToConsole = true; // debuggin
 
     function doTest()
     {

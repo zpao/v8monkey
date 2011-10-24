@@ -76,7 +76,7 @@ nsHttpChunkedDecoder::HandleChunkedContent(char *buf,
 
     while (count) {
         if (mChunkRemaining) {
-            PRUint32 amt = PR_MIN(mChunkRemaining, count);
+            PRUint32 amt = NS_MIN(mChunkRemaining, count);
 
             count -= amt;
             mChunkRemaining -= amt;
@@ -138,14 +138,12 @@ nsHttpChunkedDecoder::ParseChunkRemaining(char *buf,
                 // allocate a header array for the trailers on demand
                 if (!mTrailers) {
                     mTrailers = new nsHttpHeaderArray();
-                    if (!mTrailers)
-                        return NS_ERROR_OUT_OF_MEMORY;
                 }
                 mTrailers->ParseHeaderLine(buf);
             }
             else {
-                mWaitEOF = PR_FALSE;
-                mReachedEOF = PR_TRUE;
+                mWaitEOF = false;
+                mReachedEOF = true;
                 LOG(("reached end of chunked-body\n"));
             }
         }
@@ -161,7 +159,7 @@ nsHttpChunkedDecoder::ParseChunkRemaining(char *buf,
 
             // we've discovered the last chunk
             if (mChunkRemaining == 0)
-                mWaitEOF = PR_TRUE;
+                mWaitEOF = true;
         }
 
         // ensure that the line buffer is clear

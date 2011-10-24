@@ -137,7 +137,7 @@ TestListener::OnDataAvailable(nsIRequest *req, nsISupports *ctx,
     PRUint32 nread = 0;
 
     while (count) {
-        PRUint32 amount = PR_MIN(count, sizeof(buf));
+        PRUint32 amount = NS_MIN<PRUint32>(count, sizeof(buf));
 
         rv = is->Read(buf, amount, &nread);
         if (NS_FAILED(rv)) return rv;
@@ -163,7 +163,7 @@ nsresult TestMCTransport(const char *filename)
     if (NS_FAILED(rv)) return rv;
 
     rv = serv->CreateSession("TestMCTransport",
-                             nsICache::STORE_IN_MEMORY, PR_TRUE,
+                             nsICache::STORE_IN_MEMORY, true,
                              &session);
     if (NS_FAILED(rv)) return rv;
 

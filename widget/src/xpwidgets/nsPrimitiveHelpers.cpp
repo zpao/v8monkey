@@ -220,7 +220,7 @@ nsPrimitiveHelpers :: ConvertPlatformPlainTextToUnicode ( const char* inText, PR
   // through the life of the app so we can cache it.
   nsresult rv = NS_OK;
   static nsCOMPtr<nsIUnicodeDecoder> decoder;
-  static PRBool hasConverter = PR_FALSE;
+  static bool hasConverter = false;
   if ( !hasConverter ) {
     // get the charset
     nsCAutoString platformCharset;
@@ -240,7 +240,7 @@ nsPrimitiveHelpers :: ConvertPlatformPlainTextToUnicode ( const char* inText, PR
     if (NS_FAILED(rv))
       return NS_ERROR_FAILURE;
 
-    hasConverter = PR_TRUE;
+    hasConverter = true;
   }
   
   // Estimate out length and allocate the buffer based on a worst-case estimate, then do

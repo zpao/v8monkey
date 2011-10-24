@@ -61,9 +61,9 @@ static nsIThread** gShutDownThreadList = nsnull;
 
 static ReentrantMonitor* gReentrantMonitor = nsnull;
 
-static PRBool gAllRunnablesPosted = PR_FALSE;
-static PRBool gAllThreadsCreated = PR_FALSE;
-static PRBool gAllThreadsShutDown = PR_FALSE;
+static bool gAllRunnablesPosted = false;
+static bool gAllThreadsCreated = false;
+static bool gAllThreadsShutDown = false;
 
 #ifdef DEBUG
 #define TEST_ASSERTION(_test, _msg) \
@@ -105,14 +105,14 @@ Listener::OnThreadCreated()
     if (!thread) {
       gCreatedThreadList[i] = current;
       if (i == (NUMBER_OF_THREADS - 1)) {
-        gAllThreadsCreated = PR_TRUE;
+        gAllThreadsCreated = true;
         mon.NotifyAll();
       }
       return NS_OK;
     }
   }
 
-  TEST_ASSERTION(PR_FALSE, "Too many threads!");
+  TEST_ASSERTION(false, "Too many threads!");
   return NS_ERROR_FAILURE;
 }
 
@@ -131,14 +131,14 @@ Listener::OnThreadShuttingDown()
     if (!thread) {
       gShutDownThreadList[i] = current;
       if (i == (NUMBER_OF_THREADS - 1)) {
-        gAllThreadsShutDown = PR_TRUE;
+        gAllThreadsShutDown = true;
         mon.NotifyAll();
       }
       return NS_OK;
     }
   }
 
-  TEST_ASSERTION(PR_FALSE, "Too many threads!");
+  TEST_ASSERTION(false, "Too many threads!");
   return NS_ERROR_FAILURE;
 }
 
@@ -215,7 +215,7 @@ int main(int argc, char** argv)
       NS_ENSURE_SUCCESS(rv, 1);
     }
 
-    gAllRunnablesPosted = PR_TRUE;
+    gAllRunnablesPosted = true;
     mon.NotifyAll();
   }
 
@@ -240,13 +240,13 @@ int main(int argc, char** argv)
     nsIThread* created = gCreatedThreadList[i];
     NS_ENSURE_TRUE(created, 1);
 
-    PRBool match = PR_FALSE;
+    bool match = false;
     for (PRUint32 j = 0; j < NUMBER_OF_THREADS; j++) {
       nsIThread* destroyed = gShutDownThreadList[j];
       NS_ENSURE_TRUE(destroyed, 1);
 
       if (destroyed == created) {
-        match = PR_TRUE;
+        match = true;
         break;
       }
     }

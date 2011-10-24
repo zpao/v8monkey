@@ -42,6 +42,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+Components.utils.import("resource://gre/modules/Geometry.jsm");
+
 // Maximum delay in ms between the two taps of a double-tap
 const kDoubleClickInterval = 400;
 
@@ -116,7 +118,7 @@ function MouseModule() {
   this._mouseOverTimeout = new Util.Timeout(this._doMouseOver.bind(this));
   this._longClickTimeout = new Util.Timeout(this._doLongClick.bind(this));
 
-  this._doubleClickRadius = Util.getWindowUtils(window).displayDPI * kDoubleClickRadius;
+  this._doubleClickRadius = Util.displayDPI * kDoubleClickRadius;
 
   window.addEventListener("mousedown", this, true);
   window.addEventListener("mouseup", this, true);
@@ -504,18 +506,11 @@ MouseModule.prototype = {
   },
 
   _dispatchTap: function _dispatchTap(aType, aMouseEvent) {
-    // borrowed from nsIDOMNSEvent.idl
-    let modifiers =
-      (aMouseEvent.altKey   ? Ci.nsIDOMNSEvent.ALT_MASK     : 0) |
-      (aMouseEvent.ctrlKey  ? Ci.nsIDOMNSEvent.CONTROL_MASK : 0) |
-      (aMouseEvent.shiftKey ? Ci.nsIDOMNSEvent.SHIFT_MASK   : 0) |
-      (aMouseEvent.metaKey  ? Ci.nsIDOMNSEvent.META_MASK    : 0);
-
     let event = document.createEvent("Events");
     event.initEvent(aType, true, false);
     event.clientX = aMouseEvent.clientX;
     event.clientY = aMouseEvent.clientY;
-    event.modifiers = modifiers;
+    event.modifiers = Util.modifierMaskFromEvent(aMouseEvent);
     aMouseEvent.originalTarget.dispatchEvent(event);
   },
 
@@ -536,7 +531,7 @@ MouseModule.prototype = {
     this._singleClickTimeout.clear();
     this._mouseOverTimeout.clear();
     this._longClickTimeout.clear();
-    this._downUpEvents.splice(0);
+    this._downUpEvents.splice(0, this._downUpEvents.length);
   },
 
   /* XXXvn this can potentially be moved into ScrollUtils */
@@ -568,7 +563,7 @@ MouseModule.prototype = {
 var ScrollUtils = {
   // threshold in pixels for sensing a tap as opposed to a pan
   get tapRadius() {
-    let dpi = Util.getWindowUtils(window).displayDPI;
+    let dpi = Util.displayDPI;
 
     delete this.tapRadius;
     return this.tapRadius = Services.prefs.getIntPref("ui.dragThresholdX") / 240 * dpi;
@@ -684,7 +679,7 @@ var ScrollUtils = {
  */
 function DragData() {
   this._domUtils = Cc["@mozilla.org/inspector/dom-utils;1"].getService(Ci.inIDOMUtils);
-  this._lockRevertThreshold = Util.getWindowUtils(window).displayDPI * kAxisLockRevertThreshold;
+  this._lockRevertThreshold = Util.displayDPI * kAxisLockRevertThreshold;
   this.reset();
 };
 
@@ -1214,6 +1209,7 @@ GestureModule.prototype = {
     let delta = 0;
     let browser = AnimatedZoom.browser;
     let oldScale = browser.scale;
+    let bcr = this._browserBCR;
 
     // Accumulate pinch delta. Small changes are just jitter.
     this._pinchDelta += aEvent.delta;
@@ -1228,13 +1224,13 @@ GestureModule.prototype = {
     let newScale = Browser.selectedTab.clampZoomLevel(oldScale * (1 + delta / this._scalingFactor));
     let startScale = AnimatedZoom.startScale;
     let scaleRatio = startScale / newScale;
-    let cX = aEvent.clientX - this._browserBCR.left;
-    let cY = aEvent.clientY - this._browserBCR.top;
+    let cX = aEvent.clientX - bcr.left;
+    let cY = aEvent.clientY - bcr.top;
 
     // Calculate the new zoom rect.
     let rect = AnimatedZoom.zoomFrom.clone();
-    rect.translate(this._pinchStartX - cX + (1-scaleRatio) * cX * rect.width / window.innerWidth,
-                   this._pinchStartY - cY + (1-scaleRatio) * cY * rect.height / window.innerHeight);
+    rect.translate(this._pinchStartX - cX + (1-scaleRatio) * cX * rect.width / bcr.width,
+                   this._pinchStartY - cY + (1-scaleRatio) * cY * rect.height / bcr.height);
 
     rect.width *= scaleRatio;
     rect.height *= scaleRatio;

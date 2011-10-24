@@ -75,14 +75,14 @@ ViewportFrame::DestroyFrom(nsIFrame* aDestructRoot)
 }
 
 NS_IMETHODIMP
-ViewportFrame::SetInitialChildList(nsIAtom*        aListName,
+ViewportFrame::SetInitialChildList(ChildListID     aListID,
                                    nsFrameList&    aChildList)
 {
   // See which child list to add the frames to
 #ifdef NS_DEBUG
   nsFrame::VerifyDirtyBitSet(aChildList);
 #endif
-  return nsContainerFrame::SetInitialChildList(aListName, aChildList);
+  return nsContainerFrame::SetInitialChildList(aListID, aChildList);
 }
 
 NS_IMETHODIMP
@@ -101,30 +101,35 @@ ViewportFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 }
 
 NS_IMETHODIMP
-ViewportFrame::AppendFrames(nsIAtom*        aListName,
+ViewportFrame::AppendFrames(ChildListID     aListID,
                             nsFrameList&    aFrameList)
 {
-  NS_ASSERTION(!aListName, "unexpected child list");
-  NS_ASSERTION(GetChildList(nsnull).IsEmpty(), "Shouldn't have any kids!");
-  return nsContainerFrame::AppendFrames(aListName, aFrameList);
+  NS_ASSERTION(aListID == kPrincipalList ||
+               aListID == GetAbsoluteListID(), "unexpected child list");
+  NS_ASSERTION(aListID != GetAbsoluteListID() ||
+               GetChildList(aListID).IsEmpty(), "Shouldn't have any kids!");
+  return nsContainerFrame::AppendFrames(aListID, aFrameList);
 }
 
 NS_IMETHODIMP
-ViewportFrame::InsertFrames(nsIAtom*        aListName,
+ViewportFrame::InsertFrames(ChildListID     aListID,
                             nsIFrame*       aPrevFrame,
                             nsFrameList&    aFrameList)
 {
-  NS_ASSERTION(!aListName, "unexpected child list");
-  NS_ASSERTION(GetChildList(nsnull).IsEmpty(), "Shouldn't have any kids!");
-  return nsContainerFrame::InsertFrames(aListName, aPrevFrame, aFrameList);
+  NS_ASSERTION(aListID == kPrincipalList ||
+               aListID == GetAbsoluteListID(), "unexpected child list");
+  NS_ASSERTION(aListID != GetAbsoluteListID() ||
+               GetChildList(aListID).IsEmpty(), "Shouldn't have any kids!");
+  return nsContainerFrame::InsertFrames(aListID, aPrevFrame, aFrameList);
 }
 
 NS_IMETHODIMP
-ViewportFrame::RemoveFrame(nsIAtom*        aListName,
+ViewportFrame::RemoveFrame(ChildListID     aListID,
                            nsIFrame*       aOldFrame)
 {
-  NS_ASSERTION(!aListName, "unexpected child list");
-  return nsContainerFrame::RemoveFrame(aListName, aOldFrame);
+  NS_ASSERTION(aListID == kPrincipalList ||
+               aListID == GetAbsoluteListID(), "unexpected child list");
+  return nsContainerFrame::RemoveFrame(aListID, aOldFrame);
 }
 
 /* virtual */ nscoord
@@ -261,7 +266,7 @@ ViewportFrame::Reflow(nsPresContext*           aPresContext,
     rv = GetAbsoluteContainingBlock()->Reflow(this, aPresContext, reflowState, aStatus,
                                               reflowState.ComputedWidth(),
                                               reflowState.ComputedHeight(),
-                                              PR_FALSE, PR_TRUE, PR_TRUE, // XXX could be optimized
+                                              false, true, true, // XXX could be optimized
                                               nsnull /* ignore overflow */);
   }
 
@@ -283,12 +288,6 @@ nsIAtom*
 ViewportFrame::GetType() const
 {
   return nsGkAtoms::viewportFrame;
-}
-
-/* virtual */ PRBool
-ViewportFrame::IsContainingBlock() const
-{
-  return PR_TRUE;
 }
 
 void

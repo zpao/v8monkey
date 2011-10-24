@@ -49,6 +49,8 @@
  * Implementation of nsIFile for "unixy" systems.
  */
 
+#include "mozilla/Util.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -88,14 +90,14 @@
 #include "prproces.h"
 #include "nsIDirectoryEnumerator.h"
 #include "nsISimpleEnumerator.h"
-#include "nsITimelineService.h"
+#include "private/pprio.h"
 
 #ifdef MOZ_WIDGET_GTK2
 #include "nsIGIOService.h"
 #include "nsIGnomeVFSService.h"
 #endif
 
-#ifdef XP_MACOSX
+#ifdef MOZ_WIDGET_COCOA
 #include <Carbon/Carbon.h>
 #include "CocoaFileUtils.h"
 #include "prmem.h"
@@ -120,6 +122,8 @@ static nsresult MacErrorMapper(OSErr inErr);
 #include "nsNativeCharsetUtils.h"
 #include "nsTraceRefcntImpl.h"
 
+using namespace mozilla;
+
 #define ENSURE_STAT_CACHE()                     \
     PR_BEGIN_MACRO                              \
         if (!FillStatCache())                   \
@@ -133,7 +137,7 @@ static nsresult MacErrorMapper(OSErr inErr);
     PR_END_MACRO
 
 /* directory enumerator */
-class NS_COM
+class
 nsDirEnumeratorUnix : public nsISimpleEnumerator,
                       public nsIDirectoryEnumerator
 {
@@ -149,7 +153,7 @@ nsDirEnumeratorUnix : public nsISimpleEnumerator,
     // nsIDirectoryEnumerator interface
     NS_DECL_NSIDIRECTORYENUMERATOR
 
-    NS_IMETHOD Init(nsLocalFile *parent, PRBool ignored);
+    NS_IMETHOD Init(nsLocalFile *parent, bool ignored);
 
     private:
     ~nsDirEnumeratorUnix();
@@ -176,7 +180,7 @@ nsDirEnumeratorUnix::~nsDirEnumeratorUnix()
 NS_IMPL_ISUPPORTS2(nsDirEnumeratorUnix, nsISimpleEnumerator, nsIDirectoryEnumerator)
 
 NS_IMETHODIMP
-nsDirEnumeratorUnix::Init(nsLocalFile *parent, PRBool resolveSymlinks /*ignored*/)
+nsDirEnumeratorUnix::Init(nsLocalFile *parent, bool resolveSymlinks /*ignored*/)
 {
     nsCAutoString dirPath;
     if (NS_FAILED(parent->GetNativePath(dirPath)) ||
@@ -194,7 +198,7 @@ nsDirEnumeratorUnix::Init(nsLocalFile *parent, PRBool resolveSymlinks /*ignored*
 }
 
 NS_IMETHODIMP
-nsDirEnumeratorUnix::HasMoreElements(PRBool *result)
+nsDirEnumeratorUnix::HasMoreElements(bool *result)
 {
     *result = mDir && mEntry;
     if (!*result)
@@ -273,7 +277,7 @@ nsLocalFile::nsLocalFile(const nsLocalFile& other)
 {
 }
 
-#ifdef XP_MACOSX
+#ifdef MOZ_WIDGET_COCOA
 NS_IMPL_THREADSAFE_ISUPPORTS4(nsLocalFile,
                               nsILocalFileMac,
                               nsILocalFile,
@@ -302,15 +306,15 @@ nsLocalFile::nsLocalFileConstructor(nsISupports *outer,
     return inst->QueryInterface(aIID, aInstancePtr);
 }
 
-PRBool 
+bool 
 nsLocalFile::FillStatCache() {
     if (STAT(mPath.get(), &mCachedStat) == -1) {
         // try lstat it may be a symlink
         if (LSTAT(mPath.get(), &mCachedStat) == -1) {
-            return PR_FALSE;
+            return false;
         }
     }
-    return PR_TRUE;
+    return true;
 }
 
 NS_IMETHODIMP
@@ -432,6 +436,11 @@ nsLocalFile::OpenNSPRFileDesc(PRInt32 flags, PRInt32 mode, PRFileDesc **_retval)
         PR_Delete(mPath.get());
     }
 
+#if defined(LINUX) && !defined(ANDROID)
+    if (flags & OS_READAHEAD) {
+        readahead(PR_FileDesc2NativeHandle(*_retval), 0, 0);
+    }
+#endif
     return NS_OK;
 }
 
@@ -629,7 +638,7 @@ nsLocalFile::GetNativeTargetPathName(nsIFile *newParent,
         newParent = oldParent.get();
     } else {
         // check to see if our target directory exists
-        PRBool targetExists;
+        bool targetExists;
         if (NS_FAILED(rv = newParent->Exists(&targetExists)))
             return rv;
 
@@ -640,7 +649,7 @@ nsLocalFile::GetNativeTargetPathName(nsIFile *newParent,
                 return rv;
         } else {
             // make sure that the target is actually a directory
-            PRBool targetIsDirectory;
+            bool targetIsDirectory;
             if (NS_FAILED(rv = newParent->IsDirectory(&targetIsDirectory)))
                 return rv;
             if (!targetIsDirectory)
@@ -674,7 +683,7 @@ nsLocalFile::CopyDirectoryTo(nsIFile *newParent)
      * dirCheck is used for various boolean test results such as from Equals,
      * Exists, isDir, etc.
      */
-    PRBool dirCheck, isSymlink;
+    bool dirCheck, isSymlink;
     PRUint32 oldPerms;
 
     if (NS_FAILED(rv = IsDirectory(&dirCheck)))
@@ -715,7 +724,7 @@ nsLocalFile::CopyDirectoryTo(nsIFile *newParent)
     if (NS_FAILED(rv = GetDirectoryEntries(getter_AddRefs(dirIterator))))
         return rv;
 
-    PRBool hasMore = PR_FALSE;
+    bool hasMore = false;
     while (dirIterator->HasMoreElements(&hasMore), hasMore) {
         nsCOMPtr<nsIFile> entry;
         rv = dirIterator->GetNext((nsISupports**)getter_AddRefs(entry));
@@ -779,7 +788,7 @@ nsLocalFile::CopyToNative(nsIFile *newParent, const nsACString &newName)
     }
     
     // check to see if we are a directory or if we are a file
-    PRBool isDirectory;
+    bool isDirectory;
     if (NS_FAILED(rv = IsDirectory(&isDirectory)))
         return rv;
 
@@ -835,7 +844,7 @@ nsLocalFile::CopyToNative(nsIFile *newParent, const nsACString &newName)
             return rv;
 
         // open the old file, too
-        PRBool specialFile;
+        bool specialFile;
         if (NS_FAILED(rv = IsSpecial(&specialFile))) {
             PR_Close(newFD);
             return rv;
@@ -927,7 +936,7 @@ nsLocalFile::MoveToNative(nsIFile *newParent, const nsACString &newName)
 #endif
             rv = CopyToNative(newParent, newName);
             if (NS_SUCCEEDED(rv))
-                rv = Remove(PR_TRUE);
+                rv = Remove(true);
         } else {
             rv = NSRESULT_FOR_ERRNO();
         }
@@ -941,12 +950,12 @@ nsLocalFile::MoveToNative(nsIFile *newParent, const nsACString &newName)
 }
 
 NS_IMETHODIMP
-nsLocalFile::Remove(PRBool recursive)
+nsLocalFile::Remove(bool recursive)
 {
     CHECK_mPath();
     ENSURE_STAT_CACHE();
 
-    PRBool isSymLink;
+    bool isSymLink;
 
     nsresult rv = IsSymlink(&isSymLink);
     if (NS_FAILED(rv))
@@ -962,11 +971,11 @@ nsLocalFile::Remove(PRBool recursive)
 
         nsCOMPtr<nsISimpleEnumerator> dirRef(dir); // release on exit
 
-        rv = dir->Init(this, PR_FALSE);
+        rv = dir->Init(this, false);
         if (NS_FAILED(rv))
             return rv;
 
-        PRBool more;
+        bool more;
         while (dir->HasMoreElements(&more), more) {
             nsCOMPtr<nsISupports> item;
             rv = dir->GetNext(getter_AddRefs(item));
@@ -1183,10 +1192,10 @@ nsLocalFile::GetFileSizeOfLink(PRInt64 *aFileSize)
  *
  * Fails when /proc/self/mountinfo or diven device don't exist.
  */
-static PRBool
+static bool
 GetDeviceName(int deviceMajor, int deviceMinor, nsACString &deviceName)
 {
-    PRBool ret = false;
+    bool ret = false;
     
     const int kMountInfoLineLength = 200;
     const int kMountInfoDevPosition = 6;
@@ -1344,7 +1353,7 @@ nsLocalFile::GetParent(nsIFile **aParent)
     *slashp = '\0';
 
     nsCOMPtr<nsILocalFile> localFile;
-    nsresult rv = NS_NewNativeLocalFile(nsDependentCString(buffer), PR_TRUE,
+    nsresult rv = NS_NewNativeLocalFile(nsDependentCString(buffer), true,
                                         getter_AddRefs(localFile));
 
     // make buffer whole again
@@ -1361,7 +1370,7 @@ nsLocalFile::GetParent(nsIFile **aParent)
 
 
 NS_IMETHODIMP
-nsLocalFile::Exists(PRBool *_retval)
+nsLocalFile::Exists(bool *_retval)
 {
     CHECK_mPath();
     NS_ENSURE_ARG_POINTER(_retval);
@@ -1372,7 +1381,7 @@ nsLocalFile::Exists(PRBool *_retval)
 
 
 NS_IMETHODIMP
-nsLocalFile::IsWritable(PRBool *_retval)
+nsLocalFile::IsWritable(bool *_retval)
 {
     CHECK_mPath();
     NS_ENSURE_ARG_POINTER(_retval);
@@ -1384,7 +1393,7 @@ nsLocalFile::IsWritable(PRBool *_retval)
 }
 
 NS_IMETHODIMP
-nsLocalFile::IsReadable(PRBool *_retval)
+nsLocalFile::IsReadable(bool *_retval)
 {
     CHECK_mPath();
     NS_ENSURE_ARG_POINTER(_retval);
@@ -1396,11 +1405,72 @@ nsLocalFile::IsReadable(PRBool *_retval)
 }
 
 NS_IMETHODIMP
-nsLocalFile::IsExecutable(PRBool *_retval)
+nsLocalFile::IsExecutable(bool *_retval)
 {
     CHECK_mPath();
     NS_ENSURE_ARG_POINTER(_retval);
 
+    // Check extension (bug 663899). On certain platforms, the file
+    // extension may cause the OS to treat it as executable regardless of
+    // the execute bit, such as .jar on Mac OS X. We borrow the code from
+    // nsLocalFileWin, slightly modified.
+
+    // Don't be fooled by symlinks.
+    bool symLink;
+    nsresult rv = IsSymlink(&symLink);
+    if (NS_FAILED(rv))
+        return rv;
+
+    nsAutoString path;
+    if (symLink)
+        GetTarget(path);
+    else
+        GetPath(path);
+
+    PRInt32 dotIdx = path.RFindChar(PRUnichar('.'));
+    if (dotIdx != kNotFound) {
+        // Convert extension to lower case.
+        PRUnichar *p = path.BeginWriting();
+        for(p += dotIdx + 1; *p; p++)
+            *p +=  (*p >= L'A' && *p <= L'Z') ? 'a' - 'A' : 0; 
+        
+        // Search for any of the set of executable extensions.
+        static const char * const executableExts[] = {
+            "air",         // Adobe AIR installer
+            "jar"};        // java application bundle
+        nsDependentSubstring ext = Substring(path, dotIdx + 1);
+        for (size_t i = 0; i < ArrayLength(executableExts); i++) {
+            if (ext.EqualsASCII(executableExts[i])) {
+                // Found a match.  Set result and quit.
+                *_retval = true;
+                return NS_OK;
+            }
+        }
+    }
+
+    // On OS X, then query Launch Services.
+#ifdef MOZ_WIDGET_COCOA
+    // Certain Mac applications, such as Classic applications, which
+    // run under Rosetta, might not have the +x mode bit but are still
+    // considered to be executable by Launch Services (bug 646748).
+    CFURLRef url;
+    if (NS_FAILED(GetCFURL(&url))) {
+        return NS_ERROR_FAILURE;
+    }
+
+    LSRequestedInfo theInfoRequest = kLSRequestAllInfo;
+    LSItemInfoRecord theInfo;
+    OSStatus result = ::LSCopyItemInfoForURL(url, theInfoRequest, &theInfo);
+    ::CFRelease(url);
+    if (result == noErr) {
+        if ((theInfo.flags & kLSItemInfoIsApplication) != 0) {
+            *_retval = true;
+            return NS_OK;
+        }
+    }
+#endif
+
+    // Then check the execute bit.
     *_retval = (access(mPath.get(), X_OK) == 0);
 #ifdef SOLARIS
     // On Solaris, access will always return 0 for root user, however
@@ -1425,27 +1495,27 @@ nsLocalFile::IsExecutable(PRBool *_retval)
 }
 
 NS_IMETHODIMP
-nsLocalFile::IsDirectory(PRBool *_retval)
+nsLocalFile::IsDirectory(bool *_retval)
 {
     NS_ENSURE_ARG_POINTER(_retval);
-    *_retval = PR_FALSE;
+    *_retval = false;
     ENSURE_STAT_CACHE();
     *_retval = S_ISDIR(mCachedStat.st_mode);
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsLocalFile::IsFile(PRBool *_retval)
+nsLocalFile::IsFile(bool *_retval)
 {
     NS_ENSURE_ARG_POINTER(_retval);
-    *_retval = PR_FALSE;
+    *_retval = false;
     ENSURE_STAT_CACHE();
     *_retval = S_ISREG(mCachedStat.st_mode);
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsLocalFile::IsHidden(PRBool *_retval)
+nsLocalFile::IsHidden(bool *_retval)
 {
     NS_ENSURE_ARG_POINTER(_retval);
     nsACString::const_iterator begin, end;
@@ -1455,7 +1525,7 @@ nsLocalFile::IsHidden(PRBool *_retval)
 }
 
 NS_IMETHODIMP
-nsLocalFile::IsSymlink(PRBool *_retval)
+nsLocalFile::IsSymlink(bool *_retval)
 {
     NS_ENSURE_ARG_POINTER(_retval);
     CHECK_mPath();
@@ -1468,7 +1538,7 @@ nsLocalFile::IsSymlink(PRBool *_retval)
 }
 
 NS_IMETHODIMP
-nsLocalFile::IsSpecial(PRBool *_retval)
+nsLocalFile::IsSpecial(bool *_retval)
 {
     NS_ENSURE_ARG_POINTER(_retval);
     ENSURE_STAT_CACHE();
@@ -1483,11 +1553,11 @@ nsLocalFile::IsSpecial(PRBool *_retval)
 }
 
 NS_IMETHODIMP
-nsLocalFile::Equals(nsIFile *inFile, PRBool *_retval)
+nsLocalFile::Equals(nsIFile *inFile, bool *_retval)
 {
     NS_ENSURE_ARG(inFile);
     NS_ENSURE_ARG_POINTER(_retval);
-    *_retval = PR_FALSE;
+    *_retval = false;
 
     nsCAutoString inPath;
     nsresult rv = inFile->GetNativePath(inPath);
@@ -1501,7 +1571,7 @@ nsLocalFile::Equals(nsIFile *inFile, PRBool *_retval)
 }
 
 NS_IMETHODIMP
-nsLocalFile::Contains(nsIFile *inFile, PRBool recur, PRBool *_retval)
+nsLocalFile::Contains(nsIFile *inFile, bool recur, bool *_retval)
 {
     CHECK_mPath();
     NS_ENSURE_ARG(inFile);
@@ -1513,14 +1583,14 @@ nsLocalFile::Contains(nsIFile *inFile, PRBool recur, PRBool *_retval)
     if (NS_FAILED(rv = inFile->GetNativePath(inPath)))
         return rv;
 
-    *_retval = PR_FALSE;
+    *_retval = false;
 
     ssize_t len = mPath.Length();
     if (strncmp(mPath.get(), inPath.get(), len) == 0) {
         // Now make sure that the |inFile|'s path has a separator at len,
         // which implies that it has more components after len.
         if (inPath[len] == '/')
-            *_retval = PR_TRUE;
+            *_retval = true;
     }
 
     return NS_OK;
@@ -1553,7 +1623,7 @@ nsLocalFile::GetNativeTarget(nsACString &_retval)
     nsresult rv = NS_OK;
     nsCOMPtr<nsIFile> self(this);
     PRInt32 maxLinks = 40;
-    while (PR_TRUE) {
+    while (true) {
         if (maxLinks-- == 0) {
             rv = NS_ERROR_FILE_UNRESOLVABLE_SYMLINK;
             break;
@@ -1613,14 +1683,14 @@ nsLocalFile::GetNativeTarget(nsACString &_retval)
 }
 
 NS_IMETHODIMP
-nsLocalFile::GetFollowLinks(PRBool *aFollowLinks)
+nsLocalFile::GetFollowLinks(bool *aFollowLinks)
 {
-    *aFollowLinks = PR_TRUE;
+    *aFollowLinks = true;
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsLocalFile::SetFollowLinks(PRBool aFollowLinks)
+nsLocalFile::SetFollowLinks(bool aFollowLinks)
 {
     return NS_OK;
 }
@@ -1633,7 +1703,7 @@ nsLocalFile::GetDirectoryEntries(nsISimpleEnumerator **entries)
         return NS_ERROR_OUT_OF_MEMORY;
 
     NS_ADDREF(dir);
-    nsresult rv = dir->Init(this, PR_FALSE);
+    nsresult rv = dir->Init(this, false);
     if (NS_FAILED(rv)) {
         *entries = nsnull;
         NS_RELEASE(dir);
@@ -1650,20 +1720,15 @@ nsLocalFile::Load(PRLibrary **_retval)
     CHECK_mPath();
     NS_ENSURE_ARG_POINTER(_retval);
 
-    NS_TIMELINE_START_TIMER("PR_LoadLibrary");
-
 #ifdef NS_BUILD_REFCNT_LOGGING
-    nsTraceRefcntImpl::SetActivityIsLegal(PR_FALSE);
+    nsTraceRefcntImpl::SetActivityIsLegal(false);
 #endif
 
     *_retval = PR_LoadLibrary(mPath.get());
 
 #ifdef NS_BUILD_REFCNT_LOGGING
-    nsTraceRefcntImpl::SetActivityIsLegal(PR_TRUE);
+    nsTraceRefcntImpl::SetActivityIsLegal(true);
 #endif
-
-    NS_TIMELINE_STOP_TIMER("PR_LoadLibrary");
-    NS_TIMELINE_MARK_TIMER1("PR_LoadLibrary", mPath.get());
 
     if (!*_retval)
         return NS_ERROR_FAILURE;
@@ -1679,7 +1744,7 @@ nsLocalFile::GetPersistentDescriptor(nsACString &aPersistentDescriptor)
 NS_IMETHODIMP
 nsLocalFile::SetPersistentDescriptor(const nsACString &aPersistentDescriptor)
 {
-#ifdef XP_MACOSX
+#ifdef MOZ_WIDGET_COCOA
     if (aPersistentDescriptor.IsEmpty())
         return NS_ERROR_INVALID_ARG;
 
@@ -1740,7 +1805,7 @@ nsLocalFile::Reveal()
     if (!giovfs && !gnomevfs)
         return NS_ERROR_FAILURE;
 
-    PRBool isDirectory;
+    bool isDirectory;
     if (NS_FAILED(IsDirectory(&isDirectory)))
         return NS_ERROR_FAILURE;
 
@@ -1763,7 +1828,7 @@ nsLocalFile::Reveal()
         else 
             return gnomevfs->ShowURIForInput(dirPath);        
     }
-#elif defined(XP_MACOSX)
+#elif defined(MOZ_WIDGET_COCOA)
     CFURLRef url;
     if (NS_SUCCEEDED(GetCFURL(&url))) {
       nsresult rv = CocoaFileUtils::RevealFileInFinder(url);
@@ -1832,7 +1897,7 @@ nsLocalFile::Launch()
     fileUri.Append(mPath);
     mozilla::AndroidBridge* bridge = mozilla::AndroidBridge::Bridge();
     return bridge->OpenUriExternal(fileUri, type) ? NS_OK : NS_ERROR_FAILURE;
-#elif defined(XP_MACOSX)
+#elif defined(MOZ_WIDGET_COCOA)
     CFURLRef url;
     if (NS_SUCCEEDED(GetCFURL(&url))) {
         nsresult rv = CocoaFileUtils::OpenURL(url);
@@ -1846,7 +1911,7 @@ nsLocalFile::Launch()
 }
 
 nsresult
-NS_NewNativeLocalFile(const nsACString &path, PRBool followSymlinks, nsILocalFile **result)
+NS_NewNativeLocalFile(const nsACString &path, bool followSymlinks, nsILocalFile **result)
 {
     nsLocalFile *file = new nsLocalFile();
     if (!file)
@@ -1951,11 +2016,11 @@ nsLocalFile::GetTarget(nsAString &_retval)
 // nsIHashable
 
 NS_IMETHODIMP
-nsLocalFile::Equals(nsIHashable* aOther, PRBool *aResult)
+nsLocalFile::Equals(nsIHashable* aOther, bool *aResult)
 {
     nsCOMPtr<nsIFile> otherFile(do_QueryInterface(aOther));
     if (!otherFile) {
-        *aResult = PR_FALSE;
+        *aResult = false;
         return NS_OK;
     }
 
@@ -1970,7 +2035,7 @@ nsLocalFile::GetHashCode(PRUint32 *aResult)
 }
 
 nsresult 
-NS_NewLocalFile(const nsAString &path, PRBool followLinks, nsILocalFile* *result)
+NS_NewLocalFile(const nsAString &path, bool followLinks, nsILocalFile* *result)
 {
     nsCAutoString buf;
     nsresult rv = NS_CopyUnicodeToNative(path, buf);
@@ -1995,7 +2060,7 @@ nsLocalFile::GlobalShutdown()
 
 // nsILocalFileMac
 
-#ifdef XP_MACOSX
+#ifdef MOZ_WIDGET_COCOA
 
 static nsresult MacErrorMapper(OSErr inErr)
 {
@@ -2054,7 +2119,7 @@ static nsresult CFStringReftoUTF8(CFStringRef aInStrRef, nsACString& aOutStr)
   // first see if the conversion would succeed and find the length of the result
   CFIndex usedBufLen, inStrLen = ::CFStringGetLength(aInStrRef);
   CFIndex charsConverted = ::CFStringGetBytes(aInStrRef, CFRangeMake(0, inStrLen),
-                                              kCFStringEncodingUTF8, 0, PR_FALSE,
+                                              kCFStringEncodingUTF8, 0, false,
                                               NULL, 0, &usedBufLen);
   if (charsConverted == inStrLen) {
     // all characters converted, do the actual conversion
@@ -2102,7 +2167,7 @@ nsLocalFile::GetCFURL(CFURLRef *_retval)
 {
   CHECK_mPath();
 
-  PRBool isDir;
+  bool isDir;
   IsDirectory(&isDir);
   *_retval = ::CFURLCreateFromFileSystemRepresentation(kCFAllocatorDefault,
                                                        (UInt8*)mPath.get(),
@@ -2214,9 +2279,9 @@ nsLocalFile::SetFileCreator(OSType aFileCreator)
 }
   
 NS_IMETHODIMP
-nsLocalFile::LaunchWithDoc(nsILocalFile *aDocToLoad, PRBool aLaunchInBackground)
+nsLocalFile::LaunchWithDoc(nsILocalFile *aDocToLoad, bool aLaunchInBackground)
 {    
-  PRBool isExecutable;
+  bool isExecutable;
   nsresult rv = IsExecutable(&isExecutable);
   if (NS_FAILED(rv))
     return rv;
@@ -2257,7 +2322,7 @@ nsLocalFile::LaunchWithDoc(nsILocalFile *aDocToLoad, PRBool aLaunchInBackground)
 }
 
 NS_IMETHODIMP
-nsLocalFile::OpenDocWithApp(nsILocalFile *aAppToOpenWith, PRBool aLaunchInBackground)
+nsLocalFile::OpenDocWithApp(nsILocalFile *aAppToOpenWith, bool aLaunchInBackground)
 {
   FSRef docFSRef;
   nsresult rv = GetFSRef(&docFSRef);
@@ -2273,7 +2338,7 @@ nsLocalFile::OpenDocWithApp(nsILocalFile *aAppToOpenWith, PRBool aLaunchInBackgr
   if (!appFileMac)
     return rv;
 
-  PRBool isExecutable;
+  bool isExecutable;
   rv = appFileMac->IsExecutable(&isExecutable);
   if (NS_FAILED(rv))
     return rv;
@@ -2305,10 +2370,10 @@ nsLocalFile::OpenDocWithApp(nsILocalFile *aAppToOpenWith, PRBool aLaunchInBackgr
 }
 
 NS_IMETHODIMP
-nsLocalFile::IsPackage(PRBool *_retval)
+nsLocalFile::IsPackage(bool *_retval)
 {
   NS_ENSURE_ARG(_retval);
-  *_retval = PR_FALSE;
+  *_retval = false;
 
   CFURLRef url;
   nsresult rv = GetCFURL(&url);
@@ -2332,7 +2397,7 @@ nsLocalFile::IsPackage(PRBool *_retval)
 NS_IMETHODIMP
 nsLocalFile::GetBundleDisplayName(nsAString& outBundleName)
 {
-  PRBool isPackage = PR_FALSE;
+  bool isPackage = false;
   nsresult rv = IsPackage(&isPackage);
   if (NS_FAILED(rv) || !isPackage)
     return NS_ERROR_FAILURE;
@@ -2387,7 +2452,7 @@ NS_IMETHODIMP nsLocalFile::InitWithFile(nsILocalFile *aFile)
 }
 
 nsresult
-NS_NewLocalFileWithFSRef(const FSRef* aFSRef, PRBool aFollowLinks, nsILocalFileMac** result)
+NS_NewLocalFileWithFSRef(const FSRef* aFSRef, bool aFollowLinks, nsILocalFileMac** result)
 {
   nsLocalFile* file = new nsLocalFile();
   if (file == nsnull)
@@ -2406,7 +2471,7 @@ NS_NewLocalFileWithFSRef(const FSRef* aFSRef, PRBool aFollowLinks, nsILocalFileM
 }
 
 nsresult
-NS_NewLocalFileWithCFURL(const CFURLRef aURL, PRBool aFollowLinks, nsILocalFileMac** result)
+NS_NewLocalFileWithCFURL(const CFURLRef aURL, bool aFollowLinks, nsILocalFileMac** result)
 {
   nsLocalFile* file = new nsLocalFile();
   if (!file)

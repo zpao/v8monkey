@@ -45,7 +45,6 @@
 #include "prinrval.h"
 #include "nsVoidArray.h"
 #include "nsThreadUtils.h"
-#include "nsIRegion.h"
 #include "nsView.h"
 #include "nsIViewObserver.h"
 #include "nsDeviceContext.h"
@@ -82,15 +81,7 @@
    Composite() calls should also be forwarded to the root view manager.
 */
 
-class nsViewManagerEvent : public nsRunnable {
-public:
-  nsViewManagerEvent(class nsViewManager *vm) : mViewManager(vm) {
-    NS_ASSERTION(mViewManager, "null parameter");
-  }
-  void Revoke() { mViewManager = nsnull; }
-protected:
-  class nsViewManager *mViewManager;
-};
+class nsInvalidateEvent;
 
 class nsViewManager : public nsIViewManager {
 public:
@@ -111,7 +102,7 @@ public:
 
   NS_IMETHOD  GetWindowDimensions(nscoord *width, nscoord *height);
   NS_IMETHOD  SetWindowDimensions(nscoord width, nscoord height);
-  NS_IMETHOD  FlushDelayedResize(PRBool aDoReflow);
+  NS_IMETHOD  FlushDelayedResize(bool aDoReflow);
 
   NS_IMETHOD  Composite(void);
 
@@ -124,7 +115,7 @@ public:
       nsIView* aTargetView, nsEventStatus* aStatus);
 
   NS_IMETHOD  InsertChild(nsIView *parent, nsIView *child, nsIView *sibling,
-                          PRBool above);
+                          bool above);
 
   NS_IMETHOD  InsertChild(nsIView *parent, nsIView *child,
                           PRInt32 zindex);
@@ -133,16 +124,16 @@ public:
 
   NS_IMETHOD  MoveViewTo(nsIView *aView, nscoord aX, nscoord aY);
 
-  NS_IMETHOD  ResizeView(nsIView *aView, const nsRect &aRect, PRBool aRepaintExposedAreaOnly = PR_FALSE);
+  NS_IMETHOD  ResizeView(nsIView *aView, const nsRect &aRect, bool aRepaintExposedAreaOnly = false);
 
-  NS_IMETHOD  SetViewFloating(nsIView *aView, PRBool aFloating);
+  NS_IMETHOD  SetViewFloating(nsIView *aView, bool aFloating);
 
   NS_IMETHOD  SetViewVisibility(nsIView *aView, nsViewVisibility aVisible);
 
-  NS_IMETHOD  SetViewZIndex(nsIView *aView, PRBool aAuto, PRInt32 aZIndex, PRBool aTopMost=PR_FALSE);
+  NS_IMETHOD  SetViewZIndex(nsIView *aView, bool aAuto, PRInt32 aZIndex, bool aTopMost=false);
 
-  NS_IMETHOD  SetViewObserver(nsIViewObserver *aObserver);
-  NS_IMETHOD  GetViewObserver(nsIViewObserver *&aObserver);
+  virtual void SetViewObserver(nsIViewObserver *aObserver) { mObserver = aObserver; }
+  virtual nsIViewObserver* GetViewObserver() { return mObserver; }
 
   NS_IMETHOD  GetDeviceContext(nsDeviceContext *&aContext);
 
@@ -152,13 +143,10 @@ public:
   NS_IMETHOD GetRootWidget(nsIWidget **aWidget);
   NS_IMETHOD ForceUpdate();
  
-  NS_IMETHOD IsPainting(PRBool& aIsPainting);
+  NS_IMETHOD IsPainting(bool& aIsPainting);
   NS_IMETHOD GetLastUserEventTime(PRUint32& aTime);
   void ProcessInvalidateEvent();
   static PRUint32 gLastUserEventTime;
-
-  NS_IMETHOD SynthesizeMouseMove(PRBool aFromScroll);
-  void ProcessSynthMouseMoveEvent(PRBool aFromScroll);
 
   /* Update the cached RootViewManager pointer on this view manager. */
   void InvalidateHierarchy();
@@ -169,11 +157,11 @@ protected:
 private:
 
   void FlushPendingInvalidates();
-  void ProcessPendingUpdates(nsView *aView, PRBool aDoInvalidate);
+  void ProcessPendingUpdates(nsView *aView, bool aDoInvalidate);
   /**
    * Call WillPaint() on all view observers under this vm root.
    */
-  void CallWillPaintOnObservers(PRBool aWillSendDidPaint);
+  void CallWillPaintOnObservers(bool aWillSendDidPaint);
   void CallDidPaintOnObservers();
   void ReparentChildWidgets(nsIView* aView, nsIWidget *aNewWidget);
   void ReparentWidgets(nsIView* aView, nsIView *aParent);
@@ -186,21 +174,20 @@ private:
   void TriggerRefresh(PRUint32 aUpdateFlags);
 
   // aView is the view for aWidget and aRegion is relative to aWidget.
-  void Refresh(nsView *aView, nsIWidget *aWidget,
-               const nsIntRegion& aRegion, PRUint32 aUpdateFlags);
+  void Refresh(nsView *aView, nsIWidget *aWidget, const nsIntRegion& aRegion);
   // aRootView is the view for aWidget, aRegion is relative to aRootView, and
   // aIntRegion is relative to aWidget.
   void RenderViews(nsView *aRootView, nsIWidget *aWidget,
                    const nsRegion& aRegion, const nsIntRegion& aIntRegion,
-                   PRBool aPaintDefaultBackground, PRBool aWillSendDidPaint);
+                   bool aPaintDefaultBackground, bool aWillSendDidPaint);
 
   void InvalidateRectDifference(nsView *aView, const nsRect& aRect, const nsRect& aCutOut, PRUint32 aUpdateFlags);
   void InvalidateHorizontalBandDifference(nsView *aView, const nsRect& aRect, const nsRect& aCutOut,
-                                          PRUint32 aUpdateFlags, nscoord aY1, nscoord aY2, PRBool aInCutOut);
+                                          PRUint32 aUpdateFlags, nscoord aY1, nscoord aY2, bool aInCutOut);
 
   // Utilities
 
-  PRBool IsViewInserted(nsView *aView);
+  bool IsViewInserted(nsView *aView);
 
   /**
    * Function to recursively call Update() on all widgets belonging to
@@ -242,11 +229,11 @@ private:
     mUpdateCnt = 0;
   }
 
-  PRBool IsPainting() const {
+  bool IsPainting() const {
     return RootViewManager()->mPainting;
   }
 
-  void SetPainting(PRBool aPainting) {
+  void SetPainting(bool aPainting) {
     RootViewManager()->mPainting = aPainting;
   }
 
@@ -255,21 +242,17 @@ private:
 public: // NOT in nsIViewManager, so private to the view module
   nsView* GetRootViewImpl() const { return mRootView; }
   nsViewManager* RootViewManager() const { return mRootViewManager; }
-  PRBool IsRootVM() const { return this == RootViewManager(); }
+  bool IsRootVM() const { return this == RootViewManager(); }
 
   nsEventStatus HandleEvent(nsView* aView, nsGUIEvent* aEvent);
 
-  nsresult CreateRegion(nsIRegion* *result);
-
-  PRBool IsRefreshEnabled() { return RootViewManager()->mUpdateBatchCnt == 0; }
-
-  nsIViewObserver* GetViewObserver() { return mObserver; }
+  bool IsRefreshEnabled() { return RootViewManager()->mUpdateBatchCnt == 0; }
 
   // Call this when you need to let the viewmanager know that it now has
   // pending updates.
-  void PostPendingUpdate() { RootViewManager()->mHasPendingUpdates = PR_TRUE; }
+  void PostPendingUpdate() { RootViewManager()->mHasPendingUpdates = true; }
 
-  PRInt32 AppUnitsPerDevPixel() const
+  PRUint32 AppUnitsPerDevPixel() const
   {
     return mContext->AppUnitsPerDevPixel();
   }
@@ -277,21 +260,17 @@ public: // NOT in nsIViewManager, so private to the view module
 private:
   nsRefPtr<nsDeviceContext> mContext;
   nsIViewObserver   *mObserver;
-  // relative to mRootView and set only on the root view manager
-  nsPoint           mMouseLocation;
 
   // The size for a resize that we delayed until the root view becomes
   // visible again.
   nsSize            mDelayedResize;
 
-  nsCOMPtr<nsIFactory> mRegionFactory;
   nsView            *mRootView;
   // mRootViewManager is a strong ref unless it equals |this|.  It's
   // never null (if we have no ancestors, it will be |this|).
   nsViewManager     *mRootViewManager;
 
-  nsRevocableEventPtr<nsViewManagerEvent> mSynthMouseMoveEvent;
-  nsRevocableEventPtr<nsViewManagerEvent> mInvalidateEvent;
+  nsRevocableEventPtr<nsInvalidateEvent> mInvalidateEvent;
 
   // The following members should not be accessed directly except by
   // the root view manager.  Some have accessor functions to enforce
@@ -303,10 +282,10 @@ private:
   PRInt32           mUpdateBatchCnt;
   PRUint32          mUpdateBatchFlags;
   // Use IsPainting() and SetPainting() to access mPainting.
-  PRPackedBool      mPainting;
-  PRPackedBool      mRecursiveRefreshPending;
-  PRPackedBool      mHasPendingUpdates;
-  PRPackedBool      mInScroll;
+  bool              mPainting;
+  bool              mRecursiveRefreshPending;
+  bool              mHasPendingUpdates;
+  bool              mInScroll;
 
   //from here to public should be static and locked... MMP
   static PRInt32           mVMCount;        //number of viewmanagers
@@ -317,7 +296,20 @@ private:
   void PostInvalidateEvent();
 };
 
-//when the refresh happens, should it be double buffered?
-#define NS_VMREFRESH_DOUBLE_BUFFER      0x0001
+class nsInvalidateEvent : public nsRunnable {
+public:
+  nsInvalidateEvent(class nsViewManager *vm) : mViewManager(vm) {
+    NS_ASSERTION(mViewManager, "null parameter");
+  }
+  void Revoke() { mViewManager = nsnull; }
+
+  NS_IMETHOD Run() {
+    if (mViewManager)
+      mViewManager->ProcessInvalidateEvent();
+    return NS_OK;
+  }
+protected:
+  class nsViewManager *mViewManager;
+};
 
 #endif /* nsViewManager_h___ */

@@ -51,17 +51,17 @@ NS_IMPL_THREADSAFE_ISUPPORTS1(nsKeygenThread, nsIKeygenThread)
 
 nsKeygenThread::nsKeygenThread()
 :mutex("nsKeygenThread.mutex"),
- iAmRunning(PR_FALSE),
- keygenReady(PR_FALSE),
- statusDialogClosed(PR_FALSE),
- alreadyReceivedParams(PR_FALSE),
+ iAmRunning(false),
+ keygenReady(false),
+ statusDialogClosed(false),
+ alreadyReceivedParams(false),
  privateKey(nsnull),
  publicKey(nsnull),
  slot(nsnull),
  keyGenMechanism(0),
  params(nsnull),
- isPerm(PR_FALSE),
- isSensitive(PR_FALSE),
+ isPerm(false),
+ isSensitive(false),
  wincx(nsnull),
  threadHandle(nsnull)
 {
@@ -75,15 +75,15 @@ void nsKeygenThread::SetParams(
     PK11SlotInfo *a_slot,
     PRUint32 a_keyGenMechanism,
     void *a_params,
-    PRBool a_isPerm,
-    PRBool a_isSensitive,
+    bool a_isPerm,
+    bool a_isSensitive,
     void *a_wincx )
 {
   nsNSSShutDownPreventionLock locker;
   MutexAutoLock lock(mutex);
  
     if (!alreadyReceivedParams) {
-      alreadyReceivedParams = PR_TRUE;
+      alreadyReceivedParams = true;
       if (a_slot) {
         slot = PK11_ReferenceSlot(a_slot);
       }
@@ -156,7 +156,7 @@ nsresult nsKeygenThread::StartKeyGeneration(nsIObserver* aObserver)
 
     observer.swap(obs);
 
-    iAmRunning = PR_TRUE;
+    iAmRunning = true;
 
     threadHandle = PR_CreateThread(PR_USER_THREAD, nsKeygenThreadRunner, static_cast<void*>(this), 
       PR_PRIORITY_NORMAL, PR_LOCAL_THREAD, PR_JOINABLE_THREAD, 0);
@@ -168,12 +168,12 @@ nsresult nsKeygenThread::StartKeyGeneration(nsIObserver* aObserver)
   return NS_OK;
 }
 
-nsresult nsKeygenThread::UserCanceled(PRBool *threadAlreadyClosedDialog)
+nsresult nsKeygenThread::UserCanceled(bool *threadAlreadyClosedDialog)
 {
   if (!threadAlreadyClosedDialog)
     return NS_OK;
 
-  *threadAlreadyClosedDialog = PR_FALSE;
+  *threadAlreadyClosedDialog = false;
 
   MutexAutoLock lock(mutex);
   
@@ -184,7 +184,7 @@ nsresult nsKeygenThread::UserCanceled(PRBool *threadAlreadyClosedDialog)
     // Bad luck, we told him not do, and user still has to wait.
     // However, we remember that it's closed and will not close
     // it again to avoid problems.
-    statusDialogClosed = PR_TRUE;
+    statusDialogClosed = true;
 
   return NS_OK;
 }
@@ -192,13 +192,13 @@ nsresult nsKeygenThread::UserCanceled(PRBool *threadAlreadyClosedDialog)
 void nsKeygenThread::Run(void)
 {
   nsNSSShutDownPreventionLock locker;
-  PRBool canGenerate = PR_FALSE;
+  bool canGenerate = false;
 
   {
     MutexAutoLock lock(mutex);
     if (alreadyReceivedParams) {
-      canGenerate = PR_TRUE;
-      keygenReady = PR_FALSE;
+      canGenerate = true;
+      keygenReady = false;
     }
   }
 
@@ -217,8 +217,8 @@ void nsKeygenThread::Run(void)
   {
     MutexAutoLock lock(mutex);
 
-    keygenReady = PR_TRUE;
-    iAmRunning = PR_FALSE;
+    keygenReady = true;
+    iAmRunning = false;
 
     // forget our parameters
     if (slot) {

@@ -65,11 +65,11 @@
 nsUnknownDecoder::nsUnknownDecoder()
   : mBuffer(nsnull)
   , mBufferLen(0)
-  , mRequireHTMLsuffix(PR_FALSE)
+  , mRequireHTMLsuffix(false)
 {
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
   if (prefs) {
-    PRBool val;
+    bool val;
     if (NS_SUCCEEDED(prefs->GetBoolPref("security.requireHTMLsuffix", &val)))
       mRequireHTMLsuffix = val;
   }
@@ -276,29 +276,29 @@ nsUnknownDecoder::GetMIMETypeFromContent(nsIRequest* aRequest,
 
 // Actual sniffing code
 
-PRBool nsUnknownDecoder::AllowSniffing(nsIRequest* aRequest)
+bool nsUnknownDecoder::AllowSniffing(nsIRequest* aRequest)
 {
   if (!mRequireHTMLsuffix) {
-    return PR_TRUE;
+    return true;
   }
   
   nsCOMPtr<nsIChannel> channel = do_QueryInterface(aRequest);
   if (!channel) {
     NS_ERROR("QI failed");
-    return PR_FALSE;
+    return false;
   }
 
   nsCOMPtr<nsIURI> uri;
   if (NS_FAILED(channel->GetURI(getter_AddRefs(uri))) || !uri) {
-    return PR_FALSE;
+    return false;
   }
   
-  PRBool isLocalFile = PR_FALSE;
+  bool isLocalFile = false;
   if (NS_FAILED(uri->SchemeIs("file", &isLocalFile)) || isLocalFile) {
-    return PR_FALSE;
+    return false;
   }
 
-  return PR_TRUE;
+  return true;
 }
 
 /**
@@ -306,8 +306,8 @@ PRBool nsUnknownDecoder::AllowSniffing(nsIRequest* aRequest)
  * in the file.  Each entry has either a type associated with it (set
  * these with the SNIFFER_ENTRY macro) or a function to be executed
  * (set these with the SNIFFER_ENTRY_WITH_FUNC macro).  The function
- * should take a single nsIRequest* and returns PRBool -- PR_TRUE if
- * it sets mContentType, PR_FALSE otherwise
+ * should take a single nsIRequest* and returns bool -- true if
+ * it sets mContentType, false otherwise
  */
 nsUnknownDecoder::nsSnifferEntry nsUnknownDecoder::sSnifferEntries[] = {
   SNIFFER_ENTRY("%PDF-", APPLICATION_PDF),
@@ -391,21 +391,21 @@ void nsUnknownDecoder::DetermineContentType(nsIRequest* aRequest)
                "Content type should be known by now.");
 }
 
-PRBool nsUnknownDecoder::TryContentSniffers(nsIRequest* aRequest)
+bool nsUnknownDecoder::TryContentSniffers(nsIRequest* aRequest)
 {
   // Enumerate content sniffers
   nsCOMPtr<nsICategoryManager> catMan(do_GetService("@mozilla.org/categorymanager;1"));
   if (!catMan) {
-    return PR_FALSE;
+    return false;
   }
 
   nsCOMPtr<nsISimpleEnumerator> sniffers;
   catMan->EnumerateCategory("content-sniffing-services", getter_AddRefs(sniffers));
   if (!sniffers) {
-    return PR_FALSE;
+    return false;
   }
 
-  PRBool hasMore;
+  bool hasMore;
   while (NS_SUCCEEDED(sniffers->HasMoreElements(&hasMore)) && hasMore) {
     nsCOMPtr<nsISupports> elem;
     sniffers->GetNext(getter_AddRefs(elem));
@@ -427,14 +427,14 @@ PRBool nsUnknownDecoder::TryContentSniffers(nsIRequest* aRequest)
     rv = sniffer->GetMIMETypeFromContent(aRequest, (const PRUint8*)mBuffer,
                                          mBufferLen, mContentType);
     if (NS_SUCCEEDED(rv)) {
-      return PR_TRUE;
+      return true;
     }
   }
 
-  return PR_FALSE;
+  return false;
 }
 
-PRBool nsUnknownDecoder::SniffForHTML(nsIRequest* aRequest)
+bool nsUnknownDecoder::SniffForHTML(nsIRequest* aRequest)
 {
   /*
    * To prevent a possible attack, we will not consider this to be
@@ -442,7 +442,7 @@ PRBool nsUnknownDecoder::SniffForHTML(nsIRequest* aRequest)
    * are set right
    */
   if (!AllowSniffing(aRequest)) {
-    return PR_FALSE;
+    return false;
   }
   
   // Now look for HTML.
@@ -456,13 +456,13 @@ PRBool nsUnknownDecoder::SniffForHTML(nsIRequest* aRequest)
 
   // did we find something like a start tag?
   if (str == end || *str != '<' || ++str == end) {
-    return PR_FALSE;
+    return false;
   }
 
   // If we seem to be SGML or XML and we got down here, just pretend we're HTML
   if (*str == '!' || *str == '?') {
     mContentType = TEXT_HTML;
-    return PR_TRUE;
+    return true;
   }
   
   PRUint32 bufSize = end - str;
@@ -504,19 +504,19 @@ PRBool nsUnknownDecoder::SniffForHTML(nsIRequest* aRequest)
       MATCHES_TAG("pre")) {
   
     mContentType = TEXT_HTML;
-    return PR_TRUE;
+    return true;
   }
 
 #undef MATCHES_TAG
   
-  return PR_FALSE;
+  return false;
 }
 
-PRBool nsUnknownDecoder::SniffForXML(nsIRequest* aRequest)
+bool nsUnknownDecoder::SniffForXML(nsIRequest* aRequest)
 {
   // Just like HTML, this should be able to be shut off.
   if (!AllowSniffing(aRequest)) {
-    return PR_FALSE;
+    return false;
   }
 
   // First see whether we can glean anything from the uri...
@@ -525,10 +525,10 @@ PRBool nsUnknownDecoder::SniffForXML(nsIRequest* aRequest)
     mContentType = TEXT_XML;
   }
   
-  return PR_TRUE;
+  return true;
 }
 
-PRBool nsUnknownDecoder::SniffURI(nsIRequest* aRequest)
+bool nsUnknownDecoder::SniffURI(nsIRequest* aRequest)
 {
   nsCOMPtr<nsIMIMEService> mimeService(do_GetService("@mozilla.org/mime;1"));
   if (mimeService) {
@@ -541,13 +541,13 @@ PRBool nsUnknownDecoder::SniffURI(nsIRequest* aRequest)
         result = mimeService->GetTypeFromURI(uri, type);
         if (NS_SUCCEEDED(result)) {
           mContentType = type;
-          return PR_TRUE;
+          return true;
         }
       }
     }
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 // This macro is based on RFC 2046 Section 4.1.2.  Treat any char 0-31
@@ -556,7 +556,7 @@ PRBool nsUnknownDecoder::SniffURI(nsIRequest* aRequest)
 #define IS_TEXT_CHAR(ch)                                     \
   (((unsigned char)(ch)) > 31 || (9 <= (ch) && (ch) <= 13) || (ch) == 27)
 
-PRBool nsUnknownDecoder::LastDitchSniff(nsIRequest* aRequest)
+bool nsUnknownDecoder::LastDitchSniff(nsIRequest* aRequest)
 {
   // All we can do now is try to guess whether this is text/plain or
   // application/octet-stream
@@ -573,7 +573,7 @@ PRBool nsUnknownDecoder::LastDitchSniff(nsIRequest* aRequest)
         (buf[0] == 0 && buf[1] == 0 && buf[2] == 0xFE && buf[3] == 0xFF)) { // UCS-4, Big Endian
         
       mContentType = TEXT_PLAIN;
-      return PR_TRUE;
+      return true;
     }
   }
   
@@ -590,7 +590,7 @@ PRBool nsUnknownDecoder::LastDitchSniff(nsIRequest* aRequest)
     mContentType = APPLICATION_OCTET_STREAM;
   }
 
-  return PR_TRUE;    
+  return true;    
 }
 
 

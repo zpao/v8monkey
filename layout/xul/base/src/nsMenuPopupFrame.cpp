@@ -61,7 +61,6 @@
 #include "nsFrameManager.h"
 #include "nsIDocument.h"
 #include "nsRect.h"
-#include "nsILookAndFeel.h"
 #include "nsIComponentManager.h"
 #include "nsBoxLayoutState.h"
 #include "nsIScrollableFrame.h"
@@ -74,7 +73,6 @@
 #include "nsContentUtils.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsEventStateManager.h"
-#include "nsIBoxLayout.h"
 #include "nsIPopupBoxObject.h"
 #include "nsPIWindowRoot.h"
 #include "nsIReflowCallback.h"
@@ -86,6 +84,11 @@
 #include "nsIScreenManager.h"
 #include "nsIServiceManager.h"
 #include "nsThemeConstants.h"
+#include "nsDisplayList.h"
+#include "mozilla/Preferences.h"
+#include "mozilla/LookAndFeel.h"
+
+using namespace mozilla;
 
 PRInt8 nsMenuPopupFrame::sDefaultLevelIsTop = -1;
 
@@ -101,6 +104,10 @@ NS_NewMenuPopupFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMenuPopupFrame)
 
+NS_QUERYFRAME_HEAD(nsMenuPopupFrame)
+  NS_QUERYFRAME_ENTRY(nsMenuPopupFrame)
+NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
+
 //
 // nsMenuPopupFrame ctor
 //
@@ -112,25 +119,26 @@ nsMenuPopupFrame::nsMenuPopupFrame(nsIPresShell* aShell, nsStyleContext* aContex
   mPopupState(ePopupClosed),
   mPopupAlignment(POPUPALIGNMENT_NONE),
   mPopupAnchor(POPUPALIGNMENT_NONE),
-  mFlipBoth(PR_FALSE),
-  mIsOpenChanged(PR_FALSE),
-  mIsContextMenu(PR_FALSE),
-  mAdjustOffsetForContextMenu(PR_FALSE),
-  mGeneratedChildren(PR_FALSE),
-  mMenuCanOverlapOSBar(PR_FALSE),
-  mShouldAutoPosition(PR_TRUE),
   mConsumeRollupEvent(nsIPopupBoxObject::ROLLUP_DEFAULT),
-  mInContentShell(PR_TRUE),
-  mIsMenuLocked(PR_FALSE),
-  mHFlip(PR_FALSE),
-  mVFlip(PR_FALSE)
+  mFlipBoth(false),
+  mIsOpenChanged(false),
+  mIsContextMenu(false),
+  mAdjustOffsetForContextMenu(false),
+  mGeneratedChildren(false),
+  mMenuCanOverlapOSBar(false),
+  mShouldAutoPosition(true),
+  mInContentShell(true),
+  mIsMenuLocked(false),
+  mIsDragPopup(false),
+  mHFlip(false),
+  mVFlip(false)
 {
   // the preference name is backwards here. True means that the 'top' level is
   // the default, and false means that the 'parent' level is the default.
   if (sDefaultLevelIsTop >= 0)
     return;
   sDefaultLevelIsTop =
-    nsContentUtils::GetBoolPref("ui.panel.default_level_parent", PR_FALSE);
+    Preferences::GetBool("ui.panel.default_level_parent", false);
 } // ctor
 
 
@@ -142,16 +150,12 @@ nsMenuPopupFrame::Init(nsIContent*      aContent,
   nsresult rv = nsBoxFrame::Init(aContent, aParent, aPrevInFlow);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsPresContext* presContext = PresContext();
-
   // lookup if we're allowed to overlap the OS bar (menubar/taskbar) from the
   // look&feel object
-  PRBool tempBool;
-  presContext->LookAndFeel()->
-    GetMetric(nsILookAndFeel::eMetric_MenusCanOverlapOSBar, tempBool);
-  mMenuCanOverlapOSBar = tempBool;
+  mMenuCanOverlapOSBar =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_MenusCanOverlapOSBar) != 0;
 
-  rv = CreatePopupViewForFrame();
+  rv = CreatePopupView();
   NS_ENSURE_SUCCESS(rv, rv);
 
   // XXX Hack. The popup's view should float above all other views,
@@ -159,19 +163,23 @@ nsMenuPopupFrame::Init(nsIContent*      aContent,
   // about that constraint.
   nsIView* ourView = GetView();
   nsIViewManager* viewManager = ourView->GetViewManager();
-  viewManager->SetViewFloating(ourView, PR_TRUE);
+  viewManager->SetViewFloating(ourView, true);
 
   mPopupType = ePopupTypePanel;
-  nsIDocument* doc = aContent->GetOwnerDoc();
-  if (doc) {
-    PRInt32 namespaceID;
-    nsCOMPtr<nsIAtom> tag = doc->BindingManager()->ResolveTag(aContent, &namespaceID);
-    if (namespaceID == kNameSpaceID_XUL) {
-      if (tag == nsGkAtoms::menupopup || tag == nsGkAtoms::popup)
-        mPopupType = ePopupTypeMenu;
-      else if (tag == nsGkAtoms::tooltip)
-        mPopupType = ePopupTypeTooltip;
-    }
+  nsIDocument* doc = aContent->OwnerDoc();
+  PRInt32 namespaceID;
+  nsCOMPtr<nsIAtom> tag = doc->BindingManager()->ResolveTag(aContent, &namespaceID);
+  if (namespaceID == kNameSpaceID_XUL) {
+    if (tag == nsGkAtoms::menupopup || tag == nsGkAtoms::popup)
+      mPopupType = ePopupTypeMenu;
+    else if (tag == nsGkAtoms::tooltip)
+      mPopupType = ePopupTypeTooltip;
+  }
+
+  if (mPopupType == ePopupTypePanel &&
+      aContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
+                            nsGkAtoms::drag, eIgnoreCase)) {
+    mIsDragPopup = true;
   }
 
   nsCOMPtr<nsISupports> cont = PresContext()->GetContainer();
@@ -179,7 +187,7 @@ nsMenuPopupFrame::Init(nsIContent*      aContent,
   PRInt32 type = -1;
   if (dsti && NS_SUCCEEDED(dsti->GetItemType(&type)) &&
       type == nsIDocShellTreeItem::typeChrome)
-    mInContentShell = PR_FALSE;
+    mInContentShell = false;
 
   // To improve performance, create the widget for the popup only if it is not
   // a leaf. Leaf popups such as menus will create their widgets later when
@@ -201,7 +209,7 @@ nsMenuPopupFrame::Init(nsIContent*      aContent,
   return rv;
 }
 
-PRBool
+bool
 nsMenuPopupFrame::IsNoAutoHide() const
 {
   // Panels with noautohide="true" don't hide when the mouse is clicked
@@ -213,7 +221,7 @@ nsMenuPopupFrame::IsNoAutoHide() const
 }
 
 nsPopupLevel
-nsMenuPopupFrame::PopupLevel(PRBool aIsNoAutoHide) const
+nsMenuPopupFrame::PopupLevel(bool aIsNoAutoHide) const
 {
   // The popup level is determined as follows, in this order:
   //   1. non-panels (menus and tooltips) are always topmost
@@ -256,7 +264,7 @@ nsMenuPopupFrame::EnsureWidget()
 {
   nsIView* ourView = GetView();
   if (!ourView->HasWidget()) {
-    NS_ASSERTION(!mGeneratedChildren && !GetFirstChild(nsnull),
+    NS_ASSERTION(!mGeneratedChildren && !GetFirstPrincipalChild(),
                  "Creating widget for MenuPopupFrame with children");
     CreateWidgetForView(ourView);
   }
@@ -269,9 +277,10 @@ nsMenuPopupFrame::CreateWidgetForView(nsIView* aView)
   nsWidgetInitData widgetData;
   widgetData.mWindowType = eWindowType_popup;
   widgetData.mBorderStyle = eBorderStyle_default;
-  widgetData.clipSiblings = PR_TRUE;
+  widgetData.clipSiblings = true;
   widgetData.mPopupHint = mPopupType;
   widgetData.mNoAutoHide = IsNoAutoHide();
+  widgetData.mIsDragPopup = mIsDragPopup;
 
   nsAutoString title;
   if (mContent && widgetData.mNoAutoHide) {
@@ -290,7 +299,7 @@ nsMenuPopupFrame::CreateWidgetForView(nsIView* aView)
   }
 
   nsTransparencyMode mode = nsLayoutUtils::GetFrameTransparency(this, this);
-  PRBool viewHasTransparentContent = !mInContentShell &&
+  bool viewHasTransparentContent = !mInContentShell &&
                                      (eTransparencyTransparent ==
                                       mode);
   nsIContent* parentContent = GetContent()->GetParent();
@@ -320,7 +329,7 @@ nsMenuPopupFrame::CreateWidgetForView(nsIView* aView)
   }
 
   nsresult rv = aView->CreateWidgetForPopup(&widgetData, parentWidget,
-                                            PR_TRUE, PR_TRUE);
+                                            true, true);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -364,7 +373,7 @@ public:
 
   NS_IMETHOD Run()
   {
-    nsMouseEvent event(PR_TRUE, NS_XUL_POPUP_SHOWN, nsnull, nsMouseEvent::eReal);
+    nsMouseEvent event(true, NS_XUL_POPUP_SHOWN, nsnull, nsMouseEvent::eReal);
     return nsEventDispatcher::Dispatch(mPopup, mPresContext, &event);                 
   }
 
@@ -374,20 +383,20 @@ private:
 };
 
 NS_IMETHODIMP
-nsMenuPopupFrame::SetInitialChildList(nsIAtom* aListName,
+nsMenuPopupFrame::SetInitialChildList(ChildListID  aListID,
                                       nsFrameList& aChildList)
 {
   // unless the list is empty, indicate that children have been generated.
   if (aChildList.NotEmpty())
-    mGeneratedChildren = PR_TRUE;
-  return nsBoxFrame::SetInitialChildList(aListName, aChildList);
+    mGeneratedChildren = true;
+  return nsBoxFrame::SetInitialChildList(aListID, aChildList);
 }
 
-PRBool
+bool
 nsMenuPopupFrame::IsLeaf() const
 {
   if (mGeneratedChildren)
-    return PR_FALSE;
+    return false;
 
   if (mPopupType != ePopupTypeMenu) {
     // any panel with a type attribute, such as the autocomplete popup,
@@ -406,13 +415,13 @@ nsMenuPopupFrame::IsLeaf() const
 }
 
 void
-nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu, PRBool aSizedToPopup)
+nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu, bool aSizedToPopup)
 {
   if (!mGeneratedChildren)
     return;
 
-  PRBool shouldPosition = PR_TRUE;
-  PRBool isOpen = IsOpen();
+  bool shouldPosition = true;
+  bool isOpen = IsOpen();
   if (!isOpen) {
     // if the popup is not open, only do layout while showing or if the menu
     // is sized to the popup
@@ -441,14 +450,14 @@ nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu, P
   prefSize = BoundsCheck(minSize, prefSize, maxSize);
 
   // if the size changed then set the bounds to be the preferred size
-  PRBool sizeChanged = (mPrefSize != prefSize);
+  bool sizeChanged = (mPrefSize != prefSize);
   if (sizeChanged) {
-    SetBounds(aState, nsRect(0, 0, prefSize.width, prefSize.height), PR_FALSE);
+    SetBounds(aState, nsRect(0, 0, prefSize.width, prefSize.height), false);
     mPrefSize = prefSize;
   }
 
   if (shouldPosition) {
-    SetPopupPosition(aParentMenu, PR_FALSE);
+    SetPopupPosition(aParentMenu, false);
   }
 
   nsRect bounds(GetRect());
@@ -465,7 +474,7 @@ nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu, P
       // so set the preferred size accordingly
       mPrefSize = newsize;
       if (isOpen) {
-        SetPopupPosition(nsnull, PR_FALSE);
+        SetPopupPosition(nsnull, false);
       }
     }
   }
@@ -501,7 +510,7 @@ nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu, P
 
   // finally, if the popup just opened, send a popupshown event
   if (mIsOpenChanged) {
-    mIsOpenChanged = PR_FALSE;
+    mIsOpenChanged = false;
     nsCOMPtr<nsIRunnable> event = new nsXULPopupShownEvent(GetContent(), pc);
     NS_DispatchToCurrentThread(event);
   }
@@ -571,7 +580,7 @@ nsMenuPopupFrame::InitializePopup(nsIContent* aAnchorContent,
                                   nsIContent* aTriggerContent,
                                   const nsAString& aPosition,
                                   PRInt32 aXPos, PRInt32 aYPos,
-                                  PRBool aAttributesOverride)
+                                  bool aAttributesOverride)
 {
   EnsureWidget();
 
@@ -580,7 +589,7 @@ nsMenuPopupFrame::InitializePopup(nsIContent* aAnchorContent,
   mTriggerContent = aTriggerContent;
   mXPos = aXPos;
   mYPos = aYPos;
-  mAdjustOffsetForContextMenu = PR_FALSE;
+  mAdjustOffsetForContextMenu = false;
 
   // if aAttributesOverride is true, then the popupanchor, popupalign and
   // position attributes on the <popup> override those values passed in.
@@ -688,7 +697,7 @@ nsMenuPopupFrame::InitializePopup(nsIContent* aAnchorContent,
 void
 nsMenuPopupFrame::InitializePopupAtScreen(nsIContent* aTriggerContent,
                                           PRInt32 aXPos, PRInt32 aYPos,
-                                          PRBool aIsContextMenu)
+                                          bool aIsContextMenu)
 {
   EnsureWidget();
 
@@ -697,7 +706,7 @@ nsMenuPopupFrame::InitializePopupAtScreen(nsIContent* aTriggerContent,
   mTriggerContent = aTriggerContent;
   mScreenXPos = aXPos;
   mScreenYPos = aYPos;
-  mFlipBoth = PR_FALSE;
+  mFlipBoth = false;
   mPopupAnchor = POPUPALIGNMENT_NONE;
   mPopupAlignment = POPUPALIGNMENT_NONE;
   mIsContextMenu = aIsContextMenu;
@@ -713,8 +722,8 @@ nsMenuPopupFrame::InitializePopupWithAnchorAlign(nsIContent* aAnchorContent,
   EnsureWidget();
 
   mPopupState = ePopupShowing;
-  mAdjustOffsetForContextMenu = PR_FALSE;
-  mFlipBoth = PR_FALSE;
+  mAdjustOffsetForContextMenu = false;
+  mFlipBoth = false;
 
   // this popup opening function is provided for backwards compatibility
   // only. It accepts either coordinates or an anchor and alignment value
@@ -739,13 +748,13 @@ nsMenuPopupFrame::InitializePopupWithAnchorAlign(nsIContent* aAnchorContent,
 }
 
 void
-nsMenuPopupFrame::ShowPopup(PRBool aIsContextMenu, PRBool aSelectFirstItem)
+nsMenuPopupFrame::ShowPopup(bool aIsContextMenu, bool aSelectFirstItem)
 {
   mIsContextMenu = aIsContextMenu;
 
   if (mPopupState == ePopupShowing) {
     mPopupState = ePopupOpen;
-    mIsOpenChanged = PR_TRUE;
+    mIsOpenChanged = true;
 
     nsMenuFrame* menuFrame = GetParentMenu();
     if (menuFrame) {
@@ -767,11 +776,11 @@ nsMenuPopupFrame::ShowPopup(PRBool aIsContextMenu, PRBool aSelectFirstItem)
     }
   }
 
-  mShouldAutoPosition = PR_TRUE;
+  mShouldAutoPosition = true;
 }
 
 void
-nsMenuPopupFrame::HidePopup(PRBool aDeselectMenu, nsPopupState aNewState)
+nsMenuPopupFrame::HidePopup(bool aDeselectMenu, nsPopupState aNewState)
 {
   NS_ASSERTION(aNewState == ePopupClosed || aNewState == ePopupInvisible,
                "popup being set to unexpected state");
@@ -817,11 +826,11 @@ nsMenuPopupFrame::HidePopup(PRBool aDeselectMenu, nsPopupState aNewState)
 
   mIncrementalString.Truncate();
 
-  LockMenuUntilClosed(PR_FALSE);
+  LockMenuUntilClosed(false);
 
-  mIsOpenChanged = PR_FALSE;
+  mIsOpenChanged = false;
   mCurrentMenu = nsnull; // make sure no current menu is set
-  mHFlip = mVFlip = PR_FALSE;
+  mHFlip = mVFlip = false;
 
   nsIView* view = GetView();
   nsIViewManager* viewManager = view->GetViewManager();
@@ -833,12 +842,13 @@ nsMenuPopupFrame::HidePopup(PRBool aDeselectMenu, nsPopupState aNewState)
   // XXX, bug 137033, In Windows, if mouse is outside the window when the menupopup closes, no
   // mouse_enter/mouse_exit event will be fired to clear current hover state, we should clear it manually.
   // This code may not the best solution, but we can leave it here until we find the better approach.
-  nsEventStateManager *esm = PresContext()->EventStateManager();
+  NS_ASSERTION(mContent->IsElement(), "How do we have a non-element?");
+  nsEventStates state = mContent->AsElement()->State();
 
-  nsEventStates state = esm->GetContentState(mContent);
-
-  if (state.HasState(NS_EVENT_STATE_HOVER))
+  if (state.HasState(NS_EVENT_STATE_HOVER)) {
+    nsEventStateManager *esm = PresContext()->EventStateManager();
     esm->SetContentState(nsnull, NS_EVENT_STATE_HOVER);
+  }
 
   nsMenuFrame* menuFrame = GetParentMenu();
   if (menuFrame) {
@@ -1014,7 +1024,7 @@ nsMenuPopupFrame::FlipOrResize(nscoord& aScreenPoint, nscoord aSize,
                                nscoord aAnchorBegin, nscoord aAnchorEnd,
                                nscoord aMarginBegin, nscoord aMarginEnd,
                                nscoord aOffsetForContextMenu, FlipStyle aFlip,
-                               PRPackedBool* aFlipSide)
+                               bool* aFlipSide)
 {
   // all of the coordinates used here are in app units relative to the screen
   nscoord popupSize = aSize;
@@ -1035,7 +1045,7 @@ nsMenuPopupFrame::FlipOrResize(nscoord& aScreenPoint, nscoord aSize,
       else {
         // flip such that the popup is to the right or bottom of the anchor
         // point instead. However, when flipping use the same margin size.
-        *aFlipSide = PR_TRUE;
+        *aFlipSide = true;
         aScreenPoint = endpos + aMarginEnd;
         // check if the new position is still off the right or bottom edge of
         // the screen. If so, resize the popup.
@@ -1063,13 +1073,14 @@ nsMenuPopupFrame::FlipOrResize(nscoord& aScreenPoint, nscoord aSize,
           aScreenPoint = aScreenEnd - aSize;
         }
         else {
+          aScreenPoint = endpos + aMarginBegin;
           popupSize = aScreenEnd - aScreenPoint;
         }
       }
       else {
         // flip such that the popup is to the left or top of the anchor point
         // instead.
-        *aFlipSide = PR_TRUE;
+        *aFlipSide = true;
         aScreenPoint = startpos - aSize - aMarginBegin - aOffsetForContextMenu;
 
         // check if the new position is still off the left or top edge of the
@@ -1087,14 +1098,35 @@ nsMenuPopupFrame::FlipOrResize(nscoord& aScreenPoint, nscoord aSize,
     }
   }
 
-  return popupSize;
+  // Make sure that the point is within the screen boundaries and that the
+  // size isn't off the edge of the screen. This can happen when a large
+  // positive or negative margin is used.
+  if (aScreenPoint < aScreenBegin) {
+    aScreenPoint = aScreenBegin;
+  }
+  if (aScreenPoint > aScreenEnd) {
+    aScreenPoint = aScreenEnd - aSize;
+  }
+
+  // If popupSize ended up being negative, or the original size was actually
+  // smaller than the calculated popup size, just use the original size instead.
+  if (popupSize <= 0 || aSize < popupSize) {
+    popupSize = aSize;
+  }
+  return NS_MIN(popupSize, aScreenEnd - aScreenPoint);
 }
 
 nsresult
-nsMenuPopupFrame::SetPopupPosition(nsIFrame* aAnchorFrame, PRBool aIsMove)
+nsMenuPopupFrame::SetPopupPosition(nsIFrame* aAnchorFrame, bool aIsMove)
 {
   if (!mShouldAutoPosition)
     return NS_OK;
+
+  // If this is due to a move, return early if the popup hasn't been laid out
+  // yet. On Windows, this can happen when using a drag popup before it opens.
+  if (aIsMove && (mPrefSize.width == -1 || mPrefSize.height == -1)) {
+    return NS_OK;
+  }
 
   nsPresContext* presContext = PresContext();
   nsIFrame* rootFrame = presContext->PresShell()->FrameManager()->GetRootFrame();
@@ -1117,10 +1149,10 @@ nsMenuPopupFrame::SetPopupPosition(nsIFrame* aAnchorFrame, PRBool aIsMove)
     }
   }
 
-  PRBool sizedToPopup = PR_FALSE;
+  bool sizedToPopup = false;
   if (aAnchorFrame->GetContent()) {
     // the popup should be the same size as the anchor menu, for example, a menulist.
-    sizedToPopup = nsMenuFrame::IsSizedToPopup(aAnchorFrame->GetContent(), PR_FALSE);
+    sizedToPopup = nsMenuFrame::IsSizedToPopup(aAnchorFrame->GetContent(), false);
   }
 
   // the dimensions of the anchor in its app units
@@ -1160,10 +1192,8 @@ nsMenuPopupFrame::SetPopupPosition(nsIFrame* aAnchorFrame, PRBool aIsMove)
 
   nsDeviceContext* devContext = presContext->DeviceContext();
   nscoord offsetForContextMenu = 0;
-  // if mScreenXPos and mScreenYPos are -1, then we are anchored. If they
-  // have other values, then the popup appears unanchored at that screen
-  // coordinate.
-  if (mScreenXPos == -1 && mScreenYPos == -1) {
+
+  if (IsAnchored()) {
     // if we are anchored, there are certain things we don't want to do when
     // repositioning the popup to fit on the screen, such as end up positioned
     // over the anchor, for instance a popup appearing over the menu label.
@@ -1196,7 +1226,7 @@ nsMenuPopupFrame::SetPopupPosition(nsIFrame* aAnchorFrame, PRBool aIsMove)
     // the window is moved. Popups at the parent level follow the parent
     // window as it is moved and remained anchored, so we want to maintain the
     // anchoring instead.
-    if (IsNoAutoHide() && PopupLevel(PR_TRUE) != ePopupLevelParent) {
+    if (IsNoAutoHide() && PopupLevel(true) != ePopupLevelParent) {
       // Account for the margin that will end up being added to the screen coordinate
       // the next time SetPopupPosition is called.
       mScreenXPos = presContext->AppUnitsToIntCSSPixels(screenPoint.x - margin.left);
@@ -1396,7 +1426,7 @@ void nsMenuPopupFrame::CanAdjustEdges(PRInt8 aHorizontalSide, PRInt8 aVerticalSi
   }
 }
 
-PRBool nsMenuPopupFrame::ConsumeOutsideClicks()
+bool nsMenuPopupFrame::ConsumeOutsideClicks()
 {
   // If the popup has explicitly set a consume mode, honor that.
   if (mConsumeRollupEvent != nsIPopupBoxObject::ROLLUP_DEFAULT)
@@ -1406,7 +1436,7 @@ PRBool nsMenuPopupFrame::ConsumeOutsideClicks()
   if (parentContent) {
     nsINodeInfo *ni = parentContent->NodeInfo();
     if (ni->Equals(nsGkAtoms::menulist, kNameSpaceID_XUL))
-      return PR_TRUE;  // Consume outside clicks for combo boxes on all platforms
+      return true;  // Consume outside clicks for combo boxes on all platforms
 #if defined(XP_WIN) || defined(XP_OS2)
     // Don't consume outside clicks for menus in Windows
     if (ni->Equals(nsGkAtoms::menu, kNameSpaceID_XUL) ||
@@ -1418,18 +1448,18 @@ PRBool nsMenuPopupFrame::ConsumeOutsideClicks()
                                      nsGkAtoms::menu, eCaseMatters) ||
           parentContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
                                      nsGkAtoms::menuButton, eCaseMatters)))) {
-      return PR_FALSE;
+      return false;
     }
 #endif
     if (ni->Equals(nsGkAtoms::textbox, kNameSpaceID_XUL)) {
       // Don't consume outside clicks for autocomplete widget
       if (parentContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
                                      nsGkAtoms::autocomplete, eCaseMatters))
-        return PR_FALSE;
+        return false;
     }
   }
 
-  return PR_TRUE;
+  return true;
 }
 
 // XXXroc this is megalame. Fossicking around for a frame of the right
@@ -1451,7 +1481,7 @@ nsIScrollableFrame* nsMenuPopupFrame::GetScrollFrame(nsIFrame* aStart)
   // try children
   currFrame = aStart;
   do {
-    nsIFrame* childFrame = currFrame->GetFirstChild(nsnull);
+    nsIFrame* childFrame = currFrame->GetFirstPrincipalChild();
     nsIScrollableFrame* sf = GetScrollFrame(childFrame);
     if (sf)
       return sf;
@@ -1480,12 +1510,12 @@ NS_IMETHODIMP nsMenuPopupFrame::SetCurrentMenuItem(nsMenuFrame* aMenuItem)
     return NS_OK;
 
   if (mCurrentMenu) {
-    mCurrentMenu->SelectMenu(PR_FALSE);
+    mCurrentMenu->SelectMenu(false);
   }
 
   if (aMenuItem) {
     EnsureMenuItemIsVisible(aMenuItem);
-    aMenuItem->SelectMenu(PR_TRUE);
+    aMenuItem->SelectMenu(true);
   }
 
   mCurrentMenu = aMenuItem;
@@ -1501,7 +1531,7 @@ nsMenuPopupFrame::CurrentMenuIsBeingDestroyed()
 
 NS_IMETHODIMP
 nsMenuPopupFrame::ChangeMenuItem(nsMenuFrame* aMenuItem,
-                                 PRBool aSelectFirstItem)
+                                 bool aSelectFirstItem)
 {
   if (mCurrentMenu == aMenuItem)
     return NS_OK;
@@ -1514,7 +1544,7 @@ nsMenuPopupFrame::ChangeMenuItem(nsMenuFrame* aMenuItem,
 
   // Unset the current child.
   if (mCurrentMenu) {
-    mCurrentMenu->SelectMenu(PR_FALSE);
+    mCurrentMenu->SelectMenu(false);
     nsMenuPopupFrame* popup = mCurrentMenu->GetPopup();
     if (popup) {
       if (mCurrentMenu->IsOpen()) {
@@ -1527,7 +1557,7 @@ nsMenuPopupFrame::ChangeMenuItem(nsMenuFrame* aMenuItem,
   // Set the new child.
   if (aMenuItem) {
     EnsureMenuItemIsVisible(aMenuItem);
-    aMenuItem->SelectMenu(PR_TRUE);
+    aMenuItem->SelectMenu(true);
   }
 
   mCurrentMenu = aMenuItem;
@@ -1548,13 +1578,13 @@ nsMenuPopupFrame::Enter(nsGUIEvent* aEvent)
 }
 
 nsMenuFrame*
-nsMenuPopupFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, PRBool& doAction)
+nsMenuPopupFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, bool& doAction)
 {
   PRUint32 charCode, keyCode;
   aKeyEvent->GetCharCode(&charCode);
   aKeyEvent->GetKeyCode(&keyCode);
 
-  doAction = PR_FALSE;
+  doAction = false;
 
   // Enumerate over our list of frames.
   nsIFrame* immediateParent = nsnull;
@@ -1564,15 +1594,15 @@ nsMenuPopupFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, PRBool& doActi
     immediateParent = this;
 
   PRUint32 matchCount = 0, matchShortcutCount = 0;
-  PRBool foundActive = PR_FALSE;
-  PRBool isShortcut;
+  bool foundActive = false;
+  bool isShortcut;
   nsMenuFrame* frameBefore = nsnull;
   nsMenuFrame* frameAfter = nsnull;
   nsMenuFrame* frameShortcut = nsnull;
 
   nsIContent* parentContent = mContent->GetParent();
 
-  PRBool isMenu = parentContent &&
+  bool isMenu = parentContent &&
                   !parentContent->NodeInfo()->Equals(nsGkAtoms::menulist, kNameSpaceID_XUL);
 
   static DOMTimeStamp lastKeyTime = 0;
@@ -1624,7 +1654,7 @@ nsMenuPopupFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, PRBool& doActi
   //       been destroyed already.  One strategy would be to 
   //       setTimeout(<func>,0) as detailed in:
   //       <http://bugzilla.mozilla.org/show_bug.cgi?id=126675#c32>
-  currFrame = immediateParent->GetFirstChild(nsnull);
+  currFrame = immediateParent->GetFirstPrincipalChild();
 
   PRInt32 menuAccessKey = -1;
   nsMenuBarListener::GetMenuAccessKey(&menuAccessKey);
@@ -1635,20 +1665,20 @@ nsMenuPopupFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, PRBool& doActi
     nsIContent* current = currFrame->GetContent();
     
     // See if it's a menu item.
-    if (nsXULPopupManager::IsValidMenuItem(PresContext(), current, PR_TRUE)) {
+    if (nsXULPopupManager::IsValidMenuItem(PresContext(), current, true)) {
       nsAutoString textKey;
       if (menuAccessKey >= 0) {
         // Get the shortcut attribute.
         current->GetAttr(kNameSpaceID_None, nsGkAtoms::accesskey, textKey);
       }
       if (textKey.IsEmpty()) { // No shortcut, try first letter
-        isShortcut = PR_FALSE;
+        isShortcut = false;
         current->GetAttr(kNameSpaceID_None, nsGkAtoms::label, textKey);
         if (textKey.IsEmpty()) // No label, try another attribute (value)
           current->GetAttr(kNameSpaceID_None, nsGkAtoms::value, textKey);
       }
       else
-        isShortcut = PR_TRUE;
+        isShortcut = true;
 
       if (StringBeginsWith(textKey, incrementalString,
                            nsCaseInsensitiveStringComparator())) {
@@ -1680,7 +1710,7 @@ nsMenuPopupFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, PRBool& doActi
       // Get the active status
       if (current->AttrValueIs(kNameSpaceID_None, nsGkAtoms::menuactive,
                                nsGkAtoms::_true, eCaseMatters)) {
-        foundActive = PR_TRUE;
+        foundActive = true;
         if (stringLength > 1) {
           // If there is more than one char typed, the current item has highest priority,
           //   otherwise the item next to current has highest priority
@@ -1719,7 +1749,7 @@ nsMenuPopupFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, PRBool& doActi
 }
 
 void
-nsMenuPopupFrame::LockMenuUntilClosed(PRBool aLock)
+nsMenuPopupFrame::LockMenuUntilClosed(bool aLock)
 {
   mIsMenuLocked = aLock;
 
@@ -1749,6 +1779,19 @@ void
 nsMenuPopupFrame::AttachedDismissalListener()
 {
   mConsumeRollupEvent = nsIPopupBoxObject::ROLLUP_DEFAULT;
+}
+
+nsresult
+nsMenuPopupFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
+                                   const nsRect&           aDirtyRect,
+                                   const nsDisplayListSet& aLists)
+{
+  // don't pass events to drag popups
+  if (aBuilder->IsForEventDelivery() && mIsDragPopup) {
+    return NS_OK;
+  }
+
+  return nsBoxFrame::BuildDisplayList(aBuilder, aDirtyRect, aLists);
 }
 
 // helpers /////////////////////////////////////////////////////////////
@@ -1798,7 +1841,7 @@ nsMenuPopupFrame::MoveToAttributePosition()
   PRInt32 ypos = top.ToInteger(&err2);
 
   if (NS_SUCCEEDED(err1) && NS_SUCCEEDED(err2))
-    MoveTo(xpos, ypos, PR_FALSE);
+    MoveTo(xpos, ypos, false);
 }
 
 void
@@ -1826,7 +1869,7 @@ nsMenuPopupFrame::DestroyFrom(nsIFrame* aDestructRoot)
 
 
 void
-nsMenuPopupFrame::MoveTo(PRInt32 aLeft, PRInt32 aTop, PRBool aUpdateAttrs)
+nsMenuPopupFrame::MoveTo(PRInt32 aLeft, PRInt32 aTop, bool aUpdateAttrs)
 {
   if (mScreenXPos == aLeft && mScreenYPos == aTop)
     return;
@@ -1841,7 +1884,7 @@ nsMenuPopupFrame::MoveTo(PRInt32 aLeft, PRInt32 aTop, PRBool aUpdateAttrs)
   mScreenXPos = aLeft - presContext->AppUnitsToIntCSSPixels(margin.left);
   mScreenYPos = aTop - presContext->AppUnitsToIntCSSPixels(margin.top);
 
-  SetPopupPosition(nsnull, PR_TRUE);
+  SetPopupPosition(nsnull, true);
 
   nsCOMPtr<nsIContent> popup = mContent;
   if (aUpdateAttrs && (popup->HasAttr(kNameSpaceID_None, nsGkAtoms::left) ||
@@ -1850,19 +1893,19 @@ nsMenuPopupFrame::MoveTo(PRInt32 aLeft, PRInt32 aTop, PRBool aUpdateAttrs)
     nsAutoString left, top;
     left.AppendInt(aLeft);
     top.AppendInt(aTop);
-    popup->SetAttr(kNameSpaceID_None, nsGkAtoms::left, left, PR_FALSE);
-    popup->SetAttr(kNameSpaceID_None, nsGkAtoms::top, top, PR_FALSE);
+    popup->SetAttr(kNameSpaceID_None, nsGkAtoms::left, left, false);
+    popup->SetAttr(kNameSpaceID_None, nsGkAtoms::top, top, false);
   }
 }
 
-PRBool
+bool
 nsMenuPopupFrame::GetAutoPosition()
 {
   return mShouldAutoPosition;
 }
 
 void
-nsMenuPopupFrame::SetAutoPosition(PRBool aShouldAutoPosition)
+nsMenuPopupFrame::SetAutoPosition(bool aShouldAutoPosition)
 {
   mShouldAutoPosition = aShouldAutoPosition;
 }
@@ -1878,24 +1921,20 @@ nsMenuPopupFrame::SetConsumeRollupEvent(PRUint32 aConsumeMode)
  * as much as possible. Until we get rid of views finally...
  */
 nsresult
-nsMenuPopupFrame::CreatePopupViewForFrame()
+nsMenuPopupFrame::CreatePopupView()
 {
   if (HasView()) {
     return NS_OK;
   }
 
-  nsViewVisibility visibility = nsViewVisibility_kShow;
-  PRInt32 zIndex = 0;
-  PRBool  autoZIndex = PR_FALSE;
-
-  nsIView* parentView;
   nsIViewManager* viewManager = PresContext()->GetPresShell()->GetViewManager();
   NS_ASSERTION(nsnull != viewManager, "null view manager");
 
   // Create a view
-  parentView = viewManager->GetRootView();
-  visibility = nsViewVisibility_kHide;
-  zIndex = PR_INT32_MAX;
+  nsIView* parentView = viewManager->GetRootView();
+  nsViewVisibility visibility = nsViewVisibility_kHide;
+  PRInt32 zIndex = PR_INT32_MAX;
+  bool    autoZIndex = false;
 
   NS_ASSERTION(parentView, "no parent view");
 
@@ -1904,14 +1943,14 @@ nsMenuPopupFrame::CreatePopupViewForFrame()
   if (view) {
     viewManager->SetViewZIndex(view, autoZIndex, zIndex);
     // XXX put view last in document order until we can do better
-    viewManager->InsertChild(parentView, view, nsnull, PR_TRUE);
+    viewManager->InsertChild(parentView, view, nsnull, true);
   }
 
   // Remember our view
   SetView(view);
 
   NS_FRAME_LOG(NS_FRAME_TRACE_CALLS,
-    ("nsMenuPopupFrame::CreatePopupViewForFrame: frame=%p view=%p", this, view));
+    ("nsMenuPopupFrame::CreatePopupView: frame=%p view=%p", this, view));
 
   if (!view)
     return NS_ERROR_OUT_OF_MEMORY;

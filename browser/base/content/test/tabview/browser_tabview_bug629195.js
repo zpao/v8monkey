@@ -19,12 +19,7 @@ function test() {
 
       // show the undo close group button
       let group = contentWindow.GroupItems.groupItems[0];
-      group.closeAll();
-
-      group.addSubscriber(group, "groupHidden", function() {
-        group.removeSubscriber(group, "groupHidden");
-        restore(group.id);
-      });
+      hideGroupItem(group, function () restore(group.id));
     },
     function(newWin) {
       win = newWin;
@@ -109,6 +104,6 @@ function restore(groupId) {
     }]
   };
   let ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
-  ss.setWindowState(win, JSON.stringify(newState), false);
+  ss.setWindowState(win, JSON.stringify(newState), true);
 }
 

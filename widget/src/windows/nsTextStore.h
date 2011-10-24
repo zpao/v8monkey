@@ -113,10 +113,10 @@ public: /*ITfContextOwnerCompositionSink*/
 public:
   static void     Initialize(void);
   static void     Terminate(void);
-  static void     SetIMEOpenState(PRBool);
-  static PRBool   GetIMEOpenState(void);
+  static void     SetIMEOpenState(bool);
+  static bool     GetIMEOpenState(void);
 
-  static void     CommitComposition(PRBool aDiscard)
+  static void     CommitComposition(bool aDiscard)
   {
     if (!sTsfTextStore) return;
     sTsfTextStore->CommitCompositionInternal(aDiscard);
@@ -128,7 +128,7 @@ public:
     sTsfTextStore->SetInputModeInternal(aContext.mStatus);
   }
 
-  static nsresult OnFocusChange(PRBool, nsWindow*, PRUint32);
+  static nsresult OnFocusChange(bool, nsWindow*, PRUint32);
 
   static nsresult OnTextChange(PRUint32 aStart,
                                PRUint32 aOldEnd,
@@ -180,17 +180,17 @@ protected:
   nsTextStore();
   ~nsTextStore();
 
-  PRBool   Create(nsWindow*, PRUint32);
-  PRBool   Destroy(void);
+  bool     Create(nsWindow*, PRUint32);
+  bool     Destroy(void);
 
   // If aDispatchTextEvent is true, this method will dispatch text event if
   // this is called during IME composing.  aDispatchTextEvent should be true
   // only when this is called from SetSelection.  Because otherwise, the text
   // event should not be sent from here.
   HRESULT  SetSelectionInternal(const TS_SELECTION_ACP*,
-                                PRBool aDispatchTextEvent = PR_FALSE);
-  HRESULT  OnStartCompositionInternal(ITfCompositionView*, ITfRange*, PRBool);
-  void     CommitCompositionInternal(PRBool);
+                                bool aDispatchTextEvent = false);
+  HRESULT  OnStartCompositionInternal(ITfCompositionView*, ITfRange*, bool);
+  void     CommitCompositionInternal(bool);
   void     SetInputModeInternal(PRUint32 aState);
   nsresult OnTextChangeInternal(PRUint32, PRUint32, PRUint32);
   void     OnTextChangeMsgInternal(void);
@@ -241,6 +241,9 @@ protected:
   // The latest text event which was dispatched for composition string
   // of the current composing transaction.
   nsTextEvent*                 mLastDispatchedTextEvent;
+  // The latest composition string which was dispatched by composition update
+  // event.
+  nsString                     mLastDispatchedCompositionString;
   // Timer for calling ITextStoreACPSink::OnLayoutChange. This is only used
   // during composing.
   nsCOMPtr<nsITimer>           mCompositionTimer;

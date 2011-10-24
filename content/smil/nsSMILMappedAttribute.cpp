@@ -45,6 +45,7 @@
 #include "nsIDocument.h"
 #include "nsIPresShell.h"
 #include "nsCSSProps.h"
+#include "mozilla/dom/Element.h"
 
 // Callback function, for freeing string buffers stored in property table
 static void
@@ -62,19 +63,13 @@ nsresult
 nsSMILMappedAttribute::ValueFromString(const nsAString& aStr,
                                        const nsISMILAnimationElement* aSrcElement,
                                        nsSMILValue& aValue,
-                                       PRBool& aPreventCachingOfSandwich) const
+                                       bool& aPreventCachingOfSandwich) const
 {
   NS_ENSURE_TRUE(IsPropertyAnimatable(mPropID), NS_ERROR_FAILURE);
 
-  nsSMILCSSValueType::ValueFromString(mPropID, mElement, aStr, aValue);
-  if (aValue.IsNull()) {
-    return NS_ERROR_FAILURE;
-  }
-
-  // XXXdholbert: For simplicity, just assume that all CSS values have to
-  // reparsed every sample. See note in nsSMILCSSProperty::ValueFromString.
-  aPreventCachingOfSandwich = PR_TRUE;
-  return NS_OK;
+  nsSMILCSSValueType::ValueFromString(mPropID, mElement, aStr, aValue,
+                                      &aPreventCachingOfSandwich);
+  return aValue.IsNull() ? NS_ERROR_FAILURE : NS_OK;
 }
 
 nsSMILValue
@@ -82,12 +77,16 @@ nsSMILMappedAttribute::GetBaseValue() const
 {
   nsAutoString baseStringValue;
   nsRefPtr<nsIAtom> attrName = GetAttrNameAtom();
-  PRBool success = mElement->GetAttr(kNameSpaceID_None, attrName,
+  bool success = mElement->GetAttr(kNameSpaceID_None, attrName,
                                      baseStringValue);
   nsSMILValue baseValue;
   if (success) {
+    // For base values, we don't need to worry whether the value returned is
+    // context-sensitive or not since the compositor will take care of comparing
+    // the returned (computed) base value and its cached value and determining
+    // if an update is required or not.
     nsSMILCSSValueType::ValueFromString(mPropID, mElement,
-                                        baseStringValue, baseValue);
+                                        baseStringValue, baseValue, nsnull);
   } else {
     // Attribute is unset -- use computed value.
     // FIRST: Temporarily clear animated value, to make sure it doesn't pollute

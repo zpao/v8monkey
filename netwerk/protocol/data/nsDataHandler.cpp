@@ -101,34 +101,43 @@ nsDataHandler::NewURI(const nsACString &aSpec,
                       nsIURI *aBaseURI,
                       nsIURI **result) {
     nsresult rv;
+    nsRefPtr<nsIURI> uri;
 
     nsCString spec(aSpec);
-    nsCAutoString contentType, contentCharset, dataBuffer;
-    PRBool base64;
-    rv = ParseURI(spec, contentType, contentCharset, base64, dataBuffer);
+
+    if (aBaseURI && !spec.IsEmpty() && spec[0] == '#') {
+        // Looks like a reference instead of a fully-specified URI.
+        // --> initialize |uri| as a clone of |aBaseURI|, with ref appended.
+        rv = aBaseURI->Clone(getter_AddRefs(uri));
+        if (NS_FAILED(rv))
+            return rv;
+        rv = uri->SetRef(spec);
+    } else {
+        // Otherwise, we'll assume |spec| is a fully-specified data URI
+        nsCAutoString contentType, contentCharset, dataBuffer, hashRef;
+        bool base64;
+        rv = ParseURI(spec, contentType, contentCharset, base64, dataBuffer, hashRef);
+        if (NS_FAILED(rv))
+            return rv;
+
+        // Strip whitespace unless this is text, where whitespace is important
+        // Don't strip escaped whitespace though (bug 391951)
+        if (base64 || (strncmp(contentType.get(),"text/",5) != 0 &&
+                       contentType.Find("xml") == kNotFound)) {
+            // it's ascii encoded binary, don't let any spaces in
+            spec.StripWhitespace();
+        }
+
+        uri = do_CreateInstance(kSimpleURICID, &rv);
+        if (NS_FAILED(rv))
+            return rv;
+        rv = uri->SetSpec(spec);
+    }
+
     if (NS_FAILED(rv))
         return rv;
 
-    // Strip whitespace unless this is text, where whitespace is important
-    // Don't strip escaped whitespace though (bug 391951)
-    if (base64 || (strncmp(contentType.get(),"text/",5) != 0 &&
-                   contentType.Find("xml") == kNotFound)) {
-        // it's ascii encoded binary, don't let any spaces in
-        spec.StripWhitespace();
-    }
- 
-
-    nsIURI* url;
-    rv = CallCreateInstance(kSimpleURICID, &url);
-    if (NS_FAILED(rv)) return rv;
-
-    rv = url->SetSpec(spec);
-    if (NS_FAILED(rv)) {
-        NS_RELEASE(url);
-        return rv;
-    }
-
-    *result = url;
+    uri.forget(result);
     return rv;
 }
 
@@ -151,9 +160,9 @@ nsDataHandler::NewChannel(nsIURI* uri, nsIChannel* *result) {
 }
 
 NS_IMETHODIMP 
-nsDataHandler::AllowPort(PRInt32 port, const char *scheme, PRBool *_retval) {
+nsDataHandler::AllowPort(PRInt32 port, const char *scheme, bool *_retval) {
     // don't override anything.  
-    *_retval = PR_FALSE;
+    *_retval = false;
     return NS_OK;
 }
 
@@ -161,9 +170,10 @@ nsresult
 nsDataHandler::ParseURI(nsCString& spec,
                         nsCString& contentType,
                         nsCString& contentCharset,
-                        PRBool&    isBase64,
-                        nsCString& dataBuffer) {
-    isBase64 = PR_FALSE;
+                        bool&    isBase64,
+                        nsCString& dataBuffer,
+                        nsCString& hashRef) {
+    isBase64 = false;
 
     // move past "data:"
     char *buffer = (char *) PL_strcasestr(spec.BeginWriting(), "data:");
@@ -183,7 +193,7 @@ nsDataHandler::ParseURI(nsCString& spec,
     // determine if the data is base64 encoded.
     char *base64 = PL_strcasestr(buffer, ";base64");
     if (base64) {
-        isBase64 = PR_TRUE;
+        isBase64 = true;
         *base64 = '\0';
     }
 
@@ -221,7 +231,16 @@ nsDataHandler::ParseURI(nsCString& spec,
     contentType.StripWhitespace();
     contentCharset.StripWhitespace();
 
-    dataBuffer.Assign(comma + 1);
+    // Split encoded data from terminal "#ref" (if present)
+    char *data = comma + 1;
+    char *hash = strchr(data, '#');
+    if (!hash) {
+        dataBuffer.Assign(data);
+        hashRef.Truncate();
+    } else {
+        dataBuffer.Assign(data, hash - data);
+        hashRef.Assign(hash);
+    }
 
     return NS_OK;
 }

@@ -76,16 +76,16 @@ nsMemoryImpl::Free(void* ptr)
 }
 
 NS_IMETHODIMP
-nsMemoryImpl::HeapMinimize(PRBool aImmediate)
+nsMemoryImpl::HeapMinimize(bool aImmediate)
 {
     return FlushMemory(NS_LITERAL_STRING("heap-minimize").get(), aImmediate);
 }
 
 NS_IMETHODIMP
-nsMemoryImpl::IsLowMemory(PRBool *result)
+nsMemoryImpl::IsLowMemory(bool *result)
 {
     NS_ERROR("IsLowMemory is deprecated.  See bug 592308.");
-    *result = PR_FALSE;
+    *result = false;
     return NS_OK;
 }
 
@@ -97,7 +97,7 @@ nsMemoryImpl::Create(nsISupports* outer, const nsIID& aIID, void **aResult)
 }
 
 nsresult
-nsMemoryImpl::FlushMemory(const PRUnichar* aReason, PRBool aImmediate)
+nsMemoryImpl::FlushMemory(const PRUnichar* aReason, bool aImmediate)
 {
     nsresult rv = NS_OK;
 
@@ -150,7 +150,7 @@ nsMemoryImpl::RunFlushers(const PRUnichar* aReason)
 
         if ( e ) {
           nsCOMPtr<nsIObserver> observer;
-          PRBool loop = PR_TRUE;
+          bool loop = true;
 
           while (NS_SUCCEEDED(e->HasMoreElements(&loop)) && loop) 
           {
@@ -198,7 +198,7 @@ NS_Alloc(PRSize size)
     void* result = moz_malloc(size);
     if (! result) {
         // Request an asynchronous flush
-        sGlobalMemory.FlushMemory(NS_LITERAL_STRING("alloc-failure").get(), PR_FALSE);
+        sGlobalMemory.FlushMemory(NS_LITERAL_STRING("alloc-failure").get(), false);
     }
     return result;
 }
@@ -212,7 +212,7 @@ NS_Realloc(void* ptr, PRSize size)
     void* result = moz_realloc(ptr, size);
     if (! result && size != 0) {
         // Request an asynchronous flush
-        sGlobalMemory.FlushMemory(NS_LITERAL_STRING("alloc-failure").get(), PR_FALSE);
+        sGlobalMemory.FlushMemory(NS_LITERAL_STRING("alloc-failure").get(), false);
     }
     return result;
 }

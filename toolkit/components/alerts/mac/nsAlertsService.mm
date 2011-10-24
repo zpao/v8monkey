@@ -170,8 +170,8 @@ nsAlertsService::Init()
   // registers with Growl
   [GrowlApplicationBridge setGrowlDelegate: mDelegate->delegate];
 
-  (void)os->AddObserver(this, DOM_WINDOW_DESTROYED_TOPIC, PR_FALSE);
-  (void)os->AddObserver(this, "profile-before-change", PR_FALSE);
+  (void)os->AddObserver(this, DOM_WINDOW_DESTROYED_TOPIC, false);
+  (void)os->AddObserver(this, "profile-before-change", false);
 
   return NS_OK;
 
@@ -192,7 +192,7 @@ NS_IMETHODIMP
 nsAlertsService::ShowAlertNotification(const nsAString& aImageUrl,
                                        const nsAString& aAlertTitle,
                                        const nsAString& aAlertText,
-                                       PRBool aAlertClickable,
+                                       bool aAlertClickable,
                                        const nsAString& aAlertCookie,
                                        nsIObserver* aAlertListener,
                                        const nsAString& aAlertName)

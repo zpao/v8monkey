@@ -51,14 +51,14 @@
 
 using namespace mozilla::dom;
 
-PRBool nsXMLEventsListener::InitXMLEventsListener(nsIDocument * aDocument,
+bool nsXMLEventsListener::InitXMLEventsListener(nsIDocument * aDocument,
                                                   nsXMLEventsManager * aManager,
                                                   nsIContent * aContent)
 {
   nsresult rv;
   PRInt32 nameSpaceID;
   if (aContent->GetDocument() != aDocument)
-    return PR_FALSE;
+    return false;
   if (aContent->NodeInfo()->Equals(nsGkAtoms::listener,
                                    kNameSpaceID_XMLEvents))
     nameSpaceID = kNameSpaceID_None;
@@ -67,54 +67,49 @@ PRBool nsXMLEventsListener::InitXMLEventsListener(nsIDocument * aDocument,
   nsAutoString eventType;
   aContent->GetAttr(nameSpaceID, nsGkAtoms::event, eventType);
   if (eventType.IsEmpty())
-    return PR_FALSE;
+    return false;
   nsAutoString handlerURIStr;
-  PRBool hasHandlerURI = PR_FALSE;
+  bool hasHandlerURI = false;
   nsIContent *handler = nsnull;
   nsAutoString observerID;
   nsAutoString targetIdref;
   
   if (aContent->GetAttr(nameSpaceID, nsGkAtoms::handler, handlerURIStr)) {
-    hasHandlerURI = PR_TRUE;
+    hasHandlerURI = true;
     nsCAutoString handlerRef;
     nsCOMPtr<nsIURI> handlerURI;
-    PRBool equals = PR_FALSE;
+    bool equals = false;
     nsIURI *docURI = aDocument->GetDocumentURI();
     nsIURI *baseURI = aDocument->GetDocBaseURI();
     rv = NS_NewURI( getter_AddRefs(handlerURI), handlerURIStr, nsnull, baseURI);
     if (NS_SUCCEEDED(rv)) {
-      nsCOMPtr<nsIURL> handlerURL(do_QueryInterface(handlerURI));
-      if (handlerURL) {
-        handlerURL->GetRef(handlerRef);
-        handlerURL->SetRef(EmptyCString());
-        //We support only XML Events Basic.
-        docURI->Equals(handlerURL, &equals);
-        if (equals) {
-          handler =
-            aDocument->GetElementById(NS_ConvertUTF8toUTF16(handlerRef));
-        }
+      handlerURI->GetRef(handlerRef);
+      // We support only XML Events Basic.
+      rv = docURI->EqualsExceptRef(handlerURI, &equals);
+      if (NS_SUCCEEDED(rv) && equals) {
+        handler = aDocument->GetElementById(NS_ConvertUTF8toUTF16(handlerRef));
       }
     }
   }
   else
     handler = aContent;
   if (!handler)
-    return PR_FALSE;
+    return false;
 
   aContent->GetAttr(nameSpaceID, nsGkAtoms::target, targetIdref);
 
-  PRBool hasObserver = 
+  bool hasObserver = 
     aContent->GetAttr(nameSpaceID, nsGkAtoms::observer, observerID);
 
-  PRBool capture =
+  bool capture =
     aContent->AttrValueIs(nameSpaceID, nsGkAtoms::phase,
                           nsGkAtoms::capture, eCaseMatters);
 
-  PRBool stopPropagation = 
+  bool stopPropagation = 
     aContent->AttrValueIs(nameSpaceID, nsGkAtoms::propagate,
                           nsGkAtoms::stop, eCaseMatters);
 
-  PRBool cancelDefault = 
+  bool cancelDefault = 
     aContent->AttrValueIs(nameSpaceID, nsGkAtoms::defaultAction,
                           nsGkAtoms::cancel, eCaseMatters);
 
@@ -145,13 +140,13 @@ PRBool nsXMLEventsListener::InitXMLEventsListener(nsIDocument * aDocument,
         aManager->RemoveXMLEventsContent(aContent);
         aManager->RemoveListener(aContent);
         aManager->AddListener(aContent, eli);
-        return PR_TRUE;
+        return true;
       }
       else
         delete eli;
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
 nsXMLEventsListener::nsXMLEventsListener(nsXMLEventsManager * aManager,
@@ -159,9 +154,9 @@ nsXMLEventsListener::nsXMLEventsListener(nsXMLEventsManager * aManager,
                                          nsIContent * aObserver,
                                          nsIContent * aHandler,
                                          const nsAString& aEvent,
-                                         PRBool aPhase,
-                                         PRBool aStopPropagation,
-                                         PRBool aCancelDefault,
+                                         bool aPhase,
+                                         bool aStopPropagation,
+                                         bool aCancelDefault,
                                          const nsAString& aTarget)
  : mManager(aManager),
    mElement(aElement),
@@ -197,12 +192,12 @@ void nsXMLEventsListener::SetIncomplete()
   mElement = nsnull;
 }
 
-PRBool nsXMLEventsListener::ObserverEquals(nsIContent * aTarget)
+bool nsXMLEventsListener::ObserverEquals(nsIContent * aTarget)
 {
   return aTarget == mObserver;
 }
 
-PRBool nsXMLEventsListener::HandlerEquals(nsIContent * aTarget)
+bool nsXMLEventsListener::HandlerEquals(nsIContent * aTarget)
 {
   return aTarget == mHandler;
 }
@@ -213,15 +208,15 @@ nsXMLEventsListener::HandleEvent(nsIDOMEvent* aEvent)
 {
   if (!aEvent) 
     return NS_ERROR_INVALID_ARG;
-  PRBool targetMatched = PR_TRUE;
+  bool targetMatched = true;
   nsCOMPtr<nsIDOMEvent> event(aEvent);
   if (mTarget) {
-    targetMatched = PR_FALSE;
+    targetMatched = false;
     nsCOMPtr<nsIDOMEventTarget> target;
     aEvent->GetTarget(getter_AddRefs(target));
     nsCOMPtr<nsIContent> targetEl(do_QueryInterface(target));
     if (targetEl && targetEl->GetID() == mTarget) 
-        targetMatched = PR_TRUE;
+        targetMatched = true;
   }
   if (!targetMatched)
     return NS_OK;
@@ -294,16 +289,16 @@ void nsXMLEventsManager::AddListener(nsIContent * aContent,
   mListeners.Put(aContent, aListener);
 }
 
-PRBool nsXMLEventsManager::RemoveListener(nsIContent * aContent)
+bool nsXMLEventsManager::RemoveListener(nsIContent * aContent)
 {
   nsCOMPtr<nsXMLEventsListener> listener;
   mListeners.Get(aContent, getter_AddRefs(listener));
   if (listener) {
     listener->Unregister();
     mListeners.Remove(aContent);
-    return PR_TRUE;
+    return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 void nsXMLEventsManager::AddListeners(nsIDocument* aDocument)

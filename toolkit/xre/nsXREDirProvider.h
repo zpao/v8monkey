@@ -78,10 +78,10 @@ public:
   nsresult GetProfileDefaultsDir(nsIFile* *aResult);
 
   static nsresult GetUserAppDataDirectory(nsILocalFile* *aFile) {
-    return GetUserDataDirectory(aFile, PR_FALSE);
+    return GetUserDataDirectory(aFile, false);
   }
   static nsresult GetUserLocalDataDirectory(nsILocalFile* *aFile) {
-    return GetUserDataDirectory(aFile, PR_TRUE);
+    return GetUserDataDirectory(aFile, true);
   }
 
   /* make sure you clone it, if you need to do stuff to it */
@@ -115,8 +115,8 @@ public:
 
 protected:
   nsresult GetFilesInternal(const char* aProperty, nsISimpleEnumerator** aResult);
-  static nsresult GetUserDataDirectory(nsILocalFile* *aFile, PRBool aLocal);
-  static nsresult GetUserDataDirectoryHome(nsILocalFile* *aFile, PRBool aLocal);
+  static nsresult GetUserDataDirectory(nsILocalFile* *aFile, bool aLocal);
+  static nsresult GetUserDataDirectoryHome(nsILocalFile* *aFile, bool aLocal);
   static nsresult GetSysUserExtensionsDirectory(nsILocalFile* *aFile);
 #if defined(XP_UNIX) || defined(XP_MACOSX)
   static nsresult GetSystemExtensionsDirectory(nsILocalFile** aFile);
@@ -147,7 +147,7 @@ protected:
   nsCOMPtr<nsIFile>      mXULAppDir;
   nsCOMPtr<nsIFile>      mProfileDir;
   nsCOMPtr<nsIFile>      mProfileLocalDir;
-  PRPackedBool           mProfileNotified;
+  bool                   mProfileNotified;
   nsCOMArray<nsIFile>    mAppBundleDirectories;
   nsCOMArray<nsIFile>    mExtensionDirectories;
   nsCOMArray<nsIFile>    mThemeDirectories;

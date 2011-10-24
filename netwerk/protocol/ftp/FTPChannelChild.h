@@ -68,7 +68,6 @@ class FTPChannelChild : public PFTPChannelChild
                       , public nsIResumableChannel
                       , public nsIProxiedChannel
                       , public nsIChildChannel
-                      , public ChannelEventQueue<FTPChannelChild>
 {
 public:
   typedef ::nsIStreamListener nsIStreamListener;
@@ -94,9 +93,9 @@ public:
 
   // Note that we handle this ourselves, overriding the nsBaseChannel
   // default behavior, in order to be e10s-friendly.
-  NS_IMETHOD IsPending(PRBool* result);
+  NS_IMETHOD IsPending(bool* result);
 
-  NS_OVERRIDE nsresult OpenContentStream(PRBool async,
+  NS_OVERRIDE nsresult OpenContentStream(bool async,
                                          nsIInputStream** stream,
                                          nsIChannel** channel);
 
@@ -137,10 +136,11 @@ private:
   nsCOMPtr<nsIInputStream> mUploadStream;
 
   bool mIPCOpen;
+  ChannelEventQueue mEventQ;
   bool mCanceled;
   PRUint32 mSuspendCount;
-  PRPackedBool mIsPending;
-  PRPackedBool mWasOpened;
+  bool mIsPending;
+  bool mWasOpened;
   
   PRTime mLastModifiedTime;
   PRUint64 mStartPos;

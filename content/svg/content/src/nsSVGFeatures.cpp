@@ -55,9 +55,11 @@
 #include "nsStyleUtil.h"
 #include "nsSVGUtils.h"
 #include "nsServiceManagerUtils.h"
-#include "nsIPrefService.h"
+#include "mozilla/Preferences.h"
 
-/*static*/ PRBool
+using namespace mozilla;
+
+/*static*/ bool
 nsSVGFeatures::HaveFeature(nsISupports* aObject, const nsAString& aFeature)
 {
   if (aFeature.EqualsLiteral("http://www.w3.org/TR/SVG11/feature#Script")) {
@@ -66,70 +68,62 @@ nsSVGFeatures::HaveFeature(nsISupports* aObject, const nsAString& aFeature)
       nsIDocument *doc = content->GetCurrentDoc();
       if (doc && doc->IsResourceDoc()) {
         // no scripting in SVG images or external resource documents
-        return PR_FALSE;
+        return false;
       }
     }
-    nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
-    if (prefs) {
-      PRBool js;
-      if (NS_SUCCEEDED(prefs->GetBoolPref("javascript.enabled", &js))) {
-        return js;
-      }
-    }
-    return PR_FALSE;
+    return Preferences::GetBool("javascript.enabled", false);
   }
-#define SVG_SUPPORTED_FEATURE(str) if (aFeature.EqualsLiteral(str)) return PR_TRUE;
+#define SVG_SUPPORTED_FEATURE(str) if (aFeature.EqualsLiteral(str)) return true;
 #define SVG_UNSUPPORTED_FEATURE(str)
 #include "nsSVGFeaturesList.h"
 #undef SVG_SUPPORTED_FEATURE
 #undef SVG_UNSUPPORTED_FEATURE
-  return PR_FALSE;
+  return false;
 }
 
-/*static*/ PRBool
+/*static*/ bool
 nsSVGFeatures::HaveFeatures(nsISupports* aObject, const nsSubstring& aFeatures)
 {
   nsWhitespaceTokenizer tokenizer(aFeatures);
   while (tokenizer.hasMoreTokens()) {
     if (!HaveFeature(aObject, tokenizer.nextToken())) {
-      return PR_FALSE;
+      return false;
     }
   }
-  return PR_TRUE;
+  return true;
 }
 
-/*static*/ PRBool
+/*static*/ bool
 nsSVGFeatures::HaveExtension(const nsAString& aExtension)
 {
-#define SVG_SUPPORTED_EXTENSION(str) if (aExtension.EqualsLiteral(str)) return PR_TRUE;
+#define SVG_SUPPORTED_EXTENSION(str) if (aExtension.EqualsLiteral(str)) return true;
   SVG_SUPPORTED_EXTENSION("http://www.w3.org/1999/xhtml")
-#ifdef MOZ_MATHML
   SVG_SUPPORTED_EXTENSION("http://www.w3.org/1998/Math/MathML")
-#endif
 #undef SVG_SUPPORTED_EXTENSION
 
-  return PR_FALSE;
+  return false;
 }
 
-/*static*/ PRBool
+/*static*/ bool
 nsSVGFeatures::HaveExtensions(const nsSubstring& aExtensions)
 {
   nsWhitespaceTokenizer tokenizer(aExtensions);
   while (tokenizer.hasMoreTokens()) {
     if (!HaveExtension(tokenizer.nextToken())) {
-      return PR_FALSE;
+      return false;
     }
   }
-  return PR_TRUE;
+  return true;
 }
 
-/*static*/ PRBool
+/*static*/ bool
 nsSVGFeatures::MatchesLanguagePreferences(const nsSubstring& aAttribute,
                                           const nsSubstring& aAcceptLangs) 
 {
   const nsDefaultStringComparator defaultComparator;
 
-  nsCharSeparatedTokenizer attributeTokenizer(aAttribute, ',');
+  nsCharSeparatedTokenizerTemplate<IsSVGWhitespace>
+    attributeTokenizer(aAttribute, ',');
 
   while (attributeTokenizer.hasMoreTokens()) {
     const nsSubstring &attributeToken = attributeTokenizer.nextToken();
@@ -138,11 +132,11 @@ nsSVGFeatures::MatchesLanguagePreferences(const nsSubstring& aAttribute,
       if (nsStyleUtil::DashMatchCompare(attributeToken,
                                         languageTokenizer.nextToken(),
                                         defaultComparator)) {
-        return PR_TRUE;
+        return true;
       }
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
 /*static*/ PRInt32
@@ -160,8 +154,8 @@ nsSVGFeatures::GetBestLanguagePreferenceRank(const nsSubstring& aAttribute,
     PRInt32 index = 0;
     while (languageTokenizer.hasMoreTokens()) {
       const nsSubstring &languageToken = languageTokenizer.nextToken();
-      PRBool exactMatch = (languageToken == attributeToken);
-      PRBool prefixOnlyMatch =
+      bool exactMatch = (languageToken == attributeToken);
+      bool prefixOnlyMatch =
         !exactMatch &&
         nsStyleUtil::DashMatchCompare(attributeToken,
                                       languageTokenizer.nextToken(),
@@ -180,34 +174,34 @@ nsSVGFeatures::GetBestLanguagePreferenceRank(const nsSubstring& aAttribute,
   return lowestRank;
 }
 
-/*static*/ PRBool
+/*static*/ bool
 nsSVGFeatures::ElementSupportsAttributes(const nsIAtom *aTagName, PRUint16 aAttr)
 {
 #define SVG_ELEMENT(_atom, _supports) if (aTagName == nsGkAtoms::_atom) return (_supports & aAttr) != 0;
 #include "nsSVGElementList.h"
 #undef SVG_ELEMENT
-  return PR_FALSE;
+  return false;
 }
 
 const nsString * const nsSVGFeatures::kIgnoreSystemLanguage = (nsString *) 0x01;
 
-/*static*/ PRBool
+/*static*/ bool
 nsSVGFeatures::PassesConditionalProcessingTests(nsIContent *aContent,
                                                 const nsString *aAcceptLangs)
 {
   if (!aContent->IsElement()) {
-    return PR_FALSE;
+    return false;
   }
 
   if (!ElementSupportsAttributes(aContent->Tag(), ATTRS_CONDITIONAL)) {
-    return PR_TRUE;
+    return true;
   }
 
   // Required Features
   nsAutoString value;
   if (aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::requiredFeatures, value)) {
     if (value.IsEmpty() || !HaveFeatures(aContent, value)) {
-      return PR_FALSE;
+      return false;
     }
   }
 
@@ -220,12 +214,12 @@ nsSVGFeatures::PassesConditionalProcessingTests(nsIContent *aContent,
   // For now, claim that mozilla's SVG implementation supports XHTML and MathML.
   if (aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::requiredExtensions, value)) {
     if (value.IsEmpty() || !HaveExtensions(value)) {
-      return PR_FALSE;
+      return false;
     }
   }
 
   if (aAcceptLangs == kIgnoreSystemLanguage) {
-    return PR_TRUE;
+    return true;
   }
 
   // systemLanguage
@@ -239,7 +233,7 @@ nsSVGFeatures::PassesConditionalProcessingTests(nsIContent *aContent,
                         value)) {
 
     const nsAutoString acceptLangs(aAcceptLangs ? *aAcceptLangs :
-      nsContentUtils::GetLocalizedStringPref("intl.accept_languages"));
+      Preferences::GetLocalizedString("intl.accept_languages"));
 
     // Get our language preferences
     if (!acceptLangs.IsEmpty()) {
@@ -251,5 +245,5 @@ nsSVGFeatures::PassesConditionalProcessingTests(nsIContent *aContent,
     }
   }
 
-  return PR_TRUE;
+  return true;
 }

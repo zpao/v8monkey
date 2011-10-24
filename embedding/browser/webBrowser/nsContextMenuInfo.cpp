@@ -112,7 +112,7 @@ nsContextMenuInfo::GetAssociatedLink(nsAString& aHRef)
   if (localName.EqualsLiteral("a") ||
       localName.EqualsLiteral("area") ||
       localName.EqualsLiteral("link")) {
-    PRBool hasAttr;
+    bool hasAttr;
     content->HasAttribute(NS_LITERAL_STRING("href"), &hasAttr);
     if (hasAttr) {
       linkContent = content;
@@ -141,7 +141,7 @@ nsContextMenuInfo::GetAssociatedLink(nsAString& aHRef)
       content->GetLocalName(localName);
       ToLowerCase(localName);
       if (localName.EqualsLiteral("a")) {
-        PRBool hasAttr;
+        bool hasAttr;
         content->HasAttribute(NS_LITERAL_STRING("href"), &hasAttr);
         if (hasAttr) {
           linkContent = content;
@@ -235,10 +235,10 @@ nsContextMenuInfo::GetImageRequest(nsIDOMNode *aDOMNode, imgIRequest **aRequest)
                              aRequest);
 }
 
-PRBool
+bool
 nsContextMenuInfo::HasBackgroundImage(nsIDOMNode * aDOMNode)
 {
-  NS_ENSURE_TRUE(aDOMNode, PR_FALSE);
+  NS_ENSURE_TRUE(aDOMNode, false);
 
   nsCOMPtr<imgIRequest> request;
   GetBackgroundImageRequest(aDOMNode, getter_AddRefs(request));
@@ -316,7 +316,7 @@ nsContextMenuInfo::GetBackgroundImageRequestInternal(nsIDOMNode *aDOMNode, imgIR
     }
   }
   
-  while (PR_TRUE) {
+  while (true) {
     nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(domNode));
     // bail for the parent node of the root element or null argument
     if (!domElement)
@@ -341,9 +341,9 @@ nsContextMenuInfo::GetBackgroundImageRequestInternal(nsIDOMNode *aDOMNode, imgIR
                                     "@mozilla.org/image/loader;1"));
           NS_ENSURE_TRUE(il, NS_ERROR_FAILURE);
 
-          return il->LoadImage(bgUri, nsnull, nsnull, nsnull, nsnull, nsnull,
-                               nsIRequest::LOAD_NORMAL, nsnull, nsnull,
-                               channelPolicy, aRequest);
+          return il->LoadImage(bgUri, nsnull, nsnull, principal, nsnull,
+                               nsnull, nsnull, nsIRequest::LOAD_NORMAL, nsnull,
+                               nsnull, channelPolicy, aRequest);
         }
       }
 

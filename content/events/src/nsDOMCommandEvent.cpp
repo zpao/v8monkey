@@ -41,13 +41,13 @@
 nsDOMCommandEvent::nsDOMCommandEvent(nsPresContext* aPresContext,
                                      nsCommandEvent* aEvent)
   : nsDOMEvent(aPresContext, aEvent ? aEvent :
-               new nsCommandEvent(PR_FALSE, nsnull, nsnull, nsnull))
+               new nsCommandEvent(false, nsnull, nsnull, nsnull))
 {
   mEvent->time = PR_Now();
   if (aEvent) {
-    mEventIsInternal = PR_FALSE;
+    mEventIsInternal = false;
   } else {
-    mEventIsInternal = PR_TRUE;
+    mEventIsInternal = true;
   }
 }
 
@@ -83,8 +83,8 @@ nsDOMCommandEvent::GetCommand(nsAString& aCommand)
 
 NS_IMETHODIMP
 nsDOMCommandEvent::InitCommandEvent(const nsAString& aTypeArg,
-                                    PRBool aCanBubbleArg,
-                                    PRBool aCancelableArg,
+                                    bool aCanBubbleArg,
+                                    bool aCancelableArg,
                                     const nsAString& aCommand)
 {
   nsresult rv = nsDOMEvent::InitEvent(aTypeArg, aCanBubbleArg, aCancelableArg);

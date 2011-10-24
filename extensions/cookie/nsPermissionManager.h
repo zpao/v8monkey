@@ -95,7 +95,7 @@ public:
     return mHost;
   }
 
-  PRBool KeyEquals(KeyTypePointer aKey) const
+  bool KeyEquals(KeyTypePointer aKey) const
   {
     return !strcmp(mHost, aKey);
   }
@@ -114,7 +114,7 @@ public:
 
   // force the hashtable to use the copy constructor when shuffling entries
   // around, otherwise the Auto part of our nsAutoTArray won't be happy!
-  enum { ALLOW_MEMMOVE = PR_FALSE };
+  enum { ALLOW_MEMMOVE = false };
 
   // Permissions methods
   inline const nsDependentCString GetHost() const
@@ -168,7 +168,6 @@ public:
   nsPermissionManager();
   virtual ~nsPermissionManager();
   static nsIPermissionManager* GetXPCOMSingleton();
-  static already_AddRefed<nsPermissionManager> GetSingleton();
   nsresult Init();
 
   // enums for AddInternal()
@@ -201,18 +200,18 @@ public:
 private:
 
   PRInt32 GetTypeIndex(const char *aTypeString,
-                       PRBool      aAdd);
+                       bool        aAdd);
 
   nsHostEntry *GetHostEntry(const nsAFlatCString &aHost,
                             PRUint32              aType,
-                            PRBool                aExactHostMatch);
+                            bool                  aExactHostMatch);
 
   nsresult CommonTestPermission(nsIURI     *aURI,
                                 const char *aType,
                                 PRUint32   *aPermission,
-                                PRBool      aExactHostMatch);
+                                bool        aExactHostMatch);
 
-  nsresult InitDB(PRBool aRemoveFile);
+  nsresult InitDB(bool aRemoveFile);
   nsresult CreateTable();
   nsresult Import();
   nsresult Read();
@@ -250,17 +249,6 @@ private:
 
   // An array to store the strings identifying the different types.
   nsTArray<nsCString>          mTypeArray;
-
-  // Whether we should update the child process with every change to a
-  // permission. This is set to true once the child is ready to receive
-  // such updates.
-  PRBool                       mUpdateChildProcess;
-
-public:
-  void ChildRequestPermissions()
-  {
-    mUpdateChildProcess = PR_TRUE;
-  }
 };
 
 // {4F6B5E00-0C36-11d5-A535-0010A401EB10}

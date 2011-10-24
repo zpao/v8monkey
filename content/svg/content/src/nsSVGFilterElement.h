@@ -42,7 +42,7 @@
 #include "nsIDOMSVGURIReference.h"
 #include "nsIDOMSVGUnitTypes.h"
 #include "nsSVGLength2.h"
-#include "nsSVGInteger.h"
+#include "nsSVGIntegerPair.h"
 #include "nsSVGEnum.h"
 #include "nsSVGString.h"
 
@@ -75,7 +75,7 @@ public:
 
   // nsIContent
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
 
   // Invalidate users of this filter
   void Invalidate();
@@ -84,20 +84,17 @@ public:
 protected:
 
   virtual LengthAttributesInfo GetLengthInfo();
-  virtual IntegerAttributesInfo GetIntegerInfo();
+  virtual IntegerPairAttributesInfo GetIntegerPairInfo();
   virtual EnumAttributesInfo GetEnumInfo();
   virtual StringAttributesInfo GetStringInfo();
-
-  virtual void DidAnimateLength(PRUint8 aAttrEnum);
-  virtual void DidAnimateEnum(PRUint8 aAttrEnum);
 
   enum { X, Y, WIDTH, HEIGHT };
   nsSVGLength2 mLengthAttributes[4];
   static LengthInfo sLengthInfo[4];
 
-  enum { FILTERRES_X, FILTERRES_Y };
-  nsSVGInteger mIntegerAttributes[2];
-  static IntegerInfo sIntegerInfo[2];
+  enum { FILTERRES };
+  nsSVGIntegerPair mIntegerPairAttributes[1];
+  static IntegerPairInfo sIntegerPairInfo[1];
 
   enum { FILTERUNITS, PRIMITIVEUNITS };
   nsSVGEnum mEnumAttributes[2];

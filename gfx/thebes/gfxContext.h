@@ -51,6 +51,7 @@
 #include "nsISupportsImpl.h"
 
 typedef struct _cairo cairo_t;
+template <typename T> class FallibleTArray;
 
 /**
  * This is the main class for doing actual drawing. It is initialized using
@@ -101,7 +102,7 @@ public:
     /**
      * Returns true if the cairo context is in an error state.
      */
-    PRBool HasError();
+    bool HasError();
 
     /**
      ** State
@@ -223,7 +224,7 @@ public:
      * Draws the rectangle given by rect.
      * @param snapToPixels ?
      */
-    void Rectangle(const gfxRect& rect, PRBool snapToPixels = PR_FALSE);
+    void Rectangle(const gfxRect& rect, bool snapToPixels = false);
 
     /**
      * Draw an ellipse at the center corner with the given dimensions.
@@ -243,12 +244,12 @@ public:
      * corners.  The corners specify the radii of the two axes of an
      * ellipse (the horizontal and vertical directions given by the
      * width and height, respectively).  By default the ellipse is
-     * drawn in a clockwise direction; if draw_clockwise is PR_FALSE,
+     * drawn in a clockwise direction; if draw_clockwise is false,
      * then it's drawn counterclockwise.
      */
     void RoundedRectangle(const gfxRect& rect,
                           const gfxCornerSizes& corners,
-                          PRBool draw_clockwise = PR_TRUE);
+                          bool draw_clockwise = true);
 
     /**
      ** Transformation Matrix manipulation
@@ -323,8 +324,8 @@ public:
     gfxRect DeviceToUser(const gfxRect& rect) const;
 
     /**
-     * Converts a point from user to device coordinates using the inverse
-     * transformation matrix.
+     * Converts a point from user to device coordinates using the transformation
+     * matrix.
      */
     gfxPoint UserToDevice(const gfxPoint& point) const;
 
@@ -343,29 +344,29 @@ public:
 
     /**
      * Takes the given rect and tries to align it to device pixels.  If
-     * this succeeds, the method will return PR_TRUE, and the rect will
+     * this succeeds, the method will return true, and the rect will
      * be in device coordinates (already transformed by the CTM).  If it 
-     * fails, the method will return PR_FALSE, and the rect will not be
+     * fails, the method will return false, and the rect will not be
      * changed.
      *
-     * If ignoreScale is PR_TRUE, then snapping will take place even if
+     * If ignoreScale is true, then snapping will take place even if
      * the CTM has a scale applied.  Snapping never takes place if
      * there is a rotation in the CTM.
      */
-    PRBool UserToDevicePixelSnapped(gfxRect& rect, PRBool ignoreScale = PR_FALSE) const;
+    bool UserToDevicePixelSnapped(gfxRect& rect, bool ignoreScale = false) const;
 
     /**
      * Takes the given point and tries to align it to device pixels.  If
-     * this succeeds, the method will return PR_TRUE, and the point will
+     * this succeeds, the method will return true, and the point will
      * be in device coordinates (already transformed by the CTM).  If it 
-     * fails, the method will return PR_FALSE, and the point will not be
+     * fails, the method will return false, and the point will not be
      * changed.
      *
-     * If ignoreScale is PR_TRUE, then snapping will take place even if
+     * If ignoreScale is true, then snapping will take place even if
      * the CTM has a scale applied.  Snapping never takes place if
      * there is a rotation in the CTM.
      */
-    PRBool UserToDevicePixelSnapped(gfxPoint& pt, PRBool ignoreScale = PR_FALSE) const;
+    bool UserToDevicePixelSnapped(gfxPoint& pt, bool ignoreScale = false) const;
 
     /**
      * Attempts to pixel snap the rectangle, add it to the current
@@ -388,10 +389,10 @@ public:
 
     /**
      * Gets the current color.  It's returned in the device color space.
-     * returns PR_FALSE if there is something other than a color
+     * returns false if there is something other than a color
      *         set as the current source (pattern, surface, etc)
      */
-    PRBool GetDeviceColor(gfxRGBA& c);
+    bool GetDeviceColor(gfxRGBA& c);
 
     /**
      * Set a solid color in the sRGB color space to use for drawing.
@@ -465,7 +466,12 @@ public:
 
     void SetDash(gfxLineType ltype);
     void SetDash(gfxFloat *dashes, int ndash, gfxFloat offset);
-    //void getDash() const;
+    // Return true if dashing is set, false if it's not enabled or the
+    // context is in an error state.  |offset| can be NULL to mean
+    // "don't care".
+    bool CurrentDash(FallibleTArray<gfxFloat>& dashes, gfxFloat* offset) const;
+    // Returns 0.0 if dashing isn't enabled.
+    gfxFloat CurrentDashOffset() const;
 
     /**
      * Sets the line width that's used for line drawing.
@@ -600,6 +606,13 @@ public:
     gfxRect GetClipExtents();
 
     /**
+     * Returns true if the given rectangle is fully contained in the current clip. 
+     * This is conservative; it may return false even when the given rectangle is 
+     * fully contained by the current clip.
+     */
+    bool ClipContainsRect(const gfxRect& aRect);
+
+    /**
      * Groups
      */
     void PushGroup(gfxASurface::gfxContentType content = gfxASurface::CONTENT_COLOR);
@@ -621,8 +634,8 @@ public:
     /**
      ** Hit Testing - check if given point is in the current path
      **/
-    PRBool PointInFill(const gfxPoint& pt);
-    PRBool PointInStroke(const gfxPoint& pt);
+    bool PointInFill(const gfxPoint& pt);
+    bool PointInStroke(const gfxPoint& pt);
 
     /**
      ** Extents - returns user space extent of current path
@@ -727,7 +740,7 @@ class THEBES_API gfxContextPathAutoSaveRestore
 public:
     gfxContextPathAutoSaveRestore() : mContext(nsnull) {}
 
-    gfxContextPathAutoSaveRestore(gfxContext *aContext, PRBool aSave = PR_TRUE) : mContext(aContext)
+    gfxContextPathAutoSaveRestore(gfxContext *aContext, bool aSave = true) : mContext(aContext)
     {
         if (aSave)
             Save();       
@@ -738,7 +751,7 @@ public:
         Restore();
     }
 
-    void SetContext(gfxContext *aContext, PRBool aSave = PR_TRUE)
+    void SetContext(gfxContext *aContext, bool aSave = true)
     {
         mContext = aContext;
         if (aSave)
@@ -806,12 +819,12 @@ private:
 
 class THEBES_API gfxContextAutoDisableSubpixelAntialiasing {
 public:
-    gfxContextAutoDisableSubpixelAntialiasing(gfxContext *aContext, PRBool aDisable)
+    gfxContextAutoDisableSubpixelAntialiasing(gfxContext *aContext, bool aDisable)
     {
         if (aDisable) {
             mSurface = aContext->CurrentSurface();
             mSubpixelAntialiasingEnabled = mSurface->GetSubpixelAntialiasingEnabled();
-            mSurface->SetSubpixelAntialiasingEnabled(PR_FALSE);
+            mSurface->SetSubpixelAntialiasingEnabled(false);
         }
     }
     ~gfxContextAutoDisableSubpixelAntialiasing()
@@ -823,7 +836,7 @@ public:
 
 private:
     nsRefPtr<gfxASurface> mSurface;
-    PRPackedBool mSubpixelAntialiasingEnabled;
+    bool mSubpixelAntialiasingEnabled;
 };
 
 #endif /* GFX_CONTEXT_H */

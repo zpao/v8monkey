@@ -41,19 +41,16 @@
 
 #include "nsGenericDOMDataNode.h"
 #include "nsIDOMText.h"
-#include "nsIDOM3Text.h"
-#include "nsContentUtils.h"
-#include "nsIDOMEventListener.h"
-#include "nsIDOMEventTarget.h"
-#include "nsIDOMMutationEvent.h"
+
 #include "nsIAttribute.h"
 #include "nsIDocument.h"
 #include "nsThreadUtils.h"
+#include "nsDOMMemoryReporter.h"
 
 /**
  * Class used to implement DOM text nodes
  */
-class nsTextNode : public nsGenericTextNode,
+class nsTextNode : public nsGenericDOMDataNode,
                    public nsIDOMText
 {
 public:
@@ -64,7 +61,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIDOMNode
-  NS_IMPL_NSIDOMNODE_USING_GENERIC_DOM_DATA
+  NS_FORWARD_NSIDOMNODE(nsGenericDOMDataNode::)
 
   // nsIDOMCharacterData
   NS_FORWARD_NSIDOMCHARACTERDATA(nsGenericDOMDataNode::)
@@ -72,16 +69,25 @@ public:
   // nsIDOMText
   NS_FORWARD_NSIDOMTEXT(nsGenericDOMDataNode::)
 
-  // nsIContent
-  virtual PRBool IsNodeOfType(PRUint32 aFlags) const;
+  // DOM Memory Reporter participant.
+  NS_DECL_AND_IMPL_DOM_MEMORY_REPORTER_SIZEOF(nsTextNode, nsGenericDOMDataNode)
+
+  // nsINode
+  virtual bool IsNodeOfType(PRUint32 aFlags) const;
+
+  virtual nsGenericDOMDataNode* CloneDataNode(nsINodeInfo *aNodeInfo,
+                                              bool aCloneText) const;
 
   nsresult BindToAttribute(nsIAttribute* aAttr);
   nsresult UnbindFromAttribute();
 
   virtual nsXPCClassInfo* GetClassInfo();
 
+  nsresult AppendTextForNormalize(const PRUnichar* aBuffer, PRUint32 aLength,
+                                  bool aNotify, nsIContent* aNextSibling);
+
 #ifdef DEBUG
   virtual void List(FILE* out, PRInt32 aIndent) const;
-  virtual void DumpContent(FILE* out, PRInt32 aIndent, PRBool aDumpAll) const;
+  virtual void DumpContent(FILE* out, PRInt32 aIndent, bool aDumpAll) const;
 #endif
 };

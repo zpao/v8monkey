@@ -81,7 +81,7 @@ nsMappedAttributes::~nsMappedAttributes()
 
 
 nsMappedAttributes*
-nsMappedAttributes::Clone(PRBool aWillAddAttr)
+nsMappedAttributes::Clone(bool aWillAddAttr)
 {
   PRUint32 extra = aWillAddAttr ? 1 : 0;
 
@@ -151,26 +151,26 @@ nsMappedAttributes::GetAttr(nsIAtom* aAttrName) const
   return nsnull;
 }
 
-PRBool
+bool
 nsMappedAttributes::Equals(const nsMappedAttributes* aOther) const
 {
   if (this == aOther) {
-    return PR_TRUE;
+    return true;
   }
 
   if (mRuleMapper != aOther->mRuleMapper || mAttrCount != aOther->mAttrCount) {
-    return PR_FALSE;
+    return false;
   }
 
   PRUint32 i;
   for (i = 0; i < mAttrCount; ++i) {
     if (!Attrs()[i].mName.Equals(aOther->Attrs()[i].mName) ||
         !Attrs()[i].mValue.Equals(aOther->Attrs()[i].mValue)) {
-      return PR_FALSE;
+      return false;
     }
   }
 
-  return PR_TRUE;
+  return true;
 }
 
 PRUint32
@@ -277,3 +277,19 @@ nsMappedAttributes::IndexOfAttr(nsIAtom* aLocalName, PRInt32 aNamespaceID) const
 
   return -1;
 }
+
+PRInt64
+nsMappedAttributes::SizeOf() const
+{
+  NS_ASSERTION(mAttrCount == mBufferSize,
+               "mBufferSize and mAttrCount are expected to be the same.");
+
+  PRInt64 size = sizeof(*this) - sizeof(void*) + mAttrCount * sizeof(InternalAttr);
+
+  for (PRUint16 i = 0; i < mAttrCount; ++i) {
+    size += Attrs()[i].mValue.SizeOf() - sizeof(Attrs()[i].mValue);
+  }
+
+  return size;
+}
+

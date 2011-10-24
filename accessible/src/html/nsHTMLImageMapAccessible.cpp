@@ -85,13 +85,13 @@ nsHTMLImageMapAccessible::AnchorCount()
 }
 
 nsAccessible*
-nsHTMLImageMapAccessible::GetAnchor(PRUint32 aAnchorIndex)
+nsHTMLImageMapAccessible::AnchorAt(PRUint32 aAnchorIndex)
 {
   return GetChildAt(aAnchorIndex);
 }
 
 already_AddRefed<nsIURI>
-nsHTMLImageMapAccessible::GetAnchorURI(PRUint32 aAnchorIndex)
+nsHTMLImageMapAccessible::AnchorURIAt(PRUint32 aAnchorIndex)
 {
   nsAccessible* area = GetChildAt(aAnchorIndex);
   if (!area)
@@ -160,10 +160,8 @@ nsHTMLAreaAccessible::GetNameInternal(nsAString & aName)
   if (!aName.IsEmpty())
     return NS_OK;
 
-  if (!mContent->GetAttr(kNameSpaceID_None, nsAccessibilityAtoms::alt,
-                         aName)) {
+  if (!mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::alt, aName))
     return GetValue(aName);
-  }
 
   return NS_OK;
 }
@@ -203,7 +201,7 @@ nsHTMLAreaAccessible::GetBounds(PRInt32 *aX, PRInt32 *aY,
   NS_ENSURE_TRUE(frame, NS_ERROR_FAILURE);
   nsImageFrame *imageFrame = do_QueryFrame(frame);
 
-  nsImageMap* map = imageFrame->GetImageMap(presContext);
+  nsImageMap* map = imageFrame->GetImageMap();
   NS_ENSURE_TRUE(map, NS_ERROR_FAILURE);
 
   nsRect rect;
@@ -243,8 +241,8 @@ nsHTMLAreaAccessible::NativeState()
 }
 
 nsAccessible*
-nsHTMLAreaAccessible::GetChildAtPoint(PRInt32 aX, PRInt32 aY,
-                                      EWhichChildAtPoint aWhichChild)
+nsHTMLAreaAccessible::ChildAtPoint(PRInt32 aX, PRInt32 aY,
+                                   EWhichChildAtPoint aWhichChild)
 {
   // Don't walk into area accessibles.
   return this;
@@ -261,13 +259,13 @@ nsHTMLAreaAccessible::StartOffset()
   // We return index in parent because image map contains area links only which
   // are embedded objects.
   // XXX: image map should be a hypertext accessible.
-  return GetIndexInParent();
+  return IndexInParent();
 }
 
 PRUint32
 nsHTMLAreaAccessible::EndOffset()
 {
-  return GetIndexInParent() + 1;
+  return IndexInParent() + 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

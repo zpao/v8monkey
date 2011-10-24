@@ -78,7 +78,7 @@ public:
    */
   void TakeFrom(GLTexture *aOther);
 
-  PRBool IsAllocated() { return mTexture != 0; }
+  bool IsAllocated() { return mTexture != 0; }
   GLuint GetTextureID() { return mTexture; }
   GLContext *GetGLContext() { return mContext; }
 
@@ -152,7 +152,7 @@ public:
 
   virtual gfxIntSize GetCurrentSize();
 
-  virtual PRBool SetLayerManager(LayerManager *aManager);
+  virtual bool SetLayerManager(LayerManager *aManager);
 
   virtual LayerManager::LayersBackend GetBackendType() { return LayerManager::LAYERS_OPENGL; }
 
@@ -175,7 +175,7 @@ public:
   ~ImageLayerOGL() { Destroy(); }
 
   // LayerOGL Implementation
-  virtual void Destroy() { mDestroyed = PR_TRUE; }
+  virtual void Destroy() { mDestroyed = true; }
   virtual Layer* GetLayer();
 
   virtual void RenderLayer(int aPreviousFrameBuffer,
@@ -200,12 +200,18 @@ public:
   void AllocateTextures(GLContext *gl);
   void UpdateTextures(GLContext *gl);
 
-  PRBool HasData() { return mHasData; }
-  PRBool HasTextures()
+  bool HasData() { return mHasData; }
+  bool HasTextures()
   {
     return mTextures[0].IsAllocated() && mTextures[1].IsAllocated() &&
            mTextures[2].IsAllocated();
   }
+
+  PRUint8* AllocateBuffer(PRUint32 aSize) {
+    return mRecycleBin->GetBuffer(aSize);
+  }
+
+  PRUint32 GetDataSize() { return mBuffer ? mBufferSize : 0; }
 
   nsAutoArrayPtr<PRUint8> mBuffer;
   PRUint32 mBufferSize;
@@ -213,8 +219,7 @@ public:
   GLTexture mTextures[3];
   Data mData;
   gfxIntSize mSize;
-  PRPackedBool mHasData;
-  gfx::YUVType mType; 
+  bool mHasData;
 };
 
 
@@ -233,6 +238,9 @@ public:
 #if defined(MOZ_WIDGET_GTK2) && !defined(MOZ_PLATFORM_MAEMO)
   nsRefPtr<gfxASurface> mSurface;
 #endif
+  void SetTiling(bool aTiling);
+private:
+  bool mTiling;
 };
 
 class ShadowImageLayerOGL : public ShadowImageLayer,
@@ -245,11 +253,8 @@ public:
   virtual ~ShadowImageLayerOGL();
 
   // ShadowImageLayer impl
-  virtual PRBool Init(const SurfaceDescriptor& aFront, const nsIntSize& aSize);
-
-  virtual void Swap(const SurfaceDescriptor& aFront, SurfaceDescriptor* aNewBack);
-
-  virtual void DestroyFrontBuffer();
+  virtual void Swap(const SharedImage& aFront,
+                    SharedImage* aNewBack);
 
   virtual void Disconnect();
 
@@ -262,9 +267,13 @@ public:
                            const nsIntPoint& aOffset);
 
 private:
-  nsRefPtr<TextureImage> mTexImage;
+  bool Init(const SharedImage& aFront);
 
-  SurfaceDescriptor mDeadweight;
+  nsRefPtr<TextureImage> mTexImage;
+  GLTexture mYUVTexture[3];
+  gfxIntSize mSize;
+  gfxIntSize mCbCrSize;
+  nsIntRect mPictureRect;
 };
 
 } /* layers */

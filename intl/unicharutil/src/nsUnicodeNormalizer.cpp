@@ -367,7 +367,7 @@ static void		workbuf_removevoid(workbuf_t *wb);
 
 
 static nsresult
-mdn_normalize(PRBool do_composition, PRBool compat,
+mdn_normalize(bool do_composition, bool compat,
 	  const nsAString& aSrcStr, nsAString& aToStr)
 {
 	workbuf_t wb;
@@ -692,24 +692,24 @@ workbuf_removevoid(workbuf_t *wb) {
 nsresult  
 nsUnicodeNormalizer::NormalizeUnicodeNFD( const nsAString& aSrc, nsAString& aDest)
 {
-  return mdn_normalize(PR_FALSE, PR_FALSE, aSrc, aDest);
+  return mdn_normalize(false, false, aSrc, aDest);
 }
 
 nsresult  
 nsUnicodeNormalizer::NormalizeUnicodeNFC( const nsAString& aSrc, nsAString& aDest)
 {
-  return mdn_normalize(PR_TRUE, PR_FALSE, aSrc, aDest);
+  return mdn_normalize(true, false, aSrc, aDest);
 }
 
 nsresult  
 nsUnicodeNormalizer::NormalizeUnicodeNFKD( const nsAString& aSrc, nsAString& aDest)
 {
-  return mdn_normalize(PR_FALSE, PR_TRUE, aSrc, aDest);
+  return mdn_normalize(false, true, aSrc, aDest);
 }
 
 nsresult  
 nsUnicodeNormalizer::NormalizeUnicodeNFKC( const nsAString& aSrc, nsAString& aDest)
 {
-  return mdn_normalize(PR_TRUE, PR_TRUE, aSrc, aDest);
+  return mdn_normalize(true, true, aSrc, aDest);
 }
 

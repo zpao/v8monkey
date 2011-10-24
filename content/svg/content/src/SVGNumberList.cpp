@@ -34,18 +34,19 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "SVGNumberList.h"
 #include "SVGAnimatedNumberList.h"
 #include "nsSVGElement.h"
-#include "nsISVGValueUtils.h"
 #include "nsDOMError.h"
-#include "nsContentUtils.h"
 #include "nsString.h"
 #include "nsSVGUtils.h"
 #include "string.h"
 #include "prdtoa.h"
 #include "nsTextFormatter.h"
 #include "nsCharSeparatedTokenizer.h"
+#include "nsMathUtils.h"
 
 namespace mozilla {
 
@@ -69,7 +70,7 @@ SVGNumberList::GetValueAsString(nsAString& aValue) const
   for (PRUint32 i = 0; i < mNumbers.Length(); ++i) {
     // Would like to use aValue.AppendPrintf("%f", mNumbers[i]), but it's not
     // possible to always avoid trailing zeros.
-    nsTextFormatter::snprintf(buf, NS_ARRAY_LENGTH(buf),
+    nsTextFormatter::snprintf(buf, ArrayLength(buf),
                               NS_LITERAL_STRING("%g").get(),
                               double(mNumbers[i]));
     // We ignore OOM, since it's not useful for us to return an error.
@@ -98,7 +99,7 @@ SVGNumberList::SetValueFromString(const nsAString& aValue)
     }
     char *end;
     float num = float(PR_strtod(token, &end));
-    if (*end != '\0' || !NS_FloatIsFinite(num)) {
+    if (*end != '\0' || !NS_finite(num)) {
       return NS_ERROR_DOM_SYNTAX_ERR;
     }
     temp.AppendItem(num);

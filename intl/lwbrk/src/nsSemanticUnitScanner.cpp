@@ -59,7 +59,7 @@ NS_IMETHODIMP nsSemanticUnitScanner::Start(const char *characterSet)
 }
 
 /* void next (in wstring text, in long length, in long pos, out boolean hasMoreUnits, out long begin, out long end); */
-NS_IMETHODIMP nsSemanticUnitScanner::Next(const PRUnichar *text, PRInt32 length, PRInt32 pos, PRBool isLastBuffer, PRInt32 *begin, PRInt32 *end, PRBool *_retval)
+NS_IMETHODIMP nsSemanticUnitScanner::Next(const PRUnichar *text, PRInt32 length, PRInt32 pos, bool isLastBuffer, PRInt32 *begin, PRInt32 *end, bool *_retval)
 {
     // xxx need to bullet proff and check input pointer 
     //  make sure begin, end and _retval is not nsnull here
@@ -68,7 +68,7 @@ NS_IMETHODIMP nsSemanticUnitScanner::Next(const PRUnichar *text, PRInt32 length,
     if (pos >= length) {
        *begin = pos;
        *end = pos;
-       *_retval = PR_FALSE;
+       *_retval = false;
        return NS_OK;
     }
 
@@ -79,7 +79,7 @@ NS_IMETHODIMP nsSemanticUnitScanner::Next(const PRUnichar *text, PRInt32 length,
     if (kWbClassHanLetter == char_class) {
        *begin = pos;
        *end = pos+1;
-       *_retval = PR_TRUE;
+       *_retval = true;
        return NS_OK;
     }
 
@@ -105,7 +105,7 @@ NS_IMETHODIMP nsSemanticUnitScanner::Next(const PRUnichar *text, PRInt32 length,
     // for the rest, return 
     *begin = pos;
     *end = next;
-    *_retval = PR_TRUE;
+    *_retval = true;
     return NS_OK;
 }
 

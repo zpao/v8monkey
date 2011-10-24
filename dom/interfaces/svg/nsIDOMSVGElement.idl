@@ -40,7 +40,7 @@
 
 interface nsIDOMSVGSVGElement;
 
-[scriptable, uuid(c358d048-be72-4d39-93dc-0e85b8c9f07b)]
+[scriptable, uuid(b0cf8ffb-92e7-46e7-870f-a01395f37336)]
 interface nsIDOMSVGElement : nsIDOMElement 
 { 
   attribute DOMString id;

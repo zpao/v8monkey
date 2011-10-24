@@ -69,7 +69,7 @@ public:
   NS_IMETHOD_(char*) GetBuffer(void) const = 0;
 
   /** Grow buffer to aNewSize bytes. */
-  NS_IMETHOD_(PRBool) Grow(PRUint32 aNewSize) = 0;
+  NS_IMETHOD_(bool) Grow(PRUint32 aNewSize) = 0;
 
   /** Fill the buffer with data from aStream.  Don't grow the buffer, only
    *  read until length of buffer equals buffer size. */
@@ -88,7 +88,7 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsIByteBuffer, NS_IBYTEBUFFER_IID)
 }
 
 /** Create a new byte buffer using the given buffer size. */
-extern NS_COM nsresult 
+extern nsresult 
 NS_NewByteBuffer(nsIByteBuffer** aInstancePtrResult,
                  nsISupports* aOuter,
                  PRUint32 aBufferSize = 0);

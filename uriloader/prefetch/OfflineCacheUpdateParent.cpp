@@ -123,7 +123,7 @@ OfflineCacheUpdateParent::Schedule(const URI& aManifestURI,
         NS_ENSURE_SUCCESS(rv, rv);
     }
 
-    update->AddObserver(this, PR_FALSE);
+    update->AddObserver(this, false);
 
     if (stickDocument) {
         nsCOMPtr<nsIURI> stickURI;
@@ -148,9 +148,9 @@ OfflineCacheUpdateParent::UpdateStateChanged(nsIOfflineCacheUpdate *aUpdate, PRU
         // Tell the child the particulars after the update has finished.
         // Sending the Finish event will release the child side of the protocol
         // and notify "offline-cache-update-completed" on the child process.
-        PRBool isUpgrade;
+        bool isUpgrade;
         aUpdate->GetIsUpgrade(&isUpgrade);
-        PRBool succeeded;
+        bool succeeded;
         aUpdate->GetSucceeded(&succeeded);
 
         SendFinish(succeeded, isUpgrade);

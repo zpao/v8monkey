@@ -49,8 +49,7 @@
 #if defined(__linux)
 // Didn't find gettdtablehi() or gettdtablesize() on linux. Using FD_SETSIZE
 #define getdtablehi() FD_SETSIZE
-#elif !defined(__irix)
-// looks like Irix is the only one that has getdtablehi()?
+#else
 #define getdtablehi() getdtablesize()
 
 //  If you find a system doesn't have getdtablesize try #define getdtablesize
@@ -207,7 +206,7 @@ main(int argc, char* argv[])
   int socket_fd = 0;
 
 
-  PRBool notDone = PR_TRUE;
+  bool notDone = true;
   char buf[1024];
 
   while(notDone) {
@@ -236,7 +235,7 @@ main(int argc, char* argv[])
 	if(!strcmp(line, "quit") || !strcmp(line, "exit"))
 	  {
 	    fprintf(stderr, "bye now.\n");
-	    notDone = PR_FALSE;
+	    notDone = false;
 	  }
 	else if (!strncmp(line, "abort ", 6))
 	  {

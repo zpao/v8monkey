@@ -61,16 +61,16 @@ public:
 
   nsIScriptElement(mozilla::dom::FromParser aFromParser)
     : mLineNumber(0),
-      mAlreadyStarted(PR_FALSE),
-      mMalformed(PR_FALSE),
+      mAlreadyStarted(false),
+      mMalformed(false),
       mDoneAddingChildren(aFromParser == mozilla::dom::NOT_FROM_PARSER ||
                           aFromParser == mozilla::dom::FROM_PARSER_FRAGMENT),
       mForceAsync(aFromParser == mozilla::dom::NOT_FROM_PARSER ||
                   aFromParser == mozilla::dom::FROM_PARSER_FRAGMENT),
-      mFrozen(PR_FALSE),
-      mDefer(PR_FALSE),
-      mAsync(PR_FALSE),
-      mExternal(PR_FALSE),
+      mFrozen(false),
+      mDefer(false),
+      mAsync(false),
+      mExternal(false),
       mParserCreated(aFromParser == mozilla::dom::FROM_PARSER_FRAGMENT ?
                      mozilla::dom::NOT_FROM_PARSER : aFromParser),
                      // Fragment parser-created scripts (if executable)
@@ -112,7 +112,7 @@ public:
   /**
    * Is the script deferred. Currently only supported by HTML scripts.
    */
-  PRBool GetScriptDeferred()
+  bool GetScriptDeferred()
   {
     NS_PRECONDITION(mFrozen, "Not ready for this call yet!");
     return mDefer;
@@ -121,7 +121,7 @@ public:
   /**
    * Is the script async. Currently only supported by HTML scripts.
    */
-  PRBool GetScriptAsync()
+  bool GetScriptAsync()
   {
     NS_PRECONDITION(mFrozen, "Not ready for this call yet!");
     return mAsync;  
@@ -130,7 +130,7 @@ public:
   /**
    * Is the script an external script?
    */
-  PRBool GetScriptExternal()
+  bool GetScriptExternal()
   {
     NS_PRECONDITION(mFrozen, "Not ready for this call yet!");
     return mExternal;
@@ -155,25 +155,25 @@ public:
 
   void SetIsMalformed()
   {
-    mMalformed = PR_TRUE;
+    mMalformed = true;
   }
-  PRBool IsMalformed()
+  bool IsMalformed()
   {
     return mMalformed;
   }
 
   void PreventExecution()
   {
-    mAlreadyStarted = PR_TRUE;
+    mAlreadyStarted = true;
   }
 
   void LoseParserInsertedness()
   {
-    mFrozen = PR_FALSE;
+    mFrozen = false;
     mUri = nsnull;
     mCreatorParser = nsnull;
     mParserCreated = mozilla::dom::NOT_FROM_PARSER;
-    PRBool async = PR_FALSE;
+    bool async = false;
     nsCOMPtr<nsIDOMHTMLScriptElement> htmlScript = do_QueryInterface(this);
     if (htmlScript) {
       htmlScript->GetAsync(&async);
@@ -226,44 +226,44 @@ protected:
   /**
    * The "already started" flag per HTML5.
    */
-  PRPackedBool mAlreadyStarted;
+  bool mAlreadyStarted;
   
   /**
    * The script didn't have an end tag.
    */
-  PRPackedBool mMalformed;
+  bool mMalformed;
   
   /**
    * False if parser-inserted but the parser hasn't triggered running yet.
    */
-  PRPackedBool mDoneAddingChildren;
+  bool mDoneAddingChildren;
 
   /**
    * If true, the .async property returns true instead of reflecting the
    * content attribute.
    */
-  PRPackedBool mForceAsync;
+  bool mForceAsync;
 
   /**
    * Whether src, defer and async are frozen.
    */
-  PRPackedBool mFrozen;
+  bool mFrozen;
   
   /**
    * The effective deferredness.
    */
-  PRPackedBool mDefer;
+  bool mDefer;
   
   /**
    * The effective asyncness.
    */
-  PRPackedBool mAsync;
+  bool mAsync;
   
   /**
    * The effective externalness. A script can be external with mUri being null
    * if the src attribute contained an invalid URL string.
    */
-  PRPackedBool mExternal;
+  bool mExternal;
 
   /**
    * Whether this element was parser-created.

@@ -36,16 +36,20 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "txExpr.h"
 #include "nsAutoPtr.h"
 #include "txNodeSet.h"
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txIXPathContext.h"
 #include "nsWhitespaceTokenizer.h"
 #include "txXPathTreeWalker.h"
 #include <math.h>
 #include "txStringUtils.h"
 #include "txXMLUtils.h"
+
+using namespace mozilla;
 
 struct txCoreFunctionDescriptor
 {
@@ -59,36 +63,36 @@ struct txCoreFunctionDescriptor
 // If you change one, change the other.
 static const txCoreFunctionDescriptor descriptTable[] =
 {
-    { 1, 1, Expr::NUMBER_RESULT,  &txXPathAtoms::count }, // COUNT
-    { 1, 1, Expr::NODESET_RESULT, &txXPathAtoms::id }, // ID
-    { 0, 0, Expr::NUMBER_RESULT,  &txXPathAtoms::last }, // LAST
-    { 0, 1, Expr::STRING_RESULT,  &txXPathAtoms::localName }, // LOCAL_NAME
-    { 0, 1, Expr::STRING_RESULT,  &txXPathAtoms::namespaceUri }, // NAMESPACE_URI
-    { 0, 1, Expr::STRING_RESULT,  &txXPathAtoms::name }, // NAME
-    { 0, 0, Expr::NUMBER_RESULT,  &txXPathAtoms::position }, // POSITION
+    { 1, 1, Expr::NUMBER_RESULT,  &nsGkAtoms::count }, // COUNT
+    { 1, 1, Expr::NODESET_RESULT, &nsGkAtoms::id }, // ID
+    { 0, 0, Expr::NUMBER_RESULT,  &nsGkAtoms::last }, // LAST
+    { 0, 1, Expr::STRING_RESULT,  &nsGkAtoms::localName }, // LOCAL_NAME
+    { 0, 1, Expr::STRING_RESULT,  &nsGkAtoms::namespaceUri }, // NAMESPACE_URI
+    { 0, 1, Expr::STRING_RESULT,  &nsGkAtoms::name }, // NAME
+    { 0, 0, Expr::NUMBER_RESULT,  &nsGkAtoms::position }, // POSITION
 
-    { 2, -1, Expr::STRING_RESULT, &txXPathAtoms::concat }, // CONCAT
-    { 2, 2, Expr::BOOLEAN_RESULT, &txXPathAtoms::contains }, // CONTAINS
-    { 0, 1, Expr::STRING_RESULT,  &txXPathAtoms::normalizeSpace }, // NORMALIZE_SPACE
-    { 2, 2, Expr::BOOLEAN_RESULT, &txXPathAtoms::startsWith }, // STARTS_WITH
-    { 0, 1, Expr::STRING_RESULT,  &txXPathAtoms::string }, // STRING
-    { 0, 1, Expr::NUMBER_RESULT,  &txXPathAtoms::stringLength }, // STRING_LENGTH
-    { 2, 3, Expr::STRING_RESULT,  &txXPathAtoms::substring }, // SUBSTRING
-    { 2, 2, Expr::STRING_RESULT,  &txXPathAtoms::substringAfter }, // SUBSTRING_AFTER
-    { 2, 2, Expr::STRING_RESULT,  &txXPathAtoms::substringBefore }, // SUBSTRING_BEFORE
-    { 3, 3, Expr::STRING_RESULT,  &txXPathAtoms::translate }, // TRANSLATE
+    { 2, -1, Expr::STRING_RESULT, &nsGkAtoms::concat }, // CONCAT
+    { 2, 2, Expr::BOOLEAN_RESULT, &nsGkAtoms::contains }, // CONTAINS
+    { 0, 1, Expr::STRING_RESULT,  &nsGkAtoms::normalizeSpace }, // NORMALIZE_SPACE
+    { 2, 2, Expr::BOOLEAN_RESULT, &nsGkAtoms::startsWith }, // STARTS_WITH
+    { 0, 1, Expr::STRING_RESULT,  &nsGkAtoms::string }, // STRING
+    { 0, 1, Expr::NUMBER_RESULT,  &nsGkAtoms::stringLength }, // STRING_LENGTH
+    { 2, 3, Expr::STRING_RESULT,  &nsGkAtoms::substring }, // SUBSTRING
+    { 2, 2, Expr::STRING_RESULT,  &nsGkAtoms::substringAfter }, // SUBSTRING_AFTER
+    { 2, 2, Expr::STRING_RESULT,  &nsGkAtoms::substringBefore }, // SUBSTRING_BEFORE
+    { 3, 3, Expr::STRING_RESULT,  &nsGkAtoms::translate }, // TRANSLATE
 
-    { 0, 1, Expr::NUMBER_RESULT,  &txXPathAtoms::number }, // NUMBER
-    { 1, 1, Expr::NUMBER_RESULT,  &txXPathAtoms::round }, // ROUND
-    { 1, 1, Expr::NUMBER_RESULT,  &txXPathAtoms::floor }, // FLOOR
-    { 1, 1, Expr::NUMBER_RESULT,  &txXPathAtoms::ceiling }, // CEILING
-    { 1, 1, Expr::NUMBER_RESULT,  &txXPathAtoms::sum }, // SUM
+    { 0, 1, Expr::NUMBER_RESULT,  &nsGkAtoms::number }, // NUMBER
+    { 1, 1, Expr::NUMBER_RESULT,  &nsGkAtoms::round }, // ROUND
+    { 1, 1, Expr::NUMBER_RESULT,  &nsGkAtoms::floor }, // FLOOR
+    { 1, 1, Expr::NUMBER_RESULT,  &nsGkAtoms::ceiling }, // CEILING
+    { 1, 1, Expr::NUMBER_RESULT,  &nsGkAtoms::sum }, // SUM
 
-    { 1, 1, Expr::BOOLEAN_RESULT, &txXPathAtoms::boolean }, // BOOLEAN
-    { 0, 0, Expr::BOOLEAN_RESULT, &txXPathAtoms::_false }, // _FALSE
-    { 1, 1, Expr::BOOLEAN_RESULT, &txXPathAtoms::lang }, // LANG
-    { 1, 1, Expr::BOOLEAN_RESULT, &txXPathAtoms::_not }, // _NOT
-    { 0, 0, Expr::BOOLEAN_RESULT, &txXPathAtoms::_true } // _TRUE
+    { 1, 1, Expr::BOOLEAN_RESULT, &nsGkAtoms::boolean }, // BOOLEAN
+    { 0, 0, Expr::BOOLEAN_RESULT, &nsGkAtoms::_false }, // _FALSE
+    { 1, 1, Expr::BOOLEAN_RESULT, &nsGkAtoms::lang }, // LANG
+    { 1, 1, Expr::BOOLEAN_RESULT, &nsGkAtoms::_not }, // _NOT
+    { 0, 0, Expr::BOOLEAN_RESULT, &nsGkAtoms::_true } // _TRUE
 };
 
 
@@ -270,7 +274,7 @@ txCoreFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
             NS_ENSURE_SUCCESS(rv, rv);
 
             if (arg2.IsEmpty()) {
-                aContext->recycler()->getBoolResult(PR_TRUE, aResult);
+                aContext->recycler()->getBoolResult(true, aResult);
             }
             else {
                 nsAutoString arg1;
@@ -329,9 +333,9 @@ txCoreFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
             rv = mParams[1]->evaluateToString(aContext, arg2);
             NS_ENSURE_SUCCESS(rv, rv);
 
-            PRBool result = PR_FALSE;
+            bool result = false;
             if (arg2.IsEmpty()) {
-                result = PR_TRUE;
+                result = true;
             }
             else {
                 nsAutoString arg1;
@@ -615,7 +619,7 @@ txCoreFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
         
         case BOOLEAN:
         {
-            PRBool result;
+            bool result;
             nsresult rv = mParams[0]->evaluateToBool(aContext, result);
             NS_ENSURE_SUCCESS(rv, rv);
 
@@ -625,7 +629,7 @@ txCoreFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
         }
         case _FALSE:
         {
-            aContext->recycler()->getBoolResult(PR_FALSE, aResult);
+            aContext->recycler()->getBoolResult(false, aResult);
 
             return NS_OK;
         }
@@ -634,14 +638,14 @@ txCoreFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
             txXPathTreeWalker walker(aContext->getContextNode());
 
             nsAutoString lang;
-            PRBool found;
+            bool found;
             do {
-                found = walker.getAttr(txXMLAtoms::lang, kNameSpaceID_XML,
+                found = walker.getAttr(nsGkAtoms::lang, kNameSpaceID_XML,
                                        lang);
             } while (!found && walker.moveToParent());
 
             if (!found) {
-                aContext->recycler()->getBoolResult(PR_FALSE, aResult);
+                aContext->recycler()->getBoolResult(false, aResult);
 
                 return NS_OK;
             }
@@ -650,7 +654,7 @@ txCoreFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
             rv = mParams[0]->evaluateToString(aContext, arg);
             NS_ENSURE_SUCCESS(rv, rv);
 
-            PRBool result =
+            bool result =
                 StringBeginsWith(lang, arg,
                                  txCaseInsensitiveStringComparator()) &&
                 (lang.Length() == arg.Length() ||
@@ -662,7 +666,7 @@ txCoreFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
         }
         case _NOT:
         {
-            PRBool result;
+            bool result;
             rv = mParams[0]->evaluateToBool(aContext, result);
             NS_ENSURE_SUCCESS(rv, rv);
 
@@ -672,7 +676,7 @@ txCoreFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
         }
         case _TRUE:
         {
-            aContext->recycler()->getBoolResult(PR_TRUE, aResult);
+            aContext->recycler()->getBoolResult(true, aResult);
 
             return NS_OK;
         }
@@ -689,7 +693,7 @@ txCoreFunctionCall::getReturnType()
     return descriptTable[mType].mReturnType;
 }
 
-PRBool
+bool
 txCoreFunctionCall::isSensitiveTo(ContextSensitivity aContext)
 {
     switch (mType) {
@@ -746,23 +750,23 @@ txCoreFunctionCall::isSensitiveTo(ContextSensitivity aContext)
     }
 
     NS_NOTREACHED("how'd we get here?");
-    return PR_TRUE;
+    return true;
 }
 
 // static
-PRBool
+bool
 txCoreFunctionCall::getTypeFromAtom(nsIAtom* aName, eType& aType)
 {
     PRUint32 i;
-    for (i = 0; i < NS_ARRAY_LENGTH(descriptTable); ++i) {
+    for (i = 0; i < ArrayLength(descriptTable); ++i) {
         if (aName == *descriptTable[i].mName) {
             aType = static_cast<eType>(i);
 
-            return PR_TRUE;
+            return true;
         }
     }
 
-    return PR_FALSE;
+    return false;
 }
 
 #ifdef TX_TO_STRING

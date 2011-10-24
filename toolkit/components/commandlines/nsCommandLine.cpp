@@ -105,12 +105,12 @@ protected:
   PRUint32                mState;
   nsCOMPtr<nsIFile>       mWorkingDir;
   nsCOMPtr<nsIDOMWindow>  mWindowContext;
-  PRBool                  mPreventDefault;
+  bool                    mPreventDefault;
 };
 
 nsCommandLine::nsCommandLine() :
   mState(STATE_INITIAL_LAUNCH),
-  mPreventDefault(PR_FALSE)
+  mPreventDefault(false)
 {
 
 }
@@ -132,14 +132,14 @@ NS_IMETHODIMP
 nsCommandLine::GetArgument(PRInt32 aIndex, nsAString& aResult)
 {
   NS_ENSURE_ARG_MIN(aIndex, 0);
-  NS_ENSURE_ARG_MAX(PRUint32(aIndex), mArgs.Length());
+  NS_ENSURE_ARG_MAX(aIndex, PRInt32(mArgs.Length() - 1));
 
   aResult = mArgs[aIndex];
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsCommandLine::FindFlag(const nsAString& aFlag, PRBool aCaseSensitive, PRInt32 *aResult)
+nsCommandLine::FindFlag(const nsAString& aFlag, bool aCaseSensitive, PRInt32 *aResult)
 {
   NS_ENSURE_ARG(!aFlag.IsEmpty());
 
@@ -178,8 +178,8 @@ nsCommandLine::RemoveArguments(PRInt32 aStart, PRInt32 aEnd)
 }
 
 NS_IMETHODIMP
-nsCommandLine::HandleFlag(const nsAString& aFlag, PRBool aCaseSensitive,
-                          PRBool *aResult)
+nsCommandLine::HandleFlag(const nsAString& aFlag, bool aCaseSensitive,
+                          bool *aResult)
 {
   nsresult rv;
 
@@ -188,18 +188,18 @@ nsCommandLine::HandleFlag(const nsAString& aFlag, PRBool aCaseSensitive,
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (found == -1) {
-    *aResult = PR_FALSE;
+    *aResult = false;
     return NS_OK;
   }
 
-  *aResult = PR_TRUE;
+  *aResult = true;
   RemoveArguments(found, found);
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsCommandLine::HandleFlagWithParam(const nsAString& aFlag, PRBool aCaseSensitive,
+nsCommandLine::HandleFlagWithParam(const nsAString& aFlag, bool aCaseSensitive,
                                    nsAString& aResult)
 {
   nsresult rv;
@@ -209,7 +209,7 @@ nsCommandLine::HandleFlagWithParam(const nsAString& aFlag, PRBool aCaseSensitive
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (found == -1) {
-    aResult.SetIsVoid(PR_TRUE);
+    aResult.SetIsVoid(true);
     return NS_OK;
   }
 
@@ -237,14 +237,14 @@ nsCommandLine::GetState(PRUint32 *aResult)
 }
 
 NS_IMETHODIMP
-nsCommandLine::GetPreventDefault(PRBool *aResult)
+nsCommandLine::GetPreventDefault(bool *aResult)
 {
   *aResult = mPreventDefault;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsCommandLine::SetPreventDefault(PRBool aValue)
+nsCommandLine::SetPreventDefault(bool aValue)
 {
   mPreventDefault = aValue;
   return NS_OK;
@@ -571,7 +571,7 @@ nsCommandLine::EnumerateHandlers(EnumerateHandlersCallback aCallback, void *aClo
   NS_ENSURE_TRUE(strenum, NS_ERROR_UNEXPECTED);
 
   nsCAutoString entry;
-  PRBool hasMore;
+  bool hasMore;
   while (NS_SUCCEEDED(strenum->HasMore(&hasMore)) && hasMore) {
     strenum->GetNext(entry);
 
@@ -617,7 +617,7 @@ nsCommandLine::EnumerateValidators(EnumerateValidatorsCallback aCallback, void *
   NS_ENSURE_TRUE(strenum, NS_ERROR_UNEXPECTED);
 
   nsCAutoString entry;
-  PRBool hasMore;
+  bool hasMore;
   while (NS_SUCCEEDED(strenum->HasMore(&hasMore)) && hasMore) {
     strenum->GetNext(entry);
 

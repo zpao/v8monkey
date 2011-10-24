@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=36619
 -->
 <head>
   <title>Test for Bug 36619</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/mockObjects.js"></script>
@@ -26,6 +25,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=36619
 SimpleTest.waitForExplicitFinish();
 
 netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
+var Cu = Components.utils;
+var Ci = Components.interfaces;
+var Cc = Components.classes;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
 function MockFilePicker()

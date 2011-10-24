@@ -49,13 +49,8 @@
 #include "mozilla/dom/Element.h"
 #include "nsIDOMElement.h"
 #include "nsIDOMDocumentFragment.h"
-#include "nsIDOMEventTarget.h"
-#include "nsIDOM3EventTarget.h"
-#include "nsIDOM3Node.h"
-#include "nsIDOMNSEventTarget.h"
 #include "nsIDOMNSElement.h"
 #include "nsILinkHandler.h"
-#include "nsContentUtils.h"
 #include "nsNodeUtils.h"
 #include "nsAttrAndChildArray.h"
 #include "mozFlushType.h"
@@ -66,6 +61,11 @@
 #include "nsIDOMNodeSelector.h"
 #include "nsIDOMXPathNSResolver.h"
 #include "nsPresContext.h"
+#include "nsIDOMDOMStringMap.h"
+#include "nsContentList.h"
+#include "nsDOMClassInfoID.h" // DOMCI_DATA
+#include "nsIDOMTouchEvent.h"
+#include "nsIInlineEventHandlers.h"
 
 #ifdef MOZ_SMIL
 #include "nsISMILAttr.h"
@@ -80,8 +80,7 @@ class nsIDOMCSSStyleDeclaration;
 class nsIURI;
 class nsINodeInfo;
 class nsIControllers;
-class nsIDOMNSFeatureFactory;
-class nsIEventListenerManager;
+class nsEventListenerManager;
 class nsIScrollableFrame;
 class nsContentList;
 class nsDOMTokenList;
@@ -101,15 +100,20 @@ public:
   nsChildContentList(nsINode* aNode)
     : mNode(aNode)
   {
+    SetIsProxy();
   }
 
-  NS_DECL_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(nsChildContentList)
+
+  // nsWrapperCache
+  virtual JSObject* WrapObject(JSContext *cx, XPCWrappedNativeScope *scope,
+                               bool *triedToWrap);
 
   // nsIDOMNodeList interface
   NS_DECL_NSIDOMNODELIST
 
   // nsINodeList interface
-  virtual nsIContent* GetNodeAt(PRUint32 aIndex);
   virtual PRInt32 IndexOf(nsIContent* aContent);
 
   void DropReference()
@@ -130,14 +134,14 @@ private:
 /**
  * A tearoff class for nsGenericElement to implement additional interfaces
  */
-class nsNode3Tearoff : public nsIDOM3Node, public nsIDOMXPathNSResolver
+class nsNode3Tearoff : public nsIDOMXPathNSResolver
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
-  NS_DECL_NSIDOM3NODE
+  NS_DECL_CYCLE_COLLECTION_CLASS(nsNode3Tearoff)
 
-  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsNode3Tearoff, nsIDOM3Node)
+  NS_DECL_NSIDOMXPATHNSRESOLVER
 
   nsNode3Tearoff(nsINode *aNode) : mNode(aNode)
   {
@@ -202,79 +206,6 @@ private:
   nsCOMPtr<nsINode> mNode;
 };
 
-#define NS_EVENT_TEAROFF_CACHE_SIZE 4
-
-/**
- * nsDOMEventRTTearoff is a tearoff class used by nsGenericElement and
- * nsGenericDOMDataNode classes for implementing the interfaces
- * nsIDOMEventTarget, nsIDOM3EventTarget and nsIDOMNSEventTarget.
- *
- * Use the method nsDOMEventRTTearoff::Create() to create one of these babies.
- * @see nsDOMEventRTTearoff::Create
- */
-
-class nsDOMEventRTTearoff : public nsIDOMEventTarget,
-                            public nsIDOM3EventTarget,
-                            public nsIDOMNSEventTarget
-{
-private:
-  // This class uses a caching scheme so we don't let users of this
-  // class create new instances with 'new', in stead the callers
-  // should use the static method
-  // nsDOMEventRTTearoff::Create(). That's why the constructor and
-  // destrucor of this class is private.
-
-  nsDOMEventRTTearoff(nsINode *aNode);
-
-  static nsDOMEventRTTearoff *mCachedEventTearoff[NS_EVENT_TEAROFF_CACHE_SIZE];
-  static PRUint32 mCachedEventTearoffCount;
-
-  /**
-   * This method gets called by Release() when it's time to delete the
-   * this object, in stead of always deleting the object we'll put the
-   * object in the cache if unless the cache is already full.
-   */
-  void LastRelease();
-
-  nsresult GetDOM3EventTarget(nsIDOM3EventTarget **aTarget);
-
-public:
-  virtual ~nsDOMEventRTTearoff();
-
-  /**
-   * Use this static method to create instances of nsDOMEventRTTearoff.
-   * @param aContent the content to create a tearoff for
-   */
-  static nsDOMEventRTTearoff *Create(nsINode *aNode);
-
-  /**
-   * Call before shutdown to clear the cache and free memory for this class.
-   */
-  static void Shutdown();
-
-  // nsISupports
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-
-  // nsIDOMEventTarget
-  NS_DECL_NSIDOMEVENTTARGET
-
-  // nsIDOM3EventTarget
-  NS_DECL_NSIDOM3EVENTTARGET
-
-  // nsIDOMNSEventTarget
-  NS_DECL_NSIDOMNSEVENTTARGET
-
-  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsDOMEventRTTearoff,
-                                           nsIDOMEventTarget)
-
-private:
-  /**
-   * Strong reference back to the content object from where an instance of this
-   * class was 'torn off'
-   */
-  nsCOMPtr<nsINode> mNode;
-};
-
 /**
  * A tearoff class for nsGenericElement to implement NodeSelector
  */
@@ -300,6 +231,8 @@ private:
 
 // Forward declare to allow being a friend
 class nsNSElementTearoff;
+class nsTouchEventReceiverTearoff;
+class nsInlineEventHandlersTearoff;
 
 /**
  * A generic base class for DOM elements, implementing many nsIContent,
@@ -312,8 +245,12 @@ public:
   virtual ~nsGenericElement();
 
   friend class nsNSElementTearoff;
+  friend class nsTouchEventReceiverTearoff;
+  friend class nsInlineEventHandlersTearoff;
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+
+  NS_DECL_DOM_MEMORY_REPORTER_SIZEOF
 
   /**
    * Called during QueryInterface to give the binding manager a chance to
@@ -327,43 +264,24 @@ public:
   virtual nsIContent * const * GetChildArray(PRUint32* aChildCount) const;
   virtual PRInt32 IndexOf(nsINode* aPossibleChild) const;
   virtual nsresult InsertChildAt(nsIContent* aKid, PRUint32 aIndex,
-                                 PRBool aNotify);
-  virtual nsresult RemoveChildAt(PRUint32 aIndex, PRBool aNotify, PRBool aMutationEvent = PR_TRUE);
-  virtual nsresult PreHandleEvent(nsEventChainPreVisitor& aVisitor);
-  virtual nsresult PostHandleEvent(nsEventChainPostVisitor& aVisitor);
-  virtual nsresult DispatchDOMEvent(nsEvent* aEvent, nsIDOMEvent* aDOMEvent,
-                                    nsPresContext* aPresContext,
-                                    nsEventStatus* aEventStatus);
-  virtual nsIEventListenerManager* GetListenerManager(PRBool aCreateIfNotFound);
-  virtual nsresult AddEventListenerByIID(nsIDOMEventListener *aListener,
-                                         const nsIID& aIID);
-  virtual nsresult RemoveEventListenerByIID(nsIDOMEventListener *aListener,
-                                            const nsIID& aIID);
-  virtual nsresult GetSystemEventGroup(nsIDOMEventGroup** aGroup);
-  virtual nsIScriptContext* GetContextForEventHandlers(nsresult* aRv)
-  {
-    return nsContentUtils::GetContextForEventHandlers(this, aRv);
-  }
-  virtual void GetTextContent(nsAString &aTextContent)
-  {
-    nsContentUtils::GetNodeTextContent(this, PR_TRUE, aTextContent);
-  }
-  virtual nsresult SetTextContent(const nsAString& aTextContent)
-  {
-    return nsContentUtils::SetNodeTextContent(this, aTextContent, PR_FALSE);
-  }
+                                 bool aNotify);
+  virtual nsresult RemoveChildAt(PRUint32 aIndex, bool aNotify);
+  NS_IMETHOD GetTextContent(nsAString &aTextContent);
+  NS_IMETHOD SetTextContent(const nsAString& aTextContent);
 
   // nsIContent interface methods
+  virtual void UpdateEditableState(bool aNotify);
+
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
-                              PRBool aCompileEventHandlers);
-  virtual void UnbindFromTree(PRBool aDeep = PR_TRUE,
-                              PRBool aNullParent = PR_TRUE);
+                              bool aCompileEventHandlers);
+  virtual void UnbindFromTree(bool aDeep = true,
+                              bool aNullParent = true);
   virtual already_AddRefed<nsINodeList> GetChildren(PRUint32 aFilter);
   virtual nsIAtom *GetClassAttributeName() const;
   virtual already_AddRefed<nsINodeInfo> GetExistingAttrNameFromQName(const nsAString& aStr) const;
   nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                   const nsAString& aValue, PRBool aNotify)
+                   const nsAString& aValue, bool aNotify)
   {
     return SetAttr(aNameSpaceID, aName, nsnull, aValue, aNotify);
   }
@@ -373,7 +291,7 @@ public:
    * attribute is currently set, and the new value that is about to be set is
    * different to the current value. As a perf optimization the new and old
    * values will not actually be compared if we aren't notifying and we don't
-   * have mutation listeners (in which case it's cheap to just return PR_FALSE
+   * have mutation listeners (in which case it's cheap to just return false
    * and let the caller go ahead and set the value).
    * @param aOldValue Set to the old value of the attribute, but only if there
    *   are event listeners
@@ -382,22 +300,22 @@ public:
    * @param aHasListeners Set to true if there are mutation event listeners
    *   listening for NS_EVENT_BITS_MUTATION_ATTRMODIFIED
    */
-  PRBool MaybeCheckSameAttrVal(PRInt32 aNamespaceID, nsIAtom* aName,
+  bool MaybeCheckSameAttrVal(PRInt32 aNamespaceID, nsIAtom* aName,
                                nsIAtom* aPrefix, const nsAString& aValue,
-                               PRBool aNotify, nsAutoString* aOldValue,
-                               PRUint8* aModType, PRBool* aHasListeners);
+                               bool aNotify, nsAutoString* aOldValue,
+                               PRUint8* aModType, bool* aHasListeners);
   virtual nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName, nsIAtom* aPrefix,
-                           const nsAString& aValue, PRBool aNotify);
+                           const nsAString& aValue, bool aNotify);
   virtual nsresult SetParsedAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                                  nsIAtom* aPrefix, nsAttrValue& aParsedValue,
-                                 PRBool aNotify);
-  virtual PRBool GetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
+                                 bool aNotify);
+  virtual bool GetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                          nsAString& aResult) const;
-  virtual PRBool HasAttr(PRInt32 aNameSpaceID, nsIAtom* aName) const;
-  virtual PRBool AttrValueIs(PRInt32 aNameSpaceID, nsIAtom* aName,
+  virtual bool HasAttr(PRInt32 aNameSpaceID, nsIAtom* aName) const;
+  virtual bool AttrValueIs(PRInt32 aNameSpaceID, nsIAtom* aName,
                              const nsAString& aValue,
                              nsCaseTreatment aCaseSensitive) const;
-  virtual PRBool AttrValueIs(PRInt32 aNameSpaceID, nsIAtom* aName,
+  virtual bool AttrValueIs(PRInt32 aNameSpaceID, nsIAtom* aName,
                              nsIAtom* aValue,
                              nsCaseTreatment aCaseSensitive) const;
   virtual PRInt32 FindAttrValueIn(PRInt32 aNameSpaceID,
@@ -405,25 +323,25 @@ public:
                                   AttrValuesArray* aValues,
                                   nsCaseTreatment aCaseSensitive) const;
   virtual nsresult UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttribute,
-                             PRBool aNotify);
+                             bool aNotify);
   virtual const nsAttrName* GetAttrNameAt(PRUint32 aIndex) const;
   virtual PRUint32 GetAttrCount() const;
   virtual const nsTextFragment *GetText();
   virtual PRUint32 TextLength();
   virtual nsresult SetText(const PRUnichar* aBuffer, PRUint32 aLength,
-                           PRBool aNotify);
+                           bool aNotify);
   // Need to implement this here too to avoid hiding.
-  nsresult SetText(const nsAString& aStr, PRBool aNotify)
+  nsresult SetText(const nsAString& aStr, bool aNotify)
   {
     return SetText(aStr.BeginReading(), aStr.Length(), aNotify);
   }
   virtual nsresult AppendText(const PRUnichar* aBuffer, PRUint32 aLength,
-                              PRBool aNotify);
-  virtual PRBool TextIsOnlyWhitespace();
+                              bool aNotify);
+  virtual bool TextIsOnlyWhitespace();
   virtual void AppendTextTo(nsAString& aResult);
   virtual nsIContent *GetBindingParent() const;
-  virtual PRBool IsNodeOfType(PRUint32 aFlags) const;
-  virtual PRBool IsLink(nsIURI** aURI) const;
+  virtual bool IsNodeOfType(PRUint32 aFlags) const;
+  virtual bool IsLink(nsIURI** aURI) const;
 
   virtual PRUint32 GetScriptTypeID() const;
   NS_IMETHOD SetScriptTypeID(PRUint32 aLang);
@@ -439,7 +357,7 @@ public:
   virtual nsIDOMCSSStyleDeclaration* GetSMILOverrideStyle();
   virtual mozilla::css::StyleRule* GetSMILOverrideStyleRule();
   virtual nsresult SetSMILOverrideStyleRule(mozilla::css::StyleRule* aStyleRule,
-                                            PRBool aNotify);
+                                            bool aNotify);
 #endif // MOZ_SMIL
 
 #ifdef DEBUG
@@ -447,7 +365,7 @@ public:
   {
     List(out, aIndent, EmptyCString());
   }
-  virtual void DumpContent(FILE* out, PRInt32 aIndent, PRBool aDumpAll) const;
+  virtual void DumpContent(FILE* out, PRInt32 aIndent, bool aDumpAll) const;
   void List(FILE* out, PRInt32 aIndent, const nsCString& aPrefix) const;
   void ListAttributes(FILE* out) const;
 #endif
@@ -455,8 +373,8 @@ public:
   virtual const nsAttrValue* DoGetClasses() const;
   NS_IMETHOD WalkContentStyleRules(nsRuleWalker* aRuleWalker);
   virtual mozilla::css::StyleRule* GetInlineStyleRule();
-  NS_IMETHOD SetInlineStyleRule(mozilla::css::StyleRule* aStyleRule, PRBool aNotify);
-  NS_IMETHOD_(PRBool)
+  NS_IMETHOD SetInlineStyleRule(mozilla::css::StyleRule* aStyleRule, bool aNotify);
+  NS_IMETHOD_(bool)
     IsAttributeMapped(const nsIAtom* aAttribute) const;
   virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
                                               PRInt32 aModType) const;
@@ -473,7 +391,7 @@ public:
    * IsAttributeMapped should use this function as a default
    * handler.
    */
-  static PRBool
+  static bool
   FindAttributeDependence(const nsIAtom* aAttribute,
                           const MappedAttributeEntry* const aMaps[],
                           PRUint32 aMapCount);
@@ -487,20 +405,19 @@ public:
   NS_IMETHOD GetAttributes(nsIDOMNamedNodeMap** aAttributes);
   NS_IMETHOD GetNamespaceURI(nsAString& aNamespaceURI);
   NS_IMETHOD GetPrefix(nsAString& aPrefix);
-  NS_IMETHOD Normalize();
   NS_IMETHOD IsSupported(const nsAString& aFeature,
-                         const nsAString& aVersion, PRBool* aReturn);
-  NS_IMETHOD HasAttributes(PRBool* aHasAttributes);
-  NS_IMETHOD HasChildNodes(PRBool* aHasChildNodes);
+                         const nsAString& aVersion, bool* aReturn);
+  NS_IMETHOD HasAttributes(bool* aHasAttributes);
+  NS_IMETHOD HasChildNodes(bool* aHasChildNodes);
   nsresult InsertBefore(nsIDOMNode* aNewChild, nsIDOMNode* aRefChild,
                         nsIDOMNode** aReturn)
   {
-    return ReplaceOrInsertBefore(PR_FALSE, aNewChild, aRefChild, aReturn);
+    return ReplaceOrInsertBefore(false, aNewChild, aRefChild, aReturn);
   }
   nsresult ReplaceChild(nsIDOMNode* aNewChild, nsIDOMNode* aOldChild,
                         nsIDOMNode** aReturn)
   {
-    return ReplaceOrInsertBefore(PR_TRUE, aNewChild, aOldChild, aReturn);
+    return ReplaceOrInsertBefore(true, aNewChild, aOldChild, aReturn);
   }
   nsresult RemoveChild(nsIDOMNode* aOldChild, nsIDOMNode** aReturn)
   {
@@ -539,13 +456,13 @@ public:
   NS_IMETHOD GetElementsByTagNameNS(const nsAString& aNamespaceURI,
                                     const nsAString& aLocalName,
                                     nsIDOMNodeList** aReturn);
-  NS_IMETHOD HasAttribute(const nsAString& aName, PRBool* aReturn);
+  NS_IMETHOD HasAttribute(const nsAString& aName, bool* aReturn);
   NS_IMETHOD HasAttributeNS(const nsAString& aNamespaceURI,
                             const nsAString& aLocalName,
-                            PRBool* aReturn);
-  nsresult CloneNode(PRBool aDeep, nsIDOMNode **aResult)
+                            bool* aReturn);
+  nsresult CloneNode(bool aDeep, nsIDOMNode **aResult)
   {
-    return nsNodeUtils::CloneNodeImpl(this, aDeep, PR_TRUE, aResult);
+    return nsNodeUtils::CloneNodeImpl(this, aDeep, true, aResult);
   }
 
   //----------------------------------------
@@ -559,20 +476,12 @@ public:
    */
   nsresult AddScriptEventListener(nsIAtom* aEventName,
                                   const nsAString& aValue,
-                                  PRBool aDefer = PR_TRUE);
+                                  bool aDefer = true);
 
   /**
    * Do whatever needs to be done when the mouse leaves a link
    */
   nsresult LeaveLink(nsPresContext* aPresContext);
-
-  /**
-   * Take two text nodes and append the second to the first.
-   * @param aFirst the node which will contain first + second [INOUT]
-   * @param aSecond the node which will be appended
-   */
-  nsresult JoinTextNodes(nsIContent* aFirst,
-                         nsIContent* aSecond);
 
   /**
    * Check whether a spec feature/version is supported.
@@ -585,9 +494,9 @@ public:
   static nsresult InternalIsSupported(nsISupports* aObject,
                                       const nsAString& aFeature,
                                       const nsAString& aVersion,
-                                      PRBool* aReturn);
+                                      bool* aReturn);
 
-  static PRBool ShouldBlur(nsIContent *aContent);
+  static bool ShouldBlur(nsIContent *aContent);
 
   /**
    * If there are listeners for DOMNodeInserted event, fires the event on all
@@ -595,7 +504,7 @@ public:
    */
   static void FireNodeInserted(nsIDocument* aDoc,
                                nsINode* aParent,
-                               nsCOMArray<nsIContent>& aNodes);
+                               nsTArray<nsCOMPtr<nsIContent> >& aNodes);
 
   /**
    * Helper methods for implementing querySelector/querySelectorAll
@@ -607,12 +516,6 @@ public:
                                      nsIDOMNodeList **aReturn);
 
   /**
-   * Default event prehandling for content objects. Handles event retargeting.
-   */
-  static nsresult doPreHandleEvent(nsIContent* aContent,
-                                   nsEventChainPreVisitor& aVisitor);
-
-  /**
    * Method to create and dispatch a left-click event loosely based on
    * aSourceEvent. If aFullDispatch is true, the event will be dispatched
    * through the full dispatching of the presshell of the aPresContext; if it's
@@ -622,7 +525,8 @@ public:
   static nsresult DispatchClickEvent(nsPresContext* aPresContext,
                                      nsInputEvent* aSourceEvent,
                                      nsIContent* aTarget,
-                                     PRBool aFullDispatch,
+                                     bool aFullDispatch,
+                                     PRUint32 aFlags,
                                      nsEventStatus* aStatus);
 
   /**
@@ -632,10 +536,11 @@ public:
    * event.
    * If aPresContext is nsnull, this does nothing.
    */
+  using nsIContent::DispatchEvent;
   static nsresult DispatchEvent(nsPresContext* aPresContext,
                                 nsEvent* aEvent,
                                 nsIContent* aTarget,
-                                PRBool aFullDispatch,
+                                bool aFullDispatch,
                                 nsEventStatus* aStatus);
 
   /**
@@ -688,10 +593,7 @@ public:
 
   // nsIDOMNSElement methods
   nsresult GetElementsByClassName(const nsAString& aClasses,
-                                  nsIDOMNodeList** aReturn)
-  {
-    return nsContentUtils::GetElementsByClassName(this, aClasses, aReturn);
-  }
+                                  nsIDOMNodeList** aReturn);
   nsresult GetClientRects(nsIDOMClientRectList** aResult);
   nsresult GetBoundingClientRect(nsIDOMClientRect** aResult);
   PRInt32 GetScrollTop();
@@ -729,7 +631,7 @@ public:
       return NS_ERROR_OUT_OF_MEMORY;
     }
 
-    *aResult = list->Length(PR_TRUE);
+    *aResult = list->Length(true);
 
     return NS_OK;
   }
@@ -747,9 +649,9 @@ public:
     return NS_OK;
   }
   nsIDOMDOMTokenList* GetClassList(nsresult *aResult);
-  void SetCapture(PRBool aRetargetToElement);
+  void SetCapture(bool aRetargetToElement);
   void ReleaseCapture();
-  PRBool MozMatchesSelector(const nsAString& aSelector, nsresult* aResult);
+  bool MozMatchesSelector(const nsAString& aSelector, nsresult* aResult);
 
   /**
    * Get the attr info for the given namespace ID and attribute name.  The
@@ -799,8 +701,8 @@ protected:
                             const nsAString& aOldValue,
                             nsAttrValue& aParsedValue,
                             PRUint8 aModType,
-                            PRBool aFireMutation,
-                            PRBool aNotify,
+                            bool aFireMutation,
+                            bool aNotify,
                             const nsAString* aValueForAfterSetAttr);
 
   /**
@@ -812,9 +714,9 @@ protected:
    * @param aAttribute the attribute to convert
    * @param aValue the string value to convert
    * @param aResult the nsAttrValue [OUT]
-   * @return PR_TRUE if the parsing was successful, PR_FALSE otherwise
+   * @return true if the parsing was successful, false otherwise
    */
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
+  virtual bool ParseAttribute(PRInt32 aNamespaceID,
                                 nsIAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
@@ -824,15 +726,15 @@ protected:
    * only be called for attributes that are in the null namespace and only on
    * attributes that returned true when passed to IsAttributeMapped.  The
    * caller will not try to set the attr in any other way if this method
-   * returns PR_TRUE (the value of aRetval does not matter for that purpose).
+   * returns true (the value of aRetval does not matter for that purpose).
    *
    * @param aDocument the current document of this node (an optimization)
    * @param aName the name of the attribute
    * @param aValue the nsAttrValue to set
    * @param [out] aRetval the nsresult status of the operation, if any.
-   * @return PR_TRUE if the setting was attempted, PR_FALSE otherwise.
+   * @return true if the setting was attempted, false otherwise.
    */
-  virtual PRBool SetMappedAttribute(nsIDocument* aDocument,
+  virtual bool SetMappedAttribute(nsIDocument* aDocument,
                                     nsIAtom* aName,
                                     nsAttrValue& aValue,
                                     nsresult* aRetval);
@@ -853,7 +755,7 @@ protected:
   // Note that this is inlined so that when subclasses call it it gets
   // inlined.  Those calls don't go through a vtable.
   virtual nsresult BeforeSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                 const nsAString* aValue, PRBool aNotify)
+                                 const nsAString* aValue, bool aNotify)
   {
     return NS_OK;
   }
@@ -862,7 +764,7 @@ protected:
    * Hook that is called by nsGenericElement::SetAttr to allow subclasses to
    * deal with attribute sets.  This will only be called after we have called
    * SetAndTakeAttr and AttributeChanged (that is, after we have actually set
-   * the attr).
+   * the attr).  It will always be called under a scriptblocker.
    *
    * @param aNamespaceID the namespace of the attr being set
    * @param aName the localname of the attribute being set
@@ -873,19 +775,17 @@ protected:
   // Note that this is inlined so that when subclasses call it it gets
   // inlined.  Those calls don't go through a vtable.
   virtual nsresult AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                const nsAString* aValue, PRBool aNotify)
+                                const nsAString* aValue, bool aNotify)
   {
     return NS_OK;
   }
 
   /**
-   * Hook to allow subclasses to produce a different nsIEventListenerManager if
+   * Hook to allow subclasses to produce a different nsEventListenerManager if
    * needed for attachment of attribute-defined handlers
    */
-  virtual nsresult
-    GetEventListenerManagerForAttr(nsIEventListenerManager** aManager,
-                                   nsISupports** aTarget,
-                                   PRBool* aDefer);
+  virtual nsEventListenerManager*
+    GetEventListenerManagerForAttr(nsIAtom* aAttrName, bool* aDefer);
 
   /**
    * Copy attributes and state to another element
@@ -931,11 +831,21 @@ public:
     nsDOMSlots();
     virtual ~nsDOMSlots();
 
+    void Traverse(nsCycleCollectionTraversalCallback &cb, bool aIsXUL);
+    void Unlink(bool aIsXUL);
+
     /**
      * The .style attribute (an interface that forwards to the actual
      * style rules)
-     * @see nsGenericHTMLElement::GetStyle */
+     * @see nsGenericHTMLElement::GetStyle
+     */
     nsCOMPtr<nsICSSDeclaration> mStyle;
+
+    /**
+     * The .dataset attribute.
+     * @see nsGenericHTMLElement::GetDataset
+     */
+    nsIDOMDOMStringMap* mDataset; // [Weak]
 
     /**
      * SMIL Overridde style rules (for SMIL animation of CSS properties)
@@ -993,16 +903,10 @@ protected:
   }
 
   void RegisterFreezableElement() {
-    nsIDocument* doc = GetOwnerDoc();
-    if (doc) {
-      doc->RegisterFreezableElement(this);
-    }
+    OwnerDoc()->RegisterFreezableElement(this);
   }
   void UnregisterFreezableElement() {
-    nsIDocument* doc = GetOwnerDoc();
-    if (doc) {
-      doc->UnregisterFreezableElement(this);
-    }
+    OwnerDoc()->UnregisterFreezableElement(this);
   }
 
   /**
@@ -1040,10 +944,10 @@ protected:
    * and that we are actually on a link.
    *
    * @param aVisitor event visitor
-   * @param aURI the uri of the link, set only if the return value is PR_TRUE [OUT]
-   * @return PR_TRUE if we can handle the link event, PR_FALSE otherwise
+   * @param aURI the uri of the link, set only if the return value is true [OUT]
+   * @return true if we can handle the link event, false otherwise
    */
-  PRBool CheckHandleEventForLinksPrecondition(nsEventChainVisitor& aVisitor,
+  bool CheckHandleEventForLinksPrecondition(nsEventChainVisitor& aVisitor,
                                               nsIURI** aURI) const;
 
   /**
@@ -1157,6 +1061,46 @@ public:
 
 private:
   nsRefPtr<nsGenericElement> mContent;
+};
+
+/**
+ * Tearoff class to implement nsITouchEventReceiver
+ */
+class nsTouchEventReceiverTearoff : public nsITouchEventReceiver
+{
+public:
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+
+  NS_FORWARD_NSITOUCHEVENTRECEIVER(mElement->)
+
+  NS_DECL_CYCLE_COLLECTION_CLASS(nsTouchEventReceiverTearoff)
+
+  nsTouchEventReceiverTearoff(nsGenericElement *aElement) : mElement(aElement)
+  {
+  }
+
+private:
+  nsRefPtr<nsGenericElement> mElement;
+};
+
+/**
+ * Tearoff class to implement nsIInlineEventHandlers
+ */
+class nsInlineEventHandlersTearoff : public nsIInlineEventHandlers
+{
+public:
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+
+  NS_FORWARD_NSIINLINEEVENTHANDLERS(mElement->)
+
+  NS_DECL_CYCLE_COLLECTION_CLASS(nsInlineEventHandlersTearoff)
+
+  nsInlineEventHandlersTearoff(nsGenericElement *aElement) : mElement(aElement)
+  {
+  }
+
+private:
+  nsRefPtr<nsGenericElement> mElement;
 };
 
 #define NS_ELEMENT_INTERFACE_TABLE_TO_MAP_SEGUE                               \

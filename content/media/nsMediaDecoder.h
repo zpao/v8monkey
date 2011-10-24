@@ -49,6 +49,7 @@
 #include "ImageLayers.h"
 #include "mozilla/ReentrantMonitor.h"
 #include "mozilla/Mutex.h"
+#include "nsIMemoryReporter.h"
 
 class nsHTMLMediaElement;
 class nsMediaStream;
@@ -58,26 +59,12 @@ class nsTimeRanges;
 // The size to use for audio data frames in MozAudioAvailable events.
 // This value is per channel, and is chosen to give ~43 fps of events,
 // for example, 44100 with 2 channels, 2*1024 = 2048.
-#define FRAMEBUFFER_LENGTH_PER_CHANNEL 1024
+static const PRUint32 FRAMEBUFFER_LENGTH_PER_CHANNEL = 1024;
 
 // The total size of the framebuffer used for MozAudioAvailable events
 // has to be within the following range.
-#define FRAMEBUFFER_LENGTH_MIN 512
-#define FRAMEBUFFER_LENGTH_MAX 16384
-
-// Shuts down a thread asynchronously.
-class ShutdownThreadEvent : public nsRunnable 
-{
-public:
-  ShutdownThreadEvent(nsIThread* aThread) : mThread(aThread) {}
-  ~ShutdownThreadEvent() {}
-  NS_IMETHOD Run() {
-    mThread->Shutdown();
-    return NS_OK;
-  }
-private:
-  nsCOMPtr<nsIThread> mThread;
-};
+static const PRUint32 FRAMEBUFFER_LENGTH_MIN = 512;
+static const PRUint32 FRAMEBUFFER_LENGTH_MAX = 16384;
 
 // All methods of nsMediaDecoder must be called from the main thread only
 // with the exception of GetImageContainer, SetVideoData and GetStatistics,
@@ -99,9 +86,9 @@ public:
   virtual nsMediaDecoder* Clone() = 0;
 
   // Perform any initialization required for the decoder.
-  // Return PR_TRUE on successful initialisation, PR_FALSE
+  // Return true on successful initialisation, false
   // on failure.
-  virtual PRBool Init(nsHTMLMediaElement* aElement);
+  virtual bool Init(nsHTMLMediaElement* aElement);
 
   // Get the current nsMediaStream being used. Its URI will be returned
   // by currentSrc.
@@ -124,6 +111,19 @@ public:
 
   // Return the duration of the video in seconds.
   virtual double GetDuration() = 0;
+
+  // A media stream is assumed to be infinite if the metadata doesn't
+  // contain the duration, and range requests are not supported, and
+  // no headers give a hint of a possible duration (Content-Length,
+  // Content-Duration, and variants), and we cannot seek in the media
+  // stream to determine the duration.
+  //
+  // When the media stream ends, we can know the duration, thus the stream is
+  // no longer considered to be infinite.
+  virtual void SetInfinite(bool aInfinite) = 0;
+
+  // Return true if the stream is infinite (see SetInfinite).
+  virtual bool IsInfinite() = 0;
 
   // Pause video playback.
   virtual void Pause() = 0;
@@ -150,13 +150,13 @@ public:
   // Called if the media file encounters a network error.
   virtual void NetworkError() = 0;
 
-  // Call from any thread safely. Return PR_TRUE if we are currently
+  // Call from any thread safely. Return true if we are currently
   // seeking in the media resource.
-  virtual PRBool IsSeeking() const = 0;
+  virtual bool IsSeeking() const = 0;
 
-  // Return PR_TRUE if the decoder has reached the end of playback.
+  // Return true if the decoder has reached the end of playback.
   // Call in the main thread only.
-  virtual PRBool IsEnded() const = 0;
+  virtual bool IsEnded() const = 0;
 
   struct Statistics {
     // Estimate of the current playback rate (bytes/second).
@@ -177,11 +177,11 @@ public:
     // If false, then mDownloadRate cannot be considered a reliable
     // estimate (probably because the download has only been running
     // a short time).
-    PRPackedBool mDownloadRateReliable;
+    bool mDownloadRateReliable;
     // If false, then mPlaybackRate cannot be considered a reliable
     // estimate (probably because playback has only been running
     // a short time).
-    PRPackedBool mPlaybackRateReliable;
+    bool mPlaybackRateReliable;
   };
 
   // Frame decoding/painting related performance counters.
@@ -288,19 +288,26 @@ public:
   virtual void SetDuration(double aDuration) = 0;
 
   // Set a flag indicating whether seeking is supported
-  virtual void SetSeekable(PRBool aSeekable) = 0;
+  virtual void SetSeekable(bool aSeekable) = 0;
 
-  // Return PR_TRUE if seeking is supported.
-  virtual PRBool GetSeekable() = 0;
+  // Return true if seeking is supported.
+  virtual bool IsSeekable() = 0;
+
+  // Return the time ranges that can be seeked into.
+  virtual nsresult GetSeekable(nsTimeRanges* aSeekable) = 0;
+
+  // Set the end time of the media resource. When playback reaches
+  // this point the media pauses. aTime is in seconds.
+  virtual void SetEndTime(double aTime) = 0;
 
   // Invalidate the frame.
   virtual void Invalidate();
 
   // Fire progress events if needed according to the time and byte
-  // constraints outlined in the specification. aTimer is PR_TRUE
+  // constraints outlined in the specification. aTimer is true
   // if the method is called as a result of the progress timer rather
   // than the result of downloaded data.
-  virtual void Progress(PRBool aTimer);
+  virtual void Progress(bool aTimer);
 
   // Fire timeupdate events if needed according to the time constraints
   // outlined in the specification.
@@ -339,10 +346,10 @@ public:
   // media element when it is restored from the bfcache, or when we need
   // to stop throttling the download. Call on the main thread only.
   // The download will only actually resume once as many Resume calls
-  // have been made as Suspend calls. When aForceBuffering is PR_TRUE,
+  // have been made as Suspend calls. When aForceBuffering is true,
   // we force the decoder to go into buffering state before resuming
   // playback.
-  virtual void Resume(PRBool aForceBuffering) = 0;
+  virtual void Resume(bool aForceBuffering) = 0;
 
   // Returns a weak reference to the media element we're decoding for,
   // if it's available.
@@ -372,7 +379,6 @@ public:
   // target paint time of the next video frame to be displayed.
   // Ownership of the image is transferred to the layers subsystem.
   void SetVideoData(const gfxIntSize& aSize,
-                    float aPixelAspectRatio,
                     Image* aImage,
                     TimeStamp aTarget);
 
@@ -380,9 +386,14 @@ public:
   // are buffered and playable.
   virtual nsresult GetBuffered(nsTimeRanges* aBuffered) = 0;
 
-  // Returns PR_TRUE if we can play the entire media through without stopping
+  // Returns true if we can play the entire media through without stopping
   // to buffer, given the current download and playback rates.
-  PRBool CanPlayThrough();
+  bool CanPlayThrough();
+
+  // Returns the size, in bytes, of the heap memory used by the currently
+  // queued decoded video and audio data.
+  virtual PRInt64 VideoQueueMemoryInUse() = 0;
+  virtual PRInt64 AudioQueueMemoryInUse() = 0;
 
 protected:
 
@@ -445,35 +456,90 @@ protected:
   // in the midst of being changed.
   Mutex mVideoUpdateLock;
 
-  // Pixel aspect ratio (ratio of the pixel width to pixel height)
-  float mPixelAspectRatio;
-
   // The framebuffer size to use for audioavailable events.
   PRUint32 mFrameBufferLength;
 
-  // PR_TRUE when our media stream has been pinned. We pin the stream
+  // True when our media stream has been pinned. We pin the stream
   // while seeking.
-  PRPackedBool mPinnedForSeek;
+  bool mPinnedForSeek;
 
-  // Set to PR_TRUE when the video width, height or pixel aspect ratio is
+  // Set to true when the video width, height or pixel aspect ratio is
   // changed by SetVideoData().  The next call to Invalidate() will recalculate
   // and update the intrinsic size on the element, request a frame reflow and
   // then reset this flag.
-  PRPackedBool mSizeChanged;
+  bool mSizeChanged;
 
-  // Set to PR_TRUE in SetVideoData() if the new image has a different size
+  // Set to true in SetVideoData() if the new image has a different size
   // than the current image.  The image size is also affected by transforms
   // so this can be true even if mSizeChanged is false, for example when
   // zooming.  The next call to Invalidate() will call nsIFrame::Invalidate
   // when this flag is set, rather than just InvalidateLayer, and then reset
   // this flag.
-  PRPackedBool mImageContainerSizeChanged;
+  bool mImageContainerSizeChanged;
 
   // True if the decoder is being shutdown. At this point all events that
   // are currently queued need to return immediately to prevent javascript
   // being run that operates on the element and decoder during shutdown.
   // Read/Write from the main thread only.
-  PRPackedBool mShuttingDown;
+  bool mShuttingDown;
 };
 
+namespace mozilla {
+class MediaMemoryReporter
+{
+  MediaMemoryReporter();
+  ~MediaMemoryReporter();
+  static MediaMemoryReporter* sUniqueInstance;
+
+  static MediaMemoryReporter* UniqueInstance() {
+    if (!sUniqueInstance) {
+      sUniqueInstance = new MediaMemoryReporter;
+    }
+    return sUniqueInstance;
+  }
+
+  typedef nsTArray<nsMediaDecoder*> DecodersArray;
+  static DecodersArray& Decoders() {
+    return UniqueInstance()->mDecoders;
+  }
+
+  DecodersArray mDecoders;
+
+  nsCOMPtr<nsIMemoryReporter> mMediaDecodedVideoMemory;
+  nsCOMPtr<nsIMemoryReporter> mMediaDecodedAudioMemory;
+
+public:
+  static void AddMediaDecoder(nsMediaDecoder* aDecoder) {
+    Decoders().AppendElement(aDecoder);
+  }
+
+  static void RemoveMediaDecoder(nsMediaDecoder* aDecoder) {
+    DecodersArray& decoders = Decoders();
+    decoders.RemoveElement(aDecoder);
+    if (decoders.IsEmpty()) {
+      delete sUniqueInstance;
+      sUniqueInstance = nsnull;
+    }
+  }
+
+  static PRInt64 GetDecodedVideoMemory() {
+    DecodersArray& decoders = Decoders();
+    PRInt64 result = 0;
+    for (size_t i = 0; i < decoders.Length(); ++i) {
+      result += decoders[i]->VideoQueueMemoryInUse();
+    }
+    return result;
+  }
+
+  static PRInt64 GetDecodedAudioMemory() {
+    DecodersArray& decoders = Decoders();
+    PRInt64 result = 0;
+    for (size_t i = 0; i < decoders.Length(); ++i) {
+      result += decoders[i]->AudioQueueMemoryInUse();
+    }
+    return result;
+  }
+};
+
+} //namespace mozilla
 #endif

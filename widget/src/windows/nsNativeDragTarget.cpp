@@ -61,8 +61,10 @@ static POINTL gDragLastPoint;
  * class nsNativeDragTarget
  */
 nsNativeDragTarget::nsNativeDragTarget(nsIWidget * aWnd)
-  : m_cRef(0), mCanMove(PR_TRUE), mTookOwnRef(PR_FALSE), mWindow(aWnd),
-  mDropTargetHelper(nsnull)
+  : m_cRef(0), 
+    mEffectsAllowed(DROPEFFECT_MOVE | DROPEFFECT_COPY | DROPEFFECT_LINK),
+    mEffectsPreferred(DROPEFFECT_NONE),
+    mTookOwnRef(false), mWindow(aWnd), mDropTargetHelper(nsnull)
 {
   mHWnd = (HWND)mWindow->GetNativeData(NS_NATIVE_WINDOW);
 
@@ -123,42 +125,59 @@ STDMETHODIMP_(ULONG) nsNativeDragTarget::Release(void)
 }
 
 void
-nsNativeDragTarget::GetGeckoDragAction(LPDATAOBJECT pData, DWORD grfKeyState,
-                                       LPDWORD pdwEffect,
+nsNativeDragTarget::GetGeckoDragAction(DWORD grfKeyState, LPDWORD pdwEffect,
                                        PRUint32 * aGeckoAction)
 {
-  // Check if we can link from this data object as well.
-  PRBool canLink = PR_FALSE;
-  if (pData)
-    canLink = (S_OK == ::OleQueryLinkFromData(pData) ? PR_TRUE : PR_FALSE);
-
-  // Default is move if we can, in fact drop here,
-  // and if the drop source supports a move operation.
-  // If move is not preferred (mMovePreferred is false)
-  // move only when the shift key is down.
-  if (mCanMove && (mMovePreferred || (grfKeyState & MK_SHIFT))) {
-    *aGeckoAction = nsIDragService::DRAGDROP_ACTION_MOVE;
-    *pdwEffect    = DROPEFFECT_MOVE;
-  } else {
-    *aGeckoAction = nsIDragService::DRAGDROP_ACTION_COPY;
-    *pdwEffect    = DROPEFFECT_COPY;
+  // If a window is disabled or a modal window is on top of it
+  // (which implies it is disabled), then we should not allow dropping.
+  bool isEnabled;
+  if (NS_SUCCEEDED(mWindow->IsEnabled(&isEnabled)) && !isEnabled) {
+    *pdwEffect = DROPEFFECT_NONE;
+    *aGeckoAction = nsIDragService::DRAGDROP_ACTION_NONE;
+    return;
   }
 
-  // Given the key modifiers figure out what state we are in for both
-  // the native system and Gecko
-  if (grfKeyState & MK_CONTROL) {
-    if (canLink && (grfKeyState & MK_SHIFT)) {
-      *aGeckoAction = nsIDragService::DRAGDROP_ACTION_LINK;
-      *pdwEffect    = DROPEFFECT_LINK;
-    } else {
-      *aGeckoAction = nsIDragService::DRAGDROP_ACTION_COPY;
-      *pdwEffect    = DROPEFFECT_COPY;
+  // If the user explicitly uses a modifier key, they want the associated action
+  // Shift + Control -> LINK, Shift -> MOVE, Ctrl -> COPY
+  DWORD desiredEffect = DROPEFFECT_NONE;
+  if ((grfKeyState & MK_CONTROL) && (grfKeyState & MK_SHIFT)) {
+    desiredEffect = DROPEFFECT_LINK;
+  } else if (grfKeyState & MK_SHIFT) {
+    desiredEffect = DROPEFFECT_MOVE;
+  } else if (grfKeyState & MK_CONTROL) {
+    desiredEffect = DROPEFFECT_COPY;
+  }
+
+  // Determine the desired effect from what is allowed and preferred.
+  if (!(desiredEffect &= mEffectsAllowed)) {
+    // No modifier key effect is set which is also allowed, check
+    // the preference of the data.
+    desiredEffect = mEffectsPreferred & mEffectsAllowed;
+    if (!desiredEffect) {
+      // No preference is set, so just fall back to the allowed effect itself
+      desiredEffect = mEffectsAllowed;
     }
   }
+
+  // Otherwise we should specify the first available effect 
+  // from MOVE, COPY, or LINK.
+  if (desiredEffect & DROPEFFECT_MOVE) {
+    *pdwEffect = DROPEFFECT_MOVE;
+    *aGeckoAction = nsIDragService::DRAGDROP_ACTION_MOVE;
+  } else if (desiredEffect & DROPEFFECT_COPY) {
+    *pdwEffect = DROPEFFECT_COPY;
+    *aGeckoAction = nsIDragService::DRAGDROP_ACTION_COPY;
+  } else if (desiredEffect & DROPEFFECT_LINK) {
+    *pdwEffect = DROPEFFECT_LINK;
+    *aGeckoAction = nsIDragService::DRAGDROP_ACTION_LINK;
+  } else {
+    *pdwEffect = DROPEFFECT_NONE;
+    *aGeckoAction = nsIDragService::DRAGDROP_ACTION_NONE;
+  } 
 }
 
 inline
-PRBool
+bool
 IsKeyDown(char key)
 {
   return GetKeyState(key) < 0;
@@ -168,7 +187,7 @@ void
 nsNativeDragTarget::DispatchDragDropEvent(PRUint32 aEventType, POINTL aPT)
 {
   nsEventStatus status;
-  nsDragEvent event(PR_TRUE, aEventType, mWindow);
+  nsDragEvent event(true, aEventType, mWindow);
 
   nsWindow * win = static_cast<nsWindow *>(mWindow);
   win->InitEvent(event);
@@ -188,7 +207,7 @@ nsNativeDragTarget::DispatchDragDropEvent(PRUint32 aEventType, POINTL aPT)
 
   event.isShift   = IsKeyDown(NS_VK_SHIFT);
   event.isControl = IsKeyDown(NS_VK_CONTROL);
-  event.isMeta    = PR_FALSE;
+  event.isMeta    = false;
   event.isAlt     = IsKeyDown(NS_VK_ALT);
   event.inputSource = static_cast<nsBaseDragService*>(mDragService)->GetInputSource();
 
@@ -196,15 +215,14 @@ nsNativeDragTarget::DispatchDragDropEvent(PRUint32 aEventType, POINTL aPT)
 }
 
 void
-nsNativeDragTarget::ProcessDrag(LPDATAOBJECT pData,
-                                PRUint32     aEventType,
+nsNativeDragTarget::ProcessDrag(PRUint32     aEventType,
                                 DWORD        grfKeyState,
                                 POINTL       ptl,
                                 DWORD*       pdwEffect)
 {
   // Before dispatching the event make sure we have the correct drop action set
   PRUint32 geckoAction;
-  GetGeckoDragAction(pData, grfKeyState, pdwEffect, &geckoAction);
+  GetGeckoDragAction(grfKeyState, pdwEffect, &geckoAction);
 
   // Set the current action into the Gecko specific type
   nsCOMPtr<nsIDragSession> currSession;
@@ -218,16 +236,18 @@ nsNativeDragTarget::ProcessDrag(LPDATAOBJECT pData,
   // Dispatch the event into Gecko
   DispatchDragDropEvent(aEventType, ptl);
 
-  // Now get the cached Drag effect from the drag service
-  // the data memeber should have been set by who ever handled the
-  // nsGUIEvent or nsIDOMEvent
-  PRBool canDrop;
-  currSession->GetCanDrop(&canDrop);
-  if (!canDrop)
-    *pdwEffect = DROPEFFECT_NONE;
+  if (aEventType != NS_DRAGDROP_DROP) {
+    // Get the cached drag effect from the drag service, the data member should
+    // have been set by whoever handled the nsGUIEvent or nsIDOMEvent on drags.
+    bool canDrop;
+    currSession->GetCanDrop(&canDrop);
+    if (!canDrop) {
+      *pdwEffect = DROPEFFECT_NONE;
+    }
+  }
 
   // Clear the cached value
-  currSession->SetCanDrop(PR_FALSE);
+  currSession->SetCanDrop(false);
 }
 
 // IDropTarget methods
@@ -241,6 +261,9 @@ nsNativeDragTarget::DragEnter(LPDATAOBJECT pIDataSource,
     return E_FAIL;
   }
 
+  mEffectsAllowed = *pdwEffect;
+  AddLinkSupportIfCanBeGenerated(pIDataSource);
+
   // Drag and drop image helper
   if (mDropTargetHelper) {
     POINT pt = { ptl.x, ptl.y };
@@ -250,28 +273,23 @@ nsNativeDragTarget::DragEnter(LPDATAOBJECT pIDataSource,
   // save a ref to this, in case the window is destroyed underneath us
   NS_ASSERTION(!mTookOwnRef, "own ref already taken!");
   this->AddRef();
-  mTookOwnRef = PR_TRUE;
+  mTookOwnRef = true;
 
   // tell the drag service about this drag (it may have come from an
   // outside app).
   mDragService->StartDragSession();
-
-  // Remember if this operation allows a move.
-  mCanMove = (*pdwEffect) & DROPEFFECT_MOVE;
 
   void* tempOutData = nsnull;
   PRUint32 tempDataLen = 0;
   nsresult loadResult = nsClipboard::GetNativeDataOffClipboard(
       pIDataSource, 0, ::RegisterClipboardFormat(CFSTR_PREFERREDDROPEFFECT), nsnull, &tempOutData, &tempDataLen);
   if (NS_SUCCEEDED(loadResult) && tempOutData) {
-    NS_ASSERTION(tempDataLen == 2, "Expected word size");
-    WORD preferredEffect = *((WORD*)tempOutData);
-
-    // Mask effect coming from function call with effect preferred by the source.
-    mMovePreferred = (preferredEffect & DROPEFFECT_MOVE) != 0;
+    mEffectsPreferred = *((DWORD*)tempOutData);
+    nsMemory::Free(tempOutData);
+  } else {
+    // We have no preference if we can't obtain it
+    mEffectsPreferred = DROPEFFECT_NONE;
   }
-  else
-    mMovePreferred = mCanMove;
 
   // Set the native data object into drag service
   //
@@ -283,9 +301,21 @@ nsNativeDragTarget::DragEnter(LPDATAOBJECT pIDataSource,
   winDragService->SetIDataObject(pIDataSource);
 
   // Now process the native drag state and then dispatch the event
-  ProcessDrag(pIDataSource, NS_DRAGDROP_ENTER, grfKeyState, ptl, pdwEffect);
+  ProcessDrag(NS_DRAGDROP_ENTER, grfKeyState, ptl, pdwEffect);
 
   return S_OK;
+}
+
+void 
+nsNativeDragTarget::AddLinkSupportIfCanBeGenerated(LPDATAOBJECT aIDataSource) 
+{
+  // If we don't have a link effect, but we can generate one, fix the 
+  // drop effect to include it.
+  if (!(mEffectsAllowed & DROPEFFECT_LINK) && aIDataSource) {
+    if (S_OK == ::OleQueryLinkFromData(aIDataSource)) {
+      mEffectsAllowed |= DROPEFFECT_LINK;
+    }
+  }
 }
 
 STDMETHODIMP
@@ -296,6 +326,10 @@ nsNativeDragTarget::DragOver(DWORD   grfKeyState,
   if (!mDragService) {
     return E_FAIL;
   }
+
+  // If a LINK effect could be generated previously from a DragEnter(),
+  // then we should include it as an allowed effect.
+  mEffectsAllowed = (*pdwEffect) | (mEffectsAllowed & DROPEFFECT_LINK);
 
   nsCOMPtr<nsIDragSession> currentDragSession;
   mDragService->GetCurrentSession(getter_AddRefs(currentDragSession));
@@ -314,7 +348,7 @@ nsNativeDragTarget::DragOver(DWORD   grfKeyState,
 
   mDragService->FireDragEventAtSource(NS_DRAGDROP_DRAG);
   // Now process the native drag state and then dispatch the event
-  ProcessDrag(nsnull, NS_DRAGDROP_OVER, grfKeyState, ptl, pdwEffect);
+  ProcessDrag(NS_DRAGDROP_OVER, grfKeyState, ptl, pdwEffect);
 
   this->Release();
 
@@ -348,7 +382,7 @@ nsNativeDragTarget::DragLeave()
       // initiated in a different app. End the drag session, since
       // we're done with it for now (until the user drags back into
       // mozilla).
-      mDragService->EndDragSession(PR_FALSE);
+      mDragService->EndDragSession(false);
     }
   }
 
@@ -356,7 +390,7 @@ nsNativeDragTarget::DragLeave()
   NS_ASSERTION(mTookOwnRef, "want to release own ref, but not taken!");
   if (mTookOwnRef) {
     this->Release();
-    mTookOwnRef = PR_FALSE;
+    mTookOwnRef = false;
   }
 
   return S_OK;
@@ -371,10 +405,10 @@ nsNativeDragTarget::DragCancel()
       mDropTargetHelper->DragLeave();
     }
     if (mDragService) {
-      mDragService->EndDragSession(PR_FALSE);
+      mDragService->EndDragSession(false);
     }
     this->Release(); // matching the AddRef in DragEnter
-    mTookOwnRef = PR_FALSE;
+    mTookOwnRef = false;
   }
 }
 
@@ -387,6 +421,9 @@ nsNativeDragTarget::Drop(LPDATAOBJECT pData,
   if (!mDragService) {
     return E_FAIL;
   }
+
+  mEffectsAllowed = *pdwEffect;
+  AddLinkSupportIfCanBeGenerated(pData);
 
   // Drag and drop image helper
   if (mDropTargetHelper) {
@@ -408,7 +445,7 @@ nsNativeDragTarget::Drop(LPDATAOBJECT pData,
   nsCOMPtr<nsIDragService> serv = mDragService;
 
   // Now process the native drag state and then dispatch the event
-  ProcessDrag(pData, NS_DRAGDROP_DROP, grfKeyState, aPT, pdwEffect);
+  ProcessDrag(NS_DRAGDROP_DROP, grfKeyState, aPT, pdwEffect);
 
   nsCOMPtr<nsIDragSession> currentDragSession;
   serv->GetCurrentSession(getter_AddRefs(currentDragSession));
@@ -429,13 +466,13 @@ nsNativeDragTarget::Drop(LPDATAOBJECT pData,
   cpos.x = GET_X_LPARAM(pos);
   cpos.y = GET_Y_LPARAM(pos);
   winDragService->SetDragEndPoint(nsIntPoint(cpos.x, cpos.y));
-  serv->EndDragSession(PR_TRUE);
+  serv->EndDragSession(true);
 
   // release the ref that was taken in DragEnter
   NS_ASSERTION(mTookOwnRef, "want to release own ref, but not taken!");
   if (mTookOwnRef) {
     this->Release();
-    mTookOwnRef = PR_FALSE;
+    mTookOwnRef = false;
   }
 
   return S_OK;

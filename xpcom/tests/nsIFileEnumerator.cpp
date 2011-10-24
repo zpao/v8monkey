@@ -9,37 +9,37 @@
 #include "nsISimpleEnumerator.h"
 #include "nsCOMPtr.h"
 
-PRBool LoopInDir(nsILocalFile* file)
+bool LoopInDir(nsILocalFile* file)
 {
     nsresult rv;
     nsCOMPtr<nsISimpleEnumerator> entries;
     rv = file->GetDirectoryEntries(getter_AddRefs(entries));
     if(NS_FAILED(rv) || !entries)
-        return PR_FALSE;
+        return false;
     
-    PRBool hasMore;
+    bool hasMore;
     while(NS_SUCCEEDED(entries->HasMoreElements(&hasMore)) && hasMore)
     {
         nsCOMPtr<nsISupports> sup;
         entries->GetNext(getter_AddRefs(sup));
         if(!sup)
-            return PR_FALSE;
+            return false;
         
         nsCOMPtr<nsILocalFile> file = do_QueryInterface(sup);
         if(!file)
-            return PR_FALSE;
+            return false;
     
         nsCAutoString name;
         if(NS_FAILED(file->GetNativeLeafName(name)))
-            return PR_FALSE;
+            return false;
         
-        PRBool isDir;
+        bool isDir;
         printf("%s\n", name.get());
         rv = file->IsDirectory(&isDir);
         if (NS_FAILED(rv))
 		{
 			printf("IsDirectory Failed!!!\n");
-				return PR_FALSE;
+				return false;
 		}
 
 		if (isDir)
@@ -48,7 +48,7 @@ PRBool LoopInDir(nsILocalFile* file)
            LoopInDir(lfile);   
         }        
     }
-    return PR_TRUE;
+    return true;
 }
 
 
@@ -66,7 +66,7 @@ main(int argc, char* argv[])
         if (argc > 1 && argv[1] != nsnull)
         {
             char* pathStr = argv[1];
-            NS_NewNativeLocalFile(nsDependentCString(pathStr), PR_FALSE, getter_AddRefs(topDir));
+            NS_NewNativeLocalFile(nsDependentCString(pathStr), false, getter_AddRefs(topDir));
         }
     
         if (!topDir)

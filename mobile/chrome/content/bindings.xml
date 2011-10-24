@@ -163,7 +163,7 @@
       </handler>
     </handlers>
     <content orient="vertical">
-      <xul:hbox class="autocomplete-item-container" align="top" xbl:inherits="favorite,remote,search" mousethrough="always">
+      <xul:hbox class="autocomplete-item-container" xbl:inherits="favorite,remote,search" mousethrough="always">
         <xul:image xbl:inherits="src"/>
         <xul:vbox flex="1">
           <xul:label class="autocomplete-item-label" crop="center" xbl:inherits="value"/>
@@ -707,7 +707,6 @@
       </property>
 
       <method name="startEditing">
-        <parameter name="autoSelect"/>
         <body>
           <![CDATA[
             if (!this.itemId || this.isReadOnly)
@@ -727,8 +726,7 @@
             this.updateFields();
 
             this._nameField.focus();
-            if (autoSelect)
-              this._nameField.select();
+            this._nameField.select();
           ]]>
         </body>
       </method>
@@ -1254,17 +1252,25 @@
       </handler>
     </handlers>
     <content orient="vertical" flex="1">
+      <xul:hbox class="history-throbber-box" flex="1" align="center" pack="center">
+        <xul:image src="chrome://browser/skin/images/throbber.png" />
+      </xul:hbox>
       <xul:richlistbox anonid="child-items" class="history-list-children" flex="1" batch="25"/>
     </content>
     <implementation>
       <method name="open">
         <body><![CDATA[
-          let children = this._children;
-          while (children.lastChild)
-            children.removeChild(children.lastChild);
+          this.setAttribute("loading", "true");
 
-          let items = this._getHistory();
-          children.setItems(items.map(this.createItem));
+          setTimeout(function(self) {
+            let children = self._children;
+            while (children.lastChild)
+              children.removeChild(children.lastChild);
+
+            let items = self._getHistory();
+            children.setItems(items.map(self.createItem));
+            self.removeAttribute("loading");
+          }, 0, this);
         ]]></body>
       </method>
 
@@ -1301,7 +1307,12 @@
           let lastTitle = null;
           let msPerDay = 86400000;
           let msPerWeek = msPerDay * 7;
-          let today = new Date(Date.now() - (Date.now() % msPerDay));
+
+          let today = new Date();
+          today.setHours(0);
+          today.setMinutes(0);
+          today.setSeconds(0);
+
           for (let i = 0; i < childCount; i++) {
             let node = rootNode.getChild(i);
             let time = new Date(node.time / 1000); // node.time is microseconds
@@ -1364,17 +1375,94 @@
       </handler>
     </handlers>
     <content orient="vertical" flex="1">
+      <xul:hbox class="remotetabs-throbber-box" flex="1" align="center" pack="center">
+        <xul:image src="chrome://browser/skin/images/throbber.png" />
+      </xul:hbox>
+      <xul:hbox class="remotetabs-message-box" flex="1" align="center" pack="center">
+        <xul:label xbl:inherits="value=message" align="center" crop="center" flex="1"/>
+      </xul:hbox>
       <xul:richlistbox anonid="child-items" class="remotetabs-list-children" flex="1" batch="25"/>
     </content>
     <implementation>
+      <field name="_syncTopics"><![CDATA[([
+        "browser:sync:setup:userabort",
+        "browser:sync:setup:networkerror",
+        "weave:service:login:finish",
+        "weave:service:login:error"
+      ])]]>
+      </field>
+
       <method name="open">
+        <body><![CDATA[
+          let self = this;
+          this.setAttribute("loading", "true");
+          this.removeAttribute("message");
+
+          // Try loading remote tabs straight away. It will
+          // simply return if sync is not setup.
+          setTimeout(function() {
+            if (self._loadChildren())
+              self.removeAttribute("loading");
+          }, 0);
+
+          this._syncObserver = function() {
+            this.removeAttribute("loading");
+            this._removeSyncObservers();
+            this._loadChildren();
+          }.bind(this);
+
+          // Wait for sync signals
+          this._syncTopics.forEach(function(topic) Services.obs.addObserver(self._syncObserver, topic, false));
+        ]]></body>
+      </method>
+
+      <method name="close">
+        <body><![CDATA[
+          this.removeAttribute("message");
+          this.removeAttribute("loading");
+
+          // Stop listening to sync signals
+          this._removeSyncObservers();
+        ]]></body>
+      </method>
+
+      <method name="_removeSyncObservers">
+        <body><![CDATA[
+          if (!this._syncObserver)
+            return;
+
+          let self = this;
+          this._syncTopics.forEach(function(topic) Services.obs.removeObserver(self._syncObserver, topic));
+
+          delete this._syncObserver;
+        ]]></body>
+      </method>
+
+      <method name="_loadChildren">
         <body><![CDATA[
           let children = this._children;
           while (children.lastChild)
             children.removeChild(children.lastChild);
 
-          let items = this._getRemoteTabs();
-          children.setItems(items.map(this.createItem));
+          let engine = this._getWeaveEngine();
+
+          // Only load items if the tabs engine is ready
+          if (!engine)
+            return false;
+
+          // In case sync fails, WeaveGlue will show an error dialog
+          let items = this._getRemoteTabs(engine);
+
+          // If sync succeeds but has no data to display, a message
+          // is presented in the panel (see "message" attribute).
+          if (items.length) {
+            children.setItems(items.map(this.createItem));
+          } else {
+            let bundle = Services.strings.createBundle("chrome://browser/locale/sync.properties");
+            this.setAttribute("message", bundle.GetStringFromName("sync.message.notabs"));
+          }
+
+          return true;
         ]]></body>
       </method>
 
@@ -1384,30 +1472,34 @@
 
       <field name="scrollBoxObject">this._children.scrollBoxObject</field>
 
-      <method name="_getRemoteTabs">
+      <method name="_getWeaveEngine">
         <body><![CDATA[
-          // Don't do anything if the Weave isn't ready
+          // Return null if the Weave isn't ready
           if (document.getElementById("cmd_remoteTabs").getAttribute("disabled") == "true")
-            return [];
+            return null;
+          if (Weave.Status.checkSetup() == Weave.CLIENT_NOT_CONFIGURED)
+            return null;
 
-          // Don't do anything if the tabs engine isn't ready
-          let engine = Weave.Engines.get("tabs");
-          if (!engine)
-            return [];
+          return Weave.Engines.get("tabs");
+        ]]></body>
+      </method>
 
+      <method name="_getRemoteTabs">
+        <parameter name="aEngine"/>
+        <body><![CDATA[
           // Don't bother refetching tabs if we already did so recently
           let lastFetch = Weave.Svc.Prefs.get("lastTabFetch", 0);
           let now = Math.floor(Date.now() / 1000);
           if (now - lastFetch >= Services.prefs.getIntPref("browser.display.remotetabs.timeout")) {
             // Force a sync only for the tabs engine
-            engine.lastModified = null;
-            engine.sync();
+            aEngine.lastModified = null;
+            aEngine.sync();
             Weave.Svc.Prefs.set("lastTabFetch", now);
           };
 
           // Generate the list of tabs
           let tabs = [];
-          for (let [guid, client] in Iterator(engine.getAllClients())) {
+          for (let [guid, client] in Iterator(aEngine.getAllClients())) {
             if (!client.tabs.length)
               continue;
 
@@ -1547,12 +1639,15 @@
             return;
 
           // There is a race condition with getBoundingClientRect and when the
-          // box is displayed, the padding is ignored in the size calculation
+          // box is displayed, the padding is ignored in the size calculation.
+          // A nested timeouts below are used to workaround this problem.
           this.getBoundingClientRect();
 
           setTimeout(function(self) {
-            let height = Math.floor(self.getBoundingClientRect().height);
-            self.top = window.innerHeight - height;
+            setTimeout(function(self) {
+              let height = Math.floor(self.getBoundingClientRect().height);
+              self.top = window.innerHeight - height;
+            }, 0, self);
           }, 0, this);
         ]]></body>
       </method>
@@ -1775,12 +1870,82 @@
           let flavors = ["text/unicode"];
           let hasData = clipboard.hasDataMatchingFlavors(flavors, flavors.length, Ci.nsIClipboard.kGlobalClipboard);
 
-          if (hasData && (!aTextbox.readOnly || aIgnoreReadOnly))
+          if (hasData && (!aTextbox.readOnly || aIgnoreReadOnly)) {
             json.types.push("paste");
+            if (aTextbox.type == "url") {
+              json.types.push("paste-url");
+            }
+          }
 
           ContextHelper.showPopup({ target: aTextbox, json: json });
         ]]></body>
       </method>
     </implementation>
+  </binding>
+  
+  <binding id="setting-fulltoggle-bool" extends="chrome://mozapps/content/extensions/setting.xml#setting-bool">
+    <handlers>
+      <handler event="click" button="0" phase="capturing">
+        <![CDATA[
+        event.stopPropagation();
+        ]]>
+      </handler>
+      <handler event="command" button="0" phase="capturing">
+        <![CDATA[
+        event.stopPropagation();
+        ]]>
+      </handler>
+      <handler event="TapSingle" button="0" phase="capturing">
+        <![CDATA[
+        this.input.setChecked(!this.value);
+        this.inputChanged();
+        this.fireEvent("oncommand");
+        ]]>
+      </handler>
+    </handlers>
+  </binding>
+
+  <binding id="setting-fulltoggle-boolint" extends="chrome://mozapps/content/extensions/setting.xml#setting-boolint">
+    <handlers>
+      <handler event="click" button="0" phase="capturing">
+        <![CDATA[
+        event.stopPropagation();
+        ]]>
+      </handler>
+      <handler event="command" button="0" phase="capturing">
+        <![CDATA[
+        event.stopPropagation();
+        ]]>
+      </handler>
+      <handler event="TapSingle" button="0" phase="capturing">
+        <![CDATA[
+        this.input.setChecked(!this.value);
+        this.inputChanged();
+        this.fireEvent("oncommand");
+        ]]>
+      </handler>
+    </handlers>
+  </binding>
+
+  <binding id="setting-fulltoggle-localized-bool" extends="chrome://mozapps/content/extensions/setting.xml#setting-localized-bool">
+    <handlers>
+      <handler event="click" button="0" phase="capturing">
+        <![CDATA[
+        event.stopPropagation();
+        ]]>
+      </handler>
+      <handler event="command" button="0" phase="capturing">
+        <![CDATA[
+        event.stopPropagation();
+        ]]>
+      </handler>
+      <handler event="TapSingle" button="0" phase="capturing">
+        <![CDATA[
+        this.input.setChecked(!this.value);
+        this.inputChanged();
+        this.fireEvent("oncommand");
+        ]]>
+      </handler>
+    </handlers>
   </binding>
 </bindings>

@@ -91,7 +91,7 @@ public:
      * Clear the template builder structures. The aIsFinal flag is set to true
      * when the template is going away.
      */
-    virtual void Uninit(PRBool aIsFinal);
+    virtual void Uninit(bool aIsFinal);
 
     // nsISupports interface
     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -145,7 +145,7 @@ public:
     nsresult
     ComputeContainmentProperties();
 
-    static PRBool
+    static bool
     IsTemplateElement(nsIContent* aContent);
 
     virtual nsresult
@@ -153,11 +153,11 @@ public:
 
     void RunnableRebuild() { Rebuild(); }
     void RunnableLoadAndRebuild() {
-      Uninit(PR_FALSE);  // Reset results
+      Uninit(false);  // Reset results
 
       nsCOMPtr<nsIDocument> doc = mRoot ? mRoot->GetDocument() : nsnull;
       if (doc) {
-        PRBool shouldDelay;
+        bool shouldDelay;
         LoadDataSources(doc, &shouldDelay);
         if (!shouldDelay) {
           Rebuild();
@@ -167,8 +167,8 @@ public:
 
     // mRoot should not be cleared until after Uninit is finished so that
     // generated content can be removed during uninitialization.
-    void UninitFalse() { Uninit(PR_FALSE); mRoot = nsnull; }
-    void UninitTrue() { Uninit(PR_TRUE); mRoot = nsnull; }
+    void UninitFalse() { Uninit(false); mRoot = nsnull; }
+    void UninitTrue() { Uninit(true); mRoot = nsnull; }
 
     /**
      * Find the <template> tag that applies for this builder
@@ -201,9 +201,9 @@ public:
     nsresult
     CompileTemplate(nsIContent* aTemplate,
                     nsTemplateQuerySet* aQuerySet,
-                    PRBool aIsQuerySet,
+                    bool aIsQuerySet,
                     PRInt32* aPriority,
-                    PRBool* aCanUseTemplate);
+                    bool* aCanUseTemplate);
 
     /**
      * Compile a query using the extended syntax. For backwards compatible RDF
@@ -243,7 +243,7 @@ public:
     nsresult 
     CompileSimpleQuery(nsIContent* aRuleElement,
                        nsTemplateQuerySet* aQuerySet,
-                       PRBool* aCanUseTemplate);
+                       bool* aCanUseTemplate);
 
     /**
      * Compile the <conditions> tag in a rule
@@ -302,7 +302,7 @@ public:
      * datasource is loaded as needed.
      */
     nsresult
-    LoadDataSources(nsIDocument* aDoc, PRBool* shouldDelayBuilding);
+    LoadDataSources(nsIDocument* aDoc, bool* shouldDelayBuilding);
 
     /**
      * Called by LoadDataSources to load a datasource given a uri list
@@ -314,8 +314,8 @@ public:
     nsresult
     LoadDataSourceUrls(nsIDocument* aDocument,
                        const nsAString& aDataSources,
-                       PRBool aIsRDFQuery,
-                       PRBool* aShouldDelayBuilding);
+                       bool aIsRDFQuery,
+                       bool* aShouldDelayBuilding);
 
     nsresult
     InitHTMLTemplateRoot();
@@ -360,7 +360,7 @@ public:
     SubstituteTextReplaceVariable(nsXULTemplateBuilder* aThis, const nsAString& aVariable, void* aClosure);    
 
     nsresult 
-    IsSystemPrincipal(nsIPrincipal *principal, PRBool *result);
+    IsSystemPrincipal(nsIPrincipal *principal, bool *result);
 
     /**
      * Convenience method which gets a resource for a result. If a result
@@ -399,7 +399,7 @@ protected:
     /**
      * Set to true if the rules have already been compiled
      */
-    PRBool        mQueriesCompiled;
+    bool          mQueriesCompiled;
 
     /**
      * The default reference and member variables.
@@ -471,7 +471,7 @@ protected:
     /**
      * Determine if a resource is currently on the activation stack.
      */
-    PRBool
+    bool
     IsActivated(nsIRDFResource *aResource);
 
     /**
@@ -483,7 +483,7 @@ protected:
      * the builder being used. Note that *aLocations or some items within
      * aLocations may be null.
      */
-    virtual PRBool
+    virtual bool
     GetInsertionLocations(nsIXULTemplateResult* aResult,
                           nsCOMArray<nsIContent>** aLocations) = 0;
 
@@ -520,7 +520,7 @@ protected:
     void
     OutputMatchToLog(nsIRDFResource* aId,
                      nsTemplateMatch* aMatch,
-                     PRBool aIsNew);
+                     bool aIsNew);
 
     virtual void Traverse(nsCycleCollectionTraversalCallback &cb) const
     {

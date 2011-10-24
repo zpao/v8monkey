@@ -93,10 +93,10 @@ struct NS_STACK_CLASS nsPeekOffsetStruct
                nsDirection aDirection,
                PRInt32 aStartOffset,
                nscoord aDesiredX,
-               PRBool aJumpLines,
-               PRBool aScrollViewStop,
-               PRBool aIsKeyboardSelect,
-               PRBool aVisual,
+               bool aJumpLines,
+               bool aScrollViewStop,
+               bool aIsKeyboardSelect,
+               bool aVisual,
                EWordMovementType aWordMovementType = eDefaultBehavior)
 
   {
@@ -149,19 +149,19 @@ struct NS_STACK_CLASS nsPeekOffsetStruct
 
   // mJumpLines: Whether to allow jumping across line boundaries.
   //             Used with: eSelectCharacter, eSelectWord.
-  PRPackedBool mJumpLines;
+  bool mJumpLines;
 
   // mScrollViewStop: Whether to stop when reaching a scroll view boundary.
   //                  Used with: eSelectCharacter, eSelectWord, eSelectLine.
-  PRPackedBool mScrollViewStop;
+  bool mScrollViewStop;
 
   // mIsKeyboardSelect: Whether the peeking is done in response to a keyboard action.
   //                    Used with: eSelectWord.
-  PRPackedBool mIsKeyboardSelect;
+  bool mIsKeyboardSelect;
 
-  // mVisual: Whether bidi caret behavior is visual (PR_TRUE) or logical (PR_FALSE).
+  // mVisual: Whether bidi caret behavior is visual (true) or logical (false).
   //          Used with: eSelectCharacter, eSelectWord, eSelectBeginLine, eSelectEndLine.
-  PRPackedBool mVisual;
+  bool mVisual;
 
   /*** Output arguments ***/
 
@@ -177,10 +177,10 @@ struct NS_STACK_CLASS nsPeekOffsetStruct
 
   // mAttachForward: When the result position is between two frames,
   //                 indicates which of the two frames the caret should be painted in.
-  //                 PR_FALSE means "the end of the frame logically before the caret", 
-  //                 PR_TRUE means "the beginning of the frame logically after the caret".
+  //                 false means "the end of the frame logically before the caret", 
+  //                 true means "the beginning of the frame logically after the caret".
   //                 Used with: eSelectLine, eSelectBeginLine, eSelectEndLine.
-  PRBool mAttachForward;
+  bool mAttachForward;
 };
 
 struct nsPrevNextBidiLevels
@@ -210,9 +210,8 @@ class nsIScrollableFrame;
  * or they may cause other objects to be deleted.
  */
 
-class nsFrameSelection : public nsISupports {
+class NS_FINAL_CLASS nsFrameSelection : public nsISupports {
 public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_FRAME_SELECTION_IID)
   enum HINT { HINTLEFT = 0, HINTRIGHT = 1};  //end of this line or beginning of next
   /*interfaces for addref and release and queryinterface*/
   
@@ -243,9 +242,9 @@ public:
   nsresult HandleClick(nsIContent *aNewFocus,
                        PRUint32 aContentOffset,
                        PRUint32 aContentEndOffset,
-                       PRBool aContinueSelection,
-                       PRBool aMultipleSelection,
-                       PRBool aHint);
+                       bool aContinueSelection,
+                       bool aMultipleSelection,
+                       bool aHint);
 
   /** HandleDrag extends the selection to contain the frame closest to aPoint.
    *  @param aPresContext is the context to use when figuring out what frame contains the point.
@@ -355,25 +354,25 @@ public:
   SelectionDetails* LookUpSelection(nsIContent *aContent,
                                     PRInt32 aContentOffset,
                                     PRInt32 aContentLength,
-                                    PRBool aSlowCheck) const;
+                                    bool aSlowCheck) const;
 
-  /** SetMouseDownState(PRBool);
+  /** SetMouseDownState(bool);
    *  sets the mouse state to aState for resons of drag state.
    * @param aState is the new state of mousedown
    */
   /*unsafe*/
-  void SetMouseDownState(PRBool aState);
+  void SetMouseDownState(bool aState);
 
-  /** GetMouseDownState(PRBool *);
+  /** GetMouseDownState(bool *);
    *  gets the mouse state to aState for resons of drag state.
    * @param aState will hold the state of mousedown
    */
-  PRBool GetMouseDownState() const { return mMouseDownState; }
+  bool GetMouseDownState() const { return mMouseDownState; }
 
   /**
     if we are in table cell selection mode. aka ctrl click in table cell
    */
-  PRBool GetTableCellSelection() const { return mSelectingTableCellMode != 0; }
+  bool GetTableCellSelection() const { return mSelectingTableCellMode != 0; }
   void ClearTableCellSelection() { mSelectingTableCellMode = 0; }
 
   /** GetSelection
@@ -425,13 +424,13 @@ public:
    * ScrollCaretIntoView if that called wants to be sure the caret is always
    * visible.
    *
-   * @param aForward if PR_TRUE, scroll forward if not scroll backward
-   * @param aExtend  if PR_TRUE, extend selection to the new point
+   * @param aForward if true, scroll forward if not scroll backward
+   * @param aExtend  if true, extend selection to the new point
    * @param aScrollableFrame the frame to scroll
    */
   /*unsafe*/
-  void CommonPageMove(PRBool aForward,
-                      PRBool aExtend,
+  void CommonPageMove(bool aForward,
+                      bool aExtend,
                       nsIScrollableFrame* aScrollableFrame);
 
   void SetHint(HINT aHintRight) { mHint = aHintRight; }
@@ -459,7 +458,7 @@ public:
    * @param aExtend continue selection
    */
   /*unsafe*/
-  nsresult CharacterMove(PRBool aForward, PRBool aExtend);
+  nsresult CharacterMove(bool aForward, bool aExtend);
 
   /** CharacterExtendForDelete extends the selection forward (logically) to
    * the next character cell, so that the selected cell can be deleted.
@@ -479,14 +478,14 @@ public:
    * @param aExtend continue selection
    */
   /*unsafe*/
-  nsresult WordMove(PRBool aForward, PRBool aExtend);
+  nsresult WordMove(bool aForward, bool aExtend);
 
   /** WordExtendForDelete extends the selection backward or forward (logically) to the
    *  next word boundary, so that the selected word can be deleted.
    * @param aForward select forward in document.
    */
   /*unsafe*/
-  nsresult WordExtendForDelete(PRBool aForward);
+  nsresult WordExtendForDelete(bool aForward);
   
   /** LineMove will generally be called from the nsiselectioncontroller implementations.
    *  the effect being the selection will move one line up or down.
@@ -494,7 +493,7 @@ public:
    * @param aExtend continue selection
    */
   /*unsafe*/
-  nsresult LineMove(PRBool aForward, PRBool aExtend);
+  nsresult LineMove(bool aForward, bool aExtend);
 
   /** IntraLineMove will generally be called from the nsiselectioncontroller implementations.
    *  the effect being the selection will move to beginning or end of line
@@ -502,7 +501,7 @@ public:
    * @param aExtend continue selection
    */
   /*unsafe*/
-  nsresult IntraLineMove(PRBool aForward, PRBool aExtend); 
+  nsresult IntraLineMove(bool aForward, bool aExtend); 
 
   /** Select All will generally be called from the nsiselectioncontroller implementations.
    *  it will select the whole doc
@@ -546,19 +545,19 @@ public:
    *  so it can track abort future drags if inside the same selection
    *  @aDoubleDown has the double click down happened
    */
-  void SetMouseDoubleDown(PRBool aDoubleDown) { mMouseDoubleDownState = aDoubleDown; }
+  void SetMouseDoubleDown(bool aDoubleDown) { mMouseDoubleDownState = aDoubleDown; }
   
   /** This will return whether the double down flag was set.
    *  @return whether the double down flag was set
    */
-  PRBool GetMouseDoubleDown() const { return mMouseDoubleDownState; }
+  bool GetMouseDoubleDown() const { return mMouseDoubleDownState; }
 
   /** GetPrevNextBidiLevels will return the frames and associated Bidi levels of the characters
    *   logically before and after a (collapsed) selection.
    *  @param aNode is the node containing the selection
    *  @param aContentOffset is the offset of the selection in the node
-   *  @param aJumpLines If PR_TRUE, look across line boundaries.
-   *                    If PR_FALSE, behave as if there were base-level frames at line edges.  
+   *  @param aJumpLines If true, look across line boundaries.
+   *                    If false, behave as if there were base-level frames at line edges.  
    *
    *  @return A struct holding the before/after frame and the before/after level.
    *
@@ -571,7 +570,7 @@ public:
    */
   virtual nsPrevNextBidiLevels GetPrevNextBidiLevels(nsIContent *aNode,
                                                      PRUint32 aContentOffset,
-                                                     PRBool aJumpLines) const;
+                                                     bool aJumpLines) const;
 
   /** GetFrameFromLevel will scan in a given direction
    *   until it finds a frame with a Bidi level less than or equal to a given level.
@@ -613,8 +612,8 @@ private:
                      PRUint32 aContentOffset,
                      PRUint32 aContentEndOffset,
                      HINT aHint,
-                     PRBool aContinueSelection,
-                     PRBool aMultipleSelection);
+                     bool aContinueSelection,
+                     bool aMultipleSelection);
 
   void BidiLevelFromMove(nsIPresShell* aPresShell,
                          nsIContent *aNode,
@@ -625,9 +624,9 @@ private:
   nsPrevNextBidiLevels GetPrevNextBidiLevels(nsIContent *aNode,
                                              PRUint32 aContentOffset,
                                              HINT aHint,
-                                             PRBool aJumpLines) const;
+                                             bool aJumpLines) const;
 
-  PRBool AdjustForMaintainedSelection(nsIContent *aContent, PRInt32 aOffset);
+  bool AdjustForMaintainedSelection(nsIContent *aContent, PRInt32 aOffset);
 
 // post and pop reasons for notifications. we may stack these later
   void    PostReason(PRInt16 aReason) { mSelectionChangeReason = aReason; }
@@ -645,11 +644,11 @@ private:
 
   void ResizeBuffer(PRUint32 aNewBufSize);
 /*HELPER METHODS*/
-  nsresult     MoveCaret(PRUint32 aKeycode, PRBool aContinueSelection,
+  nsresult     MoveCaret(PRUint32 aKeycode, bool aContinueSelection,
                          nsSelectionAmount aAmount);
-  nsresult     MoveCaret(PRUint32 aKeycode, PRBool aContinueSelection,
+  nsresult     MoveCaret(PRUint32 aKeycode, bool aContinueSelection,
                          nsSelectionAmount aAmount,
-                         PRBool aVisualMovement);
+                         bool aVisualMovement);
 
   nsresult     FetchDesiredX(nscoord &aDesiredX); //the x position requested by the Key Handling for up down
   void         InvalidateDesiredX(); //do not listen to mDesiredX you must get another.
@@ -658,8 +657,8 @@ private:
   nsresult     ConstrainFrameAndPointToAnchorSubtree(nsIFrame *aFrame, nsPoint& aPoint, nsIFrame **aRetFrame, nsPoint& aRetPoint);
 
   PRUint32     GetBatching() const {return mBatching; }
-  PRBool       GetNotifyFrames() const { return mNotifyFrames; }
-  void         SetDirty(PRBool aDirty=PR_TRUE){if (mBatching) mChangesDuringBatching = aDirty;}
+  bool         GetNotifyFrames() const { return mNotifyFrames; }
+  void         SetDirty(bool aDirty=true){if (mBatching) mChangesDuringBatching = aDirty;}
 
   // nsFrameSelection may get deleted when calling this,
   // so remember to use nsCOMPtr when needed.
@@ -677,7 +676,7 @@ private:
   nsresult UnselectCells(nsIContent *aTable,
                          PRInt32 aStartRowIndex, PRInt32 aStartColumnIndex,
                          PRInt32 aEndRowIndex, PRInt32 aEndColumnIndex,
-                         PRBool aRemoveOutsideOfCellRange);
+                         bool aRemoveOutsideOfCellRange);
 
   nsresult GetCellIndexes(nsIContent *aCell, PRInt32 &aRowIndex, PRInt32 &aColIndex);
 
@@ -729,18 +728,16 @@ private:
 
   nsMouseEvent mDelayedMouseEvent;
 
-  PRPackedBool mDelayedMouseEventValid;
+  bool mDelayedMouseEventValid;
 
-  PRPackedBool mChangesDuringBatching;
-  PRPackedBool mNotifyFrames;
-  PRPackedBool mDragSelectingCells;
-  PRPackedBool mMouseDownState;   //for drag purposes
-  PRPackedBool mMouseDoubleDownState; //has the doubleclick down happened
-  PRPackedBool mDesiredXSet;
+  bool mChangesDuringBatching;
+  bool mNotifyFrames;
+  bool mDragSelectingCells;
+  bool mMouseDownState;   //for drag purposes
+  bool mMouseDoubleDownState; //has the doubleclick down happened
+  bool mDesiredXSet;
 
   PRInt8 mCaretMovementStyle;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsFrameSelection, NS_FRAME_SELECTION_IID)
 
 #endif /* nsFrameSelection_h___ */

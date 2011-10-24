@@ -110,9 +110,9 @@ nsSVGMarkerFrame::GetCanvasTM()
 
   nsSVGMarkerElement *content = static_cast<nsSVGMarkerElement*>(mContent);
   
-  mInUse2 = PR_TRUE;
+  mInUse2 = true;
   gfxMatrix markedTM = mMarkedFrame->GetCanvasTM();
-  mInUse2 = PR_FALSE;
+  mInUse2 = false;
 
   gfxMatrix markerTM = content->GetMarkerTransform(mStrokeWidth, mX, mY, mAutoAngle);
   gfxMatrix viewBoxTM = content->GetViewBoxTransform();
@@ -132,28 +132,16 @@ nsSVGMarkerFrame::PaintMark(nsSVGRenderState *aContext,
   if (mInUse)
     return NS_OK;
 
+  AutoMarkerReferencer markerRef(this, aMarkedFrame);
+
   nsSVGMarkerElement *marker = static_cast<nsSVGMarkerElement*>(mContent);
 
-  nsCOMPtr<nsIDOMSVGAnimatedRect> arect;
-  nsresult rv = marker->GetViewBox(getter_AddRefs(arect));
-  NS_ENSURE_SUCCESS(rv, rv);
+  const nsSVGViewBoxRect viewBox = marker->GetViewBoxRect();
 
-  nsCOMPtr<nsIDOMSVGRect> rect;
-  rv = arect->GetAnimVal(getter_AddRefs(rect));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  float x, y, width, height;
-  rect->GetX(&x);
-  rect->GetY(&y);
-  rect->GetWidth(&width);
-  rect->GetHeight(&height);
-
-  if (width <= 0.0f || height <= 0.0f) {
+  if (viewBox.width <= 0.0f || viewBox.height <= 0.0f) {
     // We must disable rendering if the viewBox width or height are zero.
     return NS_OK;
   }
-
-  AutoMarkerReferencer markerRef(this, aMarkedFrame);
 
   mStrokeWidth = aStrokeWidth;
   mX = aMark->x;
@@ -165,7 +153,8 @@ nsSVGMarkerFrame::PaintMark(nsSVGRenderState *aContext,
   if (GetStyleDisplay()->IsScrollableOverflow()) {
     gfx->Save();
     gfxRect clipRect =
-      nsSVGUtils::GetClipRectForFrame(this, x, y, width, height);
+      nsSVGUtils::GetClipRectForFrame(this, viewBox.x, viewBox.y,
+                                      viewBox.width, viewBox.height);
     nsSVGUtils::SetClipRect(gfx, GetCanvasTM(), clipRect);
   }
 
@@ -217,6 +206,57 @@ nsSVGMarkerFrame::RegionMark(nsSVGPathGeometryFrame *aMarkedFrame,
   return nsSVGUtils::GetCoveredRegion(mFrames);
 }
 
+gfxRect
+nsSVGMarkerFrame::GetMarkBBoxContribution(const gfxMatrix &aToBBoxUserspace,
+                                          PRUint32 aFlags,
+                                          nsSVGPathGeometryFrame *aMarkedFrame,
+                                          const nsSVGMark *aMark,
+                                          float aStrokeWidth)
+{
+  // If the flag is set when we get here, it means this marker frame
+  // has already been used in calculating the current mark bbox, and
+  // the document has a marker reference loop.
+  if (mInUse)
+    return gfxRect();
+
+  AutoMarkerReferencer markerRef(this, aMarkedFrame);
+
+  nsSVGMarkerElement *content = static_cast<nsSVGMarkerElement*>(mContent);
+
+  const nsSVGViewBoxRect viewBox = content->GetViewBoxRect();
+
+  if (viewBox.width <= 0.0f || viewBox.height <= 0.0f) {
+    return gfxRect();
+  }
+
+  mStrokeWidth = aStrokeWidth;
+  mX = aMark->x;
+  mY = aMark->y;
+  mAutoAngle = aMark->angle;
+
+  gfxRect bbox;
+
+  gfxMatrix markerTM =
+    content->GetMarkerTransform(mStrokeWidth, mX, mY, mAutoAngle);
+  gfxMatrix viewBoxTM = content->GetViewBoxTransform();
+
+  gfxMatrix tm = viewBoxTM * markerTM * aToBBoxUserspace;
+
+  for (nsIFrame* kid = mFrames.FirstChild();
+       kid;
+       kid = kid->GetNextSibling()) {
+    nsISVGChildFrame* child = do_QueryFrame(kid);
+    if (child) {
+      // When we're being called to obtain the invalidation area, we need to
+      // pass down all the flags so that stroke is included. However, once DOM
+      // getBBox() accepts flags, maybe we should strip some of those here?
+      bbox.UnionRect(bbox, child->GetBBoxContribution(tm, aFlags));
+    }
+  }
+
+  return bbox;
+}
+
 void
 nsSVGMarkerFrame::SetParentCoordCtxProvider(nsSVGSVGElement *aContext)
 {
@@ -232,7 +272,7 @@ nsSVGMarkerFrame::AutoMarkerReferencer::AutoMarkerReferencer(
     nsSVGPathGeometryFrame *aMarkedFrame)
       : mFrame(aFrame)
 {
-  mFrame->mInUse = PR_TRUE;
+  mFrame->mInUse = true;
   mFrame->mMarkedFrame = aMarkedFrame;
 
   nsSVGSVGElement *ctx =
@@ -245,5 +285,5 @@ nsSVGMarkerFrame::AutoMarkerReferencer::~AutoMarkerReferencer()
   mFrame->SetParentCoordCtxProvider(nsnull);
 
   mFrame->mMarkedFrame = nsnull;
-  mFrame->mInUse = PR_FALSE;
+  mFrame->mInUse = false;
 }

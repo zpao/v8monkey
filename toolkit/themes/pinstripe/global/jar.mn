@@ -24,6 +24,7 @@ toolkit.jar:
 * skin/classic/global/findBar.css
 * skin/classic/global/global.css
   skin/classic/global/groupbox.css
+* skin/classic/global/inContentUI.css
   skin/classic/global/linkTree.css
   skin/classic/global/listbox.css
   skin/classic/global/menu.css
@@ -130,6 +131,7 @@ toolkit.jar:
   skin/classic/global/icons/question-large.png                       (icons/question-large.png)
   skin/classic/global/icons/sslWarning.png                           (icons/sslWarning.png)
   skin/classic/global/icons/webconsole.png                           (icons/webconsole.png)
+  skin/classic/global/inContentUI/background-texture.png            (inContentUI/background-texture.png)
   skin/classic/global/notification/close.png                         (notification/close.png)
   skin/classic/global/notification/critical-bar-background.png       (notification/critical-bar-background.png)
   skin/classic/global/notification/error-icon.png                    (notification/error-icon.png)
@@ -146,6 +148,7 @@ toolkit.jar:
   skin/classic/global/media/scrubberThumbWide.png                    (media/scrubberThumbWide.png)
   skin/classic/global/media/error.png                                (media/error.png)
   skin/classic/global/media/throbber.png                             (media/throbber.png)
+  skin/classic/global/media/stalled.png                              (media/stalled.png)
   skin/classic/global/media/volumeThumb.png                          (media/volumeThumb.png)
   skin/classic/global/menu/menu-arrow.png                            (menu/menu-arrow.png)
   skin/classic/global/menu/menu-check.png                            (menu/menu-check.png)
@@ -160,4 +163,3 @@ toolkit.jar:
   skin/classic/global/toolbar/toolbar-separator.png                  (toolbar/toolbar-separator.png)
   skin/classic/global/tree/columnpicker.gif                          (tree/columnpicker.gif)
   skin/classic/global/tree/folder.png                                (tree/folder.png)
-  skin/classic/global/tree/item.png                                  (tree/item.png)

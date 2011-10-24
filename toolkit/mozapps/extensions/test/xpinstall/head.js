@@ -26,9 +26,6 @@ function extractChromeRoot(path) {
   return chromeRootPath;
 }
 
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-
 /**
  * This is a test harness designed to handle responding to UI during the process
  * of installing an XPI. A test can set callbacks to hear about specific parts
@@ -39,6 +36,9 @@ var Harness = {
   // If set then the callback is called when an install is attempted and
   // software installation is disabled.
   installDisabledCallback: null,
+  // If set then the callback is called when an install is attempted and
+  // then canceled.
+  installCancelledCallback: null,
   // If set then the callback will be called when an install is blocked by the
   // whitelist. The callback should return true to continue with the install
   // anyway.
@@ -219,9 +219,21 @@ var Harness = {
     ok(!!this.installDisabledCallback, "Installation shouldn't have been disabled");
     if (this.installDisabledCallback)
       this.installDisabledCallback(installInfo);
+    this.expectingCancelled = true;
     installInfo.installs.forEach(function(install) {
       install.cancel();
     });
+    this.expectingCancelled = false;
+    this.endTest();
+  },
+
+  installCancelled: function(installInfo) {
+    if (this.expectingCancelled)
+      return;
+
+    ok(!!this.installCancelledCallback, "Installation shouldn't have been cancelled");
+    if (this.installCancelledCallback)
+      this.installCancelledCallback(installInfo);
     this.endTest();
   },
 
@@ -232,9 +244,11 @@ var Harness = {
       installInfo.install();
     }
     else {
+      this.expectingCancelled = true;
       installInfo.installs.forEach(function(install) {
         install.cancel();
       });
+      this.expectingCancelled = false;
       this.endTest();
     }
   },
@@ -246,7 +260,7 @@ var Harness = {
 
   onOpenWindow: function(window) {
     var domwindow = window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                          .getInterface(Components.interfaces.nsIDOMWindowInternal);
+                          .getInterface(Components.interfaces.nsIDOMWindow);
     var self = this;
     waitForFocus(function() {
       self.windowReady(domwindow);
@@ -329,6 +343,9 @@ var Harness = {
     case "addon-install-disabled":
       this.installDisabled(installInfo);
       break;
+    case "addon-install-cancelled":
+      this.installCancelled(installInfo);
+      break;
     case "addon-install-blocked":
       this.installBlocked(installInfo);
       break;
@@ -363,12 +380,7 @@ var Harness = {
     }
   },
 
-  QueryInterface: function(iid) {
-    if (iid.equals(Components.interfaces.nsIObserver) ||
-        iid.equals(Components.interfaces.nsIWindowMediatorListener) ||
-        iid.equals(Components.interfaces.nsISupports))
-      return this;
-
-    throw Components.results.NS_ERROR_NO_INTERFACE;
-  }
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
+                                         Ci.nsIWindowMediatorListener,
+                                         Ci.nsISupports])
 }

@@ -164,8 +164,8 @@ namespace mozilla {
    * Save the current value of a variable and restore it when the object
    * goes out of scope.  For example:
    *   {
-   *     AutoRestore<PRBool> savePainting(mIsPainting);
-   *     mIsPainting = PR_TRUE;
+   *     AutoRestore<bool> savePainting(mIsPainting);
+   *     mIsPainting = true;
    *     
    *     // ... your code here ...
    *

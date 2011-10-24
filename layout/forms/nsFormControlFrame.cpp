@@ -39,7 +39,9 @@
 #include "nsGkAtoms.h"
 #include "nsIDOMHTMLInputElement.h"
 #include "nsEventStateManager.h"
-#include "nsILookAndFeel.h"
+#include "mozilla/LookAndFeel.h"
+
+using namespace mozilla;
 
 //#define FCF_NOISY
 
@@ -58,7 +60,7 @@ void
 nsFormControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
 {
   // Unregister the access key registered in reflow
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), PR_FALSE);
+  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
   nsLeafFrame::DestroyFrom(aDestructRoot);
 }
 
@@ -107,7 +109,7 @@ nsFormControlFrame::Reflow(nsPresContext*          aPresContext,
   DISPLAY_REFLOW(aPresContext, this, aReflowState, aDesiredSize, aStatus);
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    RegUnRegAccessKey(static_cast<nsIFrame*>(this), PR_TRUE);
+    RegUnRegAccessKey(static_cast<nsIFrame*>(this), true);
   }
 
   return nsLeafFrame::Reflow(aPresContext, aDesiredSize, aReflowState,
@@ -115,7 +117,7 @@ nsFormControlFrame::Reflow(nsPresContext*          aPresContext,
 }
 
 nsresult
-nsFormControlFrame::RegUnRegAccessKey(nsIFrame * aFrame, PRBool aDoReg)
+nsFormControlFrame::RegUnRegAccessKey(nsIFrame * aFrame, bool aDoReg)
 {
   NS_ENSURE_ARG_POINTER(aFrame);
   
@@ -140,7 +142,7 @@ nsFormControlFrame::RegUnRegAccessKey(nsIFrame * aFrame, PRBool aDoReg)
 }
 
 void 
-nsFormControlFrame::SetFocus(PRBool aOn, PRBool aRepaint)
+nsFormControlFrame::SetFocus(bool aOn, bool aRepaint)
 {
 }
 
@@ -159,7 +161,7 @@ nsFormControlFrame::HandleEvent(nsPresContext* aPresContext,
 }
 
 void
-nsFormControlFrame::GetCurrentCheckState(PRBool *aState)
+nsFormControlFrame::GetCurrentCheckState(bool *aState)
 {
   nsCOMPtr<nsIDOMHTMLInputElement> inputElement = do_QueryInterface(mContent);
   if (inputElement) {
@@ -187,10 +189,8 @@ nsFormControlFrame::GetUsableScreenRect(nsPresContext* aPresContext)
   nsRect screen;
 
   nsDeviceContext *context = aPresContext->DeviceContext();
-  PRBool dropdownCanOverlapOSBar = PR_FALSE;
-  nsILookAndFeel *lookAndFeel = aPresContext->LookAndFeel();
-  lookAndFeel->GetMetric(nsILookAndFeel::eMetric_MenusCanOverlapOSBar,
-                         dropdownCanOverlapOSBar);
+  PRInt32 dropdownCanOverlapOSBar =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_MenusCanOverlapOSBar, 0);
   if ( dropdownCanOverlapOSBar )
     context->GetRect(screen);
   else

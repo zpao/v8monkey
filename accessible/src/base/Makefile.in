@@ -53,6 +53,7 @@ CPPSRCS = \
   AccGroupInfo.cpp \
   AccIterator.cpp \
   filters.cpp \
+  FocusManager.cpp \
   NotificationController.cpp \
   nsAccDocManager.cpp \
   nsAccessNode.cpp \
@@ -60,13 +61,10 @@ CPPSRCS = \
   nsARIAMap.cpp \
   nsDocAccessible.cpp \
   nsOuterDocAccessible.cpp \
-  nsAccessibilityAtoms.cpp \
   nsCoreUtils.cpp \
   nsAccUtils.cpp \
-  nsRelUtils.cpp \
   nsAccessibilityService.cpp \
   nsAccessible.cpp \
-  nsAccessibleRelation.cpp \
   nsAccTreeWalker.cpp \
   nsBaseWidgetAccessible.cpp \
   nsEventShell.cpp \
@@ -87,6 +85,13 @@ EXPORTS = \
   nsAccessible.h \
   nsAccessNode.h \
   nsARIAMap.h \
+  $(NULL)
+
+EXPORTS_NAMESPACES = mozilla/a11y
+
+EXPORTS_mozilla/a11y = \
+  FocusManager.h \
+  States.h \
   $(NULL)
 
 # we don't want the shared lib, but we want to force the creation of a static lib.

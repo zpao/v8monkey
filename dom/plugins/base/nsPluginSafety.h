@@ -39,12 +39,12 @@
 #define nsPluginSafety_h_
 
 #include "npapi.h"
-#include "nsIPluginHost.h"
+#include "nsPluginHost.h"
 #include "nsIPrefBranch.h"
 #include "nsIPrefService.h"
 #include <prinrval.h>
 
-#if defined(XP_WIN) && !defined(WINCE)
+#if defined(XP_WIN)
 #define CALL_SAFETY_ON
 #endif
 
@@ -52,7 +52,7 @@ void NS_NotifyPluginCall(PRIntervalTime);
 
 #ifdef CALL_SAFETY_ON
 
-extern PRBool gSkipPluginSafeCalls;
+extern bool gSkipPluginSafeCalls;
 
 #define NS_INIT_PLUGIN_SAFE_CALLS                               \
 PR_BEGIN_MACRO                                                  \
@@ -73,12 +73,12 @@ PR_BEGIN_MACRO                                     \
     {                                              \
       ret = fun;                                   \
     }                                              \
-    MOZ_SEH_EXCEPT(PR_TRUE)                        \
+    MOZ_SEH_EXCEPT(true)                        \
     {                                              \
       nsresult res;                                \
       nsCOMPtr<nsIPluginHost> host(do_GetService(MOZ_PLUGIN_HOST_CONTRACTID, &res));\
       if(NS_SUCCEEDED(res) && (host != nsnull))    \
-        host->HandleBadPlugin(nsnull, pluginInst); \
+        static_cast<nsPluginHost*>(host.get())->HandleBadPlugin(nsnull, pluginInst); \
       ret = (NPError)NS_ERROR_FAILURE;             \
     }                                              \
   }                                                \
@@ -96,12 +96,12 @@ PR_BEGIN_MACRO                              \
     {                                       \
       fun;                                  \
     }                                       \
-    MOZ_SEH_EXCEPT(PR_TRUE)                 \
+    MOZ_SEH_EXCEPT(true)                 \
     {                                       \
       nsresult res;                         \
       nsCOMPtr<nsIPluginHost> host(do_GetService(MOZ_PLUGIN_HOST_CONTRACTID, &res));\
       if(NS_SUCCEEDED(res) && (host != nsnull))\
-        host->HandleBadPlugin(nsnull, pluginInst);\
+        static_cast<nsPluginHost*>(host.get())->HandleBadPlugin(nsnull, pluginInst);\
     }                                       \
   }                                         \
   NS_NotifyPluginCall(startTime);		   \

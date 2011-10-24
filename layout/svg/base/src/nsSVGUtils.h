@@ -48,7 +48,6 @@
 #include "nsRenderingContext.h"
 #include "gfxRect.h"
 #include "gfxMatrix.h"
-#include "nsSVGMatrix.h"
 
 class nsIDocument;
 class nsPresContext;
@@ -76,6 +75,7 @@ struct nsStyleFont;
 class nsSVGEnum;
 class nsISVGChildFrame;
 class nsSVGGeometryFrame;
+class nsSVGPathGeometryFrame;
 class nsSVGDisplayContainerFrame;
 
 namespace mozilla {
@@ -125,14 +125,14 @@ class Element;
 #define SVG_WSP_DELIM       "\x20\x9\xD\xA"
 #define SVG_COMMA_WSP_DELIM "," SVG_WSP_DELIM
 
-inline PRBool
+inline bool
 IsSVGWhitespace(char aChar)
 {
   return aChar == '\x20' || aChar == '\x9' ||
          aChar == '\xD'  || aChar == '\xA';
 }
 
-inline PRBool
+inline bool
 IsSVGWhitespace(PRUnichar aChar)
 {
   return aChar == PRUnichar('\x20') || aChar == PRUnichar('\x9') ||
@@ -144,7 +144,7 @@ IsSVGWhitespace(PRUnichar aChar)
  * Checks the smil enabled preference.  Declared as a function to match
  * NS_SVGEnabled().
  */
-PRBool NS_SMILEnabled();
+bool NS_SMILEnabled();
 #endif // MOZ_SMIL
 
 // GRRR WINDOWS HATE HATE HATE
@@ -174,16 +174,16 @@ public:
   void SetRenderMode(RenderMode aMode) { mRenderMode = aMode; }
   RenderMode GetRenderMode() { return mRenderMode; }
 
-  void SetPaintingToWindow(PRBool aPaintingToWindow) {
+  void SetPaintingToWindow(bool aPaintingToWindow) {
     mPaintingToWindow = aPaintingToWindow;
   }
-  PRBool IsPaintingToWindow() { return mPaintingToWindow; }
+  bool IsPaintingToWindow() { return mPaintingToWindow; }
 
 private:
   RenderMode                    mRenderMode;
   nsRefPtr<nsRenderingContext> mRenderingContext;
   nsRefPtr<gfxContext>          mGfxContext;
-  PRPackedBool                  mPaintingToWindow;
+  bool                          mPaintingToWindow;
 };
 
 class nsAutoSVGRenderMode
@@ -293,13 +293,13 @@ public:
                             nsSVGElement *aContent,
                             const nsStyleCoord &aCoord);
 
-  static gfxMatrix GetCTM(nsSVGElement *aElement, PRBool aScreenCTM);
+  static gfxMatrix GetCTM(nsSVGElement *aElement, bool aScreenCTM);
 
   /**
    * Check if this is one of the SVG elements that SVG 1.1 Full says
    * establishes a viewport: svg, symbol, image or foreignObject.
    */
-  static PRBool EstablishesViewport(nsIContent *aContent);
+  static bool EstablishesViewport(nsIContent *aContent);
 
   static already_AddRefed<nsIDOMSVGElement>
   GetNearestViewportElement(nsIContent *aContent);
@@ -382,14 +382,14 @@ public:
   /* Generate a viewbox to viewport tranformation matrix */
 
   static gfxMatrix
-  GetViewBoxTransform(nsSVGElement* aElement,
+  GetViewBoxTransform(const nsSVGElement* aElement,
                       float aViewportWidth, float aViewportHeight,
                       float aViewboxX, float aViewboxY,
                       float aViewboxWidth, float aViewboxHeight,
                       const SVGAnimatedPreserveAspectRatio &aPreserveAspectRatio);
 
   static gfxMatrix
-  GetViewBoxTransform(nsSVGElement* aElement,
+  GetViewBoxTransform(const nsSVGElement* aElement,
                       float aViewportWidth, float aViewportHeight,
                       float aViewboxX, float aViewboxY,
                       float aViewboxWidth, float aViewboxHeight,
@@ -404,7 +404,7 @@ public:
 
   /* Hit testing - check if point hits the clipPath of indicated
    * frame.  Returns true if no clipPath set. */
-  static PRBool
+  static bool
   HitTestClip(nsIFrame *aFrame, const nsPoint &aPoint);
   
   /* Hit testing - check if point hits any children of frame. */
@@ -450,18 +450,12 @@ public:
    * @return the surface size to use
    */
   static gfxIntSize ConvertToSurfaceSize(const gfxSize& aSize,
-                                         PRBool *aResultOverflows);
-
-  /*
-   * Convert a nsIDOMSVGMatrix to a gfxMatrix.
-   */
-  static gfxMatrix
-  ConvertSVGMatrixToThebes(nsIDOMSVGMatrix *aMatrix);
+                                         bool *aResultOverflows);
 
   /*
    * Hit test a given rectangle/matrix.
    */
-  static PRBool
+  static bool
   HitTestRect(const gfxMatrix &aMatrix,
               float aRX, float aRY, float aRWidth, float aRHeight,
               float aX, float aY);
@@ -500,7 +494,7 @@ public:
    * not applying filters and not both stroking and filling, we can
    * generate the same result without going through the overhead of a
    * push/pop group. */
-  static PRBool
+  static bool
   CanOptimizeOpacity(nsIFrame *aFrame);
 
   /* Calculate the maximum expansion of a matrix */
@@ -520,11 +514,19 @@ public:
                        nsSVGEnum *aUnits,
                        nsIFrame *aFrame);
 
+  enum BBoxFlags {
+    eBBoxIncludeFill          = 1 << 0,
+    eBBoxIgnoreFillIfNone     = 1 << 1,
+    eBBoxIncludeStroke        = 1 << 2,
+    eBBoxIgnoreStrokeIfNone   = 1 << 3,
+    eBBoxIncludeMarkers       = 1 << 4
+  };
   /**
-   * Get bounding-box for aFrame. Matrix propagation is disabled so the
-   * bounding box is computed in terms of aFrame's own user space.
+   * Get the SVG bbox (the SVG spec's simplified idea of bounds) of aFrame in
+   * aFrame's userspace.
    */
-  static gfxRect GetBBox(nsIFrame *aFrame);
+  static gfxRect GetBBox(nsIFrame *aFrame, PRUint32 aFlags = eBBoxIncludeFill);
+
   /**
    * Compute a rectangle in userSpaceOnUse or objectBoundingBoxUnits.
    * @param aXYWH pointer to 4 consecutive nsSVGLength2 objects containing
@@ -564,6 +566,8 @@ public:
    */
   static gfxRect PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
                                                nsSVGGeometryFrame* aFrame);
+  static gfxRect PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
+                                               nsSVGPathGeometryFrame* aFrame);
 
   /**
    * Convert a floating-point value to a 32-bit integer value, clamping to
@@ -581,9 +585,9 @@ public:
    *
    * No other type of element should be passed to this method.
    * (In debug builds, anything non-<svg> will trigger an abort; in non-debug
-   * builds, it will trigger a PR_FALSE return-value as a safe fallback.)
+   * builds, it will trigger a false return-value as a safe fallback.)
    */
-  static PRBool RootSVGElementHasViewbox(const nsIContent *aRootSVGElem);
+  static bool RootSVGElementHasViewbox(const nsIContent *aRootSVGElem);
 };
 
 #endif

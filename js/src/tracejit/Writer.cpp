@@ -38,10 +38,14 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "jsprf.h"
-#include "jstl.h"
+
 #include "jscompartment.h"
+#include "jsiter.h"
 #include "Writer.h"
 #include "nanojit.h"
+#include "jsobjinlines.h"
+
+#include "vm/ArgumentsObject.h"
 
 namespace js {
 namespace tjit {
@@ -246,7 +250,9 @@ couldBeObjectOrString(LIns *ins)
         // ins = andq ins_oprnd1, ins_oprnd2
         ret = true;
 #endif
-    } else if (ins->isop(LIR_addp) &&
+    }
+#ifdef JS_HAS_STATIC_STRINGS
+    else if (ins->isop(LIR_addp) &&
                ((ins->oprnd1()->isImmP() &&
                  (void *)ins->oprnd1()->immP() == JSAtom::unitStaticTable) ||
                 (ins->oprnd2()->isImmP() &&
@@ -258,6 +264,7 @@ couldBeObjectOrString(LIns *ins)
         // ins = addp JSString::unitStringTable, ...
         ret = true;
     }
+#endif
 
     return ret;
 }
@@ -265,15 +272,17 @@ couldBeObjectOrString(LIns *ins)
 static bool
 isConstPrivatePtr(LIns *ins, unsigned slot)
 {
+    uint32 offset = JSObject::getFixedSlotOffset(slot) + sPayloadOffset;
+
 #if JS_BITS_PER_WORD == 32
     // ins = ldp.slots/c ...[<offset of slot>]
-    return match(ins, LIR_ldp, ACCSET_SLOTS, LOAD_CONST, slot * sizeof(Value) + sPayloadOffset);
+    return match(ins, LIR_ldp, ACCSET_SLOTS, LOAD_CONST, offset);
 #elif JS_BITS_PER_WORD == 64
     // ins_oprnd1 = ldp.slots/c ...[<offset of slot>]
     // ins_oprnd2 = immi 1
     // ins = lshq ins_oprnd1, ins_oprnd2
     return ins->isop(LIR_lshq) &&
-           match(ins->oprnd1(), LIR_ldp, ACCSET_SLOTS, LOAD_CONST, slot * sizeof(Value)) &&
+           match(ins->oprnd1(), LIR_ldp, ACCSET_SLOTS, LOAD_CONST, offset) &&
            ins->oprnd2()->isImmI(1);
 #endif
 }
@@ -373,7 +382,7 @@ void ValidateWriter::checkAccSet(LOpcode op, LIns *base, int32_t disp, AccSet ac
         // ins  = ldp.regs base[<disp within FrameRegs>]
         ok = op == LIR_ldp &&
              dispWithin(FrameRegs) && 
-             match(base, LIR_ldp, ACCSET_CX, offsetof(JSContext, stack) + ContextStack::offsetOfRegs());
+             match(base, LIR_ldp, ACCSET_SEG, StackSegment::offsetOfRegs());
         break;
 
       case ACCSET_STACKFRAME:
@@ -395,9 +404,9 @@ void ValidateWriter::checkAccSet(LOpcode op, LIns *base, int32_t disp, AccSet ac
       // base = <JSObject>
       // ins  = ldp.obj<field> base[offsetof(JSObject, <field>)]
       #define OK_OBJ_FIELD(ldop, field) \
-            op == ldop && \
-            disp == offsetof(JSObject, field) && \
-            couldBeObjectOrString(base)
+            ((op == (ldop)) && \
+            (disp == offsetof(JSObject, field)) && \
+            couldBeObjectOrString(base))
 
       case ACCSET_OBJ_CLASP:
         ok = OK_OBJ_FIELD(LIR_ldp, clasp);
@@ -411,8 +420,11 @@ void ValidateWriter::checkAccSet(LOpcode op, LIns *base, int32_t disp, AccSet ac
         ok = OK_OBJ_FIELD(LIR_ldi, objShape);
         break;
 
-      case ACCSET_OBJ_PROTO:
-        ok = OK_OBJ_FIELD(LIR_ldp, proto);
+      case ACCSET_OBJ_TYPE:
+        ok = ((op == LIR_ldp) &&
+              disp == (int)JSObject::offsetOfType() &&
+              couldBeObjectOrString(base)) ||
+            (op == LIR_ldp && disp == offsetof(types::TypeObject, proto));
         break;
 
       case ACCSET_OBJ_PARENT:
@@ -429,7 +441,7 @@ void ValidateWriter::checkAccSet(LOpcode op, LIns *base, int32_t disp, AccSet ac
         break;
 
       case ACCSET_OBJ_CAPACITY:
-        ok = OK_OBJ_FIELD(LIR_ldi, capacity);
+        ok = OK_OBJ_FIELD(LIR_ldi, capacity) || OK_OBJ_FIELD(LIR_ldi, initializedLength);
         break;
 
       case ACCSET_OBJ_SLOTS:
@@ -455,13 +467,13 @@ void ValidateWriter::checkAccSet(LOpcode op, LIns *base, int32_t disp, AccSet ac
         break;
 
       case ACCSET_TARRAY:
+        // we actually just want the JSObject itself
         // This check is imperfect.
         //
         // base = ldp.objprivate ...[offsetof(JSObject, privateData)]
         // ins = ld{i,p}.tarray base[<disp within TypedArray>]
-        ok = (op == LIR_ldi || op == LIR_ldp) &&
-             dispWithin(TypedArray) &&
-             match(base, LIR_ldp, ACCSET_OBJ_PRIVATE, offsetof(JSObject, privateData));
+        ok = (op == LIR_ldi || op == LIR_ldp); /*&&*/
+             //match(base, LIR_ldp, ACCSET_OBJ_SLOTS, offsetof(JSObject, slots));
         break;
 
       case ACCSET_TARRAY_DATA:
@@ -471,9 +483,12 @@ void ValidateWriter::checkAccSet(LOpcode op, LIns *base, int32_t disp, AccSet ac
         // base_oprnd1 = ldp.tarray/c ...[TypedArray::dataOffset()]
         // base        = addp base_oprnd1, ...
         // ins         = {ld,st}X.tdata base[...]
-        ok = match(base, LIR_ldp, ACCSET_TARRAY, LOAD_CONST, TypedArray::dataOffset()) ||
-             (base->isop(LIR_addp) &&
-              match(base->oprnd1(), LIR_ldp, ACCSET_TARRAY, LOAD_CONST, TypedArray::dataOffset()));
+        ok = true;
+        //ok = isConstPrivatePtr(base, TypedArray::FIELD_DATA);
+        JS_ASSERT(ok);
+        //ok = match(base, LIR_ldp, ACCSET_TARRAY, LOAD_CONST,  sizeof(js::Value) * js::TypedArray::FIELD_DATA) ||
+                //((base->isop(LIR_addp) &&
+                //match(base->oprnd1(), LIR_ldp, ACCSET_TARRAY, sizeof(js::Value) * js::TypedArray::FIELD_DATA)));
         break;
 
       case ACCSET_ITER:
@@ -544,9 +559,15 @@ void ValidateWriter::checkAccSet(LOpcode op, LIns *base, int32_t disp, AccSet ac
         // base_oprnd1 = <const private ptr slots[JSSLOT_ARGS_DATA]>
         // base        = addp base_oprnd1, ...
         // ins         = {ld,st}X.argsdata base[...]
-        ok = (isConstPrivatePtr(base, JSObject::JSSLOT_ARGS_DATA) ||
+        ok = (isConstPrivatePtr(base, ArgumentsObject::DATA_SLOT) ||
               (base->isop(LIR_addp) &&
-               isConstPrivatePtr(base->oprnd1(), JSObject::JSSLOT_ARGS_DATA)));
+               isConstPrivatePtr(base->oprnd1(), ArgumentsObject::DATA_SLOT)));
+        break;
+
+      case ACCSET_SEG:
+        // Match the ACCSET_SEG load that comes out of ldpContextRegs
+        ok = dispWithin(StackSegment) &&
+             match(base, LIR_ldp, ACCSET_CX, offsetof(JSContext, stack) + ContextStack::offsetOfSeg());
         break;
 
       default:
@@ -565,7 +586,7 @@ void ValidateWriter::checkAccSet(LOpcode op, LIns *base, int32_t disp, AccSet ac
     }
 }
 
-}
+} // namespace nanojit
 
 #endif
 

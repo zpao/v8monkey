@@ -39,7 +39,7 @@
 
 interface nsIXULWindow;
 interface nsIURI;
-interface nsIDOMWindowInternal;
+interface nsIDOMWindow;
 interface nsIAppShell;
 
 [ptr] native JSContext(JSContext);
@@ -48,7 +48,7 @@ interface nsIAppShell;
 struct JSContext;
 %}
 
-[scriptable, uuid(361facd0-6e9a-4ff1-a0d4-450744cf0023)]
+[scriptable, uuid(EBCD34E2-2E43-45C0-AAC8-E6F1C692B371)]
 interface nsIAppShellService : nsISupports
 {
   /**
@@ -66,8 +66,6 @@ interface nsIAppShellService : nsISupports
    *                      tag in the XUL.  Set to NS_SIZETOCONTENT to force
    *                      the window to wrap to its contents.
    * @param aInitialHeight like aInitialWidth, but subtly different.
-   * @param aAppShell a widget "appshell" (event processor) to associate
-   *        with the new window
    * @param aResult the newly created window is returned here.
    */
   const long SIZE_TO_CONTENT = -1;
@@ -75,11 +73,10 @@ interface nsIAppShellService : nsISupports
                                     in nsIURI aUrl, 
                                     in PRUint32 aChromeMask,
                                     in long aInitialWidth,
-                                    in long aInitialHeight,
-                                    in nsIAppShell aAppShell);
+                                    in long aInitialHeight);
 
   [noscript]
-  void createHiddenWindow(in nsIAppShell aAppShell);
+  void createHiddenWindow();
 
   void destroyHiddenWindow();
 
@@ -97,17 +94,17 @@ interface nsIAppShellService : nsISupports
    * @param aResult the hidden window.  Do not unhide hidden window.
    *                Do not taunt hidden window.
    */
-  readonly attribute nsIDOMWindowInternal hiddenDOMWindow;
+  readonly attribute nsIDOMWindow hiddenDOMWindow;
 
   /**
-   * Return the (singleton) application hidden window as an nsIDOMWindowInternal,
+   * Return the (singleton) application hidden window as an nsIDOMWindow,
    * and, the corresponding JavaScript context pointer.  This is useful
    * if you'd like to subsequently call OpenDialog on the hidden window.
-   * @aHiddenDOMWindow the hidden window QI'd to type nsIDOMWindowInternal
+   * @aHiddenDOMWindow the hidden window QI'd to type nsIDOMWindow
    * @aJSContext       the corresponding JavaScript context
    */
   [noscript]
-  void getHiddenWindowAndJSContext(out nsIDOMWindowInternal aHiddenDOMWindow,
+  void getHiddenWindowAndJSContext(out nsIDOMWindow aHiddenDOMWindow,
                                    out JSContext aJSContext);
 
   /**

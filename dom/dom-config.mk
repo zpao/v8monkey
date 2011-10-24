@@ -1,5 +1,3 @@
-MODULE = dom
-
 DOM_SRCDIRS = \
   dom/base \
   dom/src/events \
@@ -7,7 +5,7 @@ DOM_SRCDIRS = \
   dom/src/offline \
   dom/src/geolocation \
   dom/src/notification \
-  dom/src/threads \
+  dom/workers \
   content/xbl/src \
   content/xul/document/src \
   content/events/src \

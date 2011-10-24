@@ -35,9 +35,10 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+const CURRENT_SCHEMA_VERSION = 12;
+
 const NS_APP_USER_PROFILE_50_DIR = "ProfD";
 const NS_APP_PROFILE_DIR_STARTUP = "ProfDS";
-const NS_APP_HISTORY_50_FILE = "UHist";
 const NS_APP_BOOKMARKS_50_FILE = "BMarks";
 
 // Shortcuts to transitions type.
@@ -66,6 +67,11 @@ XPCOMUtils.defineLazyGetter(this, "NetUtil", function() {
   return NetUtil;
 });
 
+XPCOMUtils.defineLazyGetter(this, "FileUtils", function() {
+  Cu.import("resource://gre/modules/FileUtils.jsm");
+  return FileUtils;
+});
+
 XPCOMUtils.defineLazyGetter(this, "PlacesUtils", function() {
   Cu.import("resource://gre/modules/PlacesUtils.jsm");
   return PlacesUtils;
@@ -87,26 +93,6 @@ Services.prefs.setBoolPref("places.history.enabled", true);
 // Initialize profile.
 let gProfD = do_get_profile();
 
-// Add our own dirprovider for old history.dat.
-let (provider = {
-      getFile: function(prop, persistent) {
-        persistent.value = true;
-        if (prop == NS_APP_HISTORY_50_FILE) {
-          let histFile = Services.dirsvc.get("ProfD", Ci.nsIFile);
-          histFile.append("history.dat");
-          return histFile;
-        }
-        throw Cr.NS_ERROR_FAILURE;
-      },
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIDirectoryServiceProvider])
-    })
-{
-  Cc["@mozilla.org/file/directory_service;1"].
-  getService(Ci.nsIDirectoryService).
-  QueryInterface(Ci.nsIDirectoryService).registerProvider(provider);
-}
-
-
 // Remove any old database.
 clearDB();
 
@@ -126,42 +112,69 @@ function uri(aSpec) NetUtil.newURI(aSpec);
  *
  * @return The database connection or null if unable to get one.
  */
+let gDBConn;
 function DBConn() {
   let db = PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
                               .DBConnection;
   if (db.connectionReady)
     return db;
 
-  // If the database has been closed, then we need to open a new connection.
-  let file = Services.dirsvc.get('ProfD', Ci.nsIFile);
-  file.append("places.sqlite");
-  return Services.storage.openDatabase(file);
+  // If the Places database connection has been closed, create a new connection.
+  if (!gDBConn) {
+    let file = Services.dirsvc.get('ProfD', Ci.nsIFile);
+    file.append("places.sqlite");
+    gDBConn = Services.storage.openDatabase(file);
+
+    // Be sure to cleanly close this connection.
+    Services.obs.addObserver(function (aSubject, aTopic, aData) {
+      Services.obs.removeObserver(arguments.callee, aTopic);
+      gDBConn.asyncClose();
+    }, "profile-before-change", false);
+  }
+
+  return gDBConn.connectionReady ? gDBConn : null;
 };
 
+/**
+ * Reads data from the provided inputstream.
+ *
+ * @return an array of bytes.
+ */ 
+function readInputStreamData(aStream) {
+  let bistream = Cc["@mozilla.org/binaryinputstream;1"].
+                 createInstance(Ci.nsIBinaryInputStream);
+  try {
+    bistream.setInputStream(aStream);
+    let expectedData = [];
+    let avail;
+    while ((avail = bistream.available())) {
+      expectedData = expectedData.concat(bistream.readByteArray(avail));
+    }
+    return expectedData;
+  } finally {
+    bistream.close();
+  }
+}
 
 /**
- * Reads the data from the specified nsIFile, and returns an array of bytes.
+ * Reads the data from the specified nsIFile.
  *
  * @param aFile
  *        The nsIFile to read from.
+ * @return an array of bytes.
  */
 function readFileData(aFile) {
   let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
                     createInstance(Ci.nsIFileInputStream);
   // init the stream as RD_ONLY, -1 == default permissions.
   inputStream.init(aFile, 0x01, -1, null);
-  let size = inputStream.available();
 
-  // use a binary input stream to grab the bytes.
-  let bis = Cc["@mozilla.org/binaryinputstream;1"].
-            createInstance(Ci.nsIBinaryInputStream);
-  bis.setInputStream(inputStream);
-
-  let bytes = bis.readByteArray(size);
-
-  if (size != bytes.length)
-      throw "Didn't read expected number of bytes";
-
+  // Check the returned size versus the expected size.
+  let size  = inputStream.available();
+  let bytes = readInputStreamData(inputStream);
+  if (size != bytes.length) {
+    throw "Didn't read expected number of bytes";
+  }
   return bytes;
 }
 
@@ -256,16 +269,17 @@ function dump_table(aName)
 
 /**
  * Checks if an address is found in the database.
- * @param aUrl
- *        Address to look for.
+ * @param aURI
+ *        nsIURI or address to look for.
  * @return place id of the page or 0 if not found
  */
-function page_in_database(aUrl)
+function page_in_database(aURI)
 {
+  let url = aURI instanceof Ci.nsIURI ? aURI.spec : aURI;
   let stmt = DBConn().createStatement(
     "SELECT id FROM moz_places WHERE url = :url"
   );
-  stmt.params.url = aUrl;
+  stmt.params.url = url;
   try {
     if (!stmt.executeStep())
       return 0;
@@ -276,6 +290,30 @@ function page_in_database(aUrl)
   }
 }
 
+/**
+ * Checks how many visits exist for a specified page.
+ * @param aURI
+ *        nsIURI or address to look for.
+ * @return number of visits found.
+ */
+function visits_in_database(aURI)
+{
+  let url = aURI instanceof Ci.nsIURI ? aURI.spec : aURI;
+  let stmt = DBConn().createStatement(
+    "SELECT count(*) FROM moz_historyvisits v "
+  + "JOIN moz_places h ON h.id = v.place_id "
+  + "WHERE url = :url"
+  );
+  stmt.params.url = url;
+  try {
+    if (!stmt.executeStep())
+      return 0;
+    return stmt.getInt64(0);
+  }
+  finally {
+    stmt.finalize();
+  }
+}
 
 /**
  * Removes all bookmarks and checks for correct cleanup
@@ -425,7 +463,7 @@ function create_JSON_backup(aFilename) {
   let bookmarksBackupDir = gProfD.clone();
   bookmarksBackupDir.append("bookmarkbackups");
   if (!bookmarksBackupDir.exists()) {
-    bookmarksBackupDir.create(Ci.nsIFile.DIRECTORY_TYPE, 0777);
+    bookmarksBackupDir.create(Ci.nsIFile.DIRECTORY_TYPE, parseInt("0755"));
     do_check_true(bookmarksBackupDir.exists());
   }
   let bookmarksJSONFile = gTestDir.clone();
@@ -581,8 +619,12 @@ function waitForAsyncUpdates(aCallback, aScope, aArguments)
   let scope = aScope || this;
   let args = aArguments || [];
   let db = DBConn();
-  db.createAsyncStatement("BEGIN EXCLUSIVE").executeAsync();
-  db.createAsyncStatement("COMMIT").executeAsync({
+  let begin = db.createAsyncStatement("BEGIN EXCLUSIVE");
+  begin.executeAsync();
+  begin.finalize();
+
+  let commit = db.createAsyncStatement("COMMIT");
+  commit.executeAsync({
     handleResult: function() {},
     handleError: function() {},
     handleCompletion: function(aReason)
@@ -590,6 +632,7 @@ function waitForAsyncUpdates(aCallback, aScope, aArguments)
       aCallback.apply(scope, args);
     }
   });
+  commit.finalize();
 }
 
 /**
@@ -610,6 +653,34 @@ function do_check_valid_places_guid(aGuid,
 }
 
 /**
+ * Retrieves the guid for a given uri.
+ *
+ * @param aURI
+ *        The uri to check.
+ * @param [optional] aStack
+ *        The stack frame used to report the error.
+ * @return the associated the guid.
+ */
+function do_get_guid_for_uri(aURI,
+                             aStack)
+{
+  if (!aStack) {
+    aStack = Components.stack.caller;
+  }
+  let stmt = DBConn().createStatement(
+    "SELECT guid "
+  + "FROM moz_places "
+  + "WHERE url = :url "
+  );
+  stmt.params.url = aURI.spec;
+  do_check_true(stmt.executeStep(), aStack);
+  let guid = stmt.row.guid;
+  stmt.finalize();
+  do_check_valid_places_guid(guid, aStack);
+  return guid;
+}
+
+/**
  * Tests that a guid was set in moz_places for a given uri.
  *
  * @param aURI
@@ -621,19 +692,11 @@ function do_check_guid_for_uri(aURI,
                                aGUID)
 {
   let caller = Components.stack.caller;
-  let stmt = DBConn().createStatement(
-    "SELECT guid "
-  + "FROM moz_places "
-  + "WHERE url = :url "
-  );
-  stmt.params.url = aURI.spec;
-  do_check_true(stmt.executeStep(), caller);
-  do_check_valid_places_guid(stmt.row.guid, caller);
+  let guid = do_get_guid_for_uri(aURI, caller);
   if (aGUID) {
     do_check_valid_places_guid(aGUID, caller);
-    do_check_eq(stmt.row.guid, aGUID, caller);
+    do_check_eq(guid, aGUID, caller);
   }
-  stmt.finalize();
 }
 
 /**

@@ -75,14 +75,14 @@ nsPKCS11Slot::refreshSlotInfo()
       ccDesc, 
       ccDesc+PL_strnlen(ccDesc, sizeof(slot_info.slotDescription)));
     mSlotDesc = NS_ConvertUTF8toUTF16(cDesc);
-    mSlotDesc.Trim(" ", PR_FALSE, PR_TRUE);
+    mSlotDesc.Trim(" ", false, true);
     // Set the Manufacturer field
     const char *ccManID = (const char*)slot_info.manufacturerID;
     const nsACString &cManID = Substring(
       ccManID, 
       ccManID+PL_strnlen(ccManID, sizeof(slot_info.manufacturerID)));
     mSlotManID = NS_ConvertUTF8toUTF16(cManID);
-    mSlotManID.Trim(" ", PR_FALSE, PR_TRUE);
+    mSlotManID.Trim(" ", false, true);
     // Set the Hardware Version field
     mSlotHWVersion = EmptyString();
     mSlotHWVersion.AppendInt(slot_info.hardwareVersion.major);
@@ -340,11 +340,11 @@ nsPKCS11Module::FindSlotByName(const PRUnichar *aName,
   PR_LOG(gPIPNSSLog, PR_LOG_DEBUG, ("Getting \"%s\"\n", asciiname));
   PK11SlotInfo *slotinfo = NULL;
   PK11SlotList *slotList = PK11_FindSlotsByNames(mModule->dllName, 
-        asciiname /* slotName */, NULL /* token Name */, PR_FALSE);
+        asciiname /* slotName */, NULL /* token Name */, false);
   if (!slotList) {
     /* name must be the token name */
     slotList = PK11_FindSlotsByNames(mModule->dllName, 
-        NULL /*slot Name */, asciiname /* token Name */, PR_FALSE);
+        NULL /*slot Name */, asciiname /* token Name */, false);
   }
   if (slotList) {
     /* should only be one */
@@ -523,7 +523,7 @@ nsPKCS11ModuleDB::ListModules(nsIEnumerator **_retval)
   return rv;
 }
 
-NS_IMETHODIMP nsPKCS11ModuleDB::GetCanToggleFIPS(PRBool *aCanToggleFIPS)
+NS_IMETHODIMP nsPKCS11ModuleDB::GetCanToggleFIPS(bool *aCanToggleFIPS)
 {
   nsNSSShutDownPreventionLock locker;
   *aCanToggleFIPS = SECMOD_CanDeleteInternalModule();
@@ -556,14 +556,14 @@ NS_IMETHODIMP nsPKCS11ModuleDB::ToggleFIPSMode()
 }
 
 /* readonly attribute boolean isFIPSEnabled; */
-NS_IMETHODIMP nsPKCS11ModuleDB::GetIsFIPSEnabled(PRBool *aIsFIPSEnabled)
+NS_IMETHODIMP nsPKCS11ModuleDB::GetIsFIPSEnabled(bool *aIsFIPSEnabled)
 {
   nsNSSShutDownPreventionLock locker;
   *aIsFIPSEnabled = PK11_IsFIPS();
   return NS_OK;
 }
 
-NS_IMETHODIMP nsPKCS11ModuleDB::GetIsFIPSModeActive(PRBool *aIsFIPSModeActive)
+NS_IMETHODIMP nsPKCS11ModuleDB::GetIsFIPSModeActive(bool *aIsFIPSModeActive)
 {
   return GetIsFIPSEnabled(aIsFIPSModeActive);
 }

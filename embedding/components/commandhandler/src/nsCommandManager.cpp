@@ -51,7 +51,6 @@
 #include "nsIDOMWindow.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIWindowRoot.h"
-#include "nsIDOMWindowInternal.h"
 #include "nsIFocusManager.h"
 #include "nsIDOMEventTarget.h"
 
@@ -201,7 +200,7 @@ nsCommandManager::RemoveCommandObserver(nsIObserver *aCommandObserver, const cha
 NS_IMETHODIMP
 nsCommandManager::IsCommandSupported(const char *aCommandName,
                                      nsIDOMWindow *aTargetWindow,
-                                     PRBool *outCommandSupported)
+                                     bool *outCommandSupported)
 {
   NS_ENSURE_ARG_POINTER(outCommandSupported);
 
@@ -216,11 +215,11 @@ nsCommandManager::IsCommandSupported(const char *aCommandName,
 NS_IMETHODIMP
 nsCommandManager::IsCommandEnabled(const char *aCommandName,
                                    nsIDOMWindow *aTargetWindow,
-                                   PRBool *outCommandEnabled)
+                                   bool *outCommandEnabled)
 {
   NS_ENSURE_ARG_POINTER(outCommandEnabled);
   
-  PRBool  commandEnabled = PR_FALSE;
+  bool    commandEnabled = false;
   
   nsCOMPtr<nsIController> controller;
   GetControllerForCommand(aCommandName, aTargetWindow, getter_AddRefs(controller)); 
@@ -276,9 +275,9 @@ nsCommandManager::DoCommand(const char *aCommandName,
 }
 
 nsresult
-nsCommandManager::IsCallerChrome(PRBool *is_caller_chrome)
+nsCommandManager::IsCallerChrome(bool *is_caller_chrome)
 {
-  *is_caller_chrome = PR_FALSE;
+  *is_caller_chrome = false;
   nsresult rv = NS_OK;
   nsCOMPtr<nsIScriptSecurityManager> secMan = 
       do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv);
@@ -301,7 +300,7 @@ nsCommandManager::GetControllerForCommand(const char *aCommand,
 
   // check if we're in content or chrome
   // if we're not chrome we must have a target window or we bail
-  PRBool isChrome = PR_FALSE;
+  bool isChrome = false;
   rv = IsCallerChrome(&isChrome);
   if (NS_FAILED(rv))
     return rv;
@@ -315,15 +314,10 @@ nsCommandManager::GetControllerForCommand(const char *aCommand,
         return NS_ERROR_FAILURE;
   }
 
-  if (aTargetWindow)
-  {
+  if (aTargetWindow) {
     // get the controller for this particular window
-    nsCOMPtr<nsIDOMWindowInternal> domWindowInternal = do_QueryInterface(aTargetWindow);
-    if (!domWindowInternal)
-      return NS_ERROR_FAILURE;
-
     nsCOMPtr<nsIControllers> controllers;
-    rv = domWindowInternal->GetControllers(getter_AddRefs(controllers));
+    rv = aTargetWindow->GetControllers(getter_AddRefs(controllers));
     if (NS_FAILED(rv))
       return rv;
     if (!controllers)

@@ -103,7 +103,7 @@ UnicharBufferImpl::GetBuffer() const
   return mBuffer;
 }
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 UnicharBufferImpl::Grow(PRInt32 aNewSize)
 {
   if (PRUint32(aNewSize) < MIN_BUFFER_SIZE) {
@@ -116,12 +116,12 @@ UnicharBufferImpl::Grow(PRInt32 aNewSize)
     }
     delete[] mBuffer;
     mBuffer = newbuf;
-    return PR_TRUE;
+    return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
-NS_COM nsresult
+nsresult
 NS_NewUnicharBuffer(nsIUnicharBuffer** aInstancePtrResult,
                     nsISupports* aOuter,
                     PRUint32 aBufferSize)

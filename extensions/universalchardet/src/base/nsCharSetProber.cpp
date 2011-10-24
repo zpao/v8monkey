@@ -40,21 +40,21 @@
 #include "prmem.h"
 
 //This filter applies to all scripts which do not use English characters
-PRBool nsCharSetProber::FilterWithoutEnglishLetters(const char* aBuf, PRUint32 aLen, char** newBuf, PRUint32& newLen)
+bool nsCharSetProber::FilterWithoutEnglishLetters(const char* aBuf, PRUint32 aLen, char** newBuf, PRUint32& newLen)
 {
   char *newptr;
   char *prevPtr, *curPtr;
   
-  PRBool meetMSB = PR_FALSE;   
+  bool meetMSB = false;   
   newptr = *newBuf = (char*)PR_Malloc(aLen);
   if (!newptr)
-    return PR_FALSE;
+    return false;
 
   for (curPtr = prevPtr = (char*)aBuf; curPtr < aBuf+aLen; curPtr++)
   {
     if (*curPtr & 0x80)
     {
-      meetMSB = PR_TRUE;
+      meetMSB = true;
     }
     else if (*curPtr < 'A' || (*curPtr > 'Z' && *curPtr < 'a') || *curPtr > 'z') 
     {
@@ -65,7 +65,7 @@ PRBool nsCharSetProber::FilterWithoutEnglishLetters(const char* aBuf, PRUint32 a
         while (prevPtr < curPtr) *newptr++ = *prevPtr++;  
         prevPtr++;
         *newptr++ = ' ';
-        meetMSB = PR_FALSE;
+        meetMSB = false;
       }
       else //ignore current segment. (either because it is just a symbol or just an English word)
         prevPtr = curPtr+1;
@@ -76,27 +76,27 @@ PRBool nsCharSetProber::FilterWithoutEnglishLetters(const char* aBuf, PRUint32 a
 
   newLen = newptr - *newBuf;
 
-  return PR_TRUE;
+  return true;
 }
 
 //This filter applies to all scripts which contain both English characters and upper ASCII characters.
-PRBool nsCharSetProber::FilterWithEnglishLetters(const char* aBuf, PRUint32 aLen, char** newBuf, PRUint32& newLen)
+bool nsCharSetProber::FilterWithEnglishLetters(const char* aBuf, PRUint32 aLen, char** newBuf, PRUint32& newLen)
 {
   //do filtering to reduce load to probers
   char *newptr;
   char *prevPtr, *curPtr;
-  PRBool isInTag = PR_FALSE;
+  bool isInTag = false;
 
   newptr = *newBuf = (char*)PR_Malloc(aLen);
   if (!newptr)
-    return PR_FALSE;
+    return false;
 
   for (curPtr = prevPtr = (char*)aBuf; curPtr < aBuf+aLen; curPtr++)
   {
     if (*curPtr == '>')
-      isInTag = PR_FALSE;
+      isInTag = false;
     else if (*curPtr == '<')
-      isInTag = PR_TRUE;
+      isInTag = true;
 
     if (!(*curPtr & 0x80) &&
         (*curPtr < 'A' || (*curPtr > 'Z' && *curPtr < 'a') || *curPtr > 'z') )
@@ -121,5 +121,5 @@ PRBool nsCharSetProber::FilterWithEnglishLetters(const char* aBuf, PRUint32 aLen
 
   newLen = newptr - *newBuf;
 
-  return PR_TRUE;
+  return true;
 }

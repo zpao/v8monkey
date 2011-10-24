@@ -478,8 +478,7 @@ Statement::GetParameterIndex(const nsACString &aName,
   // the colon for SQLite.
   nsCAutoString name(":");
   name.Append(aName);
-  int ind = ::sqlite3_bind_parameter_index(mDBStatement,
-                                           PromiseFlatCString(name).get());
+  int ind = ::sqlite3_bind_parameter_index(mDBStatement, name.get());
   if (ind  == 0) // Named parameter not found.
     return NS_ERROR_INVALID_ARG;
 
@@ -578,7 +577,7 @@ Statement::Execute()
   if (!mDBStatement)
     return NS_ERROR_NOT_INITIALIZED;
 
-  PRBool ret;
+  bool ret;
   nsresult rv = ExecuteStep(&ret);
   nsresult rv2 = Reset();
 
@@ -586,7 +585,7 @@ Statement::Execute()
 }
 
 NS_IMETHODIMP
-Statement::ExecuteStep(PRBool *_moreResults)
+Statement::ExecuteStep(bool *_moreResults)
 {
   if (!mDBStatement)
     return NS_ERROR_NOT_INITIALIZED;
@@ -629,24 +628,24 @@ Statement::ExecuteStep(PRBool *_moreResults)
   if (srv == SQLITE_ROW) {
     // we got a row back
     mExecuting = true;
-    *_moreResults = PR_TRUE;
+    *_moreResults = true;
     return NS_OK;
   }
   else if (srv == SQLITE_DONE) {
     // statement is done (no row returned)
     mExecuting = false;
-    *_moreResults = PR_FALSE;
+    *_moreResults = false;
     return NS_OK;
   }
   else if (srv == SQLITE_BUSY || srv == SQLITE_MISUSE) {
-    mExecuting = PR_FALSE;
+    mExecuting = false;
   }
   else if (mExecuting) {
 #ifdef PR_LOGGING
     PR_LOG(gStorageLog, PR_LOG_ERROR,
            ("SQLite error after mExecuting was true!"));
 #endif
-    mExecuting = PR_FALSE;
+    mExecuting = false;
   }
 
   return convertResultCode(srv);
@@ -786,7 +785,7 @@ Statement::GetUTF8String(PRUint32 aIndex,
     // NULL columns should have IsVoid set to distinguish them from the empty
     // string.
     _value.Truncate(0);
-    _value.SetIsVoid(PR_TRUE);
+    _value.SetIsVoid(true);
   }
   else {
     const char *value =
@@ -809,7 +808,7 @@ Statement::GetString(PRUint32 aIndex,
     // NULL columns should have IsVoid set to distinguish them from the empty
     // string.
     _value.Truncate(0);
-    _value.SetIsVoid(PR_TRUE);
+    _value.SetIsVoid(true);
   } else {
     const PRUnichar *value =
       static_cast<const PRUnichar *>(::sqlite3_column_text16(mDBStatement,
@@ -883,7 +882,7 @@ Statement::GetSharedBlob(PRUint32 aIndex,
 
 NS_IMETHODIMP
 Statement::GetIsNull(PRUint32 aIndex,
-                     PRBool *_isNull)
+                     bool *_isNull)
 {
   // Get type of Index will check aIndex for us, so we don't have to.
   PRInt32 type;

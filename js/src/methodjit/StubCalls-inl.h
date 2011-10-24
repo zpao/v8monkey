@@ -38,7 +38,7 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#ifndef jslogic_h_inl__
+#if !defined jslogic_h_inl__ && defined JS_METHODJIT
 #define jslogic_h_inl__
 
 namespace js {
@@ -51,8 +51,8 @@ ThrowException(VMFrame &f)
     *f.returnAddressLocation() = ptr;
 }
 
-#define THROW()   do { ThrowException(f); return; } while (0)
-#define THROWV(v) do { ThrowException(f); return v; } while (0)
+#define THROW()   do { mjit::ThrowException(f); return; } while (0)
+#define THROWV(v) do { mjit::ThrowException(f); return v; } while (0)
 
 static inline JSObject *
 ValueToObject(JSContext *cx, Value *vp)
@@ -76,7 +76,7 @@ ReportAtomNotDefined(JSContext *cx, JSAtom *atom)
             (shape)->slot != SHAPE_INVALID_SLOT &&                            \
             !(obj)->brandedOrHasMethodBarrier()) {                            \
             /* Fast path for, e.g., plain Object instance properties. */      \
-            (obj)->nativeSetSlot((shape)->slot, *vp);                         \
+            (obj)->nativeSetSlotWithType(cx, shape, *vp);                     \
         } else {                                                              \
             if (!js_NativeSet(cx, obj, shape, false, strict, vp))             \
                 THROW();                                                      \

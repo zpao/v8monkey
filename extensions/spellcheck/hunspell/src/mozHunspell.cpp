@@ -41,6 +41,7 @@
  *                 Harri Pitkanen
  *                 Andras Timar
  *                 Tor Lillqvist
+ *                 Jesper Kristensen (mail@jesperkristensen.dk)
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -70,7 +71,10 @@
 #include "nsUnicharUtilCIID.h"
 #include "nsUnicharUtils.h"
 #include "nsCRT.h"
+#include "mozInlineSpellChecker.h"
+#include "mozilla/Services.h"
 #include <stdlib.h>
+#include "nsIMemoryReporter.h"
 
 static NS_DEFINE_CID(kCharsetConverterManagerCID, NS_ICHARSETCONVERTERMANAGER_CID);
 static NS_DEFINE_CID(kUnicharUtilCID, NS_UNICHARUTIL_CID);
@@ -91,6 +95,28 @@ NS_IMPL_CYCLE_COLLECTION_3(mozHunspell,
                            mEncoder,
                            mDecoder)
 
+// Memory reporting stuff
+static PRInt64 gHunspellAllocatedSize = 0;
+
+void HunspellReportMemoryAllocation(void* ptr) {
+  gHunspellAllocatedSize += moz_malloc_usable_size(ptr);
+}
+void HunspellReportMemoryDeallocation(void* ptr) {
+  gHunspellAllocatedSize -= moz_malloc_usable_size(ptr);
+}
+static PRInt64 HunspellGetCurrentAllocatedSize() {
+  return gHunspellAllocatedSize;
+}
+
+NS_MEMORY_REPORTER_IMPLEMENT(Hunspell,
+    "explicit/spell-check",
+    KIND_HEAP,
+    UNITS_BYTES,
+    HunspellGetCurrentAllocatedSize,
+    "Memory used by the Hunspell spell checking engine.  This number accounts "
+    "for the memory in use by Hunspell's internal data structures."
+)
+
 nsresult
 mozHunspell::Init()
 {
@@ -99,11 +125,14 @@ mozHunspell::Init()
 
   LoadDictionaryList();
 
-  nsCOMPtr<nsIObserverService> obs =
-    do_GetService("@mozilla.org/observer-service;1");
+  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
   if (obs) {
-    obs->AddObserver(this, "profile-do-change", PR_TRUE);
+    obs->AddObserver(this, "profile-do-change", true);
+    obs->AddObserver(this, "profile-after-change", true);
   }
+
+  mHunspellReporter = new NS_MEMORY_REPORTER_NAME(Hunspell);
+  NS_RegisterMemoryReporter(mHunspellReporter);
 
   return NS_OK;
 }
@@ -112,15 +141,14 @@ mozHunspell::~mozHunspell()
 {
   mPersonalDictionary = nsnull;
   delete mHunspell;
+
+  NS_UnregisterMemoryReporter(mHunspellReporter);
 }
 
 /* attribute wstring dictionary; */
 NS_IMETHODIMP mozHunspell::GetDictionary(PRUnichar **aDictionary)
 {
   NS_ENSURE_ARG_POINTER(aDictionary);
-
-  if (mDictionary.IsEmpty())
-    return NS_ERROR_NOT_INITIALIZED;
 
   *aDictionary = ToNewUnicode(mDictionary);
   return *aDictionary ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
@@ -133,8 +161,23 @@ NS_IMETHODIMP mozHunspell::SetDictionary(const PRUnichar *aDictionary)
 {
   NS_ENSURE_ARG_POINTER(aDictionary);
 
-  if (mDictionary.Equals(aDictionary))
+  if (nsDependentString(aDictionary).IsEmpty()) {
+    delete mHunspell;
+    mHunspell = nsnull;
+    mDictionary.AssignLiteral("");
+    mAffixFileName.AssignLiteral("");
+    mLanguage.AssignLiteral("");
+    mDecoder = nsnull;
+    mEncoder = nsnull;
+
+    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+    if (obs) {
+      obs->NotifyObservers(nsnull,
+                           SPELLCHECK_DICTIONARY_UPDATE_NOTIFICATION,
+                           nsnull);
+    }
     return NS_OK;
+  }
 
   nsIFile* affFile = mDictionaries.GetWeak(nsDependentString(aDictionary));
   if (!affFile)
@@ -150,6 +193,9 @@ NS_IMETHODIMP mozHunspell::SetDictionary(const PRUnichar *aDictionary)
   nsresult rv = affFile->GetNativePath(affFileName);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  if (mAffixFileName.Equals(affFileName.get()))
+    return NS_OK;
+
   dictFileName = affFileName;
   PRInt32 dotPos = dictFileName.RFindChar('.');
   if (dotPos == -1)
@@ -163,6 +209,7 @@ NS_IMETHODIMP mozHunspell::SetDictionary(const PRUnichar *aDictionary)
   delete mHunspell;
 
   mDictionary = aDictionary;
+  mAffixFileName = affFileName;
 
   mHunspell = new Hunspell(affFileName.get(),
                          dictFileName.get());
@@ -194,6 +241,13 @@ NS_IMETHODIMP mozHunspell::SetDictionary(const PRUnichar *aDictionary)
   else
     mLanguage = Substring(mDictionary, 0, pos);
 
+  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+  if (obs) {
+    obs->NotifyObservers(nsnull,
+                         SPELLCHECK_DICTIONARY_UPDATE_NOTIFICATION,
+                         nsnull);
+  }
+
   return NS_OK;
 }
 
@@ -210,20 +264,20 @@ NS_IMETHODIMP mozHunspell::GetLanguage(PRUnichar **aLanguage)
 }
 
 /* readonly attribute boolean providesPersonalDictionary; */
-NS_IMETHODIMP mozHunspell::GetProvidesPersonalDictionary(PRBool *aProvidesPersonalDictionary)
+NS_IMETHODIMP mozHunspell::GetProvidesPersonalDictionary(bool *aProvidesPersonalDictionary)
 {
   NS_ENSURE_ARG_POINTER(aProvidesPersonalDictionary);
 
-  *aProvidesPersonalDictionary = PR_FALSE;
+  *aProvidesPersonalDictionary = false;
   return NS_OK;
 }
 
 /* readonly attribute boolean providesWordUtils; */
-NS_IMETHODIMP mozHunspell::GetProvidesWordUtils(PRBool *aProvidesWordUtils)
+NS_IMETHODIMP mozHunspell::GetProvidesWordUtils(bool *aProvidesWordUtils)
 {
   NS_ENSURE_ARG_POINTER(aProvidesWordUtils);
 
-  *aProvidesWordUtils = PR_FALSE;
+  *aProvidesWordUtils = false;
   return NS_OK;
 }
 
@@ -257,7 +311,7 @@ struct AppendNewStruct
 {
   PRUnichar **dics;
   PRUint32 count;
-  PRBool failed;
+  bool failed;
 };
 
 static PLDHashOperator
@@ -266,7 +320,7 @@ AppendNewString(const nsAString& aString, nsIFile* aFile, void* aClosure)
   AppendNewStruct *ans = (AppendNewStruct*) aClosure;
   ans->dics[ans->count] = ToNewUnicode(aString);
   if (!ans->dics[ans->count]) {
-    ans->failed = PR_TRUE;
+    ans->failed = true;
     return PL_DHASH_STOP;
   }
 
@@ -284,7 +338,7 @@ NS_IMETHODIMP mozHunspell::GetDictionaryList(PRUnichar ***aDictionaries,
   AppendNewStruct ans = {
     (PRUnichar**) NS_Alloc(sizeof(PRUnichar*) * mDictionaries.Count()),
     0,
-    PR_FALSE
+    false
   };
 
   // This pointer is used during enumeration
@@ -305,6 +359,14 @@ NS_IMETHODIMP mozHunspell::GetDictionaryList(PRUnichar ***aDictionaries,
   return NS_OK;
 }
 
+static PLDHashOperator
+FindFirstString(const nsAString& aString, nsIFile* aFile, void* aClosure)
+{
+  nsAString *dic = (nsAString*) aClosure;
+  dic->Assign(aString);
+  return PL_DHASH_STOP;
+}
+
 void
 mozHunspell::LoadDictionaryList()
 {
@@ -317,6 +379,7 @@ mozHunspell::LoadDictionaryList()
   if (!dirSvc)
     return;
 
+  // find built in dictionaries
   nsCOMPtr<nsIFile> dictDir;
   rv = dirSvc->Get(DICTIONARY_SEARCH_DIRECTORY,
                    NS_GET_IID(nsIFile), getter_AddRefs(dictDir));
@@ -337,20 +400,21 @@ mozHunspell::LoadDictionaryList()
     nsCOMPtr<nsIFile> appDir;
     rv = dirSvc->Get(NS_XPCOM_CURRENT_PROCESS_DIR,
                      NS_GET_IID(nsIFile), getter_AddRefs(appDir));
-    PRBool equals;
+    bool equals;
     if (NS_SUCCEEDED(rv) && NS_SUCCEEDED(appDir->Equals(greDir, &equals)) && !equals) {
       appDir->AppendNative(NS_LITERAL_CSTRING("dictionaries"));
       LoadDictionariesFromDir(appDir);
     }
   }
 
+  // find dictionaries from extensions requiring restart
   nsCOMPtr<nsISimpleEnumerator> dictDirs;
   rv = dirSvc->Get(DICTIONARY_SEARCH_DIRECTORY_LIST,
                    NS_GET_IID(nsISimpleEnumerator), getter_AddRefs(dictDirs));
   if (NS_FAILED(rv))
     return;
 
-  PRBool hasMore;
+  bool hasMore;
   while (NS_SUCCEEDED(dictDirs->HasMoreElements(&hasMore)) && hasMore) {
     nsCOMPtr<nsISupports> elem;
     dictDirs->GetNext(getter_AddRefs(elem));
@@ -359,6 +423,29 @@ mozHunspell::LoadDictionaryList()
     if (dictDir)
       LoadDictionariesFromDir(dictDir);
   }
+
+  // find dictionaries from restartless extensions
+  for (PRUint32 i = 0; i < mDynamicDirectories.Count(); i++) {
+    LoadDictionariesFromDir(mDynamicDirectories[i]);
+  }
+
+  // Now we have finished updating the list of dictionaries, update the current
+  // dictionary and any editors which may use it.
+  mozInlineSpellChecker::UpdateCanEnableInlineSpellChecking();
+
+  // Check if the current dictionary is still available.
+  // If not, try to replace it with another dictionary of the same language.
+  if (!mDictionary.IsEmpty()) {
+    rv = SetDictionary(mDictionary.get());
+    if (NS_SUCCEEDED(rv))
+      return;
+  }
+
+  // If the current dictionary has gone, and we don't have a good replacement,
+  // set no current dictionary.
+  if (!mDictionary.IsEmpty()) {
+    SetDictionary(EmptyString().get());
+  }
 }
 
 NS_IMETHODIMP
@@ -366,7 +453,7 @@ mozHunspell::LoadDictionariesFromDir(nsIFile* aDir)
 {
   nsresult rv;
 
-  PRBool check = PR_FALSE;
+  bool check = false;
   rv = aDir->Exists(&check);
   if (NS_FAILED(rv) || !check)
     return NS_ERROR_UNEXPECTED;
@@ -433,7 +520,7 @@ nsresult mozHunspell::ConvertCharset(const PRUnichar* aStr, char ** aDst)
 }
 
 /* boolean Check (in wstring word); */
-NS_IMETHODIMP mozHunspell::Check(const PRUnichar *aWord, PRBool *aResult)
+NS_IMETHODIMP mozHunspell::Check(const PRUnichar *aWord, bool *aResult)
 {
   NS_ENSURE_ARG_POINTER(aWord);
   NS_ENSURE_ARG_POINTER(aResult);
@@ -507,10 +594,27 @@ NS_IMETHODIMP
 mozHunspell::Observe(nsISupports* aSubj, const char *aTopic,
                     const PRUnichar *aData)
 {
-  NS_ASSERTION(!strcmp(aTopic, "profile-do-change"),
+  NS_ASSERTION(!strcmp(aTopic, "profile-do-change")
+               || !strcmp(aTopic, "profile-after-change"),
                "Unexpected observer topic");
 
   LoadDictionaryList();
 
+  return NS_OK;
+}
+
+/* void addDirectory(in nsIFile dir); */
+NS_IMETHODIMP mozHunspell::AddDirectory(nsIFile *aDir)
+{
+  mDynamicDirectories.AppendObject(aDir);
+  LoadDictionaryList();
+  return NS_OK;
+}
+
+/* void removeDirectory(in nsIFile dir); */
+NS_IMETHODIMP mozHunspell::RemoveDirectory(nsIFile *aDir)
+{
+  mDynamicDirectories.RemoveObject(aDir);
+  LoadDictionaryList();
   return NS_OK;
 }

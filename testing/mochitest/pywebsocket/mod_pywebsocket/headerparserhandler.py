@@ -1,4 +1,4 @@
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -31,8 +31,9 @@
 """PythonHeaderParserHandler for mod_pywebsocket.
 
 Apache HTTP Server and mod_python must be configured such that this
-function is called to handle Web Socket request.
+function is called to handle WebSocket request.
 """
+
 
 import logging
 
@@ -57,7 +58,8 @@ _PYOPT_ALLOW_DRAFT75 = 'mod_pywebsocket.allow_draft75'
 
 
 class ApacheLogHandler(logging.Handler):
-    """Wrapper logging.Handler to emit log message to apache's error.log"""
+    """Wrapper logging.Handler to emit log message to apache's error.log."""
+
     _LEVELS = {
         logging.DEBUG: apache.APLOG_DEBUG,
         logging.INFO: apache.APLOG_INFO,
@@ -65,20 +67,47 @@ class ApacheLogHandler(logging.Handler):
         logging.ERROR: apache.APLOG_ERR,
         logging.CRITICAL: apache.APLOG_CRIT,
         }
+
     def __init__(self, request=None):
         logging.Handler.__init__(self)
         self.log_error = apache.log_error
         if request is not None:
-             self.log_error = request.log_error
+            self.log_error = request.log_error
 
     def emit(self, record):
         apache_level = apache.APLOG_DEBUG
         if record.levelno in ApacheLogHandler._LEVELS:
             apache_level = ApacheLogHandler._LEVELS[record.levelno]
-        self.log_error(record.getMessage(), apache_level)
+
+        # "server" parameter must be passed to have "level" parameter work.
+        # If only "level" parameter is passed, nothing shows up on Apache's
+        # log. However, at this point, we cannot get the server object of the
+        # virtual host which will process WebSocket requests. The only server
+        # object we can get here is apache.main_server. But Wherever (server
+        # configuration context or virtual host context) we put
+        # PythonHeaderParserHandler directive, apache.main_server just points
+        # the main server instance (not any of virtual server instance). Then,
+        # Apache follows LogLevel directive in the server configuration context
+        # to filter logs. So, we need to specify LogLevel in the server
+        # configuration context. Even if we specify "LogLevel debug" in the
+        # virtual host context which actually handles WebSocket connections,
+        # DEBUG level logs never show up unless "LogLevel debug" is specified
+        # in the server configuration context.
+        #
+        # TODO(tyoshino): Provide logging methods on request object. When
+        # request is mp_request object (when used together with Apache), the
+        # methods call request.log_error indirectly. When request is
+        # _StandaloneRequest, the methods call Python's logging facility which
+        # we create in standalone.py.
+        self.log_error(record.getMessage(), apache_level, apache.main_server)
 
 
-logging.getLogger("mod_pywebsocket").addHandler(ApacheLogHandler())
+_LOGGER = logging.getLogger('mod_pywebsocket')
+# Logs are filtered by Apache based on LogLevel directive in Apache
+# configuration file. We must just pass logs for all levels to
+# ApacheLogHandler.
+_LOGGER.setLevel(logging.DEBUG)
+_LOGGER.addHandler(ApacheLogHandler())
 
 
 def _create_dispatcher():
@@ -111,12 +140,13 @@ def headerparserhandler(request):
 
     try:
         allowDraft75 = apache.main_server.get_options().get(
-		_PYOPT_ALLOW_DRAFT75, None)
+            _PYOPT_ALLOW_DRAFT75, None)
         handshaker = handshake.Handshaker(request, _dispatcher,
                                           allowDraft75=allowDraft75)
         handshaker.do_handshake()
-        request.log_error('mod_pywebsocket: resource: %r' % request.ws_resource,
-                          apache.APLOG_DEBUG)
+        request.log_error(
+            'mod_pywebsocket: resource: %r' % request.ws_resource,
+            apache.APLOG_DEBUG)
         try:
             _dispatcher.transfer_data(request)
         except Exception, e:
@@ -132,6 +162,8 @@ def headerparserhandler(request):
     except dispatch.DispatchError, e:
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
         return apache.DECLINED
+    # Set assbackwards to suppress response header generation by Apache.
+    request.assbackwards = 1
     return apache.DONE  # Return DONE such that no other handlers are invoked.
 
 

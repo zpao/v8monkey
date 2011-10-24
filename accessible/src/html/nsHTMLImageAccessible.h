@@ -57,7 +57,6 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIAccessible
-  NS_IMETHOD GetNumActions(PRUint8 *aNumActions);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
   NS_IMETHOD DoAction(PRUint8 index);
 
@@ -70,13 +69,16 @@ public:
   virtual PRUint64 NativeState();
   virtual nsresult GetAttributesInternal(nsIPersistentProperties *aAttributes);
 
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
+
 private:
   /**
    * Determine if this image accessible has a longdesc attribute.
    *
    * @returns  true if the longdesc attribute is present.
    */
-  PRBool HasLongDesc();
+  bool HasLongDesc();
   
   /**
    * Used by GetActionName and DoAction to ensure the index for opening the
@@ -87,7 +89,7 @@ private:
    *
    * @returns  true if index is valid for longdesc action.
    */
-  PRBool IsValidLongDescIndex(PRUint8 aIndex);
+  bool IsValidLongDescIndex(PRUint8 aIndex);
 };
 
 #endif

@@ -75,8 +75,12 @@
  *
  * "Rhino is not a member of the Monkey family"
  *
- * Before adding a new MSG_DEF at the end, look for JSMSG_UNUSED<n> free
- * index placeholders in the middle of the list.
+ * When removing MSG_DEFs, convert them to JSMSG_UNUSED<n> placeholders:
+ *
+ *    MSG_DEF(JSMSG_UNUSED7,                  7, 0, JSEXN_NONE, "")
+ *
+ * Before adding a new MSG_DEF at the end, look for existing JSMSG_UNUSED<n>
+ * free index placeholders in the middle of the list.
  */
 
 MSG_DEF(JSMSG_NOT_AN_ERROR,             0, 0, JSEXN_NONE, "<Error #0 is reserved>")
@@ -103,7 +107,7 @@ MSG_DEF(JSMSG_BAD_FORMAL,              20, 0, JSEXN_SYNTAXERR, "malformed formal
 MSG_DEF(JSMSG_CANT_DELETE,             21, 1, JSEXN_TYPEERR, "property {0} is non-configurable and can't be deleted")
 MSG_DEF(JSMSG_NOT_FUNCTION,            22, 1, JSEXN_TYPEERR, "{0} is not a function")
 MSG_DEF(JSMSG_NOT_CONSTRUCTOR,         23, 1, JSEXN_TYPEERR, "{0} is not a constructor")
-MSG_DEF(JSMSG_SCRIPT_STACK_QUOTA,      24, 0, JSEXN_INTERNALERR, "script stack space quota is exhausted")
+MSG_DEF(JSMSG_INVALID_DATE,            24, 0, JSEXN_RANGEERR, "invalid date")
 MSG_DEF(JSMSG_TOO_DEEP,                25, 1, JSEXN_INTERNALERR, "{0} nested too deeply")
 MSG_DEF(JSMSG_OVER_RECURSED,           26, 0, JSEXN_INTERNALERR, "too much recursion")
 MSG_DEF(JSMSG_IN_NOT_OBJECT,           27, 1, JSEXN_TYPEERR, "invalid 'in' operand {0}")
@@ -140,7 +144,7 @@ MSG_DEF(JSMSG_BAD_CLASS_RANGE,         57, 0, JSEXN_SYNTAXERR, "invalid range in
 MSG_DEF(JSMSG_BAD_REGEXP_FLAG,         58, 1, JSEXN_SYNTAXERR, "invalid regular expression flag {0}")
 MSG_DEF(JSMSG_NO_INPUT,                59, 5, JSEXN_SYNTAXERR, "no input for /{0}/{1}{2}{3}{4}")
 MSG_DEF(JSMSG_CANT_OPEN,               60, 2, JSEXN_ERR, "can't open {0}: {1}")
-MSG_DEF(JSMSG_BAD_STRING_MASK,         61, 1, JSEXN_ERR, "invalid string escape mask {0}")
+MSG_DEF(JSMSG_TOO_MANY_FUN_APPLY_ARGS, 61, 0, JSEXN_RANGEERR, "arguments array passed to Function.prototype.apply is too large")
 MSG_DEF(JSMSG_UNMATCHED_RIGHT_PAREN,   62, 0, JSEXN_SYNTAXERR, "unmatched ) in regular expression")
 MSG_DEF(JSMSG_END_OF_DATA,             63, 0, JSEXN_INTERNALERR, "unexpected end of data")
 MSG_DEF(JSMSG_SEEK_BEYOND_START,       64, 0, JSEXN_INTERNALERR, "illegal seek beyond start")
@@ -309,7 +313,7 @@ MSG_DEF(JSMSG_EVAL_ARITY,             226, 0, JSEXN_TYPEERR, "eval accepts only 
 MSG_DEF(JSMSG_MISSING_FUN_ARG,        227, 2, JSEXN_TYPEERR, "missing argument {0} when calling function {1}")
 MSG_DEF(JSMSG_JSON_BAD_PARSE,         228, 1, JSEXN_SYNTAXERR, "JSON.parse: {0}")
 MSG_DEF(JSMSG_JSON_BAD_STRINGIFY,     229, 0, JSEXN_ERR, "JSON.stringify")
-MSG_DEF(JSMSG_XDR_CLOSURE_WRAPPER,    230, 1, JSEXN_INTERNALERR, "can't XDR closure wrapper for function {0}")
+MSG_DEF(JSMSG_NOT_CALLABLE_OR_UNDEFINED, 230, 0, JSEXN_TYPEERR, "value is not a function or undefined")
 MSG_DEF(JSMSG_NOT_NONNULL_OBJECT,     231, 0, JSEXN_TYPEERR, "value is not a non-null object")
 MSG_DEF(JSMSG_DEPRECATED_OCTAL,       232, 0, JSEXN_SYNTAXERR, "octal literals and octal escape sequences are deprecated")
 MSG_DEF(JSMSG_STRICT_CODE_WITH,       233, 0, JSEXN_SYNTAXERR, "strict mode code may not contain 'with' statements")
@@ -349,4 +353,20 @@ MSG_DEF(JSMSG_NON_NATIVE_SCOPE,       266, 0, JSEXN_TYPEERR, "non-native scope o
 MSG_DEF(JSMSG_STRICT_FUNCTION_STATEMENT, 267, 0, JSEXN_SYNTAXERR, "in strict mode code, functions may be declared only at top level or immediately within another function")
 MSG_DEF(JSMSG_INVALID_FOR_IN_INIT,    268, 0, JSEXN_SYNTAXERR, "for-in loop let declaration may not have an initializer")
 MSG_DEF(JSMSG_CLEARED_SCOPE,          269, 0, JSEXN_TYPEERR, "attempt to run compile-and-go script on a cleared scope")
-MSG_DEF(JSMSG_INVALID_DATE,           270, 0, JSEXN_RANGEERR, "invalid date")
+MSG_DEF(JSMSG_MALFORMED_ESCAPE,       270, 1, JSEXN_SYNTAXERR, "malformed {0} character escape sequence")
+MSG_DEF(JSMSG_BAD_GENEXP_BODY,        271, 1, JSEXN_SYNTAXERR, "illegal use of {0} in generator expression")
+MSG_DEF(JSMSG_XML_PROTO_FORBIDDEN,    272, 0, JSEXN_TYPEERR, "can't set prototype of an object to an XML value")
+MSG_DEF(JSMSG_UNNAMED_FUNCTION_STMT,  273, 0, JSEXN_SYNTAXERR, "function statement requires a name")
+MSG_DEF(JSMSG_CCW_REQUIRED,           274, 1, JSEXN_TYPEERR, "{0}: argument must be an object from a different compartment")
+MSG_DEF(JSMSG_DEBUG_BAD_RESUMPTION,   275, 0, JSEXN_TYPEERR, "debugger resumption value must be undefined, {throw: val}, {return: val}, or null")
+MSG_DEF(JSMSG_ASSIGN_FUNCTION_OR_NULL, 276, 1, JSEXN_TYPEERR, "value assigned to {0} must be a function or null")
+MSG_DEF(JSMSG_DEBUG_NOT_LIVE,         277, 1, JSEXN_ERR, "{0} is not live")
+MSG_DEF(JSMSG_DEBUG_OBJECT_WRONG_OWNER, 278, 0, JSEXN_TYPEERR, "Debugger.Object belongs to a different Debugger")
+MSG_DEF(JSMSG_DEBUG_OBJECT_PROTO,     279, 0, JSEXN_TYPEERR, "Debugger.Object.prototype is not a valid Debugger.Object")
+MSG_DEF(JSMSG_DEBUG_LOOP,             280, 0, JSEXN_TYPEERR, "cannot debug an object in same compartment as debugger or a compartment that is already debugging the debugger")
+MSG_DEF(JSMSG_DEBUG_NOT_IDLE,         281, 0, JSEXN_ERR, "can't start debugging: a debuggee script is on the stack")
+MSG_DEF(JSMSG_DEBUG_BAD_OFFSET,       282, 0, JSEXN_TYPEERR, "invalid script offset")
+MSG_DEF(JSMSG_DEBUG_BAD_LINE,         283, 0, JSEXN_TYPEERR, "invalid line number")
+MSG_DEF(JSMSG_DEBUG_NOT_DEBUGGING,    284, 0, JSEXN_ERR, "can't set breakpoint: script global is not a debuggee")
+MSG_DEF(JSMSG_DEBUG_COMPARTMENT_MISMATCH, 285, 2, JSEXN_TYPEERR, "{0}: descriptor .{1} property is an object in a different compartment than the target object")
+MSG_DEF(JSMSG_DEBUG_NOT_SCRIPT_FRAME, 286, 0, JSEXN_ERR, "stack frame is not running JavaScript code")

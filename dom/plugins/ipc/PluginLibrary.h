@@ -52,6 +52,7 @@ class nsCString;
 struct nsIntRect;
 struct nsIntSize;
 class nsNPAPIPlugin;
+class nsGUIEvent;
 
 namespace mozilla {
 namespace layers {
@@ -103,8 +104,9 @@ public:
   virtual nsresult GetImageSize(NPP instance, nsIntSize* aSize) = 0;
   virtual bool UseAsyncPainting() = 0;
 #if defined(XP_MACOSX)
-  virtual nsresult IsRemoteDrawingCoreAnimation(NPP instance, PRBool *aDrawing) = 0;
+  virtual nsresult IsRemoteDrawingCoreAnimation(NPP instance, bool *aDrawing) = 0;
 #endif
+
   /**
    * The next three methods are the third leg in the trip to
    * PluginInstanceParent.  They approximately follow the ReadbackSink
@@ -115,6 +117,9 @@ public:
                                          const nsIntRect&, gfxContext**) = 0;
   virtual nsresult EndUpdateBackground(NPP instance,
                                        gfxContext*, const nsIntRect&) = 0;
+#if defined(MOZ_WIDGET_QT) && (MOZ_PLATFORM_MAEMO == 6)
+  virtual nsresult HandleGUIEvent(NPP instance, const nsGUIEvent&, bool*) = 0;
+#endif
 };
 
 

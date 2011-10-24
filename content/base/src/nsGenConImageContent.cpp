@@ -55,12 +55,15 @@ public:
   nsGenConImageContent(already_AddRefed<nsINodeInfo> aNodeInfo)
     : nsXMLElement(aNodeInfo)
   {
+    // nsImageLoadingContent starts out broken, so we start out
+    // suppressed to match it.
+    AddStatesSilently(NS_EVENT_STATE_SUPPRESSED);
   }
 
   nsresult Init(imgIRequest* aImageRequest)
   {
     // No need to notify, since we have no frame.
-    return UseAsPrimaryRequest(aImageRequest, PR_FALSE);
+    return UseAsPrimaryRequest(aImageRequest, false);
   }
 
   // nsIContent overrides

@@ -87,59 +87,59 @@ nsSecurityWarningDialogs::Init()
 }
 
 NS_IMETHODIMP 
-nsSecurityWarningDialogs::ConfirmEnteringSecure(nsIInterfaceRequestor *ctx, PRBool *_retval)
+nsSecurityWarningDialogs::ConfirmEnteringSecure(nsIInterfaceRequestor *ctx, bool *_retval)
 {
   nsresult rv;
 
   rv = AlertDialog(ctx, ENTER_SITE_PREF, 
                    NS_LITERAL_STRING("EnterSecureMessage").get(),
                    NS_LITERAL_STRING("EnterSecureShowAgain").get(),
-                   PR_FALSE);
+                   false);
 
-  *_retval = PR_TRUE;
+  *_retval = true;
   return rv;
 }
 
 NS_IMETHODIMP 
-nsSecurityWarningDialogs::ConfirmEnteringWeak(nsIInterfaceRequestor *ctx, PRBool *_retval)
+nsSecurityWarningDialogs::ConfirmEnteringWeak(nsIInterfaceRequestor *ctx, bool *_retval)
 {
   nsresult rv;
 
   rv = AlertDialog(ctx, WEAK_SITE_PREF,
                    NS_LITERAL_STRING("WeakSecureMessage").get(),
                    NS_LITERAL_STRING("WeakSecureShowAgain").get(),
-                   PR_FALSE);
+                   false);
 
-  *_retval = PR_TRUE;
+  *_retval = true;
   return rv;
 }
 
 NS_IMETHODIMP 
-nsSecurityWarningDialogs::ConfirmLeavingSecure(nsIInterfaceRequestor *ctx, PRBool *_retval)
+nsSecurityWarningDialogs::ConfirmLeavingSecure(nsIInterfaceRequestor *ctx, bool *_retval)
 {
   nsresult rv;
 
   rv = AlertDialog(ctx, LEAVE_SITE_PREF, 
                    NS_LITERAL_STRING("LeaveSecureMessage").get(),
                    NS_LITERAL_STRING("LeaveSecureShowAgain").get(),
-                   PR_FALSE);
+                   false);
 
-  *_retval = PR_TRUE;
+  *_retval = true;
   return rv;
 }
 
 
 NS_IMETHODIMP 
-nsSecurityWarningDialogs::ConfirmMixedMode(nsIInterfaceRequestor *ctx, PRBool *_retval)
+nsSecurityWarningDialogs::ConfirmMixedMode(nsIInterfaceRequestor *ctx, bool *_retval)
 {
   nsresult rv;
 
   rv = AlertDialog(ctx, MIXEDCONTENT_PREF, 
                    NS_LITERAL_STRING("MixedContentMessage").get(),
                    NS_LITERAL_STRING("MixedContentShowAgain").get(),
-                   PR_TRUE);
+                   true);
 
-  *_retval = PR_TRUE;
+  *_retval = true;
   return rv;
 }
 
@@ -173,9 +173,9 @@ nsAsyncAlert::Run()
   nsresult rv;
 
   // Get user's preference for this alert
-  PRBool prefValue;
+  bool prefValue;
   rv = mPrefBranch->GetBoolPref(mPrefName.get(), &prefValue);
-  if (NS_FAILED(rv)) prefValue = PR_TRUE;
+  if (NS_FAILED(rv)) prefValue = true;
 
   // Stop if alert is not requested
   if (!prefValue) return NS_OK;
@@ -188,11 +188,11 @@ nsAsyncAlert::Run()
   nsCAutoString showOncePref(mPrefName);
   showOncePref += ".show_once";
 
-  PRBool showOnce = PR_FALSE;
+  bool showOnce = false;
   mPrefBranch->GetBoolPref(showOncePref.get(), &showOnce);
 
   if (showOnce)
-    prefValue = PR_FALSE;
+    prefValue = false;
 
   // Get messages strings from localization file
   nsXPIDLString windowTitle, message, dontShowAgain;
@@ -209,9 +209,9 @@ nsAsyncAlert::Run()
   if (NS_FAILED(rv)) return rv;
       
   if (!prefValue) {
-    mPrefBranch->SetBoolPref(mPrefName.get(), PR_FALSE);
+    mPrefBranch->SetBoolPref(mPrefName.get(), false);
   } else if (showOnce) {
-    mPrefBranch->SetBoolPref(showOncePref.get(), PR_FALSE);
+    mPrefBranch->SetBoolPref(showOncePref.get(), false);
   }
 
   return rv;
@@ -223,7 +223,7 @@ nsSecurityWarningDialogs::AlertDialog(nsIInterfaceRequestor* aCtx,
                                       const char* aPrefName,
                                       const PRUnichar* aDialogMessageName,
                                       const PRUnichar* aShowAgainName,
-                                      PRBool aAsync)
+                                      bool aAsync)
 {
   // Get Prompt to use
   nsCOMPtr<nsIPrompt> prompt = do_GetInterface(aCtx);
@@ -242,7 +242,7 @@ nsSecurityWarningDialogs::AlertDialog(nsIInterfaceRequestor* aCtx,
 
 
 NS_IMETHODIMP 
-nsSecurityWarningDialogs::ConfirmPostToInsecure(nsIInterfaceRequestor *ctx, PRBool* _result)
+nsSecurityWarningDialogs::ConfirmPostToInsecure(nsIInterfaceRequestor *ctx, bool* _result)
 {
   nsresult rv;
 
@@ -255,7 +255,7 @@ nsSecurityWarningDialogs::ConfirmPostToInsecure(nsIInterfaceRequestor *ctx, PRBo
 }
 
 NS_IMETHODIMP 
-nsSecurityWarningDialogs::ConfirmPostToInsecureFromSecure(nsIInterfaceRequestor *ctx, PRBool* _result)
+nsSecurityWarningDialogs::ConfirmPostToInsecureFromSecure(nsIInterfaceRequestor *ctx, bool* _result)
 {
   nsresult rv;
 
@@ -271,22 +271,22 @@ nsresult
 nsSecurityWarningDialogs::ConfirmDialog(nsIInterfaceRequestor *ctx, const char *prefName,
                             const PRUnichar *messageName, 
                             const PRUnichar *showAgainName, 
-                            PRBool* _result)
+                            bool* _result)
 {
   nsresult rv;
 
   // Get user's preference for this alert
   // prefName, showAgainName are null if there is no preference for this dialog
-  PRBool prefValue = PR_TRUE;
+  bool prefValue = true;
   
   if (prefName != nsnull) {
     rv = mPrefBranch->GetBoolPref(prefName, &prefValue);
-    if (NS_FAILED(rv)) prefValue = PR_TRUE;
+    if (NS_FAILED(rv)) prefValue = true;
   }
   
   // Stop if confirm is not requested
   if (!prefValue) {
-    *_result = PR_TRUE;
+    *_result = true;
     return NS_OK;
   }
   
@@ -294,11 +294,11 @@ nsSecurityWarningDialogs::ConfirmDialog(nsIInterfaceRequestor *ctx, const char *
   nsCAutoString showOncePref(prefName);
   showOncePref += ".show_once";
 
-  PRBool showOnce = PR_FALSE;
+  bool showOnce = false;
   mPrefBranch->GetBoolPref(showOncePref.get(), &showOnce);
 
   if (showOnce)
-    prefValue = PR_FALSE;
+    prefValue = false;
 
   // Get Prompt to use
   nsCOMPtr<nsIPrompt> prompt = do_GetInterface(ctx);
@@ -348,9 +348,9 @@ nsSecurityWarningDialogs::ConfirmDialog(nsIInterfaceRequestor *ctx, const char *
   *_result = (buttonPressed != 1);
 
   if (!prefValue && prefName != nsnull) {
-    mPrefBranch->SetBoolPref(prefName, PR_FALSE);
+    mPrefBranch->SetBoolPref(prefName, false);
   } else if (prefValue && showOnce) {
-    mPrefBranch->SetBoolPref(showOncePref.get(), PR_FALSE);
+    mPrefBranch->SetBoolPref(showOncePref.get(), false);
   }
 
   return rv;

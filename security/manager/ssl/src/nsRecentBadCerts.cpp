@@ -94,9 +94,9 @@ nsRecentBadCertsService::GetRecentBadCert(const nsAString & aHostNameWithPort,
   foundDER.len = 0;
   foundDER.data = nsnull;
 
-  PRBool isDomainMismatch = PR_FALSE;
-  PRBool isNotValidAtThisTime = PR_FALSE;
-  PRBool isUntrusted = PR_FALSE;
+  bool isDomainMismatch = false;
+  bool isNotValidAtThisTime = false;
+  bool isUntrusted = false;
 
   {
     ReentrantMonitorAutoEnter lock(monitor);
@@ -120,10 +120,10 @@ nsRecentBadCertsService::GetRecentBadCert(const nsAString & aHostNameWithPort,
     if (!nssCert) 
       nssCert = CERT_NewTempCertificate(certdb, &foundDER,
                                         nsnull, // no nickname
-                                        PR_FALSE, // not perm
-                                        PR_TRUE); // copy der
+                                        false, // not perm
+                                        true); // copy der
 
-    SECITEM_FreeItem(&foundDER, PR_FALSE);
+    SECITEM_FreeItem(&foundDER, false);
 
     if (!nssCert)
       return NS_ERROR_FAILURE;
@@ -131,7 +131,7 @@ nsRecentBadCertsService::GetRecentBadCert(const nsAString & aHostNameWithPort,
     status->mServerCert = nsNSSCertificate::Create(nssCert);
     CERT_DestroyCertificate(nssCert);
 
-    status->mHaveCertErrorBits = PR_TRUE;
+    status->mHaveCertErrorBits = true;
     status->mIsDomainMismatch = isDomainMismatch;
     status->mIsNotValidAtThisTime = isNotValidAtThisTime;
     status->mIsUntrusted = isUntrusted;
@@ -154,9 +154,9 @@ nsRecentBadCertsService::AddBadCert(const nsAString &hostWithPort,
   rv = aStatus->GetServerCert(getter_AddRefs(cert));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool isDomainMismatch;
-  PRBool isNotValidAtThisTime;
-  PRBool isUntrusted;
+  bool isDomainMismatch;
+  bool isNotValidAtThisTime;
+  bool isUntrusted;
 
   rv = aStatus->GetIsDomainMismatch(&isDomainMismatch);
   NS_ENSURE_SUCCESS(rv, rv);

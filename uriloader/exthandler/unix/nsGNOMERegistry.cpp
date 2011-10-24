@@ -57,7 +57,7 @@
 #include <libintl.h>
 #endif
 
-/* static */ PRBool
+/* static */ bool
 nsGNOMERegistry::HandlerExists(const char *aProtocolScheme)
 {
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
@@ -66,19 +66,19 @@ nsGNOMERegistry::HandlerExists(const char *aProtocolScheme)
     nsCOMPtr<nsIGIOMimeApp> app;
     if (NS_FAILED(giovfs->GetAppForURIScheme(nsDependentCString(aProtocolScheme),
                                              getter_AddRefs(app))))
-      return PR_FALSE;
+      return false;
     else
-      return PR_TRUE;
+      return true;
   } else if (gconf) {
-    PRBool isEnabled;
+    bool isEnabled;
     nsCAutoString handler;
     if (NS_FAILED(gconf->GetAppForProtocol(nsDependentCString(aProtocolScheme), &isEnabled, handler)))
-      return PR_FALSE;
+      return false;
 
     return isEnabled;
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 // XXX Check HandlerExists() before calling LoadURL.
@@ -93,13 +93,13 @@ nsGNOMERegistry::HandlerExists(const char *aProtocolScheme)
 nsGNOMERegistry::LoadURL(nsIURI *aURL)
 {
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
-  nsCOMPtr<nsIGnomeVFSService> gnomevfs = do_GetService(NS_GNOMEVFSSERVICE_CONTRACTID);
-  if (giovfs) {
+  if (giovfs)
     return giovfs->ShowURI(aURL);
-  } else if (gnomevfs) {
-    /* Fallback to GnomeVFS */
+
+  nsCOMPtr<nsIGnomeVFSService> gnomevfs = do_GetService(NS_GNOMEVFSSERVICE_CONTRACTID);
+  if (gnomevfs)
     return gnomevfs->ShowURI(aURL);
-  }
+
   return NS_ERROR_FAILURE;
 }
 
@@ -120,7 +120,7 @@ nsGNOMERegistry::GetAppDescForScheme(const nsACString& aScheme,
 
     app->GetName(name);
   } else {
-    PRBool isEnabled;
+    bool isEnabled;
     if (NS_FAILED(gconf->GetAppForProtocol(aScheme, &isEnabled, name)))
       return;
 
@@ -145,26 +145,25 @@ nsGNOMERegistry::GetAppDescForScheme(const nsACString& aScheme,
 nsGNOMERegistry::GetFromExtension(const nsACString& aFileExt)
 {
   nsCAutoString mimeType;
-  nsCOMPtr<nsIGnomeVFSService> gnomevfs = do_GetService(NS_GNOMEVFSSERVICE_CONTRACTID);
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
-
-  if (!gnomevfs && !giovfs)
-    return nsnull;
 
   if (giovfs) {
     // Get the MIME type from the extension, then call GetFromType to
     // fill in the MIMEInfo.
     if (NS_FAILED(giovfs->GetMimeTypeFromExtension(aFileExt, mimeType)) ||
-        mimeType.EqualsLiteral("application/octet-stream"))
+        mimeType.EqualsLiteral("application/octet-stream")) {
       return nsnull;
-  } else if (gnomevfs) {
+    }
+  } else {
     /* Fallback to GnomeVFS */
+    nsCOMPtr<nsIGnomeVFSService> gnomevfs = do_GetService(NS_GNOMEVFSSERVICE_CONTRACTID);
+    if (!gnomevfs)
+      return nsnull;
+
     if (NS_FAILED(gnomevfs->GetMimeTypeFromExtension(aFileExt, mimeType)) ||
         mimeType.EqualsLiteral("application/octet-stream"))
       return nsnull;
-    
   }
-
 
   return GetFromType(mimeType);
 }
@@ -172,42 +171,35 @@ nsGNOMERegistry::GetFromExtension(const nsACString& aFileExt)
 /* static */ already_AddRefed<nsMIMEInfoBase>
 nsGNOMERegistry::GetFromType(const nsACString& aMIMEType)
 {
-  nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
-  nsCOMPtr<nsIGnomeVFSService> gnomevfs = do_GetService(NS_GNOMEVFSSERVICE_CONTRACTID);
-  nsCOMPtr<nsIGIOMimeApp> gioHandlerApp;
-  nsCOMPtr<nsIGnomeVFSMimeApp> gnomeHandlerApp;
-  
-  if (!giovfs && !gnomevfs)
-    return nsnull;
-
-  if (giovfs) {
-    if (NS_FAILED(giovfs->GetAppForMimeType(aMIMEType, getter_AddRefs(gioHandlerApp))) ||
-        !gioHandlerApp)
-      return nsnull;
-
-  } else {
-    /* Fallback to GnomeVFS*/
-    if (NS_FAILED(gnomevfs->GetAppForMimeType(aMIMEType, getter_AddRefs(gnomeHandlerApp))) ||
-        !gnomeHandlerApp)
-      return nsnull;
-    
-  }
   nsRefPtr<nsMIMEInfoUnix> mimeInfo = new nsMIMEInfoUnix(aMIMEType);
   NS_ENSURE_TRUE(mimeInfo, nsnull);
 
-  nsCAutoString description;
-  if (giovfs)
-    giovfs->GetDescriptionForMimeType(aMIMEType, description);
-  else
-    gnomevfs->GetDescriptionForMimeType(aMIMEType, description);
-
-  mimeInfo->SetDescription(NS_ConvertUTF8toUTF16(description));
-
   nsCAutoString name;
-  if (giovfs)
+  nsCAutoString description;
+
+  nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
+  if (giovfs) {
+    nsCOMPtr<nsIGIOMimeApp> gioHandlerApp;
+    if (NS_FAILED(giovfs->GetAppForMimeType(aMIMEType, getter_AddRefs(gioHandlerApp))) ||
+        !gioHandlerApp) {
+      return nsnull;
+    }
     gioHandlerApp->GetName(name);
-  else 
+    giovfs->GetDescriptionForMimeType(aMIMEType, description);
+  } else {
+    /* Fallback to GnomeVFS*/
+    nsCOMPtr<nsIGnomeVFSService> gnomevfs = do_GetService(NS_GNOMEVFSSERVICE_CONTRACTID);
+    if (!gnomevfs)
+      return nsnull;
+
+    nsCOMPtr<nsIGnomeVFSMimeApp> gnomeHandlerApp;
+    if (NS_FAILED(gnomevfs->GetAppForMimeType(aMIMEType, getter_AddRefs(gnomeHandlerApp))) ||
+        !gnomeHandlerApp) {
+      return nsnull;
+    }
     gnomeHandlerApp->GetName(name);
+    gnomevfs->GetDescriptionForMimeType(aMIMEType, description);
+  }
 
 #ifdef MOZ_PLATFORM_MAEMO
   // On Maemo/Hildon, GetName ends up calling gnome_vfs_mime_application_get_name,
@@ -222,6 +214,7 @@ nsGNOMERegistry::GetFromType(const nsACString& aMIMEType)
   mimeInfo->SetDefaultDescription(NS_ConvertUTF8toUTF16(name));
 #endif
   mimeInfo->SetPreferredAction(nsIMIMEInfo::useSystemDefault);
+  mimeInfo->SetDescription(NS_ConvertUTF8toUTF16(description));
 
   nsMIMEInfoBase* retval;
   NS_ADDREF((retval = mimeInfo));

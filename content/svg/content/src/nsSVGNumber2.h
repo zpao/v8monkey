@@ -41,6 +41,7 @@
 #include "nsIDOMSVGAnimatedNumber.h"
 #include "nsSVGElement.h"
 #include "nsDOMError.h"
+#include "nsMathUtils.h"
 
 #ifdef MOZ_SMIL
 #include "nsISMILAttr.h"
@@ -55,28 +56,27 @@ public:
   void Init(PRUint8 aAttrEnum = 0xff, float aValue = 0) {
     mAnimVal = mBaseVal = aValue;
     mAttrEnum = aAttrEnum;
-    mIsAnimated = PR_FALSE;
-    mIsBaseSet = PR_FALSE;
+    mIsAnimated = false;
+    mIsBaseSet = false;
   }
 
   nsresult SetBaseValueString(const nsAString& aValue,
-                              nsSVGElement *aSVGElement,
-                              PRBool aDoSetAttr);
+                              nsSVGElement *aSVGElement);
   void GetBaseValueString(nsAString& aValue);
 
-  void SetBaseValue(float aValue, nsSVGElement *aSVGElement, PRBool aDoSetAttr);
+  void SetBaseValue(float aValue, nsSVGElement *aSVGElement);
   float GetBaseValue() const
     { return mBaseVal; }
   void SetAnimValue(float aValue, nsSVGElement *aSVGElement);
   float GetAnimValue() const
     { return mAnimVal; }
 
-  // Returns PR_TRUE if the animated value of this number has been explicitly
+  // Returns true if the animated value of this number has been explicitly
   // set (either by animation, or by taking on the base value which has been
-  // explicitly set by markup or a DOM call), PR_FALSE otherwise.
-  // If this returns PR_FALSE, the animated value is still valid, that is,
+  // explicitly set by markup or a DOM call), false otherwise.
+  // If this returns false, the animated value is still valid, that is,
   // useable, and represents the default base value of the attribute.
-  PRBool IsExplicitlySet() const
+  bool IsExplicitlySet() const
     { return mIsAnimated || mIsBaseSet; }
 
   nsresult ToDOMAnimatedNumber(nsIDOMSVGAnimatedNumber **aResult,
@@ -91,8 +91,8 @@ private:
   float mAnimVal;
   float mBaseVal;
   PRUint8 mAttrEnum; // element specified tracking for attribute
-  PRPackedBool mIsAnimated;
-  PRPackedBool mIsBaseSet;
+  bool mIsAnimated;
+  bool mIsBaseSet;
 
 public:
   struct DOMAnimatedNumber : public nsIDOMSVGAnimatedNumber
@@ -110,8 +110,10 @@ public:
       { *aResult = mVal->GetBaseValue(); return NS_OK; }
     NS_IMETHOD SetBaseVal(float aValue)
       {
-        NS_ENSURE_FINITE(aValue, NS_ERROR_ILLEGAL_VALUE);
-        mVal->SetBaseValue(aValue, mSVGElement, PR_TRUE);
+        if (!NS_finite(aValue)) {
+          return NS_ERROR_ILLEGAL_VALUE;
+        }
+        mVal->SetBaseValue(aValue, mSVGElement);
         return NS_OK;
       }
 
@@ -144,7 +146,7 @@ public:
     virtual nsresult ValueFromString(const nsAString& aStr,
                                      const nsISMILAnimationElement* aSrcElement,
                                      nsSMILValue& aValue,
-                                     PRBool& aPreventCachingOfSandwich) const;
+                                     bool& aPreventCachingOfSandwich) const;
     virtual nsSMILValue GetBaseValue() const;
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);

@@ -39,6 +39,12 @@
 #include <stdio.h>
 #include "nsISupportsImpl.h"
 #include "nsString.h"
+#include "nsIServiceManager.h"
+#include "nsToolkit.h"
+#include "nsWidgetsCID.h"
+#include "nsIDragService.h"
+
+static NS_DEFINE_IID(kCDragServiceCID,  NS_DRAGSERVICE_CID);
 
 /*
  * class nsNativeDragSource
@@ -46,7 +52,7 @@
 nsNativeDragSource::nsNativeDragSource(nsIDOMDataTransfer* aDataTransfer) :
   m_cRef(0),
   m_hCursor(nsnull),
-  mUserCancelled(PR_FALSE)
+  mUserCancelled(false)
 {
   mDataTransfer = do_QueryInterface(aDataTransfer);
 }
@@ -94,8 +100,14 @@ nsNativeDragSource::Release(void)
 STDMETHODIMP
 nsNativeDragSource::QueryContinueDrag(BOOL fEsc, DWORD grfKeyState)
 {
+  nsCOMPtr<nsIDragService> dragService = do_GetService(kCDragServiceCID);
+  if (dragService) {
+    DWORD pos = ::GetMessagePos();
+    dragService->DragMoved(GET_X_LPARAM(pos), GET_Y_LPARAM(pos));
+  }
+
   if (fEsc) {
-    mUserCancelled = PR_TRUE;
+    mUserCancelled = true;
     return DRAGDROP_S_CANCEL;
   }
 

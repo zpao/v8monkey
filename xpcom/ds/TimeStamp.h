@@ -42,6 +42,7 @@
 #include "prinrval.h"
 #include "nsDebug.h"
 #include "prlong.h"
+#include "mozilla/Util.h"
 
 namespace mozilla {
 
@@ -57,7 +58,7 @@ class TimeStamp;
  * system-dependent unit must be constant, otherwise the semantics of
  * this class would be broken.
  */
-class NS_COM TimeDuration
+class TimeDuration
 {
 public:
   // The default duration is 0.
@@ -66,7 +67,7 @@ public:
   // but no other numbers (so we don't have any implicit unit conversions).
   struct _SomethingVeryRandomHere;
   TimeDuration(_SomethingVeryRandomHere* aZero) : mValue(0) {
-    NS_ASSERTION(!aZero, "Who's playing funny games here?");
+    MOZ_ASSERT(!aZero && "Who's playing funny games here?");
   }
   // Default copy-constructor and assignment are OK
 
@@ -77,6 +78,9 @@ public:
   double ToSecondsSigDigits() const;
   double ToMilliseconds() const {
     return ToSeconds() * 1000.0;
+  }
+  double ToMicroseconds() const {
+    return ToMilliseconds() * 1000.0;
   }
 
   // Using a double here is safe enough; with 53 bits we can represent
@@ -107,16 +111,16 @@ public:
     return static_cast<double>(mValue) / aOther.mValue;
   }
 
-  PRBool operator<(const TimeDuration& aOther) const {
+  bool operator<(const TimeDuration& aOther) const {
     return mValue < aOther.mValue;
   }
-  PRBool operator<=(const TimeDuration& aOther) const {
+  bool operator<=(const TimeDuration& aOther) const {
     return mValue <= aOther.mValue;
   }
-  PRBool operator>=(const TimeDuration& aOther) const {
+  bool operator>=(const TimeDuration& aOther) const {
     return mValue >= aOther.mValue;
   }
-  PRBool operator>(const TimeDuration& aOther) const {
+  bool operator>(const TimeDuration& aOther) const {
     return mValue > aOther.mValue;
   }
 
@@ -182,8 +186,14 @@ private:
  *     platform
  *   - PRIntervalTime otherwise.  We detect wraparounds of
  *     PRIntervalTime and work around them.
+ *
+ * This class is similar to C++11's time_point, however it is
+ * explicitly nullable and provides an IsNull() method. time_point
+ * is initialized to the clock's epoch and provides a
+ * time_since_epoch() method that functions similiarly. i.e.
+ * t.IsNull() is equivalent to t.time_since_epoch() == decltype(t)::duration::zero();
  */
-class NS_COM TimeStamp
+class TimeStamp
 {
 public:
   /**
@@ -195,7 +205,7 @@ public:
   /**
    * Return true if this is the "null" moment
    */
-  PRBool IsNull() const { return mValue == 0; }
+  bool IsNull() const { return mValue == 0; }
   /**
    * Return a timestamp reflecting the current elapsed system time. This
    * is monotonically increasing (i.e., does not decrease) over the
@@ -206,8 +216,8 @@ public:
    * Compute the difference between two timestamps. Both must be non-null.
    */
   TimeDuration operator-(const TimeStamp& aOther) const {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
-    NS_ASSERTION(!aOther.IsNull(), "Cannot compute with aOther null value");
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
+    MOZ_ASSERT(!aOther.IsNull() && "Cannot compute with aOther null value");
     PR_STATIC_ASSERT(-LL_MAXINT > LL_MININT);
     PRInt64 ticks = PRInt64(mValue - aOther.mValue);
     // Check for overflow.
@@ -224,54 +234,54 @@ public:
   }
 
   TimeStamp operator+(const TimeDuration& aOther) const {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
     return TimeStamp(mValue + aOther.mValue);
   }
   TimeStamp operator-(const TimeDuration& aOther) const {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
     return TimeStamp(mValue - aOther.mValue);
   }
   TimeStamp& operator+=(const TimeDuration& aOther) {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
     mValue += aOther.mValue;
     return *this;
   }
   TimeStamp& operator-=(const TimeDuration& aOther) {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
     mValue -= aOther.mValue;
     return *this;
   }
 
-  PRBool operator<(const TimeStamp& aOther) const {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
-    NS_ASSERTION(!aOther.IsNull(), "Cannot compute with aOther null value");
+  bool operator<(const TimeStamp& aOther) const {
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
+    MOZ_ASSERT(!aOther.IsNull() && "Cannot compute with aOther null value");
     return mValue < aOther.mValue;
   }
-  PRBool operator<=(const TimeStamp& aOther) const {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
-    NS_ASSERTION(!aOther.IsNull(), "Cannot compute with aOther null value");
+  bool operator<=(const TimeStamp& aOther) const {
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
+    MOZ_ASSERT(!aOther.IsNull() && "Cannot compute with aOther null value");
     return mValue <= aOther.mValue;
   }
-  PRBool operator>=(const TimeStamp& aOther) const {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
-    NS_ASSERTION(!aOther.IsNull(), "Cannot compute with aOther null value");
+  bool operator>=(const TimeStamp& aOther) const {
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
+    MOZ_ASSERT(!aOther.IsNull() && "Cannot compute with aOther null value");
     return mValue >= aOther.mValue;
   }
-  PRBool operator>(const TimeStamp& aOther) const {
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
-    NS_ASSERTION(!aOther.IsNull(), "Cannot compute with aOther null value");
+  bool operator>(const TimeStamp& aOther) const {
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
+    MOZ_ASSERT(!aOther.IsNull() && "Cannot compute with aOther null value");
     return mValue > aOther.mValue;
   }
-  PRBool operator==(const TimeStamp& aOther) const {
+  bool operator==(const TimeStamp& aOther) const {
     // Maybe it's ok to check == with null timestamps?
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
-    NS_ASSERTION(!aOther.IsNull(), "Cannot compute with aOther null value");
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
+    MOZ_ASSERT(!aOther.IsNull() && "Cannot compute with aOther null value");
     return mValue == aOther.mValue;
   }
-  PRBool operator!=(const TimeStamp& aOther) const {
+  bool operator!=(const TimeStamp& aOther) const {
     // Maybe it's ok to check != with null timestamps?
-    NS_ASSERTION(!IsNull(), "Cannot compute with a null value");
-    NS_ASSERTION(!aOther.IsNull(), "Cannot compute with aOther null value");
+    MOZ_ASSERT(!IsNull() && "Cannot compute with a null value");
+    MOZ_ASSERT(!aOther.IsNull() && "Cannot compute with aOther null value");
     return mValue != aOther.mValue;
   }
 

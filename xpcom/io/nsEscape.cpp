@@ -156,7 +156,7 @@ static char* nsEscapeCount(
 }
 
 //----------------------------------------------------------------------------------------
-NS_COM char* nsEscape(const char * str, nsEscapeMask flags)
+char* nsEscape(const char * str, nsEscapeMask flags)
 //----------------------------------------------------------------------------------------
 {
     if(!str)
@@ -165,7 +165,7 @@ NS_COM char* nsEscape(const char * str, nsEscapeMask flags)
 }
 
 //----------------------------------------------------------------------------------------
-NS_COM char* nsUnescape(char * str)
+char* nsUnescape(char * str)
 //----------------------------------------------------------------------------------------
 {
 	nsUnescapeCount(str);
@@ -173,7 +173,7 @@ NS_COM char* nsUnescape(char * str)
 }
 
 //----------------------------------------------------------------------------------------
-NS_COM PRInt32 nsUnescapeCount(char * str)
+PRInt32 nsUnescapeCount(char * str)
 //----------------------------------------------------------------------------------------
 {
     register char *src = str;
@@ -219,7 +219,7 @@ NS_COM PRInt32 nsUnescapeCount(char * str)
 } /* NET_UnEscapeCnt */
 
 
-NS_COM char *
+char *
 nsEscapeHTML(const char * string)
 {
     char *rv = nsnull;
@@ -285,7 +285,7 @@ nsEscapeHTML(const char * string)
     return(rv);
 }
 
-NS_COM PRUnichar *
+PRUnichar *
 nsEscapeHTML2(const PRUnichar *aSourceBuffer, PRInt32 aSourceBufferLen)
 {
   // if the caller didn't calculate the length
@@ -353,7 +353,7 @@ const int EscapeChars[256] =
         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,       /* 0x */
         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  	    /* 1x */
         0,1023,   0, 512,1023,   0,1023,   0,1023,1023,1023,1023,1023,1023, 953, 784,       /* 2x   !"#$%&'()*+,-./	 */
-     1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1008, 912,   0,1008,   0, 768,       /* 3x  0123456789:;<=>?	 */
+     1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1008,1008,   0,1008,   0, 768,       /* 3x  0123456789:;<=>?	 */
      1008,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,       /* 4x  @ABCDEFGHIJKLMNO  */
      1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023, 896, 896, 896, 896,1023,       /* 5x  PQRSTUVWXYZ[\]^_	 */
         0,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,1023,       /* 6x  `abcdefghijklmno	 */
@@ -391,32 +391,32 @@ const int EscapeChars[256] =
    esc_Forced        =  1024
 */
 
-NS_COM PRBool NS_EscapeURL(const char *part,
+bool NS_EscapeURL(const char *part,
                            PRInt32 partLen,
                            PRUint32 flags,
                            nsACString &result)
 {
     if (!part) {
         NS_NOTREACHED("null pointer");
-        return PR_FALSE;
+        return false;
     }
 
     int i = 0;
     static const char hexChars[] = "0123456789ABCDEF";
     if (partLen < 0)
         partLen = strlen(part);
-    PRBool forced = !!(flags & esc_Forced);
-    PRBool ignoreNonAscii = !!(flags & esc_OnlyASCII);
-    PRBool ignoreAscii = !!(flags & esc_OnlyNonASCII);
-    PRBool writing = !!(flags & esc_AlwaysCopy);
-    PRBool colon = !!(flags & esc_Colon);
+    bool forced = !!(flags & esc_Forced);
+    bool ignoreNonAscii = !!(flags & esc_OnlyASCII);
+    bool ignoreAscii = !!(flags & esc_OnlyNonASCII);
+    bool writing = !!(flags & esc_AlwaysCopy);
+    bool colon = !!(flags & esc_Colon);
 
     register const unsigned char* src = (const unsigned char *) part;
 
     char tempBuffer[100];
     unsigned int tempBufferPos = 0;
 
-    PRBool previousIsNonASCII = PR_FALSE;
+    bool previousIsNonASCII = false;
     for (i = 0; i < partLen; i++)
     {
       unsigned char c = *src++;
@@ -451,7 +451,7 @@ NS_COM PRBool NS_EscapeURL(const char *part,
         if (!writing)
         {
           result.Append(part, i);
-          writing = PR_TRUE;
+          writing = true;
         }
         tempBuffer[tempBufferPos++] = HEX_ESCAPE;
         tempBuffer[tempBufferPos++] = hexChars[c >> 4];	/* high nibble */
@@ -477,20 +477,20 @@ NS_COM PRBool NS_EscapeURL(const char *part,
 
 #define ISHEX(c) memchr(hexChars, c, sizeof(hexChars)-1)
 
-NS_COM PRBool NS_UnescapeURL(const char *str, PRInt32 len, PRUint32 flags, nsACString &result)
+bool NS_UnescapeURL(const char *str, PRInt32 len, PRUint32 flags, nsACString &result)
 {
     if (!str) {
         NS_NOTREACHED("null pointer");
-        return PR_FALSE;
+        return false;
     }
 
     if (len < 0)
         len = strlen(str);
 
-    PRBool ignoreNonAscii = !!(flags & esc_OnlyASCII);
-    PRBool ignoreAscii = !!(flags & esc_OnlyNonASCII);
-    PRBool writing = !!(flags & esc_AlwaysCopy);
-    PRBool skipControl = !!(flags & esc_SkipControl); 
+    bool ignoreNonAscii = !!(flags & esc_OnlyASCII);
+    bool ignoreAscii = !!(flags & esc_OnlyNonASCII);
+    bool writing = !!(flags & esc_AlwaysCopy);
+    bool skipControl = !!(flags & esc_SkipControl); 
 
     static const char hexChars[] = "0123456789ABCDEFabcdef";
 
@@ -507,7 +507,7 @@ NS_COM PRBool NS_UnescapeURL(const char *str, PRInt32 len, PRUint32 flags, nsACS
                 !(skipControl && 
                   (*p1 < '2' || (*p1 == '7' && (*p2 == 'f' || *p2 == 'F'))))) {
                 //printf("- p1=%c p2=%c\n", *p1, *p2);
-                writing = PR_TRUE;
+                writing = true;
                 if (p > last) {
                     //printf("- p=%p, last=%p\n", p, last);
                     result.Append(last, p - last);

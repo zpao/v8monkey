@@ -38,27 +38,9 @@
 #ifndef MOZQWIDGET_H
 #define MOZQWIDGET_H
 
-#include <QtGui/QApplication>
-#include <QtGui/QGraphicsView>
-#include <QtGui/QGraphicsWidget>
+#include "moziqwidget.h"
 
-#include "nsIWidget.h"
-#include "prenv.h"
-
-#include "nsIObserverService.h"
-#include "mozilla/Services.h"
-
-#ifdef MOZ_ENABLE_QTMOBILITY
-#include "mozqorientationsensorfilter.h"
-#endif
-
-class QEvent;
-class QPixmap;
-class QWidget;
-
-class nsWindow;
-
-class MozQWidget : public QGraphicsWidget
+class MozQWidget : public IMozQWidget
 {
     Q_OBJECT
 public:
@@ -69,25 +51,27 @@ public:
     /**
      * Mozilla helper.
      */
-    void setModal(bool);
-    bool SetCursor(nsCursor aCursor);
-    void dropReceiver() { mReceiver = 0x0; };
-    nsWindow* getReceiver() { return mReceiver; };
+    virtual void setModal(bool);
+    virtual bool SetCursor(nsCursor aCursor);
+    virtual void dropReceiver() { mReceiver = 0x0; };
+    virtual nsWindow* getReceiver() { return mReceiver; };
 
-    void activate();
-    void deactivate();
-
-    QVariant inputMethodQuery(Qt::InputMethodQuery aQuery) const;
+    virtual void activate();
+    virtual void deactivate();
 
     /**
      * VirtualKeyboardIntegration
      */
-    void requestVKB(int aTimeout);
-    void hideVKB();
-    bool isVKBOpen();
+    static void requestVKB(int aTimeout = 0, QObject* aWidget = 0);
+    static void hideVKB();
+    virtual bool isVKBOpen();
+
+    virtual void NotifyVKB(const QRect& rect);
+    virtual void SwitchToForeground();
+    virtual void SwitchToBackground();
 
 public slots:
-    void showVKB();
+    static void showVKB();
 
 #ifdef MOZ_ENABLE_QTMOBILITY
     void orientationChanged();
@@ -119,6 +103,7 @@ protected:
     virtual void hideEvent(QHideEvent* aEvent);
     virtual void showEvent(QShowEvent* aEvent);
     virtual bool event(QEvent* aEvent);
+    virtual QVariant inputMethodQuery(Qt::InputMethodQuery aQuery) const;
 
     bool SetCursor(const QPixmap& aPixmap, int, int);
 
@@ -126,109 +111,5 @@ private:
     void sendPressReleaseKeyEvent(int key, const QChar* letter = 0, bool autorep = false, ushort count = 1);
     nsWindow *mReceiver;
 };
-
-class MozQGraphicsViewEvents
-{
-public:
-
-    MozQGraphicsViewEvents(QGraphicsView* aView)
-     : mView(aView)
-    { }
-
-    void handleEvent(QEvent* aEvent, MozQWidget* aTopLevel)
-    {
-        if (!aEvent)
-            return;
-        if (aEvent->type() == QEvent::WindowActivate) {
-            if (aTopLevel)
-                aTopLevel->activate();
-        }
-
-        if (aEvent->type() == QEvent::WindowDeactivate) {
-            if (aTopLevel)
-                aTopLevel->deactivate();
-        }
-    }
-
-    void handleResizeEvent(QResizeEvent* aEvent, MozQWidget* aTopLevel)
-    {
-        if (!aEvent)
-            return;
-        if (aTopLevel) {
-            // transfer new size to graphics widget
-            aTopLevel->setGeometry(0.0, 0.0,
-                static_cast<qreal>(aEvent->size().width()),
-                static_cast<qreal>(aEvent->size().height()));
-            // resize scene rect to vieport size,
-            // to avoid extra scrolling from QAbstractScrollable
-            if (mView)
-                mView->setSceneRect(mView->viewport()->rect());
-        }
-    }
-
-    bool handleCloseEvent(QCloseEvent* aEvent, MozQWidget* aTopLevel)
-    {
-        if (!aEvent)
-            return false;
-        if (aTopLevel) {
-            // close graphics widget instead, this view will be discarded
-            // automatically
-            QApplication::postEvent(aTopLevel, new QCloseEvent(*aEvent));
-            aEvent->ignore();
-            return true;
-        }
-
-        return false;
-    }
-
-private:
-    QGraphicsView* mView;
-};
-
-/**
-    This is a helper class to synchronize the QGraphicsView window with
-    its contained QGraphicsWidget for things like resizing and closing
-    by the user.
-*/
-class MozQGraphicsView : public QGraphicsView
-{
-    Q_OBJECT
-
-public:
-    MozQGraphicsView(MozQWidget* aTopLevel, QWidget * aParent = nsnull)
-     : QGraphicsView (new QGraphicsScene(), aParent)
-     , mEventHandler(this)
-     , mTopLevelWidget(aTopLevel)
-    {
-        scene()->addItem(aTopLevel);
-        setMouseTracking(true);
-        setFrameShape(QFrame::NoFrame);
-    }
-
-protected:
-
-    virtual bool event(QEvent* aEvent)
-    {
-        mEventHandler.handleEvent(aEvent, mTopLevelWidget);
-        return QGraphicsView::event(aEvent);
-    }
-
-    virtual void resizeEvent(QResizeEvent* aEvent)
-    {
-        mEventHandler.handleResizeEvent(aEvent, mTopLevelWidget);
-        QGraphicsView::resizeEvent(aEvent);
-    }
-
-    virtual void closeEvent (QCloseEvent* aEvent)
-    {
-        if (!mEventHandler.handleCloseEvent(aEvent, mTopLevelWidget))
-            QGraphicsView::closeEvent(aEvent);
-    }
-
-private:
-    MozQGraphicsViewEvents mEventHandler;
-    MozQWidget* mTopLevelWidget;
-};
-
 
 #endif

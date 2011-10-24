@@ -7,8 +7,8 @@ let store = engine._store;
 
 function run_test() {
   initTestLogging("Trace");
-  Log4Moz.repository.getLogger("Engine.Bookmarks").level = Log4Moz.Level.Trace;
-  Log4Moz.repository.getLogger("Store.Bookmarks").level = Log4Moz.Level.Trace;
+  Log4Moz.repository.getLogger("Sync.Engine.Bookmarks").level = Log4Moz.Level.Trace;
+  Log4Moz.repository.getLogger("Sync.Store.Bookmarks").level = Log4Moz.Level.Trace;
 
   let tagRecord = new BookmarkQuery("bookmarks", "abcdefabcdef");
   let uri = "place:folder=499&type=7&queryType=1";
@@ -25,7 +25,7 @@ function run_test() {
   _("Verify that the URI has been rewritten.");
   do_check_neq(tagRecord.bmkUri, uri);
   
-  let tags = store._getNode(store._bms.tagsFolder);
+  let tags = store._getNode(PlacesUtils.tagsFolderId);
   tags.containerOpen = true;
   let tagID;
   for (let i = 0; i < tags.childCount; ++i) {

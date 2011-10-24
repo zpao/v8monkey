@@ -41,9 +41,16 @@
 interface nsIEditor;
 interface nsITextServicesFilter;
 
-[scriptable, uuid(90c93610-c116-44ab-9793-62dccb9f43ce)]
+[scriptable, uuid(334946c3-0e93-4aac-b662-e1b56f95d68b)]
 interface nsIEditorSpellCheck : nsISupports
 {
+
+  /**
+   * Call this on any change in installed dictionaries to ensure that the spell
+   * checker is not using a current dictionary which is no longer available.
+   * If the current dictionary is no longer available, then pick another one.
+   */
+  void checkCurrentDictionary();
 
  /**
    * Returns true if we can enable spellchecking. If there are no available
@@ -143,20 +150,12 @@ interface nsIEditorSpellCheck : nsISupports
   /**
    * @see nsISpellChecker::GetCurrentDictionary
    */
-  wstring       GetCurrentDictionary();
+  AString       GetCurrentDictionary();
 
   /**
    * @see nsISpellChecker::SetCurrentDictionary
    */
-  void          SetCurrentDictionary(in wstring dictionary);
-
-  /**
-   * Call to save the currently selected dictionary as the default. The
-   * function UninitSpellChecker will also do this, but that function may not
-   * be called in some situations. This function allows the caller to force the
-   * default right now.
-   */
-  void          saveDefaultDictionary();
+  void          SetCurrentDictionary(in AString dictionary);
 
   /**
    * Call this to free up the spell checking object. It will also save the
@@ -187,5 +186,11 @@ interface nsIEditorSpellCheck : nsISupports
    * invalid.
    */
   boolean       CheckCurrentWordNoSuggest(in wstring suggestedWord);
+
+  /**
+   * Update the dictionary in use to be sure it corresponds to what the editor
+   * needs.
+   */
+  void          UpdateCurrentDictionary();
 
 };

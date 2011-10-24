@@ -32,11 +32,16 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsGkAtoms.h"
 #include "nsIDOMSVGAltGlyphElement.h"
 #include "nsIDOMSVGURIReference.h"
 #include "nsSVGString.h"
 #include "nsSVGTextPositioningElement.h"
+#include "nsContentUtils.h"
+
+using namespace mozilla;
 
 typedef nsSVGTextPositioningElement nsSVGAltGlyphElementBase;
 
@@ -65,7 +70,7 @@ public:
   NS_FORWARD_NSIDOMSVGTEXTPOSITIONINGELEMENT(nsSVGAltGlyphElementBase::)
 
   // nsIContent interface
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
 
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
 
@@ -75,7 +80,7 @@ protected:
   // nsSVGElement overrides
   virtual StringAttributesInfo GetStringInfo();
 
-  virtual PRBool IsEventName(nsIAtom* aName);
+  virtual bool IsEventName(nsIAtom* aName);
 
   enum { HREF };
   nsSVGString mStringAttributes[1];
@@ -85,7 +90,7 @@ protected:
 
 nsSVGElement::StringInfo nsSVGAltGlyphElement::sStringInfo[1] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_XLink, PR_FALSE }
+  { &nsGkAtoms::href, kNameSpaceID_XLink, false }
 };
 
 NS_IMPL_NS_NEW_SVG_ELEMENT(AltGlyph)
@@ -142,7 +147,7 @@ NS_IMETHODIMP nsSVGAltGlyphElement::GetGlyphRef(nsAString & aGlyphRef)
 
 NS_IMETHODIMP nsSVGAltGlyphElement::SetGlyphRef(const nsAString & aGlyphRef)
 {
-  return SetAttr(kNameSpaceID_None, nsGkAtoms::glyphRef, aGlyphRef, PR_TRUE);
+  return SetAttr(kNameSpaceID_None, nsGkAtoms::glyphRef, aGlyphRef, true);
 }
 
 /* attribute DOMString format; */
@@ -155,13 +160,13 @@ NS_IMETHODIMP nsSVGAltGlyphElement::GetFormat(nsAString & aFormat)
 
 NS_IMETHODIMP nsSVGAltGlyphElement::SetFormat(const nsAString & aFormat)
 {
-  return SetAttr(kNameSpaceID_None, nsGkAtoms::format, aFormat, PR_TRUE);
+  return SetAttr(kNameSpaceID_None, nsGkAtoms::format, aFormat, true);
 }
 
 //----------------------------------------------------------------------
 // nsIContent methods
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGAltGlyphElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -172,14 +177,14 @@ nsSVGAltGlyphElement::IsAttributeMapped(const nsIAtom* name) const
     sTextContentElementsMap
   };
   
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGAltGlyphElementBase::IsAttributeMapped(name);
 }
 
 //----------------------------------------------------------------------
 // nsSVGElement overrides
 
-PRBool
+bool
 nsSVGAltGlyphElement::IsEventName(nsIAtom* aName)
 {
   return nsContentUtils::IsEventAttributeName(aName, EventNameType_SVGGraphic);
@@ -189,5 +194,5 @@ nsSVGElement::StringAttributesInfo
 nsSVGAltGlyphElement::GetStringInfo()
 {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              NS_ARRAY_LENGTH(sStringInfo));
+                              ArrayLength(sStringInfo));
 }

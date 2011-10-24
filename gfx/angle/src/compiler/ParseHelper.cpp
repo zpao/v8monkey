@@ -196,7 +196,6 @@ bool TParseContext::parseMatrixFields(const TString& compString, int matSize, TM
 //
 void TParseContext::recover()
 {
-    recoveredFromError = true;
 }
 
 //
@@ -261,6 +260,8 @@ void TParseContext::binaryOpError(int line, const char* op, TString left, TStrin
 }
 
 bool TParseContext::precisionErrorCheck(int line, TPrecision precision, TBasicType type){
+    if (!checksPrecisionErrors)
+        return false;
     switch( type ){
     case EbtFloat:
         if( precision == EbpUndefined ){
@@ -274,6 +275,8 @@ bool TParseContext::precisionErrorCheck(int line, TPrecision precision, TBasicTy
             return true;
         }
         break;
+    default:
+        return false;
     }
     return false;
 }
@@ -445,16 +448,16 @@ bool TParseContext::reservedErrorCheck(int line, const TString& identifier)
 {
     static const char* reservedErrMsg = "reserved built-in name";
     if (!symbolTable.atBuiltInLevel()) {
-        if (identifier.substr(0, 3) == TString("gl_")) {
+        if (identifier.compare(0, 3, "gl_") == 0) {
             error(line, reservedErrMsg, "gl_", "");
             return true;
         }
         if (shaderSpec == SH_WEBGL_SPEC) {
-            if (identifier.substr(0, 6) == TString("webgl_")) {
+            if (identifier.compare(0, 6, "webgl_") == 0) {
                 error(line, reservedErrMsg, "webgl_", "");
                 return true;
             }
-            if (identifier.substr(0, 7) == TString("_webgl_")) {
+            if (identifier.compare(0, 7, "_webgl_") == 0) {
                 error(line, reservedErrMsg, "_webgl_", "");
                 return true;
             }
@@ -558,7 +561,7 @@ bool TParseContext::constructorErrorCheck(int line, TIntermNode* node, TFunction
         }
     }
 
-    TIntermTyped* typed = node->getAsTyped();
+    TIntermTyped *typed = node ? node->getAsTyped() : 0;
     if (typed == 0) {
         error(line, "constructor argument does not have a type", "constructor", "");
         return true;
@@ -880,16 +883,17 @@ bool TParseContext::nonInitConstErrorCheck(int line, TString& identifier, TPubli
 //
 // Returns true if there was an error.
 //
-bool TParseContext::nonInitErrorCheck(int line, TString& identifier, TPublicType& type)
+bool TParseContext::nonInitErrorCheck(int line, TString& identifier, TPublicType& type, TVariable*& variable)
 {
     if (reservedErrorCheck(line, identifier))
         recover();
 
-    TVariable* variable = new TVariable(&identifier, TType(type));
+    variable = new TVariable(&identifier, TType(type));
 
     if (! symbolTable.insert(*variable)) {
         error(line, "redefinition", variable->getName().c_str(), "");
         delete variable;
+        variable = 0;
         return true;
     }
 
@@ -925,7 +929,8 @@ bool TParseContext::extensionErrorCheck(int line, const TString& extension)
         error(line, "extension", extension.c_str(), "is not supported");
         return true;
     }
-    if (iter->second == EBhDisable) {
+    // In GLSL ES, an extension's default behavior is "disable".
+    if (iter->second == EBhDisable || iter->second == EBhUndefined) {
         error(line, "extension", extension.c_str(), "is disabled");
         return true;
     }
@@ -936,6 +941,12 @@ bool TParseContext::extensionErrorCheck(int line, const TString& extension)
     }
 
     return false;
+}
+
+bool TParseContext::supportsExtension(const char* extension)
+{
+    TExtensionBehavior::const_iterator iter = extensionBehavior.find(extension);
+    return (iter != extensionBehavior.end());
 }
 
 /////////////////////////////////////////////////////////////////////////////////

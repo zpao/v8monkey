@@ -24,6 +24,7 @@
  *   Johnny Stenback <jst@netscape.com>
  *   Jonathon Jongsma <jonathon.jongsma@collabora.co.uk>, Collabora Ltd.
  *   Robert Longson <longsonr@gmail.com>
+ *   Mats Palmgren <matspal@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -50,7 +51,7 @@
  * http://www.w3.org/TR/DOM-Level-2-Style
  */
 
-[scriptable, uuid(249755DF-EEFE-4AF4-8127-BE3D6BDAED2D)]
+[builtinclass, scriptable, uuid(519ae4fa-0fee-4aaa-bcb9-34b503236801)]
 interface nsIDOMCSS2Properties : nsISupports
 {
            attribute DOMString        background;
@@ -344,6 +345,9 @@ interface nsIDOMCSS2Properties : nsISupports
            attribute DOMString        textIndent;
                                         // raises(DOMException) on setting
 
+           attribute DOMString        textOverflow;
+                                        // raises(DOMException) on setting
+
            attribute DOMString        textShadow;
                                         // raises(DOMException) on setting
 
@@ -555,6 +559,9 @@ interface nsIDOMCSS2Properties : nsISupports
            attribute DOMString        MozOpacity;
                                         // raises(DOMException) on setting
 
+           attribute DOMString        MozOrient;
+                                        // raises(DOMException) on setting
+
            attribute DOMString        MozOutline;
                                         // raises(DOMException) on setting
 
@@ -650,6 +657,9 @@ interface nsIDOMCSS2Properties : nsISupports
            attribute DOMString        MozBorderImage;
                                         // raises(DOMException) on setting
 
+           attribute DOMString        MozColumns;
+                                        // raises(DOMException) on setting
+
            attribute DOMString        MozColumnRule;
                                         // raises(DOMException) on setting
 
@@ -673,6 +683,18 @@ interface nsIDOMCSS2Properties : nsISupports
 
            attribute DOMString        MozTransformOrigin;
                                         // raises(DOMException) on setting 
+
+           attribute DOMString        MozPerspective;
+                                        // raises(DOMException) on setting
+
+           attribute DOMString        MozPerspectiveOrigin;
+                                        // raises(DOMException) on setting
+
+           attribute DOMString        MozBackfaceVisibility;
+                                        // raises(DOMException) on setting
+
+           attribute DOMString        MozTransformStyle;
+                                        // raises(DOMException) on setting
 
            attribute DOMString        MozWindowShadow;
                                         // raises(DOMException) on setting

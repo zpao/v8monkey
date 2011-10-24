@@ -42,7 +42,7 @@ namespace gl {
 class WGLLibrary
 {
 public:
-    WGLLibrary() : mInitialized(PR_FALSE), mOGLLibrary(nsnull) {}
+    WGLLibrary() : mInitialized(false), mOGLLibrary(nsnull) {}
 
     typedef HGLRC (GLAPIENTRY * PFNWGLCREATECONTEXTPROC) (HDC);
     PFNWGLCREATECONTEXTPROC fCreateContext;
@@ -76,10 +76,10 @@ public:
     typedef BOOL (WINAPI * PFNWGLGETPIXELFORMATATTRIBIVPROC) (HDC hdc, int iPixelFormat, int iLayerPlane, UINT nAttributes, int* piAttributes, int *piValues);
     PFNWGLGETPIXELFORMATATTRIBIVPROC fGetPixelFormatAttribiv;
 
-    PRBool EnsureInitialized();
+    bool EnsureInitialized();
 
 private:
-    PRBool mInitialized;
+    bool mInitialized;
     PRLibrary *mOGLLibrary;
 };
 

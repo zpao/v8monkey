@@ -46,9 +46,8 @@
 #include "gfxWindowsPlatform.h"
 #include "nsIGfxInfo.h"
 #include "nsServiceManagerUtils.h"
-#include "nsIPrefService.h"
-#include "nsIPrefBranch2.h"
 #include "gfxFailure.h"
+#include "mozilla/Preferences.h"
 
 #include "gfxCrashReporterUtils.h"
 
@@ -70,20 +69,14 @@ LayerManagerD3D9::~LayerManagerD3D9()
   Destroy();
 }
 
-PRBool
+bool
 LayerManagerD3D9::Initialize()
 {
   ScopedGfxFeatureReporter reporter("D3D9 Layers");
 
-  nsCOMPtr<nsIPrefBranch2> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-
   /* XXX: this preference and blacklist code should move out of the layer manager */
-  PRBool forceAccelerate = PR_FALSE;
-  if (prefs) {
-    // we should use AddBoolPrefVarCache
-    prefs->GetBoolPref("layers.acceleration.force-enabled",
-                       &forceAccelerate);
-  }
+  bool forceAccelerate =
+    Preferences::GetBool("layers.acceleration.force-enabled", false);
 
   nsCOMPtr<nsIGfxInfo> gfxInfo = do_GetService("@mozilla.org/gfx/info;1");
   if (gfxInfo) {
@@ -92,7 +85,7 @@ LayerManagerD3D9::Initialize()
       if (status != nsIGfxInfo::FEATURE_NO_INFO && !forceAccelerate)
       {
         NS_WARNING("Direct3D 9-accelerated layers are not supported on this system.");
-        return PR_FALSE;
+        return false;
       }
     }
   }
@@ -102,7 +95,7 @@ LayerManagerD3D9::Initialize()
 
     if (!mDeviceManager->Init()) {
       mDeviceManager = nsnull;
-      return PR_FALSE;
+      return false;
     }
 
     mDefaultDeviceManager = mDeviceManager;
@@ -114,11 +107,11 @@ LayerManagerD3D9::Initialize()
     CreateSwapChain((HWND)mWidget->GetNativeData(NS_NATIVE_WINDOW));
 
   if (!mSwapChain) {
-    return PR_FALSE;
+    return false;
   }
 
   reporter.SetSuccessful();
-  return PR_TRUE;
+  return true;
 }
 
 void
@@ -175,11 +168,12 @@ LayerManagerD3D9::EndEmptyTransaction()
 
 void
 LayerManagerD3D9::EndTransaction(DrawThebesLayerCallback aCallback,
-                                 void* aCallbackData)
+                                 void* aCallbackData,
+                                 EndTransactionFlags aFlags)
 {
   mDeviceResetCount = mDeviceManager->GetDeviceResetCount();
 
-  if (mRoot) {
+  if (mRoot && !(aFlags & END_NO_IMMEDIATE_REDRAW)) {
     mCurrentCallbackInfo.Callback = aCallback;
     mCurrentCallbackInfo.CallbackData = aCallbackData;
 
@@ -250,6 +244,56 @@ LayerManagerD3D9::CreateImageContainer()
 {
   nsRefPtr<ImageContainer> container = new ImageContainerD3D9(device());
   return container.forget();
+}
+
+already_AddRefed<ShadowThebesLayer>
+LayerManagerD3D9::CreateShadowThebesLayer()
+{
+  if (LayerManagerD3D9::mDestroyed) {
+    NS_WARNING("Call on destroyed layer manager");
+    return nsnull;
+  }
+  return nsRefPtr<ShadowThebesLayerD3D9>(new ShadowThebesLayerD3D9(this)).forget();
+}
+
+already_AddRefed<ShadowContainerLayer>
+LayerManagerD3D9::CreateShadowContainerLayer()
+{
+  if (LayerManagerD3D9::mDestroyed) {
+    NS_WARNING("Call on destroyed layer manager");
+    return nsnull;
+  }
+  return nsRefPtr<ShadowContainerLayerD3D9>(new ShadowContainerLayerD3D9(this)).forget();
+}
+
+already_AddRefed<ShadowImageLayer>
+LayerManagerD3D9::CreateShadowImageLayer()
+{
+  if (LayerManagerD3D9::mDestroyed) {
+    NS_WARNING("Call on destroyed layer manager");
+    return nsnull;
+  }
+  return nsRefPtr<ShadowImageLayerD3D9>(new ShadowImageLayerD3D9(this)).forget();
+}
+
+already_AddRefed<ShadowColorLayer>
+LayerManagerD3D9::CreateShadowColorLayer()
+{
+  if (LayerManagerD3D9::mDestroyed) {
+    NS_WARNING("Call on destroyed layer manager");
+    return nsnull;
+  }
+  return nsRefPtr<ShadowColorLayerD3D9>(new ShadowColorLayerD3D9(this)).forget();
+}
+
+already_AddRefed<ShadowCanvasLayer>
+LayerManagerD3D9::CreateShadowCanvasLayer()
+{
+  if (LayerManagerD3D9::mDestroyed) {
+    NS_WARNING("Call on destroyed layer manager");
+    return nsnull;
+  }
+  return nsRefPtr<ShadowCanvasLayerD3D9>(new ShadowCanvasLayerD3D9(this)).forget();
 }
 
 void ReleaseTexture(void *texture)
@@ -328,6 +372,7 @@ LayerManagerD3D9::SetupPipeline()
    */
   viewMatrix._11 = 2.0f / rect.width;
   viewMatrix._22 = -2.0f / rect.height;
+  viewMatrix._33 = 0.0f;
   viewMatrix._41 = -1.0f;
   viewMatrix._42 = 1.0f;
 

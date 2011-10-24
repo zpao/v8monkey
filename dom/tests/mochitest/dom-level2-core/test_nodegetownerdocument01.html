@@ -5,7 +5,10 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <title>http://www.w3.org/2001/DOM-Test-Suite/level2/core/nodegetownerdocument01</title>
 <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css">
-<script type="text/javascript" src="/MochiKit/packed.js"></script><script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script><script type="text/javascript" src="DOMTestCase.js"></script><script type="text/javascript" src="exclusions.js"></script><script type="text/javascript">
+<script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+<script type="text/javascript" src="DOMTestCase.js"></script>
+<script type="text/javascript" src="exclusions.js"></script>
+<script type="text/javascript">
 // expose test function names
 function exposeTestFunctionNames()
 {
@@ -76,6 +79,8 @@ var docName = 'nodegetownerdocument01';
 	Create a new DocumentType node.  Since this node is not used with any Document yet
 	verify if the ownerDocument is null.
 
+	The specification has changed! ownerDocument should not be null.
+
 * @author IBM
 * @author Neil Delima
 * @see http://www.w3.org/TR/DOM-Level-2-Core/core#node-ownerDoc
@@ -100,7 +105,7 @@ function nodegetownerdocument01() {
 docType = domImpl.createDocumentType("mydoc",nullID,nullID);
       ownerDoc = docType.ownerDocument;
 
-      assertNull("nodegetownerdocument01",ownerDoc);
+      assertNotNull("nodegetownerdocument01",ownerDoc);
     
 }
 

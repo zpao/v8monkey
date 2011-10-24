@@ -215,7 +215,7 @@ struct GetPropLabels : MacroAssemblerTypedefs {
 
 #if defined JS_CPU_X86 
     static const int32 INLINE_SHAPE_JUMP = 12;
-    static const int32 INLINE_TYPE_JUMP = 12;
+    static const int32 INLINE_TYPE_JUMP = 9;
 #elif defined JS_CPU_X64
     static const int32 INLINE_SHAPE_JUMP = 6;
     static const int32 INLINE_TYPE_JUMP = 19;
@@ -259,6 +259,7 @@ struct SetPropLabels : MacroAssemblerTypedefs {
 
     void setDslotsLoad(MacroAssembler &masm, Label fastPathRejoin, Label beforeLoad,
                        const ValueRemat &rhs) {
+        JS_ASSERT(!rhs.isFPRegister());
         int offset = masm.differenceBetween(fastPathRejoin, beforeLoad);
         setDslotsLoadOffset(offset, rhs.isConstant(), rhs.isTypeKnown());
     }

@@ -45,8 +45,11 @@ interface nsIDOMElement;
 interface nsIDOMDocument;
 interface nsIDOMCSSStyleRule;
 interface nsIDOMNode;
+interface nsIDOMNodeList;
+interface nsIDOMFontFaceList;
+interface nsIDOMRange;
 
-[scriptable, uuid(e01c9987-1ba2-44f0-a6a7-3148b55b7e6d)]
+[scriptable, uuid(70205D9E-EFD7-4658-8E9E-690400B57FD0)]
 interface inIDOMUtils : nsISupports
 {
   // CSS utilities
@@ -60,6 +63,8 @@ interface inIDOMUtils : nsISupports
   // whether we are showing anonymous content.
   nsIDOMNode getParentForNode(in nsIDOMNode aNode,
                               in boolean aShowingAnonymousContent);
+  nsIDOMNodeList getChildrenForNode(in nsIDOMNode aNode,
+                                    in boolean aShowingAnonymousContent);
   
   // XBL utilities
   nsIArray getBindingURLs(in nsIDOMElement aElement);
@@ -67,4 +72,6 @@ interface inIDOMUtils : nsISupports
   // content state utilities
   unsigned long long getContentState(in nsIDOMElement aElement);
   void setContentState(in nsIDOMElement aElement, in unsigned long long aState);
+
+  nsIDOMFontFaceList getUsedFontFaces(in nsIDOMRange aRange);
 };

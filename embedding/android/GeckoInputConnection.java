@@ -57,6 +57,27 @@ public class GeckoInputConnection
     extends BaseInputConnection
     implements TextWatcher
 {
+    private class ChangeNotification {
+        public String mText;
+        public int mStart;
+        public int mEnd;
+        public int mNewEnd;
+
+        ChangeNotification(String text, int start, int oldEnd, int newEnd) {
+            mText = text;
+            mStart = start;
+            mEnd = oldEnd;
+            mNewEnd = newEnd;
+        }
+
+        ChangeNotification(int start, int end) {
+            mText = null;
+            mStart = start;
+            mEnd = end;
+            mNewEnd = 0;
+        }
+    }
+
     public GeckoInputConnection (View targetView) {
         super(targetView, true);
         mQueryResult = new SynchronousQueue<String>();
@@ -65,7 +86,7 @@ public class GeckoInputConnection
     @Override
     public boolean beginBatchEdit() {
         //Log.d("GeckoAppJava", "IME: beginBatchEdit");
-
+        mBatchMode = true;
         return true;
     }
 
@@ -89,6 +110,8 @@ public class GeckoInputConnection
     @Override
     public boolean deleteSurroundingText(int leftLength, int rightLength) {
         //Log.d("GeckoAppJava", "IME: deleteSurroundingText");
+        if (leftLength == 0 && rightLength == 0)
+            return true;
 
         /* deleteSurroundingText is supposed to ignore the composing text,
             so we cancel any pending composition, delete the text, and then
@@ -141,6 +164,21 @@ public class GeckoInputConnection
     public boolean endBatchEdit() {
         //Log.d("GeckoAppJava", "IME: endBatchEdit");
 
+        mBatchMode = false;
+
+        if (!mBatchChanges.isEmpty()) {
+            InputMethodManager imm = (InputMethodManager)
+                GeckoApp.surfaceView.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                for (ChangeNotification n : mBatchChanges) {
+                    if (n.mText != null)
+                        notifyTextChange(imm, n.mText, n.mStart, n.mEnd, n.mNewEnd);
+                    else
+                        notifySelectionChange(imm, n.mStart, n.mEnd);
+                }
+            }
+            mBatchChanges.clear();
+        }
         return true;
     }
 
@@ -159,10 +197,12 @@ public class GeckoInputConnection
             mComposing = false;
             mComposingText = "";
 
-            // Make sure caret stays at the same position
-            GeckoAppShell.sendEventToGecko(
-                new GeckoEvent(GeckoEvent.IME_SET_SELECTION,
-                               mCompositionStart + mCompositionSelStart, 0));
+            if (!mBatchMode) {
+                // Make sure caret stays at the same position
+                GeckoAppShell.sendEventToGecko(
+                    new GeckoEvent(GeckoEvent.IME_SET_SELECTION,
+                                   mCompositionStart + mCompositionSelStart, 0));
+            }
         }
         return true;
     }
@@ -239,6 +279,11 @@ public class GeckoInputConnection
         if (req == null)
             return null;
 
+        // Bail out here if gecko isn't running, otherwise we deadlock
+        // below when waiting for the reply to IME_GET_SELECTION.
+        if (!GeckoApp.checkLaunchState(GeckoApp.LaunchState.GeckoRunning))
+            return null;
+
         //Log.d("GeckoAppJava", "IME: getExtractedText");
 
         ExtractedText extract = new ExtractedText();
@@ -273,7 +318,7 @@ public class GeckoInputConnection
 
             // 2. Make a guess about what the text actually is
             if (mComposing && extract.selectionEnd > extract.text.length())
-                extract.text = extract.text.subSequence(0, mCompositionStart) + mComposingText;
+                extract.text = extract.text.subSequence(0, Math.min(extract.text.length(), mCompositionStart)) + mComposingText;
 
             // 3. If all else fails, make sure our selection indexes make sense
             extract.selectionStart = Math.min(extract.selectionStart, extract.text.length());
@@ -341,6 +386,14 @@ public class GeckoInputConnection
         mComposingText = text != null ? text.toString() : "";
 
         if (!mComposing) {
+            if (mComposingText.length() == 0) {
+                // Some IMEs such as iWnn sometimes call with empty composing 
+                // text.  (See bug 664364)
+                // If composing text is empty, ignore this and don't start
+                // compositing.
+                return true;
+            }
+
             // Get current selection
             GeckoAppShell.sendEventToGecko(
                 new GeckoEvent(GeckoEvent.IME_GET_SELECTION, 0, 0));
@@ -448,6 +501,41 @@ public class GeckoInputConnection
             new GeckoEvent(mCompositionSelStart + mCompositionSelLen, 0,
                            GeckoEvent.IME_RANGE_CARETPOSITION, 0, 0, 0,
                            mComposingText));
+
+        return true;
+    }
+
+    @Override
+    public boolean setComposingRegion(int start, int end) {
+        //Log.d("GeckoAppJava", "IME: setComposingRegion(start=" + start + ", end=" + end + ")");
+        if (start < 0 || end < start)
+            return true;
+
+        CharSequence text = null;
+        if (start == mCompositionStart && end - start == mComposingText.length()) {
+            // Use mComposingText to avoid extra call to Gecko
+            text = mComposingText;
+        }
+
+        finishComposingText();
+
+        if (text == null && start < end) {
+            GeckoAppShell.sendEventToGecko(
+                new GeckoEvent(GeckoEvent.IME_GET_TEXT, start, end - start));
+            try {
+                text = mQueryResult.take();
+            } catch (InterruptedException e) {
+                Log.e("GeckoAppJava", "IME: setComposingRegion interrupted", e);
+                return false;
+            }
+        }
+
+        GeckoAppShell.sendEventToGecko(
+            new GeckoEvent(GeckoEvent.IME_SET_SELECTION, start, end - start));
+
+        // Call setComposingText with the same text to start composition and let Gecko know about new composing region
+        setComposingText(text, 1);
+
         return true;
     }
 
@@ -501,9 +589,19 @@ public class GeckoInputConnection
 
     public void notifyTextChange(InputMethodManager imm, String text,
                                  int start, int oldEnd, int newEnd) {
-        //Log.d("GeckoAppJava", "IME: notifyTextChange");
+        // Log.d("GeckoAppShell", String.format("IME: notifyTextChange: text=%s s=%d ne=%d oe=%d",
+        //                                      text, start, newEnd, oldEnd));
 
-        if (!text.contentEquals(GeckoApp.surfaceView.mEditable))
+        if (mBatchMode) {
+            mBatchChanges.add(new ChangeNotification(text, start, oldEnd, newEnd));
+            return;
+        }
+
+        mNumPendingChanges = Math.max(mNumPendingChanges - 1, 0);
+
+        // If there are pending changes, that means this text is not the most up-to-date version
+        // and we'll step on ourselves if we change the editable right now.
+        if (mNumPendingChanges == 0 && !text.contentEquals(GeckoApp.surfaceView.mEditable))
             GeckoApp.surfaceView.setEditable(text);
 
         if (mUpdateRequest == null)
@@ -529,7 +627,11 @@ public class GeckoInputConnection
 
     public void notifySelectionChange(InputMethodManager imm,
                                       int start, int end) {
-        //Log.d("GeckoAppJava", "IME: notifySelectionChange");
+        // Log.d("GeckoAppJava", String.format("IME: notifySelectionChange: s=%d e=%d", start, end));
+        if (mBatchMode) {
+            mBatchChanges.add(new ChangeNotification(start, end));
+            return;
+        }
 
         if (mComposing)
             imm.updateSelection(GeckoApp.surfaceView,
@@ -539,6 +641,11 @@ public class GeckoInputConnection
                 mCompositionStart + mComposingText.length());
         else
             imm.updateSelection(GeckoApp.surfaceView, start, end, -1, -1);
+
+        // We only change the selection if we are relatively sure that the text we have is
+        // up-to-date.  Bail out if we are stil expecting changes.
+        if (mNumPendingChanges > 0)
+            return;
 
         int maxLen = GeckoApp.surfaceView.mEditable.length();
         Selection.setSelection(GeckoApp.surfaceView.mEditable, 
@@ -550,11 +657,18 @@ public class GeckoInputConnection
         mComposing = false;
         mComposingText = "";
         mUpdateRequest = null;
+        mNumPendingChanges = 0;
+        mBatchMode = false;
+        mBatchChanges.clear();
     }
 
     // TextWatcher
     public void onTextChanged(CharSequence s, int start, int before, int count)
     {
+        // Log.d("GeckoAppShell", String.format("IME: onTextChanged: t=%s s=%d b=%d l=%d",
+        //                                      s, start, before, count));
+
+        mNumPendingChanges++;
         GeckoAppShell.sendEventToGecko(
             new GeckoEvent(GeckoEvent.IME_SET_SELECTION, start, before));
 
@@ -603,6 +717,12 @@ public class GeckoInputConnection
     int mCompositionSelStart;
     // Length of fake selection
     int mCompositionSelLen;
+    // Number of in flight changes
+    int mNumPendingChanges;
+
+    boolean mBatchMode;
+    private CopyOnWriteArrayList<ChangeNotification> mBatchChanges =
+        new CopyOnWriteArrayList<ChangeNotification>();
 
     ExtractedTextRequest mUpdateRequest;
     final ExtractedText mUpdateExtract = new ExtractedText();

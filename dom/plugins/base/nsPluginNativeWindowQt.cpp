@@ -56,7 +56,7 @@ public:
   nsPluginNativeWindowQt();
   virtual ~nsPluginNativeWindowQt();
 
-  virtual nsresult CallSetWindow(nsCOMPtr<nsIPluginInstance> &aPluginInstance);
+  virtual nsresult CallSetWindow(nsRefPtr<nsNPAPIPluginInstance> &aPluginInstance);
 private:
 
   NPSetWindowCallbackStruct mWsInfo;
@@ -77,10 +77,12 @@ nsPluginNativeWindowQt::nsPluginNativeWindowQt() : nsPluginNativeWindow()
   ws_info = &mWsInfo;
   type = NPWindowTypeWindow;
   mWsInfo.type = 0;
+#if defined(MOZ_X11)
   mWsInfo.display = nsnull;
   mWsInfo.visual = nsnull;
   mWsInfo.colormap = 0;
   mWsInfo.depth = 0;
+#endif
 }
 
 nsPluginNativeWindowQt::~nsPluginNativeWindowQt()
@@ -105,7 +107,7 @@ nsresult PLUG_DeletePluginNativeWindow(nsPluginNativeWindow * aPluginNativeWindo
   return NS_OK;
 }
 
-nsresult nsPluginNativeWindowQt::CallSetWindow(nsCOMPtr<nsIPluginInstance> &aPluginInstance)
+nsresult nsPluginNativeWindowQt::CallSetWindow(nsRefPtr<nsNPAPIPluginInstance> &aPluginInstance)
 {
   if (aPluginInstance) {
     if (type == NPWindowTypeWindow) {

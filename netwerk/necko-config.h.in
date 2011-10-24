@@ -37,8 +37,6 @@
 #ifndef _NECKO_CONFIG_H_
 #define _NECKO_CONFIG_H_
 
-#undef NECKO_DISK_CACHE
-
 #undef NECKO_COOKIES
 
 #undef NECKO_WIFI
@@ -51,6 +49,7 @@
 #undef NECKO_PROTOCOL_http
 #undef NECKO_PROTOCOL_res
 #undef NECKO_PROTOCOL_viewsource
+#undef NECKO_PROTOCOL_websocket
 #undef NECKO_PROTOCOL_wyciwyg
 
 #endif

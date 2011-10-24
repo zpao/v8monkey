@@ -3,8 +3,8 @@ Cu.import("resource://services-sync/util.js");
 
 function run_test() {
   initTestLogging("Trace");
-  Log4Moz.repository.getLogger("Engine.Passwords").level = Log4Moz.Level.Trace;
-  Log4Moz.repository.getLogger("Store.Passwords").level = Log4Moz.Level.Trace;
+  Log4Moz.repository.getLogger("Sync.Engine.Passwords").level = Log4Moz.Level.Trace;
+  Log4Moz.repository.getLogger("Sync.Store.Passwords").level = Log4Moz.Level.Trace;
 
   const BOGUS_GUID_A = "zzzzzzzzzzzz";
   const BOGUS_GUID_B = "yyyyyyyyyyyy";
@@ -33,14 +33,14 @@ function run_test() {
   try {
     applyEnsureNoFailures([recordA, recordB]);
 
-    // Only the good record makes it to Svc.Login.
+    // Only the good record makes it to Services.logins.
     let badCount = {};
     let goodCount = {};
-    let badLogins = Svc.Login.findLogins(badCount, recordA.hostname,
-                                         recordA.formSubmitURL,
-                                         recordA.httpRealm);
-    let goodLogins = Svc.Login.findLogins(goodCount, recordB.hostname,
-                                          recordB.formSubmitURL, null);
+    let badLogins = Services.logins.findLogins(badCount, recordA.hostname,
+                                               recordA.formSubmitURL,
+                                               recordA.httpRealm);
+    let goodLogins = Services.logins.findLogins(goodCount, recordB.hostname,
+                                                recordB.formSubmitURL, null);
     
     _("Bad: " + JSON.stringify(badLogins));
     _("Good: " + JSON.stringify(goodLogins));

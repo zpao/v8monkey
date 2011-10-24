@@ -87,7 +87,6 @@ SHARED_LIBRARY_LIBS += \
 	$(foreach lib,$(STATIC_LIBS),$(DEPTH)/staticlib/$(LIB_PREFIX)$(lib).$(LIB_SUFFIX)) \
 	$(NULL)
 
-ifdef MOZ_ENABLE_LIBXUL
 include $(srcdir)/libxul-config.mk
 
 EXTRA_DEPS += \
@@ -104,7 +103,6 @@ CPPSRCS += \
 GARBAGE	+= \
 	$(INTL_UNICHARUTIL_UTIL_LCPPSRCS) \
 	$(wildcard *.$(OBJ_SUFFIX)) \
-	dlldeps-javaxpcom.cpp \
 	$(NULL)
 
 LOCAL_INCLUDES += -I$(topsrcdir)/intl/unicharutil/util \
@@ -124,7 +122,6 @@ GARBAGE += \
 	$(RDF_UTIL_SRC_LCPPSRCS) \
 	$(NULL)
 endif
-endif
 
 ifneq (,$(filter OS2 WINNT,$(OS_ARCH)))
 SDK_LIBRARY = $(IMPORT_LIBRARY)
@@ -132,14 +129,17 @@ else
 SDK_LIBRARY = $(SHARED_LIBRARY)
 endif
 
-EXTRA_DSO_LDOPTS += $(LIBS_DIR) $(EXTRA_DSO_LIBS)
-
-ifndef MOZ_ENABLE_LIBXUL
-EXTRA_DSO_LDOPTS += \
-	$(MOZ_COMPONENT_LIBS) \
-	$(MOZ_JS_LIBS) \
-	$(NULL)
+# See bug 653662 - some builders are hitting an internal size limit
+# on incremental builds. Disable this for debug builds for now. We may
+# be able to revisit this after our builders are upgraded to something
+# later than Visual Studio 2005.
+ifeq ($(OS_ARCH),WINNT)
+ifdef MOZ_DEBUG
+EXTRA_DSO_LDOPTS += -INCREMENTAL:NO
 endif
+endif
+
+EXTRA_DSO_LDOPTS += $(LIBS_DIR) $(EXTRA_DSO_LIBS)
 
 DEFINES += -DIMPL_XREAPI
 
@@ -151,7 +151,7 @@ OS_LIBS += \
 	-framework SystemConfiguration \
 	-framework QuickTime \
 	-framework IOKit \
-	-lcrypto \
+	-F/System/Library/PrivateFrameworks -framework CoreUI \
 	$(TK_LIBS) \
 	$(NULL)
 endif
@@ -163,11 +163,14 @@ EXTRA_DSO_LDOPTS += \
 	-framework CoreAudio \
 	-framework AudioToolbox \
 	-framework AudioUnit \
+	-framework IOKit \
+	-framework Foundation \
+	-framework AppKit \
 	$(NULL)
 endif
 endif
 
-ifneq (,$(filter DragonFly FreeBSD GNU GNU_% NetBSD OpenBSD,$(OS_ARCH)))
+ifneq (,$(filter NetBSD OpenBSD,$(OS_ARCH)))
 ifdef MOZ_SYDNEYAUDIO
 EXTRA_DSO_LDOPTS += -lossaudio
 endif
@@ -243,18 +246,11 @@ include $(topsrcdir)/config/rules.mk
 export:: $(RDF_UTIL_SRC_CPPSRCS) $(INTL_UNICHARUTIL_UTIL_CPPSRCS)
 	$(INSTALL) $^ .
 
-ifdef MOZ_ENABLE_LIBXUL
 include $(srcdir)/libxul-rules.mk
-endif
 
 ifeq ($(OS_ARCH),OpenBSD)
 # Needed by nsAuthGSSAPI
 EXTRA_DSO_LDOPTS += -lkrb5 -lcrypto
-endif
-
-ifdef MOZ_JAVAXPCOM
-dlldeps-javaxpcom.cpp: $(topsrcdir)/extensions/java/xpcom/src/dlldeps-javaxpcom.cpp
-	$(INSTALL) $^ .
 endif
 
 ifdef MOZ_DEBUG

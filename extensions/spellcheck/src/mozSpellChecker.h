@@ -20,6 +20,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): David Einstein Deinst@world.std.com
+ *   Jesper Kristensen <mail@jesperkristensen.dk>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -39,6 +40,7 @@
 #define mozSpellChecker_h__
 
 #include "nsCOMPtr.h"
+#include "nsCOMArray.h"
 #include "nsISpellChecker.h"
 #include "nsString.h"
 #include "nsITextServicesDocument.h"
@@ -62,10 +64,10 @@ public:
   nsresult Init();
 
   // nsISpellChecker
-  NS_IMETHOD SetDocument(nsITextServicesDocument *aDoc, PRBool aFromStartofDoc);
+  NS_IMETHOD SetDocument(nsITextServicesDocument *aDoc, bool aFromStartofDoc);
   NS_IMETHOD NextMisspelledWord(nsAString &aWord, nsTArray<nsString> *aSuggestions);
-  NS_IMETHOD CheckWord(const nsAString &aWord, PRBool *aIsMisspelled, nsTArray<nsString> *aSuggestions);
-  NS_IMETHOD Replace(const nsAString &aOldWord, const nsAString &aNewWord, PRBool aAllOccurrences);
+  NS_IMETHOD CheckWord(const nsAString &aWord, bool *aIsMisspelled, nsTArray<nsString> *aSuggestions);
+  NS_IMETHOD Replace(const nsAString &aOldWord, const nsAString &aNewWord, bool aAllOccurrences);
   NS_IMETHOD IgnoreAll(const nsAString &aWord);
 
   NS_IMETHOD AddWordToPersonalDictionary(const nsAString &aWord);
@@ -75,24 +77,20 @@ public:
   NS_IMETHOD GetDictionaryList(nsTArray<nsString> *aDictionaryList);
   NS_IMETHOD GetCurrentDictionary(nsAString &aDictionary);
   NS_IMETHOD SetCurrentDictionary(const nsAString &aDictionary);
+  NS_IMETHOD CheckCurrentDictionary();
 
 protected:
   nsCOMPtr<mozISpellI18NUtil> mConverter;
   nsCOMPtr<nsITextServicesDocument> mTsDoc;
   nsCOMPtr<mozIPersonalDictionary> mPersonalDictionary;
 
-  // Hastable maps directory name to the spellchecker contract ID
-  nsClassHashtable<nsStringHashKey, nsCString> mDictionariesMap;
-
-  nsString mDictionaryName;
-  nsCString *mCurrentEngineContractId;
   nsCOMPtr<mozISpellCheckingEngine>  mSpellCheckingEngine;
-  PRBool mFromStart;
+  bool mFromStart;
 
   nsresult SetupDoc(PRInt32 *outBlockOffset);
 
   nsresult GetCurrentBlockIndex(nsITextServicesDocument *aDoc, PRInt32 *outBlockIndex);
 
-  nsresult InitSpellCheckDictionaryMap();
+  nsresult GetEngineList(nsCOMArray<mozISpellCheckingEngine> *aDictionaryList);
 };
 #endif // mozSpellChecker_h__

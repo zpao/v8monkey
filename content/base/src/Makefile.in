@@ -52,9 +52,11 @@ EXPORTS		= \
 		nsAtomListUtils.h \
 		nsAttrName.h \
 		nsContentList.h \
+		nsContentSink.h \
 		nsGkAtomList.h \
 		nsGkAtoms.h \
 		nsNodeInfoManager.h \
+		nsNodeUtils.h \
 		nsPropertyTable.h \
 		nsScriptLoader.h \
 		nsStubDocumentObserver.h \
@@ -70,7 +72,7 @@ EXPORTS_mozilla/dom = \
   Link.h \
   $(NULL)
 
-LOCAL_INCLUDES = -I$(srcdir)/js/src/xpconnect/src
+LOCAL_INCLUDES = -I$(srcdir)/js/xpconnect/src
 
 CPPSRCS		= \
 		mozSanitizingSerializer.cpp \
@@ -92,6 +94,7 @@ CPPSRCS		= \
 		nsDataDocumentContentPolicy.cpp \
 		nsDOMAttribute.cpp \
 		nsDOMAttributeMap.cpp \
+		nsDOMBlobBuilder.cpp \
 		nsDOMDocumentType.cpp \
 		nsDOMEventTargetWrapperCache.cpp \
 		nsDOMFile.cpp \
@@ -113,7 +116,6 @@ CPPSRCS		= \
 		nsHTMLContentSerializer.cpp \
 		nsImageLoadingContent.cpp \
 		nsLineBreaker.cpp \
-		nsLoadListenerProxy.cpp \
 		nsMappedAttributeElement.cpp \
 		nsMappedAttributes.cpp \
 		nsNameSpaceManager.cpp \
@@ -129,7 +131,6 @@ CPPSRCS		= \
 		nsRange.cpp \
 		nsReferencedElement.cpp \
 		nsScriptElement.cpp \
-		nsScriptEventManager.cpp \
 		nsScriptLoader.cpp \
 		nsStubDocumentObserver.cpp \
 		nsStubImageDecoderObserver.cpp \
@@ -140,6 +141,7 @@ CPPSRCS		= \
 		nsTextFragment.cpp \
 		nsTextNode.cpp \
 		nsTraversal.cpp \
+		nsTreeSanitizer.cpp \
 		nsTreeWalker.cpp \
 		nsWebSocket.cpp \
 		nsXHTMLContentSerializer.cpp \
@@ -151,20 +153,14 @@ CPPSRCS		= \
 		nsFrameMessageManager.cpp \
 		nsInProcessTabChildGlobal.cpp \
 		ThirdPartyUtil.cpp \
+		nsEventSource.cpp \
+		FileIOObject.cpp \
 		$(NULL)
 
 # Are we targeting x86-32 or x86-64?  If so, we want to include SSE2 code for
 # nsTextFragment.cpp
 ifneq (,$(INTEL_ARCHITECTURE))
-
 CPPSRCS += nsTextFragmentSSE2.cpp
-
-# gcc requires -msse2 for this file since it uses SSE2 intrinsics.  (See bug
-# 585538 comment 12.)
-ifdef GNU_CC
-nsTextFragmentSSE2.$(OBJ_SUFFIX): CXXFLAGS+=-msse2
-endif
-
 endif
 
 GQI_SRCS = contentbase.gqi
@@ -206,9 +202,21 @@ INCLUDES	+= \
 		-I$(srcdir)/../../xml/document/src \
 		-I$(topsrcdir)/xpcom/io \
 		-I$(topsrcdir)/dom/ipc \
-		-I$(topsrcdir)/js/src/xpconnect/src \
+		-I$(topsrcdir)/js/xpconnect/src \
 		-I$(topsrcdir)/caps/include \
 		-I$(topsrcdir)/netwerk/base/src \
 		$(NULL)
 
 DEFINES += -D_IMPL_NS_LAYOUT
+
+# gcc requires -msse2 for this file since it uses SSE2 intrinsics.  (See bug
+# 585538 comment 12.)
+ifneq (,$(INTEL_ARCHITECTURE))
+ifdef GNU_CC
+nsTextFragmentSSE2.$(OBJ_SUFFIX): CXXFLAGS+=-msse2
+endif
+
+ifdef SOLARIS_SUNPRO_CXX
+nsTextFragmentSSE2.$(OBJ_SUFFIX): CXXFLAGS+=-xarch=sse2 -xO4
+endif
+endif

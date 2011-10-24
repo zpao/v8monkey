@@ -53,7 +53,7 @@ protected:
   nsSVGTextFrame(nsStyleContext* aContext)
     : nsSVGTextFrameBase(aContext),
       mMetricsState(unsuspended),
-      mPositioningDirty(PR_TRUE) {}
+      mPositioningDirty(true) {}
 
 public:
   NS_DECL_FRAMEARENA_HELPERS
@@ -94,7 +94,8 @@ public:
   NS_IMETHOD_(nsIFrame*) GetFrameForPoint(const nsPoint & aPoint);
   NS_IMETHOD UpdateCoveredRegion();
   NS_IMETHOD InitialUpdate();
-  virtual gfxRect GetBBoxContribution(const gfxMatrix &aToBBoxUserspace);
+  virtual gfxRect GetBBoxContribution(const gfxMatrix &aToBBoxUserspace,
+                                      PRUint32 aFlags);
   
   // nsSVGContainerFrame methods:
   virtual gfxMatrix GetCanvasTM();
@@ -119,16 +120,16 @@ private:
    * control whether they should use the global transform even when
    * NS_STATE_NONDISPLAY_CHILD
    */
-  void UpdateGlyphPositioning(PRBool aForceGlobalTransform);
+  void UpdateGlyphPositioning(bool aForceGlobalTransform);
 
   void SetWhitespaceHandling(nsSVGGlyphFrame *aFrame);
 
-  nsCOMPtr<nsIDOMSVGMatrix> mCanvasTM;
+  nsAutoPtr<gfxMatrix> mCanvasTM;
 
   enum UpdateState { unsuspended, suspended };
   UpdateState mMetricsState;
 
-  PRPackedBool mPositioningDirty;
+  bool mPositioningDirty;
 };
 
 #endif

@@ -37,7 +37,6 @@ extern "C" {  // necessary for Leopard
   #include <fcntl.h>
   #include <mach-o/loader.h>
   #include <mach-o/swap.h>
-  #include <openssl/sha.h>
   #include <stdio.h>
   #include <stdlib.h>
   #include <string.h>
@@ -57,7 +56,6 @@ MachoID::MachoID(const char *path)
    : file_(0), 
      crc_(0), 
      md5_context_(), 
-     sha1_context_(), 
      update_function_(NULL) {
   strlcpy(path_, path, sizeof(path_));
   file_ = open(path, O_RDONLY);
@@ -120,10 +118,6 @@ void MachoID::UpdateMD5(unsigned char *bytes, size_t size) {
   MD5Update(&md5_context_, bytes, size);
 }
 
-void MachoID::UpdateSHA1(unsigned char *bytes, size_t size) {
-  SHA_Update(&sha1_context_, bytes, size);
-}
-
 void MachoID::Update(MachoWalker *walker, off_t offset, size_t size) {
   if (!update_function_ || !size)
     return;
@@ -178,7 +172,7 @@ bool MachoID::IDCommand(int cpu_type, unsigned char identifier[16]) {
   // If we found the command, we'll have initialized the dylib_command
   // structure
   if (dylib_cmd.cmd == LC_ID_DYLIB) {
-    // Take the hashed filename, version, and compatability version bytes
+    // Take the hashed filename, version, and compatibility version bytes
     // to form the first 12 bytes, pad the rest with zeros
 
     // create a crude hash of the filename to generate the first 4 bytes
@@ -231,21 +225,6 @@ bool MachoID::MD5(int cpu_type, unsigned char identifier[16]) {
 
   MD5Final(identifier, &md5_context_);
   return true;
-}
-
-bool MachoID::SHA1(int cpu_type, unsigned char identifier[16]) {
-  MachoWalker walker(path_, WalkerCB, this);
-  update_function_ = &MachoID::UpdateSHA1;
-
-  if (SHA_Init(&sha1_context_)) {
-    if (!walker.WalkHeader(cpu_type))
-      return false;
-
-    SHA_Final(identifier, &sha1_context_);
-    return true;
-  }
-
-  return false;
 }
 
 // static

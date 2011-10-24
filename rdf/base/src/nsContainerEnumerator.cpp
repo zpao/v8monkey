@@ -146,7 +146,7 @@ NS_IMPL_ISUPPORTS1(ContainerEnumeratorImpl, nsISimpleEnumerator)
 
 
 NS_IMETHODIMP
-ContainerEnumeratorImpl::HasMoreElements(PRBool* aResult)
+ContainerEnumeratorImpl::HasMoreElements(bool* aResult)
 {
     NS_PRECONDITION(aResult != nsnull, "null ptr");
     if (! aResult)
@@ -156,7 +156,7 @@ ContainerEnumeratorImpl::HasMoreElements(PRBool* aResult)
 
     // If we've already queued up a next value, then we know there are more elements.
     if (mResult) {
-        *aResult = PR_TRUE;
+        *aResult = true;
         return NS_OK;
     }
 
@@ -173,11 +173,11 @@ ContainerEnumeratorImpl::HasMoreElements(PRBool* aResult)
     PRInt32 max = 0;
 
     nsCOMPtr<nsISimpleEnumerator> targets;
-    rv = mDataSource->GetTargets(mContainer, kRDF_nextVal, PR_TRUE, getter_AddRefs(targets));
+    rv = mDataSource->GetTargets(mContainer, kRDF_nextVal, true, getter_AddRefs(targets));
     if (NS_FAILED(rv)) return rv;
 
     while (1) {
-        PRBool hasmore;
+        bool hasmore;
         targets->HasMoreElements(&hasmore);
         if (! hasmore)
             break;
@@ -207,14 +207,14 @@ ContainerEnumeratorImpl::HasMoreElements(PRBool* aResult)
             rv = gRDFC->IndexToOrdinalResource(mNextIndex, getter_AddRefs(mOrdinalProperty));
             if (NS_FAILED(rv)) return rv;
 
-            rv = mDataSource->GetTargets(mContainer, mOrdinalProperty, PR_TRUE, getter_AddRefs(mCurrent));
+            rv = mDataSource->GetTargets(mContainer, mOrdinalProperty, true, getter_AddRefs(mCurrent));
             if (NS_FAILED(rv)) return rv;
 
             ++mNextIndex;
         }
 
         if (mCurrent) {
-            PRBool hasMore;
+            bool hasMore;
             rv = mCurrent->HasMoreElements(&hasMore);
             if (NS_FAILED(rv)) return rv;
 
@@ -233,13 +233,13 @@ ContainerEnumeratorImpl::HasMoreElements(PRBool* aResult)
             mResult = do_QueryInterface(result, &rv);
             if (NS_FAILED(rv)) return rv;
 
-            *aResult = PR_TRUE;
+            *aResult = true;
             return NS_OK;
         }
     }
 
     // If we get here, we ran out of elements. The cursor is empty.
-    *aResult = PR_FALSE;
+    *aResult = false;
     return NS_OK;
 }
 
@@ -249,7 +249,7 @@ ContainerEnumeratorImpl::GetNext(nsISupports** aResult)
 {
     nsresult rv;
 
-    PRBool hasMore;
+    bool hasMore;
     rv = HasMoreElements(&hasMore);
     if (NS_FAILED(rv)) return rv;
 

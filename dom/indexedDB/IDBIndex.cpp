@@ -44,7 +44,7 @@
 #include "nsIIDBKeyRange.h"
 #include "nsIJSContextStack.h"
 
-#include "nsDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsEventDispatcher.h"
 #include "nsThreadUtils.h"
 #include "mozilla/storage.h"
@@ -169,8 +169,8 @@ public:
                       IDBIndex* aIndex,
                       const Key& aLowerKey,
                       const Key& aUpperKey,
-                      PRBool aLowerOpen,
-                      PRBool aUpperOpen,
+                      bool aLowerOpen,
+                      bool aUpperOpen,
                       PRUint16 aDirection)
   : AsyncConnectionHelper(aTransaction, aRequest), mIndex(aIndex),
     mLowerKey(aLowerKey), mUpperKey(aUpperKey), mLowerOpen(aLowerOpen),
@@ -192,8 +192,8 @@ private:
   nsRefPtr<IDBIndex> mIndex;
   const Key mLowerKey;
   const Key mUpperKey;
-  const PRPackedBool mLowerOpen;
-  const PRPackedBool mUpperOpen;
+  const bool mLowerOpen;
+  const bool mUpperOpen;
   const PRUint16 mDirection;
 
   // Out-params.
@@ -212,8 +212,8 @@ public:
                    IDBIndex* aIndex,
                    const Key& aLowerKey,
                    const Key& aUpperKey,
-                   PRBool aLowerOpen,
-                   PRBool aUpperOpen,
+                   bool aLowerOpen,
+                   bool aUpperOpen,
                    PRUint16 aDirection)
   : AsyncConnectionHelper(aTransaction, aRequest), mIndex(aIndex),
     mLowerKey(aLowerKey), mUpperKey(aUpperKey), mLowerOpen(aLowerOpen),
@@ -240,8 +240,8 @@ private:
   nsRefPtr<IDBIndex> mIndex;
   const Key mLowerKey;
   const Key mUpperKey;
-  const PRPackedBool mLowerOpen;
-  const PRPackedBool mUpperOpen;
+  const bool mLowerOpen;
+  const bool mUpperOpen;
   const PRUint16 mDirection;
 
   // Out-params.
@@ -357,7 +357,7 @@ IDBIndex::GetKeyPath(nsAString& aKeyPath)
 }
 
 NS_IMETHODIMP
-IDBIndex::GetUnique(PRBool* aUnique)
+IDBIndex::GetUnique(bool* aUnique)
 {
   NS_PRECONDITION(NS_IsMainThread(), "Wrong thread!");
 
@@ -544,7 +544,7 @@ IDBIndex::OpenCursor(nsIIDBKeyRange* aKeyRange,
 
   nsresult rv;
   Key lowerKey, upperKey;
-  PRBool lowerOpen = PR_FALSE, upperOpen = PR_FALSE;
+  bool lowerOpen = false, upperOpen = false;
 
   if (aKeyRange) {
     nsCOMPtr<nsIVariant> variant;
@@ -612,7 +612,7 @@ IDBIndex::OpenKeyCursor(nsIIDBKeyRange* aKeyRange,
 
   nsresult rv;
   Key lowerKey, upperKey;
-  PRBool lowerOpen = PR_FALSE, upperOpen = PR_FALSE;
+  bool lowerOpen = false, upperOpen = false;
 
   if (aKeyRange) {
     nsCOMPtr<nsIVariant> variant;
@@ -696,7 +696,7 @@ GetKeyHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
 
   mKey = Key::UNSETKEY;
 
-  PRBool hasResult;
+  bool hasResult;
   rv = stmt->ExecuteStep(&hasResult);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
@@ -763,7 +763,7 @@ GetHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
 
   mKey = Key::UNSETKEY;
 
-  PRBool hasResult;
+  bool hasResult;
   rv = stmt->ExecuteStep(&hasResult);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
@@ -780,11 +780,11 @@ nsresult
 GetHelper::GetSuccessResult(JSContext* aCx,
                             jsval* aVal)
 {
-  nsresult rv = ConvertCloneBufferToJSVal(aCx, mCloneBuffer, aVal);
+  bool result = IDBObjectStore::DeserializeValue(aCx, mCloneBuffer, aVal);
 
-  mCloneBuffer.clear(aCx);
+  mCloneBuffer.clear();
 
-  NS_ENSURE_SUCCESS(rv, rv);
+  NS_ENSURE_TRUE(result, NS_ERROR_FAILURE);
   return NS_OK;
 }
 
@@ -862,7 +862,7 @@ GetAllKeysHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
     NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
   }
 
-  PRBool hasResult;
+  bool hasResult;
   while(NS_SUCCEEDED((rv = stmt->ExecuteStep(&hasResult))) && hasResult) {
     if (mKeys.Capacity() == mKeys.Length()) {
       if (!mKeys.SetCapacity(mKeys.Capacity() * 2)) {
@@ -924,8 +924,7 @@ GetAllKeysHelper::GetSuccessResult(JSContext* aCx,
       return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
     }
 
-    jsint count = jsint(keys.Length());
-    for (jsint index = 0; index < count; index++) {
+    for (uint32 index = 0, count = keys.Length(); index < count; index++) {
       const Key& key = keys[index];
       NS_ASSERTION(!key.IsUnset(), "Bad key!");
 
@@ -1027,7 +1026,7 @@ GetAllHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
     NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
   }
 
-  PRBool hasResult;
+  bool hasResult;
   while(NS_SUCCEEDED((rv = stmt->ExecuteStep(&hasResult))) && hasResult) {
     if (mCloneBuffers.Capacity() == mCloneBuffers.Length()) {
       if (!mCloneBuffers.SetCapacity(mCloneBuffers.Capacity() * 2)) {
@@ -1056,7 +1055,7 @@ GetAllHelper::GetSuccessResult(JSContext* aCx,
   nsresult rv = ConvertCloneBuffersToArray(aCx, mCloneBuffers, aVal);
 
   for (PRUint32 index = 0; index < mCloneBuffers.Length(); index++) {
-    mCloneBuffers[index].clear(aCx);
+    mCloneBuffers[index].clear();
   }
 
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1165,7 +1164,7 @@ OpenKeyCursorHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
     NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
   }
 
-  PRBool hasResult;
+  bool hasResult;
   rv = stmt->ExecuteStep(&hasResult);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
@@ -1418,7 +1417,7 @@ OpenCursorHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
     NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
   }
 
-  PRBool hasResult;
+  bool hasResult;
   rv = stmt->ExecuteStep(&hasResult);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 

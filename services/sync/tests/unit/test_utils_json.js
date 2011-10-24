@@ -1,6 +1,7 @@
 _("Make sure json saves and loads from disk");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://services-sync/constants.js");
+Cu.import("resource://gre/modules/FileUtils.jsm");
 
 function run_test() {
   run_next_test();
@@ -68,12 +69,12 @@ add_test(function test_load_logging() {
   _("Verify that reads and read errors are logged.");
 
   // Write a file with some invalid JSON
-  let file = Utils.getProfileFile({ autoCreate: true,
-                                    path: "weave/log.json" });
+  let file = Utils.getProfileFile("weave/log.json");
   let fos = Cc["@mozilla.org/network/file-output-stream;1"]
               .createInstance(Ci.nsIFileOutputStream);
-  fos.init(file, MODE_WRONLY | MODE_CREATE | MODE_TRUNCATE, PERMS_FILE,
-           fos.DEFER_OPEN);
+  let flags = FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE
+              | FileUtils.MODE_TRUNCATE;
+  fos.init(file, flags, FileUtils.PERMS_FILE, fos.DEFER_OPEN);
   let stream = Cc["@mozilla.org/intl/converter-output-stream;1"]
                  .createInstance(Ci.nsIConverterOutputStream);
   stream.init(fos, "UTF-8", 4096, 0x0000);

@@ -37,10 +37,15 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
+#include "mozilla/Util.h"
+
 #include "nsWindow.h"
 #include "nsQtKeyUtils.h"
 
 #include "nsGUIEvent.h"
+
+using namespace mozilla;
 
 struct nsKeyConverter
 {
@@ -75,6 +80,7 @@ static struct nsKeyConverter nsKeycodes[] =
     { NS_VK_PRINTSCREEN,   Qt::Key_Print },
     { NS_VK_INSERT,        Qt::Key_Insert },
     { NS_VK_DELETE,        Qt::Key_Delete },
+    { NS_VK_HELP,          Qt::Key_Help },
 
     { NS_VK_0,             Qt::Key_0 },
     { NS_VK_1,             Qt::Key_1 },
@@ -172,19 +178,10 @@ static struct nsKeyConverter nsKeycodes[] =
     { NS_VK_META,          Qt::Key_Meta }
 };
 
-
-#ifdef SOLARIS
-struct nsKeyConverter nsSunKeycodes[] = {
-    {NS_VK_F1, Qt::Key_Help }, //Mapping Help key to F1
-    {NS_VK_F11, 0x1005ff10 }, //Sun F11 key generates SunF36(0x1005ff10) keysym
-    {NS_VK_F12, 0x1005ff11 }  //Sun F12 key generates SunF37(0x1005ff11) keysym
-};
-#endif
-
 int
 QtKeyCodeToDOMKeyCode(int aKeysym)
 {
-    int i, length = 0;
+    unsigned int i;
 
     // First, try to handle alphanumeric input, not listed in nsKeycodes:
     // most likely, more letters will be getting typed in than things in
@@ -203,18 +200,8 @@ QtKeyCodeToDOMKeyCode(int aKeysym)
 //    if (aKeysym >= Qt::Key_KP_0 && aKeysym <= Qt::Key_KP_9)
 //        return aKeysym - Qt::Key_KP_0 + NS_VK_NUMPAD0;
 
-#ifdef SOLARIS
-    // map Sun Keyboard special keysyms
-    length = sizeof(nsSunKeycodes) / sizeof(struct nsKeyConverter);
-    for (i = 0; i < length; i++) {
-        if (nsSunKeycodes[i].keysym == aKeysym)
-            return(nsSunKeycodes[i].vkCode);
-    }
-#endif
-
     // misc other things
-    length = sizeof(nsKeycodes) / sizeof(struct nsKeyConverter);
-    for (i = 0; i < length; i++) {
+    for (i = 0; i < ArrayLength(nsKeycodes); i++) {
         if (nsKeycodes[i].keysym == aKeysym)
             return(nsKeycodes[i].vkCode);
     }
@@ -229,7 +216,7 @@ QtKeyCodeToDOMKeyCode(int aKeysym)
 int
 DOMKeyCodeToQtKeyCode(int aKeysym)
 {
-    int i, length = 0;
+    unsigned int i;
 
     // First, try to handle alphanumeric input, not listed in nsKeycodes:
     // most likely, more letters will be getting typed in than things in
@@ -252,8 +239,7 @@ DOMKeyCodeToQtKeyCode(int aKeysym)
     }
 
     // misc other things
-    length = NS_ARRAY_LENGTH(nsKeycodes);
-    for (i = 0; i < length; ++i) {
+    for (i = 0; i < ArrayLength(nsKeycodes); ++i) {
       if (nsKeycodes[i].vkCode == aKeysym) {
         return nsKeycodes[i].keysym;
       }

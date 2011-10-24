@@ -46,20 +46,17 @@
 #include "nsIJSContextStack.h"
 #include "jsapi.h"
 #include "nsIScriptSecurityManager.h"
-#include "nsIPrefBranch.h"
 #include "nsServiceManagerUtils.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
 #include "nsIVariant.h"
 
 #include "nsIDOMDocument.h"
-#include "nsIDOMDocumentEvent.h"
 #include "nsIDOMEvent.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIPrivateDOMEvent.h"
 #include "nsIDOMDataContainerEvent.h"
 
 #include "nsContentUtils.h"
+#include "mozilla/Preferences.h"
 
 #if 0
 #include "nsIContentURIGrouper.h"
@@ -67,138 +64,6 @@
 #endif
 
 using namespace mozilla;
-
-PRBool
-WebGLContext::SafeToCreateCanvas3DContext(nsHTMLCanvasElement *canvasElement)
-{
-    nsresult rv;
-
-    // first see if we're a chrome context
-    PRBool is_caller_chrome = PR_FALSE;
-    nsCOMPtr<nsIScriptSecurityManager> ssm =
-        do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    rv = ssm->SubjectPrincipalIsSystem(&is_caller_chrome);
-    if (NS_SUCCEEDED(rv) && is_caller_chrome)
-        return PR_TRUE;
-
-    // not chrome? check pref.
-
-    // first check our global pref
-    nsCOMPtr<nsIPrefBranch> prefService = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    PRBool disabled = PR_FALSE;
-    rv = prefService->GetBoolPref("webgl.disabled", &disabled);
-    if (NS_SUCCEEDED(rv) && !disabled) {
-        // the all-sites pref was set, we're good to go
-        return PR_TRUE;
-    }
-
-#if 0
-    // otherwise we'll check content prefs
-    nsCOMPtr<nsIContentPrefService> cpsvc = do_GetService("@mozilla.org/content-pref/service;1", &rv);
-    if (NS_FAILED(rv)) {
-        LogMessage("Canvas 3D: Failed to get Content Pref service, can't verify that canvas3d is ok for this site!");
-        return PR_FALSE;
-    }
-
-    // grab our content URI
-    nsCOMPtr<nsIURI> contentURI;
-
-    nsCOMPtr<nsIPrincipal> principal;
-    rv = ssm->GetSubjectPrincipal(getter_AddRefs(principal));
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    if (!principal) {
-        // seriously? no script executing, but not the system principal?
-        return PR_FALSE;
-    }
-    rv = principal->GetURI(getter_AddRefs(contentURI));
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    // our pref is 'webgl.enabled'
-    nsCOMPtr<nsIVariant> val;
-    rv = cpsvc->GetPref(contentURI, NS_LITERAL_STRING("webgl.enabled"), getter_AddRefs(val));
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    PRInt32 iv;
-    rv = val->GetAsInt32(&iv);
-    if (NS_SUCCEEDED(rv)) {
-        // 1 means "yes, allowed"
-        if (iv == 1)
-            return PR_TRUE;
-
-        // -1 means "no, don't ask me again"
-        if (iv == -1)
-            return PR_FALSE;
-
-        // otherwise, we'll throw an event and maybe ask the user
-    }
-
-    // grab the document that we can use to create the event
-    nsCOMPtr<nsIDOMNode> node = do_QueryInterface(canvasElement);
-    nsCOMPtr<nsIDOMDocument> domDoc;
-    rv = node->GetOwnerDocument(getter_AddRefs(domDoc));
-
-    /*
-    // figure out where to throw the event.  we just go for the outermost
-    // document.  ideally, I want to throw the event to the <browser> if one exists,
-    // otherwise the topmost document, but that's more work than I want to deal with.
-    nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
-    while (doc->GetParentDocument())
-        doc = doc->GetParentDocument();
-    */
-
-    // set up the event
-    nsCOMPtr<nsIDOMDocumentEvent> docEvent = do_QueryInterface(domDoc);
-    NS_ENSURE_TRUE(docEvent, PR_FALSE);
-
-    nsCOMPtr<nsIDOMEvent> eventBase;
-    rv = docEvent->CreateEvent(NS_LITERAL_STRING("DataContainerEvent"), getter_AddRefs(eventBase));
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    rv = eventBase->InitEvent(NS_LITERAL_STRING("Canvas3DContextRequest"), PR_TRUE, PR_TRUE);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    nsCOMPtr<nsIDOMDataContainerEvent> event = do_QueryInterface(eventBase);
-    nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(eventBase);
-    NS_ENSURE_TRUE(event && privateEvent, PR_FALSE);
-
-    // mark it as trusted, so that it'll bubble upwards into chrome
-    privateEvent->SetTrusted(PR_TRUE);
-
-    // set some extra data on the event
-    nsCOMPtr<nsIContentURIGrouper> grouper = do_GetService("@mozilla.org/content-pref/hostname-grouper;1", &rv);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    nsAutoString group;
-    rv = grouper->Group(contentURI, group);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    nsCOMPtr<nsIWritableVariant> groupVariant = do_CreateInstance(NS_VARIANT_CONTRACTID);
-    nsCOMPtr<nsIWritableVariant> uriVariant = do_CreateInstance(NS_VARIANT_CONTRACTID);
-
-    groupVariant->SetAsAString(group);
-    uriVariant->SetAsISupports(contentURI);
-
-    rv = event->SetData(NS_LITERAL_STRING("group"), groupVariant);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    rv = event->SetData(NS_LITERAL_STRING("uri"), uriVariant);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    // our target...
-    nsCOMPtr<nsIDOMEventTarget> targ = do_QueryInterface(canvasElement);
-
-    // and go.
-    PRBool defaultActionEnabled;
-    targ->DispatchEvent(event, &defaultActionEnabled);
-#endif
-
-    return PR_FALSE;
-}
 
 void
 WebGLContext::LogMessage(const char *fmt, ...)
@@ -241,7 +106,7 @@ WebGLContext::LogMessageIfVerbose(const char *fmt, ...)
 void
 WebGLContext::LogMessageIfVerbose(const char *fmt, va_list ap)
 {
-    static PRBool firstTime = PR_TRUE;
+    static bool firstTime = true;
 
     if (mVerbose)
         LogMessage(fmt, ap);
@@ -249,7 +114,25 @@ WebGLContext::LogMessageIfVerbose(const char *fmt, va_list ap)
         LogMessage("There are WebGL warnings or messages in this page, but they are hidden. To see them, "
                    "go to about:config, set the webgl.verbose preference, and reload this page.");
 
-    firstTime = PR_FALSE;
+    firstTime = false;
+}
+
+CheckedUint32
+WebGLContext::GetImageSize(WebGLsizei height, 
+                           WebGLsizei width, 
+                           PRUint32 pixelSize,
+                           PRUint32 packOrUnpackAlignment)
+{
+    CheckedUint32 checked_plainRowSize = CheckedUint32(width) * pixelSize;
+
+    // alignedRowSize = row size rounded up to next multiple of packAlignment
+    CheckedUint32 checked_alignedRowSize = RoundedToNextMultipleOf(checked_plainRowSize, packOrUnpackAlignment);
+
+    // if height is 0, we don't need any memory to store this; without this check, we'll get an overflow
+    CheckedUint32 checked_neededByteLength
+        = height <= 0 ? 0 : (height-1) * checked_alignedRowSize + checked_plainRowSize;
+
+    return checked_neededByteLength;
 }
 
 nsresult
@@ -259,15 +142,13 @@ WebGLContext::SynthesizeGLError(WebGLenum err)
     // but if there isn't, then we need to check for a gl error
     // that may have occurred before this one and use that code
     // instead.
+    
+    MakeContextCurrent();
 
-    if (mSynthesizedGLError == LOCAL_GL_NO_ERROR) {
-        MakeContextCurrent();
+    UpdateWebGLErrorAndClearGLError();
 
-        mSynthesizedGLError = gl->fGetError();
-
-        if (mSynthesizedGLError == LOCAL_GL_NO_ERROR)
-            mSynthesizedGLError = err;
-    }
+    if (!mWebGLError)
+        mWebGLError = err;
 
     return NS_OK;
 }
@@ -327,3 +208,24 @@ WebGLContext::ErrorOutOfMemory(const char *fmt, ...)
     return SynthesizeGLError(LOCAL_GL_OUT_OF_MEMORY);
 }
 
+const char *
+WebGLContext::ErrorName(GLenum error)
+{
+    switch(error) {
+        case LOCAL_GL_INVALID_ENUM:
+            return "INVALID_ENUM";
+        case LOCAL_GL_INVALID_OPERATION:
+            return "INVALID_OPERATION";
+        case LOCAL_GL_INVALID_VALUE:
+            return "INVALID_VALUE";
+        case LOCAL_GL_OUT_OF_MEMORY:
+            return "OUT_OF_MEMORY";
+        case LOCAL_GL_INVALID_FRAMEBUFFER_OPERATION:
+            return "INVALID_FRAMEBUFFER_OPERATION";
+        case LOCAL_GL_NO_ERROR:
+            return "NO_ERROR";
+        default:
+            NS_ABORT();
+            return "[unknown WebGL error!]";
+    }
+};

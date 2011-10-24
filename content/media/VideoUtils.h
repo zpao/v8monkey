@@ -41,6 +41,9 @@
 
 #include "mozilla/ReentrantMonitor.h"
 
+#include "nsRect.h"
+#include "nsIThreadManager.h"
+
 // This file contains stuff we'd rather put elsewhere, but which is
 // dependent on other changes which we don't want to wait for. We plan to
 // remove this file in the near future.
@@ -107,40 +110,66 @@ private:
 
 } // namespace mozilla
 
-// Adds two 32bit unsigned numbers, retuns PR_TRUE if addition succeeded,
-// or PR_FALSE the if addition would result in an overflow.
-PRBool AddOverflow32(PRUint32 a, PRUint32 b, PRUint32& aResult);
+// Adds two 32bit unsigned numbers, retuns true if addition succeeded,
+// or false the if addition would result in an overflow.
+bool AddOverflow32(PRUint32 a, PRUint32 b, PRUint32& aResult);
  
-// 32 bit integer multiplication with overflow checking. Returns PR_TRUE
-// if the multiplication was successful, or PR_FALSE if the operation resulted
+// 32 bit integer multiplication with overflow checking. Returns true
+// if the multiplication was successful, or false if the operation resulted
 // in an integer overflow.
-PRBool MulOverflow32(PRUint32 a, PRUint32 b, PRUint32& aResult);
+bool MulOverflow32(PRUint32 a, PRUint32 b, PRUint32& aResult);
 
-// Adds two 64bit numbers, retuns PR_TRUE if addition succeeded, or PR_FALSE
+// Adds two 64bit numbers, retuns true if addition succeeded, or false
 // if addition would result in an overflow.
-PRBool AddOverflow(PRInt64 a, PRInt64 b, PRInt64& aResult);
+bool AddOverflow(PRInt64 a, PRInt64 b, PRInt64& aResult);
 
-// 64 bit integer multiplication with overflow checking. Returns PR_TRUE
-// if the multiplication was successful, or PR_FALSE if the operation resulted
+// 64 bit integer multiplication with overflow checking. Returns true
+// if the multiplication was successful, or false if the operation resulted
 // in an integer overflow.
-PRBool MulOverflow(PRInt64 a, PRInt64 b, PRInt64& aResult);
+bool MulOverflow(PRInt64 a, PRInt64 b, PRInt64& aResult);
 
-// Converts from number of audio samples (aSamples) to microseconds, given
-// the specified audio rate (aRate). Stores result in aOutUsecs. Returns PR_TRUE
-// if the operation succeeded, or PR_FALSE if there was an integer overflow
+// Converts from number of audio frames (aFrames) to microseconds, given
+// the specified audio rate (aRate). Stores result in aOutUsecs. Returns true
+// if the operation succeeded, or false if there was an integer overflow
 // while calulating the conversion.
-PRBool SamplesToUsecs(PRInt64 aSamples, PRUint32 aRate, PRInt64& aOutUsecs);
+bool FramesToUsecs(PRInt64 aFrames, PRUint32 aRate, PRInt64& aOutUsecs);
 
-// Converts from microseconds (aUsecs) to number of audio samples, given the
-// specified audio rate (aRate). Stores the result in aOutSamples. Returns
-// PR_TRUE if the operation succeeded, or PR_FALSE if there was an integer
+// Converts from microseconds (aUsecs) to number of audio frames, given the
+// specified audio rate (aRate). Stores the result in aOutFrames. Returns
+// true if the operation succeeded, or false if there was an integer
 // overflow while calulating the conversion.
-PRBool UsecsToSamples(PRInt64 aUsecs, PRUint32 aRate, PRInt64& aOutSamples);
+bool UsecsToFrames(PRInt64 aUsecs, PRUint32 aRate, PRInt64& aOutFrames);
 
 // Number of microseconds per second. 1e6.
-#define USECS_PER_S 1000000
+static const PRInt64 USECS_PER_S = 1000000;
 
 // Number of microseconds per millisecond.
-#define USECS_PER_MS 1000
+static const PRInt64 USECS_PER_MS = 1000;
+
+// The maximum height and width of the video. Used for
+// sanitizing the memory allocation of the RGB buffer.
+// The maximum resolution we anticipate encountering in the
+// wild is 2160p - 3840x2160 pixels.
+static const PRInt32 MAX_VIDEO_WIDTH = 4000;
+static const PRInt32 MAX_VIDEO_HEIGHT = 3000;
+
+// Scales the display rect aDisplay by aspect ratio aAspectRatio.
+// Note that aDisplay must be validated by nsVideoInfo::ValidateVideoRegion()
+// before being used!
+void ScaleDisplayByAspectRatio(nsIntSize& aDisplay, float aAspectRatio);
+
+// The amount of virtual memory reserved for thread stacks.
+#if defined(XP_WIN) || defined(XP_MACOSX) || defined(LINUX)
+#define MEDIA_THREAD_STACK_SIZE (128 * 1024)
+#else
+// All other platforms use their system defaults.
+#define MEDIA_THREAD_STACK_SIZE nsIThreadManager::DEFAULT_STACK_SIZE
+#endif
+
+// Android's audio backend is not available in content processes, so audio must
+// be remoted to the parent chrome process.
+#if defined(ANDROID)
+#define REMOTE_AUDIO 1
+#endif
 
 #endif

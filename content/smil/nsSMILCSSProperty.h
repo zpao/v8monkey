@@ -72,20 +72,20 @@ public:
   virtual nsresult ValueFromString(const nsAString& aStr,
                                    const nsISMILAnimationElement* aSrcElement,
                                    nsSMILValue& aValue,
-                                   PRBool& aPreventCachingOfSandwich) const;
+                                   bool& aPreventCachingOfSandwich) const;
   virtual nsSMILValue GetBaseValue() const;
   virtual nsresult    SetAnimValue(const nsSMILValue& aValue);
   virtual void        ClearAnimValue();
 
   /**
-   * Utility method - returns PR_TRUE if the given property is supported for
+   * Utility method - returns true if the given property is supported for
    * SMIL animation.
    *
    * @param   aProperty  The property to check for animation support.
-   * @return  PR_TRUE if the given property is supported for SMIL animation, or
-   *          PR_FALSE otherwise
+   * @return  true if the given property is supported for SMIL animation, or
+   *          false otherwise
    */
-  static PRBool IsPropertyAnimatable(nsCSSProperty aPropID);
+  static bool IsPropertyAnimatable(nsCSSProperty aPropID);
 
 protected:
   nsCSSProperty mPropID;

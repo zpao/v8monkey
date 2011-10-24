@@ -96,11 +96,11 @@ nsSVGTextContainerFrame::GetRotate()
 // nsIFrame methods
 
 NS_IMETHODIMP
-nsSVGTextContainerFrame::InsertFrames(nsIAtom* aListName,
+nsSVGTextContainerFrame::InsertFrames(ChildListID aListID,
                                       nsIFrame* aPrevFrame,
                                       nsFrameList& aFrameList)
 {
-  nsresult rv = nsSVGDisplayContainerFrame::InsertFrames(aListName,
+  nsresult rv = nsSVGDisplayContainerFrame::InsertFrames(aListID,
                                                          aPrevFrame,
                                                          aFrameList);
 
@@ -109,11 +109,11 @@ nsSVGTextContainerFrame::InsertFrames(nsIAtom* aListName,
 }
 
 NS_IMETHODIMP
-nsSVGTextContainerFrame::RemoveFrame(nsIAtom *aListName, nsIFrame *aOldFrame)
+nsSVGTextContainerFrame::RemoveFrame(ChildListID aListID, nsIFrame *aOldFrame)
 {
   nsSVGTextFrame *textFrame = GetTextFrame();
 
-  nsresult rv = nsSVGDisplayContainerFrame::RemoveFrame(aListName, aOldFrame);
+  nsresult rv = nsSVGDisplayContainerFrame::RemoveFrame(aListID, aOldFrame);
 
   if (textFrame)
     textFrame->NotifyGlyphMetricsChange();
@@ -487,7 +487,7 @@ nsSVGTextContainerFrame::GetEffectiveRotate(nsTArray<float> &aRotate)
 void
 nsSVGTextContainerFrame::SetWhitespaceCompression()
 {
-  PRBool compressWhitespace = PR_TRUE;
+  bool compressWhitespace = true;
 
   for (const nsIFrame *frame = this; frame != nsnull; frame = frame->GetParent()) {
     static const nsIContent::AttrValuesArray strings[] =
@@ -498,7 +498,7 @@ nsSVGTextContainerFrame::SetWhitespaceCompression()
                                            nsGkAtoms::space,
                                            strings, eCaseMatters);
     if (index == 0) {
-      compressWhitespace = PR_FALSE;
+      compressWhitespace = false;
       break;
     }
     if (index != nsIContent::ATTR_MISSING ||

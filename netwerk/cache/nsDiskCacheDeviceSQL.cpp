@@ -37,6 +37,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsCache.h"
 #include "nsDiskCache.h"
 #include "nsDiskCacheDeviceSQL.h"
@@ -67,6 +69,8 @@
 
 #include "mozilla/FunctionTimer.h"
 
+using namespace mozilla;
+
 static const char OFFLINE_CACHE_DEVICE_ID[] = { "offline" };
 static NS_DEFINE_CID(kCacheServiceCID, NS_CACHESERVICE_CID);
 
@@ -81,14 +85,14 @@ static PRUint32 gNextTemporaryClientID = 0;
 static nsresult
 EnsureDir(nsIFile *dir)
 {
-  PRBool exists;
+  bool exists;
   nsresult rv = dir->Exists(&exists);
   if (NS_SUCCEEDED(rv) && !exists)
     rv = dir->Create(nsIFile::DIRECTORY_TYPE, 0700);
   return rv;
 }
 
-static PRBool
+static bool
 DecomposeCacheEntryKey(const nsCString *fullKey,
                        const char **cid,
                        const char **key,
@@ -100,14 +104,14 @@ DecomposeCacheEntryKey(const nsCString *fullKey,
   if (colon == kNotFound)
   {
     NS_ERROR("Invalid key");
-    return PR_FALSE;
+    return false;
   }
   buf.SetCharAt('\0', colon);
 
   *cid = buf.get();
   *key = buf.get() + colon + 1;
 
-  return PR_TRUE;
+  return true;
 }
 
 class AutoResetStatement
@@ -243,7 +247,7 @@ nsOfflineCacheEvictionFunction::Apply()
     LOG(("  removing %s\n", path.get()));
 #endif
 
-    mItems[i]->Remove(PR_FALSE);
+    mItems[i]->Remove(false);
   }
 
   Reset();
@@ -539,9 +543,9 @@ nsOfflineCacheEntryInfo::GetExpirationTime(PRUint32 *aExpirationTime)
 }
 
 NS_IMETHODIMP
-nsOfflineCacheEntryInfo::IsStreamBased(PRBool *aStreamBased)
+nsOfflineCacheEntryInfo::IsStreamBased(bool *aStreamBased)
 {
-  *aStreamBased = PR_TRUE;
+  *aStreamBased = true;
   return NS_OK;
 }
 
@@ -601,7 +605,7 @@ NS_IMPL_ISUPPORTS2(nsApplicationCache,
 
 nsApplicationCache::nsApplicationCache()
   : mDevice(nsnull)
-  , mValid(PR_TRUE)
+  , mValid(true)
 {
 }
 
@@ -611,7 +615,7 @@ nsApplicationCache::nsApplicationCache(nsOfflineCacheDevice *device,
   : mDevice(device)
   , mGroup(group)
   , mClientID(clientID)
-  , mValid(PR_TRUE)
+  , mValid(true)
 {
 }
 
@@ -630,7 +634,7 @@ nsApplicationCache::~nsApplicationCache()
 void
 nsApplicationCache::MarkInvalid()
 {
-  mValid = PR_FALSE;
+  mValid = false;
 }
 
 NS_IMETHODIMP
@@ -660,7 +664,7 @@ nsApplicationCache::GetClientID(nsACString &out)
 }
 
 NS_IMETHODIMP
-nsApplicationCache::GetActive(PRBool *out)
+nsApplicationCache::GetActive(bool *out)
 {
   NS_ENSURE_TRUE(mDevice, NS_ERROR_NOT_AVAILABLE);
 
@@ -684,7 +688,7 @@ nsApplicationCache::Discard()
   NS_ENSURE_TRUE(mValid, NS_ERROR_NOT_AVAILABLE);
   NS_ENSURE_TRUE(mDevice, NS_ERROR_NOT_AVAILABLE);
 
-  mValid = PR_FALSE;
+  mValid = false;
 
   if (mDevice->IsActiveCache(mGroup, mClientID))
   {
@@ -745,7 +749,7 @@ nsApplicationCache::AddNamespaces(nsIArray *namespaces)
   if (!namespaces)
     return NS_OK;
 
-  mozStorageTransaction transaction(mDevice->mDB, PR_FALSE);
+  mozStorageTransaction transaction(mDevice->mDB, false);
 
   PRUint32 length;
   nsresult rv = namespaces->GetLength(&length);
@@ -831,17 +835,17 @@ nsOfflineCacheDevice::~nsOfflineCacheDevice()
 }
 
 /* static */
-PRBool
+bool
 nsOfflineCacheDevice::GetStrictFileOriginPolicy()
 {
     nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
 
-    PRBool retval;
+    bool retval;
     if (prefs && NS_SUCCEEDED(prefs->GetBoolPref("security.fileuri.strict_origin_policy", &retval)))
         return retval;
 
     // As default value use true (be more strict)
-    return PR_TRUE;
+    return true;
 }
 
 PRUint32
@@ -849,7 +853,7 @@ nsOfflineCacheDevice::CacheSize()
 {
   AutoResetStatement statement(mStatement_CacheSize);
 
-  PRBool hasRows;
+  bool hasRows;
   nsresult rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_TRUE(NS_SUCCEEDED(rv) && hasRows, 0);
   
@@ -861,7 +865,7 @@ nsOfflineCacheDevice::EntryCount()
 {
   AutoResetStatement statement(mStatement_EntryCount);
 
-  PRBool hasRows;
+  bool hasRows;
   nsresult rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_TRUE(NS_SUCCEEDED(rv) && hasRows, 0);
 
@@ -908,7 +912,7 @@ nsOfflineCacheDevice::UpdateEntry(nsCacheEntry *entry)
   rv |= statement->BindUTF8StringByIndex(8, nsDependentCString(key));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -933,7 +937,7 @@ nsOfflineCacheDevice::UpdateEntrySize(nsCacheEntry *entry, PRUint32 newSize)
   rv |= statement->BindUTF8StringByIndex(2, nsDependentCString(key));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -942,7 +946,7 @@ nsOfflineCacheDevice::UpdateEntrySize(nsCacheEntry *entry, PRUint32 newSize)
 }
 
 nsresult
-nsOfflineCacheDevice::DeleteEntry(nsCacheEntry *entry, PRBool deleteData)
+nsOfflineCacheDevice::DeleteEntry(nsCacheEntry *entry, bool deleteData)
 {
   if (deleteData)
   {
@@ -964,7 +968,7 @@ nsOfflineCacheDevice::DeleteEntry(nsCacheEntry *entry, PRBool deleteData)
   rv |= statement->BindUTF8StringByIndex(1, nsDependentCString(key));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -978,7 +982,7 @@ nsOfflineCacheDevice::DeleteData(nsCacheEntry *entry)
   nsOfflineCacheBinding *binding = (nsOfflineCacheBinding *) entry->Data();
   NS_ENSURE_STATE(binding);
 
-  return binding->mDataFile->Remove(PR_FALSE);
+  return binding->mDataFile->Remove(false);
 }
 
 /**
@@ -1001,6 +1005,16 @@ nsOfflineCacheDevice::GetInstance()
   NS_IF_ADDREF(cacheService->mOfflineDevice);
   return cacheService->mOfflineDevice;
 }
+
+// This struct is local to nsOfflineCacheDevice::Init, but ISO C++98 doesn't
+// allow a template (mozilla::ArrayLength) to be instantiated based on a local
+// type.  Boo-urns!
+struct StatementSql {
+    nsCOMPtr<mozIStorageStatement> &statement;
+    const char *sql;
+    StatementSql (nsCOMPtr<mozIStorageStatement> &aStatement, const char *aSql):
+      statement (aStatement), sql (aSql) {}
+};
 
 nsresult
 nsOfflineCacheDevice::Init()
@@ -1129,12 +1143,7 @@ nsOfflineCacheDevice::Init()
   NS_ENSURE_SUCCESS(rv, rv);
 
   // create all (most) of our statements up front
-  struct StatementSql {
-    nsCOMPtr<mozIStorageStatement> &statement;
-    const char *sql;
-    StatementSql (nsCOMPtr<mozIStorageStatement> &aStatement, const char *aSql):
-      statement (aStatement), sql (aSql) {}
-  } prepared[] = {
+  StatementSql prepared[] = {
     StatementSql ( mStatement_CacheSize,         "SELECT Sum(DataSize) from moz_cache;" ),
     StatementSql ( mStatement_ApplicationCacheSize, "SELECT Sum(DataSize) from moz_cache WHERE ClientID = ?;" ),
     StatementSql ( mStatement_EntryCount,        "SELECT count(*) from moz_cache;" ),
@@ -1169,7 +1178,7 @@ nsOfflineCacheDevice::Init()
     StatementSql ( mStatement_InsertNamespaceEntry,  "INSERT INTO moz_cache_namespaces (ClientID, NameSpace, Data, ItemType) VALUES(?, ?, ?, ?);"),
     StatementSql ( mStatement_EnumerateGroups,       "SELECT GroupID, ActiveClientID FROM moz_cache_groups;")
   };
-  for (PRUint32 i = 0; NS_SUCCEEDED(rv) && i < NS_ARRAY_LENGTH(prepared); ++i)
+  for (PRUint32 i = 0; NS_SUCCEEDED(rv) && i < ArrayLength(prepared); ++i)
   {
     LOG(("Creating statement: %s\n", prepared[i].sql));
 
@@ -1202,7 +1211,7 @@ nsOfflineCacheDevice::InitActiveCaches()
 
   AutoResetStatement statement(mStatement_EnumerateGroups);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1301,7 +1310,7 @@ nsOfflineCacheDevice::Shutdown()
   }
 
   // Close Database on the correct thread
-  PRBool isOnCurrentThread = PR_TRUE;
+  bool isOnCurrentThread = true;
   if (mInitThread)
     mInitThread->IsOnCurrentThread(&isOnCurrentThread);
 
@@ -1329,7 +1338,7 @@ nsOfflineCacheDevice::GetDeviceID()
 }
 
 nsCacheEntry *
-nsOfflineCacheDevice::FindEntry(nsCString *fullKey, PRBool *collision)
+nsOfflineCacheDevice::FindEntry(nsCString *fullKey, bool *collision)
 {
   LOG(("nsOfflineCacheDevice::FindEntry [key=%s]\n", fullKey->get()));
 
@@ -1348,7 +1357,7 @@ nsOfflineCacheDevice::FindEntry(nsCString *fullKey, PRBool *collision)
   rv |= statement->BindUTF8StringByIndex(1, nsDependentCString(key));
   NS_ENSURE_SUCCESS(rv, nsnull);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   if (NS_FAILED(rv) || !hasRows)
     return nsnull; // entry not found
@@ -1380,11 +1389,11 @@ nsOfflineCacheDevice::FindEntry(nsCString *fullKey, PRBool *collision)
   {
     // make sure that the data file exists
     nsOfflineCacheBinding *binding = (nsOfflineCacheBinding*)entry->Data();
-    PRBool isFile;
+    bool isFile;
     rv = binding->mDataFile->IsFile(&isFile);
     if (NS_FAILED(rv) || !isFile)
     {
-      DeleteEntry(entry, PR_FALSE);
+      DeleteEntry(entry, false);
       delete entry;
       return nsnull;
     }
@@ -1507,7 +1516,7 @@ nsOfflineCacheDevice::BindEntry(nsCacheEntry *entry)
   rv |= statement->BindInt64ByIndex(9, rec.expirationTime);
   NS_ENSURE_SUCCESS(rv, rv);
   
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ASSERTION(!hasRows, "INSERT should not result in output");
@@ -1527,7 +1536,7 @@ nsOfflineCacheDevice::DoomEntry(nsCacheEntry *entry)
   // We can go ahead and delete the corresponding row in our table,
   // but we must not delete the file on disk until we are deactivated.
   
-  DeleteEntry(entry, PR_FALSE);
+  DeleteEntry(entry, false);
 }
 
 nsresult
@@ -1671,7 +1680,7 @@ nsOfflineCacheDevice::Visit(nsICacheVisitor *visitor)
   nsCOMPtr<nsICacheDeviceInfo> deviceInfo =
       new nsOfflineCacheDeviceInfo(this);
 
-  PRBool keepGoing;
+  bool keepGoing;
   nsresult rv = visitor->VisitDevice(OFFLINE_CACHE_DEVICE_ID, deviceInfo,
                                      &keepGoing);
   if (NS_FAILED(rv))
@@ -1695,7 +1704,7 @@ nsOfflineCacheDevice::Visit(nsICacheVisitor *visitor)
       getter_AddRefs(statement));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasRows;
+  bool hasRows;
   for (;;)
   {
     rv = statement->ExecuteStep(&hasRows);
@@ -1714,7 +1723,7 @@ nsOfflineCacheDevice::Visit(nsICacheVisitor *visitor)
     rec.lastModified   = statement->AsInt64(8);
     rec.expirationTime = statement->AsInt64(9);
 
-    PRBool keepGoing;
+    bool keepGoing;
     rv = visitor->VisitEntry(OFFLINE_CACHE_DEVICE_ID, info, &keepGoing);
     if (NS_FAILED(rv) || !keepGoing)
       break;
@@ -1859,13 +1868,13 @@ nsOfflineCacheDevice::GetMatchingNamespace(const nsCString &clientID,
   rv = statement->BindUTF8StringByIndex(1, key);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
   *out = nsnull;
 
-  PRBool found = PR_FALSE;
+  bool found = false;
   nsCString nsSpec;
   PRInt32 nsType;
   nsCString nsData;
@@ -1886,7 +1895,7 @@ nsOfflineCacheDevice::GetMatchingNamespace(const nsCString &clientID,
       rv = statement->GetUTF8String(1, nsData);
       NS_ENSURE_SUCCESS(rv, rv);
 
-      found = PR_TRUE;
+      found = true;
     }
 
     rv = statement->ExecuteStep(&hasRows);
@@ -1931,7 +1940,7 @@ nsOfflineCacheDevice::GetTypes(const nsCString &clientID,
   rv = statement->BindUTF8StringByIndex(1, key);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1979,8 +1988,7 @@ nsOfflineCacheDevice::AddNamespace(const nsCString &clientID,
   NS_ENSURE_SUCCESS(rv, rv);
 
   LOG(("nsOfflineCacheDevice::AddNamespace [cid=%s, ns=%s, data=%s, type=%d]",
-       PromiseFlatCString(clientID).get(),
-       namespaceSpec.get(), data.get(), itemType));
+       clientID.get(), namespaceSpec.get(), data.get(), itemType));
 
   AutoResetStatement statement(mStatement_InsertNamespaceEntry);
 
@@ -2016,7 +2024,7 @@ nsOfflineCacheDevice::GetUsage(const nsACString &clientID,
   nsresult rv = statement->BindUTF8StringByIndex(0, clientID);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2045,7 +2053,7 @@ nsOfflineCacheDevice::RunSimpleQuery(mozIStorageStatement * statement,
                                      PRUint32 * count,
                                      char *** values)
 {
-  PRBool hasRows;
+  bool hasRows;
   nsresult rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2185,13 +2193,13 @@ nsOfflineCacheDevice::DeactivateGroup(const nsACString &group)
   return NS_OK;
 }
 
-PRBool
+bool
 nsOfflineCacheDevice::CanUseCache(nsIURI *keyURI, const nsCString &clientID)
 {
   if (mActiveCaches.Contains(clientID)) {
     nsCAutoString groupID;
     nsresult rv = GetGroupForCache(clientID, groupID);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
+    NS_ENSURE_SUCCESS(rv, false);
 
     nsCOMPtr<nsIURI> groupURI;
     rv = NS_NewURI(getter_AddRefs(groupURI), groupID);
@@ -2204,11 +2212,11 @@ nsOfflineCacheDevice::CanUseCache(nsIURI *keyURI, const nsCString &clientID)
       // manifest origin.
       if (NS_SecurityCompareURIs(keyURI, groupURI,
                                  GetStrictFileOriginPolicy()))
-        return PR_TRUE;
+        return true;
     }
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 
@@ -2227,7 +2235,7 @@ nsOfflineCacheDevice::ChooseApplicationCache(const nsACString &key,
   rv = statement->BindUTF8StringByIndex(0, key);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasRows;
+  bool hasRows;
   rv = statement->ExecuteStep(&hasRows);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2332,7 +2340,7 @@ nsOfflineCacheDevice::ActivateCache(const nsCSubstring &group,
   return NS_OK;
 }
 
-PRBool
+bool
 nsOfflineCacheDevice::IsActiveCache(const nsCSubstring &group,
                                     const nsCSubstring &clientID)
 {

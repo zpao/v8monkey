@@ -38,17 +38,17 @@
 
 #include "nscore.h"
 #include "nsCUPSShim.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
 #include "nsIServiceManager.h"
-#include "nsPrintfCString.h"
 #include "nsPSPrinters.h"
 #include "nsReadableUtils.h"        // StringBeginsWith()
 #include "nsCUPSShim.h"
+#include "mozilla/Preferences.h"
 
 #include "prlink.h"
 #include "prenv.h"
 #include "plstr.h"
+
+using namespace mozilla;
 
 #define NS_CUPS_PRINTER "CUPS/"
 #define NS_CUPS_PRINTER_LEN (sizeof(NS_CUPS_PRINTER) - 1)
@@ -58,38 +58,26 @@
 
 nsCUPSShim gCupsShim;
 
-/* Initialize the printer manager object */
-nsresult
-nsPSPrinterList::Init()
+nsPSPrinterList::nsPSPrinterList()
 {
-    nsresult rv;
-
-    mPrefSvc = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
-    if (NS_SUCCEEDED(rv))
-        rv = mPrefSvc->GetBranch("print.", getter_AddRefs(mPref));
-    NS_ENSURE_SUCCESS(rv, NS_ERROR_NOT_INITIALIZED);
-
     // Should we try cups?
-    PRBool useCups = PR_TRUE;
-    rv = mPref->GetBoolPref("postscript.cups.enabled", &useCups);
-    if (useCups && !gCupsShim.IsInitialized())
+    if (Preferences::GetBool("print.postscript.cups.enabled", true) &&
+        !gCupsShim.IsInitialized()) {
         gCupsShim.Init();
-    return NS_OK;
+    }
 }
 
 
 /* Check whether the PostScript module has been disabled at runtime */
-PRBool
+bool
 nsPSPrinterList::Enabled()
 {
     const char *val = PR_GetEnv("MOZILLA_POSTSCRIPT_ENABLED");
     if (val && (val[0] == '0' || !PL_strcasecmp(val, "false")))
-        return PR_FALSE;
+        return false;
 
     // is the PS module enabled?
-    PRBool setting = PR_TRUE;
-    mPref->GetBoolPref("postscript.enabled", &setting);
-    return setting;
+    return Preferences::GetBool("print.postscript.enabled", true);
 }
 
 
@@ -131,10 +119,10 @@ nsPSPrinterList::GetPrinterList(nsTArray<nsCString>& aList)
     aList.AppendElement(
             NS_LITERAL_CSTRING(NS_POSTSCRIPT_DRIVER_NAME "default"));
 
-    nsXPIDLCString list;
-    list.Assign(PR_GetEnv("MOZILLA_POSTSCRIPT_PRINTER_LIST"));
-    if (list.IsEmpty())
-        mPref->GetCharPref("printer_list", getter_Copies(list));
+    nsCAutoString list(PR_GetEnv("MOZILLA_POSTSCRIPT_PRINTER_LIST"));
+    if (list.IsEmpty()) {
+        list = Preferences::GetCString("print.printer_list");
+    }
     if (!list.IsEmpty()) {
         // For each printer (except "default" which was already added),
         // construct a string "PostScript/<name>" and append it to the list.

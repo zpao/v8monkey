@@ -49,15 +49,7 @@ include $(DEPTH)/config/autoconf.mk
 MODULE		= xpinstall
 LIBRARY_NAME	= xpinstall
 
-ifndef MOZ_ENABLE_LIBXUL
-# Make this a true dynamic component even in static builds because
-# this component is shared by installer
-FORCE_SHARED_LIB	= 1
-BUILD_STATIC_LIBS=
-SHORT_LIBNAME	= xpinstal
-else
 EXPORT_LIBRARY = 1
-endif
 IS_COMPONENT	= 1
 MODULE_NAME	= nsSoftwareUpdate
 GRE_MODULE	= 1
@@ -79,15 +71,4 @@ CPPSRCS		= \
 
 LOCAL_INCLUDES	= -I$(srcdir)/../public
 
-EXTRA_DSO_LDOPTS = \
-		$(MOZ_JS_LIBS) \
-		$(MOZ_UNICHARUTIL_LIBS) \
-		$(MOZ_COMPONENT_LIBS) \
-		$(ZLIB_LIBS) \
-		$(NULL)
-
 include $(topsrcdir)/config/rules.mk
-
-ifeq ($(OS_ARCH)$(MOZ_ENABLE_LIBXUL),WINNT)
-DEFINES		+= -DZLIB_DLL
-endif

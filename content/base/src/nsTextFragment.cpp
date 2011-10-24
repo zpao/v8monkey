@@ -117,6 +117,7 @@ nsTextFragment::ReleaseText()
   }
 
   m1b = nsnull;
+  mState.mIsBidi = false;
 
   // Set mState.mIs2b, mState.mInHeap, and mState.mLength = 0 with mAllBits;
   mAllBits = 0;
@@ -145,8 +146,8 @@ nsTextFragment::operator=(const nsTextFragment& aOther)
   return *this;
 }
 
-static inline PRBool
-Is8BitUnvectorized(const PRUnichar *str, const PRUnichar *end)
+static inline PRInt32
+FirstNon8BitUnvectorized(const PRUnichar *str, const PRUnichar *end)
 {
 #if PR_BYTES_PER_WORD == 4
   const size_t mask = 0xff00ff00;
@@ -165,10 +166,10 @@ Is8BitUnvectorized(const PRUnichar *str, const PRUnichar *end)
 
   // Align ourselves to a word boundary.
   PRInt32 alignLen =
-    PR_MIN(len, PRInt32(((-NS_PTR_TO_UINT32(str)) & alignMask) / sizeof(PRUnichar)));
+    NS_MIN(len, PRInt32(((-NS_PTR_TO_INT32(str)) & alignMask) / sizeof(PRUnichar)));
   for (; i < alignLen; i++) {
     if (str[i] > 255)
-      return PR_FALSE;
+      return i;
   }
 
   // Check one word at a time.
@@ -176,40 +177,47 @@ Is8BitUnvectorized(const PRUnichar *str, const PRUnichar *end)
   for (; i < wordWalkEnd; i += numUnicharsPerWord) {
     const size_t word = *reinterpret_cast<const size_t*>(str + i);
     if (word & mask)
-      return PR_FALSE;
+      return i;
   }
 
   // Take care of the remainder one character at a time.
   for (; i < len; i++) {
     if (str[i] > 255)
-      return PR_FALSE;
+      return i;
   }
 
-  return PR_TRUE;
+  return -1;
 }
 
 #ifdef MOZILLA_MAY_SUPPORT_SSE2
 namespace mozilla {
   namespace SSE2 {
-    PRBool Is8Bit(const PRUnichar *str, const PRUnichar *end);
+    PRInt32 FirstNon8Bit(const PRUnichar *str, const PRUnichar *end);
   }
 }
 #endif
 
-static inline PRBool
-Is8Bit(const PRUnichar *str, const PRUnichar *end)
+/*
+ * This function returns -1 if all characters in str are 8 bit characters.
+ * Otherwise, it returns a value less than or equal to the index of the first
+ * non-8bit character in str. For example, if first non-8bit character is at
+ * position 25, it may return 25, or for example 24, or 16. But it guarantees
+ * there is no non-8bit character before returned value.
+ */
+static inline PRInt32
+FirstNon8Bit(const PRUnichar *str, const PRUnichar *end)
 {
 #ifdef MOZILLA_MAY_SUPPORT_SSE2
   if (mozilla::supports_sse2()) {
-    return mozilla::SSE2::Is8Bit(str, end);
+    return mozilla::SSE2::FirstNon8Bit(str, end);
   }
 #endif
 
-  return Is8BitUnvectorized(str, end);
+  return FirstNon8BitUnvectorized(str, end);
 }
 
 void
-nsTextFragment::SetTo(const PRUnichar* aBuffer, PRInt32 aLength)
+nsTextFragment::SetTo(const PRUnichar* aBuffer, PRInt32 aLength, bool aUpdateBidi)
 {
   ReleaseText();
 
@@ -220,8 +228,8 @@ nsTextFragment::SetTo(const PRUnichar* aBuffer, PRInt32 aLength)
   PRUnichar firstChar = *aBuffer;
   if (aLength == 1 && firstChar < 256) {
     m1b = sSingleCharSharedString + firstChar;
-    mState.mInHeap = PR_FALSE;
-    mState.mIs2b = PR_FALSE;
+    mState.mInHeap = false;
+    mState.mIs2b = false;
     mState.mLength = 1;
 
     return;
@@ -259,8 +267,8 @@ nsTextFragment::SetTo(const PRUnichar* aBuffer, PRInt32 aLength)
         ++m1b;
       }
 
-      mState.mInHeap = PR_FALSE;
-      mState.mIs2b = PR_FALSE;
+      mState.mInHeap = false;
+      mState.mIs2b = false;
       mState.mLength = aLength;
 
       return;        
@@ -268,15 +276,21 @@ nsTextFragment::SetTo(const PRUnichar* aBuffer, PRInt32 aLength)
   }
 
   // See if we need to store the data in ucs2 or not
-  PRBool need2 = !Is8Bit(ucp, uend);
+  PRInt32 first16bit = FirstNon8Bit(ucp, uend);
 
-  if (need2) {
+  if (first16bit != -1) { // aBuffer contains no non-8bit character
     // Use ucs2 storage because we have to
     m2b = (PRUnichar *)nsMemory::Clone(aBuffer,
                                        aLength * sizeof(PRUnichar));
     if (!m2b) {
       return;
     }
+
+    mState.mIs2b = true;
+    if (aUpdateBidi) {
+      UpdateBidiFlag(aBuffer + first16bit, aLength - first16bit);
+    }
+
   } else {
     // Use 1 byte storage because we can
     char* buff = (char *)nsMemory::Alloc(aLength * sizeof(char));
@@ -288,11 +302,11 @@ nsTextFragment::SetTo(const PRUnichar* aBuffer, PRInt32 aLength)
     LossyConvertEncoding16to8 converter(buff);
     copy_string(aBuffer, aBuffer+aLength, converter);
     m1b = buff;
+    mState.mIs2b = false;
   }
 
   // Setup our fields
-  mState.mInHeap = PR_TRUE;
-  mState.mIs2b = need2;
+  mState.mInHeap = true;
   mState.mLength = aLength;
 }
 
@@ -323,12 +337,12 @@ nsTextFragment::CopyTo(PRUnichar *aDest, PRInt32 aOffset, PRInt32 aCount)
 }
 
 void
-nsTextFragment::Append(const PRUnichar* aBuffer, PRUint32 aLength)
+nsTextFragment::Append(const PRUnichar* aBuffer, PRUint32 aLength, bool aUpdateBidi)
 {
   // This is a common case because some callsites create a textnode
   // with a value by creating the node and then calling AppendData.
   if (mState.mLength == 0) {
-    SetTo(aBuffer, aLength);
+    SetTo(aBuffer, aLength, aUpdateBidi);
 
     return;
   }
@@ -341,17 +355,22 @@ nsTextFragment::Append(const PRUnichar* aBuffer, PRUint32 aLength)
     if (!buff) {
       return;
     }
-    
+
     memcpy(buff + mState.mLength, aBuffer, aLength * sizeof(PRUnichar));
     mState.mLength += aLength;
     m2b = buff;
+
+    if (aUpdateBidi) {
+      UpdateBidiFlag(aBuffer, aLength);
+    }
 
     return;
   }
 
   // Current string is a 1-byte string, check if the new data fits in one byte too.
+  PRInt32 first16bit = FirstNon8Bit(aBuffer, aBuffer + aLength);
 
-  if (!Is8Bit(aBuffer, aBuffer + aLength)) {
+  if (first16bit != -1) { // aBuffer contains no non-8bit character
     // The old data was 1-byte, but the new is not so we have to expand it
     // all to 2-byte
     PRUnichar* buff = (PRUnichar*)nsMemory::Alloc((mState.mLength + aLength) *
@@ -365,16 +384,19 @@ nsTextFragment::Append(const PRUnichar* aBuffer, PRUint32 aLength)
     copy_string(m1b, m1b+mState.mLength, converter);
 
     memcpy(buff + mState.mLength, aBuffer, aLength * sizeof(PRUnichar));
-
     mState.mLength += aLength;
-    mState.mIs2b = PR_TRUE;
+    mState.mIs2b = true;
 
     if (mState.mInHeap) {
       nsMemory::Free(m2b);
     }
     m2b = buff;
 
-    mState.mInHeap = PR_TRUE;
+    mState.mInHeap = true;
+
+    if (aUpdateBidi) {
+      UpdateBidiFlag(aBuffer + first16bit, aLength - first16bit);
+    }
 
     return;
   }
@@ -395,7 +417,7 @@ nsTextFragment::Append(const PRUnichar* aBuffer, PRUint32 aLength)
     }
 
     memcpy(buff, m1b, mState.mLength);
-    mState.mInHeap = PR_TRUE;
+    mState.mInHeap = true;
   }
 
   // Copy aBuffer into buff.
@@ -425,7 +447,7 @@ nsTextFragment::UpdateBidiFlag(const PRUnichar* aBuffer, PRUint32 aLength)
         utf32Char = SURROGATE_TO_UCS4(ch1, ch2);
       }
       if (UTF32_CHAR_IS_BIDI(utf32Char) || IS_BIDI_CONTROL_CHAR(utf32Char)) {
-        mState.mIsBidi = PR_TRUE;
+        mState.mIsBidi = true;
         break;
       }
     }

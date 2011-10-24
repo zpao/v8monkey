@@ -39,7 +39,6 @@
 #include "nsHTMLImageAccessible.h"
 
 #include "States.h"
-#include "nsAccessibilityAtoms.h"
 #include "nsAccUtils.h"
 
 #include "imgIContainer.h"
@@ -52,6 +51,8 @@
 #include "nsIDOMHTMLImageElement.h"
 #include "nsIDOMDocument.h"
 #include "nsPIDOMWindow.h"
+
+using namespace mozilla::a11y;
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsHTMLImageAccessible
@@ -89,7 +90,7 @@ nsHTMLImageAccessible::NativeState()
     imageRequest->GetImage(getter_AddRefs(imgContainer));
 
   if (imgContainer) {
-    PRBool animated;
+    bool animated;
     imgContainer->GetAnimated(&animated);
     if (animated)
       state |= states::ANIMATED;
@@ -101,8 +102,8 @@ nsHTMLImageAccessible::NativeState()
 nsresult
 nsHTMLImageAccessible::GetNameInternal(nsAString& aName)
 {
-  PRBool hasAltAttrib =
-    mContent->GetAttr(kNameSpaceID_None, nsAccessibilityAtoms::alt, aName);
+  bool hasAltAttrib =
+    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::alt, aName);
   if (!aName.IsEmpty())
     return NS_OK;
 
@@ -129,22 +130,11 @@ nsHTMLImageAccessible::NativeRole()
 ////////////////////////////////////////////////////////////////////////////////
 // nsIAccessible
 
-NS_IMETHODIMP
-nsHTMLImageAccessible::GetNumActions(PRUint8 *aNumActions)
+PRUint8
+nsHTMLImageAccessible::ActionCount()
 {
-  NS_ENSURE_ARG_POINTER(aNumActions);
-  *aNumActions = 0;
-
-  if (IsDefunct())
-    return NS_ERROR_FAILURE;
-
-  nsresult rv= nsLinkableAccessible::GetNumActions(aNumActions);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (HasLongDesc())
-    (*aNumActions)++;
-
-  return NS_OK;
+  PRUint8 actionCount = nsLinkableAccessible::ActionCount();
+  return HasLongDesc() ? actionCount + 1 : actionCount;
 }
 
 NS_IMETHODIMP
@@ -177,9 +167,9 @@ nsHTMLImageAccessible::DoAction(PRUint8 aIndex)
     nsresult rv = element->GetLongDesc(longDesc);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsIDocument* document = mContent->GetOwnerDoc();
+    nsIDocument* document = mContent->OwnerDoc();
     nsCOMPtr<nsPIDOMWindow> piWindow = document->GetWindow();
-    nsCOMPtr<nsIDOMWindowInternal> win(do_QueryInterface(piWindow));
+    nsCOMPtr<nsIDOMWindow> win = do_QueryInterface(piWindow);
     NS_ENSURE_TRUE(win, NS_ERROR_FAILURE);
     nsCOMPtr<nsIDOMWindow> tmp;
     return win->Open(longDesc, EmptyString(), EmptyString(),
@@ -221,9 +211,9 @@ nsHTMLImageAccessible::GetAttributesInternal(nsIPersistentProperties *aAttribute
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsAutoString src;
-  mContent->GetAttr(kNameSpaceID_None, nsAccessibilityAtoms::src, src);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::src, src);
   if (!src.IsEmpty())
-    nsAccUtils::SetAccAttr(aAttributes, nsAccessibilityAtoms::src, src);
+    nsAccUtils::SetAccAttr(aAttributes, nsGkAtoms::src, src);
 
   return NS_OK;
 }
@@ -231,24 +221,20 @@ nsHTMLImageAccessible::GetAttributesInternal(nsIPersistentProperties *aAttribute
 ////////////////////////////////////////////////////////////////////////////////
 // Private methods
 
-PRBool
+bool
 nsHTMLImageAccessible::HasLongDesc()
 {
   if (IsDefunct())
-    return PR_FALSE;
+    return false;
 
-  return mContent->HasAttr(kNameSpaceID_None, nsAccessibilityAtoms::longDesc);
+  return mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::longdesc);
 }
 
-PRBool
+bool
 nsHTMLImageAccessible::IsValidLongDescIndex(PRUint8 aIndex)
 {
   if (!HasLongDesc())
-    return PR_FALSE;
+    return false;
 
-  PRUint8 numActions = 0;
-  nsresult rv = nsLinkableAccessible::GetNumActions(&numActions);  
-  NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-  return (aIndex == numActions);
+  return aIndex == nsLinkableAccessible::ActionCount();
 }

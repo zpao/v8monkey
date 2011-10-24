@@ -2,18 +2,16 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/NetUtil.jsm");
 
 var pathParts = gTestPath.split("/");
 // Drop the test filename
-pathParts.splice(pathParts.length - 1);
+pathParts.splice(pathParts.length - 1, pathParts.length);
 
 var gTestInWindow = /-window$/.test(pathParts[pathParts.length - 1]);
 
 // Drop the UI type
-pathParts.splice(pathParts.length - 1);
+pathParts.splice(pathParts.length - 1, pathParts.length);
 pathParts.push("browser");
 
 const RELATIVE_DIR = pathParts.slice(4).join("/") + "/";
@@ -21,6 +19,8 @@ const RELATIVE_DIR = pathParts.slice(4).join("/") + "/";
 const TESTROOT = "http://example.com/" + RELATIVE_DIR;
 const TESTROOT2 = "http://example.org/" + RELATIVE_DIR;
 const CHROMEROOT = pathParts.join("/") + "/";
+const PREF_DISCOVERURL = "extensions.webservice.discoverURL";
+const PREF_UPDATEURL = "extensions.update.url";
 
 const MANAGER_URI = "about:addons";
 const INSTALL_URI = "chrome://mozapps/content/xpinstall/xpinstallConfirm.xul";
@@ -33,6 +33,9 @@ var gTestStart = null;
 
 var gUseInContentUI = !gTestInWindow && ("switchToTabHavingURI" in window);
 
+var gDiscoveryURL = Services.prefs.getCharPref(PREF_DISCOVERURL);
+var gUpdateURL = Services.prefs.getCharPref(PREF_UPDATEURL);
+
 // Turn logging on for all tests
 Services.prefs.setBoolPref(PREF_LOGGING_ENABLED, true);
 // Turn off remote results in searches
@@ -44,6 +47,9 @@ registerCleanupFunction(function() {
   }
   catch (e) {
   }
+
+  Services.prefs.setCharPref(PREF_DISCOVERURL, gDiscoveryURL);
+  Services.prefs.setCharPref(PREF_UPDATEURL, gUpdateURL);
 
   // Throw an error if the add-ons manager window is open anywhere
   var windows = Services.wm.getEnumerator("Addons:Manager");
@@ -301,7 +307,7 @@ function wait_for_window_open(aCallback) {
       Services.wm.removeListener(this);
 
       let domwindow = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDOMWindowInternal);
+                             .getInterface(Ci.nsIDOMWindow);
       domwindow.addEventListener("load", function() {
         domwindow.removeEventListener("load", arguments.callee, false);
         executeSoon(function() {
@@ -382,7 +388,7 @@ CategoryUtilities.prototype = {
     return (view.type == "list") ? view.param : view.type;
   },
 
-  get: function(aCategoryType) {
+  get: function(aCategoryType, aAllowMissing) {
     isnot(this.window, null, "Should not get category when manager window is not loaded");
     var categories = this.window.document.getElementById("categories");
 
@@ -396,7 +402,8 @@ CategoryUtilities.prototype = {
     if (items.length)
       return items[0];
 
-    ok(false, "Should have found a category with type " + aCategoryType);
+    if (!aAllowMissing)
+      ok(false, "Should have found a category with type " + aCategoryType);
     return null;
   },
 
@@ -480,11 +487,17 @@ function addCertOverride(host, bits) {
 
 /***** Mock Provider *****/
 
-function MockProvider(aUseAsyncCallbacks) {
+function MockProvider(aUseAsyncCallbacks, aTypes) {
   this.addons = [];
   this.installs = [];
   this.callbackTimers = [];
   this.useAsyncCallbacks = (aUseAsyncCallbacks === undefined) ? true : aUseAsyncCallbacks;
+  this.types = (aTypes === undefined) ? [{
+    id: "extension",
+    name: "Extensions",
+    uiPriority: 4000,
+    flags: AddonManager.TYPE_UI_VIEW_LIST
+  }] : aTypes;
 
   var self = this;
   registerCleanupFunction(function() {
@@ -502,6 +515,7 @@ MockProvider.prototype = {
   apiDelay: 10,
   callbackTimers: null,
   useAsyncCallbacks: null,
+  types: null,
 
   /***** Utility functions *****/
 
@@ -509,7 +523,7 @@ MockProvider.prototype = {
    * Register this provider with the AddonManager
    */
   register: function MP_register() {
-    AddonManagerPrivate.registerProvider(this);
+    AddonManagerPrivate.registerProvider(this, this.types);
   },
 
   /**
@@ -614,6 +628,12 @@ MockProvider.prototype = {
         }
         addon[prop] = aAddonProp[prop];
       }
+      if (!addon.optionsType && !!addon.optionsURL)
+        addon.optionsType = AddonManager.OPTIONS_TYPE_DIALOG;
+
+      // Make sure the active state matches the passed in properties
+      addon.isActive = addon.shouldBeActive;
+
       this.addAddon(addon);
       newAddons.push(addon);
     }, this);

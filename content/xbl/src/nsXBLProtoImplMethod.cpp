@@ -128,12 +128,12 @@ nsXBLProtoImplMethod::InstallMember(nsIScriptContext* aContext,
 {
   NS_PRECONDITION(IsCompiled(),
                   "Should not be installing an uncompiled method");
-  JSContext* cx = (JSContext*) aContext->GetNativeContext();
+  JSContext* cx = aContext->GetNativeContext();
 
-  nsIDocument *ownerDoc = aBoundElement->GetOwnerDoc();
+  nsIDocument *ownerDoc = aBoundElement->OwnerDoc();
   nsIScriptGlobalObject *sgo;
 
-  if (!ownerDoc || !(sgo = ownerDoc->GetScopeObject())) {
+  if (!(sgo = ownerDoc->GetScopeObject())) {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -243,7 +243,7 @@ nsXBLProtoImplMethod::CompileMember(nsIScriptContext* aContext, const nsCString&
                                           functionUri.get(),
                                           uncompiledMethod->mBodyText.GetLineNumber(),
                                           JSVERSION_LATEST,
-                                          PR_TRUE,
+                                          true,
                                           (void **) &methodObject);
 
   // Destroy our uncompiled method and delete our arg list.
@@ -279,10 +279,7 @@ nsXBLProtoImplAnonymousMethod::Execute(nsIContent* aBoundElement)
 
   // Get the script context the same way
   // nsXBLProtoImpl::InstallImplementation does.
-  nsIDocument* document = aBoundElement->GetOwnerDoc();
-  if (!document) {
-    return NS_OK;
-  }
+  nsIDocument* document = aBoundElement->OwnerDoc();
 
   nsIScriptGlobalObject* global = document->GetScriptGlobalObject();
   if (!global) {
@@ -294,7 +291,7 @@ nsXBLProtoImplAnonymousMethod::Execute(nsIContent* aBoundElement)
     return NS_OK;
   }
   
-  JSContext* cx = (JSContext*) context->GetNativeContext();
+  JSContext* cx = context->GetNativeContext();
 
   JSObject* globalObject = global->GetGlobalJSObject();
 
@@ -342,9 +339,10 @@ nsXBLProtoImplAnonymousMethod::Execute(nsIContent* aBoundElement)
     // anything else.  We just report it.  Note that we need to set aside the
     // frame chain here, since the constructor invocation is not related to
     // whatever is on the stack right now, really.
-    JSStackFrame* frame = JS_SaveFrameChain(cx);
-    ::JS_ReportPendingException(cx);
-    JS_RestoreFrameChain(cx, frame);
+    JSBool saved = JS_SaveFrameChain(cx);
+    JS_ReportPendingException(cx);
+    if (saved)
+        JS_RestoreFrameChain(cx);
     return NS_ERROR_FAILURE;
   }
 

@@ -34,6 +34,7 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
 #ifndef nscore_h___
 #define nscore_h___
 
@@ -163,17 +164,6 @@
 #define NS_CONSTRUCTOR_FASTCALL
 #endif
 
-/*
- * NS_DEFCALL undoes the effect of a global regparm/stdcall setting
- * so that xptcall works correctly.
- */
-#if defined(__i386__) && defined(__GNUC__) && \
-    (__GNUC__ >= 3) && !defined(XP_OS2)
-#define NS_DEFCALL __attribute__ ((regparm (0), cdecl))
-#else
-#define NS_DEFCALL
-#endif
-
 #ifdef NS_WIN32
 
 #define NS_IMPORT __declspec(dllimport)
@@ -216,7 +206,7 @@
 #define NS_IMPORT_(type) NS_EXTERNAL_VIS_(type)
 #define NS_EXPORT NS_EXTERNAL_VIS
 #define NS_EXPORT_(type) NS_EXTERNAL_VIS_(type)
-#define NS_IMETHOD_(type) virtual IMETHOD_VISIBILITY type NS_DEFCALL
+#define NS_IMETHOD_(type) virtual IMETHOD_VISIBILITY type
 #define NS_IMETHODIMP_(type) type
 #define NS_METHOD_(type) type
 #define NS_CALLBACK_(_type, _name) _type (* _name)
@@ -258,11 +248,11 @@
  * Deprecated declarations.
  */
 #if (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 1))
-# define NS_DEPRECATED __attribute__((deprecated))
+# define MOZ_DEPRECATED __attribute__((deprecated))
 #elif defined(_MSC_VER) && (_MSC_VER >= 1300)
-# define NS_DEPRECATED __declspec(deprecated)
+# define MOZ_DEPRECATED __declspec(deprecated)
 #else
-# define NS_DEPRECATED
+# define MOZ_DEPRECATED
 #endif
 
 /**
@@ -295,18 +285,8 @@
 #define XPCOM_API(type) IMPORT_XPCOM_API(type)
 #endif
 
-#ifdef MOZ_ENABLE_LIBXUL
-#define NS_COM
-#elif defined(_IMPL_NS_COM)
-#define NS_COM NS_EXPORT
-#elif defined(XPCOM_GLUE)
-#define NS_COM
-#else
-#define NS_COM NS_IMPORT
-#endif
-
 #ifdef MOZILLA_INTERNAL_API
-#  define NS_COM_GLUE NS_COM
+#  define NS_COM_GLUE
    /*
      The frozen string API has different definitions of nsAC?String
      classes than the internal API. On systems that explicitly declare
@@ -408,13 +388,6 @@ typedef PRUint32 nsrefcnt;
   /* under VC++ (Windows), we don't have autoconf yet */
 #if defined(_MSC_VER) && (_MSC_VER>=1100)
   #define HAVE_CPP_MODERN_SPECIALIZE_TEMPLATE_SYNTAX
-
-  #define HAVE_CPP_EXPLICIT
-  #define HAVE_CPP_TYPENAME
-  #define HAVE_CPP_ACCESS_CHANGING_USING
-
-  #define HAVE_CPP_NAMESPACE_STD
-  #define HAVE_CPP_UNAMBIGUOUS_STD_NOTEQUAL
   #define HAVE_CPP_2BYTE_WCHAR_T
 #endif
 
@@ -429,19 +402,6 @@ typedef PRUint32 nsrefcnt;
   #else
     typedef PRUint16 PRUnichar;
   #endif
-#endif
-
-  /*
-    If the compiler doesn't support |explicit|, we'll just make it go
-    away, trusting that the builds under compilers that do have it
-    will keep us on the straight and narrow.
-  */
-#ifndef HAVE_CPP_EXPLICIT
-  #define explicit
-#endif
-
-#ifndef HAVE_CPP_TYPENAME
-  #define typename
 #endif
 
 #ifdef HAVE_CPP_MODERN_SPECIALIZE_TEMPLATE_SYNTAX
@@ -562,7 +522,7 @@ typedef PRUint32 nsrefcnt;
 #define MOZ_SEH_TRY           __try
 #define MOZ_SEH_EXCEPT(expr)  __except(expr)
 #else
-#define MOZ_SEH_TRY           if(PR_TRUE)
+#define MOZ_SEH_TRY           if(true)
 #define MOZ_SEH_EXCEPT(expr)  else
 #endif
 

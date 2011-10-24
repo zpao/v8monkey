@@ -51,6 +51,13 @@
 #include "nsDataHashtable.h"
 #include "mozilla/Services.h"
 #include "nsIObserverService.h"
+#include "nsThreadUtils.h"
+
+namespace mozilla {
+namespace dom {
+class ContentParent;
+}
+}
 
 class nsAXPCNativeCallContext;
 struct JSContext;
@@ -75,15 +82,15 @@ class nsFrameMessageManager : public nsIContentFrameMessageManager,
                               public nsIChromeFrameMessageManager
 {
 public:
-  nsFrameMessageManager(PRBool aChrome,
+  nsFrameMessageManager(bool aChrome,
                         nsSyncMessageCallback aSyncCallback,
                         nsAsyncMessageCallback aAsyncCallback,
                         nsLoadScriptCallback aLoadScriptCallback,
                         void* aCallbackData,
                         nsFrameMessageManager* aParentManager,
                         JSContext* aContext,
-                        PRBool aGlobal = PR_FALSE,
-                        PRBool aProcessManager = PR_FALSE)
+                        bool aGlobal = false,
+                        bool aProcessManager = false)
   : mChrome(aChrome), mGlobal(aGlobal), mIsProcessManager(aProcessManager),
     mParentManager(aParentManager),
     mSyncCallback(aSyncCallback), mAsyncCallback(aAsyncCallback),
@@ -106,7 +113,7 @@ public:
   {
     for (PRInt32 i = mChildManagers.Count(); i > 0; --i) {
       static_cast<nsFrameMessageManager*>(mChildManagers[i - 1])->
-        Disconnect(PR_FALSE);
+        Disconnect(false);
     }
     if (mIsProcessManager) {
       if (this == sParentProcessManager) {
@@ -114,6 +121,11 @@ public:
       }
       if (this == sChildProcessManager) {
         sChildProcessManager = nsnull;
+        delete sPendingSameProcessAsyncMessages;
+        sPendingSameProcessAsyncMessages = nsnull;
+      }
+      if (this == sSameProcessParentManager) {
+        sSameProcessParentManager = nsnull;
       }
     }
   }
@@ -125,22 +137,28 @@ public:
   NS_DECL_NSISYNCMESSAGESENDER
   NS_DECL_NSICONTENTFRAMEMESSAGEMANAGER
   NS_DECL_NSICHROMEFRAMEMESSAGEMANAGER
+  NS_DECL_NSITREEITEMFRAMEMESSAGEMANAGER
+
+  static nsFrameMessageManager*
+  NewProcessMessageManager(mozilla::dom::ContentParent* aProcess);
 
   nsresult ReceiveMessage(nsISupports* aTarget, const nsAString& aMessage,
-                          PRBool aSync, const nsAString& aJSON,
+                          bool aSync, const nsAString& aJSON,
                           JSObject* aObjectsArray,
                           InfallibleTArray<nsString>* aJSONRetVal,
                           JSContext* aContext = nsnull);
   void AddChildManager(nsFrameMessageManager* aManager,
-                       PRBool aLoadScripts = PR_TRUE);
+                       bool aLoadScripts = true);
   void RemoveChildManager(nsFrameMessageManager* aManager)
   {
     mChildManagers.RemoveObject(aManager);
   }
 
-  void Disconnect(PRBool aRemoveFromParent = PR_TRUE);
-  void SetCallbackData(void* aData, PRBool aLoadScripts = PR_TRUE);
-  nsresult GetParamsForMessage(nsAString& aMessageName, nsAString& aJSON);
+  void Disconnect(bool aRemoveFromParent = true);
+  void SetCallbackData(void* aData, bool aLoadScripts = true);
+  void GetParamsForMessage(const jsval& aObject,
+                           JSContext* aCx,
+                           nsAString& aJSON);
   nsresult SendAsyncMessageInternal(const nsAString& aMessage,
                                     const nsAString& aJSON);
   JSContext* GetJSContext() { return mContext; }
@@ -151,8 +169,8 @@ public:
     NS_ASSERTION(mChrome, "Should not set parent manager!");
     mParentManager = aParent;
   }
-  PRBool IsGlobal() { return mGlobal; }
-  PRBool IsWindowLevel() { return mParentManager && mParentManager->IsGlobal(); }
+  bool IsGlobal() { return mGlobal; }
+  bool IsWindowLevel() { return mParentManager && mParentManager->IsGlobal(); }
 
   static nsFrameMessageManager* GetParentProcessManager()
   {
@@ -165,9 +183,9 @@ public:
 protected:
   nsTArray<nsMessageListenerInfo> mListeners;
   nsCOMArray<nsIContentFrameMessageManager> mChildManagers;
-  PRPackedBool mChrome;
-  PRPackedBool mGlobal;
-  PRPackedBool mIsProcessManager;
+  bool mChrome;
+  bool mGlobal;
+  bool mIsProcessManager;
   nsFrameMessageManager* mParentManager;
   nsSyncMessageCallback mSyncCallback;
   nsAsyncMessageCallback mAsyncCallback;
@@ -178,17 +196,24 @@ protected:
 public:
   static nsFrameMessageManager* sParentProcessManager;
   static nsFrameMessageManager* sChildProcessManager;
+  static nsFrameMessageManager* sSameProcessParentManager;
+  static nsTArray<nsCOMPtr<nsIRunnable> >* sPendingSameProcessAsyncMessages;
 };
+
+void
+ContentScriptErrorReporter(JSContext* aCx,
+                           const char* aMessage,
+                           JSErrorReport* aReport);
 
 class nsScriptCacheCleaner;
 
-struct nsFrameScriptExecutorJSObjectHolder
+struct nsFrameJSScriptExecutorHolder
 {
-  nsFrameScriptExecutorJSObjectHolder(JSObject* aObject) : mObject(aObject)
-  { MOZ_COUNT_CTOR(nsFrameScriptExecutorJSObjectHolder); }
-  ~nsFrameScriptExecutorJSObjectHolder()
-  { MOZ_COUNT_DTOR(nsFrameScriptExecutorJSObjectHolder); }
-  JSObject* mObject;
+  nsFrameJSScriptExecutorHolder(JSScript* aScript) : mScript(aScript)
+  { MOZ_COUNT_CTOR(nsFrameJSScriptExecutorHolder); }
+  ~nsFrameJSScriptExecutorHolder()
+  { MOZ_COUNT_DTOR(nsFrameJSScriptExecutorHolder); }
+  JSScript* mScript;
 };
 
 class nsFrameScriptExecutor
@@ -196,7 +221,9 @@ class nsFrameScriptExecutor
 public:
   static void Shutdown();
 protected:
-  nsFrameScriptExecutor() : mCx(nsnull)
+  friend class nsFrameScriptCx;
+  nsFrameScriptExecutor() : mCx(nsnull), mCxStackRefCnt(0),
+                            mDelayedCxDestroy(false)
   { MOZ_COUNT_CTOR(nsFrameScriptExecutor); }
   ~nsFrameScriptExecutor()
   { MOZ_COUNT_DTOR(nsFrameScriptExecutor); }
@@ -208,9 +235,30 @@ protected:
                        nsCycleCollectionTraversalCallback &cb);
   nsCOMPtr<nsIXPConnectJSObjectHolder> mGlobal;
   JSContext* mCx;
+  PRUint32 mCxStackRefCnt;
+  bool mDelayedCxDestroy;
   nsCOMPtr<nsIPrincipal> mPrincipal;
-  static nsDataHashtable<nsStringHashKey, nsFrameScriptExecutorJSObjectHolder*>* sCachedScripts;
+  static nsDataHashtable<nsStringHashKey, nsFrameJSScriptExecutorHolder*>* sCachedScripts;
   static nsRefPtr<nsScriptCacheCleaner> sScriptCacheCleaner;
+};
+
+class nsFrameScriptCx
+{
+public:
+  nsFrameScriptCx(nsISupports* aOwner, nsFrameScriptExecutor* aExec)
+  : mOwner(aOwner), mExec(aExec)
+  {
+    ++(mExec->mCxStackRefCnt);
+  }
+  ~nsFrameScriptCx()
+  {
+    if (--(mExec->mCxStackRefCnt) == 0 &&
+        mExec->mDelayedCxDestroy) {
+      mExec->DestroyCx();
+    }
+  }
+  nsCOMPtr<nsISupports> mOwner;
+  nsFrameScriptExecutor* mExec;
 };
 
 class nsScriptCacheCleaner : public nsIObserver
@@ -221,7 +269,7 @@ class nsScriptCacheCleaner : public nsIObserver
   {
     nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
     if (obsSvc)
-      obsSvc->AddObserver(this, "xpcom-shutdown", PR_FALSE);
+      obsSvc->AddObserver(this, "xpcom-shutdown", false);
   }
 
   NS_IMETHODIMP Observe(nsISupports *aSubject,

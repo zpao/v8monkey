@@ -60,7 +60,7 @@ get_content_type_from_mime_type(const char *mimeType)
   while (ct_ptr) {
     char *mimeTypeFromContentType =  g_content_type_get_mime_type((char*)ct_ptr->data);
     if (strcmp(mimeTypeFromContentType, mimeType) == 0) {
-      foundContentType = strdup((char*)ct_ptr->data);
+      foundContentType = g_strdup((char*)ct_ptr->data);
       g_free(mimeTypeFromContentType);
       break;
     }
@@ -135,22 +135,12 @@ nsGIOMimeApp::GetExpectsURIs(PRInt32* aExpects)
 NS_IMETHODIMP
 nsGIOMimeApp::Launch(const nsACString& aUri)
 {
-  char *uri = strdup(PromiseFlatCString(aUri).get());
+  GList uris = { 0 };
+  PromiseFlatCString flatUri(aUri);
+  uris.data = const_cast<char*>(flatUri.get());
 
-  if (!uri)
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  GList *uris = g_list_append(NULL, uri);
-
-  if (!uris) {
-    g_free(uri);
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
   GError *error = NULL;
-  gboolean result = g_app_info_launch_uris(mApp, uris, NULL, &error);
-
-  g_free(uri);
-  g_list_free(uris);
+  gboolean result = g_app_info_launch_uris(mApp, &uris, NULL, &error);
 
   if (!result) {
     g_warning("Cannot launch application: %s", error->message);
@@ -177,7 +167,7 @@ public:
 NS_IMPL_ISUPPORTS1(GIOUTF8StringEnumerator, nsIUTF8StringEnumerator)
 
 NS_IMETHODIMP
-GIOUTF8StringEnumerator::HasMore(PRBool* aResult)
+GIOUTF8StringEnumerator::HasMore(bool* aResult)
 {
   *aResult = mIndex < mStrings.Length();
   return NS_OK;
@@ -255,7 +245,7 @@ NS_IMETHODIMP
 nsGIOMimeApp::SetAsDefaultForFileExtensions(nsACString const& fileExts)
 {
   GError *error = NULL;
-  char *extensions = strdup(PromiseFlatCString(fileExts).get());
+  char *extensions = g_strdup(PromiseFlatCString(fileExts).get());
   char *ext_pos = extensions;
   char *space_pos;
 
@@ -306,13 +296,6 @@ nsGIOMimeApp::SetAsDefaultForURIScheme(nsACString const& aURIScheme)
     return NS_ERROR_FAILURE;
   }
 
-  return NS_OK;
-}
-
-nsresult
-nsGIOService::Init()
-{
-  // do nothing, gvfs/gio does not init.
   return NS_OK;
 }
 

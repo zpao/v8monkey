@@ -115,7 +115,7 @@ public:
      * is usually a factor of AppUnitsPerCSSPixel(), although that is
      * not guaranteed.
      */
-    PRInt32 AppUnitsPerDevPixel() const { return mAppUnitsPerDevPixel; }
+    PRUint32 AppUnitsPerDevPixel() const { return mAppUnitsPerDevPixel; }
 
     /**
      * Convert device pixels which is used for gfx/thebes to nearest
@@ -286,19 +286,19 @@ public:
      *         AppUnitsPerDevPixel() or AppUnitsPerPhysicalInch()
      *         changed)
      */
-    PRBool CheckDPIChange();
+    bool CheckDPIChange();
 
     /**
      * Set the pixel scaling factor: all lengths are multiplied by this factor
      * when we convert them to device pixels. Returns whether the ratio of
      * app units to dev pixels changed because of the scale factor.
      */
-    PRBool SetPixelScale(float aScale);
+    bool SetPixelScale(float aScale);
 
     /**
      * True if this device context was created for printing.
      */
-    PRBool IsPrinterSurface();
+    bool IsPrinterSurface();
 
 protected:
     void SetDPI();
@@ -311,7 +311,7 @@ protected:
     nscoord  mWidth;
     nscoord  mHeight;
     PRUint32 mDepth;
-    PRInt32  mAppUnitsPerDevPixel;
+    PRUint32  mAppUnitsPerDevPixel;
     PRInt32  mAppUnitsPerDevNotScaledPixel;
     PRInt32  mAppUnitsPerPhysicalInch;
     float    mPixelScale;

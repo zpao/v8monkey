@@ -45,16 +45,16 @@
 nsDOMDragEvent::nsDOMDragEvent(nsPresContext* aPresContext,
                                nsInputEvent* aEvent)
   : nsDOMMouseEvent(aPresContext, aEvent ? aEvent :
-                    new nsDragEvent(PR_FALSE, 0, nsnull))
+                    new nsDragEvent(false, 0, nsnull))
 {
   if (aEvent) {
-    mEventIsInternal = PR_FALSE;
+    mEventIsInternal = false;
   }
   else {
-    mEventIsInternal = PR_TRUE;
+    mEventIsInternal = true;
     mEvent->time = PR_Now();
     mEvent->refPoint.x = mEvent->refPoint.y = 0;
-    static_cast<nsMouseEvent*>(mEvent)->inputSource = nsIDOMNSMouseEvent::MOZ_SOURCE_UNKNOWN;
+    static_cast<nsMouseEvent*>(mEvent)->inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
   }
 }
 
@@ -79,12 +79,12 @@ NS_INTERFACE_MAP_END_INHERITING(nsDOMMouseEvent)
 
 NS_IMETHODIMP
 nsDOMDragEvent::InitDragEvent(const nsAString & aType,
-                              PRBool aCanBubble, PRBool aCancelable,
+                              bool aCanBubble, bool aCancelable,
                               nsIDOMWindow* aView, PRInt32 aDetail,
                               PRInt32 aScreenX, PRInt32 aScreenY,
                               PRInt32 aClientX, PRInt32 aClientY, 
-                              PRBool aCtrlKey, PRBool aAltKey, PRBool aShiftKey,
-                              PRBool aMetaKey, PRUint16 aButton,
+                              bool aCtrlKey, bool aAltKey, bool aShiftKey,
+                              bool aMetaKey, PRUint16 aButton,
                               nsIDOMEventTarget *aRelatedTarget,
                               nsIDOMDataTransfer* aDataTransfer)
 {

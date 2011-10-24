@@ -23,6 +23,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
+ *   Nick Fitzgerald <nfitzgerald@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -52,6 +53,9 @@ JS_BEGIN_EXTERN_C
 extern JS_PUBLIC_API(JSCrossCompartmentCall *)
 JS_EnterCrossCompartmentCallScript(JSContext *cx, JSScript *target);
 
+extern JS_PUBLIC_API(JSCrossCompartmentCall *)
+JS_EnterCrossCompartmentCallStackFrame(JSContext *cx, JSStackFrame *target);
+
 #ifdef __cplusplus
 JS_END_EXTERN_C
 
@@ -59,6 +63,7 @@ namespace JS {
 
 class JS_PUBLIC_API(AutoEnterScriptCompartment)
 {
+  protected:
     JSCrossCompartmentCall *call;
 
   public:
@@ -74,13 +79,26 @@ class JS_PUBLIC_API(AutoEnterScriptCompartment)
     }
 };
 
+class JS_PUBLIC_API(AutoEnterFrameCompartment) : public AutoEnterScriptCompartment
+{
+  public:
+    bool enter(JSContext *cx, JSStackFrame *target);
+};
+
 } /* namespace JS */
+
+#ifdef DEBUG
+JS_FRIEND_API(void) js_DumpChars(const jschar *s, size_t n);
+JS_FRIEND_API(void) js_DumpString(JSString *str);
+JS_FRIEND_API(void) js_DumpAtom(JSAtom *atom);
+JS_FRIEND_API(void) js_DumpObject(JSObject *obj);
+JS_FRIEND_API(void) js_DumpValue(const js::Value &val);
+JS_FRIEND_API(void) js_DumpId(jsid id);
+JS_FRIEND_API(void) js_DumpStackFrame(JSContext *cx, js::StackFrame *start = NULL);
+#endif
 
 JS_BEGIN_EXTERN_C
 #endif
-
-extern JS_PUBLIC_API(JSScript *)
-JS_GetScriptFromObject(JSObject *scriptObject);
 
 extern JS_PUBLIC_API(JSString *)
 JS_DecompileScript(JSContext *cx, JSScript *script, const char *name, uintN indent);
@@ -107,9 +125,9 @@ extern JS_PUBLIC_API(JSBool)
 JS_GetDebugMode(JSContext *cx);
 
 /*
- * Turn on/off debugging mode for a single compartment. This must be
- * called from the main thread and the compartment must be associated
- * with the main thread.
+ * Turn on/off debugging mode for a single compartment. This should only be
+ * used when no code from this compartment is running or on the stack in any
+ * thread.
  */
 JS_FRIEND_API(JSBool)
 JS_SetDebugModeForCompartment(JSContext *cx, JSCompartment *comp, JSBool debug);
@@ -120,21 +138,9 @@ JS_SetDebugModeForCompartment(JSContext *cx, JSCompartment *comp, JSBool debug);
 JS_FRIEND_API(JSBool)
 JS_SetDebugMode(JSContext *cx, JSBool debug);
 
-/* Turn on single step mode. Requires debug mode. */
-extern JS_FRIEND_API(JSBool)
-js_SetSingleStepMode(JSContext *cx, JSScript *script, JSBool singleStep);
-
 /* Turn on single step mode. */
 extern JS_PUBLIC_API(JSBool)
 JS_SetSingleStepMode(JSContext *cx, JSScript *script, JSBool singleStep);
-
-/*
- * Unexported library-private helper used to unpatch all traps in a script.
- * Returns script->code if script has no traps, else a JS_malloc'ed copy of
- * script->code which the caller must JS_free, or null on JS_malloc OOM.
- */
-extern jsbytecode *
-js_UntrapScriptCode(JSContext *cx, JSScript *script);
 
 /* The closure argument will be marked. */
 extern JS_PUBLIC_API(JSBool)
@@ -152,10 +158,7 @@ extern JS_PUBLIC_API(void)
 JS_ClearScriptTraps(JSContext *cx, JSScript *script);
 
 extern JS_PUBLIC_API(void)
-JS_ClearAllTraps(JSContext *cx);
-
-extern JS_PUBLIC_API(JSTrapStatus)
-JS_HandleTrap(JSContext *cx, JSScript *script, jsbytecode *pc, jsval *rval);
+JS_ClearAllTrapsForCompartment(JSContext *cx);
 
 extern JS_PUBLIC_API(JSBool)
 JS_SetInterrupt(JSRuntime *rt, JSInterruptHook handler, void *closure);
@@ -179,33 +182,6 @@ JS_ClearWatchPointsForObject(JSContext *cx, JSObject *obj);
 extern JS_PUBLIC_API(JSBool)
 JS_ClearAllWatchPoints(JSContext *cx);
 
-#ifdef JS_HAS_OBJ_WATCHPOINT
-/*
- * Hide these non-API function prototypes by testing whether the internal
- * header file "jsversion.h" has been included.
- */
-extern JSBool
-js_TraceWatchPoints(JSTracer *trc);
-
-extern void
-js_SweepWatchPoints(JSContext *cx);
-
-#ifdef __cplusplus
-
-extern JSBool
-js_watch_set(JSContext *cx, JSObject *obj, jsid id, JSBool strict, js::Value *vp);
-
-namespace js {
-
-bool
-IsWatchedProperty(JSContext *cx, const Shape *shape);
-
-}
-
-#endif
-
-#endif /* JS_HAS_OBJ_WATCHPOINT */
-
 /************************************************************************/
 
 extern JS_PUBLIC_API(uintN)
@@ -216,6 +192,11 @@ JS_LineNumberToPC(JSContext *cx, JSScript *script, uintN lineno);
 
 extern JS_PUBLIC_API(jsbytecode *)
 JS_EndPC(JSContext *cx, JSScript *script);
+
+extern JS_PUBLIC_API(JSBool)
+JS_GetLinePCs(JSContext *cx, JSScript *script,
+              uintN startLine, uintN maxLines,
+              uintN* count, uintN** lines, jsbytecode*** pcs);
 
 extern JS_PUBLIC_API(uintN)
 JS_GetFunctionArgumentCount(JSContext *cx, JSFunction *fun);
@@ -283,10 +264,6 @@ JS_GetFramePrincipalArray(JSContext *cx, JSStackFrame *fp);
 extern JS_PUBLIC_API(JSBool)
 JS_IsScriptFrame(JSContext *cx, JSStackFrame *fp);
 
-/* this is deprecated, use JS_GetFrameScopeChain instead */
-extern JS_PUBLIC_API(JSObject *)
-JS_GetFrameObject(JSContext *cx, JSStackFrame *fp);
-
 extern JS_PUBLIC_API(JSObject *)
 JS_GetFrameScopeChain(JSContext *cx, JSStackFrame *fp);
 
@@ -309,6 +286,9 @@ JS_IsConstructorFrame(JSContext *cx, JSStackFrame *fp);
 
 extern JS_PUBLIC_API(JSBool)
 JS_IsDebuggerFrame(JSContext *cx, JSStackFrame *fp);
+
+extern JS_PUBLIC_API(JSBool)
+JS_IsGlobalFrame(JSContext *cx, JSStackFrame *fp);
 
 extern JS_PUBLIC_API(jsval)
 JS_GetFrameReturnValue(JSContext *cx, JSStackFrame *fp);
@@ -357,6 +337,9 @@ JS_GetValidFrameCalleeObject(JSContext *cx, JSStackFrame *fp, jsval *vp);
 
 extern JS_PUBLIC_API(const char *)
 JS_GetScriptFilename(JSContext *cx, JSScript *script);
+
+extern JS_PUBLIC_API(const jschar *)
+JS_GetScriptSourceMap(JSContext *cx, JSScript *script);
 
 extern JS_PUBLIC_API(uintN)
 JS_GetScriptBaseLineNumber(JSContext *cx, JSScript *script);
@@ -505,41 +488,92 @@ JS_SetContextDebugHooks(JSContext *cx, const JSDebugHooks *hooks);
 extern JS_PUBLIC_API(JSDebugHooks *)
 JS_ClearContextDebugHooks(JSContext *cx);
 
+/**
+ * Start any profilers that are available and have been configured on for this
+ * platform. This is NOT thread safe.
+ *
+ * The profileName is used by some profilers to describe the current profiling
+ * run. It may be used for part of the filename of the output, but the
+ * specifics depend on the profiler. Many profilers will ignore it. Passing in
+ * NULL is legal; some profilers may use it to output to stdout or similar.
+ *
+ * Returns true if no profilers fail to start.
+ */
 extern JS_PUBLIC_API(JSBool)
-JS_StartProfiling();
+JS_StartProfiling(const char *profileName);
 
-extern JS_PUBLIC_API(void)
-JS_StopProfiling();
+/**
+ * Stop any profilers that were previously started with JS_StartProfiling.
+ * Returns true if no profilers fail to stop.
+ */
+extern JS_PUBLIC_API(JSBool)
+JS_StopProfiling(const char *profileName);
 
+/**
+ * Write the current profile data to the given file, if applicable to whatever
+ * profiler is being used.
+ */
+extern JS_PUBLIC_API(JSBool)
+JS_DumpProfile(const char *outfile, const char *profileName);
+
+/**
+ * Pause currently active profilers (only supported by some profilers). Returns
+ * whether any profilers failed to pause. (Profilers that do not support
+ * pause/resume do not count.)
+ */
+extern JS_PUBLIC_API(JSBool)
+JS_PauseProfilers(const char *profileName);
+
+/**
+ * Resume suspended profilers
+ */
+extern JS_PUBLIC_API(JSBool)
+JS_ResumeProfilers(const char *profileName);
+
+/**
+ * Add various profiling-related functions as properties of the given object.
+ */
 extern JS_PUBLIC_API(JSBool)
 JS_DefineProfilingFunctions(JSContext *cx, JSObject *obj);
+
+/* Defined in vm/Debugger.cpp. */
+extern JS_PUBLIC_API(JSBool)
+JS_DefineDebuggerObject(JSContext *cx, JSObject *obj);
+
+/**
+ * The profiling API calls are not able to report errors, so they use a
+ * thread-unsafe global memory buffer to hold the last error encountered. This
+ * should only be called after something returns false.
+ */
+JS_PUBLIC_API(const char *)
+JS_UnsafeGetLastProfilingError();
 
 #ifdef MOZ_CALLGRIND
 
 extern JS_FRIEND_API(JSBool)
-js_StopCallgrind(JSContext *cx, uintN argc, jsval *vp);
+js_StopCallgrind();
 
 extern JS_FRIEND_API(JSBool)
-js_StartCallgrind(JSContext *cx, uintN argc, jsval *vp);
+js_StartCallgrind();
 
 extern JS_FRIEND_API(JSBool)
-js_DumpCallgrind(JSContext *cx, uintN argc, jsval *vp);
+js_DumpCallgrind(const char *outfile);
 
 #endif /* MOZ_CALLGRIND */
 
 #ifdef MOZ_VTUNE
 
-extern JS_FRIEND_API(JSBool)
-js_StartVtune(JSContext *cx, uintN argc, jsval *vp);
+extern JS_FRIEND_API(bool)
+js_StartVtune(const char *profileName);
 
-extern JS_FRIEND_API(JSBool)
-js_StopVtune(JSContext *cx, uintN argc, jsval *vp);
+extern JS_FRIEND_API(bool)
+js_StopVtune();
 
-extern JS_FRIEND_API(JSBool)
-js_PauseVtune(JSContext *cx, uintN argc, jsval *vp);
+extern JS_FRIEND_API(bool)
+js_PauseVtune();
 
-extern JS_FRIEND_API(JSBool)
-js_ResumeVtune(JSContext *cx, uintN argc, jsval *vp);
+extern JS_FRIEND_API(bool)
+js_ResumeVtune();
 
 #endif /* MOZ_VTUNE */
 
@@ -571,6 +605,15 @@ JS_SetFunctionCallback(JSContext *cx, JSFunctionCallback fcb);
 extern JS_PUBLIC_API(JSFunctionCallback)
 JS_GetFunctionCallback(JSContext *cx);
 #endif /* MOZ_TRACE_JSCALLS */
+
+extern JS_PUBLIC_API(void)
+JS_DumpBytecode(JSContext *cx, JSScript *script);
+
+extern JS_PUBLIC_API(void)
+JS_DumpCompartmentBytecode(JSContext *cx);
+
+extern JS_PUBLIC_API(JSObject *)
+JS_UnwrapObject(JSObject *obj);
 
 JS_END_EXTERN_C
 

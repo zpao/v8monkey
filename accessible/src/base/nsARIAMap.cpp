@@ -42,8 +42,9 @@
 #include "nsIAccessibleRole.h"
 #include "States.h"
 
-#include "nsAccessibilityAtoms.h"
 #include "nsIContent.h"
+
+using namespace mozilla::a11y;
 
 /**
  *  This list of WAI-defined roles are currently hardcoded.
@@ -477,7 +478,8 @@ nsRoleMapEntry nsARIAMap::gWAIRoleMap[] =
     eNoValue,
     eSwitchAction,
     eNoLiveAttr,
-    kNoReqStates
+    kNoReqStates,
+    eARIASelectable
   },
   {
     "tablist",
@@ -599,76 +601,76 @@ nsStateMapEntry nsARIAMap::gWAIStateMap[] = {
   nsStateMapEntry(),
 
   // eARIAAutoComplete
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_autocomplete,
+  nsStateMapEntry(&nsGkAtoms::aria_autocomplete,
                   "inline", states::SUPPORTS_AUTOCOMPLETION,
                   "list", states::HASPOPUP | states::SUPPORTS_AUTOCOMPLETION,
                   "both", states::HASPOPUP | states::SUPPORTS_AUTOCOMPLETION),
 
   // eARIABusy
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_busy,
+  nsStateMapEntry(&nsGkAtoms::aria_busy,
                   "true", states::BUSY,
                   "error", states::INVALID),
 
   // eARIACheckableBool
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_checked, kBoolType,
-                  states::CHECKABLE, states::CHECKED, 0, PR_TRUE),
+  nsStateMapEntry(&nsGkAtoms::aria_checked, kBoolType,
+                  states::CHECKABLE, states::CHECKED, 0, true),
 
   // eARIACheckableMixed
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_checked, kMixedType,
-                  states::CHECKABLE, states::CHECKED, 0, PR_TRUE),
+  nsStateMapEntry(&nsGkAtoms::aria_checked, kMixedType,
+                  states::CHECKABLE, states::CHECKED, 0, true),
 
   // eARIACheckedMixed
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_checked, kMixedType,
+  nsStateMapEntry(&nsGkAtoms::aria_checked, kMixedType,
                   states::CHECKABLE, states::CHECKED, 0),
 
   // eARIADisabled
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_disabled, kBoolType,
+  nsStateMapEntry(&nsGkAtoms::aria_disabled, kBoolType,
                   0, states::UNAVAILABLE),
 
   // eARIAExpanded
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_expanded, kBoolType,
+  nsStateMapEntry(&nsGkAtoms::aria_expanded, kBoolType,
                   0, states::EXPANDED, states::COLLAPSED),
 
   // eARIAHasPopup
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_haspopup, kBoolType,
+  nsStateMapEntry(&nsGkAtoms::aria_haspopup, kBoolType,
                   0, states::HASPOPUP),
 
   // eARIAInvalid
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_invalid, kBoolType,
+  nsStateMapEntry(&nsGkAtoms::aria_invalid, kBoolType,
                   0, states::INVALID),
 
   // eARIAMultiline
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_multiline, kBoolType,
-                  0, states::MULTI_LINE, states::SINGLE_LINE, PR_TRUE),
+  nsStateMapEntry(&nsGkAtoms::aria_multiline, kBoolType,
+                  0, states::MULTI_LINE, states::SINGLE_LINE, true),
 
   // eARIAMultiSelectable
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_multiselectable, kBoolType,
+  nsStateMapEntry(&nsGkAtoms::aria_multiselectable, kBoolType,
                   0, states::MULTISELECTABLE | states::EXTSELECTABLE),
 
   // eARIAOrientation
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_orientation, eUseFirstState,
+  nsStateMapEntry(&nsGkAtoms::aria_orientation, eUseFirstState,
                   "vertical", states::VERTICAL,
                   "horizontal", states::HORIZONTAL),
 
   // eARIAPressed
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_pressed, kMixedType,
+  nsStateMapEntry(&nsGkAtoms::aria_pressed, kMixedType,
                   states::CHECKABLE, states::PRESSED),
 
   // eARIAReadonly
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_readonly, kBoolType,
+  nsStateMapEntry(&nsGkAtoms::aria_readonly, kBoolType,
                   0, states::READONLY),
 
   // eARIAReadonlyOrEditable
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_readonly, kBoolType,
-                  0, states::READONLY, states::EDITABLE, PR_TRUE),
+  nsStateMapEntry(&nsGkAtoms::aria_readonly, kBoolType,
+                  0, states::READONLY, states::EDITABLE, true),
 
   // eARIARequired
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_required, kBoolType,
+  nsStateMapEntry(&nsGkAtoms::aria_required, kBoolType,
                   0, states::REQUIRED),
 
   // eARIASelectable
-  nsStateMapEntry(&nsAccessibilityAtoms::aria_selected, kBoolType,
-                  states::SELECTABLE, states::SELECTED, 0, PR_TRUE)
+  nsStateMapEntry(&nsGkAtoms::aria_selected, kBoolType,
+                  states::SELECTABLE, states::SELECTED, 0, true)
 };
 
 /**
@@ -693,40 +695,40 @@ eStateMapEntryID nsARIAMap::gWAIUnivStateMap[] = {
  * @note ARIA attributes that don't have any flags are not included here
  */
 nsAttributeCharacteristics nsARIAMap::gWAIUnivAttrMap[] = {
-  {&nsAccessibilityAtoms::aria_activedescendant,  ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_atomic,                             ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_busy,                               ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_checked,           ATTR_BYPASSOBJ | ATTR_VALTOKEN }, /* exposes checkable obj attr */
-  {&nsAccessibilityAtoms::aria_controls,          ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_describedby,       ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_disabled,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_dropeffect,                         ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_expanded,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_flowto,            ATTR_BYPASSOBJ                 },  
-  {&nsAccessibilityAtoms::aria_grabbed,                            ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_haspopup,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_hidden,                             ATTR_VALTOKEN },/* always expose obj attr */
-  {&nsAccessibilityAtoms::aria_invalid,           ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_label,             ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_labelledby,        ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_level,             ATTR_BYPASSOBJ                 }, /* handled via groupPosition */
-  {&nsAccessibilityAtoms::aria_live,                               ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_multiline,         ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_multiselectable,   ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_owns,              ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_orientation,                        ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_posinset,          ATTR_BYPASSOBJ                 }, /* handled via groupPosition */
-  {&nsAccessibilityAtoms::aria_pressed,           ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_readonly,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_relevant,          ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_required,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_selected,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_setsize,           ATTR_BYPASSOBJ                 }, /* handled via groupPosition */
-  {&nsAccessibilityAtoms::aria_sort,                               ATTR_VALTOKEN },
-  {&nsAccessibilityAtoms::aria_valuenow,          ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_valuemin,          ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_valuemax,          ATTR_BYPASSOBJ                 },
-  {&nsAccessibilityAtoms::aria_valuetext,         ATTR_BYPASSOBJ                 }
+  {&nsGkAtoms::aria_activedescendant,  ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_atomic,                             ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_busy,                               ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_checked,           ATTR_BYPASSOBJ | ATTR_VALTOKEN }, /* exposes checkable obj attr */
+  {&nsGkAtoms::aria_controls,          ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_describedby,       ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_disabled,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_dropeffect,                         ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_expanded,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_flowto,            ATTR_BYPASSOBJ                 },  
+  {&nsGkAtoms::aria_grabbed,                            ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_haspopup,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_hidden,                             ATTR_VALTOKEN },/* always expose obj attr */
+  {&nsGkAtoms::aria_invalid,           ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_label,             ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_labelledby,        ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_level,             ATTR_BYPASSOBJ                 }, /* handled via groupPosition */
+  {&nsGkAtoms::aria_live,                               ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_multiline,         ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_multiselectable,   ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_owns,              ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_orientation,                        ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_posinset,          ATTR_BYPASSOBJ                 }, /* handled via groupPosition */
+  {&nsGkAtoms::aria_pressed,           ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_readonly,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_relevant,          ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_required,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_selected,          ATTR_BYPASSOBJ | ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_setsize,           ATTR_BYPASSOBJ                 }, /* handled via groupPosition */
+  {&nsGkAtoms::aria_sort,                               ATTR_VALTOKEN },
+  {&nsGkAtoms::aria_valuenow,          ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_valuemin,          ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_valuemax,          ATTR_BYPASSOBJ                 },
+  {&nsGkAtoms::aria_valuetext,         ATTR_BYPASSOBJ                 }
 };
 
 PRUint32 nsARIAMap::gWAIUnivAttrMapLength = NS_ARRAY_LENGTH(nsARIAMap::gWAIUnivAttrMap);
@@ -737,7 +739,7 @@ PRUint32 nsARIAMap::gWAIUnivAttrMapLength = NS_ARRAY_LENGTH(nsARIAMap::gWAIUnivA
 
 nsStateMapEntry::nsStateMapEntry() :
   mAttributeName(nsnull),
-  mIsToken(PR_FALSE),
+  mIsToken(false),
   mPermanentState(0),
   mValue1(nsnull),
   mState1(0),
@@ -746,16 +748,16 @@ nsStateMapEntry::nsStateMapEntry() :
   mValue3(nsnull),
   mState3(0),
   mDefaultState(0),
-  mDefinedIfAbsent(PR_FALSE)
+  mDefinedIfAbsent(false)
 {}
 
 nsStateMapEntry::nsStateMapEntry(nsIAtom** aAttrName, eStateValueType aType,
                                  PRUint64 aPermanentState,
                                  PRUint64 aTrueState,
                                  PRUint64 aFalseState,
-                                 PRBool aDefinedIfAbsent) :
+                                 bool aDefinedIfAbsent) :
   mAttributeName(aAttrName),
-  mIsToken(PR_TRUE),
+  mIsToken(true),
   mPermanentState(aPermanentState),
   mValue1("false"),
   mState1(aFalseState),
@@ -776,11 +778,11 @@ nsStateMapEntry::nsStateMapEntry(nsIAtom** aAttrName,
                                  const char* aValue1, PRUint64 aState1,
                                  const char* aValue2, PRUint64 aState2,
                                  const char* aValue3, PRUint64 aState3) :
-  mAttributeName(aAttrName), mIsToken(PR_FALSE), mPermanentState(0),
+  mAttributeName(aAttrName), mIsToken(false), mPermanentState(0),
   mValue1(aValue1), mState1(aState1),
   mValue2(aValue2), mState2(aState2),
   mValue3(aValue3), mState3(aState3),
-  mDefaultState(0), mDefinedIfAbsent(PR_FALSE)
+  mDefaultState(0), mDefinedIfAbsent(false)
 {
 }
 
@@ -789,36 +791,36 @@ nsStateMapEntry::nsStateMapEntry(nsIAtom** aAttrName,
                                  const char* aValue1, PRUint64 aState1,
                                  const char* aValue2, PRUint64 aState2,
                                  const char* aValue3, PRUint64 aState3) :
-  mAttributeName(aAttrName), mIsToken(PR_TRUE), mPermanentState(0),
+  mAttributeName(aAttrName), mIsToken(true), mPermanentState(0),
   mValue1(aValue1), mState1(aState1),
   mValue2(aValue2), mState2(aState2),
   mValue3(aValue3), mState3(aState3),
-  mDefaultState(0), mDefinedIfAbsent(PR_TRUE)
+  mDefaultState(0), mDefinedIfAbsent(true)
 {
   if (aDefaultStateRule == eUseFirstState)
     mDefaultState = aState1;
 }
 
-PRBool
+bool
 nsStateMapEntry::MapToStates(nsIContent* aContent, PRUint64* aState,
                              eStateMapEntryID aStateMapEntryID)
 {
   // Return true if we should continue.
   if (aStateMapEntryID == eARIANone)
-    return PR_FALSE;
+    return false;
 
   const nsStateMapEntry& entry = nsARIAMap::gWAIStateMap[aStateMapEntryID];
 
   if (entry.mIsToken) {
     // If attribute is considered as defined when it's absent then let's act
     // attribute value is "false" supposedly.
-    PRBool hasAttr = aContent->HasAttr(kNameSpaceID_None, *entry.mAttributeName);
+    bool hasAttr = aContent->HasAttr(kNameSpaceID_None, *entry.mAttributeName);
     if (entry.mDefinedIfAbsent && !hasAttr) {
       if (entry.mPermanentState)
         *aState |= entry.mPermanentState;
       if (entry.mState1)
         *aState |= entry.mState1;
-      return PR_TRUE;
+      return true;
     }
 
     // We only have attribute state mappings for NMTOKEN (and boolean) based
@@ -830,13 +832,13 @@ nsStateMapEntry::MapToStates(nsIContent* aContent, PRUint64* aState,
     // bail out and not explore a state mapping, which is safe.
     if (!hasAttr ||
         aContent->AttrValueIs(kNameSpaceID_None, *entry.mAttributeName,
-                              nsAccessibilityAtoms::_empty, eCaseMatters) ||
+                              nsGkAtoms::_empty, eCaseMatters) ||
         aContent->AttrValueIs(kNameSpaceID_None, *entry.mAttributeName,
-                              nsAccessibilityAtoms::_undefined, eCaseMatters)) {
+                              nsGkAtoms::_undefined, eCaseMatters)) {
 
       if (entry.mPermanentState)
         *aState &= ~entry.mPermanentState;
-      return PR_TRUE;
+      return true;
     }
 
     if (entry.mPermanentState)
@@ -845,27 +847,27 @@ nsStateMapEntry::MapToStates(nsIContent* aContent, PRUint64* aState,
 
   nsAutoString attrValue;
   if (!aContent->GetAttr(kNameSpaceID_None, *entry.mAttributeName, attrValue))
-    return PR_TRUE;
+    return true;
 
   // Apply states for matched value. If no values was matched then apply default
   // states.
-  PRBool applyDefaultStates = PR_TRUE;
+  bool applyDefaultStates = true;
   if (entry.mValue1) {
     if (attrValue.EqualsASCII(entry.mValue1)) {
-      applyDefaultStates = PR_FALSE;
+      applyDefaultStates = false;
 
       if (entry.mState1)
         *aState |= entry.mState1;
     } else if (entry.mValue2) {
       if (attrValue.EqualsASCII(entry.mValue2)) {
-        applyDefaultStates = PR_FALSE;
+        applyDefaultStates = false;
 
         if (entry.mState2)
           *aState |= entry.mState2;
 
       } else if (entry.mValue3) {
         if (attrValue.EqualsASCII(entry.mValue3)) {
-          applyDefaultStates = PR_FALSE;
+          applyDefaultStates = false;
 
           if (entry.mState3)
             *aState |= entry.mState3;
@@ -880,5 +882,5 @@ nsStateMapEntry::MapToStates(nsIContent* aContent, PRUint64* aState,
       *aState |= entry.mDefaultState;
   }
 
-  return PR_TRUE;
+  return true;
 }

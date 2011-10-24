@@ -221,7 +221,7 @@ XULContentSinkImpl::XULContentSinkImpl()
     : mText(nsnull),
       mTextLength(0),
       mTextSize(0),
-      mConstrainSize(PR_TRUE),
+      mConstrainSize(true),
       mState(eInProlog),
       mParser(nsnull)
 {
@@ -270,7 +270,7 @@ XULContentSinkImpl::WillBuildModel(nsDTDMode aDTDMode)
 }
 
 NS_IMETHODIMP 
-XULContentSinkImpl::DidBuildModel(PRBool aTerminated)
+XULContentSinkImpl::DidBuildModel(bool aTerminated)
 {
     nsCOMPtr<nsIDocument> doc = do_QueryReferent(mDocument);
     if (doc) {
@@ -372,7 +372,7 @@ XULContentSinkImpl::Init(nsIDocument* aDocument,
 // Text buffering
 //
 
-PRBool
+bool
 XULContentSinkImpl::IsDataInBuffer(PRUnichar* buffer, PRInt32 length)
 {
     for (PRInt32 i = 0; i < length; ++i) {
@@ -382,14 +382,14 @@ XULContentSinkImpl::IsDataInBuffer(PRUnichar* buffer, PRInt32 length)
             buffer[i] == '\r')
             continue;
 
-        return PR_TRUE;
+        return true;
     }
-    return PR_FALSE;
+    return false;
 }
 
 
 nsresult
-XULContentSinkImpl::FlushText(PRBool aCreateTextNode)
+XULContentSinkImpl::FlushText(bool aCreateTextNode)
 {
     nsresult rv;
 
@@ -406,7 +406,7 @@ XULContentSinkImpl::FlushText(PRBool aCreateTextNode)
         rv = mContextStack.GetTopNode(node);
         if (NS_FAILED(rv)) return rv;
 
-        PRBool stripWhitespace = PR_FALSE;
+        bool stripWhitespace = false;
         if (node->mType == nsXULPrototypeNode::eType_Element) {
             nsINodeInfo *nodeInfo =
                 static_cast<nsXULPrototypeElement*>(node.get())->mNodeInfo;
@@ -465,7 +465,8 @@ XULContentSinkImpl::NormalizeAttributeString(const PRUnichar *aExpatName,
 
     nsCOMPtr<nsINodeInfo> ni;
     ni = mNodeInfoManager->GetNodeInfo(localName, prefix,
-                                       nameSpaceID);
+                                       nameSpaceID,
+                                       nsIDOMNode::ATTRIBUTE_NODE);
     NS_ENSURE_TRUE(ni, NS_ERROR_OUT_OF_MEMORY);
 
     aName.SetTo(ni);
@@ -518,7 +519,8 @@ XULContentSinkImpl::HandleStartElement(const PRUnichar *aName,
                                  getter_AddRefs(localName), &nameSpaceID);
 
   nsCOMPtr<nsINodeInfo> nodeInfo;
-  nodeInfo = mNodeInfoManager->GetNodeInfo(localName, prefix, nameSpaceID);
+  nodeInfo = mNodeInfoManager->GetNodeInfo(localName, prefix, nameSpaceID,
+                                           nsIDOMNode::ELEMENT_NODE);
   NS_ENSURE_TRUE(nodeInfo, NS_ERROR_OUT_OF_MEMORY);
   
   nsresult rv = NS_OK;
@@ -602,13 +604,13 @@ XULContentSinkImpl::HandleEndElement(const PRUnichar *aName)
         if (! script->mSrcURI && ! script->mScriptObject.mObject) {
             nsCOMPtr<nsIDocument> doc = do_QueryReferent(mDocument);
 
-            script->mOutOfLine = PR_FALSE;
+            script->mOutOfLine = false;
             if (doc)
                 script->Compile(mText, mTextLength, mDocumentURL,
                                 script->mLineNo, doc, mPrototype);
         }
 
-        FlushText(PR_FALSE);
+        FlushText(false);
     }
     break;
 
@@ -725,12 +727,12 @@ NS_IMETHODIMP
 XULContentSinkImpl::ReportError(const PRUnichar* aErrorText, 
                                 const PRUnichar* aSourceText,
                                 nsIScriptError *aError,
-                                PRBool *_retval)
+                                bool *_retval)
 {
   NS_PRECONDITION(aError && aSourceText && aErrorText, "Check arguments!!!");
 
   // The expat driver should report the error.
-  *_retval = PR_TRUE;
+  *_retval = true;
 
   nsresult rv = NS_OK;
 
@@ -793,7 +795,7 @@ XULContentSinkImpl::SetElementScriptType(nsXULPrototypeElement* element,
     // First check if the attributes specify an explicit script type.
     nsresult rv = NS_OK;
     PRUint32 i;
-    PRBool found = PR_FALSE;
+    bool found = false;
     for (i=0;i<aAttrLen;i++) {
         const nsDependentString key(aAttributes[i*2]);
         if (key.EqualsLiteral("script-type")) {
@@ -811,7 +813,7 @@ XULContentSinkImpl::SetElementScriptType(nsXULPrototypeElement* element,
                     NS_ASSERTION(element->mScriptTypeID == nsIProgrammingLanguage::UNKNOWN,
                                  "Default script type should be unknown");
                 }
-                found = PR_TRUE;
+                found = true;
                 break;
             }
         }
@@ -1009,10 +1011,10 @@ XULContentSinkImpl::OpenScript(const PRUnichar** aAttributes,
               nsnull
           };
 
-          PRBool isJavaScript = PR_FALSE;
+          bool isJavaScript = false;
           for (PRInt32 i = 0; jsTypes[i]; i++) {
               if (mimeType.LowerCaseEqualsASCII(jsTypes[i])) {
-                  isJavaScript = PR_TRUE;
+                  isJavaScript = true;
                   break;
               }
           }
@@ -1154,7 +1156,7 @@ XULContentSinkImpl::OpenScript(const PRUnichar** aAttributes,
 
       children->AppendElement(script);
 
-      mConstrainSize = PR_FALSE;
+      mConstrainSize = false;
 
       mContextStack.Push(script, mState);
       mState = eInScript;

@@ -205,7 +205,7 @@ MyListener::OnDataAvailable(nsIRequest *req, nsISupports *ctxt,
       rv = stream->ReadSegments(streamParse, &offset, count, &bytesRead);
     } else {
       while (count) {
-        PRUint32 amount = PR_MIN(count, sizeof(buf));
+        PRUint32 amount = NS_MIN<PRUint32>(count, sizeof(buf));
         rv = stream->Read(buf, amount, &bytesRead);  
         count -= bytesRead;
       }
@@ -317,7 +317,7 @@ nsresult auxLoad(char *uriBuf)
     }
 
     //Compare to see if exists
-    PRBool equal;
+    bool equal;
     for(PRInt32 i = 0; i < uriList.Count(); i++) {
       uri->Equals(uriList[i], &equal);
       if(equal) {

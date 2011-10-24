@@ -91,6 +91,7 @@
         this.completeDefaultIndex = this._prefs.getBoolPref("autoFill");
         this.timeout = this._prefs.getIntPref("delay");
         this._formattingEnabled = this._prefs.getBoolPref("formatting.enabled");
+        this._mayTrimURLs = this._prefs.getBoolPref("trimURLs");
 
         this._urlTooltip = document.getElementById("urlTooltip");
 
@@ -180,10 +181,20 @@
         ]]></body>
       </method>
 
+      <field name="_mayTrimURLs">true</field>
+      <method name="trimValue">
+        <parameter name="aURL"/>
+        <body><![CDATA[
+          // This method must not modify the given URL such that calling
+          // nsIURIFixup::createFixupURI with the result will produce a different URI.
+          return this._mayTrimURLs ? trimURL(aURL) : aURL;
+        ]]></body>
+      </method>
+
       <field name="_formattingEnabled">true</field>
       <method name="formatValue">
         <body><![CDATA[
-          if (!this._formattingEnabled)
+          if (!this._formattingEnabled || this.focused)
             return;
 
           let controller = this.editor.selectionController;
@@ -192,31 +203,56 @@
 
           let textNode = this.editor.rootElement.firstChild;
           let value = textNode.textContent;
-          let matchedURL = value.match(/^((?:http|https|ftp):\/\/(?:[^\/]+@)?)([^\/:]+)/);
+
+          let protocol = value.match(/^[a-z\d.+\-]+:(?=[^\d])/);
+          if (protocol &&
+              ["http:", "https:", "ftp:"].indexOf(protocol[0]) == -1)
+            return;
+          let matchedURL = value.match(/^((?:[a-z]+:\/\/)?(?:[^\/]+@)?)(.+?)(?::\d+)?(?:\/|$)/);
           if (!matchedURL)
             return;
 
           let [, preDomain, domain] = matchedURL;
           let baseDomain = domain;
-          try {
-            baseDomain = Services.eTLD.getBaseDomainFromHost(domain);
-          } catch (e) {}
-          let segments = function (s) s.replace(/[^.]*/g, "").length + 1;
-          let subSegments = segments(domain) - segments(baseDomain);
-          let subDomain = domain.match(new RegExp("(?:[^.]*\.){" + subSegments + "}"))[0];
+          let subDomain = "";
+          // getBaseDomainFromHost doesn't recognize IPv6 literals in brackets as IPs (bug 667159)
+          if (domain[0] != "[") {
+            try {
+              baseDomain = Services.eTLD.getBaseDomainFromHost(domain);
+            } catch (e) {}
+          }
+          if (baseDomain != domain) {
+            let segments = function (s) s.replace(/[^.]*/g, "").length + 1;
+            let subSegments = segments(domain) - segments(baseDomain);
+            subDomain = domain.match(new RegExp("(?:[^.]*\.){" + subSegments + "}"))[0];
+          }
 
-          let range = document.createRange();
-          range.setStart(textNode, 0);
-          range.setEnd(textNode, preDomain.length + subDomain.length);
-          selection.addRange(range);
+          let rangeLength = preDomain.length + subDomain.length;
+          if (rangeLength) {
+            let range = document.createRange();
+            range.setStart(textNode, 0);
+            range.setEnd(textNode, rangeLength);
+            selection.addRange(range);
+          }
 
           let startRest = preDomain.length + domain.length;
           if (startRest < value.length) {
-            range = document.createRange();
+            let range = document.createRange();
             range.setStart(textNode, startRest);
             range.setEnd(textNode, value.length);
             selection.addRange(range);
           }
+        ]]></body>
+      </method>
+
+      <method name="_clearFormatting">
+        <body><![CDATA[
+          if (!this._formattingEnabled)
+            return;
+
+          let controller = this.editor.selectionController;
+          let selection = controller.getSelection(controller.SELECTION_URLSECONDARY);
+          selection.removeAllRanges();
         ]]></body>
       </method>
 
@@ -249,6 +285,7 @@
             return; // Do nothing for right clicks
 
           var url = this.value;
+          var mayInheritPrincipal = false;
           var postData = null;
 
           var action = this._parseActionUrl(url);
@@ -266,7 +303,7 @@
             }
           }
           else {
-            [url, postData] = this._canonizeURL(aTriggeringEvent);
+            [url, postData, mayInheritPrincipal] = this._canonizeURL(aTriggeringEvent);
             if (!url)
               return;
           }
@@ -281,35 +318,54 @@
             Cu.reportError(ex);
           }
 
-          if (aTriggeringEvent instanceof MouseEvent) {
-            // We have a mouse event (from the go button), so use the standard
-            // UI link behaviors
-            let where = whereToOpenLink(aTriggeringEvent, false, false);
-            if (where != "current") {
-              this.handleRevert();
-              content.focus();
-            }
-            openUILinkIn(url, where,
-                        { allowThirdPartyFixup: true, postData: postData });
-            return;
+          function loadCurrent() {
+            let flags = Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
+            // Pass LOAD_FLAGS_DISALLOW_INHERIT_OWNER to prevent any loads from
+            // inheriting the currently loaded document's principal, unless this
+            // URL is marked as safe to inherit (e.g. came from a bookmark
+            // keyword).
+            if (!mayInheritPrincipal)
+              flags |= Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_OWNER;
+            gBrowser.loadURIWithFlags(url, flags, null, null, postData);
           }
 
-          if (aTriggeringEvent &&
-              aTriggeringEvent.altKey &&
-              !isTabEmpty(gBrowser.selectedTab)) {
-            this.handleRevert();
-            content.focus();
-            gBrowser.loadOneTab(url, {
-                                postData: postData,
-                                inBackground: false,
-                                allowThirdPartyFixup: true});
+          // Focus the content area before triggering loads, since if the load
+          // occurs in a new tab, we want focus to be restored to the content
+          // area when the current tab is re-selected.
+          gBrowser.selectedBrowser.focus();
+
+          let isMouseEvent = aTriggeringEvent instanceof MouseEvent;
+          let altEnter = !isMouseEvent && aTriggeringEvent && aTriggeringEvent.altKey;
+
+          if (altEnter) {
+            // XXX This was added a long time ago, and I'm not sure why it is
+            // necessary. Alt+Enter's default action might cause a system beep,
+            // or something like that?
             aTriggeringEvent.preventDefault();
             aTriggeringEvent.stopPropagation();
           }
-          else
-            loadURI(url, null, postData, true /* allow third party fixup */);
 
-          gBrowser.selectedBrowser.focus();
+          // If the current tab is empty, ignore Alt+Enter (just reuse this tab)
+          altEnter = altEnter && !isTabEmpty(gBrowser.selectedTab);
+
+          if (isMouseEvent || altEnter) {
+            // Use the standard UI link behaviors for clicks or Alt+Enter
+            let where = "tab";
+            if (isMouseEvent)
+              where = whereToOpenLink(aTriggeringEvent, false, false);
+
+            if (where == "current") {
+              loadCurrent();
+            } else {
+              this.handleRevert();
+              let params = { allowThirdPartyFixup: true, postData: postData };
+              if (altEnter)
+                params.inBackground = false;
+              openUILinkIn(url, where, params);
+            }
+          } else {
+            loadCurrent();
+          }
         ]]></body>
       </method>
 
@@ -318,11 +374,11 @@
         <body><![CDATA[
           var url = this.value;
           if (!url)
-            return ["", null];
+            return ["", null, false];
 
           // Only add the suffix when the URL bar value isn't already "URL-like",
           // and only if we get a keyboard event, to match user expectations.
-          if (!/^\s*(www|https?)\b|\/\s*$/i.test(url) &&
+          if (/^\s*[^.:\/\s]+(?:\/.*|\s*)$/i.test(url) &&
               (aTriggeringEvent instanceof KeyEvent)) {
 #ifdef XP_MACOSX
             let accel = aTriggeringEvent.metaKey;
@@ -357,33 +413,25 @@
 
               // Tack www. and suffix on.  If user has appended directories, insert
               // suffix before them (bug 279035).  Be careful not to get two slashes.
-              // Also, don't add the suffix if it's in the original url (bug 233853).
 
               let firstSlash = url.indexOf("/");
-              let existingSuffix = url.indexOf(suffix.substring(0, suffix.length - 1));
-
-              // * Logic for slash and existing suffix (example)
-              // No slash, no suffix: Add suffix (mozilla)
-              // No slash, yes suffix: Add slash (mozilla.com)
-              // Yes slash, no suffix: Insert suffix (mozilla/stuff)
-              // Yes slash, suffix before slash: Do nothing (mozilla.com/stuff)
-              // Yes slash, suffix after slash: Insert suffix (mozilla/?stuff=.com)
 
               if (firstSlash >= 0) {
-                if (existingSuffix == -1 || existingSuffix > firstSlash)
-                  url = url.substring(0, firstSlash) + suffix +
-                        url.substring(firstSlash + 1);
-              } else
-                url = url + (existingSuffix == -1 ? suffix : "/");
+                url = url.substring(0, firstSlash) + suffix +
+                      url.substring(firstSlash + 1);
+              } else {
+                url = url + suffix;
+              }
 
               url = "http://www." + url;
             }
           }
 
           var postData = {};
-          url = getShortcutOrURI(url, postData);
+          var mayInheritPrincipal = { value: false };
+          url = getShortcutOrURI(url, postData, mayInheritPrincipal);
 
-          return [url, postData.value];
+          return [url, postData.value, mayInheritPrincipal.value];
         ]]></body>
       </method>
 
@@ -439,8 +487,9 @@
             aEvent.preventDefault();
             this.value = url;
             SetPageProxyState("invalid");
+            this.focus();
             try {
-              urlSecurityCheck(this.value,
+              urlSecurityCheck(url,
                                gBrowser.contentPrincipal,
                                Ci.nsIScriptSecurityManager.DISALLOW_INHERIT_PRINCIPAL);
             } catch (ex) {
@@ -455,26 +504,52 @@
         <body><![CDATA[
           // Grab the actual input field's value, not our value, which could include moz-action:
           var inputVal = this.inputField.value;
-          var val = inputVal.substring(this.selectionStart, this.selectionEnd);
+          var selectedVal = inputVal.substring(this.selectionStart, this.selectionEnd);
 
-          // If the entire value is selected and it's a valid non-javascript,
-          // non-data URI, encode it.
-          if (val == inputVal &&
-              this.getAttribute("pageproxystate") == "valid") {
-            let uri;
-            try {
-              uri = makeURI(val);
-            } catch (e) {}
+          // If the selection doesn't start at the beginning or URL bar is
+          // modified, nothing else to do here.
+          if (this.selectionStart > 0 || this.valueIsTyped)
+            return selectedVal;
 
-            if (uri && !uri.schemeIs("javascript") && !uri.schemeIs("data")) {
-              val = uri.spec;
+          let uriFixup = Cc["@mozilla.org/docshell/urifixup;1"].getService(Ci.nsIURIFixup);
 
+          let uri;
+          try {
+            uri = uriFixup.createFixupURI(inputVal, Ci.nsIURIFixup.FIXUP_FLAG_USE_UTF8);
+          } catch (e) {}
+          if (!uri)
+            return selectedVal;
+
+          // Only copy exposable URIs
+          try {
+            uri = uriFixup.createExposableURI(uri);
+          } catch (ex) {}
+
+          // If the entire URL is selected, just use the actual loaded URI.
+          if (inputVal == selectedVal) {
+            // ... but only if  isn't a javascript: or data: URI, since those
+            // are hard to read when encoded
+            if (!uri.schemeIs("javascript") && !uri.schemeIs("data")) {
               // Parentheses are known to confuse third-party applications (bug 458565).
-              val = val.replace(/[()]/g, function (c) escape(c));
+              selectedVal = uri.spec.replace(/[()]/g, function (c) escape(c));
             }
+
+            return selectedVal;
           }
 
-          return val;
+          // Just the beginning of the URL is selected, check for a trimmed
+          // value
+          let spec = uri.spec;
+          let trimmedSpec = this.trimValue(spec);
+          if (spec != trimmedSpec) {
+            // Prepend the portion that trimValue removed from the beginning.
+            // This assumes trimValue will only truncate the URL at
+            // the beginning or end (or both).
+            let trimmedSegments = spec.split(trimmedSpec);
+            selectedVal = trimmedSegments[0] + selectedVal;
+          }
+
+          return selectedVal;
         ]]></body>
       </method>
 
@@ -537,6 +612,9 @@
                 break;
               case "formatting.enabled":
                 this._formattingEnabled = this._prefs.getBoolPref(aData);
+                break;
+              case "trimURLs":
+                this._mayTrimURLs = this._prefs.getBoolPref(aData);
                 break;
             }
           }
@@ -644,6 +722,7 @@
 
       <handler event="blur"><![CDATA[
         this._clearNoActions();
+        this.formatValue();
       ]]></handler>
 
       <handler event="draggesture" phase="capturing"><![CDATA[
@@ -678,6 +757,7 @@
 
       <handler event="focus" phase="capturing"><![CDATA[
         this._hideURLTooltip();
+        this._clearFormatting();
       ]]></handler>
 
       <handler event="dragover" phase="capturing" action="this.onDragOver(event, this);"/>
@@ -883,7 +963,7 @@
       </xul:vbox>
       <xul:vbox pack="start">
         <xul:toolbarbutton anonid="closebutton"
-                           class="messageCloseButton popup-notification-closebutton"
+                           class="messageCloseButton popup-notification-closebutton tabbable"
                            xbl:inherits="oncommand=closebuttoncommand"
                            tooltiptext="&closeNotification.tooltip;"/>
       </xul:vbox>
@@ -930,7 +1010,7 @@
       </xul:vbox>
       <xul:vbox pack="start">
         <xul:toolbarbutton anonid="closebutton"
-                           class="messageCloseButton popup-notification-closebutton"
+                           class="messageCloseButton popup-notification-closebutton tabbable"
                            xbl:inherits="oncommand=closebuttoncommand"
                            tooltiptext="&closeNotification.tooltip;"/>
       </xul:vbox>
@@ -949,7 +1029,7 @@
         // undetermined state and then schedule a proper check at the next
         // opportunity
         this.setProgress(0, -1);
-        setTimeout(this.updateProgress.bind(this), 0);
+        this._updateProgressTimeout = setTimeout(this.updateProgress.bind(this), 0);
       ]]></constructor>
 
       <destructor><![CDATA[
@@ -976,6 +1056,7 @@
           this.notification.options.installs.forEach(function(aInstall) {
             aInstall.removeListener(this);
           }, this);
+          clearTimeout(this._updateProgressTimeout);
         ]]></body>
       </method>
 
@@ -1250,6 +1331,146 @@
         // 592424 is fixed
         document.getAnonymousElementByAttribute(this, "anonid", "accel").firstChild.setAttribute("value", "");
       ]]></constructor>
+    </implementation>
+  </binding>
+
+ <binding id="promobox">
+    <content>
+      <xul:hbox class="panel-promo-box" align="start" flex="1">
+        <xul:hbox align="center" flex="1">
+          <xul:image class="panel-promo-icon"/>
+          <xul:description anonid="promo-message" class="panel-promo-message" flex="1">
+            <xul:description anonid="promo-link"
+                             class="plain text-link inline-link"
+                             onclick="document.getBindingParent(this).onLinkClick();"/>
+          </xul:description>
+        </xul:hbox>
+        <xul:toolbarbutton class="panel-promo-closebutton"
+                           oncommand="document.getBindingParent(this).onCloseButtonCommand();"
+                           tooltiptext="&closeNotification.tooltip;"/>
+      </xul:hbox>
+    </content>
+
+    <implementation implements="nsIDOMEventListener">
+      <constructor><![CDATA[
+        this._panel.addEventListener("popupshowing", this, false);
+      ]]></constructor>
+
+      <destructor><![CDATA[
+        this._panel.removeEventListener("popupshowing", this, false);
+      ]]></destructor>
+
+      <field name="_panel" readonly="true"><![CDATA[
+        let node = this.parentNode;
+        while(node && node.localName != "panel") {
+          node = node.parentNode;
+        }
+        node;
+      ]]></field>
+      <field name="_promomessage" readonly="true">
+        document.getAnonymousElementByAttribute(this, "anonid", "promo-message");
+      </field>
+      <field name="_promolink" readonly="true">
+        document.getAnonymousElementByAttribute(this, "anonid", "promo-link");
+      </field>
+      <field name="_brandBundle" readonly="true">
+        Services.strings.createBundle("chrome://branding/locale/brand.properties");
+      </field>
+      <property name="_viewsLeft">
+        <getter><![CDATA[
+          try {
+            return Services.prefs.getIntPref("browser.syncPromoViewsLeft");
+          } catch(ex) {}
+          return 5;
+        ]]></getter>
+        <setter><![CDATA[
+          Services.prefs.setIntPref("browser.syncPromoViewsLeft", val);
+          return val;
+        ]]></setter>
+      </property>
+      <property name="_notificationType">
+        <getter><![CDATA[
+          // Use the popupid attribute to identify the notification type,
+          // otherwise just rely on the panel id for common arrowpanels.
+          let type = this._panel.firstChild.getAttribute("popupid") ||
+                     this._panel.id;
+          if (/^password-/.test(type))
+            return "passwords";
+          if (type == "editBookmarkPanel")
+            return "bookmarks";
+          return null;
+        ]]></getter>
+      </property>
+      <property name="_notificationMessage">
+        <getter><![CDATA[
+          return gNavigatorBundle.getFormattedString(
+            "syncPromoNotification." + this._notificationType + ".description",
+            [this._brandBundle.GetStringFromName("syncBrandShortName")]
+          );
+        ]]></getter>
+      </property>
+      <method name="onCloseButtonCommand">
+        <body><![CDATA[
+          this._viewsLeft = 0;
+          this.hidden = true;
+        ]]></body>
+      </method>
+      <method name="onLinkClick">
+        <body><![CDATA[
+          // Open a new selected tab and close the current panel.
+          gBrowser.loadOneTab(this._promolink.getAttribute("href"),
+                              { inBackground: false });
+          this._panel.hidePopup();
+        ]]></body>
+      </method>
+      <method name="handleEvent">
+        <parameter name="event"/>
+        <body><![CDATA[
+          if (event.type != "popupshowing" || event.target != this._panel)
+            return;
+
+          // A previous notification may have unhidden this.
+          this.hidden = true;
+
+          // Only handle supported notification panels.
+          if (!this._notificationType) {
+            return;
+          }
+
+          let viewsLeft = this._viewsLeft;
+          if (viewsLeft) {
+            if (Services.prefs.prefHasUserValue("services.sync.username")) {
+              // If the user has already setup Sync, don't show the notification.
+              this._viewsLeft = 0;
+              // Be sure to hide the panel, in case it was visible and the user
+              // decided to setup Sync after noticing it.
+              viewsLeft = 0;
+              // The panel is still hidden, just bail out.
+              return;
+            }
+            else {
+              this._viewsLeft = viewsLeft - 1;
+            }
+
+            this._promolink.setAttribute("href", "https://services.mozilla.com/sync/");
+            this._promolink.value = gNavigatorBundle.getString("syncPromoNotification.learnMoreLinkText");
+
+            this.hidden = false;
+
+            // HACK: The description element doesn't wrap correctly in panels,
+            // thus set a width on it, based on the available space, before
+            // setting its textContent.  Then set its height as well, to
+            // fix wrong height calculation on Linux (bug 659578).
+            let self = this;
+            this._panel.addEventListener("popupshown", function (evt) {
+              self._panel.removeEventListener("popupshown", arguments.callee, true);
+              self._promomessage.width = self._promomessage.getBoundingClientRect().width;
+              self._promomessage.firstChild.textContent = self._notificationMessage;
+              self._promomessage.height = self._promomessage.getBoundingClientRect().height;
+            }, true);
+          }
+        ]]></body>
+      </method>
     </implementation>
   </binding>
 

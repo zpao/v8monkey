@@ -116,7 +116,7 @@ OfflineCacheUpdateGlue::Schedule()
         return NS_ERROR_NULL_POINTER;
 
     // Do not use weak reference, we must survive!
-    mUpdate->AddObserver(this, PR_FALSE);
+    mUpdate->AddObserver(this, false);
 
     return mUpdate->Schedule();
 }
@@ -160,7 +160,7 @@ OfflineCacheUpdateGlue::SetDocument(nsIDOMDocument *aDocument)
     if (!appCacheChannel)
         return;
 
-    PRBool loadedFromAppCache;
+    bool loadedFromAppCache;
     appCacheChannel->GetLoadedFromApplicationCache(&loadedFromAppCache);
     if (loadedFromAppCache)
         return;

@@ -82,7 +82,7 @@ SVGPointListSMILType::Assign(nsSMILValue& aDest,
   return dest->CopyFrom(*src);
 }
 
-PRBool
+bool
 SVGPointListSMILType::IsEqual(const nsSMILValue& aLeft,
                                const nsSMILValue& aRight) const
 {
@@ -170,7 +170,7 @@ SVGPointListSMILType::ComputeDistance(const nsSMILValue& aFrom,
     total += dx * dx + dy * dy;
   }
   double distance = sqrt(total);
-  if (!NS_FloatIsFinite(distance)) {
+  if (!NS_finite(distance)) {
     return NS_ERROR_FAILURE;
   }
   aDistance = distance;

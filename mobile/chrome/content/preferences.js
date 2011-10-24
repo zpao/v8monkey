@@ -93,7 +93,7 @@ var PreferencesView = {
   },
 
   delayedInit: function pv__delayedInit() {
-    if (this._languages)
+    if (this._msg)
       return;
 
     this._msg = document.getElementById("prefs-messages");
@@ -101,18 +101,21 @@ var PreferencesView = {
     this._loadLocales();
 
     this._loadHomePage();
+
+    MasterPasswordUI.updatePreference();
+    WeaveGlue.init();
   },
 
   _loadLocales: function _loadLocales() {
     // Query available and selected locales
     let chrome = Cc["@mozilla.org/chrome/chrome-registry;1"].getService(Ci.nsIXULChromeRegistry);
     chrome.QueryInterface(Ci.nsIToolkitChromeRegistry);
-
+ 
     let selectedLocale = chrome.getSelectedLocale("browser");
     let availableLocales = chrome.getLocalesForPackage("browser");
-
+ 
     let strings = Services.strings.createBundle("chrome://browser/content/languages.properties");
-
+ 
     // Render locale menulist by iterating through the query result from getLocalesForPackage()
     let selectedItem = null;
     let localeCount = 0;
@@ -255,6 +258,11 @@ var PreferencesView = {
           display = Browser.selectedBrowser.contentTitle || currentURL;
         }
         break;
+      case "custom":
+        // If value is custom, this means the user is trying to
+        // set homepage to the same custom value. Do nothing in
+        // this case.
+        return;
     }
 
     // Show or hide the title or URL of the custom homepage

@@ -123,6 +123,14 @@ typedef PRUint8 nsHttpVersion;
 // to the server (see bug #466080), but is may also be used for other things
 #define NS_HTTP_LOAD_ANONYMOUS       (1<<4)
 
+// a transaction with this caps flag keeps timing information
+#define NS_HTTP_TIMING_ENABLED       (1<<5)
+
+// a transaction with this caps flag will not only not use an existing
+// persistent connection but it will close outstanding ones to the same
+// host. Used by a forced reload to reset the connection states.
+#define NS_HTTP_CLEAR_KEEPALIVES     (1<<6)
+
 //-----------------------------------------------------------------------------
 // some default values
 //-----------------------------------------------------------------------------
@@ -165,9 +173,9 @@ struct nsHttp
 
     // returns true if the specified token [start,end) is valid per RFC 2616
     // section 2.2
-    static PRBool IsValidToken(const char *start, const char *end);
+    static bool IsValidToken(const char *start, const char *end);
 
-    static inline PRBool IsValidToken(const nsCString &s) {
+    static inline bool IsValidToken(const nsCString &s) {
         const char *start = s.get();
         return IsValidToken(start, start + s.Length());
     }
@@ -181,19 +189,19 @@ struct nsHttp
                                  const char *separators);
 
     // This function parses a string containing a decimal-valued, non-negative
-    // 64-bit integer.  If the value would exceed LL_MAXINT, then PR_FALSE is
-    // returned.  Otherwise, this function returns PR_TRUE and stores the
+    // 64-bit integer.  If the value would exceed LL_MAXINT, then false is
+    // returned.  Otherwise, this function returns true and stores the
     // parsed value in |result|.  The next unparsed character in |input| is
     // optionally returned via |next| if |next| is non-null.
     //
     // TODO(darin): Replace this with something generic.
     //
-    static PRBool ParseInt64(const char *input, const char **next,
+    static bool ParseInt64(const char *input, const char **next,
                              PRInt64 *result);
 
     // Variant on ParseInt64 that expects the input string to contain nothing
     // more than the value being parsed.
-    static inline PRBool ParseInt64(const char *input, PRInt64 *result) {
+    static inline bool ParseInt64(const char *input, PRInt64 *result) {
         const char *next;
         return ParseInt64(input, &next, result) && *next == '\0';
     }

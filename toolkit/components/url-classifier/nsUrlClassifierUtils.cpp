@@ -51,56 +51,56 @@ static char int_to_hex_digit(PRInt32 i)
   return static_cast<char>(((i < 10) ? (i + '0') : ((i - 10) + 'A')));
 }
 
-static PRBool
+static bool
 IsDecimal(const nsACString & num)
 {
   for (PRUint32 i = 0; i < num.Length(); i++) {
     if (!isdigit(num[i])) {
-      return PR_FALSE;
+      return false;
     }
   }
 
-  return PR_TRUE;
+  return true;
 }
 
-static PRBool
+static bool
 IsHex(const nsACString & num)
 {
   if (num.Length() < 3) {
-    return PR_FALSE;
+    return false;
   }
 
   if (num[0] != '0' || !(num[1] == 'x' || num[1] == 'X')) {
-    return PR_FALSE;
+    return false;
   }
 
   for (PRUint32 i = 2; i < num.Length(); i++) {
     if (!isxdigit(num[i])) {
-      return PR_FALSE;
+      return false;
     }
   }
 
-  return PR_TRUE;
+  return true;
 }
 
-static PRBool
+static bool
 IsOctal(const nsACString & num)
 {
   if (num.Length() < 2) {
-    return PR_FALSE;
+    return false;
   }
 
   if (num[0] != '0') {
-    return PR_FALSE;
+    return false;
   }
 
   for (PRUint32 i = 1; i < num.Length(); i++) {
     if (!isdigit(num[i]) || num[i] == '8' || num[i] == '9') {
-      return PR_FALSE;
+      return false;
     }
   }
 
-  return PR_TRUE;
+  return true;
 }
 
 nsUrlClassifierUtils::nsUrlClassifierUtils() : mEscapeCharmap(nsnull)
@@ -182,7 +182,7 @@ nsUrlClassifierUtils::CanonicalizeHostname(const nsACString & hostname,
   }
 
   ToLowerCase(cleaned);
-  SpecialEncode(cleaned, PR_FALSE, _retval);
+  SpecialEncode(cleaned, false, _retval);
 
   return NS_OK;
 }
@@ -201,7 +201,7 @@ nsUrlClassifierUtils::CanonicalizePath(const nsACString & path,
     temp.Truncate();
   }
 
-  SpecialEncode(decodedPath, PR_TRUE, _retval);
+  SpecialEncode(decodedPath, true, _retval);
   // XXX: lowercase the path?
 
   return NS_OK;
@@ -274,7 +274,7 @@ nsUrlClassifierUtils::ParseIPAddress(const nsACString & host,
   // non-octal digits, no part of the ip can be in octal
   // XXX: this came from the old javascript implementation, is it really
   // supposed to be like this?
-  PRBool allowOctal = PR_TRUE;
+  bool allowOctal = true;
   PRUint32 i;
 
   for (i = 0; i < parts.Length(); i++) {
@@ -285,7 +285,7 @@ nsUrlClassifierUtils::ParseIPAddress(const nsACString & host,
           break;
         }
         if (part[j] == '8' || part[j] == '9') {
-          allowOctal = PR_FALSE;
+          allowOctal = false;
           break;
         }
       }
@@ -319,7 +319,7 @@ nsUrlClassifierUtils::ParseIPAddress(const nsACString & host,
 void
 nsUrlClassifierUtils::CanonicalNum(const nsACString& num,
                                    PRUint32 bytes,
-                                   PRBool allowOctal,
+                                   bool allowOctal,
                                    nsACString& _retval)
 {
   _retval.Truncate();
@@ -361,12 +361,12 @@ nsUrlClassifierUtils::CanonicalNum(const nsACString& num,
 // This function will encode all "special" characters in typical url
 // encoding, that is %hh where h is a valid hex digit.  It will also fold
 // any duplicated slashes.
-PRBool
+bool
 nsUrlClassifierUtils::SpecialEncode(const nsACString & url,
-                                    PRBool foldSlashes,
+                                    bool foldSlashes,
                                     nsACString & _retval)
 {
-  PRBool changed = PR_FALSE;
+  bool changed = false;
   const char* curChar = url.BeginReading();
   const char* end = url.EndReading();
 
@@ -378,7 +378,7 @@ nsUrlClassifierUtils::SpecialEncode(const nsACString & url,
       _retval.Append(int_to_hex_digit(c / 16));
       _retval.Append(int_to_hex_digit(c % 16));
 
-      changed = PR_TRUE;
+      changed = true;
     } else if (foldSlashes && (c == '/' && lastChar == '/')) {
       // skip
     } else {
@@ -390,7 +390,7 @@ nsUrlClassifierUtils::SpecialEncode(const nsACString & url,
   return changed;
 }
 
-PRBool
+bool
 nsUrlClassifierUtils::ShouldURLEscape(const unsigned char c) const
 {
   return c <= 32 || c == '%' || c >=127;

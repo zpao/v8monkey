@@ -37,7 +37,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "txXSLTNumber.h"
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txCore.h"
 #include <math.h>
 #include "txExpr.h"
@@ -184,7 +184,7 @@ txXSLTNumber::getValueList(Expr* aValueExpr, txPattern* aCountPattern,
             {
                 // this won't match anything as we walk up the tree
                 // but it's what the spec says to do
-                nodeTest = new txNameTest(0, txXPathAtoms::_asterix, 0,
+                nodeTest = new txNameTest(0, nsGkAtoms::_asterix, 0,
                                           nodeType);
                 break;
             }
@@ -223,7 +223,7 @@ txXSLTNumber::getValueList(Expr* aValueExpr, txPattern* aCountPattern,
         // ancestor that matches the from-pattern, so keep going to make
         // sure that there is an ancestor that does.
         if (aFromPattern && aValues.getLength()) {
-            PRBool hasParent;
+            bool hasParent;
             while ((hasParent = walker.moveToParent())) {
                 if (aFromPattern->matches(walker.getCurrentPosition(), aContext)) {
                     break;
@@ -438,14 +438,14 @@ txXSLTNumber::getSiblingCount(txXPathTreeWalker& aWalker,
     return value;
 }
 
-PRBool
+bool
 txXSLTNumber::getPrevInDocumentOrder(txXPathTreeWalker& aWalker)
 {
     if (aWalker.moveToPreviousSibling()) {
         while (aWalker.moveToLastChild()) {
             // do nothing
         }
-        return PR_TRUE;
+        return true;
     }
     return aWalker.moveToParent();
 }

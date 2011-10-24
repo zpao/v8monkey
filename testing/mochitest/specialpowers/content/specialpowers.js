@@ -38,180 +38,84 @@
  * order to be used as a replacement for UniversalXPConnect
  */
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-
 function SpecialPowers(window) {
   this.window = window;
-  bindDOMWindowUtils(this, window);
+  this._encounteredCrashDumpFiles = [];
+  this._unexpectedCrashDumpFiles = { };
+  this._crashDumpDir = null;
+  this.DOMWindowUtils = bindDOMWindowUtils(window);
+  this._pongHandlers = [];
+  this._messageListener = this._messageReceived.bind(this);
+  addMessageListener("SPPingService", this._messageListener);
+  this._consoleListeners = [];
 }
 
-function bindDOMWindowUtils(sp, window) {
-  var util = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindowUtils);
-  // This bit of magic brought to you by the letters
-  // B Z, and E, S and the number 5.
-  //
-  // Take all of the properties on the nsIDOMWindowUtils-implementing
-  // object, and rebind them onto a new object with a stub that uses
-  // apply to call them from this privileged scope. This way we don't
-  // have to explicitly stub out new methods that appear on
-  // nsIDOMWindowUtils.
-  var proto = Object.getPrototypeOf(util);
-  var target = {};
-  function rebind(desc, prop) {
-    if (prop in desc && typeof(desc[prop]) == "function") {
-      var oldval = desc[prop];
-      desc[prop] = function() { return oldval.apply(util, arguments); };
-    }
+SpecialPowers.prototype = new SpecialPowersAPI();
+
+SpecialPowers.prototype.toString = function() { return "[SpecialPowers]"; };
+SpecialPowers.prototype.sanityCheck = function() { return "foo"; };
+ 
+// This gets filled in in the constructor.
+SpecialPowers.prototype.DOMWindowUtils = undefined;
+
+SpecialPowers.prototype._sendSyncMessage = function(msgname, msg) {
+  return sendSyncMessage(msgname, msg);
+};
+
+SpecialPowers.prototype._sendAsyncMessage = function(msgname, msg) {
+  sendAsyncMessage(msgname, msg);
+};
+
+SpecialPowers.prototype.registerProcessCrashObservers = function() {
+  addMessageListener("SPProcessCrashService", this._messageListener);
+  sendSyncMessage("SPProcessCrashService", { op: "register-observer" });
+};
+
+SpecialPowers.prototype.unregisterProcessCrashObservers = function() {
+  addMessageListener("SPProcessCrashService", this._messageListener);
+  sendSyncMessage("SPProcessCrashService", { op: "unregister-observer" });
+};
+
+SpecialPowers.prototype._messageReceived = function(aMessage) {
+  switch (aMessage.name) {
+    case "SPProcessCrashService":
+      if (aMessage.json.type == "crash-observed") {
+        var self = this;
+        aMessage.json.dumpIDs.forEach(function(id) {
+          self._encounteredCrashDumpFiles.push(id + ".dmp");
+          self._encounteredCrashDumpFiles.push(id + ".extra");
+        });
+      }
+      break;
+
+    case "SPPingService":
+      if (aMessage.json.op == "pong") {
+        var handler = this._pongHandlers.shift();
+        if (handler) {
+          handler();
+        }
+      }
+      break;
   }
-  for (var i in proto) {
-    var desc = Object.getOwnPropertyDescriptor(proto, i);
-    rebind(desc, "get");
-    rebind(desc, "set");
-    rebind(desc, "value");
-    Object.defineProperty(target, i, desc);
-  }
-  sp.DOMWindowUtils = target;
-}
+  return true;
+};
 
-SpecialPowers.prototype = {
-  toString: function() { return "[SpecialPowers]"; },
-  sanityCheck: function() { return "foo"; },
+SpecialPowers.prototype.quit = function() {
+  sendAsyncMessage("SpecialPowers.Quit", {});
+};
 
-  // This gets filled in in the constructor.
-  DOMWindowUtils: undefined,
-
-  // Mimic the get*Pref API
-  getBoolPref: function(aPrefName) {
-    return (this._getPref(aPrefName, 'BOOL'));
-  },
-  getIntPref: function(aPrefName) {
-    return (this._getPref(aPrefName, 'INT'));
-  },
-  getCharPref: function(aPrefName) {
-    return (this._getPref(aPrefName, 'CHAR'));
-  },
-  getComplexValue: function(aPrefName, aIid) {
-    return (this._getPref(aPrefName, 'COMPLEX', aIid));
-  },
-
-  // Mimic the set*Pref API
-  setBoolPref: function(aPrefName, aValue) {
-    return (this._setPref(aPrefName, 'BOOL', aValue));
-  },
-  setIntPref: function(aPrefName, aValue) {
-    return (this._setPref(aPrefName, 'INT', aValue));
-  },
-  setCharPref: function(aPrefName, aValue) {
-    return (this._setPref(aPrefName, 'CHAR', aValue));
-  },
-  setComplexValue: function(aPrefName, aIid, aValue) {
-    return (this._setPref(aPrefName, 'COMPLEX', aValue, aIid));
-  },
-
-  // Mimic the clearUserPref API
-  clearUserPref: function(aPrefName) {
-    var msg = {'op':'clear', 'prefName': aPrefName, 'prefType': ""};
-    sendSyncMessage('SPPrefService', msg);
-  },
-
-  // Private pref functions to communicate to chrome
-  _getPref: function(aPrefName, aPrefType, aIid) {
-    var msg = {};
-    if (aIid) {
-      // Overloading prefValue to handle complex prefs
-      msg = {'op':'get', 'prefName': aPrefName, 'prefType':aPrefType, 'prefValue':[aIid]};
-    } else {
-      msg = {'op':'get', 'prefName': aPrefName,'prefType': aPrefType};
-    }
-    return(sendSyncMessage('SPPrefService', msg)[0]);
-  },
-  _setPref: function(aPrefName, aPrefType, aValue, aIid) {
-    var msg = {};
-    if (aIid) {
-      msg = {'op':'set','prefName':aPrefName, 'prefType': aPrefType, 'prefValue': [aIid,aValue]};
-    } else {
-      msg = {'op':'set', 'prefName': aPrefName, 'prefType': aPrefType, 'prefValue': aValue};
-    }
-    return(sendSyncMessage('SPPrefService', msg)[0]);
-  },
-
-  //XXX: these APIs really ought to be removed, they're not e10s-safe.
-  // (also they're pretty Firefox-specific)
-  _getTopChromeWindow: function(window) {
-    return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIWebNavigation)
-                 .QueryInterface(Ci.nsIDocShellTreeItem)
-                 .rootTreeItem
-                 .QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIDOMWindow)
-                 .QueryInterface(Ci.nsIDOMChromeWindow);
-  },
-  _getDocShell: function(window) {
-    return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIWebNavigation)
-                 .QueryInterface(Ci.nsIDocShell);
-  },
-  _getMUDV: function(window) {
-    return this._getDocShell(window).contentViewer
-               .QueryInterface(Ci.nsIMarkupDocumentViewer);
-  },
-  _getAutoCompletePopup: function(window) {
-    return this._getTopChromeWindow(window).document
-                                           .getElementById("PopupAutoComplete");
-  },
-  addAutoCompletePopupEventListener: function(window, listener) {
-    this._getAutoCompletePopup(window).addEventListener("popupshowing",
-                                                        listener,
-                                                        false);
-  },
-  removeAutoCompletePopupEventListener: function(window, listener) {
-    this._getAutoCompletePopup(window).removeEventListener("popupshowing",
-                                                           listener,
-                                                           false);
-  },
-  isBackButtonEnabled: function(window) {
-    return !this._getTopChromeWindow(window).document
-                                      .getElementById("Browser:Back")
-                                      .hasAttribute("disabled");
-  },
-
-  addChromeEventListener: function(type, listener, capture, allowUntrusted) {
-    addEventListener(type, listener, capture, allowUntrusted);
-  },
-  removeChromeEventListener: function(type, listener, capture) {
-    removeEventListener(type, listener, capture);
-  },
-
-  getFullZoom: function(window) {
-    return this._getMUDV(window).fullZoom;
-  },
-  setFullZoom: function(window, zoom) {
-    this._getMUDV(window).fullZoom = zoom;
-  },
-  getTextZoom: function(window) {
-    return this._getMUDV(window).textZoom;
-  },
-  setTextZoom: function(window, zoom) {
-    this._getMUDV(window).textZoom = zoom;
-  },
-
-  createSystemXHR: function() {
-    return Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-             .createInstance(Ci.nsIXMLHttpRequest);
-  },
-
-  gc: function() {
-    this.DOMWindowUtils.garbageCollect();
-  }
+SpecialPowers.prototype.executeAfterFlushingMessageQueue = function(aCallback) {
+  this._pongHandlers.push(aCallback);
+  sendAsyncMessage("SPPingService", { op: "ping" });
 };
 
 // Expose everything but internal APIs (starting with underscores) to
-// web content.
+// web content.  We cannot use Object.keys to view SpecialPowers.prototype since
+// we are using the functions from SpecialPowersAPI.prototype
 SpecialPowers.prototype.__exposedProps__ = {};
-for each (i in Object.keys(SpecialPowers.prototype).filter(function(v) {return v.charAt(0) != "_";})) {
-  SpecialPowers.prototype.__exposedProps__[i] = "r";
+for (var i in SpecialPowers.prototype) {
+  if (i.charAt(0) != "_")
+    SpecialPowers.prototype.__exposedProps__[i] = "r";
 }
 
 // Attach our API to the window.
@@ -220,7 +124,17 @@ function attachSpecialPowersToWindow(aWindow) {
     if ((aWindow !== null) &&
         (aWindow !== undefined) &&
         (aWindow.wrappedJSObject) &&
-        !(aWindow.wrappedJSObject.SpecialPowers)) {
+        (aWindow.parent !== null) &&
+        (aWindow.parent !== undefined) &&
+        (aWindow.parent.wrappedJSObject.SpecialPowers) &&
+        !(aWindow.wrappedJSObject.SpecialPowers) &&
+        aWindow.location.hostname == aWindow.parent.location.hostname) {
+      aWindow.wrappedJSObject.SpecialPowers = aWindow.parent.wrappedJSObject.SpecialPowers;
+    }
+    else if ((aWindow !== null) &&
+             (aWindow !== undefined) &&
+             (aWindow.wrappedJSObject) &&
+             !(aWindow.wrappedJSObject.SpecialPowers)) {
       aWindow.wrappedJSObject.SpecialPowers = new SpecialPowers(aWindow);
     }
   } catch(ex) {
@@ -240,16 +154,6 @@ function SpecialPowersManager() {
 SpecialPowersManager.prototype = {
   handleEvent: function handleEvent(aEvent) {
     var window = aEvent.target.defaultView;
-
-    // Need to make sure we are called on what we care about -
-    // content windows. DOMWindowCreated is called on *all* HTMLDocuments,
-    // some of which belong to chrome windows or other special content.
-    //
-    var uri = window.document.documentURIObject;
-    if (uri.scheme === "chrome" || uri.spec.split(":")[0] == "about") {
-      return;
-    }
-
     attachSpecialPowersToWindow(window);
   }
 };

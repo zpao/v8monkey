@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>Test for miscellaneous computed style issues</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
@@ -94,10 +93,18 @@ var noframe_container = document.getElementById("content");
   p.style.overflowY = "scroll";
   is(cs.borderTopLeftRadius, "50px",
      "computed value of clamped border radius (top left, overflow-y)");
-  is(cs.borderTopRightRadius, "5px",
-     "computed value of clamped border radius (top right, overflow-y)");
-  is(cs.borderBottomRightRadius, "5px",
-     "computed value of clamped border radius (bottom right, overflow-y)");
+  // Fennec doesn't have scrollbars for overflow:scroll content
+  if (p.clientWidth == p.offsetWidth - 10) {
+    is(cs.borderTopRightRadius, "50px",
+       "computed value of border radius (top right, overflow-y)");
+    is(cs.borderBottomRightRadius, "50px",
+       "computed value of border radius (bottom right, overflow-y)");
+  } else {
+    is(cs.borderTopRightRadius, "5px",
+       "computed value of clamped border radius (top right, overflow-y)");
+    is(cs.borderBottomRightRadius, "5px",
+       "computed value of clamped border radius (bottom right, overflow-y)");
+  }
   is(cs.borderBottomLeftRadius, "50px",
      "computed value of clamped border radius (bottom left, overflow-y)");
 
@@ -107,10 +114,86 @@ var noframe_container = document.getElementById("content");
      "computed value of clamped border radius (top left, overflow-x)");
   is(cs.borderTopRightRadius, "50px",
      "computed value of clamped border radius (top right, overflow-x)");
-  is(cs.borderBottomRightRadius, "5px",
-     "computed value of clamped border radius (bottom right, overflow-x)");
-  is(cs.borderBottomLeftRadius, "5px",
-     "computed value of clamped border radius (bottom left, overflow-x)");
+  // Fennec doesn't have scrollbars for overflow:scroll content
+  if (p.clientHeight == p.offsetHeight - 10) {
+    is(cs.borderBottomRightRadius, "50px",
+       "computed value of border radius (bottom right, overflow-x)");
+    is(cs.borderBottomLeftRadius, "50px",
+       "computed value of  border radius (bottom left, overflow-x)");
+  } else {
+    is(cs.borderBottomRightRadius, "5px",
+       "computed value of clamped border radius (bottom right, overflow-x)");
+    is(cs.borderBottomLeftRadius, "5px",
+       "computed value of clamped border radius (bottom left, overflow-x)");
+  }
+
+  p.parentNode.removeChild(p);
+})();
+
+(function test_bug_647885_1() {
+  // Test that various background-position styles round-trip correctly
+  var backgroundPositions = [
+    [ "0 0", "0px 0px", "unitless 0" ],
+    [ "0px 0px", "0px 0px", "0 with units" ],
+    [ "0% 0%", "0% 0%", "0%" ],
+    [ "-moz-calc(0px) 0", "0px 0px", "0 calc with units x" ],
+    [ "0 -moz-calc(0px)", "0px 0px", "0 calc with units y" ],
+    [ "-moz-calc(3px - 3px) 0", "0px 0px", "computed 0 calc with units x" ],
+    [ "0 -moz-calc(3px - 3px)", "0px 0px", "computed 0 calc with units y" ],
+    [ "-moz-calc(0%) 0", "0% 0px", "0% calc x"],
+    [ "0 -moz-calc(0%)", "0px 0%", "0% calc y"],
+    [ "-moz-calc(3px + 2% - 2%) 0", "-moz-calc(3px + 0%) 0px",
+      "computed 0% calc x"],
+    [ "0 -moz-calc(3px + 2% - 2%)", "0px -moz-calc(3px + 0%)",
+      "computed 0% calc y"],
+    [ "-moz-calc(3px - 5px) -moz-calc(6px - 7px)", "-2px -1px",
+      "negative pixel width"],
+    [ "", "0% 0%", "initial value" ],
+  ];
+
+  var p = document.createElement("p");
+  var cs = getComputedStyle(p, "");
+  frame_container.appendChild(p);
+
+  for (var i = 0; i < backgroundPositions.length; ++i) {
+    var test = backgroundPositions[i];
+    p.style.backgroundPosition = test[0];
+    is(cs.backgroundPosition, test[1], "computed value of " + test[2] + " background-position");
+  }
+
+  p.parentNode.removeChild(p);
+})();
+
+(function test_bug_647885_2() {
+  // Test that various background-size styles round-trip correctly
+  var backgroundSizes = [
+    [ "0 0", "0px 0px", "unitless 0" ],
+    [ "0px 0px", "0px 0px", "0 with units" ],
+    [ "0% 0%", "0% 0%", "0%" ],
+    [ "-moz-calc(0px) 0", "0px 0px", "0 calc with units horizontal" ],
+    [ "0 -moz-calc(0px)", "0px 0px", "0 calc with units vertical" ],
+    [ "-moz-calc(3px - 3px) 0", "0px 0px", "computed 0 calc with units horizontal" ],
+    [ "0 -moz-calc(3px - 3px)", "0px 0px", "computed 0 calc with units vertical" ],
+    [ "-moz-calc(0%) 0", "0% 0px", "0% calc horizontal"],
+    [ "0 -moz-calc(0%)", "0px 0%", "0% calc vertical"],
+    [ "-moz-calc(3px + 2% - 2%) 0", "-moz-calc(3px + 0%) 0px",
+                      "computed 0% calc horizontal"],
+    [ "0 -moz-calc(3px + 2% - 2%)", "0px -moz-calc(3px + 0%)",
+                      "computed 0% calc vertical"],
+    [ "-moz-calc(3px - 5px) -moz-calc(6px - 9px)",
+      "-moz-calc(-2px) -moz-calc(-3px)", "negative pixel width" ],
+    [ "", "auto auto", "initial value" ],
+  ];
+
+  var p = document.createElement("p");
+  var cs = getComputedStyle(p, "");
+  frame_container.appendChild(p);
+
+  for (var i = 0; i < backgroundSizes.length; ++i) {
+    var test = backgroundSizes[i];
+    p.style.backgroundSize = test[0];
+    is(cs.backgroundSize, test[1], "computed value of " + test[2] + " background-size");
+  }
 
   p.parentNode.removeChild(p);
 })();

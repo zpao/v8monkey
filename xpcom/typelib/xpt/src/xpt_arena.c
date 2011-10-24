@@ -215,8 +215,8 @@ XPT_ArenaMalloc(XPTArena *arena, size_t size)
         size_t block_header_size = ALIGN_RND(sizeof(BLK_HDR), arena->alignment);
         size_t new_space = arena->block_size;
          
-        if (bytes > new_space - block_header_size)
-            new_space += bytes;
+        while (bytes > new_space - block_header_size)
+            new_space += arena->block_size;
 
         new_block = (BLK_HDR*) calloc(new_space/arena->alignment, 
                                       arena->alignment);
@@ -336,3 +336,21 @@ XPT_AssertFailed(const char *s, const char *file, PRUint32 lineno)
     abort();
 }        
 #endif
+
+XPT_PUBLIC_API(size_t)
+XPT_SizeOfArena(XPTArena *arena)
+{
+    size_t n = sizeof(XPTArena);
+
+    BLK_HDR* cur;
+    BLK_HDR* next;
+        
+    cur = arena->first;
+    while (cur) {
+        next = cur->next;
+        n += cur->size;
+        cur = next;
+    }
+
+    return n;
+}

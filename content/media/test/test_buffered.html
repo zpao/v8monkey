@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=462957
 -->
 <head>
   <title>Test for Bug 462957</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <script type="text/javascript" src="manifest.js"></script>
@@ -41,7 +40,7 @@ function ended(e) {
   } catch (e) {
     caught = e.code == DOMException.INDEX_SIZE_ERR;
   }
-  is(caught, true, "Should throw INDEX_SIZE_ERR on under start bounds range");
+  is(caught, true, v._name + ": Should throw INDEX_SIZE_ERR on under start bounds range");
   
   caught = false;
   try {
@@ -49,7 +48,7 @@ function ended(e) {
   } catch (e) {
     caught = e.code == DOMException.INDEX_SIZE_ERR;
   }
-  is(caught, true, "Should throw INDEX_SIZE_ERR on under end bounds range");
+  is(caught, true, v._name + ": Should throw INDEX_SIZE_ERR on under end bounds range");
 
   caught = false;
   try {
@@ -57,7 +56,7 @@ function ended(e) {
   } catch (e) {
     caught = e.code == DOMException.INDEX_SIZE_ERR;
   }
-  is(caught, true, "Should throw INDEX_SIZE_ERR on over start bounds range");
+  is(caught, true, v._name + ": Should throw INDEX_SIZE_ERR on over start bounds range");
   
   caught = false;
   try {
@@ -65,8 +64,9 @@ function ended(e) {
   } catch (e) {
     caught = e.code == DOMException.INDEX_SIZE_ERR;
   }
-  is(caught, true, "Should throw INDEX_SIZE_ERR on over end bounds range");
-  
+  is(caught, true, v._name + ": Should throw INDEX_SIZE_ERR on over end bounds range");
+
+  v.src = "";
   v.parentNode.removeChild(v);
   manager.finished(v.token);
 

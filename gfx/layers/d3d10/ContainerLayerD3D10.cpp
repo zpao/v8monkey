@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -40,6 +40,7 @@
 #include "gfxUtils.h"
 #include "nsRect.h"
 
+#include "../d3d9/Nv3DVUtils.h"
 #include "ThebesLayerD3D10.h"
 #include "ReadbackProcessor.h"
 
@@ -161,14 +162,14 @@ GetNextSiblingD3D10(LayerD3D10* aLayer)
                 : nsnull;
 }
 
-static PRBool
+static bool
 HasOpaqueAncestorLayer(Layer* aLayer)
 {
   for (Layer* l = aLayer->GetParent(); l; l = l->GetParent()) {
     if (l->GetContentFlags() & Layer::CONTENT_OPAQUE)
-      return PR_TRUE;
+      return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 void
@@ -178,7 +179,7 @@ ContainerLayerD3D10::RenderLayer()
 
   nsIntRect visibleRect = mVisibleRegion.GetBounds();
   float opacity = GetEffectiveOpacity();
-  PRBool useIntermediate = UseIntermediateSurface();
+  bool useIntermediate = UseIntermediateSurface();
 
   nsRefPtr<ID3D10RenderTargetView> previousRTView;
   nsRefPtr<ID3D10Texture2D> renderTexture;
@@ -188,7 +189,6 @@ ContainerLayerD3D10::RenderLayer()
 
   gfx3DMatrix oldViewMatrix;
 
-  gfxMatrix contTransform;
   if (useIntermediate) {
     device()->OMGetRenderTargets(1, getter_AddRefs(previousRTView), NULL);
  
@@ -201,9 +201,17 @@ ContainerLayerD3D10::RenderLayer()
     desc.BindFlags = D3D10_BIND_RENDER_TARGET | D3D10_BIND_SHADER_RESOURCE;
     desc.SampleDesc.Count = 1;
     desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    device()->CreateTexture2D(&desc, NULL, getter_AddRefs(renderTexture));
-    
-    device()->CreateRenderTargetView(renderTexture, NULL, getter_AddRefs(rtView));
+    HRESULT hr;
+    hr = device()->CreateTexture2D(&desc, NULL, getter_AddRefs(renderTexture));
+
+    if (FAILED(hr)) {
+      LayerManagerD3D10::ReportFailure(NS_LITERAL_CSTRING("Failed to create new texture for ContainerLayerD3D10!"), 
+                                       hr);
+      return;
+    }
+
+    hr = device()->CreateRenderTargetView(renderTexture, NULL, getter_AddRefs(rtView));
+    NS_ASSERTION(SUCCEEDED(hr), "Failed to create render target view for ContainerLayerD3D10!");
 
     effect()->GetVariableByName("vRenderTargetOffset")->
       GetRawValue(previousRenderTargetOffset, 0, 8);
@@ -216,7 +224,7 @@ ContainerLayerD3D10::RenderLayer()
       // covered by something opaque. Otherwise copying up the background is
       // not safe.
       if (mSupportsComponentAlphaChildren) {
-        PRBool is2d = transform3D.Is2D(&transform);
+        bool is2d = transform3D.Is2D(&transform);
         NS_ASSERTION(is2d, "Transform should be 2d when mSupportsComponentAlphaChildren.");
 
         // Copy background up from below. This applies any 2D transform that is
@@ -253,9 +261,6 @@ ContainerLayerD3D10::RenderLayer()
 
     previousViewportSize = mD3DManager->GetViewport();
     mD3DManager->SetViewport(nsIntSize(visibleRect.Size()));
-  } else {
-    PRBool is2d = GetEffectiveTransform().Is2D(&contTransform);
-    NS_ASSERTION(is2d, "Transform must be 2D");
   }
     
   D3D10_RECT oldD3D10Scissor;
@@ -268,23 +273,21 @@ ContainerLayerD3D10::RenderLayer()
                        oldD3D10Scissor.right - oldD3D10Scissor.left,
                        oldD3D10Scissor.bottom - oldD3D10Scissor.top);
 
+  nsAutoTArray<Layer*, 12> children;
+  SortChildrenBy3DZOrder(children);
+
   /*
    * Render this container's contents.
    */
-  for (LayerD3D10* layerToRender = GetFirstChildD3D10();
-       layerToRender != nsnull;
-       layerToRender = GetNextSiblingD3D10(layerToRender)) {
+  for (PRUint32 i = 0; i < children.Length(); i++) {
+    LayerD3D10* layerToRender = static_cast<LayerD3D10*>(children.ElementAt(i)->ImplData());
 
     if (layerToRender->GetLayer()->GetEffectiveVisibleRegion().IsEmpty()) {
       continue;
     }
     
     nsIntRect scissorRect =
-      layerToRender->GetLayer()->CalculateScissorRect(useIntermediate,
-                                                      visibleRect,
-                                                      oldScissor,
-                                                      contTransform);
-
+        layerToRender->GetLayer()->CalculateScissorRect(oldScissor, nsnull);
     if (scissorRect.IsEmpty()) {
       continue;
     }
@@ -298,7 +301,7 @@ ContainerLayerD3D10::RenderLayer()
 
     layerToRender->RenderLayer();
   }
-      
+
   device()->RSSetScissorRects(1, &oldD3D10Scissor);
 
   if (useIntermediate) {
@@ -345,7 +348,7 @@ ContainerLayerD3D10::Validate()
 {
   nsIntRect visibleRect = mVisibleRegion.GetBounds();
 
-  mSupportsComponentAlphaChildren = PR_FALSE;
+  mSupportsComponentAlphaChildren = false;
 
   if (UseIntermediateSurface()) {
     const gfx3DMatrix& transform3D = GetEffectiveTransform();
@@ -353,14 +356,14 @@ ContainerLayerD3D10::Validate()
 
     if (mVisibleRegion.GetNumRects() == 1 && (GetContentFlags() & CONTENT_OPAQUE)) {
       // don't need a background, we're going to paint all opaque stuff
-      mSupportsComponentAlphaChildren = PR_TRUE;
+      mSupportsComponentAlphaChildren = true;
     } else {
       if (HasOpaqueAncestorLayer(this) &&
           transform3D.Is2D(&transform) && !transform.HasNonIntegerTranslation() &&
           GetParent()->GetEffectiveVisibleRegion().GetBounds().Contains(visibleRect))
       {
         // In this case we can copy up the background. See RenderLayer.
-        mSupportsComponentAlphaChildren = PR_TRUE;
+        mSupportsComponentAlphaChildren = true;
       }
     }
   } else {
@@ -380,6 +383,56 @@ ContainerLayerD3D10::Validate()
     }
     layer = layer->GetNextSibling();
   }
+}
+
+ShadowContainerLayerD3D10::ShadowContainerLayerD3D10(LayerManagerD3D10 *aManager) 
+  : ShadowContainerLayer(aManager, NULL)
+  , LayerD3D10(aManager)
+{
+  mImplData = static_cast<LayerD3D10*>(this);
+}
+
+ShadowContainerLayerD3D10::~ShadowContainerLayerD3D10() {}
+
+void
+ShadowContainerLayerD3D10::InsertAfter(Layer* aChild, Layer* aAfter)
+{
+  mFirstChild = aChild;
+}
+
+void
+ShadowContainerLayerD3D10::RemoveChild(Layer* aChild)
+{
+
+}
+
+void
+ShadowContainerLayerD3D10::ComputeEffectiveTransforms(const gfx3DMatrix& aTransformToSurface)
+{
+  DefaultComputeEffectiveTransforms(aTransformToSurface);
+}
+
+LayerD3D10*
+ShadowContainerLayerD3D10::GetFirstChildD3D10()
+{
+  return static_cast<LayerD3D10*>(mFirstChild->ImplData());
+}
+
+void
+ShadowContainerLayerD3D10::RenderLayer()
+{
+  LayerD3D10* layerToRender = GetFirstChildD3D10();
+  layerToRender->RenderLayer();
+}
+
+void
+ShadowContainerLayerD3D10::Validate()
+{
+}
+ 
+void
+ShadowContainerLayerD3D10::LayerManagerDestroyed()
+{
 }
 
 } /* layers */

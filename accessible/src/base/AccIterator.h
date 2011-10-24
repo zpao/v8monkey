@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=2 et sw=2 tw=80: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -38,15 +40,32 @@
 #ifndef nsAccIterator_h_
 #define nsAccIterator_h_
 
+#include "nsAccessibilityService.h"
 #include "filters.h"
 #include "nscore.h"
 #include "nsDocAccessible.h"
+
+#include "nsIDOMDocumentXBL.h"
+
+/**
+ * AccIterable is a basic interface for iterators over accessibles.
+ */
+class AccIterable
+{
+public:
+  virtual ~AccIterable() { }
+  virtual nsAccessible* Next() = 0;
+
+private:
+  friend class Relation;
+  nsAutoPtr<AccIterable> mNextIter;
+};
 
 /**
  * Allows to iterate through accessible children or subtree complying with
  * filter function.
  */
-class AccIterator
+class AccIterator : public AccIterable
 {
 public:
   /**
@@ -67,13 +86,13 @@ public:
 
   AccIterator(nsAccessible* aRoot, filters::FilterFuncPtr aFilterFunc,
               IterationType aIterationType = eFlatNav);
-  ~AccIterator();
+  virtual ~AccIterator();
 
   /**
    * Return next accessible complying with filter function. Return the first
    * accessible for the first time.
    */
-  nsAccessible *GetNext();
+  virtual nsAccessible *Next();
 
 private:
   AccIterator();
@@ -90,7 +109,7 @@ private:
   };
 
   filters::FilterFuncPtr mFilterFunc;
-  PRBool mIsDeep;
+  bool mIsDeep;
   IteratorState *mState;
 };
 
@@ -99,7 +118,7 @@ private:
  * Allows to traverse through related accessibles that are pointing to the given
  * dependent accessible by relation attribute.
  */
-class RelatedAccIterator
+class RelatedAccIterator : public AccIterable
 {
 public:
   /**
@@ -115,10 +134,12 @@ public:
   RelatedAccIterator(nsDocAccessible* aDocument, nsIContent* aDependentContent,
                      nsIAtom* aRelAttr);
 
+  virtual ~RelatedAccIterator() { }
+
   /**
    * Return next related accessible for the given dependent accessible.
    */
-  nsAccessible* Next();
+  virtual nsAccessible* Next();
 
 private:
   RelatedAccIterator();
@@ -134,9 +155,9 @@ private:
 
 
 /**
- * Used to iterate through HTML labels associated with the given element.
+ * Used to iterate through HTML labels associated with the given accessible.
  */
-class HTMLLabelIterator
+class HTMLLabelIterator : public AccIterable
 {
 public:
   enum LabelFilter {
@@ -144,13 +165,15 @@ public:
     eSkipAncestorLabel
   };
 
-  HTMLLabelIterator(nsDocAccessible* aDocument, nsIContent* aElement,
+  HTMLLabelIterator(nsDocAccessible* aDocument, const nsAccessible* aAccessible,
                     LabelFilter aFilter = eAllLabels);
+
+  virtual ~HTMLLabelIterator() { }
 
   /**
    * Return next label accessible associated with the given element.
    */
-  nsAccessible* Next();
+  virtual nsAccessible* Next();
 
 private:
   HTMLLabelIterator();
@@ -158,7 +181,9 @@ private:
   HTMLLabelIterator& operator = (const HTMLLabelIterator&);
 
   RelatedAccIterator mRelIter;
-  nsIContent* mElement;
+  // XXX: replace it on weak reference (bug 678429), it's safe to use raw
+  // pointer now because iterators life cycle is short.
+  const nsAccessible* mAcc;
   LabelFilter mLabelFilter;
 };
 
@@ -166,15 +191,16 @@ private:
 /**
  * Used to iterate through HTML outputs associated with the given element.
  */
-class HTMLOutputIterator
+class HTMLOutputIterator : public AccIterable
 {
 public:
   HTMLOutputIterator(nsDocAccessible* aDocument, nsIContent* aElement);
+  virtual ~HTMLOutputIterator() { }
 
   /**
    * Return next output accessible associated with the given element.
    */
-  nsAccessible* Next();
+  virtual nsAccessible* Next();
 
 private:
   HTMLOutputIterator();
@@ -188,15 +214,16 @@ private:
 /**
  * Used to iterate through XUL labels associated with the given element.
  */
-class XULLabelIterator
+class XULLabelIterator : public AccIterable
 {
 public:
   XULLabelIterator(nsDocAccessible* aDocument, nsIContent* aElement);
+  virtual ~XULLabelIterator() { }
 
   /**
    * Return next label accessible associated with the given element.
    */
-  nsAccessible* Next();
+  virtual nsAccessible* Next();
 
 private:
   XULLabelIterator();
@@ -210,15 +237,16 @@ private:
 /**
  * Used to iterate through XUL descriptions associated with the given element.
  */
-class XULDescriptionIterator
+class XULDescriptionIterator : public AccIterable
 {
 public:
   XULDescriptionIterator(nsDocAccessible* aDocument, nsIContent* aElement);
+  virtual ~XULDescriptionIterator() { }
 
   /**
    * Return next description accessible associated with the given element.
    */
-  nsAccessible* Next();
+  virtual nsAccessible* Next();
 
 private:
   XULDescriptionIterator();
@@ -226,6 +254,68 @@ private:
   XULDescriptionIterator& operator = (const XULDescriptionIterator&);
 
   RelatedAccIterator mRelIter;
+};
+
+/**
+ * Used to iterate through IDs, elements or accessibles pointed by IDRefs
+ * attribute. Note, any method used to iterate through IDs, elements, or
+ * accessibles moves iterator to next position.
+ */
+class IDRefsIterator : public AccIterable
+{
+public:
+  IDRefsIterator(nsIContent* aContent, nsIAtom* aIDRefsAttr);
+  virtual ~IDRefsIterator() { }
+
+  /**
+   * Return next ID.
+   */
+  const nsDependentSubstring NextID();
+
+  /**
+   * Return next element.
+   */
+  nsIContent* NextElem();
+
+  /**
+   * Return the element with the given ID.
+   */
+  nsIContent* GetElem(const nsDependentSubstring& aID);
+
+  // AccIterable
+  virtual nsAccessible* Next();
+
+private:
+  IDRefsIterator();
+  IDRefsIterator(const IDRefsIterator&);
+  IDRefsIterator operator = (const IDRefsIterator&);
+
+  nsString mIDs;
+  nsAString::index_type mCurrIdx;
+
+  nsIDocument* mDocument;
+  nsCOMPtr<nsIDOMDocumentXBL> mXBLDocument;
+  nsCOMPtr<nsIDOMElement> mBindingParent;
+};
+
+/**
+ * Iterator that points to a single accessible returning it on the first call
+ * to Next().
+ */
+class SingleAccIterator : public AccIterable
+{
+public:
+  SingleAccIterator(nsAccessible* aTarget): mAcc(aTarget) { }
+  virtual ~SingleAccIterator() { }
+
+  virtual nsAccessible* Next();
+
+private:
+  SingleAccIterator();
+  SingleAccIterator(const SingleAccIterator&);
+  SingleAccIterator& operator = (const SingleAccIterator&);
+
+  nsRefPtr<nsAccessible> mAcc;
 };
 
 #endif

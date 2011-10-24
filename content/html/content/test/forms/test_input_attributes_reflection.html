@@ -1,0 +1,217 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>Test for HTMLInputElement attributes reflection</title>
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="application/javascript" src="../reflect.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body>
+<p id="display"></p>
+<div id="content" style="display: none">
+</div>
+<pre id="test">
+<script type="application/javascript">
+
+/** Test for HTMLInputElement attributes reflection **/
+
+// TODO: maybe make those reflections be tested against all input types.
+
+// .accept
+reflectString({
+  element: document.createElement("input"),
+  attribute: "accept",
+  otherValues: [ "audio/*", "video/*", "image/*", "image/png",
+                 "application/msword", "appplication/pdf" ],
+});
+
+// .alt
+reflectString({
+  element: document.createElement("input"),
+  attribute: "alt",
+});
+
+// .autocomplete
+reflectLimitedEnumerated({
+  element: document.createElement("input"),
+  attribute: "autocomplete",
+  validValues: [ "on", "off" ],
+  invalidValues: [ "", "default", "foo", "tulip" ],
+});
+
+// .autofocus
+reflectBoolean({
+  element: document.createElement("input"),
+  attribute: "autofocus",
+});
+
+// .defaultChecked
+reflectBoolean({
+  element: document.createElement("input"),
+  attribute: { idl: "defaultChecked", content: "checked" },
+});
+
+// .checked doesn't reflect a content attribute.
+
+// .dirName
+todo("dirName" in document.createElement("input"),
+     "dirName isn't implemented yet");
+
+// .disabled
+reflectBoolean({
+  element: document.createElement("input"),
+  attribute: "disabled",
+});
+
+// TODO: form (HTMLFormElement)
+// TODO: files (FileList)
+// TODO: formAction (URL)
+
+// .formEnctype
+reflectLimitedEnumerated({
+  element: document.createElement("input"),
+  attribute: "formEnctype",
+  validValues: [ "application/x-www-form-urlencoded", "multipart/form-data",
+                 "text/plain" ],
+  invalidValues: [ "", "foo", "tulip", "multipart/foo" ],
+  defaultValue: "application/x-www-form-urlencoded"
+});
+
+// .formMethod
+reflectLimitedEnumerated({
+  element: document.createElement("input"),
+  attribute: "formMethod",
+  validValues: [ "get", "post" ],
+  invalidValues: [ "", "foo", "tulip" ],
+  defaultValue: "get"
+});
+
+// .formNoValidate
+reflectBoolean({
+  element: document.createElement("input"),
+  attribute: "formNoValidate",
+});
+
+// .formTarget
+reflectString({
+  element: document.createElement("input"),
+  attribute: "formTarget",
+  otherValues: [ "_blank", "_self", "_parent", "_top" ],
+});
+
+// TODO: height (non-negative integer)
+
+// .indeterminate doesn't reflect a content attribute.
+
+// TODO: list (HTMLElement)
+
+// .max
+todo("max" in document.createElement("input"), "max isn't implemented yet");
+
+// .maxLength
+reflectInt({
+  element: document.createElement("input"),
+  attribute: "maxLength",
+  nonNegative: true,
+});
+
+// .min
+todo("min" in document.createElement("input"), "min isn't implemented yet");
+
+// .multiple
+reflectBoolean({
+  element: document.createElement("input"),
+  attribute: "multiple",
+});
+
+// .name
+reflectString({
+  element: document.createElement("input"),
+  attribute: "name",
+  otherValues: [ "isindex", "_charset_" ],
+});
+
+// .pattern
+reflectString({
+  element: document.createElement("input"),
+  attribute: "pattern",
+  otherValues: [ "[0-9][A-Z]{3}" ],
+});
+
+// .placeholder
+reflectString({
+  element: document.createElement("input"),
+  attribute: "placeholder",
+  otherValues: [ "foo\nbar", "foo\rbar", "foo\r\nbar" ],
+});
+
+// .readOnly
+reflectBoolean({
+  element: document.createElement("input"),
+  attribute: "readOnly",
+});
+
+// .required
+reflectBoolean({
+  element: document.createElement("input"),
+  attribute: "required",
+});
+
+// .size
+reflectUnsignedInt({
+  element: document.createElement("input"),
+  attribute: "size",
+  nonZero: true,
+  defaultValue: 20,
+});
+
+// TODO: src (URL)
+
+// .step
+todo("step" in document.createElement("input"), "step isn't implemented yet");
+
+// .type
+reflectLimitedEnumerated({
+  element: document.createElement("input"),
+  attribute: "type",
+  validValues: [ "hidden", "text", "search", "tel", "url", "email", "password",
+                 "checkbox", "radio", "file", "submit", "image", "reset",
+                 "button" ],
+  invalidValues: [ "this-is-probably-a-wrong-type", "", "tulip" ],
+  defaultValue: "text",
+  unsupportedValues: [ "datetime", "date", "month", "week", "time",
+                       "datetime-local", "number", "range", "color" ]
+});
+
+// .defaultValue
+reflectString({
+  element: document.createElement("input"),
+  attribute: { idl: "defaultValue", content: "value" },
+  otherValues: [ "foo\nbar", "foo\rbar", "foo\r\nbar" ],
+});
+
+// .value doesn't reflect a content attribute.
+
+// .valueAsDate
+todo("valueAsDate" in document.createElement("input"),
+     "valueAsDate isn't implemented yet");
+
+// .valueAsNumber
+todo("valueAsNumber" in document.createElement("input"),
+     "valueAsNumber isn't implemented yet");
+
+// .selectedOption
+todo("selectedOption" in document.createElement("input"),
+     "selectedOption isn't implemented yet");
+
+// TODO: width (non-negative integer)
+
+// .willValidate doesn't reflect a content attribute.
+// .validity doesn't reflect a content attribute.
+// .validationMessage doesn't reflect a content attribute.
+// .labels doesn't reflect a content attribute.
+
+</script>
+</pre>
+</body>
+</html>

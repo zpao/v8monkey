@@ -52,7 +52,7 @@ test_HasTransaction()
 
   // First test that it holds the transaction after it should have gotten one.
   {
-    mozStorageTransaction transaction(db, PR_FALSE);
+    mozStorageTransaction transaction(db, false);
     do_check_true(transaction.HasTransaction());
     (void)transaction.Commit();
     // And that it does not have a transaction after we have committed.
@@ -61,17 +61,17 @@ test_HasTransaction()
 
   // Check that no transaction is had after a rollback.
   {
-    mozStorageTransaction transaction(db, PR_FALSE);
+    mozStorageTransaction transaction(db, false);
     do_check_true(transaction.HasTransaction());
     (void)transaction.Rollback();
     do_check_false(transaction.HasTransaction());
   }
 
   // Check that we do not have a transaction if one is already obtained.
-  mozStorageTransaction outerTransaction(db, PR_FALSE);
+  mozStorageTransaction outerTransaction(db, false);
   do_check_true(outerTransaction.HasTransaction());
   {
-    mozStorageTransaction innerTransaction(db, PR_FALSE);
+    mozStorageTransaction innerTransaction(db, false);
     do_check_false(innerTransaction.HasTransaction());
   }
 }
@@ -84,14 +84,14 @@ test_Commit()
   // Create a table in a transaction, call Commit, and make sure that it does
   // exists after the transaction falls out of scope.
   {
-    mozStorageTransaction transaction(db, PR_FALSE);
+    mozStorageTransaction transaction(db, false);
     (void)db->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "CREATE TABLE test (id INTEGER PRIMARY KEY)"
     ));
     (void)transaction.Commit();
   }
 
-  PRBool exists = PR_FALSE;
+  bool exists = false;
   (void)db->TableExists(NS_LITERAL_CSTRING("test"), &exists);
   do_check_true(exists);
 }
@@ -104,14 +104,14 @@ test_Rollback()
   // Create a table in a transaction, call Rollback, and make sure that it does
   // not exists after the transaction falls out of scope.
   {
-    mozStorageTransaction transaction(db, PR_TRUE);
+    mozStorageTransaction transaction(db, true);
     (void)db->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "CREATE TABLE test (id INTEGER PRIMARY KEY)"
     ));
     (void)transaction.Rollback();
   }
 
-  PRBool exists = PR_TRUE;
+  bool exists = true;
   (void)db->TableExists(NS_LITERAL_CSTRING("test"), &exists);
   do_check_false(exists);
 }
@@ -124,13 +124,13 @@ test_AutoCommit()
   // Create a table in a transaction, and make sure that it exists after the
   // transaction falls out of scope.  This means the Commit was successful.
   {
-    mozStorageTransaction transaction(db, PR_TRUE);
+    mozStorageTransaction transaction(db, true);
     (void)db->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "CREATE TABLE test (id INTEGER PRIMARY KEY)"
     ));
   }
 
-  PRBool exists = PR_FALSE;
+  bool exists = false;
   (void)db->TableExists(NS_LITERAL_CSTRING("test"), &exists);
   do_check_true(exists);
 }
@@ -144,13 +144,13 @@ test_AutoRollback()
   // after the transaction falls out of scope.  This means the Rollback was
   // successful.
   {
-    mozStorageTransaction transaction(db, PR_FALSE);
+    mozStorageTransaction transaction(db, false);
     (void)db->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "CREATE TABLE test (id INTEGER PRIMARY KEY)"
     ));
   }
 
-  PRBool exists = PR_TRUE;
+  bool exists = true;
   (void)db->TableExists(NS_LITERAL_CSTRING("test"), &exists);
   do_check_false(exists);
 }
@@ -163,26 +163,26 @@ test_SetDefaultAction()
   // First we test that rollback happens when we first set it to automatically
   // commit.
   {
-    mozStorageTransaction transaction(db, PR_TRUE);
+    mozStorageTransaction transaction(db, true);
     (void)db->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "CREATE TABLE test1 (id INTEGER PRIMARY KEY)"
     ));
-    transaction.SetDefaultAction(PR_FALSE);
+    transaction.SetDefaultAction(false);
   }
-  PRBool exists = PR_TRUE;
+  bool exists = true;
   (void)db->TableExists(NS_LITERAL_CSTRING("test1"), &exists);
   do_check_false(exists);
 
   // Now we do the opposite and test that a commit happens when we first set it
   // to automatically rollback.
   {
-    mozStorageTransaction transaction(db, PR_FALSE);
+    mozStorageTransaction transaction(db, false);
     (void)db->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "CREATE TABLE test2 (id INTEGER PRIMARY KEY)"
     ));
-    transaction.SetDefaultAction(PR_TRUE);
+    transaction.SetDefaultAction(true);
   }
-  exists = PR_FALSE;
+  exists = false;
   (void)db->TableExists(NS_LITERAL_CSTRING("test2"), &exists);
   do_check_true(exists);
 }
@@ -192,7 +192,7 @@ test_null_database_connection()
 {
   // We permit the use of the Transaction helper when passing a null database
   // in, so we need to make sure this still works without crashing.
-  mozStorageTransaction transaction(nsnull, PR_FALSE);
+  mozStorageTransaction transaction(nsnull, false);
 
   do_check_false(transaction.HasTransaction());
   do_check_true(NS_SUCCEEDED(transaction.Commit()));

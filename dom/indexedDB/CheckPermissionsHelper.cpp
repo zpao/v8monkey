@@ -51,6 +51,7 @@
 #include "nsNetUtil.h"
 #include "nsThreadUtils.h"
 #include "mozilla/Services.h"
+#include "mozilla/Preferences.h"
 
 #include "IndexedDatabaseManager.h"
 
@@ -59,6 +60,7 @@
 #define TOPIC_PERMISSIONS_PROMPT "indexedDB-permissions-prompt"
 #define TOPIC_PERMISSIONS_RESPONSE "indexedDB-permissions-response"
 
+using namespace mozilla;
 USING_INDEXEDDB_NAMESPACE
 using namespace mozilla::services;
 
@@ -71,7 +73,7 @@ GetIndexedDBPermissions(const nsACString& aASCIIOrigin,
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
 
-  if (!nsContentUtils::GetBoolPref(PREF_INDEXEDDB_ENABLED)) {
+  if (!Preferences::GetBool(PREF_INDEXEDDB_ENABLED)) {
     return nsIPermissionManager::DENY_ACTION;
   }
 
@@ -148,7 +150,7 @@ CheckPermissionsHelper::Run()
     return NS_OK;
   }
 
-  nsRefPtr<AsyncConnectionHelper> helper;
+  nsRefPtr<OpenDatabaseHelper> helper;
   helper.swap(mHelper);
 
   nsCOMPtr<nsIDOMWindow> window;
@@ -166,7 +168,8 @@ CheckPermissionsHelper::Run()
                "Unknown permission!");
 
   helper->SetError(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
-  return helper->Run();
+
+  return helper->RunImmediately();
 }
 
 NS_IMETHODIMP
@@ -194,7 +197,7 @@ CheckPermissionsHelper::Observe(nsISupports* aSubject,
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!strcmp(aTopic, TOPIC_PERMISSIONS_RESPONSE), "Bad topic!");
 
-  mHasPrompted = PR_TRUE;
+  mHasPrompted = true;
 
   nsresult rv;
   mPromptResult = nsDependentString(aData).ToInteger(&rv);

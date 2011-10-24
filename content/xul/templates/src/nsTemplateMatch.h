@@ -81,9 +81,15 @@ public:
           mQuerySetPriority(aQuerySetPriority),
           mContainer(aContainer),
           mResult(aResult),
-          mNext(nsnull) {}
+          mNext(nsnull)
+    {
+      MOZ_COUNT_CTOR(nsTemplateMatch);
+    }
 
-    ~nsTemplateMatch() {}
+    ~nsTemplateMatch()
+    {
+      MOZ_COUNT_DTOR(nsTemplateMatch);
+    }
 
     static nsTemplateMatch*
     Create(nsFixedSizeAllocator& aPool,
@@ -97,10 +103,10 @@ public:
 
     static void Destroy(nsFixedSizeAllocator& aPool,
                         nsTemplateMatch*& aMatch,
-                        PRBool aRemoveResult);
+                        bool aRemoveResult);
 
     // return true if the the match is active, and has generated output
-    PRBool IsActive() {
+    bool IsActive() {
         return mRuleIndex >= 0;
     }
 

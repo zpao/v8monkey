@@ -62,14 +62,15 @@ nsMathMLFrame::GetMathMLFrameType()
   return eMathMLFrameType_Ordinary;  
 }
 
-// snippet of code used by <mstyle> and <mtable>, which are the only
-// two tags where the displaystyle attribute is allowed by the spec.
+// snippet of code used by <mstyle>, <mtable> and <math> which are the only
+// three tags where the displaystyle attribute is allowed by the spec.
 /* static */ void
 nsMathMLFrame::FindAttrDisplaystyle(nsIContent*         aContent,
                                     nsPresentationData& aPresentationData)
 {
   NS_ASSERTION(aContent->Tag() == nsGkAtoms::mstyle_ ||
-               aContent->Tag() == nsGkAtoms::mtable_, "bad caller");
+               aContent->Tag() == nsGkAtoms::mtable_ ||
+               aContent->Tag() == nsGkAtoms::math, "bad caller");
   static nsIContent::AttrValuesArray strings[] =
     {&nsGkAtoms::_false, &nsGkAtoms::_true, nsnull};
   // see if the explicit displaystyle attribute is there
@@ -149,7 +150,7 @@ nsMathMLFrame::ResolveMathMLCharStyle(nsPresContext*  aPresContext,
                                       nsIContent*      aContent,
                                       nsStyleContext*  aParentStyleContext,
                                       nsMathMLChar*    aMathMLChar,
-                                      PRBool           aIsMutableChar)
+                                      bool             aIsMutableChar)
 {
   nsCSSPseudoElements::Type pseudoType = (aIsMutableChar) ?
     nsCSSPseudoElements::ePseudo_mozMathStretchy :
@@ -187,7 +188,7 @@ nsMathMLFrame::GetEmbellishDataFrom(nsIFrame*        aFrame,
 /* static */ void
 nsMathMLFrame::GetPresentationDataFrom(nsIFrame*           aFrame,
                                        nsPresentationData& aPresentationData,
-                                       PRBool              aClimbTree)
+                                       bool                aClimbTree)
 {
   // initialize OUT params
   aPresentationData.flags = 0;
@@ -219,7 +220,8 @@ nsMathMLFrame::GetPresentationDataFrom(nsIFrame*           aFrame,
       if (display->mDisplay == NS_STYLE_DISPLAY_BLOCK) {
         aPresentationData.flags |= NS_MATHML_DISPLAYSTYLE;
       }
-      aPresentationData.mstyle = frame;
+      FindAttrDisplaystyle(content, aPresentationData);
+      aPresentationData.mstyle = frame->GetFirstContinuation();
       break;
     }
     frame = frame->GetParent();
@@ -229,7 +231,7 @@ nsMathMLFrame::GetPresentationDataFrom(nsIFrame*           aFrame,
 }
 
 // helper to get an attribute from the content or the surrounding <mstyle> hierarchy
-/* static */ PRBool
+/* static */ bool
 nsMathMLFrame::GetAttribute(nsIContent* aContent,
                             nsIFrame*   aMathMLmstyleFrame,
                             nsIAtom*    aAttributeAtom,
@@ -238,12 +240,12 @@ nsMathMLFrame::GetAttribute(nsIContent* aContent,
   // see if we can get the attribute from the content
   if (aContent && aContent->GetAttr(kNameSpaceID_None, aAttributeAtom,
                                     aValue)) {
-    return PR_TRUE;
+    return true;
   }
 
   // see if we can get the attribute from the mstyle frame
   if (!aMathMLmstyleFrame) {
-    return PR_FALSE;
+    return false;
   }
 
   nsIFrame* mstyleParent = aMathMLmstyleFrame->GetParent();
@@ -326,8 +328,9 @@ nsMathMLFrame::CalcLength(nsPresContext*   aPresContext,
     return NSToCoordRound(aCSSValue.GetFloatValue() * (float)font->mFont.size);
   }
   else if (eCSSUnit_XHeight == unit) {
-    const nsStyleFont* font = aStyleContext->GetStyleFont();
-    nsRefPtr<nsFontMetrics> fm = aPresContext->GetMetricsFor(font->mFont);
+    nsRefPtr<nsFontMetrics> fm;
+    nsLayoutUtils::GetFontMetricsForStyleContext(aStyleContext,
+                                                 getter_AddRefs(fm));
     nscoord xHeight = fm->XHeight();
     return NSToCoordRound(aCSSValue.GetFloatValue() * (float)xHeight);
   }
@@ -337,14 +340,14 @@ nsMathMLFrame::CalcLength(nsPresContext*   aPresContext,
   return 0;
 }
 
-/* static */ PRBool
+/* static */ bool
 nsMathMLFrame::ParseNamedSpaceValue(nsIFrame*   aMathMLmstyleFrame,
                                     nsString&   aString,
                                     nsCSSValue& aCSSValue)
 {
   aCSSValue.Reset();
   aString.CompressWhitespace(); //  aString is not a const in this code...
-  if (!aString.Length()) return PR_FALSE;
+  if (!aString.Length()) return false;
 
   // See if it is one of the 'namedspace' (ranging 1/18em...7/18em)
   PRInt32 i = 0;
@@ -377,6 +380,34 @@ nsMathMLFrame::ParseNamedSpaceValue(nsIFrame*   aMathMLmstyleFrame,
     i = 7;
     namedspaceAtom = nsGkAtoms::veryverythickmathspace_;
   }
+  else if (aString.EqualsLiteral("negativeveryverythinmathspace")) {
+    i = -1;
+    namedspaceAtom = nsGkAtoms::negativeveryverythinmathspace_;
+  }
+  else if (aString.EqualsLiteral("negativeverythinmathspace")) {
+    i = -2;
+    namedspaceAtom = nsGkAtoms::negativeverythinmathspace_;
+  }
+  else if (aString.EqualsLiteral("negativethinmathspace")) {
+    i = -3;
+    namedspaceAtom = nsGkAtoms::negativethinmathspace_;
+  }
+  else if (aString.EqualsLiteral("negativemediummathspace")) {
+    i = -4;
+    namedspaceAtom = nsGkAtoms::negativemediummathspace_;
+  }
+  else if (aString.EqualsLiteral("negativethickmathspace")) {
+    i = -5;
+    namedspaceAtom = nsGkAtoms::negativethickmathspace_;
+  }
+  else if (aString.EqualsLiteral("negativeverythickmathspace")) {
+    i = -6;
+    namedspaceAtom = nsGkAtoms::negativeverythickmathspace_;
+  }
+  else if (aString.EqualsLiteral("negativeveryverythickmathspace")) {
+    i = -7;
+    namedspaceAtom = nsGkAtoms::negativeveryverythickmathspace_;
+  }
 
   if (0 != i) {
     if (aMathMLmstyleFrame) {
@@ -387,17 +418,17 @@ nsMathMLFrame::ParseNamedSpaceValue(nsIFrame*   aMathMLmstyleFrame,
       if (!value.IsEmpty()) {
         if (ParseNumericValue(value, aCSSValue) &&
             aCSSValue.IsLengthUnit()) {
-          return PR_TRUE;
+          return true;
         }
       }
     }
 
     // fall back to the default value
     aCSSValue.SetFloatValue(float(i)/float(18), eCSSUnit_EM);
-    return PR_TRUE;
+    return true;
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 // ================

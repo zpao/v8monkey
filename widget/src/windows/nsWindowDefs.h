@@ -58,6 +58,15 @@
 #define MOZ_WM_APP_QUIT                   (WM_APP+0x0300)
 // Used as a "tracer" event to probe event loop latency.
 #define MOZ_WM_TRACE                      (WM_APP+0x0301)
+// Our internal message for WM_MOUSEWHEEL, WM_MOUSEHWHEEL, WM_VSCROLL and
+// WM_HSCROLL
+#define MOZ_WM_MOUSEVWHEEL                (WM_APP+0x0310)
+#define MOZ_WM_MOUSEHWHEEL                (WM_APP+0x0311)
+#define MOZ_WM_VSCROLL                    (WM_APP+0x0312)
+#define MOZ_WM_HSCROLL                    (WM_APP+0x0313)
+// Internal message for ensuring the file picker is visible on multi monitor
+// systems, and when the screen resolution changes.
+#define MOZ_WM_ENSUREVISIBLE              (WM_APP + 14159)
 
 // GetWindowsVersion constants
 #define WIN2K_VERSION                     0x500
@@ -88,6 +97,10 @@
 
 #ifndef SPI_GETWHEELSCROLLCHARS
 #define SPI_GETWHEELSCROLLCHARS           0x006C
+#endif
+
+#ifndef SPI_SETWHEELSCROLLCHARS
+#define SPI_SETWHEELSCROLLCHARS           0x006D
 #endif
 
 #ifndef MAPVK_VSC_TO_VK
@@ -249,13 +262,13 @@ struct nsFakeCharMessage {
 
 // Used in char processing
 struct nsModifierKeyState {
-  PRBool mIsShiftDown;
-  PRBool mIsControlDown;
-  PRBool mIsAltDown;
+  bool mIsShiftDown;
+  bool mIsControlDown;
+  bool mIsAltDown;
 
   nsModifierKeyState();
-  nsModifierKeyState(PRBool aIsShiftDown, PRBool aIsControlDown,
-                     PRBool aIsAltDown) :
+  nsModifierKeyState(bool aIsShiftDown, bool aIsControlDown,
+                     bool aIsAltDown) :
     mIsShiftDown(aIsShiftDown), mIsControlDown(aIsControlDown),
     mIsAltDown(aIsAltDown)
   {

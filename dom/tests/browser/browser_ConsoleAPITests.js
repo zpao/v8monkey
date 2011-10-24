@@ -22,6 +22,7 @@
  *  David Dahl <ddahl@mozilla.com>
  *  Rob Campbell <rcampbell@mozilla.com>
  *  Mihai Sucan <mihai.sucan@gmail.com>
+ *  Panos Astithas <past@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -39,7 +40,7 @@
 
 const TEST_URI = "http://example.com/browser/dom/tests/browser/test-console-api.html";
 
-var gWindow;
+var gWindow, gLevel, gArgs;
 
 function test() {
   waitForExplicitFinish();
@@ -65,8 +66,6 @@ function test() {
   }, false);
 }
 
-var gWindow;
-
 function testConsoleData(aMessageObject) {
   let messageWindow = getWindowByWindowId(aMessageObject.ID);
   is(messageWindow, gWindow, "found correct window by window ID");
@@ -79,9 +78,8 @@ function testConsoleData(aMessageObject) {
     is(aMessageObject.arguments.toSource(), gArgs.toSource(),
        "stack trace is correct");
 
-    // Test finished
-    ConsoleObserver.destroy();
-    finish();
+    // Now test the location information in console.log()
+    startLocationTest();
   }
   else {
     gArgs.forEach(function (a, i) {
@@ -92,6 +90,69 @@ function testConsoleData(aMessageObject) {
   if (aMessageObject.level == "error") {
     // Now test console.trace()
     startTraceTest();
+  }
+}
+
+function testLocationData(aMessageObject) {
+  let messageWindow = getWindowByWindowId(aMessageObject.ID);
+  is(messageWindow, gWindow, "found correct window by window ID");
+
+  is(aMessageObject.level, gLevel, "expected level received");
+  ok(aMessageObject.arguments, "we have arguments");
+
+  is(aMessageObject.filename, gArgs[0].filename, "filename matches");
+  is(aMessageObject.lineNumber, gArgs[0].lineNumber, "lineNumber matches");
+  is(aMessageObject.functionName, gArgs[0].functionName, "functionName matches");
+  is(aMessageObject.arguments.length, gArgs[0].arguments.length, "arguments.length matches");
+  gArgs[0].arguments.forEach(function (a, i) {
+    is(aMessageObject.arguments[i], a, "correct arg " + i);
+  });
+
+  startGroupTest();
+}
+
+function startGroupTest() {
+  // Reset the observer function to cope with the fabricated test data.
+  ConsoleObserver.observe = function CO_observe(aSubject, aTopic, aData) {
+    try {
+      testConsoleGroup(aSubject.wrappedJSObject);
+    } catch (ex) {
+      // XXX Exceptions in this function currently aren't reported, because of
+      // some XPConnect weirdness, so report them manually
+      ok(false, "Exception thrown in CO_observe: " + ex);
+    }
+  };
+  let button = gWindow.document.getElementById("test-groups");
+  ok(button, "found #test-groups button");
+  EventUtils.synthesizeMouse(button, 2, 2, {}, gWindow);
+}
+
+function testConsoleGroup(aMessageObject) {
+  let messageWindow = getWindowByWindowId(aMessageObject.ID);
+  is(messageWindow, gWindow, "found correct window by window ID");
+
+  ok(aMessageObject.level == "group" ||
+     aMessageObject.level == "groupCollapsed" ||
+     aMessageObject.level == "groupEnd",
+     "expected level received");
+
+  is(aMessageObject.functionName, "testGroups", "functionName matches");
+  ok(aMessageObject.lineNumber >= 32 && aMessageObject.lineNumber <= 34,
+     "lineNumber matches");
+  if (aMessageObject.level == "groupCollapsed") {
+    ok(aMessageObject.arguments == "a group", "groupCollapsed arguments matches");
+  }
+  else if (aMessageObject.level == "group") {
+    ok(aMessageObject.arguments == "b group", "group arguments matches");
+  }
+  else if (aMessageObject.level == "groupEnd") {
+    ok(Array.prototype.join.call(aMessageObject.arguments, " ") == "b group", "groupEnd arguments matches");
+  }
+
+  if (aMessageObject.level == "groupEnd") {
+    // Test finished
+    ConsoleObserver.destroy();
+    finish();
   }
 }
 
@@ -109,7 +170,27 @@ function startTraceTest() {
   EventUtils.synthesizeMouse(button, 2, 2, {}, gWindow);
 }
 
-var gLevel, gArgs;
+function startLocationTest() {
+  // Reset the observer function to cope with the fabricated test data.
+  ConsoleObserver.observe = function CO_observe(aSubject, aTopic, aData) {
+    try {
+      testLocationData(aSubject.wrappedJSObject);
+    } catch (ex) {
+      // XXX Exceptions in this function currently aren't reported, because of
+      // some XPConnect weirdness, so report them manually
+      ok(false, "Exception thrown in CO_observe: " + ex);
+    }
+  };
+  gLevel = "log";
+  gArgs = [
+    {filename: TEST_URI, lineNumber: 19, functionName: "foobar646025", arguments: ["omg", "o", "d"]}
+  ];
+
+  let button = gWindow.document.getElementById("test-location");
+  ok(button, "found #test-location button");
+  EventUtils.synthesizeMouse(button, 2, 2, {}, gWindow);
+}
+
 function expect(level) {
   gLevel = level;
   gArgs = Array.slice(arguments, 1);
@@ -123,8 +204,28 @@ function observeConsoleTest() {
   expect("info", "arg", "extra arg");
   win.console.info("arg", "extra arg");
 
-  expect("warn", "arg", "extra arg", 1);
-  win.console.warn("arg", "extra arg", 1);
+  // We don't currently support width and precision qualifiers, but we don't
+  // choke on them either.
+  expect("warn", "Lesson 1: PI is approximately equal to 3.14159");
+  win.console.warn("Lesson %d: %s is approximately equal to %1.2f",
+                   1,
+                   "PI",
+                   3.14159);
+  expect("log", "%d, %s, %l");
+  win.console.log("%d, %s, %l");
+  expect("log", "%a %b %c");
+  win.console.log("%a %b %c");
+  expect("log", "%a %b %c", "a", "b");
+  win.console.log("%a %b %c", "a", "b");
+  expect("log", "2, a, %l", 3);
+  win.console.log("%d, %s, %l", 2, "a", 3);
+
+  // bug #692550 handle null and undefined
+  expect("log", "null, undefined");
+  win.console.log("%s, %s", null, undefined);
+
+  expect("dir", win.toString());
+  win.console.dir(win);
 
   expect("error", "arg");
   win.console.error("arg");
@@ -140,6 +241,10 @@ function consoleAPISanityTest() {
   ok(win.console.warn, "console.warn is here");
   ok(win.console.error, "console.error is here");
   ok(win.console.trace, "console.trace is here");
+  ok(win.console.dir, "console.dir is here");
+  ok(win.console.group, "console.group is here");
+  ok(win.console.groupCollapsed, "console.groupCollapsed is here");
+  ok(win.console.groupEnd, "console.groupEnd is here");
 }
 
 var ConsoleObserver = {

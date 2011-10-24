@@ -1,11 +1,10 @@
 <?xml version="1.0"?>
 <?xml-stylesheet href="chrome://global/skin" type="text/css"?>
-<?xml-stylesheet href="/tests/SimpleTest/test.css" type="text/css"?>
+<?xml-stylesheet href="chrome://mochikit/content/tests/SimpleTest/test.css" type="text/css"?>
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
         title="Test for nsSelectionMoveCommands">
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
 <script class="testbody" type="application/javascript">
 <![CDATA[
@@ -39,8 +38,6 @@ function execTests() {
   doc.designMode='on';
   body.innerHTML = "1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>";
   win.focus();
-
-  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 
   function doCommand(cmd) {
     var controller = document.commandDispatcher.getControllerForCommand(cmd);

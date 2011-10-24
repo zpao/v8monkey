@@ -49,7 +49,7 @@
 
 static nsTArray<nsCString> *gVolumeList = nsnull;
 
-static PRBool pathBeginsWithVolName(const nsACString& path, nsACString& firstPathComponent)
+static bool pathBeginsWithVolName(const nsACString& path, nsACString& firstPathComponent)
 {
   // Return whether the 1st path component in path (escaped) is equal to the name
   // of a mounted volume. Return the 1st path component (unescaped) in any case.
@@ -59,7 +59,7 @@ static PRBool pathBeginsWithVolName(const nsACString& path, nsACString& firstPat
   if (!gVolumeList) {
     gVolumeList = new nsTArray<nsCString>;
     if (!gVolumeList) {
-      return PR_FALSE; // out of memory
+      return false; // out of memory
     }
   }
 
@@ -184,12 +184,12 @@ net_GetFileFromURLSpec(const nsACString &aURL, nsIFile **result)
   nsresult rv;
 
   nsCOMPtr<nsILocalFile> localFile;
-  rv = NS_NewNativeLocalFile(EmptyCString(), PR_TRUE, getter_AddRefs(localFile));
+  rv = NS_NewNativeLocalFile(EmptyCString(), true, getter_AddRefs(localFile));
   if (NS_FAILED(rv))
     return rv;
   
   nsCAutoString directory, fileBaseName, fileExtension, path;
-  PRBool bHFSPath = PR_FALSE;
+  bool bHFSPath = false;
 
   rv = net_ParseFileURL(aURL, directory, fileBaseName, fileExtension);
   if (NS_FAILED(rv))
@@ -212,7 +212,7 @@ net_GetFileFromURLSpec(const nsACString &aURL, nsIFile **result)
       FSRef testRef;
       possibleVolName.Insert("/", 0);
       if (::FSPathMakeRef((UInt8*)possibleVolName.get(), &testRef, nsnull) != noErr)
-        bHFSPath = PR_TRUE;
+        bHFSPath = true;
     }
 
     if (bHFSPath) {

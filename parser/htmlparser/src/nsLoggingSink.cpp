@@ -80,7 +80,7 @@ nsLoggingSink::~nsLoggingSink() {
 NS_IMPL_ISUPPORTS3(nsLoggingSink, nsILoggingSink, nsIContentSink, nsIHTMLContentSink)
 
 NS_IMETHODIMP
-nsLoggingSink::SetOutputStream(PRFileDesc *aStream,PRBool autoDeleteOutput) {
+nsLoggingSink::SetOutputStream(PRFileDesc *aStream,bool autoDeleteOutput) {
   mOutput = aStream;
   mAutoDeleteOutput=autoDeleteOutput;
   return NS_OK;
@@ -113,7 +113,7 @@ nsLoggingSink::WillBuildModel(nsDTDMode aDTDMode) {
 }
 
 NS_IMETHODIMP
-nsLoggingSink::DidBuildModel(PRBool aTerminated) {
+nsLoggingSink::DidBuildModel(bool aTerminated) {
   
   WriteTabs(mOutput,--mLevel);
   PR_fprintf(mOutput, "</begin>\n");
@@ -401,14 +401,14 @@ nsLoggingSink::WriteAttributes(const nsIParserNode& aNode) {
   return NS_OK;
 }
 
-PRBool
+bool
 nsLoggingSink::WillWriteAttributes(const nsIParserNode& aNode)
 {
   PRInt32 ac = aNode.GetAttributeCount();
   if (0 != ac) {
-    return PR_TRUE;
+    return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 nsresult

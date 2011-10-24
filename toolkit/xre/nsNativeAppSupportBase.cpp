@@ -50,9 +50,9 @@ NS_IMPL_ISUPPORTS1(nsNativeAppSupportBase, nsINativeAppSupport)
 
 // Start answer defaults to OK.
 NS_IMETHODIMP
-nsNativeAppSupportBase::Start( PRBool *result )
+nsNativeAppSupportBase::Start( bool *result )
 {
-  *result = PR_TRUE;
+  *result = true;
   return NS_OK;
 }
 
@@ -64,9 +64,9 @@ nsNativeAppSupportBase::Enable()
 
 // Stop answer defaults to OK.
 NS_IMETHODIMP
-nsNativeAppSupportBase::Stop( PRBool *result )
+nsNativeAppSupportBase::Stop( bool *result )
 {
-  *result = PR_TRUE;
+  *result = true;
   return NS_OK;
 }
 

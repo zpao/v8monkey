@@ -49,7 +49,7 @@
 #include "nsCache.h"
 #include "nsReadableUtils.h"
 
-// The memory cache implements a variation of the "LRU-SP" caching algorithm
+// The memory cache implements the "LRU-SP" caching algorithm
 // described in "LRU-SP: A Size-Adjusted and Popularity-Aware LRU Replacement
 // Algorithm for Web Caching" by Kai Cheng and Yahiko Kambayashi.
 
@@ -62,14 +62,15 @@
 const char *gMemoryDeviceID      = "memory";
 
 nsMemoryCacheDevice::nsMemoryCacheDevice()
-    : mInitialized(PR_FALSE),
+    : mInitialized(false),
       mEvictionThreshold(PR_INT32_MAX),
       mHardLimit(4 * 1024 * 1024),       // default, if no pref
       mSoftLimit((mHardLimit * 9) / 10), // default, if no pref
       mTotalSize(0),
       mInactiveSize(0),
       mEntryCount(0),
-      mMaxEntryCount(0)
+      mMaxEntryCount(0),
+      mMaxEntrySize(-1) // -1 means "no limit"
 {
     for (int i=0; i<kQueueCount; ++i)
         PR_INIT_CLIST(&mEvictionList[i]);
@@ -129,7 +130,7 @@ nsMemoryCacheDevice::Shutdown()
     NS_ASSERTION(mInactiveSize == 0, "### mem cache leaking entries?");
     NS_ASSERTION(mEntryCount == 0, "### mem cache leaking entries?");
     
-    mInitialized = PR_FALSE;
+    mInitialized = false;
 
     return NS_OK;
 }
@@ -143,7 +144,7 @@ nsMemoryCacheDevice::GetDeviceID()
 
 
 nsCacheEntry *
-nsMemoryCacheDevice::FindEntry(nsCString * key, PRBool *collision)
+nsMemoryCacheDevice::FindEntry(nsCString * key, bool *collision)
 {
     nsCacheEntry * entry = mMemCacheEntries.GetEntry(key);
     if (!entry)  return nsnull;
@@ -297,9 +298,20 @@ nsMemoryCacheDevice::GetFileForEntry( nsCacheEntry *    entry,
 bool
 nsMemoryCacheDevice::EntryIsTooBig(PRInt64 entrySize)
 {
-    return entrySize > mSoftLimit;
+    CACHE_LOG_DEBUG(("nsMemoryCacheDevice::EntryIsTooBig "
+                     "[size=%d max=%d soft=%d]\n",
+                     entrySize, mMaxEntrySize, mSoftLimit));
+    if (mMaxEntrySize == -1)
+        return entrySize > mSoftLimit;
+    else
+        return (entrySize > mSoftLimit || entrySize > mMaxEntrySize);
 }
 
+size_t
+nsMemoryCacheDevice::TotalSize()
+{
+    return mTotalSize;
+}
 
 nsresult
 nsMemoryCacheDevice::OnDataSizeChange( nsCacheEntry * entry, PRInt32 deltaSize)
@@ -343,7 +355,7 @@ nsMemoryCacheDevice::AdjustMemoryLimits(PRInt32  softLimit, PRInt32  hardLimit)
 
 
 void
-nsMemoryCacheDevice::EvictEntry(nsCacheEntry * entry, PRBool deleteEntry)
+nsMemoryCacheDevice::EvictEntry(nsCacheEntry * entry, bool deleteEntry)
 {
     CACHE_LOG_DEBUG(("Evicting entry 0x%p from memory cache, deleting: %d\n",
                      entry, deleteEntry));
@@ -367,8 +379,8 @@ nsMemoryCacheDevice::EvictEntry(nsCacheEntry * entry, PRBool deleteEntry)
 void
 nsMemoryCacheDevice::EvictEntriesIfNecessary(void)
 {
-    nsCacheEntry * entry, * next;
-
+    nsCacheEntry * entry;
+    nsCacheEntry * maxEntry;
     CACHE_LOG_DEBUG(("EvictEntriesIfNecessary.  mTotalSize: %d, mHardLimit: %d,"
                      "mInactiveSize: %d, mSoftLimit: %d\n",
                      mTotalSize, mHardLimit, mInactiveSize, mSoftLimit));
@@ -376,22 +388,40 @@ nsMemoryCacheDevice::EvictEntriesIfNecessary(void)
     if ((mTotalSize < mHardLimit) && (mInactiveSize < mSoftLimit))
         return;
 
-    for (int i = kQueueCount - 1; i >= 0; --i) {
-        entry = (nsCacheEntry *)PR_LIST_HEAD(&mEvictionList[i]);
-        while (entry != &mEvictionList[i]) {
-            if (entry->IsInUse()) {
+    PRUint32 now = SecondsFromPRTime(PR_Now());
+    PRUint64 entryCost = 0;
+    PRUint64 maxCost = 0;
+    do {
+        // LRU-SP eviction selection: Check the head of each segment (each
+        // eviction list, kept in LRU order) and select the maximal-cost
+        // entry for eviction. Cost is time-since-accessed * size / nref.
+        maxEntry = 0;
+        for (int i = kQueueCount - 1; i >= 0; --i) {
+            entry = (nsCacheEntry *)PR_LIST_HEAD(&mEvictionList[i]);
+
+            // If the head of a list is in use, check the next available entry
+            while ((entry != &mEvictionList[i]) &&
+                   (entry->IsInUse())) {
                 entry = (nsCacheEntry *)PR_NEXT_LINK(entry);
-                continue;
             }
 
-            next = (nsCacheEntry *)PR_NEXT_LINK(entry);
-            EvictEntry(entry, DELETE_ENTRY);
-            entry = next;
-
-            if ((mTotalSize < mHardLimit) && (mInactiveSize < mSoftLimit))
-                return;
+            if (entry != &mEvictionList[i]) {
+                entryCost = (PRUint64)
+                    (now - entry->LastFetched()) * entry->Size() / 
+                    PR_MAX(1, entry->FetchCount());
+                if (!maxEntry || (entryCost > maxCost)) {
+                    maxEntry = entry;
+                    maxCost = entryCost;
+                }
+            }
+        }
+        if (maxEntry) {
+            EvictEntry(maxEntry, DELETE_ENTRY);
+        } else {
+            break;
         }
     }
+    while ((mTotalSize >= mHardLimit) || (mInactiveSize >= mSoftLimit));
 }
 
 
@@ -405,9 +435,9 @@ nsMemoryCacheDevice::EvictionList(nsCacheEntry * entry, PRInt32  deltaSize)
     // compute which eviction queue this entry should go into,
     // based on floor(log2(size/nref))
     PRInt32  size       = deltaSize + (PRInt32)entry->Size();
-    PRInt32  fetchCount = PR_MAX(1, entry->FetchCount());
+    PRInt32  fetchCount = NS_MAX(1, entry->FetchCount());
 
-    return PR_MIN(PR_FloorLog2(size / fetchCount), kQueueCount - 1);
+    return NS_MIN(PR_FloorLog2(size / fetchCount), kQueueCount - 1);
 }
 
 
@@ -418,7 +448,7 @@ nsMemoryCacheDevice::Visit(nsICacheVisitor * visitor)
     nsCOMPtr<nsICacheDeviceInfo> deviceRef(deviceInfo);
     if (!deviceInfo) return NS_ERROR_OUT_OF_MEMORY;
 
-    PRBool keepGoing;
+    bool keepGoing;
     nsresult rv = visitor->VisitDevice(gMemoryDeviceID, deviceInfo, &keepGoing);
     if (NS_FAILED(rv)) return rv;
 
@@ -488,6 +518,16 @@ nsMemoryCacheDevice::SetCapacity(PRInt32  capacity)
     AdjustMemoryLimits(softLimit, hardLimit);
 }
 
+void
+nsMemoryCacheDevice::SetMaxEntrySize(PRInt32 maxSizeInKilobytes)
+{
+    // Internal unit is bytes. Changing this only takes effect *after* the
+    // change and has no consequences for existing cache-entries
+    if (maxSizeInKilobytes >= 0)
+        mMaxEntrySize = maxSizeInKilobytes * 1024;
+    else
+        mMaxEntrySize = -1;
+}
 
 #ifdef DEBUG
 static PLDHashOperator

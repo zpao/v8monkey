@@ -108,10 +108,10 @@ nsAppShell::ScheduleNativeEventCallback()
   WinPostMsg(mEventWnd, sMsgId, 0, reinterpret_cast<MPARAM>(this));
 }
 
-PRBool
-nsAppShell::ProcessNextNativeEvent(PRBool mayWait)
+bool
+nsAppShell::ProcessNextNativeEvent(bool mayWait)
 {
-  PRBool gotMessage = PR_FALSE;
+  bool gotMessage = false;
 
   do {
     QMSG qmsg;
@@ -121,7 +121,7 @@ nsAppShell::ProcessNextNativeEvent(PRBool mayWait)
         WinPeekMsg((HAB)0, &qmsg, NULL, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE) || 
         WinPeekMsg((HAB)0, &qmsg, NULL, 0, WM_USER-1, PM_REMOVE) || 
         WinPeekMsg((HAB)0, &qmsg, NULL, 0, 0, PM_REMOVE)) {
-      gotMessage = PR_TRUE;
+      gotMessage = true;
       ::WinDispatchMsg((HAB)0, &qmsg);
     } else if (mayWait) {
       // Block and wait for any posted application message

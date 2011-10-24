@@ -108,11 +108,11 @@ public:
     /* Marks the end of native drawing */
     void EndNativeDrawing();
 
-    /* Returns PR_TRUE if the native drawing should be executed again */
-    PRBool ShouldRenderAgain();
+    /* Returns true if the native drawing should be executed again */
+    bool ShouldRenderAgain();
 
-    /* Returns PR_TRUE if double pass alpha extraction is taking place. */
-    PRBool IsDoublePass();
+    /* Returns true if double pass alpha extraction is taking place. */
+    bool IsDoublePass();
 
     /* Places the result to the context, if necessary */
     void PaintToContext();

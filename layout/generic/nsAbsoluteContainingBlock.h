@@ -60,44 +60,51 @@ class nsPresContext;
  * its parent.
  *
  * There is no principal child list, just a named child list which contains
- * the absolutely positioned frames.
+ * the absolutely positioned frames (kAbsoluteList or kFixedList).
  *
  * All functions include as the first argument the frame that is delegating
  * the request.
  *
- * @see nsGkAtoms::absoluteList and nsGkAtoms::fixedList
  */
 class nsAbsoluteContainingBlock
 {
 public:
-  nsAbsoluteContainingBlock(nsIAtom* aChildListName)
+  typedef nsIFrame::ChildListID ChildListID;
+
+  nsAbsoluteContainingBlock(ChildListID aChildListID)
 #ifdef DEBUG
-    : mChildListName(aChildListName)
+    : mChildListID(aChildListID)
 #endif
   {
-    NS_ASSERTION(mChildListName == nsGkAtoms::absoluteList ||
-                 mChildListName == nsGkAtoms::fixedList,
+    NS_ASSERTION(mChildListID == nsIFrame::kAbsoluteList ||
+                 mChildListID == nsIFrame::kFixedList,
                  "should either represent position:fixed or absolute content");
   }
 
 #ifdef DEBUG
-  nsIAtom* GetChildListName() const { return mChildListName; }
+  ChildListID GetChildListID() const { return mChildListID; }
 #endif
 
   const nsFrameList& GetChildList() const { return mAbsoluteFrames; }
+  void AppendChildList(nsTArray<nsIFrame::ChildList>* aLists,
+                       ChildListID aListID) const
+  {
+    NS_ASSERTION(aListID == GetChildListID(), "wrong list ID");
+    GetChildList().AppendIfNonempty(aLists, aListID);
+  }
 
   nsresult SetInitialChildList(nsIFrame*       aDelegatingFrame,
-                               nsIAtom*        aListName,
+                               ChildListID     aListID,
                                nsFrameList&    aChildList);
   nsresult AppendFrames(nsIFrame*      aDelegatingFrame,
-                        nsIAtom*       aListName,
+                        ChildListID    aListID,
                         nsFrameList&   aFrameList);
   nsresult InsertFrames(nsIFrame*      aDelegatingFrame,
-                        nsIAtom*       aListName,
+                        ChildListID    aListID,
                         nsIFrame*      aPrevFrame,
                         nsFrameList&   aFrameList);
   void RemoveFrame(nsIFrame*      aDelegatingFrame,
-                   nsIAtom*       aListName,
+                   ChildListID    aListID,
                    nsIFrame*      aOldFrame);
 
   // Called by the delegating frame after it has done its reflow first. This
@@ -117,16 +124,16 @@ public:
                   nsReflowStatus&          aReflowStatus,
                   nscoord                  aContainingBlockWidth,
                   nscoord                  aContainingBlockHeight,
-                  PRBool                   aConstrainHeight,
-                  PRBool                   aCBWidthChanged,
-                  PRBool                   aCBHeightChanged,
+                  bool                     aConstrainHeight,
+                  bool                     aCBWidthChanged,
+                  bool                     aCBHeightChanged,
                   nsOverflowAreas*         aOverflowAreas);
 
 
   void DestroyFrames(nsIFrame* aDelegatingFrame,
                      nsIFrame* aDestructRoot);
 
-  PRBool  HasAbsoluteFrames() {return mAbsoluteFrames.NotEmpty();}
+  bool    HasAbsoluteFrames() {return mAbsoluteFrames.NotEmpty();}
 
   // Mark our size-dependent absolute frames with NS_FRAME_HAS_DIRTY_CHILDREN
   // so that we'll make sure to reflow them.
@@ -136,18 +143,18 @@ public:
   void MarkAllFramesDirty();
 
 protected:
-  // Returns PR_TRUE if the position of f depends on the position of
+  // Returns true if the position of f depends on the position of
   // its placeholder or if the position or size of f depends on a
   // containing block dimension that changed.
-  PRBool FrameDependsOnContainer(nsIFrame* f, PRBool aCBWidthChanged,
-                                 PRBool aCBHeightChanged);
+  bool FrameDependsOnContainer(nsIFrame* f, bool aCBWidthChanged,
+                                 bool aCBHeightChanged);
 
   nsresult ReflowAbsoluteFrame(nsIFrame*                aDelegatingFrame,
                                nsPresContext*          aPresContext,
                                const nsHTMLReflowState& aReflowState,
                                nscoord                  aContainingBlockWidth,
                                nscoord                  aContainingBlockHeight,
-                               PRBool                   aConstrainHeight,
+                               bool                     aConstrainHeight,
                                nsIFrame*                aKidFrame,
                                nsReflowStatus&          aStatus,
                                nsOverflowAreas*         aOverflowAreas);
@@ -155,13 +162,13 @@ protected:
   // Mark our absolute frames dirty.  If aMarkAllDirty is true, all will be
   // marked with NS_FRAME_IS_DIRTY.  Otherwise, the size-dependant ones will be
   // marked with NS_FRAME_HAS_DIRTY_CHILDREN.
-  void DoMarkFramesDirty(PRBool aMarkAllDirty);
+  void DoMarkFramesDirty(bool aMarkAllDirty);
 
 protected:
   nsFrameList mAbsoluteFrames;  // additional named child list
 
 #ifdef DEBUG
-  nsIAtom* const mChildListName; // nsGkAtoms::fixedList or nsGkAtoms::absoluteList
+  ChildListID const mChildListID; // kFixedList or kAbsoluteList
 
   // helper routine for debug printout
   void PrettyUC(nscoord aSize,

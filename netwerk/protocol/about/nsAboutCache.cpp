@@ -162,12 +162,12 @@ nsAboutCache::GetURIFlags(nsIURI *aURI, PRUint32 *result)
 NS_IMETHODIMP
 nsAboutCache::VisitDevice(const char *deviceID,
                           nsICacheDeviceInfo *deviceInfo,
-                          PRBool *visitEntries)
+                          bool *visitEntries)
 {
     PRUint32 bytesWritten, value, entryCount;
     nsXPIDLCString str;
 
-    *visitEntries = PR_FALSE;
+    *visitEntries = false;
 
     if (mDeviceID.IsEmpty() || mDeviceID.Equals(deviceID)) {
 
@@ -231,7 +231,7 @@ nsAboutCache::VisitDevice(const char *deviceID,
         } else { // The about:cache?device=disk etc. case
             mBuffer.AppendLiteral("</table>\n");
             if (entryCount != 0) {
-                *visitEntries = PR_TRUE;
+                *visitEntries = true;
                 mBuffer.AppendLiteral("<hr/>\n"
                                       "<table id=\"entries\">\n"
                                       "  <colgroup>\n"
@@ -262,7 +262,7 @@ nsAboutCache::VisitDevice(const char *deviceID,
 NS_IMETHODIMP
 nsAboutCache::VisitEntry(const char *deviceID,
                          nsICacheEntryInfo *entryInfo,
-                         PRBool *visitNext)
+                         bool *visitNext)
 {
     // We need mStream for this
     if (!mStream)
@@ -272,7 +272,7 @@ nsAboutCache::VisitEntry(const char *deviceID,
     PRUint32        bytesWritten;
     nsCAutoString   key;
     nsXPIDLCString  clientID;
-    PRBool          streamBased;
+    bool            streamBased;
     
     rv = entryInfo->GetKey(key);
     if (NS_FAILED(rv))  return rv;
@@ -348,7 +348,7 @@ nsAboutCache::VisitEntry(const char *deviceID,
 
     mStream->Write(mBuffer.get(), mBuffer.Length(), &bytesWritten);
 
-    *visitNext = PR_TRUE;
+    *visitNext = true;
     return NS_OK;
 }
 

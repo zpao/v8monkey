@@ -129,13 +129,13 @@ static const char NTLM_TYPE3_MARKER[] = { 0x03, 0x00, 0x00, 0x00 };
 
 //-----------------------------------------------------------------------------
 
-static PRBool SendLM()
+static bool SendLM()
 {
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
   if (!prefs)
-    return PR_FALSE;
+    return false;
 
-  PRBool val;
+  bool val;
   nsresult rv = prefs->GetBoolPref("network.ntlm.send-lm-response", &val);
   return NS_SUCCEEDED(rv) && val;
 }
@@ -601,7 +601,7 @@ GenerateType3Msg(const nsString &domain,
   if (NS_FAILED(rv))
     return rv;
 
-  PRBool unicode = (msg.flags & NTLM_NegotiateUnicode);
+  bool unicode = (msg.flags & NTLM_NegotiateUnicode);
 
   // temporary buffers for unicode strings
 #ifdef IS_BIG_ENDIAN
@@ -856,7 +856,7 @@ nsNTLMAuthModule::Unwrap(const void *inToken,
 NS_IMETHODIMP
 nsNTLMAuthModule::Wrap(const void *inToken,
                        PRUint32    inTokenLen,
-                       PRBool      confidential,
+                       bool        confidential,
                        void      **outToken,
                        PRUint32   *outTokenLen)
 {
@@ -955,11 +955,11 @@ des_encrypt(const PRUint8 *key, const PRUint8 *src, PRUint8 *hash)
 
 done:
   if (ctxt)
-    PK11_DestroyContext(ctxt, PR_TRUE);
+    PK11_DestroyContext(ctxt, true);
   if (symkey)
     PK11_FreeSymKey(symkey);
   if (param)
-    SECITEM_FreeItem(param, PR_TRUE);
+    SECITEM_FreeItem(param, true);
   if (slot)
     PK11_FreeSlot(slot);
 }
@@ -980,6 +980,6 @@ static void md5sum(const PRUint8 *input, PRUint32 inputLen, PRUint8 *result)
         PK11_DigestFinal(ctxt, result, &resultLen, resultLen);
       }
     }
-    PK11_DestroyContext(ctxt, PR_TRUE);
+    PK11_DestroyContext(ctxt, true);
   }
 }

@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- *
- * ***** BEGIN LICENSE BLOCK *****
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Mozilla Public License Version
@@ -44,7 +43,7 @@
 #include "nsXPIDLString.h"
 #include "nsDocShellCID.h"
 #include "nsIWebNavigationInfo.h"
-#include "nsIDOMWindowInternal.h"
+#include "nsIDOMWindow.h"
 #include "nsAutoPtr.h"
 #include "nsIHttpChannel.h"
 #include "nsIScriptSecurityManager.h"
@@ -92,13 +91,13 @@ NS_INTERFACE_MAP_END
 //*****************************************************************************   
 
 NS_IMETHODIMP
-nsDSURIContentListener::OnStartURIOpen(nsIURI* aURI, PRBool* aAbortOpen)
+nsDSURIContentListener::OnStartURIOpen(nsIURI* aURI, bool* aAbortOpen)
 {
     // If mDocShell is null here, that means someone's starting a load
     // in our docshell after it's already been destroyed.  Don't let
     // that happen.
     if (!mDocShell) {
-        *aAbortOpen = PR_TRUE;
+        *aAbortOpen = true;
         return NS_OK;
     }
     
@@ -112,10 +111,10 @@ nsDSURIContentListener::OnStartURIOpen(nsIURI* aURI, PRBool* aAbortOpen)
 
 NS_IMETHODIMP 
 nsDSURIContentListener::DoContent(const char* aContentType, 
-                                  PRBool aIsContentPreferred,
+                                  bool aIsContentPreferred,
                                   nsIRequest* request,
                                   nsIStreamListener** aContentHandler,
-                                  PRBool* aAbortProcess)
+                                  bool* aAbortProcess)
 {
     nsresult rv;
     NS_ENSURE_ARG_POINTER(aContentHandler);
@@ -124,11 +123,11 @@ nsDSURIContentListener::DoContent(const char* aContentType,
     // Check whether X-Frame-Options permits us to load this content in an
     // iframe
     if (!CheckFrameOptions(request)) {
-        *aAbortProcess = PR_TRUE;
+        *aAbortProcess = true;
         return NS_OK;
     }
 
-    *aAbortProcess = PR_FALSE;
+    *aAbortProcess = false;
 
     // determine if the channel has just been retargeted to us...
     nsLoadFlags loadFlags = 0;
@@ -158,7 +157,7 @@ nsDSURIContentListener::DoContent(const char* aContentType,
     }
 
     if (loadFlags & nsIChannel::LOAD_RETARGETED_DOCUMENT_URI) {
-        nsCOMPtr<nsIDOMWindowInternal> domWindow = do_GetInterface(static_cast<nsIDocShell*>(mDocShell));
+        nsCOMPtr<nsIDOMWindow> domWindow = do_GetInterface(static_cast<nsIDocShell*>(mDocShell));
         NS_ENSURE_TRUE(domWindow, NS_ERROR_FAILURE);
         domWindow->Focus();
     }
@@ -169,7 +168,7 @@ nsDSURIContentListener::DoContent(const char* aContentType,
 NS_IMETHODIMP
 nsDSURIContentListener::IsPreferred(const char* aContentType,
                                     char ** aDesiredContentType,
-                                    PRBool* aCanHandle)
+                                    bool* aCanHandle)
 {
     NS_ENSURE_ARG_POINTER(aCanHandle);
     NS_ENSURE_ARG_POINTER(aDesiredContentType);
@@ -196,21 +195,21 @@ nsDSURIContentListener::IsPreferred(const char* aContentType,
     // of our docshell chain, then we'll now always attempt to process the
     // content ourselves...
     return CanHandleContent(aContentType,
-                            PR_TRUE,
+                            true,
                             aDesiredContentType,
                             aCanHandle);
 }
 
 NS_IMETHODIMP
 nsDSURIContentListener::CanHandleContent(const char* aContentType,
-                                         PRBool aIsContentPreferred,
+                                         bool aIsContentPreferred,
                                          char ** aDesiredContentType,
-                                         PRBool* aCanHandleContent)
+                                         bool* aCanHandleContent)
 {
     NS_PRECONDITION(aCanHandleContent, "Null out param?");
     NS_ENSURE_ARG_POINTER(aDesiredContentType);
 
-    *aCanHandleContent = PR_FALSE;
+    *aCanHandleContent = false;
     *aDesiredContentType = nsnull;
 
     nsresult rv = NS_OK;
@@ -339,7 +338,7 @@ bool nsDSURIContentListener::CheckFrameOptions(nsIRequest* request)
         // a system principal
         while (NS_SUCCEEDED(curDocShellItem->GetParent(getter_AddRefs(parentDocShellItem))) &&
                parentDocShellItem) {
-            PRBool system = PR_FALSE;
+            bool system = false;
             topDoc = do_GetInterface(parentDocShellItem);
             if (topDoc) {
                 if (NS_SUCCEEDED(ssm->IsSystemPrincipal(topDoc->NodePrincipal(),
@@ -366,7 +365,7 @@ bool nsDSURIContentListener::CheckFrameOptions(nsIRequest* request)
             topDoc = do_GetInterface(curDocShellItem);
             nsCOMPtr<nsIURI> topUri;
             topDoc->NodePrincipal()->GetURI(getter_AddRefs(topUri));
-            rv = ssm->CheckSameOriginURI(uri, topUri, PR_TRUE);
+            rv = ssm->CheckSameOriginURI(uri, topUri, true);
             if (NS_SUCCEEDED(rv))
                 return true;
         }
@@ -380,7 +379,7 @@ bool nsDSURIContentListener::CheckFrameOptions(nsIRequest* request)
 
         // cancel the load and display about:blank
         httpChannel->Cancel(NS_BINDING_ABORTED);
-        nsCOMPtr<nsIWebNavigation> webNav(do_QueryInterface(static_cast<nsIDocShell*>(mDocShell)));
+        nsCOMPtr<nsIWebNavigation> webNav(do_QueryObject(mDocShell));
         if (webNav) {
             webNav->LoadURI(NS_LITERAL_STRING("about:blank").get(),
                             0, nsnull, nsnull, nsnull);

@@ -43,26 +43,13 @@ VPATH           = @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
-ifndef MOZ_ENABLE_LIBXUL
-VISIBILITY_FLAGS =
-endif
-
 MODULE          = cairo
 LIBRARY_NAME    = mozcairo
 LIBXUL_LIBRARY = 1
 
 ifdef GNU_CC
 OS_CXXFLAGS := $(filter-out -pedantic,$(OS_CXXFLAGS))
-MODULE_OPTIMIZE_FLAGS = -O2
-else
-ifeq ($(OS_ARCH),SunOS)
-MODULE_OPTIMIZE_FLAGS = -xO5
-endif
-ifeq ($(OS_ARCH),WINNT)
-ifneq ($(OS_TEST),x86_64)
-# FIXME: bug 413019
-OS_COMPILE_CFLAGS += -GL-
-endif
+ifeq ($(OS_TARGET),Android)
 MODULE_OPTIMIZE_FLAGS = -O2
 endif
 endif
@@ -74,20 +61,25 @@ CSRCS   = \
         cairo-arc.c \
         cairo-array.c \
 	cairo-atomic.c \
+        cairo-base64-stream.c \
         cairo-bentley-ottmann.c \
 	cairo-bentley-ottmann-rectilinear.c \
 	cairo-bentley-ottmann-rectangular.c \
-        cairo-base64-stream.c \
+	cairo-botor-scan-converter.c \
+	cairo-boxes.c \
 	cairo-cache.c \
         cairo-clip.c \
         cairo-color.c \
+	cairo-composite-rectangles.c \
         cairo-debug.c \
         cairo-deflate-stream.c \
+	cairo-device.c \
         cairo-fixed.c \
 	cairo-font-face.c \
 	cairo-font-face-twin.c \
 	cairo-font-face-twin-data.c \
         cairo-font-options.c \
+	cairo-freed-pool.c \
         cairo-freelist.c \
         cairo-gstate.c \
         cairo-hash.c \
@@ -98,6 +90,7 @@ CSRCS   = \
         cairo-matrix.c \
 	cairo-misc.c \
 	cairo-mutex.c \
+	cairo-observer.c \
         cairo-output-stream.c \
         cairo-paginated-surface.c \
         cairo-path.c \
@@ -111,6 +104,7 @@ CSRCS   = \
         cairo-polygon.c \
 	cairo-recording-surface.c \
         cairo-rectangle.c \
+	cairo-rectangular-scan-converter.c \
         cairo-region.c \
         cairo-scaled-font.c \
         cairo-scaled-font-subsets.c \
@@ -121,6 +115,9 @@ CSRCS   = \
         cairo-surface.c \
 	cairo-surface-clipper.c \
         cairo-surface-fallback.c \
+	cairo-surface-offset.c \
+	cairo-surface-snapshot.c \
+	cairo-surface-subsurface.c \
 	cairo-surface-wrapper.c \
 	cairo-tee-surface.c \
         cairo-tor-scan-converter.c \
@@ -134,7 +131,7 @@ CSRCS   = \
 
 EXPORTS_NAMESPACES = cairo
 
-EXPORTS_cairo = cairo.h cairo-version.h cairo-features.h cairo-platform.h cairo-deprecated.h cairo-rename.h
+EXPORTS_cairo = cairo.h cairo-version.h cairo-features.h cairo-platform.h cairo-deprecated.h cairo-rename.h cairo-tee.h
 
 # cairo-type1-subset.c should be here, but it's only supported on freetype platforms
 
@@ -157,9 +154,9 @@ PDF_EXPORTS = cairo-pdf.h
 PS_EXPORTS = cairo-ps.h
 
 ifeq ($(MOZ_WIDGET_TOOLKIT),windows)
+DEFINES += -DDISABLE_SOME_FLOATING_POINT
 CSRCS	+=	cairo-win32-surface.c
 
-ifndef WINCE
 ifdef MOZ_ENABLE_DWRITE_FONT
 CPPSRCS +=	cairo-dwrite-font.cpp
 endif
@@ -167,9 +164,6 @@ ifdef MOZ_ENABLE_D2D_SURFACE
 CPPSRCS +=	cairo-d2d-surface.cpp
 endif
 CSRCS	+=	cairo-win32-font.c
-else
-EXPORTS_cairo +=	cairo-ddraw.h
-endif
 
 ifdef NS_PRINTING
 CSRCS   += cairo-win32-printing-surface.c

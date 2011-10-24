@@ -50,136 +50,105 @@
 
 class nsBuiltinDecoderStateMachine;
 
-// Stores info relevant to presenting media samples.
+// Stores info relevant to presenting media frames.
 class nsVideoInfo {
 public:
   nsVideoInfo()
-    : mPixelAspectRatio(1.0),
-      mAudioRate(0),
+    : mAudioRate(0),
       mAudioChannels(0),
-      mFrame(0,0),
       mDisplay(0,0),
       mStereoMode(mozilla::layers::STEREO_MODE_MONO),
-      mHasAudio(PR_FALSE),
-      mHasVideo(PR_FALSE)
+      mHasAudio(false),
+      mHasVideo(false)
   {}
 
-  // Returns PR_TRUE if it's safe to use aPicture as the picture to be
+  // Returns true if it's safe to use aPicture as the picture to be
   // extracted inside a frame of size aFrame, and scaled up to and displayed
   // at a size of aDisplay. You should validate the frame, picture, and
-  // display regions before setting them into the mFrame, mPicture and
-  // mDisplay fields of nsVideoInfo.
-  static PRBool ValidateVideoRegion(const nsIntSize& aFrame,
+  // display regions before using them to display video frames.
+  static bool ValidateVideoRegion(const nsIntSize& aFrame,
                                     const nsIntRect& aPicture,
                                     const nsIntSize& aDisplay);
 
-  // Pixel aspect ratio, as stored in the metadata.
-  float mPixelAspectRatio;
-
-  // Samples per second.
+  // Sample rate.
   PRUint32 mAudioRate;
 
   // Number of audio channels.
   PRUint32 mAudioChannels;
 
-  // Dimensions of the video frame.
-  nsIntSize mFrame;
-
-  // The picture region inside the video frame to be displayed.
-  nsIntRect mPicture;
-
-  // Display size of the video frame. The picture region will be scaled
-  // to and displayed at this size.
+  // Size in pixels at which the video is rendered. This is after it has
+  // been scaled by its aspect ratio.
   nsIntSize mDisplay;
 
   // Indicates the frame layout for single track stereo videos.
   mozilla::layers::StereoMode mStereoMode;
 
-  // PR_TRUE if we have an active audio bitstream.
-  PRPackedBool mHasAudio;
+  // True if we have an active audio bitstream.
+  bool mHasAudio;
 
-  // PR_TRUE if we have an active video bitstream.
-  PRPackedBool mHasVideo;
+  // True if we have an active video bitstream.
+  bool mHasVideo;
 };
 
 #ifdef MOZ_TREMOR
 #include <ogg/os_types.h>
 typedef ogg_int32_t VorbisPCMValue;
-typedef short SoundDataValue;
+typedef short AudioDataValue;
 
-#define MOZ_SOUND_DATA_FORMAT (nsAudioStream::FORMAT_S16_LE)
+#define MOZ_AUDIO_DATA_FORMAT (nsAudioStream::FORMAT_S16_LE)
 #define MOZ_CLIP_TO_15(x) ((x)<-32768?-32768:(x)<=32767?(x):32767)
-// Convert the output of vorbis_synthesis_pcmout to a SoundDataValue
+// Convert the output of vorbis_synthesis_pcmout to a AudioDataValue
 #define MOZ_CONVERT_VORBIS_SAMPLE(x) \
- (static_cast<SoundDataValue>(MOZ_CLIP_TO_15((x)>>9)))
-// Convert a SoundDataValue to a float for the Audio API
-#define MOZ_CONVERT_SOUND_SAMPLE(x) ((x)*(1.F/32768))
+ (static_cast<AudioDataValue>(MOZ_CLIP_TO_15((x)>>9)))
+// Convert a AudioDataValue to a float for the Audio API
+#define MOZ_CONVERT_AUDIO_SAMPLE(x) ((x)*(1.F/32768))
 #define MOZ_SAMPLE_TYPE_S16LE 1
 
 #else /*MOZ_VORBIS*/
 
 typedef float VorbisPCMValue;
-typedef float SoundDataValue;
+typedef float AudioDataValue;
 
-#define MOZ_SOUND_DATA_FORMAT (nsAudioStream::FORMAT_FLOAT32)
+#define MOZ_AUDIO_DATA_FORMAT (nsAudioStream::FORMAT_FLOAT32)
 #define MOZ_CONVERT_VORBIS_SAMPLE(x) (x)
-#define MOZ_CONVERT_SOUND_SAMPLE(x) (x)
+#define MOZ_CONVERT_AUDIO_SAMPLE(x) (x)
 #define MOZ_SAMPLE_TYPE_FLOAT32 1
 
 #endif
 
-// Holds chunk a decoded sound samples.
-class SoundData {
+// Holds chunk a decoded audio frames.
+class AudioData {
 public:
-  SoundData(PRInt64 aOffset,
+  AudioData(PRInt64 aOffset,
             PRInt64 aTime,
             PRInt64 aDuration,
-            PRUint32 aSamples,
-            SoundDataValue* aData,
+            PRUint32 aFrames,
+            AudioDataValue* aData,
             PRUint32 aChannels)
   : mOffset(aOffset),
     mTime(aTime),
     mDuration(aDuration),
-    mSamples(aSamples),
+    mFrames(aFrames),
     mChannels(aChannels),
     mAudioData(aData)
   {
-    MOZ_COUNT_CTOR(SoundData);
+    MOZ_COUNT_CTOR(AudioData);
   }
 
-  SoundData(PRInt64 aOffset,
-            PRInt64 aDuration,
-            PRUint32 aSamples,
-            SoundDataValue* aData,
-            PRUint32 aChannels)
-  : mOffset(aOffset),
-    mTime(-1),
-    mDuration(aDuration),
-    mSamples(aSamples),
-    mChannels(aChannels),
-    mAudioData(aData)
+  ~AudioData()
   {
-    MOZ_COUNT_CTOR(SoundData);
+    MOZ_COUNT_DTOR(AudioData);
   }
 
-  ~SoundData()
-  {
-    MOZ_COUNT_DTOR(SoundData);
-  }
-
-  PRUint32 AudioDataLength() {
-    return mChannels * mSamples;
-  }
-
-  // Approximate byte offset of the end of the page on which this sample
-  // chunk ends.
+  // Approximate byte offset of the end of the page on which this chunk
+  // ends.
   const PRInt64 mOffset;
 
-  PRInt64 mTime; // Start time of samples in usecs.
+  PRInt64 mTime; // Start time of data in usecs.
   const PRInt64 mDuration; // In usecs.
-  const PRUint32 mSamples;
+  const PRUint32 mFrames;
   const PRUint32 mChannels;
-  nsAutoArrayPtr<SoundDataValue> mAudioData;
+  nsAutoArrayPtr<AudioDataValue> mAudioData;
 };
 
 // Holds a decoded video frame, in YCbCr format. These are queued in the reader.
@@ -215,8 +184,9 @@ public:
                            PRInt64 aTime,
                            PRInt64 aEndTime,
                            const YCbCrBuffer &aBuffer,
-                           PRBool aKeyframe,
-                           PRInt64 aTimecode);
+                           bool aKeyframe,
+                           PRInt64 aTimecode,
+                           nsIntRect aPicture);
 
   // Constructs a duplicate VideoData object. This intrinsically tells the
   // player that it does not need to update the displayed frame when this
@@ -234,13 +204,18 @@ public:
     MOZ_COUNT_DTOR(VideoData);
   }
 
+  // Dimensions at which to display the video frame. The picture region
+  // will be scaled to this size. This is should be the picture region's
+  // dimensions scaled with respect to its aspect ratio.
+  nsIntSize mDisplay;
+
   // Approximate byte offset of the end of the frame in the media.
   PRInt64 mOffset;
 
   // Start time of frame in microseconds.
   PRInt64 mTime;
 
-  // End time of frame in microseconds;
+  // End time of frame in microseconds.
   PRInt64 mEndTime;
 
   // Codec specific internal time code. For Ogg based codecs this is the
@@ -250,10 +225,10 @@ public:
   // This frame's image.
   nsRefPtr<Image> mImage;
 
-  // When PR_TRUE, denotes that this frame is identical to the frame that
+  // When true, denotes that this frame is identical to the frame that
   // came before; it's a duplicate. mBuffer will be empty.
-  PRPackedBool mDuplicate;
-  PRPackedBool mKeyframe;
+  bool mDuplicate;
+  bool mKeyframe;
 
 public:
   VideoData(PRInt64 aOffset, PRInt64 aTime, PRInt64 aEndTime, PRInt64 aTimecode)
@@ -261,8 +236,8 @@ public:
       mTime(aTime),
       mEndTime(aEndTime),
       mTimecode(aTimecode),
-      mDuplicate(PR_TRUE),
-      mKeyframe(PR_FALSE)
+      mDuplicate(true),
+      mKeyframe(false)
   {
     MOZ_COUNT_CTOR(VideoData);
     NS_ASSERTION(aEndTime >= aTime, "Frame must start before it ends.");
@@ -271,13 +246,15 @@ public:
   VideoData(PRInt64 aOffset,
             PRInt64 aTime,
             PRInt64 aEndTime,
-            PRBool aKeyframe,
-            PRInt64 aTimecode)
-    : mOffset(aOffset),
+            bool aKeyframe,
+            PRInt64 aTimecode,
+            nsIntSize aDisplay)
+    : mDisplay(aDisplay),
+      mOffset(aOffset),
       mTime(aTime),
       mEndTime(aEndTime),
       mTimecode(aTimecode),
-      mDuplicate(PR_FALSE),
+      mDuplicate(false),
       mKeyframe(aKeyframe)
   {
     MOZ_COUNT_CTOR(VideoData);
@@ -361,29 +338,29 @@ template <class T> class MediaQueue : private nsDeque {
       T* x = PopFront();
       delete x;
     }
-    mEndOfStream = PR_FALSE;
+    mEndOfStream = false;
   }
 
-  PRBool AtEndOfStream() {
+  bool AtEndOfStream() {
     ReentrantMonitorAutoEnter mon(mReentrantMonitor);
-    return GetSize() == 0 && mEndOfStream;    
+    return GetSize() == 0 && mEndOfStream;
   }
 
-  // Returns PR_TRUE if the media queue has had it last sample added to it.
+  // Returns true if the media queue has had it last item added to it.
   // This happens when the media stream has been completely decoded. Note this
   // does not mean that the corresponding stream has finished playback.
-  PRBool IsFinished() {
+  bool IsFinished() {
     ReentrantMonitorAutoEnter mon(mReentrantMonitor);
-    return mEndOfStream;    
+    return mEndOfStream;
   }
 
-  // Informs the media queue that it won't be receiving any more samples.
+  // Informs the media queue that it won't be receiving any more items.
   void Finish() {
     ReentrantMonitorAutoEnter mon(mReentrantMonitor);
-    mEndOfStream = PR_TRUE;    
+    mEndOfStream = true;
   }
 
-  // Returns the approximate number of microseconds of samples in the queue.
+  // Returns the approximate number of microseconds of items in the queue.
   PRInt64 Duration() {
     ReentrantMonitorAutoEnter mon(mReentrantMonitor);
     if (GetSize() < 2) {
@@ -394,20 +371,23 @@ template <class T> class MediaQueue : private nsDeque {
     return last->mTime - first->mTime;
   }
 
-private:
-  ReentrantMonitor mReentrantMonitor;
+  void LockedForEach(nsDequeFunctor& aFunctor) const {
+    ReentrantMonitorAutoEnter mon(mReentrantMonitor);
+    ForEach(aFunctor);
+  }
 
-  // PR_TRUE when we've decoded the last frame of data in the
-  // bitstream for which we're queueing sample-data.
-  PRBool mEndOfStream;
+private:
+  mutable ReentrantMonitor mReentrantMonitor;
+
+  // True when we've decoded the last frame of data in the
+  // bitstream for which we're queueing frame data.
+  bool mEndOfStream;
 };
 
-// Encapsulates the decoding and reading of media data. Reading can be done
-// on either the state machine thread (when loading and seeking) or on
-// the reader thread (when it's reading and decoding). The reader encapsulates
-// the reading state and maintains it's own monitor to ensure thread safety
-// and correctness. Never hold the nsBuiltinDecoder's monitor when calling into
-// this class.
+// Encapsulates the decoding and reading of media data. Reading can only be
+// done on the decode thread thread. Never hold the decoder monitor when
+// calling into this class. Unless otherwise specified, methods and fields of
+// this class can only be accessed on the decode thread.
 class nsBuiltinDecoderReader : public nsRunnable {
 public:
   typedef mozilla::ReentrantMonitor ReentrantMonitor;
@@ -424,28 +404,28 @@ public:
   virtual nsresult ResetDecode();
 
   // Decodes an unspecified amount of audio data, enqueuing the audio data
-  // in mAudioQueue. Returns PR_TRUE when there's more audio to decode,
-  // PR_FALSE if the audio is finished, end of file has been reached,
+  // in mAudioQueue. Returns true when there's more audio to decode,
+  // false if the audio is finished, end of file has been reached,
   // or an un-recoverable read error has occured.
-  virtual PRBool DecodeAudioData() = 0;
+  virtual bool DecodeAudioData() = 0;
 
   // Reads and decodes one video frame. Packets with a timestamp less
   // than aTimeThreshold will be decoded (unless they're not keyframes
-  // and aKeyframeSkip is PR_TRUE), but will not be added to the queue.
-  virtual PRBool DecodeVideoFrame(PRBool &aKeyframeSkip,
+  // and aKeyframeSkip is true), but will not be added to the queue.
+  virtual bool DecodeVideoFrame(bool &aKeyframeSkip,
                                   PRInt64 aTimeThreshold) = 0;
 
-  virtual PRBool HasAudio() = 0;
-  virtual PRBool HasVideo() = 0;
+  virtual bool HasAudio() = 0;
+  virtual bool HasVideo() = 0;
 
   // Read header data for all bitstreams in the file. Fills mInfo with
   // the data required to present the media. Returns NS_OK on success,
   // or NS_ERROR_FAILURE on failure.
   virtual nsresult ReadMetadata(nsVideoInfo* aInfo) = 0;
 
-  // Stores the presentation time of the first frame/sample we'd be
-  // able to play if we started playback at the current position. Returns
-  // the first video sample, if we have video.
+  // Stores the presentation time of the first frame we'd be able to play if
+  // we started playback at the current position. Returns the first video
+  // frame, if we have video.
   VideoData* FindStartTime(PRInt64& aOutStartTime);
 
   // Moves the decode head to aTime microseconds. aStartTime and aEndTime
@@ -456,18 +436,65 @@ public:
                         PRInt64 aEndTime,
                         PRInt64 aCurrentTime) = 0;
 
-  // Queue of audio samples. This queue is threadsafe.
-  MediaQueue<SoundData> mAudioQueue;
+  // Queue of audio frames. This queue is threadsafe, and is accessed from
+  // the audio, decoder, state machine, and main threads.
+  MediaQueue<AudioData> mAudioQueue;
 
-  // Queue of video samples. This queue is threadsafe.
+  // Queue of video frames. This queue is threadsafe, and is accessed from
+  // the decoder, state machine, and main threads.
   MediaQueue<VideoData> mVideoQueue;
 
   // Populates aBuffered with the time ranges which are buffered. aStartTime
-  // must be the presentation time of the first sample/frame in the media, e.g.
+  // must be the presentation time of the first frame in the media, e.g.
   // the media time corresponding to playback time/position 0. This function
   // should only be called on the main thread.
   virtual nsresult GetBuffered(nsTimeRanges* aBuffered,
                                PRInt64 aStartTime) = 0;
+
+  class VideoQueueMemoryFunctor : public nsDequeFunctor {
+  public:
+    VideoQueueMemoryFunctor() : mResult(0) {}
+
+    virtual void* operator()(void* anObject) {
+      const VideoData* v = static_cast<const VideoData*>(anObject);
+      if (!v->mImage) {
+        return nsnull;
+      }
+      NS_ASSERTION(v->mImage->GetFormat() == mozilla::layers::Image::PLANAR_YCBCR,
+                   "Wrong format?");
+      mozilla::layers::PlanarYCbCrImage* vi = static_cast<mozilla::layers::PlanarYCbCrImage*>(v->mImage.get());
+
+      mResult += vi->GetDataSize();
+      return nsnull;
+    }
+
+    PRInt64 mResult;
+  };
+
+  PRInt64 VideoQueueMemoryInUse() {
+    VideoQueueMemoryFunctor functor;
+    mVideoQueue.LockedForEach(functor);
+    return functor.mResult;
+  }
+
+  class AudioQueueMemoryFunctor : public nsDequeFunctor {
+  public:
+    AudioQueueMemoryFunctor() : mResult(0) {}
+
+    virtual void* operator()(void* anObject) {
+      const AudioData* audioData = static_cast<const AudioData*>(anObject);
+      mResult += audioData->mFrames * audioData->mChannels * sizeof(AudioDataValue);
+      return nsnull;
+    }
+
+    PRInt64 mResult;
+  };
+
+  PRInt64 AudioQueueMemoryInUse() {
+    AudioQueueMemoryFunctor functor;
+    mAudioQueue.LockedForEach(functor);
+    return functor.mResult;
+  }
 
   // Only used by nsWebMReader for now, so stub here rather than in every
   // reader than inherits from nsBuiltinDecoderReader.
@@ -475,37 +502,31 @@ public:
 
 protected:
 
-  // Pumps the decode until we reach frames/samples required to play at
-  // time aTarget (usecs).
+  // Pumps the decode until we reach frames required to play at time aTarget
+  // (usecs).
   nsresult DecodeToTarget(PRInt64 aTarget);
 
   // Reader decode function. Matches DecodeVideoFrame() and
   // DecodeAudioData().
-  typedef PRBool (nsBuiltinDecoderReader::*DecodeFn)();
+  typedef bool (nsBuiltinDecoderReader::*DecodeFn)();
 
-  // Calls aDecodeFn on *this until aQueue has a sample, whereupon
-  // we return the first sample.
+  // Calls aDecodeFn on *this until aQueue has an item, whereupon
+  // we return the first item.
   template<class Data>
   Data* DecodeToFirstData(DecodeFn aDecodeFn,
                           MediaQueue<Data>& aQueue);
 
-  // Wrapper so that DecodeVideoFrame(PRBool&,PRInt64) can be called from
+  // Wrapper so that DecodeVideoFrame(bool&,PRInt64) can be called from
   // DecodeToFirstData().
-  PRBool DecodeVideoFrame() {
-    PRBool f = PR_FALSE;
+  bool DecodeVideoFrame() {
+    bool f = false;
     return DecodeVideoFrame(f, 0);
   }
 
-  // The lock which we hold whenever we read or decode. This ensures the thread
-  // safety of the reader and its data fields.
-  ReentrantMonitor mReentrantMonitor;
-
-  // Reference to the owning decoder object. Do not hold the
-  // reader's monitor when accessing this.
+  // Reference to the owning decoder object.
   nsBuiltinDecoder* mDecoder;
 
-  // Stores presentation info required for playback. The reader's monitor
-  // must be held when accessing this.
+  // Stores presentation info required for playback.
   nsVideoInfo mInfo;
 };
 

@@ -58,13 +58,14 @@ class nsXPTType;
 %}
 
 /* this is NOT intended to be scriptable */
-[uuid(215DBE04-94A7-11d2-BA58-00805F8A5DD7)]
+[uuid(7de126a2-ef4b-4e3b-a952-78ce4c133e38)]
 interface nsIInterfaceInfo : nsISupports
 {
     readonly attribute string   name;
     readonly attribute nsIIDPtr InterfaceIID;
 
-    PRBool isScriptable();
+    boolean isScriptable();
+    boolean isBuiltinClass();
 
     readonly attribute nsIInterfaceInfo parent;
 
@@ -121,14 +122,14 @@ interface nsIInterfaceInfo : nsISupports
     PRUint8 getInterfaceIsArgNumberForParam(in PRUint16 methodIndex, 
                                             [const] in nsXPTParamInfoPtr param);
 
-    PRBool isIID(in nsIIDPtr IID);
+    boolean isIID(in nsIIDPtr IID);
 
     void   getNameShared([shared,retval] out string name);
     void   getIIDShared([shared,retval] out nsIIDPtrShared iid);
 
-    PRBool isFunction();
+    boolean isFunction();
 
-    PRBool hasAncestor(in nsIIDPtr iid);
+    boolean hasAncestor(in nsIIDPtr iid);
 
     [notxpcom] nsresult getIIDForParamNoAlloc(in PRUint16 methodIndex, 
                                               [const] in nsXPTParamInfoPtr param,

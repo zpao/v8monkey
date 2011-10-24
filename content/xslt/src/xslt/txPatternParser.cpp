@@ -38,7 +38,7 @@
 
 #include "txPatternParser.h"
 #include "txExprLexer.h"
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txError.h"
 #include "txStringUtils.h"
 #include "txXSLTPatterns.h"
@@ -166,10 +166,10 @@ nsresult txPatternParser::createLocPathPattern(txExprLexer& aLexer,
             {
                 nsCOMPtr<nsIAtom> nameAtom =
                     do_GetAtom(aLexer.nextToken()->Value());
-                if (nameAtom == txXPathAtoms::id) {
+                if (nameAtom == nsGkAtoms::id) {
                     rv = createIdPattern(aLexer, stepPattern);
                 }
-                else if (nameAtom == txXSLTAtoms::key) {
+                else if (nameAtom == nsGkAtoms::key) {
                     rv = createKeyPattern(aLexer, aContext, stepPattern);
                 }
                 if (NS_FAILED(rv))
@@ -207,7 +207,7 @@ nsresult txPatternParser::createLocPathPattern(txExprLexer& aLexer,
         }
 
 #ifdef TX_TO_STRING
-        root->setSerialize(PR_FALSE);
+        root->setSerialize(false);
 #endif
 
         rv = pathPattern->addStep(root, isChild);
@@ -302,10 +302,10 @@ nsresult txPatternParser::createStepPattern(txExprLexer& aLexer,
     MBool isAttr = MB_FALSE;
     Token* tok = aLexer.peek();
     if (tok->mType == Token::AXIS_IDENTIFIER) {
-        if (TX_StringEqualsAtom(tok->Value(), txXPathAtoms::attribute)) {
+        if (TX_StringEqualsAtom(tok->Value(), nsGkAtoms::attribute)) {
             isAttr = MB_TRUE;
         }
-        else if (!TX_StringEqualsAtom(tok->Value(), txXPathAtoms::child)) {
+        else if (!TX_StringEqualsAtom(tok->Value(), nsGkAtoms::child)) {
             // all done already for CHILD_AXIS, for all others
             // XXX report unexpected axis error
             return NS_ERROR_XPATH_PARSE_FAILURE;
@@ -324,7 +324,7 @@ nsresult txPatternParser::createStepPattern(txExprLexer& aLexer,
         nsCOMPtr<nsIAtom> prefix, lName;
         PRInt32 nspace;
         rv = resolveQName(tok->Value(), getter_AddRefs(prefix), aContext,
-                          getter_AddRefs(lName), nspace, PR_TRUE);
+                          getter_AddRefs(lName), nspace, true);
         if (NS_FAILED(rv)) {
             // XXX error report namespace resolve failed
             return rv;

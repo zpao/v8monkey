@@ -57,10 +57,9 @@
 #include "nsXULPopupManager.h"
 #include "nsEventStateManager.h"
 #include "nsIScriptContext.h"
-#include "nsIDOMWindowInternal.h"
+#include "nsIDOMWindow.h"
 #include "nsIDOMXULDocument.h"
 #include "nsIDocument.h"
-#include "nsIDOMNSUIEvent.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIDOMNSEvent.h"
 #include "nsServiceManagerUtils.h"
@@ -70,6 +69,8 @@
 #include "nsFrameManager.h"
 #include "nsHTMLReflowState.h"
 #include "nsIObjectLoadingContent.h"
+#include "mozilla/Preferences.h"
+#include "mozilla/dom/Element.h"
 
 // for event firing in context menus
 #include "nsPresContext.h"
@@ -78,15 +79,16 @@
 #include "nsPIDOMWindow.h"
 #include "nsIViewManager.h"
 #include "nsDOMError.h"
-#include "nsIMenuFrame.h"
+
+using namespace mozilla;
 
 // on win32 and os/2, context menus come up on mouse up. On other platforms,
 // they appear on mouse down. Certain bits of code care about this difference.
-#if !defined(XP_WIN) && !defined(XP_OS2)
+#if defined(XP_WIN) || defined(XP_OS2)
 #define NS_CONTEXT_MENU_IS_MOUSEUP 1
 #endif
 
-nsXULPopupListener::nsXULPopupListener(nsIDOMElement *aElement, PRBool aIsContext)
+nsXULPopupListener::nsXULPopupListener(nsIDOMElement *aElement, bool aIsContext)
   : mElement(aElement), mPopupContent(nsnull), mIsContext(aIsContext)
 {
 }
@@ -101,48 +103,34 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsXULPopupListener)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsXULPopupListener)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsXULPopupListener)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMMouseListener)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMContextMenuListener)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsIDOMEventListener, nsIDOMMouseListener)
+  NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
 ////////////////////////////////////////////////////////////////
-// nsIDOMMouseListener
+// nsIDOMEventListener
 
 nsresult
-nsXULPopupListener::MouseDown(nsIDOMEvent* aMouseEvent)
+nsXULPopupListener::HandleEvent(nsIDOMEvent* aEvent)
 {
-  if(!mIsContext)
-    return PreLaunchPopup(aMouseEvent);
-  else
+  nsAutoString eventType;
+  aEvent->GetType(eventType);
+
+  if(!((eventType.EqualsLiteral("mousedown") && !mIsContext) ||
+       (eventType.EqualsLiteral("contextmenu") && mIsContext)))
     return NS_OK;
-}
 
-nsresult
-nsXULPopupListener::ContextMenu(nsIDOMEvent* aMouseEvent)
-{
-  if(mIsContext)
-    return PreLaunchPopup(aMouseEvent);
-  else 
-    return NS_OK;
-}
-
-nsresult
-nsXULPopupListener::PreLaunchPopup(nsIDOMEvent* aMouseEvent)
-{
   PRUint16 button;
 
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent;
-  mouseEvent = do_QueryInterface(aMouseEvent);
+  nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aEvent);
   if (!mouseEvent) {
     //non-ui event passed in.  bad things.
     return NS_OK;
   }
 
   // check if someone has attempted to prevent this action.
-  nsCOMPtr<nsIDOMNSUIEvent> nsUIEvent;
-  nsUIEvent = do_QueryInterface(mouseEvent);
-  if (!nsUIEvent) {
+  nsCOMPtr<nsIDOMNSEvent> domNSEvent = do_QueryInterface(mouseEvent);
+  if (!domNSEvent) {
     return NS_OK;
   }
 
@@ -169,13 +157,13 @@ nsXULPopupListener::PreLaunchPopup(nsIDOMEvent* aMouseEvent)
     }
   }
 
-  PRBool preventDefault;
-  nsUIEvent->GetPreventDefault(&preventDefault);
+  bool preventDefault;
+  domNSEvent->GetPreventDefault(&preventDefault);
   if (preventDefault && targetNode && mIsContext) {
     // Someone called preventDefault on a context menu.
     // Let's make sure they are allowed to do so.
-    PRBool eventEnabled =
-      nsContentUtils::GetBoolPref("dom.event.contextmenu.enabled", PR_TRUE);
+    bool eventEnabled =
+      Preferences::GetBool("dom.event.contextmenu.enabled", true);
     if (!eventEnabled) {
       // If the target node is for plug-in, we should not open XUL context
       // menu on windowless plug-ins.
@@ -197,7 +185,7 @@ nsXULPopupListener::PreLaunchPopup(nsIDOMEvent* aMouseEvent)
         if (node->NodePrincipal() != system) {
           // This isn't chrome.  Cancel the preventDefault() and
           // let the event go forth.
-          preventDefault = PR_FALSE;
+          preventDefault = false;
         }
       }
     }
@@ -220,7 +208,7 @@ nsXULPopupListener::PreLaunchPopup(nsIDOMEvent* aMouseEvent)
       return NS_OK;
   }
 
-  nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(aMouseEvent));
+  nsCOMPtr<nsIDOMNSEvent> nsevent = do_QueryInterface(aEvent);
 
   if (mIsContext) {
 #ifndef NS_CONTEXT_MENU_IS_MOUSEUP
@@ -237,9 +225,9 @@ nsXULPopupListener::PreLaunchPopup(nsIDOMEvent* aMouseEvent)
   }
 
   // Open the popup and cancel the default handling of the event.
-  LaunchPopup(aMouseEvent, targetContent);
-  aMouseEvent->StopPropagation();
-  aMouseEvent->PreventDefault();
+  LaunchPopup(aEvent, targetContent);
+  aEvent->StopPropagation();
+  aEvent->PreventDefault();
 
   return NS_OK;
 }
@@ -269,7 +257,7 @@ nsXULPopupListener::FireFocusOnTargetContent(nsIDOMNode* aTargetNode)
     if (!targetFrame) return NS_ERROR_FAILURE;
 
     const nsStyleUserInterface* ui = targetFrame->GetStyleUserInterface();
-    PRBool suppressBlur = (ui->mUserFocus == NS_STYLE_USER_FOCUS_IGNORE);
+    bool suppressBlur = (ui->mUserFocus == NS_STYLE_USER_FOCUS_IGNORE);
 
     nsCOMPtr<nsIDOMElement> element;
     nsCOMPtr<nsIContent> newFocus = do_QueryInterface(content);
@@ -278,7 +266,7 @@ nsXULPopupListener::FireFocusOnTargetContent(nsIDOMNode* aTargetNode)
     // Look for the nearest enclosing focusable frame.
     while (currFrame) {
         PRInt32 tabIndexUnused;
-        if (currFrame->IsFocusable(&tabIndexUnused, PR_TRUE)) {
+        if (currFrame->IsFocusable(&tabIndexUnused, true)) {
           newFocus = currFrame->GetContent();
           nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(newFocus));
           if (domElement) {
@@ -323,26 +311,24 @@ nsXULPopupListener::ClosePopup()
     // fire events during destruction.  
     nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
     if (pm)
-      pm->HidePopup(mPopupContent, PR_FALSE, PR_TRUE, PR_TRUE);
+      pm->HidePopup(mPopupContent, false, true, true);
     mPopupContent = nsnull;  // release the popup
   }
 } // ClosePopup
 
-static void
-GetImmediateChild(nsIContent* aContent, nsIAtom *aTag, nsIContent** aResult) 
+static already_AddRefed<nsIContent>
+GetImmediateChild(nsIContent* aContent, nsIAtom *aTag) 
 {
-  *aResult = nsnull;
-  PRInt32 childCount = aContent->GetChildCount();
-  for (PRInt32 i = 0; i < childCount; i++) {
-    nsIContent *child = aContent->GetChildAt(i);
+  for (nsIContent* child = aContent->GetFirstChild();
+       child;
+       child = child->GetNextSibling()) {
     if (child->Tag() == aTag) {
-      *aResult = child;
-      NS_ADDREF(*aResult);
-      return;
+      NS_ADDREF(child);
+      return child;
     }
   }
 
-  return;
+  return nsnull;
 }
 
 //
@@ -396,9 +382,7 @@ nsXULPopupListener::LaunchPopup(nsIDOMEvent* aEvent, nsIContent* aTargetContent)
   nsCOMPtr<nsIDOMElement> popupElement;
 
   if (identifier.EqualsLiteral("_child")) {
-    nsCOMPtr<nsIContent> popup;
-
-    GetImmediateChild(content, nsGkAtoms::menupopup, getter_AddRefs(popup));
+    nsCOMPtr<nsIContent> popup = GetImmediateChild(content, nsGkAtoms::menupopup);
     if (popup)
       popupElement = do_QueryInterface(popup);
     else {
@@ -458,7 +442,7 @@ nsXULPopupListener::LaunchPopup(nsIDOMEvent* aEvent, nsIContent* aTargetContent)
        (mPopupContent->HasAttr(kNameSpaceID_None, nsGkAtoms::popupanchor) &&
         mPopupContent->HasAttr(kNameSpaceID_None, nsGkAtoms::popupalign)))) {
     pm->ShowPopup(mPopupContent, content, EmptyString(), 0, 0,
-                  PR_FALSE, PR_TRUE, PR_FALSE, aEvent);
+                  false, true, false, aEvent);
   }
   else {
     PRInt32 xPos = 0, yPos = 0;
@@ -470,18 +454,4 @@ nsXULPopupListener::LaunchPopup(nsIDOMEvent* aEvent, nsIContent* aTargetContent)
   }
 
   return NS_OK;
-}
-
-////////////////////////////////////////////////////////////////
-nsresult
-NS_NewXULPopupListener(nsIDOMElement* aElement, PRBool aIsContext,
-                       nsIDOMEventListener** aListener)
-{
-    nsXULPopupListener* pl = new nsXULPopupListener(aElement, aIsContext);
-    if (!pl)
-      return NS_ERROR_OUT_OF_MEMORY;
-
-    *aListener = static_cast<nsIDOMMouseListener *>(pl);
-    NS_ADDREF(*aListener);
-    return NS_OK;
 }

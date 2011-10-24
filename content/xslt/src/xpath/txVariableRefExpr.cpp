@@ -39,7 +39,7 @@
 #include "txExpr.h"
 #include "nsIAtom.h"
 #include "txNodeSet.h"
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txIXPathContext.h"
 
   //-------------------/
@@ -54,7 +54,7 @@ VariableRefExpr::VariableRefExpr(nsIAtom* aPrefix, nsIAtom* aLocalName,
     : mPrefix(aPrefix), mLocalName(aLocalName), mNamespace(aNSID)
 {
     NS_ASSERTION(mLocalName, "VariableRefExpr without local name?");
-    if (mPrefix == txXMLAtoms::_empty)
+    if (mPrefix == nsGkAtoms::_empty)
         mPrefix = 0;
 }
 
@@ -78,7 +78,7 @@ VariableRefExpr::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
 
 TX_IMPL_EXPR_STUBS_0(VariableRefExpr, ANY_RESULT)
 
-PRBool
+bool
 VariableRefExpr::isSensitiveTo(ContextSensitivity aContext)
 {
     return !!(aContext & VARIABLES_CONTEXT);

@@ -49,7 +49,7 @@ interface nsIJumpListBuilder : nsISupports
    *
    * Jump lists are built and then applied. Modifying an applied jump list is not
    * permitted. Callers should begin the creation of a new jump list using
-   * initListBuild, add sub lists using addListBuild, then commit the jump list
+   * initListBuild, add sub lists using addListToBuild, then commit the jump list
    * using commitListBuild. Lists are built in real-time during the sequence of
    * build calls, make sure to check for errors on each individual step.
    *
@@ -62,11 +62,11 @@ interface nsIJumpListBuilder : nsISupports
    * Users may remove items from jump lists after they are commited. The system
    * tracks removed items between commits. A list of these items is returned by
    * a call to initListBuild. nsIJumpListBuilder does not filter entries added that
-   * have been removed since the last commit. To prevent repeatedly adding entires
+   * have been removed since the last commit. To prevent repeatedly adding entries
    * users have removed, applications are encoraged to track removed items 
    * internally.
    *
-   * Each list is made up of an array of nsIWinJumpListItems representing items
+   * Each list is made up of an array of nsIJumpListItem representing items
    * such as shortcuts, links, and separators. See nsIJumpListItem for information
    * on adding additional jump list types.
    */

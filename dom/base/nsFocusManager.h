@@ -49,6 +49,13 @@
 
 class nsIDocShellTreeItem;
 class nsPIDOMWindow;
+
+namespace mozilla {
+namespace dom {
+  class TabParent;
+}
+}
+
 struct nsDelayedBlurOrFocusEvent;
 
 /**
@@ -108,7 +115,7 @@ public:
    *
    * aWindow and aFocusedWindow must both be non-null.
    */
-  static nsIContent* GetFocusedDescendant(nsPIDOMWindow* aWindow, PRBool aDeep,
+  static nsIContent* GetFocusedDescendant(nsPIDOMWindow* aWindow, bool aDeep,
                                           nsPIDOMWindow** aFocusedWindow);
 
   /**
@@ -130,7 +137,7 @@ public:
    */
   static PRUint32 GetFocusMoveReason(PRUint32 aFlags);
 
-  static PRBool sMouseFocusesFormControl;
+  static bool sMouseFocusesFormControl;
 
 protected:
 
@@ -155,13 +162,13 @@ protected:
    * to those that update the focus in an inactive window for instance).
    */
   void SetFocusInner(nsIContent* aNewContent, PRInt32 aFlags,
-                     PRBool aFocusChanged, PRBool aAdjustWidget);
+                     bool aFocusChanged, bool aAdjustWidget);
 
   /**
    * Returns true if aPossibleAncestor is the same as aWindow or an
    * ancestor of aWindow.
    */
-  PRBool IsSameOrAncestor(nsPIDOMWindow* aPossibleAncestor,
+  bool IsSameOrAncestor(nsPIDOMWindow* aPossibleAncestor,
                           nsPIDOMWindow* aWindow);
 
   /**
@@ -177,12 +184,12 @@ protected:
    * the active top-level window and navigate down the currently focused
    * elements for each frame in the tree to get to aNewWindow.
    */
-  void AdjustWindowFocus(nsPIDOMWindow* aNewWindow, PRBool aCheckPermission);
+  void AdjustWindowFocus(nsPIDOMWindow* aNewWindow, bool aCheckPermission);
 
   /**
    * Returns true if aWindow is visible.
    */
-  PRBool IsWindowVisible(nsPIDOMWindow* aWindow);
+  bool IsWindowVisible(nsPIDOMWindow* aWindow);
 
   /**
    * Returns true if aContent is a root element and not focusable.
@@ -191,7 +198,7 @@ protected:
    *
    * @param aContent must not be null and must be in a document.
    */
-  PRBool IsNonFocusableRoot(nsIContent* aContent);
+  bool IsNonFocusableRoot(nsIContent* aContent);
 
   /**
    * Checks and returns aContent if it may be focused, another content node if
@@ -228,10 +235,10 @@ protected:
    *
    * If aAdjustWidget is false, don't change the widget focus state.
    */
-  PRBool Blur(nsPIDOMWindow* aWindowToClear,
+  bool Blur(nsPIDOMWindow* aWindowToClear,
               nsPIDOMWindow* aAncestorWindowToFocus,
-              PRBool aIsLeavingDocument,
-              PRBool aAdjustWidget);
+              bool aIsLeavingDocument,
+              bool aAdjustWidget);
 
   /**
    * Focus an element in the active window and child frame.
@@ -262,10 +269,10 @@ protected:
   void Focus(nsPIDOMWindow* aWindow,
              nsIContent* aContent,
              PRUint32 aFlags,
-             PRBool aIsNewDocument,
-             PRBool aFocusChanged,
-             PRBool aWindowRaised,
-             PRBool aAdjustWidget);
+             bool aIsNewDocument,
+             bool aFocusChanged,
+             bool aWindowRaised,
+             bool aAdjustWidget);
 
   /**
    * Fires a focus or blur event at aTarget.
@@ -280,8 +287,8 @@ protected:
                             nsIDocument* aDocument,
                             nsISupports* aTarget,
                             PRUint32 aFocusMethod,
-                            PRBool aWindowRaised,
-                            PRBool aIsRefocus = PR_FALSE);
+                            bool aWindowRaised,
+                            bool aIsRefocus = false);
 
   /**
    * Scrolls aContent into view unless the FLAG_NOSCROLL flag is set.
@@ -303,8 +310,8 @@ protected:
    * aUpdateVisibility should be true to update whether the caret is
    * visible or not.
    */
-  void UpdateCaret(PRBool aMoveCaretToFocus,
-                   PRBool aUpdateVisibility,
+  void UpdateCaret(bool aMoveCaretToFocus,
+                   bool aUpdateVisibility,
                    nsIContent* aContent);
 
   /**
@@ -316,7 +323,7 @@ protected:
    * Makes the caret visible or not, depending on aVisible.
    */
   nsresult SetCaretVisible(nsIPresShell* aPresShell,
-                           PRBool aVisible,
+                           bool aVisible,
                            nsIContent* aContent);
 
 
@@ -378,9 +385,9 @@ protected:
                                   nsIContent* aRootContent,
                                   nsIContent* aOriginalStartContent,
                                   nsIContent* aStartContent,
-                                  PRBool aForward,
+                                  bool aForward,
                                   PRInt32 aCurrentTabIndex,
-                                  PRBool aIgnoreTabIndex,
+                                  bool aIgnoreTabIndex,
                                   nsIContent** aResultContent);
 
   /**
@@ -395,7 +402,7 @@ protected:
    *
    * aStartContent is the current image map area.
    */
-  nsIContent* GetNextTabbableMapArea(PRBool aForward,
+  nsIContent* GetNextTabbableMapArea(bool aForward,
                                      PRInt32 aCurrentTabIndex,
                                      nsIContent* aImageContent,
                                      nsIContent* aStartContent);
@@ -407,7 +414,7 @@ protected:
    */
   PRInt32 GetNextTabIndex(nsIContent* aParent,
                           PRInt32 aCurrentTabIndex,
-                          PRBool aForward);
+                          bool aForward);
 
   /**
    * Retrieves and returns the root node from aDocument to be focused. Will
@@ -421,8 +428,14 @@ protected:
    */
   nsIContent* GetRootForFocus(nsPIDOMWindow* aWindow,
                               nsIDocument* aDocument,
-                              PRBool aIsForDocNavigation,
-                              PRBool aCheckVisibility);
+                              bool aIsForDocNavigation,
+                              bool aCheckVisibility);
+
+  /**
+   * Get the TabParent associated with aContent if it is a remote browser,
+   * or null in all other cases.
+   */
+  mozilla::dom::TabParent* GetRemoteForContent(nsIContent* aContent);
 
   /**
    * Get the last docshell child of aItem and return it in aResult.
@@ -452,7 +465,7 @@ protected:
    * This method would be used for document navigation, which is typically
    * invoked by pressing F6.
    */
-  nsIContent* GetNextTabbableDocument(PRBool aForward);
+  nsIContent* GetNextTabbableDocument(bool aForward);
 
   /**
    * Retreives a focusable element within the current selection of aWindow.
@@ -466,6 +479,19 @@ protected:
                            nsIContent* aStartSelection,
                            nsIContent* aEndSelection,
                            nsIContent** aFocusedContent);
+
+private:
+  // Notify that the focus state of aContent has changed.  Note that
+  // we need to pass in whether the window should show a focus ring
+  // before the SetFocusedNode call on it happened when losing focus
+  // and after the SetFocusedNode call when gaining focus, which is
+  // why that information needs to be an explicit argument instead of
+  // just passing in the window and asking it whether it should show
+  // focus rings: in the losing focus case that information could be
+  // wrong..
+  static void NotifyFocusStateChange(nsIContent* aContent,
+                                     bool aWindowShouldShowFocusRing,
+                                     bool aGettingFocus);
 
   // the currently active and front-most top-most window
   nsCOMPtr<nsPIDOMWindow> mActiveWindow;

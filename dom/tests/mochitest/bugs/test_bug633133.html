@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633133
 -->
 <head>
   <title>Test for Bug 633133</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
@@ -29,7 +28,7 @@ var divCollection = document.getElementsByTagName('div');
 
 ok("foo" in divCollection, "'foo' should be in the div collection");
 ok("bar" in divCollection, "'bar' should be in the div collection");
-ok(!("" in divCollection), "empty string shouldn't be in the div collection");
+ok("" in divCollection, "empty string should be in the div collection");
 ok(!("foobar" in divCollection), "'foobar' shouldn't be in the div collection");
 
 var select = $('select');

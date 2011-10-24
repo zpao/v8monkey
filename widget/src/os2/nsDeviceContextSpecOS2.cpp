@@ -44,12 +44,9 @@
 #include "nsReadableUtils.h"
 #include "nsTArray.h"
 
-#include "nsIPrefService.h"
-#include "nsIPrefBranch.h"
 #include "prenv.h" /* for PR_GetEnv */
 #include "prtime.h"
 
-#include "nsPrintfCString.h"
 #include "nsIServiceManager.h"
 #include "nsUnicharUtils.h"
 #include "nsStringFwd.h"
@@ -63,6 +60,10 @@
 #include "gfxPDFSurface.h"
 #include "gfxOS2Surface.h"
 #include "nsIPrintSettingsService.h"
+
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 PRINTDLG nsDeviceContextSpecOS2::PrnDlg;
 
@@ -80,7 +81,7 @@ public:
   void      FreeGlobalPrinters();
   nsresult  InitializeGlobalPrinters();
 
-  PRBool    PrintersAreAllocated()       { return mGlobalPrinterList != nsnull; }
+  bool      PrintersAreAllocated()       { return mGlobalPrinterList != nsnull; }
   PRUint32  GetNumPrinters()             { return mGlobalNumPrinters; }
   nsString* GetStringAt(PRInt32 aInx)    { return &mGlobalPrinterList->ElementAt(aInx); }
   void      GetDefaultPrinterName(PRUnichar*& aDefaultPrinterName);
@@ -101,7 +102,7 @@ ULONG          GlobalPrinters::mGlobalNumPrinters = 0;
 //---------------
 
 nsDeviceContextSpecOS2::nsDeviceContextSpecOS2()
-  : mQueue(nsnull), mPrintDC(nsnull), mPrintingStarted(PR_FALSE)
+  : mQueue(nsnull), mPrintDC(nsnull), mPrintingStarted(false)
 {
 }
 
@@ -223,7 +224,7 @@ nsresult nsDeviceContextSpecOS2::SetPrintSettingsFromDevMode(nsIPrintSettings* a
 
 NS_IMETHODIMP nsDeviceContextSpecOS2::Init(nsIWidget *aWidget,
                                            nsIPrintSettings* aPS,
-                                           PRBool aIsPrintPreview)
+                                           bool aIsPrintPreview)
 {
   nsresult rv = NS_ERROR_FAILURE;
 
@@ -236,7 +237,7 @@ NS_IMETHODIMP nsDeviceContextSpecOS2::Init(nsIWidget *aWidget,
   }
  
   if (aPS) {
-    PRBool     tofile         = PR_FALSE;
+    bool       tofile         = false;
     PRInt32    copies         = 1;
     PRUnichar *printer        = nsnull;
     PRUnichar *printfile      = nsnull;
@@ -317,7 +318,7 @@ NS_IMETHODIMP nsDeviceContextSpecOS2 :: GetPath ( char **aPath )
   return NS_OK;
 }
 
-NS_IMETHODIMP nsDeviceContextSpecOS2 :: GetUserCancelled( PRBool &aCancel )     
+NS_IMETHODIMP nsDeviceContextSpecOS2 :: GetUserCancelled( bool &aCancel )     
 {
   aCancel = mPrData.cancel;
   return NS_OK;
@@ -409,7 +410,7 @@ NS_IMETHODIMP nsDeviceContextSpecOS2::GetSurfaceForPrinter(gfxASurface **surface
     if (printerDest == printToFile) {
       GetPath(&filename);
     }
-    mPrintingStarted = PR_TRUE;
+    mPrintingStarted = true;
     mPrintDC = PrnOpenDC(mQueue, "Mozilla", numCopies, printerDest, filename);
 
     double width, height;
@@ -502,7 +503,7 @@ NS_IMETHODIMP nsDeviceContextSpecOS2::BeginDocument(PRUnichar* aTitle,
   LONG lResult = DevEscape(mPrintDC, DEVESC_STARTDOC,
                            strlen(pszDocName) + 1, const_cast<BYTE*>(pszDocName),
                            (PLONG)NULL, (PBYTE)NULL);
-  mPrintingStarted = PR_TRUE;
+  mPrintingStarted = true;
   if (title) {
     nsMemory::Free(title);
   }
@@ -520,7 +521,7 @@ NS_IMETHODIMP nsDeviceContextSpecOS2::EndDocument()
     mPrintSettings->SetToFileName(NULL);
     nsCOMPtr<nsIPrintSettingsService> pss = do_GetService("@mozilla.org/gfx/printsettings-service;1");
     if (pss)
-      pss->SavePrintSettingsToPrefs(mPrintSettings, PR_TRUE, nsIPrintSettings::kInitSaveToFileName);
+      pss->SavePrintSettingsToPrefs(mPrintSettings, true, nsIPrintSettings::kInitSaveToFileName);
     return NS_OK;
   }
 
@@ -541,7 +542,7 @@ NS_IMETHODIMP nsDeviceContextSpecOS2::BeginPage()
 
   if (mPrintingStarted) {
     // we don't want an extra page break at the start of the document
-    mPrintingStarted = PR_FALSE;
+    mPrintingStarted = false;
     return NS_OK;
   }
   LONG lResult = DevEscape(mPrintDC, DEVESC_NEWFRAME, 0L, (PBYTE)NULL,
@@ -617,7 +618,7 @@ NS_IMETHODIMP nsPrinterEnumeratorOS2::InitPrintSettingsFromPrinter(const PRUnich
 
   // Free them, we won't need them for a while
   GlobalPrinters::GetInstance()->FreeGlobalPrinters();
-  aPrintSettings->SetIsInitializedFromPrinter(PR_TRUE);
+  aPrintSettings->SetIsInitializedFromPrinter(true);
   return NS_OK;
 }
 
@@ -657,9 +658,8 @@ nsresult GlobalPrinters::InitializeGlobalPrinters ()
   if (!mGlobalPrinterList) 
      return NS_ERROR_OUT_OF_MEMORY;
 
-  nsresult rv;
-  nsCOMPtr<nsIPrefBranch> pPrefs = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
-  BOOL prefFailed = NS_FAILED(rv); // don't return on failure, optional feature
+  // don't return on failure, optional feature
+  BOOL prefFailed = (Preferences::GetRootBranch() == nsnull);
 
   for (ULONG i = 0; i < mGlobalNumPrinters; i++) {
     nsXPIDLCString printer;
@@ -667,8 +667,8 @@ nsresult GlobalPrinters::InitializeGlobalPrinters ()
 
     nsAutoChar16Buffer printerName;
     PRInt32 printerNameLength;
-    rv = MultiByteToWideChar(0, printer, strlen(printer),
-                             printerName, printerNameLength);
+    nsresult rv = MultiByteToWideChar(0, printer, strlen(printer),
+                                      printerName, printerNameLength);
     mGlobalPrinterList->AppendElement(nsDependentString(printerName.Elements()));
 
     // store printer description in prefs for the print dialog
@@ -678,10 +678,10 @@ nsresult GlobalPrinters::InitializeGlobalPrinters ()
        printerDescription += " (";
        printerDescription += nsCAutoString(nsDeviceContextSpecOS2::PrnDlg.GetDriverType(i));
        printerDescription += ")";
-       pPrefs->SetCharPref(nsPrintfCString(256,
-                                           "print.printer_%s.printer_description",
-                                           printer.get()).get(),
-                           printerDescription.get());
+       nsCAutoString prefName("print.printer_");
+       prefName += printer;
+       prefName += ".printer_description";
+       Preferences::SetCString(prefName.get(), printerDescription);
     }
   } 
   return NS_OK;

@@ -4,7 +4,7 @@
 <!ENTITY aboutSupport.pageSubtitle "
   This page contains technical information that might be useful when you're
   trying to solve a problem. If you are looking for answers to common questions
-  about &brandShortName;, check out our <a id='supportLink'>support web site</a>.
+  about &brandShortName;, check out our <a id='supportLink'>support website</a>.
 ">
 
 <!ENTITY aboutSupport.extensionsTitle "Extensions">
@@ -20,6 +20,8 @@
 <!ENTITY aboutSupport.appBasicsEnabledPlugins "Enabled Plugins">
 <!ENTITY aboutSupport.appBasicsBuildConfig "Build Configuration">
 <!ENTITY aboutSupport.appBasicsUserAgent "User Agent">
+<!ENTITY aboutSupport.appBasicsCrashIDs "Crash Reports">
+<!ENTITY aboutSupport.appBasicsMemoryUse "Memory Use">
 
 <!ENTITY aboutSupport.show.label "Open Containing Folder">
 

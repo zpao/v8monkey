@@ -82,7 +82,7 @@ extern "C" {
     }GConfValue;
 
     typedef void * (*GConfClientGetDefaultType) (void);
-    typedef PRBool (*GConfClientGetBoolType) (void *client, const gchar *key,
+    typedef bool (*GConfClientGetBoolType) (void *client, const gchar *key,
                                               GError **err);
     typedef gchar* (*GConfClientGetStringType) (void *client, const gchar *key,
                                                 GError **err);
@@ -115,7 +115,7 @@ extern "C" {
 
     typedef const char* (*GConfValueGetStringType) (const GConfValue *value);
     typedef PRInt32 (*GConfValueGetIntType) (const GConfValue *value);
-    typedef PRBool (*GConfValueGetBoolType) (const GConfValue *value);
+    typedef bool (*GConfValueGetBoolType) (const GConfValue *value);
 
     
     static void gconf_key_listener (void* client, guint cnxn_id,
@@ -138,9 +138,9 @@ class GConfProxy
 public:
     GConfProxy(nsSystemPrefService* aSysPrefService);
     ~GConfProxy();
-    PRBool Init();
+    bool Init();
 
-    nsresult GetBoolPref(const char *aMozKey, PRBool *retval);
+    nsresult GetBoolPref(const char *aMozKey, bool *retval);
     nsresult GetCharPref(const char *aMozKey, char **retval);
     nsresult GetIntPref(const char *aMozKey, PRInt32 *retval);
 
@@ -160,7 +160,7 @@ public:
 private:
     void *mGConfClient;
     PRLibrary *mGConfLib;
-    PRBool mInitialized;
+    bool mInitialized;
     nsSystemPrefService *mSysPrefService;
 
     //listeners
@@ -206,24 +206,24 @@ private:
 
 struct SysPrefCallbackData {
     nsISupports *observer;
-    PRBool bIsWeakRef;
+    bool bIsWeakRef;
     PRUint32 prefAtom;
 };
 
-PRBool
+bool
 sysPrefDeleteObserver(void *aElement, void *aData) {
     SysPrefCallbackData *pElement =
         static_cast<SysPrefCallbackData *>(aElement);
     NS_RELEASE(pElement->observer);
     nsMemory::Free(pElement);
-    return PR_TRUE;
+    return true;
 }
 
 NS_IMPL_ISUPPORTS2(nsSystemPrefService, nsIPrefBranch, nsIPrefBranch2)
 
 /* public */
 nsSystemPrefService::nsSystemPrefService()
-    :mInitialized(PR_FALSE),
+    :mInitialized(false),
      mGConf(nsnull),
      mObservers(nsnull)
 {
@@ -231,10 +231,9 @@ nsSystemPrefService::nsSystemPrefService()
 
 nsSystemPrefService::~nsSystemPrefService()
 {
-    mInitialized = PR_FALSE;
+    mInitialized = false;
 
-    if (mGConf)
-        delete mGConf;
+    delete mGConf;
     if (mObservers) {
         (void)mObservers->EnumerateForwards(sysPrefDeleteObserver, nsnull);
         delete mObservers;
@@ -262,7 +261,7 @@ nsSystemPrefService::Init()
         }
     }
 
-    mInitialized = PR_TRUE;
+    mInitialized = true;
     return NS_OK;
 }
 
@@ -279,14 +278,14 @@ NS_IMETHODIMP nsSystemPrefService::GetPrefType(const char *aPrefName, PRInt32 *_
 }
 
 /* boolean getBoolPref (in string aPrefName); */
-NS_IMETHODIMP nsSystemPrefService::GetBoolPref(const char *aPrefName, PRBool *_retval)
+NS_IMETHODIMP nsSystemPrefService::GetBoolPref(const char *aPrefName, bool *_retval)
 {
     return mInitialized ?
         mGConf->GetBoolPref(aPrefName, _retval) : NS_ERROR_FAILURE;
 }
 
 /* void setBoolPref (in string aPrefName, in long aValue); */
-NS_IMETHODIMP nsSystemPrefService::SetBoolPref(const char *aPrefName, PRInt32 aValue)
+NS_IMETHODIMP nsSystemPrefService::SetBoolPref(const char *aPrefName, bool aValue)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -342,13 +341,13 @@ NS_IMETHODIMP nsSystemPrefService::LockPref(const char *aPrefName)
 }
 
 /* boolean prefHasUserValue (in string aPrefName); */
-NS_IMETHODIMP nsSystemPrefService::PrefHasUserValue(const char *aPrefName, PRBool *_retval)
+NS_IMETHODIMP nsSystemPrefService::PrefHasUserValue(const char *aPrefName, bool *_retval)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* boolean prefIsLocked (in string aPrefName); */
-NS_IMETHODIMP nsSystemPrefService::PrefIsLocked(const char *aPrefName, PRBool *_retval)
+NS_IMETHODIMP nsSystemPrefService::PrefIsLocked(const char *aPrefName, bool *_retval)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -378,7 +377,7 @@ NS_IMETHODIMP nsSystemPrefService::ResetBranch(const char *aStartingAt)
 }
 
 /* void addObserver (in string aDomain, in nsIObserver aObserver, in boolean aHoldWeak); */
-NS_IMETHODIMP nsSystemPrefService::AddObserver(const char *aDomain, nsIObserver *aObserver, PRBool aHoldWeak)
+NS_IMETHODIMP nsSystemPrefService::AddObserver(const char *aDomain, nsIObserver *aObserver, bool aHoldWeak)
 {
     nsresult rv;
 
@@ -587,16 +586,16 @@ static const PrefNamePair sPrefNameMapping[] = {
     {nsnull, nsnull},
 };
 
-PRBool
+bool
 gconfDeleteObserver(void *aElement, void *aData) {
     nsMemory::Free(aElement);
-    return PR_TRUE;
+    return true;
 }
 
 GConfProxy::GConfProxy(nsSystemPrefService *aSysPrefService):
     mGConfClient(nsnull),
     mGConfLib(nsnull),
-    mInitialized(PR_FALSE),
+    mInitialized(false),
     mSysPrefService(aSysPrefService),
     mObservers(nsnull)
 {
@@ -616,19 +615,19 @@ GConfProxy::~GConfProxy()
     //PR_UnloadLibrary(mGConfLib);
 }
 
-PRBool
+bool
 GConfProxy::Init()
 {
     SYSPREF_LOG(("GConfProxy:: Init GConfProxy\n"));
     if (!mSysPrefService)
-        return PR_FALSE;
+        return false;
     if (mInitialized)
-        return PR_TRUE;
+        return true;
 
     nsCOMPtr<nsIPrefBranch> pref = do_GetService(NS_PREFSERVICE_CONTRACTID); 
 
     if (!pref)
-        return PR_FALSE;
+        return false;
 
     nsXPIDLCString gconfLibName;
     nsresult rv;
@@ -650,7 +649,7 @@ GConfProxy::Init()
 
     if (!mGConfLib) {
         SYSPREF_LOG(("Fail to load GConf library\n"));
-        return PR_FALSE;
+        return false;
     }
 
     //check every func we need in the gconf library
@@ -676,18 +675,18 @@ GConfProxy::Init()
         SYSPREF_LOG(("Fail to Get default gconf client\n"));
         goto init_failed;
     }
-    mInitialized = PR_TRUE;
-    return PR_TRUE;
+    mInitialized = true;
+    return true;
 
  init_failed_unload:
     PR_UnloadLibrary(mGConfLib);
  init_failed:
     mGConfLib = nsnull;
-    return PR_FALSE;
+    return false;
 }
 
 nsresult
-GConfProxy::GetBoolPref(const char *aMozKey, PRBool *retval)
+GConfProxy::GetBoolPref(const char *aMozKey, bool *retval)
 {
     NS_ENSURE_TRUE(mInitialized, NS_ERROR_FAILURE);
     *retval = GConfClientGetBool(mGConfClient, MozKey2GConfKey(aMozKey), NULL);

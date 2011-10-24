@@ -73,6 +73,42 @@ namespace plugins {
 bool
 PluginProcessChild::Init()
 {
+#if defined(XP_MACOSX)
+    // Remove the trigger for "dyld interposing" that we added in
+    // GeckoChildProcessHost::PerformAsyncLaunchInternal(), in the host
+    // process just before we were launched.  Dyld interposing will still
+    // happen in our process (the plugin child process).  But we don't want
+    // it to happen in any processes that the plugin might launch from our
+    // process.
+    nsCString interpose(PR_GetEnv("DYLD_INSERT_LIBRARIES"));
+    if (!interpose.IsEmpty()) {
+        // If we added the path to libplugin_child_interpose.dylib to an
+        // existing DYLD_INSERT_LIBRARIES, we appended it to the end, after a
+        // ":" path seperator.
+        PRInt32 lastSeparatorPos = interpose.RFind(":");
+        PRInt32 lastTriggerPos = interpose.RFind("libplugin_child_interpose.dylib");
+        bool needsReset = false;
+        if (lastTriggerPos != -1) {
+            if (lastSeparatorPos == -1) {
+                interpose.Truncate();
+                needsReset = true;
+            } else if (lastTriggerPos > lastSeparatorPos) {
+                interpose.SetLength(lastSeparatorPos);
+                needsReset = true;
+            }
+        }
+        if (needsReset) {
+            nsCString setInterpose("DYLD_INSERT_LIBRARIES=");
+            if (!interpose.IsEmpty()) {
+                setInterpose.Append(interpose);
+            }
+            // Values passed to PR_SetEnv() must be seperately allocated.
+            char* setInterposePtr = strdup(PromiseFlatCString(setInterpose).get());
+            PR_SetEnv(setInterposePtr);
+        }
+    }
+#endif
+
 #ifdef XP_WIN
     // Drag-and-drop needs OleInitialize to be called, and Silverlight depends
     // on the host calling CoInitialize (which is called by OleInitialize).
@@ -110,6 +146,7 @@ PluginProcessChild::Init()
         protectCurrentDirectory = false;
     }
     if (protectCurrentDirectory) {
+        SanitizeEnvironmentVariables();
         NS_SetDllDirectory(L"");
     }
 
@@ -136,18 +173,6 @@ PluginProcessChild::CleanUp()
     ::OleUninitialize();
 #endif
     nsRegion::ShutdownStatic();
-}
-
-/* static */
-void
-PluginProcessChild::AppendNotesToCrashReport(const nsCString& aNotes)
-{
-    AssertPluginThread();
-
-    PluginProcessChild* p = PluginProcessChild::current();
-    if (p) {
-        p->mPlugin.SendAppendNotesToCrashReport(aNotes);
-    }
 }
 
 } // namespace plugins

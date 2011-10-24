@@ -37,11 +37,8 @@
 
 /* Implement shared vtbl methods. */
 
-#ifdef __GNUC__         /* Gnu Compiler. */
-
 #include "xptcprivate.h"
 #include "xptiprivate.h"
-#include "xptc_platforms_unixish_x86.h"
 #include "xptc_gcc_x86_unix.h"
 
 extern "C" {
@@ -101,43 +98,35 @@ PrepareAndDispatch(uint32 methodIndex, nsXPTCStubBase* self, PRUint32* args)
 }
 } // extern "C"
 
-// NOTE! See xptc_gcc_x86_unix.h for the reason this function exists.
-#if (__GNUC__ < 3 || (__GNUC__ == 3 && __GNUC_MINOR__ == 0))
-PRUint32
-xptc_PrepareAndDispatch_keeper (void)
-{
-    PRUint32 dummy1;
-    nsresult ATTRIBUTE_USED __attribute__ ((regparm (3))) (*dummy2)
-        (uint32, nsXPTCStubBase *, PRUint32*) = PrepareAndDispatch;
-// dummy2 references PrepareAndDispatch, now "use" it
-    __asm__ __volatile__ (
-        ""
-        : "=&a" (dummy1)
-        : "g"   (dummy2)
-    );
-    return dummy1 & 0xF0F00000;
-}
+#if !defined(XP_MACOSX)
+
+#define STUB_HEADER(a, b) ".hidden " SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase" #a "Stub" #b "Ev\n\t" \
+                          ".type   " SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase" #a "Stub" #b "Ev,@function\n"
+
+#define STUB_SIZE(a, b)  ".size        " SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase" #a "Stub" #b "Ev,.-" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase" #a "Stub" #b "Ev\n\t"
+
+#else
+
+#define STUB_HEADER(a, b)
+#define STUB_SIZE(a, b)
+
 #endif
 
-#if defined(__GXX_ABI_VERSION) && __GXX_ABI_VERSION >= 100 /* G++ V3 ABI */
 // gcc3 mangling tends to insert the length of the method name
 #define STUB_ENTRY(n) \
 asm(".text\n\t" \
     ".align	2\n\t" \
     ".if	" #n " < 10\n\t" \
     ".globl	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase5Stub" #n "Ev\n\t" \
-    ".hidden	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase5Stub" #n "Ev\n\t" \
-    ".type	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase5Stub" #n "Ev,@function\n" \
+    STUB_HEADER(5, n)                                                   \
     SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase5Stub" #n "Ev:\n\t" \
     ".elseif	" #n " < 100\n\t" \
     ".globl	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase6Stub" #n "Ev\n\t" \
-    ".hidden	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase6Stub" #n "Ev\n\t" \
-    ".type	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase6Stub" #n "Ev,@function\n" \
+    STUB_HEADER(6, n)                                                   \
     SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase6Stub" #n "Ev:\n\t" \
     ".elseif    " #n " < 1000\n\t" \
     ".globl     " SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase7Stub" #n "Ev\n\t" \
-    ".hidden    " SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase7Stub" #n "Ev\n\t" \
-    ".type      " SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase7Stub" #n "Ev,@function\n" \
+    STUB_HEADER(7, n)                                                   \
     SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase7Stub" #n "Ev:\n\t" \
     ".else\n\t" \
     ".err	\"stub number " #n " >= 1000 not yet supported\"\n\t" \
@@ -145,34 +134,27 @@ asm(".text\n\t" \
     "movl	$" #n ", %eax\n\t" \
     "jmp	" SYMBOL_UNDERSCORE "SharedStub\n\t" \
     ".if	" #n " < 10\n\t" \
-    ".size	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase5Stub" #n "Ev,.-" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase5Stub" #n "Ev\n\t" \
+    STUB_SIZE(5, n) \
     ".elseif	" #n " < 100\n\t" \
-    ".size	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase6Stub" #n "Ev,.-" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase6Stub" #n "Ev\n\t" \
+    STUB_SIZE(6, n) \
     ".else\n\t" \
-    ".size	" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase7Stub" #n "Ev,.-" SYMBOL_UNDERSCORE "_ZN14nsXPTCStubBase7Stub" #n "Ev\n\t" \
+    STUB_SIZE(7, n) \
     ".endif");
-#else
-#define STUB_ENTRY(n) \
-asm(".text\n\t" \
-    ".align	2\n\t" \
-    ".globl	" SYMBOL_UNDERSCORE "Stub" #n "__14nsXPTCStubBase\n\t" \
-    ".hidden	" SYMBOL_UNDERSCORE "Stub" #n "__14nsXPTCStubBase\n\t" \
-    ".type	" SYMBOL_UNDERSCORE "Stub" #n "__14nsXPTCStubBase,@function\n" \
-    SYMBOL_UNDERSCORE "Stub" #n "__14nsXPTCStubBase:\n\t" \
-    "movl	$" #n ", %eax\n\t" \
-    "jmp	" SYMBOL_UNDERSCORE "SharedStub\n\t" \
-    ".size	" SYMBOL_UNDERSCORE "Stub" #n "__14nsXPTCStubBase,.-" SYMBOL_UNDERSCORE "Stub" #n "__14nsXPTCStubBase");
-#endif
 
 // static nsresult SharedStub(PRUint32 methodIndex) __attribute__((regparm(1)))
 asm(".text\n\t"
     ".align	2\n\t"
+#if !defined(XP_MACOSX)
     ".type	" SYMBOL_UNDERSCORE "SharedStub,@function\n\t"
+#endif
     SYMBOL_UNDERSCORE "SharedStub:\n\t"
     "leal	0x08(%esp), %ecx\n\t"
     "movl	0x04(%esp), %edx\n\t"
     "jmp	" SYMBOL_UNDERSCORE "PrepareAndDispatch\n\t"
-    ".size	" SYMBOL_UNDERSCORE "SharedStub,.-" SYMBOL_UNDERSCORE "SharedStub");
+#if !defined(XP_MACOSX)
+    ".size	" SYMBOL_UNDERSCORE "SharedStub,.-" SYMBOL_UNDERSCORE "SharedStub"
+#endif
+);
 
 #define SENTINEL_ENTRY(n) \
 nsresult nsXPTCStubBase::Sentinel##n() \
@@ -187,7 +169,3 @@ void
 xptc_dummy()
 {
 }
-
-#else
-#error "can't find a compiler to use"
-#endif /* __GNUC__ */

@@ -20,7 +20,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *   Mats Palmgren <mats.palmgren@bredband.net>
+ *   Mats Palmgren <matspal@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -145,6 +145,15 @@ nsPlaceholderFrame::Reflow(nsPresContext*          aPresContext,
   aDesiredSize.width = 0;
   aDesiredSize.height = 0;
 
+  // Cache our line box.
+  mCachedLineBox = nsnull;
+  if (aReflowState.mLineLayout) {
+    nsLineList::iterator* line = aReflowState.mLineLayout->GetLine();
+    if (line) {
+      mCachedLineBox = line->get();
+    }
+  }
+
   aStatus = NS_FRAME_COMPLETE;
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowState, aDesiredSize);
   return NS_OK;
@@ -165,8 +174,8 @@ nsPlaceholderFrame::DestroyFrom(nsIFrame* aDestructRoot)
     if (shell->FrameManager() &&
         ((GetStateBits() & PLACEHOLDER_FOR_POPUP) ||
          !nsLayoutUtils::IsProperAncestorFrame(aDestructRoot, oof))) {
-      nsIAtom* listName = nsLayoutUtils::GetChildListNameFor(oof);
-      shell->FrameManager()->RemoveFrame(listName, oof);
+      ChildListID listId = nsLayoutUtils::GetChildListNameFor(oof);
+      shell->FrameManager()->RemoveFrame(listId, oof);
     }
     // else oof will be destroyed by its parent
   }
@@ -180,31 +189,26 @@ nsPlaceholderFrame::GetType() const
   return nsGkAtoms::placeholderFrame; 
 }
 
-/* virtual */ PRBool
+/* virtual */ bool
 nsPlaceholderFrame::CanContinueTextRun() const
 {
   if (!mOutOfFlowFrame) {
-    return PR_FALSE;
+    return false;
   }
   // first-letter frames can continue text runs, and placeholders for floated
   // first-letter frames can too
   return mOutOfFlowFrame->CanContinueTextRun();
 }
 
-NS_IMETHODIMP
-nsPlaceholderFrame::GetParentStyleContextFrame(nsPresContext* aPresContext,
-                                               nsIFrame**      aProviderFrame,
-                                               PRBool*         aIsChild)
+nsIFrame*
+nsPlaceholderFrame::GetParentStyleContextFrame()
 {
   NS_PRECONDITION(GetParent(), "How can we not have a parent here?");
-  *aIsChild = PR_FALSE;
 
   // Lie about our pseudo so we can step out of all anon boxes and
   // pseudo-elements.  The other option would be to reimplement the
   // {ib} split gunk here.
-  *aProviderFrame =
-    CorrectStyleParentFrame(GetParent(), nsGkAtoms::placeholderFrame);
-  return NS_OK;
+  return CorrectStyleParentFrame(GetParent(), nsGkAtoms::placeholderFrame);
 }
 
 

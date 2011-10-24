@@ -43,7 +43,7 @@
 #include "nsIDOMNavigator.h"
 #include "nsIDOMPluginArray.h"
 #include "nsIDOMPlugin.h"
-#include "nsDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsIMIMEService.h"
 #include "nsIMIMEInfo.h"
 #include "nsIFile.h"
@@ -52,7 +52,7 @@
 nsMimeTypeArray::nsMimeTypeArray(nsIDOMNavigator* navigator)
   : mNavigator(navigator),
     mPluginMimeTypeCount(0),
-    mInited(PR_FALSE)
+    mInited(false)
 {
 }
 
@@ -165,7 +165,7 @@ nsMimeTypeArray::GetNamedItem(const nsAString& aName, nsresult* aResult)
       nsHandlerInfoAction action = nsIHandlerInfo::saveToDisk;
       mimeInfo->GetPreferredAction(&action);
       if (action != nsIMIMEInfo::handleInternally) {
-        PRBool hasHelper = PR_FALSE;
+        bool hasHelper = false;
         mimeInfo->GetHasDefaultHandler(&hasHelper);
         if (!hasHelper) {
           nsCOMPtr<nsIHandlerApp> helper;
@@ -212,7 +212,7 @@ nsMimeTypeArray::NamedItem(const nsAString& aName, nsIDOMMimeType** aReturn)
 
 void  nsMimeTypeArray::Clear()
 {
-  mInited = PR_FALSE;
+  mInited = false;
   mMimeTypeArray.Clear();
   mPluginMimeTypeCount = 0;
 }
@@ -256,7 +256,7 @@ nsresult nsMimeTypeArray::GetMimeTypes()
         return NS_ERROR_OUT_OF_MEMORY;
 
       mPluginMimeTypeCount = pluginMimeTypeCount;
-      mInited = PR_TRUE;
+      mInited = true;
 
       PRUint32 k;
       for (k = 0; k < pluginCount; k++) {

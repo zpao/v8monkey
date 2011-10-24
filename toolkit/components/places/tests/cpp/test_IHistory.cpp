@@ -93,7 +93,7 @@ public:
     do_check_true(observerService);
     (void)observerService->AddObserver(this,
                                        "uri-visit-saved",
-                                       PR_FALSE);
+                                       false);
   }
 
   void WaitForNotification()
@@ -138,7 +138,7 @@ test_set_places_enabled()
     do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
   do_check_success(rv);
 
-  rv = prefBranch->SetBoolPref("places.history.enabled", PR_TRUE);
+  rv = prefBranch->SetBoolPref("places.history.enabled", true);
   do_check_success(rv);
 
   // Run the next test.
@@ -335,7 +335,7 @@ namespace test_observer_topic_dispatched_helpers {
       do_check_true(observerService);
       (void)observerService->AddObserver(this,
                                          URI_VISITED_RESOLUTION_TOPIC,
-                                         PR_FALSE);
+                                         false);
     }
 
     NS_IMETHOD Observe(nsISupports* aSubject,
@@ -348,7 +348,7 @@ namespace test_observer_topic_dispatched_helpers {
       // If this isn't for our URI, do not do anything.
       nsCOMPtr<nsIURI> notifiedURI(do_QueryInterface(aSubject));
       do_check_true(notifiedURI);
-      PRBool isOurURI;
+      bool isOurURI;
       nsresult rv = notifiedURI->Equals(mURI, &isOurURI);
       do_check_success(rv);
       if (!isOurURI) {
@@ -391,7 +391,7 @@ test_observer_topic_dispatched()
   // Create two URIs, making sure only one is in history.
   nsCOMPtr<nsIURI> visitedURI(new_test_uri());
   nsCOMPtr<nsIURI> notVisitedURI(new_test_uri());
-  PRBool urisEqual;
+  bool urisEqual;
   nsresult rv = visitedURI->Equals(notVisitedURI, &urisEqual);
   do_check_success(rv);
   do_check_false(urisEqual);
@@ -399,7 +399,8 @@ test_observer_topic_dispatched()
 
   // Need two Link objects as well - one for each URI.
   nsCOMPtr<Link> visitedLink(new mock_Link(expect_visit, false));
-  NS_ADDREF(visitedLink); // It will release itself when notified.
+  nsCOMPtr<Link> visitedLinkCopy = visitedLink;
+  visitedLinkCopy.forget(); // It will release itself when notified.
   nsCOMPtr<Link> notVisitedLink(new mock_Link(expect_no_visit));
 
   // Add the right observers for the URIs to check results.

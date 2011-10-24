@@ -42,10 +42,6 @@
 
 #include "prinrval.h"
 
-#include "nsServiceManagerUtils.h"
-#include "nsIPrefService.h"
-#include "nsIPrefBranch.h"
-
 #include "gfxContext.h"
 #include "gfxFont.h"
 #include "gfxPlatform.h"
@@ -163,7 +159,7 @@ main (int argc, char **argv) {
                            10.0,
                            NS_NewPermanentAtom(NS_LITERAL_STRING("en")),
                            0.0,
-                           PR_FALSE, PR_FALSE, PR_FALSE,
+                           false, false, false,
                            NS_LITERAL_STRING(""),
                            NS_LITERAL_STRING(""));
 

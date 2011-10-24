@@ -46,11 +46,13 @@ include $(DEPTH)/config/autoconf.mk
 include $(topsrcdir)/config/rules.mk
 
 _BROWSER_FILES = \
+	head.js \
 	browser_bug399606.js \
 	browser_visituri.js \
 	browser_visituri_nohistory.js \
 	browser_visituri_privatebrowsing.js \
 	browser_settitle.js \
+	browser_bug646422.js \
 	$(NULL)
 
 # These are files that need to be loaded via the HTTP proxy server

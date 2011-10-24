@@ -36,8 +36,9 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#include "nsSVGTransformList.h"
-#include "nsSVGAnimatedTransformList.h"
+#include "mozilla/Util.h"
+
+#include "DOMSVGAnimatedTransformList.h"
 #include "nsIDOMMutationEvent.h"
 #include "nsCOMPtr.h"
 #include "nsGkAtoms.h"
@@ -70,7 +71,7 @@ nsSVGElement::EnumInfo nsSVGPatternElement::sEnumInfo[2] =
 
 nsSVGElement::StringInfo nsSVGPatternElement::sStringInfo[1] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_XLink, PR_TRUE }
+  { &nsGkAtoms::href, kNameSpaceID_XLink, true }
 };
 
 NS_IMPL_NS_NEW_SVG_ELEMENT(Pattern)
@@ -97,41 +98,6 @@ NS_INTERFACE_MAP_END_INHERITING(nsSVGPatternElementBase)
 nsSVGPatternElement::nsSVGPatternElement(already_AddRefed<nsINodeInfo> aNodeInfo)
   : nsSVGPatternElementBase(aNodeInfo)
 {
-}
-
-nsresult
-nsSVGPatternElement::CreateTransformList()
-{
-  nsresult rv;
-
-  // DOM property: transform, #IMPLIED attrib: transform
-  nsCOMPtr<nsIDOMSVGTransformList> transformList;
-  rv = nsSVGTransformList::Create(getter_AddRefs(transformList));
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = NS_NewSVGAnimatedTransformList(getter_AddRefs(mPatternTransform),
-                                      transformList);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = AddMappedSVGValue(nsGkAtoms::patternTransform, mPatternTransform);
-  if (NS_FAILED(rv)) {
-    mPatternTransform = nsnull;
-    return rv;
-  }
-
-  return NS_OK;
-}
-
-nsresult
-nsSVGPatternElement::BeforeSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                   const nsAString* aValue, PRBool aNotify)
-{
-  if (aNamespaceID == kNameSpaceID_None &&
-      aName == nsGkAtoms::patternTransform &&
-      !mPatternTransform &&
-      NS_FAILED(CreateTransformList()))
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  return nsSVGPatternElementBase::BeforeSetAttr(aNamespaceID, aName,
-                                                aValue, aNotify);
 }
 
 //----------------------------------------------------------------------
@@ -174,11 +140,9 @@ NS_IMETHODIMP nsSVGPatternElement::GetPatternContentUnits(nsIDOMSVGAnimatedEnume
 /* readonly attribute nsIDOMSVGAnimatedTransformList patternTransform; */
 NS_IMETHODIMP nsSVGPatternElement::GetPatternTransform(nsIDOMSVGAnimatedTransformList * *aPatternTransform)
 {
-  if (!mPatternTransform && NS_FAILED(CreateTransformList()))
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  *aPatternTransform = mPatternTransform;
-  NS_IF_ADDREF(*aPatternTransform);
+  *aPatternTransform =
+    DOMSVGAnimatedTransformList::GetDOMWrapper(GetAnimatedTransformList(), this)
+    .get();
   return NS_OK;
 }
 
@@ -220,7 +184,7 @@ nsSVGPatternElement::GetHref(nsIDOMSVGAnimatedString * *aHref)
 //----------------------------------------------------------------------
 // nsIContent methods
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGPatternElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -234,37 +198,34 @@ nsSVGPatternElement::IsAttributeMapped(const nsIAtom* name) const
     sViewportsMap
   };
 
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGPatternElementBase::IsAttributeMapped(name);
 }
 
 //----------------------------------------------------------------------
 // nsSVGElement methods
 
-void
-nsSVGPatternElement::DidAnimateTransform()
+SVGAnimatedTransformList*
+nsSVGPatternElement::GetAnimatedTransformList()
 {
-  nsIFrame* frame = GetPrimaryFrame();
-  
-  if (frame) {
-    frame->AttributeChanged(kNameSpaceID_None,
-                            nsGkAtoms::patternTransform,
-                            nsIDOMMutationEvent::MODIFICATION);
+  if (!mPatternTransform) {
+    mPatternTransform = new SVGAnimatedTransformList();
   }
+  return mPatternTransform;
 }
 
 nsSVGElement::LengthAttributesInfo
 nsSVGPatternElement::GetLengthInfo()
 {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              NS_ARRAY_LENGTH(sLengthInfo));
+                              ArrayLength(sLengthInfo));
 }
 
 nsSVGElement::EnumAttributesInfo
 nsSVGPatternElement::GetEnumInfo()
 {
   return EnumAttributesInfo(mEnumAttributes, sEnumInfo,
-                            NS_ARRAY_LENGTH(sEnumInfo));
+                            ArrayLength(sEnumInfo));
 }
 
 nsSVGViewBox *
@@ -283,6 +244,6 @@ nsSVGElement::StringAttributesInfo
 nsSVGPatternElement::GetStringInfo()
 {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              NS_ARRAY_LENGTH(sStringInfo));
+                              ArrayLength(sStringInfo));
 }
 

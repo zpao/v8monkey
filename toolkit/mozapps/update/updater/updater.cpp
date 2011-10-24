@@ -1578,7 +1578,7 @@ LaunchWinPostProcess(const WCHAR *appExe)
   wcscat(cmdline, exearg);
 
   if (!_wcsnicmp(exeasync, L"false", 6) || !_wcsnicmp(exeasync, L"0", 2))
-    async = PR_FALSE;
+    async = false;
 
   // We want to launch the post update helper app to update the Windows
   // registry even if there is a failure with removing the uninstall.update
@@ -1734,6 +1734,10 @@ int NS_main(int argc, NS_tchar **argv)
   // Remove everything except close window from the context menu
   {
     HKEY hkApp;
+    RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\Applications",
+                    0, NULL, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, NULL,
+                    &hkApp, NULL);
+    RegCloseKey(hkApp);
     if (RegCreateKeyExW(HKEY_CURRENT_USER,
                         L"Software\\Classes\\Applications\\updater.exe",
                         0, NULL, REG_OPTION_VOLATILE, KEY_SET_VALUE, NULL,

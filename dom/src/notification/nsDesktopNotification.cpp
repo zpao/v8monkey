@@ -41,7 +41,9 @@
 
 #include "mozilla/dom/PBrowserChild.h"
 #include "TabChild.h"
+#include "mozilla/Preferences.h"
 
+using namespace mozilla;
 using namespace mozilla::dom;
 
 /* ------------------------------------------------------------------------ */
@@ -103,20 +105,21 @@ nsDOMDesktopNotification::nsDOMDesktopNotification(const nsAString & title,
   , mDescription(description)
   , mIconURL(iconURL)
   , mURI(uri)
-  , mAllow(PR_FALSE)
-  , mShowHasBeenCalled(PR_FALSE)
+  , mAllow(false)
+  , mShowHasBeenCalled(false)
 {
   mOwner = aWindow;
   mScriptContext = aScriptContext;
 
-  if (nsContentUtils::GetBoolPref("notification.disabled", PR_FALSE))
+  if (Preferences::GetBool("notification.disabled", false)) {
     return;
+  }
 
   // If we are in testing mode (running mochitests, for example)
   // and we are suppose to allow requests, then just post an allow event.
-  if (nsContentUtils::GetBoolPref("notification.prompt.testing", PR_FALSE) &&
-      nsContentUtils::GetBoolPref("notification.prompt.testing.allow", PR_TRUE)) {
-    mAllow = PR_TRUE;
+  if (Preferences::GetBool("notification.prompt.testing", false) &&
+      Preferences::GetBool("notification.prompt.testing.allow", true)) {
+    mAllow = true;
     return;
   }
 
@@ -137,10 +140,10 @@ nsDOMDesktopNotification::nsDOMDesktopNotification(const nsAString & title,
     
     // Retain a reference so the object isn't deleted without IPDL's knowledge.
     // Corresponding release occurs in DeallocPContentPermissionRequest.
-    request->AddRef();
+    nsRefPtr<nsDesktopNotificationRequest> copy = request;
 
     nsCString type = NS_LITERAL_CSTRING("desktop-notification");
-    child->SendPContentPermissionRequestConstructor(request, type, IPC::URI(mURI));
+    child->SendPContentPermissionRequestConstructor(copy.forget().get(), type, IPC::URI(mURI));
     
     request->Sendprompt();
     return;
@@ -169,17 +172,17 @@ nsDOMDesktopNotification::DispatchNotificationEvent(const nsString& aName)
   nsresult rv = NS_NewDOMEvent(getter_AddRefs(event), nsnull, nsnull);
   if (NS_SUCCEEDED(rv)) {
     // it doesn't bubble, and it isn't cancelable
-    rv = event->InitEvent(aName, PR_FALSE, PR_FALSE);
+    rv = event->InitEvent(aName, false, false);
     if (NS_SUCCEEDED(rv)) {
       nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(event);
-      privateEvent->SetTrusted(PR_TRUE);
+      privateEvent->SetTrusted(true);
       DispatchDOMEvent(nsnull, event, nsnull, nsnull);
     }
   }
 }
 
 void
-nsDOMDesktopNotification::SetAllow(PRBool aAllow)
+nsDOMDesktopNotification::SetAllow(bool aAllow)
 {
   mAllow = aAllow;
 
@@ -204,7 +207,7 @@ nsDOMDesktopNotification::HandleAlertServiceNotification(const char *aTopic)
 NS_IMETHODIMP
 nsDOMDesktopNotification::Show()
 {
-  mShowHasBeenCalled = PR_TRUE;
+  mShowHasBeenCalled = true;
 
   if (!mAllow)
     return NS_OK;
@@ -309,7 +312,7 @@ nsDesktopNotificationRequest::GetElement(nsIDOMElement * *aElement)
 NS_IMETHODIMP
 nsDesktopNotificationRequest::Cancel()
 {
-  mDesktopNotification->SetAllow(PR_FALSE);
+  mDesktopNotification->SetAllow(false);
   mDesktopNotification = nsnull;
   return NS_OK;
 }
@@ -317,7 +320,7 @@ nsDesktopNotificationRequest::Cancel()
 NS_IMETHODIMP
 nsDesktopNotificationRequest::Allow()
 {
-  mDesktopNotification->SetAllow(PR_TRUE);
+  mDesktopNotification->SetAllow(true);
   mDesktopNotification = nsnull;
   return NS_OK;
 }

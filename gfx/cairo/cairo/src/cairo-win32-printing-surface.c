@@ -13,7 +13,7 @@
  *
  * You should have received a copy of the LGPL along with this library
  * in the file COPYING-LGPL-2.1; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA
  * You should have received a copy of the MPL along with this library
  * in the file COPYING-MPL-1.1
  *
@@ -46,6 +46,7 @@
 
 #include "cairoint.h"
 
+#include "cairo-error-private.h"
 #include "cairo-paginated-private.h"
 
 #include "cairo-clip-private.h"
@@ -262,7 +263,7 @@ _cairo_win32_printing_surface_analyze_operation (cairo_win32_surface_t *surface,
 	return analyze_surface_pattern_transparency (surface_pattern);
     }
 
-    if (_cairo_pattern_is_opaque (pattern))
+    if (_cairo_pattern_is_opaque (pattern, NULL))
 	return CAIRO_STATUS_SUCCESS;
     else
 	return CAIRO_INT_STATUS_FLATTEN_TRANSPARENCY;
@@ -284,9 +285,9 @@ _cairo_win32_printing_surface_init_clear_color (cairo_win32_surface_t *surface,
 						cairo_solid_pattern_t *color)
 {
     if (surface->content == CAIRO_CONTENT_COLOR_ALPHA)
-	_cairo_pattern_init_solid (color, CAIRO_COLOR_WHITE, CAIRO_CONTENT_COLOR);
+	_cairo_pattern_init_solid (color, CAIRO_COLOR_WHITE);
     else
-	_cairo_pattern_init_solid (color, CAIRO_COLOR_BLACK, CAIRO_CONTENT_COLOR);
+	_cairo_pattern_init_solid (color, CAIRO_COLOR_BLACK);
 }
 
 static COLORREF
@@ -438,13 +439,9 @@ _cairo_win32_printing_surface_paint_recording_pattern (cairo_win32_surface_t   *
 
     old_content = surface->content;
     if (recording_surface->base.content == CAIRO_CONTENT_COLOR) {
-	cairo_pattern_t  *source;
-	cairo_solid_pattern_t black;
-
 	surface->content = CAIRO_CONTENT_COLOR;
-	_cairo_pattern_init_solid (&black, CAIRO_COLOR_BLACK, CAIRO_CONTENT_COLOR);
-	source = (cairo_pattern_t*) &black;
-	status = _cairo_win32_printing_surface_paint_solid_pattern (surface, source);
+	status = _cairo_win32_printing_surface_paint_solid_pattern (surface,
+								    &_cairo_pattern_black.base);
 	if (status)
 	    return status;
     }
@@ -500,7 +497,7 @@ _cairo_win32_printing_surface_paint_recording_pattern (cairo_win32_surface_t   *
 	    SelectClipPath (surface->dc, RGN_AND);
 
 	    SaveDC (surface->dc); /* Allow clip path to be reset during replay */
-	    status = _cairo_recording_surface_replay_region (&recording_surface->base,
+	    status = _cairo_recording_surface_replay_region (&recording_surface->base, NULL,
 							     &surface->base,
 							     CAIRO_RECORDING_REGION_NATIVE);
 	    assert (status != CAIRO_INT_STATUS_UNSUPPORTED);
@@ -524,11 +521,11 @@ static cairo_int_status_t
 _cairo_win32_printing_surface_check_jpeg (cairo_win32_surface_t   *surface,
 					  cairo_surface_t         *source,
 					  const unsigned char    **data,
-					  unsigned int            *length,
+					  unsigned long           *length,
 					  cairo_image_info_t      *info)
 {
     const unsigned char *mime_data;
-    unsigned int mime_data_length;
+    unsigned long mime_data_length;
     cairo_int_status_t status;
     DWORD result;
 
@@ -562,11 +559,11 @@ static cairo_int_status_t
 _cairo_win32_printing_surface_check_png (cairo_win32_surface_t   *surface,
 					 cairo_surface_t         *source,
 					 const unsigned char    **data,
-					 unsigned int            *length,
+					 unsigned long           *length,
 					 cairo_image_info_t      *info)
 {
     const unsigned char *mime_data;
-    unsigned int mime_data_length;
+    unsigned long mime_data_length;
 
     cairo_int_status_t status;
     DWORD result;
@@ -614,7 +611,7 @@ _cairo_win32_printing_surface_paint_image_pattern (cairo_win32_surface_t   *surf
     RECT clip;
     const cairo_color_t *background_color;
     const unsigned char *mime_data;
-    unsigned int mime_size;
+    unsigned long mime_size;
     cairo_image_info_t mime_info;
     cairo_bool_t use_mime;
     DWORD mime_type;
@@ -680,8 +677,7 @@ _cairo_win32_printing_surface_paint_image_pattern (cairo_win32_surface_t   *surf
 	}
 
 	_cairo_pattern_init_solid (&background_pattern,
-				   background_color,
-				   CAIRO_CONTENT_COLOR);
+				   background_color);
 	status = _cairo_surface_paint (opaque_surface,
 				       CAIRO_OPERATOR_SOURCE,
 				       &background_pattern.base,
@@ -791,7 +787,7 @@ _cairo_win32_printing_surface_paint_surface_pattern (cairo_win32_surface_t   *su
 }
 
 static void
-vertex_set_color (TRIVERTEX *vert, cairo_color_t *color)
+vertex_set_color (TRIVERTEX *vert, cairo_color_stop_t *color)
 {
     /* MSDN says that the range here is 0x0000 .. 0xff00;
      * that may well be a typo, but just chop the low bits
@@ -1161,6 +1157,7 @@ _cairo_win32_printing_surface_get_font_options (void                  *abstract_
     cairo_font_options_set_hint_style (options, CAIRO_HINT_STYLE_NONE);
     cairo_font_options_set_hint_metrics (options, CAIRO_HINT_METRICS_OFF);
     cairo_font_options_set_antialias (options, CAIRO_ANTIALIAS_GRAY);
+    _cairo_font_options_set_round_glyph_positions (options, CAIRO_ROUND_GLYPH_POS_ON);
 }
 
 static cairo_int_status_t
@@ -1245,9 +1242,9 @@ _cairo_win32_printing_surface_stroke (void			*abstract_surface,
                                       cairo_operator_t		 op,
                                       const cairo_pattern_t	*source,
                                       cairo_path_fixed_t	*path,
-                                      cairo_stroke_style_t	*style,
-                                      cairo_matrix_t		*stroke_ctm,
-                                      cairo_matrix_t		*stroke_ctm_inverse,
+                                      const cairo_stroke_style_t *style,
+                                      const cairo_matrix_t	*stroke_ctm,
+                                      const cairo_matrix_t	*stroke_ctm_inverse,
                                       double			tolerance,
                                       cairo_antialias_t		antialias,
 				      cairo_clip_t    *clip)
@@ -1434,6 +1431,94 @@ _cairo_win32_printing_surface_fill (void		        *abstract_surface,
 }
 
 static cairo_int_status_t
+_cairo_win32_printing_surface_emit_win32_glyphs (cairo_win32_surface_t 	*surface,
+						 cairo_operator_t	 op,
+						 const cairo_pattern_t  *source,
+						 cairo_glyph_t        	*glyphs,
+						 int			 num_glyphs,
+						 cairo_scaled_font_t  	*scaled_font,
+						 cairo_clip_t		*clip,
+						 int			*remaining_glyphs)
+{
+    cairo_matrix_t ctm;
+    cairo_glyph_t  *unicode_glyphs;
+    cairo_scaled_font_subsets_glyph_t subset_glyph;
+    int i, first;
+    cairo_bool_t sequence_is_unicode;
+    cairo_status_t status = CAIRO_STATUS_SUCCESS;
+
+    /* Where possible reverse the glyph indices back to unicode
+     * characters. Strings of glyphs that could not be reversed to
+     * unicode will be printed with ETO_GLYPH_INDEX.
+     *
+     * As _cairo_win32_scaled_font_index_to_ucs4() is a slow
+     * operation, the font subsetting function
+     * _cairo_scaled_font_subsets_map_glyph() is used to obtain
+     * the unicode value because it caches the reverse mapping in
+     * the subsets.
+     */
+
+    if (surface->has_ctm) {
+	for (i = 0; i < num_glyphs; i++)
+	    cairo_matrix_transform_point (&surface->ctm, &glyphs[i].x, &glyphs[i].y);
+	cairo_matrix_multiply (&ctm, &scaled_font->ctm, &surface->ctm);
+	scaled_font = cairo_scaled_font_create (scaled_font->font_face,
+						&scaled_font->font_matrix,
+						&ctm,
+						&scaled_font->options);
+    }
+
+    unicode_glyphs = _cairo_malloc_ab (num_glyphs, sizeof (cairo_glyph_t));
+    if (unicode_glyphs == NULL)
+	return _cairo_error (CAIRO_STATUS_NO_MEMORY);
+
+    memcpy (unicode_glyphs, glyphs, num_glyphs * sizeof (cairo_glyph_t));
+    for (i = 0; i < num_glyphs; i++) {
+	status = _cairo_scaled_font_subsets_map_glyph (surface->font_subsets,
+						       scaled_font,
+						       glyphs[i].index,
+						       NULL, 0,
+						       &subset_glyph);
+	if (status)
+	    goto fail;
+
+	unicode_glyphs[i].index = subset_glyph.unicode;
+    }
+
+    i = 0;
+    first = 0;
+    sequence_is_unicode = unicode_glyphs[0].index <= 0xffff;
+    while (i < num_glyphs) {
+	if (i == num_glyphs - 1 ||
+	    ((unicode_glyphs[i + 1].index < 0xffff) != sequence_is_unicode))
+	{
+	    status = _cairo_win32_surface_show_glyphs_internal (
+		surface,
+		op,
+		source,
+		sequence_is_unicode ? &unicode_glyphs[first] : &glyphs[first],
+		i - first + 1,
+		scaled_font,
+		clip,
+		remaining_glyphs,
+		! sequence_is_unicode);
+	    first = i + 1;
+	    if (i < num_glyphs - 1)
+		sequence_is_unicode = unicode_glyphs[i + 1].index <= 0xffff;
+	}
+	i++;
+    }
+
+fail:
+    if (surface->has_ctm)
+	cairo_scaled_font_destroy (scaled_font);
+
+    free (unicode_glyphs);
+
+    return status;
+}
+
+static cairo_int_status_t
 _cairo_win32_printing_surface_show_glyphs (void                 *abstract_surface,
                                            cairo_operator_t	 op,
                                            const cairo_pattern_t *source,
@@ -1541,67 +1626,14 @@ _cairo_win32_printing_surface_show_glyphs (void                 *abstract_surfac
     if (cairo_scaled_font_get_type (scaled_font) == CAIRO_FONT_TYPE_WIN32 &&
 	source->type == CAIRO_PATTERN_TYPE_SOLID)
     {
-	cairo_matrix_t ctm;
-	cairo_glyph_t  *type1_glyphs = NULL;
-	cairo_scaled_font_subsets_glyph_t subset_glyph;
-
-	/* Calling ExtTextOutW() with ETO_GLYPH_INDEX and a Type 1
-	 * font on a printer DC prints garbled text. The text displays
-	 * correctly on a display DC. When using a printer
-	 * DC, ExtTextOutW() only works with characters and not glyph
-	 * indices.
-	 *
-	 * For Type 1 fonts the glyph indices are converted back to
-	 * unicode characters before calling _cairo_win32_surface_show_glyphs().
-	 *
-	 * As _cairo_win32_scaled_font_index_to_ucs4() is a slow
-	 * operation, the font subsetting function
-	 * _cairo_scaled_font_subsets_map_glyph() is used to obtain
-	 * the unicode value because it caches the reverse mapping in
-	 * the subsets.
-	 */
-	if (_cairo_win32_scaled_font_is_type1 (scaled_font)) {
-	    type1_glyphs = _cairo_malloc_ab (num_glyphs, sizeof (cairo_glyph_t));
-	    if (type1_glyphs == NULL) {
-		status = _cairo_error (CAIRO_STATUS_NO_MEMORY);
-		goto FINISH;
-	    }
-	    memcpy (type1_glyphs, glyphs, num_glyphs * sizeof (cairo_glyph_t));
-	    for (i = 0; i < num_glyphs; i++) {
-		status = _cairo_scaled_font_subsets_map_glyph (surface->font_subsets,
-							       scaled_font,
-							       type1_glyphs[i].index,
-							       NULL, 0,
-							       &subset_glyph);
-		if (status)
-		    goto FINISH;
-
-		type1_glyphs[i].index = subset_glyph.unicode;
-	    }
-	    glyphs = type1_glyphs;
-	}
-
-	if (surface->has_ctm || surface->has_gdi_ctm) {
-	    cairo_matrix_multiply (&ctm, &surface->ctm, &surface->gdi_ctm);
-	    for (i = 0; i < num_glyphs; i++)
-		cairo_matrix_transform_point (&ctm, &glyphs[i].x, &glyphs[i].y);
-	    cairo_matrix_multiply (&ctm, &scaled_font->ctm, &ctm);
-	    scaled_font = cairo_scaled_font_create (scaled_font->font_face,
-						    &scaled_font->font_matrix,
-						    &ctm,
-						    &scaled_font->options);
-	}
-	status = _cairo_win32_surface_show_glyphs (surface, op,
-						   source, glyphs,
-						   num_glyphs, scaled_font,
-						   clip,
-						   remaining_glyphs);
-	if (surface->has_ctm || surface->has_gdi_ctm)
-	    cairo_scaled_font_destroy (scaled_font);
-
-	if (type1_glyphs != NULL)
-	    free (type1_glyphs);
-
+	status = _cairo_win32_printing_surface_emit_win32_glyphs (surface,
+								  op,
+								  source,
+								  glyphs,
+								  num_glyphs,
+								  scaled_font,
+								  clip,
+								  remaining_glyphs);
 	goto FINISH;
     }
 #endif
@@ -1835,6 +1867,7 @@ cairo_win32_printing_surface_create (HDC hdc)
     _cairo_win32_printing_surface_init_language_pack (surface);
     _cairo_surface_init (&surface->base,
 			 &cairo_win32_printing_surface_backend,
+			 NULL, /* device */
                          CAIRO_CONTENT_COLOR_ALPHA);
 
     paginated = _cairo_paginated_surface_create (&surface->base,

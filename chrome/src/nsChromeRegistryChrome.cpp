@@ -58,14 +58,14 @@
 #include "nsStringEnumerator.h"
 #include "nsTextFormatter.h"
 #include "nsUnicharUtils.h"
-#include "nsWidgetsCID.h"
 #include "nsXPCOMCIDInternal.h"
 #include "nsZipArchive.h"
+
+#include "mozilla/LookAndFeel.h"
 
 #include "nsICommandLine.h"
 #include "nsILocaleService.h"
 #include "nsILocalFile.h"
-#include "nsILookAndFeel.h"
 #include "nsIObserverService.h"
 #include "nsIPrefBranch2.h"
 #include "nsIPrefService.h"
@@ -82,7 +82,7 @@
 #define SELECTED_LOCALE_PREF "general.useragent.locale"
 #define SELECTED_SKIN_PREF   "general.skins.selectedSkin"
 
-static NS_DEFINE_CID(kLookAndFeelCID, NS_LOOKANDFEEL_CID);
+using namespace mozilla;
 
 static PLDHashOperator
 RemoveAll(PLDHashTable *table, PLDHashEntryHdr *entry, PRUint32 number, void *arg)
@@ -102,11 +102,11 @@ RemoveAll(PLDHashTable *table, PLDHashEntryHdr *entry, PRUint32 number, void *ar
  * work, any other garbage-in will produce undefined results as long
  * as it does not crash.
  */
-static PRBool
+static bool
 LanguagesMatch(const nsACString& a, const nsACString& b)
 {
   if (a.Length() < 2 || b.Length() < 2)
-    return PR_FALSE;
+    return false;
 
   nsACString::const_iterator as, ae, bs, be;
   a.BeginReading(as);
@@ -116,13 +116,13 @@ LanguagesMatch(const nsACString& a, const nsACString& b)
 
   while (*as == *bs) {
     if (*as == '-')
-      return PR_TRUE;
+      return true;
  
     ++as; ++bs;
 
     // reached the end
     if (as == ae && bs == be)
-      return PR_TRUE;
+      return true;
 
     // "a" is short
     if (as == ae)
@@ -133,11 +133,11 @@ LanguagesMatch(const nsACString& a, const nsACString& b)
       return (*as == '-');
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 nsChromeRegistryChrome::nsChromeRegistryChrome()
-  : mProfileLoaded(PR_FALSE)
+  : mProfileLoaded(false)
 {
   mPackagesHash.ops = nsnull;
 }
@@ -166,7 +166,7 @@ nsChromeRegistryChrome::Init()
                          nsnull, sizeof(PackageEntry), 16))
     return NS_ERROR_FAILURE;
 
-  PRBool safeMode = PR_FALSE;
+  bool safeMode = false;
   nsCOMPtr<nsIXULRuntime> xulrun (do_GetService(XULAPPINFO_SERVICE_CONTRACTID));
   if (xulrun)
     xulrun->GetInSafeMode(&safeMode);
@@ -192,16 +192,16 @@ nsChromeRegistryChrome::Init()
 
     nsCOMPtr<nsIPrefBranch2> prefs2 (do_QueryInterface(prefs));
     if (prefs2) {
-      rv = prefs2->AddObserver(MATCH_OS_LOCALE_PREF, this, PR_TRUE);
-      rv = prefs2->AddObserver(SELECTED_LOCALE_PREF, this, PR_TRUE);
-      rv = prefs2->AddObserver(SELECTED_SKIN_PREF, this, PR_TRUE);
+      rv = prefs2->AddObserver(MATCH_OS_LOCALE_PREF, this, true);
+      rv = prefs2->AddObserver(SELECTED_LOCALE_PREF, this, true);
+      rv = prefs2->AddObserver(SELECTED_SKIN_PREF, this, true);
     }
   }
 
   nsCOMPtr<nsIObserverService> obsService = mozilla::services::GetObserverService();
   if (obsService) {
-    obsService->AddObserver(this, "command-line-startup", PR_TRUE);
-    obsService->AddObserver(this, "profile-initial-state", PR_TRUE);
+    obsService->AddObserver(this, "command-line-startup", true);
+    obsService->AddObserver(this, "profile-initial-state", true);
   }
 
   return NS_OK;
@@ -210,26 +210,19 @@ nsChromeRegistryChrome::Init()
 NS_IMETHODIMP
 nsChromeRegistryChrome::CheckForOSAccessibility()
 {
-  nsresult rv;
+  PRInt32 useAccessibilityTheme =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_UseAccessibilityTheme, 0);
 
-  nsCOMPtr<nsILookAndFeel> lookAndFeel (do_GetService(kLookAndFeelCID));
-  if (lookAndFeel) {
-    PRInt32 useAccessibilityTheme = 0;
+  if (useAccessibilityTheme) {
+    /* Set the skin to classic and remove pref observers */
+    if (!mSelectedSkin.EqualsLiteral("classic/1.0")) {
+      mSelectedSkin.AssignLiteral("classic/1.0");
+      RefreshSkins();
+    }
 
-    rv = lookAndFeel->GetMetric(nsILookAndFeel::eMetric_UseAccessibilityTheme,
-                                useAccessibilityTheme);
-
-    if (NS_SUCCEEDED(rv) && useAccessibilityTheme) {
-      /* Set the skin to classic and remove pref observers */
-      if (!mSelectedSkin.EqualsLiteral("classic/1.0")) {
-        mSelectedSkin.AssignLiteral("classic/1.0");
-        RefreshSkins();
-      }
-
-      nsCOMPtr<nsIPrefBranch2> prefs (do_GetService(NS_PREFSERVICE_CONTRACTID));
-      if (prefs) {
-        prefs->RemoveObserver(SELECTED_SKIN_PREF, this);
-      }
+    nsCOMPtr<nsIPrefBranch2> prefs (do_GetService(NS_PREFSERVICE_CONTRACTID));
+    if (prefs) {
+      prefs->RemoveObserver(SELECTED_SKIN_PREF, this);
     }
   }
 
@@ -277,9 +270,9 @@ getUILangCountry(nsACString& aUILang)
 }
 
 NS_IMETHODIMP
-nsChromeRegistryChrome::IsLocaleRTL(const nsACString& package, PRBool *aResult)
+nsChromeRegistryChrome::IsLocaleRTL(const nsACString& package, bool *aResult)
 {
-  *aResult = PR_FALSE;
+  *aResult = false;
 
   nsCAutoString locale;
   GetSelectedLocale(package, locale);
@@ -330,7 +323,7 @@ nsresult
 nsChromeRegistryChrome::SelectLocaleFromPref(nsIPrefBranch* prefs)
 {
   nsresult rv;
-  PRBool matchOSLocale = PR_FALSE;
+  bool matchOSLocale = false;
   rv = prefs->GetBoolPref(MATCH_OS_LOCALE_PREF, &matchOSLocale);
 
   if (NS_SUCCEEDED(rv) && matchOSLocale) {
@@ -368,12 +361,9 @@ nsChromeRegistryChrome::Observe(nsISupports *aSubject, const char *aTopic,
 
     if (pref.EqualsLiteral(MATCH_OS_LOCALE_PREF) ||
         pref.EqualsLiteral(SELECTED_LOCALE_PREF)) {
-      if (!mProfileLoaded) {
-        rv = SelectLocaleFromPref(prefs);
-        if (NS_FAILED(rv))
-          return rv;
-      }
-      FlushAllCaches();
+        rv = UpdateSelectedLocale();
+        if (NS_SUCCEEDED(rv) && mProfileLoaded)
+          FlushAllCaches();
     }
     else if (pref.EqualsLiteral(SELECTED_SKIN_PREF)) {
       nsXPIDLCString provider;
@@ -394,7 +384,7 @@ nsChromeRegistryChrome::Observe(nsISupports *aSubject, const char *aTopic,
     if (cmdLine) {
       nsAutoString uiLocale;
       rv = cmdLine->HandleFlagWithParam(NS_LITERAL_STRING(UILOCALE_CMD_LINE_ARG),
-                                        PR_FALSE, uiLocale);
+                                        false, uiLocale);
       if (NS_SUCCEEDED(rv) && !uiLocale.IsEmpty()) {
         CopyUTF16toUTF8(uiLocale, mSelectedLocale);
         nsCOMPtr<nsIPrefBranch2> prefs (do_GetService(NS_PREFSERVICE_CONTRACTID));
@@ -405,7 +395,7 @@ nsChromeRegistryChrome::Observe(nsISupports *aSubject, const char *aTopic,
     }
   }
   else if (!strcmp("profile-initial-state", aTopic)) {
-    mProfileLoaded = PR_TRUE;
+    mProfileLoaded = true;
   }
   else {
     NS_ERROR("Unexpected observer topic!");
@@ -426,11 +416,12 @@ nsChromeRegistryChrome::CheckForNewChrome()
   return NS_OK;
 }
 
-void nsChromeRegistryChrome::UpdateSelectedLocale()
+nsresult nsChromeRegistryChrome::UpdateSelectedLocale()
 {
+  nsresult rv = NS_OK;
   nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
   if (prefs) {
-    nsresult rv = SelectLocaleFromPref(prefs);
+    rv = SelectLocaleFromPref(prefs);
     if (NS_SUCCEEDED(rv)) {
       nsCOMPtr<nsIObserverService> obsSvc =
         mozilla::services::GetObserverService();
@@ -439,6 +430,8 @@ void nsChromeRegistryChrome::UpdateSelectedLocale()
                               "selected-locale-has-changed", nsnull);
     }
   }
+
+  return rv;
 }
 
 static void
@@ -539,10 +532,10 @@ nsChromeRegistryChrome::CollectPackages(PLDHashTable *table,
   return (PLDHashOperator)PL_DHASH_NEXT;
 }
 
-static PRBool
+static bool
 CanLoadResource(nsIURI* aResourceURI)
 {
-  PRBool isLocalResource = PR_FALSE;
+  bool isLocalResource = false;
   (void)NS_URIChainHasFlags(aResourceURI,
                             nsIProtocolHandler::URI_IS_LOCAL_RESOURCE,
                             &isLocalResource);
@@ -603,7 +596,7 @@ nsChromeRegistryChrome::HashKey(PLDHashTable *table, const void *key)
   return HashString(str);
 }
 
-PRBool
+bool
 nsChromeRegistryChrome::MatchKey(PLDHashTable *table, const PLDHashEntryHdr *entry,
                            const void *key)
 {
@@ -619,14 +612,14 @@ nsChromeRegistryChrome::ClearEntry(PLDHashTable *table, PLDHashEntryHdr *entry)
   pentry->~PackageEntry();
 }
 
-PRBool
+bool
 nsChromeRegistryChrome::InitEntry(PLDHashTable *table, PLDHashEntryHdr *entry,
                             const void *key)
 {
   const nsACString& str = *reinterpret_cast<const nsACString*>(key);
 
   new (entry) PackageEntry(str);
-  return PR_TRUE;
+  return true;
 }
 
 const PLDHashTableOps
@@ -741,7 +734,7 @@ nsChromeRegistryChrome::OverlayListEntry::AddURI(nsIURI* aURI)
 {
   PRInt32 i = mArray.Count();
   while (i--) {
-    PRBool equals;
+    bool equals;
     if (NS_SUCCEEDED(aURI->Equals(mArray[i], &equals)) && equals)
       return;
   }
@@ -1061,7 +1054,7 @@ nsChromeRegistryChrome::ManifestResource(ManifestProcessingContext& cx, int line
   
   nsCOMPtr<nsIResProtocolHandler> rph = do_QueryInterface(ph);
 
-  PRBool exists = PR_FALSE;
+  bool exists = false;
   rv = rph->HasSubstitution(host, &exists);
   if (exists) {
     LogMessageWithContext(cx.GetManifestURI(), lineno, nsIScriptError::warningFlag,

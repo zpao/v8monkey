@@ -52,6 +52,7 @@
 #include "nsISocketTransportService.h"
 #include "nsITransport.h"
 #include "nsIEventTarget.h"
+#include "TimingStruct.h"
 
 //-----------------------------------------------------------------------------
 
@@ -105,7 +106,7 @@ public:
                   nsHttpConnectionInfo  *connInfo,
                   nsHttpRequestHead     *reqHeaders,
                   nsIInputStream        *reqBody,
-                  PRBool                 reqBodyIncludesHeaders,
+                  bool                   reqBodyIncludesHeaders,
                   nsIEventTarget        *consumerTarget,
                   nsIInterfaceRequestor *callbacks,
                   nsITransportEventSink *eventsink,
@@ -126,19 +127,21 @@ public:
     nsHttpResponseHead *TakeResponseHead();
 
     // Called to find out if the transaction generated a complete response.
-    PRBool ResponseIsComplete() { return mResponseIsComplete; }
+    bool ResponseIsComplete() { return mResponseIsComplete; }
 
-    PRBool    SSLConnectFailed() { return mSSLConnectFailed; }
+    bool      SSLConnectFailed() { return mSSLConnectFailed; }
 
     // These methods may only be used by the connection manager.
     void    SetPriority(PRInt32 priority) { mPriority = priority; }
     PRInt32    Priority()                 { return mPriority; }
 
+    const TimingStruct& Timings() const { return mTimings; }
+
 private:
     nsresult Restart();
     char    *LocateHttpStart(char *buf, PRUint32 len,
-                             PRBool aAllowPartialMatch);
-    void     ParseLine(char *line);
+                             bool aAllowPartialMatch);
+    nsresult ParseLine(char *line);
     nsresult ParseLineSegment(char *seg, PRUint32 len);
     nsresult ParseHead(char *, PRUint32 count, PRUint32 *countRead);
     nsresult HandleContentStart();
@@ -150,6 +153,8 @@ private:
                                         PRUint32, PRUint32, PRUint32 *);
     static NS_METHOD WritePipeSegment(nsIOutputStream *, void *, char *,
                                       PRUint32, PRUint32, PRUint32 *);
+
+    bool TimingEnabled() const { return mCaps & NS_HTTP_TIMING_ENABLED; }
 
 private:
     nsCOMPtr<nsIInterfaceRequestor> mCallbacks;
@@ -188,6 +193,8 @@ private:
 
     nsHttpChunkedDecoder           *mChunkedDecoder;
 
+    TimingStruct                    mTimings;
+
     nsresult                        mStatus;
 
     PRInt16                         mPriority;
@@ -197,20 +204,21 @@ private:
 
     // state flags, all logically boolean, but not packed together into a
     // bitfield so as to avoid bitfield-induced races.  See bug 560579.
-    PRPackedBool                    mClosed;
-    PRPackedBool                    mConnected;
-    PRPackedBool                    mHaveStatusLine;
-    PRPackedBool                    mHaveAllHeaders;
-    PRPackedBool                    mTransactionDone;
-    PRPackedBool                    mResponseIsComplete;
-    PRPackedBool                    mDidContentStart;
-    PRPackedBool                    mNoContent; // expecting an empty entity body
-    PRPackedBool                    mSentData;
-    PRPackedBool                    mReceivedData;
-    PRPackedBool                    mStatusEventPending;
-    PRPackedBool                    mHasRequestBody;
-    PRPackedBool                    mSSLConnectFailed;
-    PRPackedBool                    mHttpResponseMatched;
+    bool                            mClosed;
+    bool                            mConnected;
+    bool                            mHaveStatusLine;
+    bool                            mHaveAllHeaders;
+    bool                            mTransactionDone;
+    bool                            mResponseIsComplete;
+    bool                            mDidContentStart;
+    bool                            mNoContent; // expecting an empty entity body
+    bool                            mSentData;
+    bool                            mReceivedData;
+    bool                            mStatusEventPending;
+    bool                            mHasRequestBody;
+    bool                            mSSLConnectFailed;
+    bool                            mHttpResponseMatched;
+    bool                            mPreserveStream;
 
     // mClosed           := transaction has been explicitly closed
     // mTransactionDone  := transaction ran to completion or was interrupted

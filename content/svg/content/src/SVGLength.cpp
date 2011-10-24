@@ -34,14 +34,16 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "SVGLength.h"
 #include "nsSVGElement.h"
 #include "nsSVGSVGElement.h"
 #include "nsString.h"
 #include "nsSVGUtils.h"
-#include "nsContentUtils.h"
 #include "nsTextFormatter.h"
 #include "prdtoa.h"
+#include "nsMathUtils.h"
 #include <limits>
 
 namespace mozilla {
@@ -64,7 +66,7 @@ SVGLength::GetValueAsString(nsAString &aValue) const
   aValue.Append(unitString);
 }
 
-PRBool
+bool
 SVGLength::SetValueFromString(const nsAString &aValue)
 {
   float tmpValue;
@@ -78,7 +80,7 @@ SVGLength::SetValueFromString(const nsAString &aValue)
   }
   char *unit;
   tmpValue = float(PR_strtod(str, &unit));
-  if (unit != str && NS_FloatIsFinite(tmpValue)) {
+  if (unit != str && NS_finite(tmpValue)) {
     char *theRest = unit;
     if (*unit != '\0' && !IsSVGWhitespace(*unit)) {
       while (*theRest != '\0' && !IsSVGWhitespace(*theRest)) {
@@ -88,7 +90,7 @@ SVGLength::SetValueFromString(const nsAString &aValue)
       tmpUnit = GetUnitTypeForString(unitStr.get());
       if (tmpUnit == nsIDOMSVGLength::SVG_LENGTHTYPE_UNKNOWN) {
         // nsSVGUtils::ReportToConsole
-        return PR_FALSE;
+        return false;
       }
     } else {
       tmpUnit = nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER;
@@ -99,13 +101,13 @@ SVGLength::SetValueFromString(const nsAString &aValue)
     if (!*theRest) {
       mValue = tmpValue;
       mUnit = tmpUnit;
-      return PR_TRUE;
+      return true;
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
-inline static PRBool
+inline static bool
 IsAbsoluteUnit(PRUint8 aUnit)
 {
   return aUnit >= nsIDOMSVGLength::SVG_LENGTHTYPE_CM &&
@@ -172,17 +174,17 @@ SVGLength::GetValueInSpecifiedUnit(PRUint8 aUnit,
     SVGLength(0.0f, aUnit).GetUserUnitsPerUnit(aElement, aAxis);
 
   NS_ASSERTION(userUnitsPerCurrentUnit >= 0 ||
-               !NS_FloatIsFinite(userUnitsPerCurrentUnit),
+               !NS_finite(userUnitsPerCurrentUnit),
                "bad userUnitsPerCurrentUnit");
   NS_ASSERTION(userUnitsPerNewUnit >= 0 ||
-               !NS_FloatIsFinite(userUnitsPerNewUnit),
+               !NS_finite(userUnitsPerNewUnit),
                "bad userUnitsPerNewUnit");
 
   float value = mValue * userUnitsPerCurrentUnit / userUnitsPerNewUnit;
 
   // userUnitsPerCurrentUnit could be infinity, or userUnitsPerNewUnit could
   // be zero.
-  if (NS_FloatIsFinite(value)) {
+  if (NS_finite(value)) {
     return value;
   }
   return std::numeric_limits<float>::quiet_NaN();
@@ -271,7 +273,7 @@ GetUnitTypeForString(const char* unitStr)
 
   nsCOMPtr<nsIAtom> unitAtom = do_GetAtom(unitStr);
 
-  for (PRUint32 i = 1 ; i < NS_ARRAY_LENGTH(unitMap) ; i++) {
+  for (PRUint32 i = 1 ; i < ArrayLength(unitMap) ; i++) {
     if (unitMap[i] && *unitMap[i] == unitAtom) {
       return i;
     }

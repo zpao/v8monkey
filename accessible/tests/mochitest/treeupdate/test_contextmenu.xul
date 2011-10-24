@@ -6,8 +6,6 @@
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="menu tree and events">
 
-  <script type="application/javascript" 
-          src="chrome://mochikit/content/MochiKit/packed.js" />
   <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
   <script type="application/javascript"
@@ -235,7 +233,7 @@
       };
 
       if (LINUX || SOLARIS)
-        tree.children[2].children[0].\(subsubmenuTree);
+        tree.children[2].children[0].children.push(subsubmenuTree);
       else
         tree.children[2].children[0].children[0].children[0].children.push(subsubmenuTree);
 

@@ -175,7 +175,7 @@ public:
     return refcount;
   }
 
-  void stabilizeForDeletion(nsISupports *owner)
+  void stabilizeForDeletion(nsISupports*)
   {
     mTagged = NS_CCAR_TAGGED_STABILIZED_REFCNT;
   }
@@ -226,7 +226,7 @@ public:
     mTagged = NS_CCAR_REFCNT_TO_TAGGED(refcount);
   }
 
-  PRBool IsPurple() const
+  bool IsPurple() const
   {
     NS_ASSERTION(mTagged != NS_CCAR_TAGGED_STABILIZED_REFCNT,
                  "should have checked for stabilization first");
@@ -326,13 +326,14 @@ public:
  */
 #define NS_INLINE_DECL_REFCOUNTING(_class)                                    \
 public:                                                                       \
-  void AddRef(void) {                                                         \
+  NS_METHOD_(nsrefcnt) AddRef(void) {                                         \
     NS_PRECONDITION(PRInt32(mRefCnt) >= 0, "illegal refcnt");                 \
     NS_ASSERT_OWNINGTHREAD_AND_NOT_CCTHREAD(_class);                          \
     ++mRefCnt;                                                                \
     NS_LOG_ADDREF(this, mRefCnt, #_class, sizeof(*this));                     \
+    return mRefCnt;                                                           \
   }                                                                           \
-  void Release(void) {                                                        \
+  NS_METHOD_(nsrefcnt) Release(void) {                                        \
     NS_PRECONDITION(0 != mRefCnt, "dup release");                             \
     NS_ASSERT_OWNINGTHREAD_AND_NOT_CCTHREAD(_class);                          \
     --mRefCnt;                                                                \
@@ -341,7 +342,9 @@ public:                                                                       \
       NS_ASSERT_OWNINGTHREAD(_class);                                         \
       mRefCnt = 1; /* stabilize */                                            \
       delete this;                                                            \
+      return 0;                                                               \
     }                                                                         \
+    return mRefCnt;                                                           \
   }                                                                           \
 protected:                                                                    \
   nsAutoRefCnt mRefCnt;                                                       \
@@ -1231,6 +1234,11 @@ NS_IMETHODIMP_(nsrefcnt) Class::Release(void)                                 \
 
 #define NS_IMPL_ISUPPORTS_INHERITED8(Class, Super, i1, i2, i3, i4, i5, i6, i7, i8) \
     NS_IMPL_QUERY_INTERFACE_INHERITED8(Class, Super, i1, i2, i3, i4, i5, i6, i7, i8) \
+    NS_IMPL_ADDREF_INHERITED(Class, Super)                                    \
+    NS_IMPL_RELEASE_INHERITED(Class, Super)                                   \
+
+#define NS_IMPL_ISUPPORTS_INHERITED9(Class, Super, i1, i2, i3, i4, i5, i6, i7, i8, i9) \
+    NS_IMPL_QUERY_INTERFACE_INHERITED9(Class, Super, i1, i2, i3, i4, i5, i6, i7, i8, i9) \
     NS_IMPL_ADDREF_INHERITED(Class, Super)                                    \
     NS_IMPL_RELEASE_INHERITED(Class, Super)                                   \
 /*

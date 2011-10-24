@@ -81,20 +81,19 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsCycleCollectionISupports,
 
 class nsCycleCollectionParticipant;
 
-enum CCNodeType { RefCounted, GCMarked, GCUnmarked };
-
 class NS_NO_VTABLE nsCycleCollectionTraversalCallback
 {
 public:
-    // If type is RefCounted you must call DescribeNode() with an accurate
+    // You must call DescribeRefCountedNode() with an accurate
     // refcount, otherwise cycle collection will fail, and probably crash.
-    // If type is not refcounted then the refcount will be ignored.
     // If the callback cares about objsz or objname, it should
     // put WANT_DEBUG_INFO in mFlags.
-    NS_IMETHOD_(void) DescribeNode(CCNodeType type,
-                                   nsrefcnt refcount,
-                                   size_t objsz,
-                                   const char *objname) = 0;
+    NS_IMETHOD_(void) DescribeRefCountedNode(nsrefcnt refcount,
+                                             size_t objsz,
+                                             const char *objname) = 0;
+    NS_IMETHOD_(void) DescribeGCedNode(bool ismarked,
+                                       size_t objsz,
+                                       const char *objname) = 0;
     NS_IMETHOD_(void) NoteXPCOMRoot(nsISupports *root) = 0;
     NS_IMETHOD_(void) NoteRoot(PRUint32 langID, void *root,
                                nsCycleCollectionParticipant* helper) = 0;
@@ -112,8 +111,9 @@ public:
     enum {
         // Values for flags:
 
-        // Caller should pass useful objsz and objname to DescribeNode
-        // and should call NoteNextEdgeName.
+        // Caller should pass useful objsz and objname to
+        // DescribeRefCountedNode and DescribeGCedNode and should call
+        // NoteNextEdgeName.
         WANT_DEBUG_INFO = (1<<0),
 
         // Caller should not skip objects that we know will be
@@ -121,8 +121,8 @@ public:
         WANT_ALL_TRACES = (1<<1)
     };
     PRUint32 Flags() const { return mFlags; }
-    PRBool WantDebugInfo() const { return (mFlags & WANT_DEBUG_INFO) != 0; }
-    PRBool WantAllTraces() const { return (mFlags & WANT_ALL_TRACES) != 0; }
+    bool WantDebugInfo() const { return (mFlags & WANT_DEBUG_INFO) != 0; }
+    bool WantAllTraces() const { return (mFlags & WANT_ALL_TRACES) != 0; }
 protected:
     nsCycleCollectionTraversalCallback() : mFlags(0) {}
 
@@ -172,7 +172,7 @@ public:
 
     NS_IMETHOD_(void) UnmarkPurple(nsISupports *p);
 
-    PRBool CheckForRightISupports(nsISupports *s);
+    bool CheckForRightISupports(nsISupports *s);
 };
 
 #undef IMETHOD_VISIBILITY
@@ -307,7 +307,7 @@ public:
 ///////////////////////////////////////////////////////////////////////////////
 
 #define NS_IMPL_CYCLE_COLLECTION_DESCRIBE(_class, _refcnt)                     \
-    cb.DescribeNode(RefCounted, _refcnt, sizeof(_class), #_class);
+    cb.DescribeRefCountedNode(_refcnt, sizeof(_class), #_class);
 
 #define NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(_class)               \
   NS_IMETHODIMP                                                                \
@@ -415,7 +415,7 @@ public:
                                                #_field)
 
 #define NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS                       \
-    TraverseScriptObjects(tmp, cb);
+    TraverseScriptObjects(p, cb);
 
 #define NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END                                  \
     return NS_OK;                                                              \
@@ -435,6 +435,20 @@ public:
     NS_ASSERTION(CheckForRightISupports(s),                                    \
                  "not the nsISupports pointer we expect");                     \
     _class *tmp = Downcast(s);
+
+#define NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(_class, _base_class)    \
+  void                                                                         \
+  NS_CYCLE_COLLECTION_CLASSNAME(_class)::Trace(void *p,                        \
+                                               TraceCallback aCallback,        \
+                                               void *aClosure)                 \
+  {                                                                            \
+    nsISupports *s = static_cast<nsISupports*>(p);                             \
+    NS_ASSERTION(CheckForRightISupports(s),                                    \
+                 "not the nsISupports pointer we expect");                     \
+    _class *tmp = static_cast<_class*>(Downcast(s));                           \
+    NS_CYCLE_COLLECTION_CLASSNAME(_base_class)::Trace(s,                       \
+                                                      aCallback,               \
+                                                      aClosure);
 
 #define NS_IMPL_CYCLE_COLLECTION_TRACE_NATIVE_BEGIN(_class)                    \
   void                                                                         \

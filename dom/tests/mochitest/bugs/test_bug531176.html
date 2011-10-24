@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=531176
 -->
 <head>
   <title>Test for Bug 531176</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
@@ -30,6 +29,8 @@ function errorHandler(msg, filename, linenr) {
 
 window.onerror = errorHandler;
 document.body.setAttribute("onclick", "var x=;");
+// Force eager compilation
+document.body.onclick;
 is(errorCount, 1, "Error handler should have been called! (1)");
 
 function recursiveHandler(msg, filename, linenr) {
@@ -42,10 +43,14 @@ function recursiveHandler(msg, filename, linenr) {
 
 window.onerror = recursiveHandler;
 document.body.setAttribute("onclick", "var y=;");
+// Force eager compilation
+document.body.onclick;
 is(errorCount, 2, "Error handler should have been called! (2)");
 
 // Check that error handler works even after recursion error.
 document.body.setAttribute("onclick", "var foo=;");
+// Force eager compilation
+document.body.onclick;
 is(errorCount, 3, "Error handler should have been called! (3)");
 
 window.onerror = function() { ++errorCount; };

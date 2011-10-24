@@ -101,6 +101,10 @@ using namespace mozilla::ipc::windows;
 
 // pulled from widget's nsAppShell
 extern const PRUnichar* kAppShellEventId;
+#if defined(ACCESSIBILITY)
+// pulled from accessibility's win utils
+extern const PRUnichar* kPropNameTabContent;
+#endif
 
 namespace {
 
@@ -379,6 +383,14 @@ WindowIsDeferredWindow(HWND hWnd)
     return false;
   }
 
+#if defined(ACCESSIBILITY)
+  // Tab content creates a window that responds to accessible WM_GETOBJECT
+  // calls. This window can safely be ignored.
+  if (::GetPropW(hWnd, kPropNameTabContent)) {
+    return false;
+  }
+#endif
+
   // Common mozilla windows we must defer messages to.
   nsDependentString className(buffer, length);
   if (StringBeginsWith(className, NS_LITERAL_STRING("Mozilla")) ||
@@ -393,6 +405,13 @@ WindowIsDeferredWindow(HWND hWnd)
   // 'AGFullScreenWinClass' - silverlight fullscreen window
   if (className.EqualsLiteral("ShockwaveFlashFullScreen") ||
       className.EqualsLiteral("AGFullScreenWinClass")) {
+    return true;
+  }
+
+  // Google Earth bridging msg window between the plugin instance and a separate
+  // earth process. The earth process can trigger a plugin incall on the browser
+  // at any time, which is badness if the instance is already making an incall.
+  if (className.EqualsLiteral("__geplugin_bridge_window__")) {
     return true;
   }
 
@@ -584,6 +603,7 @@ TimeoutHasExpired(const TimeoutData& aData)
 RPCChannel::SyncStackFrame::SyncStackFrame(SyncChannel* channel, bool rpc)
   : mRPC(rpc)
   , mSpinNestedEvents(false)
+  , mListenerNotified(false)
   , mChannel(channel)
   , mPrev(mChannel->mTopFrame)
   , mStaticPrev(sStaticTopFrame)
@@ -617,11 +637,29 @@ RPCChannel::SyncStackFrame::~SyncStackFrame()
 
 SyncChannel::SyncStackFrame* SyncChannel::sStaticTopFrame;
 
+// nsAppShell's notification that gecko events are being processed.
+// If we are here and there is an RPC Incall active, we are spinning
+// a nested gecko event loop. In which case the remote process needs
+// to know about it.
+void /* static */
+RPCChannel::NotifyGeckoEventDispatch()
+{
+  // sStaticTopFrame is only valid for RPC channels
+  if (!sStaticTopFrame || sStaticTopFrame->mListenerNotified)
+    return;
+
+  sStaticTopFrame->mListenerNotified = true;
+  RPCChannel* channel = static_cast<RPCChannel*>(sStaticTopFrame->mChannel);
+  channel->Listener()->ProcessRemoteNativeEventsInRPCCall();
+}
+
+// invoked by the module that receives the spin event loop
+// message.
 void
 RPCChannel::ProcessNativeEventsInRPCCall()
 {
   if (!mTopFrame) {
-    NS_ERROR("Child logic error: no RPC frame");
+    NS_ERROR("Spin logic error: no RPC frame");
     return;
   }
 
@@ -996,19 +1034,30 @@ DeferredRedrawMessage::Run()
   NS_ASSERTION(ret, "RedrawWindow failed!");
 }
 
+DeferredUpdateMessage::DeferredUpdateMessage(HWND aHWnd)
+{
+  mWnd = aHWnd;
+  if (!GetUpdateRect(mWnd, &mUpdateRect, FALSE)) {
+    memset(&mUpdateRect, 0, sizeof(RECT));
+    return;
+  }
+  ValidateRect(mWnd, &mUpdateRect);
+}
+
 void
 DeferredUpdateMessage::Run()
 {
-  AssertWindowIsNotNeutered(hWnd);
-  if (!IsWindow(hWnd)) {
+  AssertWindowIsNotNeutered(mWnd);
+  if (!IsWindow(mWnd)) {
     NS_ERROR("Invalid window!");
     return;
   }
 
+  InvalidateRect(mWnd, &mUpdateRect, FALSE);
 #ifdef DEBUG
   BOOL ret =
 #endif
-  UpdateWindow(hWnd);
+  UpdateWindow(mWnd);
   NS_ASSERTION(ret, "UpdateWindow failed!");
 }
 

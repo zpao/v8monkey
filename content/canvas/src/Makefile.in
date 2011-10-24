@@ -55,6 +55,7 @@ CPPSRCS	= \
 	CanvasImageCache.cpp \
 	CanvasUtils.cpp \
 	nsCanvasRenderingContext2D.cpp \
+	nsCanvasRenderingContext2DAzure.cpp \
 	DocumentRendererParent.cpp \
 	DocumentRendererChild.cpp \
 	$(NULL)
@@ -68,6 +69,7 @@ CPPSRCS += \
 	WebGLContextGL.cpp \
 	WebGLContextUtils.cpp \
 	WebGLContextValidate.cpp \
+	WebGLExtensionStandardDerivatives.cpp \
 	$(NULL)
 
 DEFINES += -DUSE_ANGLE

@@ -123,7 +123,7 @@ nsDOMTokenList::CheckToken(const nsAString& aStr)
   return NS_OK;
 }
 
-PRBool
+bool
 nsDOMTokenList::ContainsInternal(const nsAttrValue* aAttr,
                                  const nsAString& aToken)
 {
@@ -134,14 +134,14 @@ nsDOMTokenList::ContainsInternal(const nsAttrValue* aAttr,
 }
 
 NS_IMETHODIMP
-nsDOMTokenList::Contains(const nsAString& aToken, PRBool* aResult)
+nsDOMTokenList::Contains(const nsAString& aToken, bool* aResult)
 {
   nsresult rv = CheckToken(aToken);
   NS_ENSURE_SUCCESS(rv, rv);
 
   const nsAttrValue* attr = GetParsedAttr();
   if (!attr) {
-    *aResult = PR_FALSE;
+    *aResult = false;
     return NS_OK;
   }
 
@@ -171,7 +171,7 @@ nsDOMTokenList::AddInternal(const nsAttrValue* aAttr,
   } else {
     resultStr.Append(aToken);
   }
-  mElement->SetAttr(kNameSpaceID_None, mAttrAtom, resultStr, PR_TRUE);
+  mElement->SetAttr(kNameSpaceID_None, mAttrAtom, resultStr, true);
 }
 
 NS_IMETHODIMP
@@ -206,7 +206,7 @@ nsDOMTokenList::RemoveInternal(const nsAttrValue* aAttr,
   copyStart = iter;
 
   nsAutoString output;
-  PRBool lastTokenRemoved = PR_FALSE;
+  bool lastTokenRemoved = false;
 
   while (iter != end) {
     // skip whitespace.
@@ -235,7 +235,7 @@ nsDOMTokenList::RemoveInternal(const nsAttrValue* aAttr,
         ++iter;
       }
       copyStart = iter;
-      lastTokenRemoved = PR_TRUE;
+      lastTokenRemoved = true;
 
     } else {
 
@@ -244,13 +244,13 @@ nsDOMTokenList::RemoveInternal(const nsAttrValue* aAttr,
           output.CharAt(output.Length() - 1)), "Invalid last output token");
         output.Append(PRUnichar(' '));
       }
-      lastTokenRemoved = PR_FALSE;
+      lastTokenRemoved = false;
       output.Append(Substring(copyStart, iter));
       copyStart = iter;
     }
   }
 
-  mElement->SetAttr(kNameSpaceID_None, mAttrAtom, output, PR_TRUE);
+  mElement->SetAttr(kNameSpaceID_None, mAttrAtom, output, true);
 }
 
 NS_IMETHODIMP
@@ -274,7 +274,7 @@ nsDOMTokenList::Remove(const nsAString& aToken)
 }
 
 NS_IMETHODIMP
-nsDOMTokenList::Toggle(const nsAString& aToken, PRBool* aResult)
+nsDOMTokenList::Toggle(const nsAString& aToken, bool* aResult)
 {
   nsresult rv = CheckToken(aToken);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -283,10 +283,10 @@ nsDOMTokenList::Toggle(const nsAString& aToken, PRBool* aResult)
 
   if (attr && ContainsInternal(attr, aToken)) {
     RemoveInternal(attr, aToken);
-    *aResult = PR_FALSE;
+    *aResult = false;
   } else {
     AddInternal(attr, aToken);
-    *aResult = PR_TRUE;
+    *aResult = true;
   }
 
   return NS_OK;

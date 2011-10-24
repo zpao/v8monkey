@@ -44,18 +44,19 @@
 #ifndef nsSyncLoadService_h__
 #define nsSyncLoadService_h__
 
-#include "nsISyncLoadDOMService.h"
+#include "nscore.h"
 
 class nsIInputStream;
 class nsILoadGroup;
 class nsIStreamListener;
+class nsIURI;
+class nsIPrincipal;
+class nsIDOMDocument;
+class nsIChannel;
 
-class nsSyncLoadService : public nsISyncLoadDOMService
+class nsSyncLoadService
 {
 public:
-    NS_DECL_ISUPPORTS
-    NS_DECL_NSISYNCLOADDOMSERVICE
-
     /**
      * Synchronously load the document from the specified URI.
      *
@@ -69,7 +70,7 @@ public:
      * @param aResult [out] The document loaded from the URI.
      */
     static nsresult LoadDocument(nsIURI *aURI, nsIPrincipal *aLoaderPrincipal,
-                                 nsILoadGroup *aLoadGroup, PRBool aForceToXML,
+                                 nsILoadGroup *aLoadGroup, bool aForceToXML,
                                  nsIDOMDocument** aResult);
 
     /**

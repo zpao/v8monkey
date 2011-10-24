@@ -34,6 +34,7 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
 #include "nsIWebBrowserChrome2.idl"
 #include "nsIURI.idl"
 #include "nsIDOMNode.idl"
@@ -61,5 +62,5 @@ interface nsIWebBrowserChrome3 : nsIWebBrowserChrome2
   AString onBeforeLinkTraversal(in AString originalTarget,
                                 in nsIURI linkURI,
                                 in nsIDOMNode linkNode,
-                                in PRBool isAppTab);
+                                in boolean isAppTab);
 };

@@ -139,7 +139,7 @@ nsElementDeletionObserver::NodeWillBeDestroyed(const nsINode* aNode)
 // the empty string, it becomes the value of the attribute "_moz_anonclass"
 nsresult
 nsHTMLEditor::CreateAnonymousElement(const nsAString & aTag, nsIDOMNode *  aParentNode,
-                                     const nsAString & aAnonClass, PRBool aIsCreatedHidden,
+                                     const nsAString & aAnonClass, bool aIsCreatedHidden,
                                      nsIDOMElement ** aReturn)
 {
   NS_ENSURE_ARG_POINTER(aParentNode);
@@ -156,8 +156,7 @@ nsHTMLEditor::CreateAnonymousElement(const nsAString & aTag, nsIDOMNode *  aPare
   NS_ENSURE_TRUE(doc, NS_ERROR_NULL_POINTER);
 
   // Get the pres shell
-  nsCOMPtr<nsIPresShell> ps;
-  GetPresShell(getter_AddRefs(ps));
+  nsCOMPtr<nsIPresShell> ps = GetPresShell();
   NS_ENSURE_TRUE(ps, NS_ERROR_NOT_INITIALIZED);
 
   // Create a new node through the element factory
@@ -187,7 +186,7 @@ nsHTMLEditor::CreateAnonymousElement(const nsAString & aTag, nsIDOMNode *  aPare
 
     // establish parenthood of the element
     newContent->SetNativeAnonymous();
-    res = newContent->BindToTree(doc, parentContent, parentContent, PR_TRUE);
+    res = newContent->BindToTree(doc, parentContent, parentContent, true);
     if (NS_FAILED(res)) {
       newContent->UnbindFromTree();
       return res;
@@ -216,7 +215,7 @@ nsHTMLEditor::CreateAnonymousElement(const nsAString & aTag, nsIDOMNode *  aPare
 void
 nsHTMLEditor::RemoveListenerAndDeleteRef(const nsAString& aEvent,
                                          nsIDOMEventListener* aListener,
-                                         PRBool aUseCapture,
+                                         bool aUseCapture,
                                          nsIDOMElement* aElement,
                                          nsIContent * aParentContent,
                                          nsIPresShell* aShell)
@@ -369,11 +368,13 @@ nsHTMLEditor::CheckSelectionStateForAnonymousButtons(nsISelection * aSelection)
   }
 
   // now, let's display all contextual UI for good
+  nsIContent* hostContent = GetActiveEditingHost();
+  nsCOMPtr<nsIDOMNode> hostNode = do_QueryInterface(hostContent);
 
   if (mIsObjectResizingEnabled && focusElement &&
-      IsModifiableNode(focusElement)) {
+      IsModifiableNode(focusElement) && focusElement != hostNode) {
     if (nsEditProperty::img == focusTagAtom)
-      mResizedObjectIsAnImage = PR_TRUE;
+      mResizedObjectIsAnImage = true;
     if (mResizedObject)
       res = RefreshResizers();
     else
@@ -382,7 +383,7 @@ nsHTMLEditor::CheckSelectionStateForAnonymousButtons(nsISelection * aSelection)
   }
 
   if (mIsAbsolutelyPositioningEnabled && absPosElement &&
-      IsModifiableNode(absPosElement)) {
+      IsModifiableNode(absPosElement) && absPosElement != hostNode) {
     if (mAbsolutelyPositionedObject)
       res = RefreshGrabber();
     else
@@ -391,7 +392,7 @@ nsHTMLEditor::CheckSelectionStateForAnonymousButtons(nsISelection * aSelection)
   }
 
   if (mIsInlineTableEditingEnabled && cellElement &&
-      IsModifiableNode(cellElement)) {
+      IsModifiableNode(cellElement) && cellElement != hostNode) {
     if (mInlineEditedCell)
       res = RefreshInlineTableEditingUI();
     else
@@ -415,7 +416,7 @@ nsHTMLEditor::GetPositionAndDimensions(nsIDOMElement * aElement,
   NS_ENSURE_ARG_POINTER(aElement);
 
   // Is the element positioned ? let's check the cheap way first...
-  PRBool isPositioned = PR_FALSE;
+  bool isPositioned = false;
   nsresult res = aElement->HasAttribute(NS_LITERAL_STRING("_moz_abspos"), &isPositioned);
   NS_ENSURE_SUCCESS(res, res);
   if (!isPositioned) {
@@ -428,7 +429,7 @@ nsHTMLEditor::GetPositionAndDimensions(nsIDOMElement * aElement,
 
   if (isPositioned) {
     // Yes, it is absolutely positioned
-    mResizedObjectIsAbsolutelyPositioned = PR_TRUE;
+    mResizedObjectIsAbsolutelyPositioned = true;
 
     nsCOMPtr<nsIDOMWindow> window;
     res = mHTMLCSSUtils->GetDefaultViewCSS(aElement, getter_AddRefs(window));
@@ -452,7 +453,7 @@ nsHTMLEditor::GetPositionAndDimensions(nsIDOMElement * aElement,
     aH = GetCSSFloatValue(cssDecl, NS_LITERAL_STRING("height"));
   }
   else {
-    mResizedObjectIsAbsolutelyPositioned = PR_FALSE;
+    mResizedObjectIsAbsolutelyPositioned = false;
     nsCOMPtr<nsIDOMNSHTMLElement> nsElement = do_QueryInterface(aElement);
     if (!nsElement) {return NS_ERROR_NULL_POINTER; }
 

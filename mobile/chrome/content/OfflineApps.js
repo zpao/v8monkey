@@ -23,7 +23,7 @@ var OfflineApps = {
 
     let host = currentURI.asciiHost;
     let notificationID = "offline-app-requested-" + host;
-    let notificationBox = Browser.getNotificationBox();
+    let notificationBox = Browser.getNotificationBox(aTarget);
 
     let notification = notificationBox.getNotificationWithValue(notificationID);
     let strings = Strings.browser;
@@ -51,7 +51,7 @@ var OfflineApps = {
       }];
 
       const priority = notificationBox.PRIORITY_INFO_LOW;
-      let message = strings.formatStringFromName("offlineApps.available", [host], 1);
+      let message = strings.formatStringFromName("offlineApps.available2", [host], 1);
       notification = notificationBox.appendNotification(message, notificationID, "", priority, buttons);
       notification.documents = [aRequest];
     }

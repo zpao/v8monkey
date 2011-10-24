@@ -50,7 +50,6 @@ class nsXMLProcessingInstruction : public nsGenericDOMDataNode,
 {
 public:
   nsXMLProcessingInstruction(already_AddRefed<nsINodeInfo> aNodeInfo,
-                             const nsAString& aTarget,
                              const nsAString& aData);
   virtual ~nsXMLProcessingInstruction();
 
@@ -58,17 +57,27 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIDOMNode
-  NS_IMPL_NSIDOMNODE_USING_GENERIC_DOM_DATA
+  NS_FORWARD_NSIDOMNODE(nsGenericDOMDataNode::)
+
+  // nsIDOMCharacterData
+  NS_FORWARD_NSIDOMCHARACTERDATA(nsGenericDOMDataNode::)
 
   // nsIDOMProcessingInstruction
   NS_DECL_NSIDOMPROCESSINGINSTRUCTION
 
-  // nsIContent
-  virtual PRBool IsNodeOfType(PRUint32 aFlags) const;
+  // DOM Memory Reporter participant.
+  NS_DECL_AND_IMPL_DOM_MEMORY_REPORTER_SIZEOF(nsXMLProcessingInstruction,
+                                              nsGenericDOMDataNode)
+
+  // nsINode
+  virtual bool IsNodeOfType(PRUint32 aFlags) const;
+
+  virtual nsGenericDOMDataNode* CloneDataNode(nsINodeInfo *aNodeInfo,
+                                              bool aCloneText) const;
 
 #ifdef DEBUG
   virtual void List(FILE* out, PRInt32 aIndent) const;
-  virtual void DumpContent(FILE* out, PRInt32 aIndent, PRBool aDumpAll) const;
+  virtual void DumpContent(FILE* out, PRInt32 aIndent, bool aDumpAll) const;
 #endif
 
   virtual nsXPCClassInfo* GetClassInfo();
@@ -83,9 +92,7 @@ protected:
    * @param aValue [out] the value for the attribute with name specified in
    *                     aAttribute. Empty if the attribute isn't present.
    */
-  PRBool GetAttrValue(nsIAtom *aName, nsAString& aValue);
-
-  nsString mTarget;
+  bool GetAttrValue(nsIAtom *aName, nsAString& aValue);
 };
 
 #endif //nsIXMLProcessingInstruction_h___

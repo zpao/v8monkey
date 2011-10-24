@@ -89,7 +89,7 @@ NS_IMETHODIMP IMETextTxn::Init(nsIDOMCharacterData     *aElement,
   mStringToInsert = aStringToInsert;
   mEditor = aEditor;
   mRangeList = do_QueryInterface(aTextRangeList);
-  mFixed = PR_FALSE;
+  mFixed = false;
   return NS_OK;
 }
 
@@ -141,7 +141,7 @@ NS_IMETHODIMP IMETextTxn::UndoTransaction(void)
   return result;
 }
 
-NS_IMETHODIMP IMETextTxn::Merge(nsITransaction *aTransaction, PRBool *aDidMerge)
+NS_IMETHODIMP IMETextTxn::Merge(nsITransaction *aTransaction, bool *aDidMerge)
 {
   NS_ASSERTION(aDidMerge, "illegal vaule- null ptr- aDidMerge");
   NS_ASSERTION(aTransaction, "illegal vaule- null ptr- aTransaction");
@@ -155,7 +155,7 @@ NS_IMETHODIMP IMETextTxn::Merge(nsITransaction *aTransaction, PRBool *aDidMerge)
   // check to make sure we aren't fixed, if we are then nothing get's absorbed
   //
   if (mFixed) {
-    *aDidMerge = PR_FALSE;
+    *aDidMerge = false;
     return NS_OK;
   }
 
@@ -172,7 +172,7 @@ NS_IMETHODIMP IMETextTxn::Merge(nsITransaction *aTransaction, PRBool *aDidMerge)
     nsIPrivateTextRangeList* newTextRangeList;
     otherTxn->GetData(mStringToInsert,&newTextRangeList);
     mRangeList = do_QueryInterface(newTextRangeList);
-    *aDidMerge = PR_TRUE;
+    *aDidMerge = true;
 #ifdef DEBUG_IMETXN
     printf("IMETextTxn assimilated IMETextTxn:%p\n", aTransaction);
 #endif
@@ -180,13 +180,13 @@ NS_IMETHODIMP IMETextTxn::Merge(nsITransaction *aTransaction, PRBool *aDidMerge)
     return NS_OK;
   }
 
-  *aDidMerge = PR_FALSE;
+  *aDidMerge = false;
   return NS_OK;
 }
 
 NS_IMETHODIMP IMETextTxn::MarkFixed(void)
 {
-  mFixed = PR_TRUE;
+  mFixed = true;
   return NS_OK;
 }
 
@@ -295,7 +295,7 @@ NS_IMETHODIMP IMETextTxn::CollapseTextSelection(void)
         }
 
         nsCOMPtr<nsIPrivateTextRange> textRange;
-        PRBool setCaret=PR_FALSE;
+        bool setCaret=false;
         for(i=0;i<textRangeListLength;i++)
         {
           textRange = mRangeList->Item(i);
@@ -326,7 +326,7 @@ NS_IMETHODIMP IMETextTxn::CollapseTextSelection(void)
                       mOffset+selectionStart);
              NS_ASSERTION(NS_SUCCEEDED(result), "Cannot Collapse");
              if(NS_SUCCEEDED(result))
-             setCaret = PR_TRUE;
+             setCaret = true;
           } else {
              // NS_ASSERTION(selectionStart != selectionEnd, "end == start");
              if(selectionStart == selectionEnd)

@@ -40,11 +40,13 @@
 #define nsDOMFile_h__
 
 #include "nsICharsetDetectionObserver.h"
+#include "nsIFile.h"
 #include "nsIDOMFile.h"
 #include "nsIDOMFileList.h"
 #include "nsIDOMFileError.h"
 #include "nsIInputStream.h"
 #include "nsIJSNativeInitializer.h"
+#include "nsIMutable.h"
 #include "nsCOMArray.h"
 #include "nsCOMPtr.h"
 #include "mozilla/AutoRestore.h"
@@ -53,52 +55,114 @@
 #include "prmem.h"
 #include "nsAutoPtr.h"
 
+#ifndef PR_UINT64_MAX
+#define PR_UINT64_MAX (~(PRUint64)(0))
+#endif
+
 class nsIFile;
 class nsIInputStream;
 class nsIClassInfo;
+class nsIBlobBuilder;
 
-class nsDOMFile : public nsIDOMFile,
-                  public nsIDOMBlob_MOZILLA_2_0_BRANCH,
-                  public nsIXHRSendable,
-                  public nsICharsetDetectionObserver,
-                  public nsIJSNativeInitializer
+nsresult NS_NewBlobBuilder(nsISupports* *aSupports);
+
+class nsDOMFileBase : public nsIDOMFile,
+                      public nsIXHRSendable,
+                      public nsIMutable
 {
 public:
+
+  nsDOMFileBase(const nsAString& aName, const nsAString& aContentType,
+                PRUint64 aLength)
+    : mIsFile(true), mImmutable(false), mContentType(aContentType),
+      mName(aName), mStart(0), mLength(aLength)
+  {
+    // Ensure non-null mContentType by default
+    mContentType.SetIsVoid(false);
+  }
+
+  nsDOMFileBase(const nsAString& aContentType, PRUint64 aLength)
+    : mIsFile(false), mImmutable(false), mContentType(aContentType),
+      mStart(0), mLength(aLength)
+  {
+    // Ensure non-null mContentType by default
+    mContentType.SetIsVoid(false);
+  }
+
+  nsDOMFileBase(const nsAString& aContentType,
+                PRUint64 aStart, PRUint64 aLength)
+    : mIsFile(false), mImmutable(false), mContentType(aContentType),
+      mStart(aStart), mLength(aLength)
+  {
+    NS_ASSERTION(aLength != PR_UINT64_MAX,
+                 "Must know length when creating slice");
+    // Ensure non-null mContentType by default
+    mContentType.SetIsVoid(false);
+  }
+
+  virtual ~nsDOMFileBase() {}
+
+  virtual already_AddRefed<nsIDOMBlob>
+  CreateSlice(PRUint64 aStart, PRUint64 aLength,
+              const nsAString& aContentType) = 0;
+
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMBLOB
   NS_DECL_NSIDOMFILE
-  NS_DECL_NSIDOMBLOB_MOZILLA_2_0_BRANCH
   NS_DECL_NSIXHRSENDABLE
+  NS_DECL_NSIMUTABLE
 
-  nsDOMFile(nsIFile *aFile, const nsAString& aContentType)
-    : mFile(aFile),
-      mContentType(aContentType),
-      mIsFullFile(true)
-  {}
-
-  nsDOMFile(nsIFile *aFile)
-    : mFile(aFile),
-      mIsFullFile(true)
-  {}
-
-  nsDOMFile(const nsDOMFile* aOther, PRUint64 aStart, PRUint64 aLength,
-            const nsAString& aContentType)
-    : mFile(aOther->mFile),
-      mStart(aOther->mIsFullFile ? aStart :
-                                   (aOther->mStart + aStart)),
-      mLength(aLength),
-      mContentType(aContentType),
-      mIsFullFile(false)
+protected:
+  bool IsSizeUnknown()
   {
-    NS_ASSERTION(mFile, "must have file");
-    // Ensure non-null mContentType
-    mContentType.SetIsVoid(PR_FALSE);
+    return mLength == PR_UINT64_MAX;
   }
 
-  virtual ~nsDOMFile() {}
+  bool mIsFile;
+  bool mImmutable;
+  nsString mContentType;
+  nsString mName;
 
-  // from nsICharsetDetectionObserver
-  NS_IMETHOD Notify(const char *aCharset, nsDetectionConfident aConf);
+  PRUint64 mStart;
+  PRUint64 mLength;
+};
+
+class nsDOMFileFile : public nsDOMFileBase,
+                      public nsIJSNativeInitializer
+{
+public:
+  // Create as a file
+  nsDOMFileFile(nsIFile *aFile)
+    : nsDOMFileBase(EmptyString(), EmptyString(), PR_UINT64_MAX),
+      mFile(aFile), mWholeFile(true)
+  {
+    NS_ASSERTION(mFile, "must have file");
+    // Lazily get the content type and size
+    mContentType.SetIsVoid(true);
+    mFile->GetLeafName(mName);
+  }
+
+  // Create as a blob
+  nsDOMFileFile(nsIFile *aFile, const nsAString& aContentType,
+                nsISupports *aCacheToken = nsnull)
+    : nsDOMFileBase(aContentType, PR_UINT64_MAX),
+      mFile(aFile), mWholeFile(true),
+      mCacheToken(aCacheToken)
+  {
+    NS_ASSERTION(mFile, "must have file");
+  }
+
+  // Create as a file to be later initialized
+  nsDOMFileFile()
+    : nsDOMFileBase(EmptyString(), EmptyString(), PR_UINT64_MAX),
+      mWholeFile(true)
+  {
+    // Lazily get the content type and size
+    mContentType.SetIsVoid(true);
+    mName.SetIsVoid(true);
+  }
+
+  NS_DECL_ISUPPORTS_INHERITED
 
   // nsIJSNativeInitializer
   NS_IMETHOD Initialize(nsISupports* aOwner,
@@ -107,68 +171,76 @@ public:
                         PRUint32 aArgc,
                         jsval* aArgv);
 
+  // Overrides
+  NS_IMETHOD GetSize(PRUint64* aSize);
+  NS_IMETHOD GetType(nsAString& aType);
+  NS_IMETHOD GetMozFullPathInternal(nsAString& aFullPath);
+  NS_IMETHOD GetInternalStream(nsIInputStream**);
+
   // DOMClassInfo constructor (for File("foo"))
   static nsresult
   NewFile(nsISupports* *aNewObject);
 
 protected:
+  // Create slice
+  nsDOMFileFile(const nsDOMFileFile* aOther, PRUint64 aStart, PRUint64 aLength,
+                const nsAString& aContentType)
+    : nsDOMFileBase(aContentType, aOther->mStart + aStart, aLength),
+      mFile(aOther->mFile), mWholeFile(false),
+      mCacheToken(aOther->mCacheToken)
+  {
+    NS_ASSERTION(mFile, "must have file");
+    mImmutable = aOther->mImmutable;
+  }
+  virtual already_AddRefed<nsIDOMBlob>
+  CreateSlice(PRUint64 aStart, PRUint64 aLength,
+              const nsAString& aContentType);
+
   nsCOMPtr<nsIFile> mFile;
-
-  // start and length in 
-  PRUint64 mStart;
-  PRUint64 mLength;
-
-  nsString mContentType;
-  
-  bool mIsFullFile;
-
-  // Used during charset detection
-  nsCString mCharset;
-  nsresult GuessCharset(nsIInputStream *aStream,
-                        nsACString &aCharset);
-  nsresult ConvertStream(nsIInputStream *aStream, const char *aCharset,
-                         nsAString &aResult);
+  bool mWholeFile;
+  nsCOMPtr<nsISupports> mCacheToken;
 };
 
-class nsDOMMemoryFile : public nsDOMFile
+class nsDOMMemoryFile : public nsDOMFileBase
 {
 public:
+  // Create as file
   nsDOMMemoryFile(void *aMemoryBuffer,
                   PRUint64 aLength,
                   const nsAString& aName,
                   const nsAString& aContentType)
-    : nsDOMFile(nsnull, aContentType),
-      mDataOwner(new DataOwner(aMemoryBuffer)),
-      mName(aName)
+    : nsDOMFileBase(aName, aContentType, aLength),
+      mDataOwner(new DataOwner(aMemoryBuffer))
   {
-    mStart = 0;
-    mLength = aLength;
+    NS_ASSERTION(mDataOwner && mDataOwner->mData, "must have data");
   }
 
+  // Create as blob
+  nsDOMMemoryFile(void *aMemoryBuffer,
+                  PRUint64 aLength,
+                  const nsAString& aContentType)
+    : nsDOMFileBase(aContentType, aLength),
+      mDataOwner(new DataOwner(aMemoryBuffer))
+  {
+    NS_ASSERTION(mDataOwner && mDataOwner->mData, "must have data");
+  }
+
+  NS_IMETHOD GetInternalStream(nsIInputStream**);
+
+protected:
+  // Create slice
   nsDOMMemoryFile(const nsDOMMemoryFile* aOther, PRUint64 aStart,
                   PRUint64 aLength, const nsAString& aContentType)
-    : nsDOMFile(nsnull, aContentType),
+    : nsDOMFileBase(aContentType, aOther->mStart + aStart, aLength),
       mDataOwner(aOther->mDataOwner)
   {
     NS_ASSERTION(mDataOwner && mDataOwner->mData, "must have data");
-
-    mIsFullFile = false;
-    mStart = aOther->mStart + aStart;
-    mLength = aLength;
-
-    // Ensure non-null mContentType
-    mContentType.SetIsVoid(PR_FALSE);
+    mImmutable = aOther->mImmutable;
   }
+  virtual already_AddRefed<nsIDOMBlob>
+  CreateSlice(PRUint64 aStart, PRUint64 aLength,
+              const nsAString& aContentType);
 
-  NS_IMETHOD GetName(nsAString&);
-  NS_IMETHOD GetSize(PRUint64*);
-  NS_IMETHOD GetInternalStream(nsIInputStream**);
-  NS_IMETHOD GetMozFullPathInternal(nsAString&);
-  NS_IMETHOD MozSlice(PRInt64 aStart, PRInt64 aEnd,
-                      const nsAString& aContentType, PRUint8 optional_argc,
-                      nsIDOMBlob **aBlob);
-
-protected:
   friend class DataOwnerAdapter; // Needs to see DataOwner
   class DataOwner {
   public:
@@ -185,8 +257,6 @@ protected:
 
   // Used when backed by a memory store
   nsRefPtr<DataOwner> mDataOwner;
-
-  nsString mName;
 };
 
 class nsDOMFileList : public nsIDOMFileList
@@ -195,9 +265,9 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMFILELIST
 
-  PRBool Append(nsIDOMFile *aFile) { return mFiles.AppendObject(aFile); }
+  bool Append(nsIDOMFile *aFile) { return mFiles.AppendObject(aFile); }
 
-  PRBool Remove(PRUint32 aIndex) { return mFiles.RemoveObjectAt(aIndex); }
+  bool Remove(PRUint32 aIndex) { return mFiles.RemoveObjectAt(aIndex); }
   void Clear() { return mFiles.Clear(); }
 
   nsIDOMFile* GetItemAt(PRUint32 aIndex)

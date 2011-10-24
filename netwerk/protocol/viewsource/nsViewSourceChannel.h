@@ -75,8 +75,8 @@ public:
 
     // nsViewSourceChannel methods:
     nsViewSourceChannel()
-        : mIsDocument(PR_FALSE)
-        , mOpened(PR_FALSE) {}
+        : mIsDocument(false)
+        , mOpened(false) {}
 
     NS_HIDDEN_(nsresult) Init(nsIURI* uri);
 
@@ -89,8 +89,8 @@ protected:
     nsCOMPtr<nsIStreamListener> mListener;
     nsCOMPtr<nsIURI>            mOriginalURI;
     nsCString                   mContentType;
-    PRBool                      mIsDocument; // keeps track of the LOAD_DOCUMENT_URI flag
-    PRBool                      mOpened;
+    bool                        mIsDocument; // keeps track of the LOAD_DOCUMENT_URI flag
+    bool                        mOpened;
 };
 
 #endif /* nsViewSourceChannel_h___ */

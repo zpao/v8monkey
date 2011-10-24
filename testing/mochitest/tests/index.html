@@ -3,8 +3,7 @@
     <!-- This harness does not work locally in Safari -->
     <script type="text/javascript" src="../MochiKit/MochiKit.js"></script>
     <script type="text/javascript" src="SimpleTest/TestRunner.js"></script>
-    <script type="text/javascript" src="SimpleTest/MozillaFileLogger.js"></script>
-    <script type="text/javascript" src="SimpleTest/quit.js"></script>
+    <script type="text/javascript" src="SimpleTest/MozillaLogger.js"></script>
     <!--<link rel="stylesheet" type="text/css" href="/static/main.css" />-->
 </head>
 <body>
@@ -22,15 +21,15 @@ var params = parseQueryString(location.search.substring(1), true);
 var fileLevel =  params.fileLevel || null;
 var consoleLevel = params.consoleLevel || null;
 
-// closeWhenDone tells us to call quit.js when complete
+// closeWhenDone tells us to close the browser when complete
 if (params.closeWhenDone) {
-  TestRunner.onComplete = goQuitApplication;
+  TestRunner.onComplete = SpecialPowers.quit;
 }
 
 // logFile to write our results
 if (params.logFile) {
-  MozillaFileLogger.init(params.logFile);
-  TestRunner.logger.addListener("mozLogger", fileLevel + "", MozillaFileLogger.getLogCallback());
+  var spl = SpecialPowersLogger(params.logFile);
+  TestRunner.logger.addListener("mozLogger", fileLevel + "", spl.getLogCallback());
 }
 
 // if we get a quiet param, don't log to the console

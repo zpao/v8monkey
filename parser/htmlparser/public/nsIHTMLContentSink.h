@@ -124,7 +124,7 @@ public:
    * @update 01/09/2003 harishd
    * @param aTag - Check if this tag is enabled or not.
    */
-  NS_IMETHOD IsEnabled(PRInt32 aTag, PRBool* aReturn) = 0;
+  NS_IMETHOD IsEnabled(PRInt32 aTag, bool* aReturn) = 0;
 
   /**
    * This method is called when parser has
@@ -227,9 +227,9 @@ public:
   /**
    * Call this method to determnine if a FORM is on the sink's stack
    *
-   * @return PR_TRUE if found else PR_FALSE
+   * @return true if found else false
    */
-  NS_IMETHOD_(PRBool) IsFormOnStack() = 0;
+  NS_IMETHOD_(bool) IsFormOnStack() = 0;
 
 };
 

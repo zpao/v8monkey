@@ -190,7 +190,7 @@ sa_stream_open(sa_stream_t *s) {
 
 
 int
-sa_stream_get_min_write(sa_stream_t *s, size_t *samples) {
+sa_stream_get_min_write(sa_stream_t *s, size_t *size) {
   int r;
   snd_pcm_uframes_t threshold;
   snd_pcm_sw_params_t* swparams;
@@ -200,9 +200,10 @@ sa_stream_get_min_write(sa_stream_t *s, size_t *samples) {
   snd_pcm_sw_params_alloca(&swparams);
   snd_pcm_sw_params_current(s->output_unit, swparams);
   r = snd_pcm_sw_params_get_start_threshold(swparams, &threshold);
-  if (r < 0)
+  if (r < 0) {
     return SA_ERROR_NO_INIT;
-  *samples = threshold;
+  }
+  *size = snd_pcm_frames_to_bytes(s->output_unit, threshold);
 
   return SA_SUCCESS;
 }
@@ -249,7 +250,6 @@ sa_stream_write(sa_stream_t *s, const void *data, size_t nbytes) {
   }
 
   nframes = snd_pcm_bytes_to_frames(s->output_unit, nbytes);
-
   while(nframes>0) {
     if (s->resumed) {
       avail = snd_pcm_avail_update(s->output_unit);
@@ -257,7 +257,9 @@ sa_stream_write(sa_stream_t *s, const void *data, size_t nbytes) {
       avail = snd_pcm_avail_update(s->output_unit);
       s->resumed = avail != 0;
     } else {
-      frames = snd_pcm_writei(s->output_unit, data, nframes);
+      avail = snd_pcm_avail_update(s->output_unit);
+      avail = avail < 64 ? 64 : avail;
+      frames = snd_pcm_writei(s->output_unit, data, nframes > avail ? avail : nframes);
     }
     if (frames < 0) {
       int r = snd_pcm_recover(s->output_unit, frames, 1);
@@ -265,12 +267,12 @@ sa_stream_write(sa_stream_t *s, const void *data, size_t nbytes) {
         return SA_ERROR_SYSTEM;
       }
     } else {
+      size_t bytes = snd_pcm_frames_to_bytes(s->output_unit, frames);
       nframes -= frames;
-      data = ((unsigned char *)data) + snd_pcm_frames_to_bytes(s->output_unit, frames);
+      data = ((unsigned char *)data) + bytes;
+      s->bytes_written += bytes;
     }
   }
-
-  s->bytes_written += nbytes;
 
   return SA_SUCCESS;
 }
@@ -385,12 +387,13 @@ sa_stream_drain(sa_stream_t *s)
   if (snd_pcm_state(s->output_unit) == SND_PCM_STATE_PREPARED) {
     size_t min_samples = 0;
     size_t min_bytes = 0;
+    void *buf;
 
     if (sa_stream_get_min_write(s, &min_samples) < 0)
       return SA_ERROR_SYSTEM;
     min_bytes = snd_pcm_frames_to_bytes(s->output_unit, min_samples);    
 
-    void* buf = malloc(min_bytes);
+    buf = malloc(min_bytes);
     if (!buf)
       return SA_ERROR_SYSTEM;
     memset(buf, 0, min_bytes);

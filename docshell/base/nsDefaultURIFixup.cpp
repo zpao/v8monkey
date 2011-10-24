@@ -44,8 +44,6 @@
 #include "nsEscape.h"
 #include "nsCRT.h"
 
-#include "nsIPrefService.h"
-#include "nsIPrefLocalizedString.h"
 #include "nsIPlatformCharset.h"
 #include "nsILocalFile.h"
 
@@ -55,6 +53,9 @@
 
 #include "nsIURIFixup.h"
 #include "nsDefaultURIFixup.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 /* Implementation file */
 NS_IMPL_ISUPPORTS1(nsDefaultURIFixup, nsIURIFixup)
@@ -62,9 +63,6 @@ NS_IMPL_ISUPPORTS1(nsDefaultURIFixup, nsIURIFixup)
 nsDefaultURIFixup::nsDefaultURIFixup()
 {
   /* member initializers and constructor code */
-
-  // Try and get the pref service
-  mPrefBranch = do_GetService(NS_PREFSERVICE_CONTRACTID);
 }
 
 
@@ -80,7 +78,7 @@ nsDefaultURIFixup::CreateExposableURI(nsIURI *aURI, nsIURI **aReturn)
     NS_ENSURE_ARG_POINTER(aURI);
     NS_ENSURE_ARG_POINTER(aReturn);
 
-    PRBool isWyciwyg = PR_FALSE;
+    bool isWyciwyg = false;
     aURI->SchemeIs("wyciwyg", &isWyciwyg);
 
     nsCAutoString userPass;
@@ -134,13 +132,10 @@ nsDefaultURIFixup::CreateExposableURI(nsIURI *aURI, nsIURI **aReturn)
     }
 
     // hide user:pass unless overridden by pref
-    PRBool hideUserPass = PR_TRUE;
-    if (mPrefBranch)
+    if (Preferences::GetBool("browser.fixup.hide_user_pass", true))
     {
-        mPrefBranch->GetBoolPref("browser.fixup.hide_user_pass", &hideUserPass);
-    }
-    if (hideUserPass)
         uri->SetUserPass(EmptyCString());
+    }
 
     // return the fixed-up URI
     *aReturn = uri;
@@ -238,9 +233,10 @@ nsDefaultURIFixup::CreateFixupURI(const nsACString& aStringURI, PRUint32 aFixupF
 
     // For these protocols, use system charset instead of the default UTF-8,
     // if the URI is non ASCII.
-    PRBool bAsciiURI = IsASCII(uriString);
-    PRBool bUseNonDefaultCharsetForURI =
+    bool bAsciiURI = IsASCII(uriString);
+    bool bUseNonDefaultCharsetForURI =
                         !bAsciiURI &&
+                        !(aFixupFlags & FIXUP_FLAG_USE_UTF8) &&
                         (scheme.IsEmpty() ||
                          scheme.LowerCaseEqualsLiteral("http") ||
                          scheme.LowerCaseEqualsLiteral("https") ||
@@ -272,12 +268,10 @@ nsDefaultURIFixup::CreateFixupURI(const nsACString& aStringURI, PRUint32 aFixupF
 
     // See if it is a keyword
     // Test whether keywords need to be fixed up
-    PRBool fixupKeywords = PR_FALSE;
+    bool fixupKeywords = false;
     if (aFixupFlags & FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP) {
-        if (mPrefBranch)
-        {
-            NS_ENSURE_SUCCESS(mPrefBranch->GetBoolPref("keyword.enabled", &fixupKeywords), NS_ERROR_FAILURE);
-        }
+        nsresult rv = Preferences::GetBool("keyword.enabled", &fixupKeywords);
+        NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
         if (fixupKeywords)
         {
             KeywordURIFixup(uriString, aURI);
@@ -329,8 +323,8 @@ nsDefaultURIFixup::CreateFixupURI(const nsACString& aStringURI, PRUint32 aFixupF
             uriString.Assign(NS_LITERAL_CSTRING("http://") + uriString);
 
         // For ftp & http, we want to use system charset.
-        if (!bAsciiURI)
-          bUseNonDefaultCharsetForURI = PR_TRUE;
+        if (!bAsciiURI && !(aFixupFlags & FIXUP_FLAG_USE_UTF8))
+          bUseNonDefaultCharsetForURI = true;
     } // end if checkprotocol
 
     rv = NS_NewURI(aURI, uriString, bUseNonDefaultCharsetForURI ? GetCharsetForUrlBar() : nsnull);
@@ -358,7 +352,7 @@ NS_IMETHODIMP nsDefaultURIFixup::KeywordToURI(const nsACString& aKeyword,
                                               nsIURI **aURI)
 {
     *aURI = nsnull;
-    NS_ENSURE_STATE(mPrefBranch);
+    NS_ENSURE_STATE(Preferences::GetRootBranch());
 
     // Strip leading "?" and leading/trailing spaces from aKeyword
     nsCAutoString keyword(aKeyword);
@@ -367,19 +361,10 @@ NS_IMETHODIMP nsDefaultURIFixup::KeywordToURI(const nsACString& aKeyword,
     }
     keyword.Trim(" ");
 
-    nsXPIDLCString url;
-    nsCOMPtr<nsIPrefLocalizedString> keywordURL;
-    mPrefBranch->GetComplexValue("keyword.URL", 
-                                 NS_GET_IID(nsIPrefLocalizedString),
-                                 getter_AddRefs(keywordURL));
-
-    if (keywordURL) {
-        nsXPIDLString wurl;
-        keywordURL->GetData(getter_Copies(wurl));
-        CopyUTF16toUTF8(wurl, url);
-    } else {
+    nsAdoptingCString url = Preferences::GetLocalizedCString("keyword.URL");
+    if (!url) {
         // Fall back to a non-localized pref, for backwards compat
-        mPrefBranch->GetCharPref("keyword.URL", getter_Copies(url));
+        url = Preferences::GetCString("keyword.URL");
     }
 
     // If the pref is set and non-empty, use it.
@@ -439,31 +424,29 @@ NS_IMETHODIMP nsDefaultURIFixup::KeywordToURI(const nsACString& aKeyword,
     return NS_ERROR_NOT_AVAILABLE;
 }
 
-PRBool nsDefaultURIFixup::MakeAlternateURI(nsIURI *aURI)
+bool nsDefaultURIFixup::MakeAlternateURI(nsIURI *aURI)
 {
-    if (!mPrefBranch)
+    if (!Preferences::GetRootBranch())
     {
-        return PR_FALSE;
+        return false;
     }
-    PRBool makeAlternate = PR_TRUE;
-    mPrefBranch->GetBoolPref("browser.fixup.alternate.enabled", &makeAlternate);
-    if (!makeAlternate)
+    if (!Preferences::GetBool("browser.fixup.alternate.enabled", true))
     {
-        return PR_FALSE;
+        return false;
     }
 
     // Code only works for http. Not for any other protocol including https!
-    PRBool isHttp = PR_FALSE;
+    bool isHttp = false;
     aURI->SchemeIs("http", &isHttp);
     if (!isHttp) {
-        return PR_FALSE;
+        return false;
     }
 
     // Security - URLs with user / password info should NOT be fixed up
     nsCAutoString userpass;
     aURI->GetUserPass(userpass);
     if (!userpass.IsEmpty()) {
-        return PR_FALSE;
+        return false;
     }
 
     nsCAutoString oldHost;
@@ -483,23 +466,21 @@ PRBool nsDefaultURIFixup::MakeAlternateURI(nsIURI *aURI)
     }
 
 
-    nsresult rv;
-
     // Get the prefix and suffix to stick onto the new hostname. By default these
     // are www. & .com but they could be any other value, e.g. www. & .org
 
     nsCAutoString prefix("www.");
-    nsXPIDLCString prefPrefix;
-    rv = mPrefBranch->GetCharPref("browser.fixup.alternate.prefix", getter_Copies(prefPrefix));
-    if (NS_SUCCEEDED(rv))
+    nsAdoptingCString prefPrefix =
+        Preferences::GetCString("browser.fixup.alternate.prefix");
+    if (prefPrefix)
     {
         prefix.Assign(prefPrefix);
     }
 
     nsCAutoString suffix(".com");
-    nsXPIDLCString prefSuffix;
-    rv = mPrefBranch->GetCharPref("browser.fixup.alternate.suffix", getter_Copies(prefSuffix));
-    if (NS_SUCCEEDED(rv))
+    nsAdoptingCString prefSuffix =
+        Preferences::GetCString("browser.fixup.alternate.suffix");
+    if (prefSuffix)
     {
         suffix.Assign(prefSuffix);
     }
@@ -524,31 +505,31 @@ PRBool nsDefaultURIFixup::MakeAlternateURI(nsIURI *aURI)
         else
         {
             // Do nothing
-            return PR_FALSE;
+            return false;
         }
     }
     else
     {
         // Do nothing
-        return PR_FALSE;
+        return false;
     }
 
     if (newHost.IsEmpty()) {
-        return PR_FALSE;
+        return false;
     }
 
     // Assign the new host string over the old one
     aURI->SetHost(newHost);
-    return PR_TRUE;
+    return true;
 }
 
 /**
  * Check if the host name starts with ftp\d*\. and it's not directly followed
  * by the tld.
  */
-PRBool nsDefaultURIFixup::IsLikelyFTP(const nsCString &aHostSpec)
+bool nsDefaultURIFixup::IsLikelyFTP(const nsCString &aHostSpec)
 {
-    PRBool likelyFTP = PR_FALSE;
+    bool likelyFTP = false;
     if (aHostSpec.EqualsIgnoreCase("ftp", 3)) {
         nsACString::const_iterator iter;
         nsACString::const_iterator end;
@@ -564,7 +545,7 @@ PRBool nsDefaultURIFixup::IsLikelyFTP(const nsCString &aHostSpec)
                 while (iter != end)
                 {
                     if (*iter == '.') {
-                        likelyFTP = PR_TRUE;
+                        likelyFTP = true;
                         break;
                     }
                     ++iter;
@@ -598,20 +579,20 @@ nsresult nsDefaultURIFixup::FileURIFixup(const nsACString& aStringURI,
 nsresult nsDefaultURIFixup::ConvertFileToStringURI(const nsACString& aIn,
                                                    nsCString& aOut)
 {
-    PRBool attemptFixup = PR_FALSE;
+    bool attemptFixup = false;
 
 #if defined(XP_WIN) || defined(XP_OS2)
     // Check for \ in the url-string or just a drive (PC)
     if(kNotFound != aIn.FindChar('\\') ||
        (aIn.Length() == 2 && (aIn.Last() == ':' || aIn.Last() == '|')))
     {
-        attemptFixup = PR_TRUE;
+        attemptFixup = true;
     }
 #elif defined(XP_UNIX)
     // Check if it starts with / (UNIX)
     if(aIn.First() == '/')
     {
-        attemptFixup = PR_TRUE;
+        attemptFixup = true;
     }
 #else
     // Do nothing (All others for now) 
@@ -657,11 +638,11 @@ nsresult nsDefaultURIFixup::ConvertFileToStringURI(const nsACString& aIn,
         NS_ConvertUTF8toUTF16 in(aIn);
         if (PossiblyByteExpandedFileName(in)) {
           // removes high byte
-          rv = NS_NewNativeLocalFile(NS_LossyConvertUTF16toASCII(in), PR_FALSE, getter_AddRefs(filePath));
+          rv = NS_NewNativeLocalFile(NS_LossyConvertUTF16toASCII(in), false, getter_AddRefs(filePath));
         }
         else {
           // input is unicode
-          rv = NS_NewLocalFile(in, PR_FALSE, getter_AddRefs(filePath));
+          rv = NS_NewLocalFile(in, false, getter_AddRefs(filePath));
         }
 
         if (NS_SUCCEEDED(rv))
@@ -674,7 +655,7 @@ nsresult nsDefaultURIFixup::ConvertFileToStringURI(const nsACString& aIn,
     return NS_ERROR_FAILURE;
 }
 
-PRBool nsDefaultURIFixup::PossiblyHostPortUrl(const nsACString &aUrl)
+bool nsDefaultURIFixup::PossiblyHostPortUrl(const nsACString &aUrl)
 {
     // Oh dear, the protocol is invalid. Test if the protocol might
     // actually be a url without a protocol:
@@ -722,7 +703,7 @@ PRBool nsDefaultURIFixup::PossiblyHostPortUrl(const nsACString &aUrl)
         }
         if (chunkSize == 0 || iter == iterEnd)
         {
-            return PR_FALSE;
+            return false;
         }
         if (*iter == ':')
         {
@@ -732,14 +713,14 @@ PRBool nsDefaultURIFixup::PossiblyHostPortUrl(const nsACString &aUrl)
         if (*iter != '.')
         {
             // Whatever it is, it ain't a hostname!
-            return PR_FALSE;
+            return false;
         }
         ++iter;
     }
     if (iter == iterEnd)
     {
         // No point continuing since there is no colon
-        return PR_FALSE;
+        return false;
     }
     ++iter;
 
@@ -760,21 +741,21 @@ PRBool nsDefaultURIFixup::PossiblyHostPortUrl(const nsACString &aUrl)
         else
         {
             // Whatever it is, it ain't a port!
-            return PR_FALSE;
+            return false;
         }
         ++iter;
     }
     if (digitCount == 0 || digitCount > 5)
     {
         // No digits or more digits than a port would have.
-        return PR_FALSE;
+        return false;
     }
 
     // Yes, it's possibly a host:port url
-    return PR_TRUE;
+    return true;
 }
 
-PRBool nsDefaultURIFixup::PossiblyByteExpandedFileName(const nsAString& aIn)
+bool nsDefaultURIFixup::PossiblyByteExpandedFileName(const nsAString& aIn)
 {
     // XXXXX HACK XXXXX : please don't copy this code.
     // There are cases where aIn contains the locale byte chars padded to short
@@ -789,10 +770,10 @@ PRBool nsDefaultURIFixup::PossiblyByteExpandedFileName(const nsAString& aIn)
     while (iter != iterEnd)
     {
         if (*iter >= 0x0080 && *iter <= 0x00FF)
-            return PR_TRUE;
+            return true;
         ++iter;
     }
-    return PR_FALSE;
+    return false;
 }
 
 const char * nsDefaultURIFixup::GetFileSystemCharset()

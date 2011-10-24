@@ -366,7 +366,7 @@ typedef enum {
   /* Checks to see if the plug-in would like the browser to load the "src" attribute. */
   NPPVpluginCancelSrcStream = 20,
 
-  NPPVSupportsAdvancedKeyHandling = 21,
+  NPPVsupportsAdvancedKeyHandling = 21,
 
   NPPVpluginUsesDOMForCursorBool = 22
 
@@ -411,7 +411,9 @@ typedef enum {
 
   NPNVprivateModeBool = 18,
 
-  NPNVsupportsAdvancedKeyHandling = 21
+  NPNVsupportsAdvancedKeyHandling = 21,
+
+  NPNVdocumentOrigin = 22
 
 #if defined(XP_MACOSX)
   /* Used for negotiating drawing models */
@@ -429,6 +431,8 @@ typedef enum {
   , NPNVsupportsCocoaBool = 3001 /* TRUE if the browser supports the Cocoa event model */
   , NPNVsupportsUpdatedCocoaTextInputBool = 3002 /* TRUE if the browser supports the updated
                                                     Cocoa text input specification. */
+  , NPNVsupportsCompositingCoreAnimationPluginsBool = 74656 /* TRUE if the browser supports
+                                                               CA model compositing */
 #endif
 #if (MOZ_PLATFORM_MAEMO == 5) || (MOZ_PLATFORM_MAEMO == 6)
   , NPNVSupportsWindowlessLocal = 2002
@@ -787,7 +791,7 @@ extern "C" {
 /* NPP_* functions are provided by the plugin and called by the navigator. */
 
 #if defined(XP_UNIX)
-char* NPP_GetMIMEDescription(void);
+const char* NPP_GetMIMEDescription(void);
 #endif
 
 NPError NP_LOADDS NPP_New(NPMIMEType pluginType, NPP instance,

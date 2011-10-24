@@ -63,7 +63,7 @@ nsSimpleNestedURI::Read(nsIObjectInputStream* aStream)
 
     NS_ASSERTION(!mMutable, "How did that happen?");
 
-    rv = aStream->ReadObject(PR_TRUE, getter_AddRefs(mInnerURI));
+    rv = aStream->ReadObject(true, getter_AddRefs(mInnerURI));
     if (NS_FAILED(rv)) return rv;
 
     NS_TryToSetImmutable(mInnerURI);
@@ -84,25 +84,25 @@ nsSimpleNestedURI::Write(nsIObjectOutputStream* aStream)
     if (NS_FAILED(rv)) return rv;
 
     rv = aStream->WriteCompoundObject(mInnerURI, NS_GET_IID(nsIURI),
-                                      PR_TRUE);
+                                      true);
     return rv;
 }
 
 // nsIIPCSerializable
 
-PRBool
+bool
 nsSimpleNestedURI::Read(const IPC::Message *aMsg, void **aIter)
 {
     if (!nsSimpleURI::Read(aMsg, aIter))
-        return PR_FALSE;
+        return false;
 
     IPC::URI uri;
     if (!ReadParam(aMsg, aIter, &uri))
-        return PR_FALSE;
+        return false;
 
     mInnerURI = uri;
 
-    return PR_TRUE;
+    return true;
 }
 
 void
@@ -130,16 +130,17 @@ nsSimpleNestedURI::GetInnermostURI(nsIURI** uri)
     return NS_ImplGetInnermostURI(this, uri);
 }
 
-// nsIURI overrides
-
-NS_IMETHODIMP
-nsSimpleNestedURI::Equals(nsIURI* other, PRBool *result)
+// nsSimpleURI overrides
+/* virtual */ nsresult
+nsSimpleNestedURI::EqualsInternal(nsIURI* other,
+                                  nsSimpleURI::RefHandlingEnum refHandlingMode,
+                                  bool* result)
 {
-    *result = PR_FALSE;
+    *result = false;
     NS_ENSURE_TRUE(mInnerURI, NS_ERROR_NOT_INITIALIZED);
     
     if (other) {
-        PRBool correctScheme;
+        bool correctScheme;
         nsresult rv = other->SchemeIs(mScheme.get(), &correctScheme);
         NS_ENSURE_SUCCESS(rv, rv);
 
@@ -150,7 +151,9 @@ nsSimpleNestedURI::Equals(nsIURI* other, PRBool *result)
                 rv = nest->GetInnerURI(getter_AddRefs(otherInner));
                 NS_ENSURE_SUCCESS(rv, rv);
 
-                return otherInner->Equals(mInnerURI, result);
+                return (refHandlingMode == eHonorRef) ?
+                    otherInner->Equals(mInnerURI, result) :
+                    otherInner->EqualsExceptRef(mInnerURI, result);
             }
         }
     }
@@ -159,20 +162,21 @@ nsSimpleNestedURI::Equals(nsIURI* other, PRBool *result)
 }
 
 /* virtual */ nsSimpleURI*
-nsSimpleNestedURI::StartClone()
+nsSimpleNestedURI::StartClone(nsSimpleURI::RefHandlingEnum refHandlingMode)
 {
     NS_ENSURE_TRUE(mInnerURI, nsnull);
     
     nsCOMPtr<nsIURI> innerClone;
-    nsresult rv = mInnerURI->Clone(getter_AddRefs(innerClone));
+    nsresult rv = refHandlingMode == eHonorRef ?
+        mInnerURI->Clone(getter_AddRefs(innerClone)) :
+        mInnerURI->CloneIgnoringRef(getter_AddRefs(innerClone));
+
     if (NS_FAILED(rv)) {
         return nsnull;
     }
 
     nsSimpleNestedURI* url = new nsSimpleNestedURI(innerClone);
-    if (url) {
-        url->SetMutable(PR_FALSE);
-    }
+    url->SetMutable(false);
 
     return url;
 }

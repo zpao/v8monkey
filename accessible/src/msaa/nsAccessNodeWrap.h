@@ -61,9 +61,6 @@
 #include "OLEIDL.H"
 #include "OLEACC.H"
 #include <winuser.h>
-#ifndef WINABLEAPI
-#include <winable.h>
-#endif
 #ifdef MOZ_CRASHREPORTER
 #include "nsICrashReporter.h"
 #endif
@@ -162,7 +159,7 @@ public: // construction, destruction
 
     static int FilterA11yExceptions(unsigned int aCode, EXCEPTION_POINTERS *aExceptionInfo);
 
-    static PRBool IsOnlyMsaaCompatibleJawsPresent();
+    static bool IsOnlyMsaaCompatibleJawsPresent();
 
     static void TurnOffNewTabSwitchingForJawsAndWE();
 
@@ -185,13 +182,11 @@ protected:
    */
   ISimpleDOMNode *MakeAccessNode(nsINode *aNode);
 
-    static PRBool gIsEnumVariantSupportDisabled;
-
     /**
      * Used to determine whether an IAccessible2 compatible screen reader is
      * loaded. Currently used for JAWS versions older than 8.0.2173.
      */
-     static PRBool gIsIA2Disabled;
+     static bool gIsIA2Disabled;
 
     /**
      * It is used in nsHyperTextAccessibleWrap for IA2::newText/oldText

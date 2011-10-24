@@ -91,8 +91,8 @@ public:
    * that derive from nsGenericElement)
    *
    * @param aName the name of the attr
-   * @returns PR_TRUE if the attribute was set (even when set to empty string)
-   *          PR_FALSE when not set.
+   * @returns true if the attribute was set (even when set to empty string)
+   *          false when not set.
    */
   virtual const nsAttrValue* GetAnimAttr(nsIAtom* aName) const = 0;
 
@@ -102,15 +102,15 @@ public:
    *
    * @param aName the name of the attr
    * @param aResult the value (may legitimately be the empty string) [OUT]
-   * @returns PR_TRUE if the attribute was set (even when set to empty string)
-   *          PR_FALSE when not set.
+   * @returns true if the attribute was set (even when set to empty string)
+   *          false when not set.
    */
-  virtual PRBool GetAnimAttr(nsIAtom* aAttName, nsAString& aResult) const = 0;
+  virtual bool GetAnimAttr(nsIAtom* aAttName, nsAString& aResult) const = 0;
 
   /*
    * Check for the presence of an attribute in the global namespace.
    */
-  virtual PRBool HasAnimAttr(nsIAtom* aAttName) const = 0;
+  virtual bool HasAnimAttr(nsIAtom* aAttName) const = 0;
 
   /*
    * Returns the target (animated) element.
@@ -120,7 +120,7 @@ public:
   /*
    * Returns the name of the target (animated) attribute or property.
    */
-  virtual PRBool GetTargetAttributeName(PRInt32* aNamespaceID,
+  virtual bool GetTargetAttributeName(PRInt32* aNamespaceID,
                                         nsIAtom** aLocalName) const = 0;
 
   /*

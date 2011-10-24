@@ -83,7 +83,7 @@ public:
    PRInt32                 y;
    PRInt32                 cx;
    PRInt32                 cy;
-   PRBool                  visible;
+   bool                    visible;
    nsCOMPtr<nsISHistory>   sessionHistory;
    nsString                name;
 };
@@ -91,9 +91,9 @@ public:
 class nsWebBrowserListenerState
 {
 public:
-    PRBool Equals(nsIWeakReference *aListener, const nsIID& aID) {
-        if (mWeakPtr.get() == aListener && mID.Equals(aID)) return PR_TRUE;
-        return PR_FALSE;
+    bool Equals(nsIWeakReference *aListener, const nsIID& aID) {
+        if (mWeakPtr.get() == aListener && mID.Equals(aID)) return true;
+        return false;
     }
 
     nsWeakPtr mWeakPtr;
@@ -147,10 +147,10 @@ protected:
     // XXXbz why are these NS_IMETHOD?  They're not interface methods!
     NS_IMETHOD SetDocShell(nsIDocShell* aDocShell);
     NS_IMETHOD EnsureDocShellTreeOwner();
-    NS_IMETHOD GetPrimaryContentWindow(nsIDOMWindowInternal **aDomWindow);
+    NS_IMETHOD GetPrimaryContentWindow(nsIDOMWindow **aDomWindow);
     NS_IMETHOD BindListener(nsISupports *aListener, const nsIID& aIID);
     NS_IMETHOD UnBindListener(nsISupports *aListener, const nsIID& aIID);
-    NS_IMETHOD EnableGlobalHistory(PRBool aEnable);
+    NS_IMETHOD EnableGlobalHistory(bool aEnable);
 
     static nsEventStatus HandleEvent(nsGUIEvent *aEvent);
 
@@ -167,9 +167,9 @@ protected:
    nsCOMPtr<nsIWindowWatcher> mWWatch;
    nsWebBrowserInitInfo*      mInitInfo;
    PRUint32                   mContentType;
-   PRPackedBool               mActivating;
-   PRPackedBool               mShouldEnableHistory;
-   PRPackedBool               mIsActive;
+   bool                       mActivating;
+   bool                       mShouldEnableHistory;
+   bool                       mIsActive;
    nativeWindow               mParentNativeWindow;
    nsIWebProgressListener    *mProgressListener;
    nsCOMPtr<nsIWebProgress>      mWebProgress;

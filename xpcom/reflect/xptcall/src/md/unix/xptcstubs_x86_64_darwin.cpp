@@ -114,7 +114,7 @@ PrepareAndDispatch(nsXPTCStubBase * self, PRUint32 methodIndex,
                 // The value in %xmm register is already prepared to
                 // be retrieved as a float. Therefore, we pass the
                 // value verbatim, as a double without conversion.
-                dp->val.d = *(double*) ap++;
+                dp->val.d = fpregs[nr_fpr++];
             else
                 dp->val.f = *(float*) ap++;
             continue;
@@ -140,7 +140,7 @@ PrepareAndDispatch(nsXPTCStubBase * self, PRUint32 methodIndex,
         case nsXPTType::T_U16:     dp->val.u16 = (PRUint16) value; break;
         case nsXPTType::T_U32:     dp->val.u32 = (PRUint32) value; break;
         case nsXPTType::T_U64:     dp->val.u64 = (PRUint64) value; break;
-        case nsXPTType::T_BOOL:    dp->val.b   = (PRBool)   value; break;
+        case nsXPTType::T_BOOL:    dp->val.b   = (bool)   value; break;
         case nsXPTType::T_CHAR:    dp->val.c   = (char)     value; break;
         case nsXPTType::T_WCHAR:   dp->val.wc  = (wchar_t)  value; break;
 
@@ -159,7 +159,7 @@ PrepareAndDispatch(nsXPTCStubBase * self, PRUint32 methodIndex,
 }
 
 // Darwin/x86-64 uses gcc >= 4.2
-#if defined(__GXX_ABI_VERSION) && __GXX_ABI_VERSION >= 1002
+
 #define STUB_ENTRY(n) \
 asm(".section	__TEXT,__text\n\t" \
     ".align	3\n\t" \
@@ -219,7 +219,3 @@ nsresult nsXPTCStubBase::Sentinel##n() \
 }
 
 #include "xptcstubsdef.inc"
-
-#else
-#error "Unsupported compiler. Use gcc >= 4.2 for Darwin/x86-64."
-#endif /* __GNUC__ */

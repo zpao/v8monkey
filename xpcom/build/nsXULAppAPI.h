@@ -373,7 +373,8 @@ XRE_API(nsresult,
 enum NSLocationType
 {
   NS_COMPONENT_LOCATION,
-  NS_SKIN_LOCATION
+  NS_SKIN_LOCATION,
+  NS_BOOTSTRAPPED_LOCATION
 };
 
 XRE_API(nsresult,
@@ -499,11 +500,11 @@ XRE_API(GeckoProcessType,
 
 #if defined(MOZ_CRASHREPORTER)
 // Used in the "master" parent process hosting the crash server
-XRE_API(PRBool,
+XRE_API(bool,
         XRE_TakeMinidumpForChild, (PRUint32 aChildPid, nsILocalFile** aDump))
 
 // Used in child processes.
-XRE_API(PRBool,
+XRE_API(bool,
         XRE_SetRemoteExceptionHandler, (const char* aPipe))
 #endif
 
@@ -562,4 +563,18 @@ XRE_API(bool,
 
 XRE_API(void,
         XRE_InstallX11ErrorHandler, ())
+
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
+#define XRE_HAS_DLL_BLOCKLIST
+XRE_API(void,
+        XRE_SetupDllBlocklist, ())
+#endif
+
+XRE_API(void,
+        XRE_TelemetryAccumulate, (int aID, PRUint32 aSample))
+
+
+XRE_API(void,
+        XRE_InitOmnijar, (nsILocalFile* greOmni,
+                          nsILocalFile* appOmni))
 #endif // _nsXULAppAPI_h__

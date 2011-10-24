@@ -44,7 +44,6 @@
 #include "nsThreadUtils.h"
 #include "nsNetUtil.h"
 #include "nsMimeTypes.h"
-#include "nsIProxyObjectManager.h"
 #include "nsReadableUtils.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
@@ -143,7 +142,7 @@ nsFtpChannel::GetProxyInfo(nsIProxyInfo** aProxyInfo)
 //-----------------------------------------------------------------------------
 
 nsresult
-nsFtpChannel::OpenContentStream(PRBool async, nsIInputStream **result,
+nsFtpChannel::OpenContentStream(bool async, nsIInputStream **result,
                                 nsIChannel** channel)
 {
     if (!async)
@@ -164,13 +163,13 @@ nsFtpChannel::OpenContentStream(PRBool async, nsIInputStream **result,
     return NS_OK;
 }
 
-PRBool
+bool
 nsFtpChannel::GetStatusArg(nsresult status, nsString &statusArg)
 {
     nsCAutoString host;
     URI()->GetHost(host);
     CopyUTF8toUTF16(host, statusArg);
-    return PR_TRUE;
+    return true;
 }
 
 void
@@ -181,6 +180,62 @@ nsFtpChannel::OnCallbacksChanged()
 
 //-----------------------------------------------------------------------------
 
+namespace {
+
+class FTPEventSinkProxy : public nsIFTPEventSink
+{
+public:
+    FTPEventSinkProxy(nsIFTPEventSink* aTarget)
+        : mTarget(aTarget)
+        , mTargetThread(do_GetCurrentThread())
+    { }
+        
+    NS_DECL_ISUPPORTS
+    NS_DECL_NSIFTPEVENTSINK
+
+    class OnFTPControlLogRunnable : public nsRunnable
+    {
+    public:
+        OnFTPControlLogRunnable(nsIFTPEventSink* aTarget,
+                                bool aServer,
+                                const char* aMessage)
+            : mTarget(aTarget)
+            , mServer(aServer)
+            , mMessage(aMessage)
+        { }
+
+        NS_DECL_NSIRUNNABLE
+
+    private:
+        nsCOMPtr<nsIFTPEventSink> mTarget;
+        bool mServer;
+        nsCString mMessage;
+    };
+
+private:
+    nsCOMPtr<nsIFTPEventSink> mTarget;
+    nsCOMPtr<nsIThread> mTargetThread;
+};
+
+NS_IMPL_THREADSAFE_ISUPPORTS1(FTPEventSinkProxy, nsIFTPEventSink)
+
+NS_IMETHODIMP
+FTPEventSinkProxy::OnFTPControlLog(bool aServer, const char* aMsg)
+{
+    nsRefPtr<OnFTPControlLogRunnable> r =
+        new OnFTPControlLogRunnable(mTarget, aServer, aMsg);
+    return mTargetThread->Dispatch(r, NS_DISPATCH_NORMAL);
+}
+
+NS_IMETHODIMP
+FTPEventSinkProxy::OnFTPControlLogRunnable::Run()
+{
+    mTarget->OnFTPControlLog(mServer, mMessage.get());
+    return NS_OK;
+}
+
+} // anonymous namespace
+
 void
 nsFtpChannel::GetFTPEventSink(nsCOMPtr<nsIFTPEventSink> &aResult)
 {
@@ -188,11 +243,7 @@ nsFtpChannel::GetFTPEventSink(nsCOMPtr<nsIFTPEventSink> &aResult)
         nsCOMPtr<nsIFTPEventSink> ftpSink;
         GetCallback(ftpSink);
         if (ftpSink) {
-            NS_GetProxyForObject(NS_PROXY_TO_CURRENT_THREAD,
-                                 NS_GET_IID(nsIFTPEventSink),
-                                 ftpSink,
-                                 NS_PROXY_ASYNC | NS_PROXY_ALWAYS,
-                                 getter_AddRefs(mFTPEventSink));
+            mFTPEventSink = new FTPEventSinkProxy(ftpSink);
         }
     }
     aResult = mFTPEventSink;

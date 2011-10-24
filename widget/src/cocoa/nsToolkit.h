@@ -48,6 +48,7 @@
 
 #define MAC_OS_X_VERSION_10_5_HEX 0x00001050
 #define MAC_OS_X_VERSION_10_6_HEX 0x00001060
+#define MAC_OS_X_VERSION_10_7_HEX 0x00001070
 
 class nsToolkit : public nsIToolkit
 {
@@ -59,12 +60,13 @@ public:
   NS_DECL_NSITOOLKIT
 
   static PRInt32     OSXVersion();
-  static PRBool      OnSnowLeopardOrLater();
+  static bool        OnSnowLeopardOrLater();
+  static bool        OnLionOrLater();
 
   static void        PostSleepWakeNotification(const char* aNotification);
 
   static nsresult    SwizzleMethods(Class aClass, SEL orgMethod, SEL posedMethod,
-                                    PRBool classMethods = PR_FALSE);
+                                    bool classMethods = false);
 
 protected:
 
@@ -81,7 +83,6 @@ protected:
   CFRunLoopSourceRef mSleepWakeNotificationRLS;
   io_object_t        mPowerNotifier;
 
-  EventHandlerRef    mEventMonitorHandler;
   CFMachPortRef      mEventTapPort;
   CFRunLoopSourceRef mEventTapRLS;
 };

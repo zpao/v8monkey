@@ -45,6 +45,8 @@
 namespace mozilla {
 namespace layers {
 
+class ShadowBufferD3D9;
+
 class THEBES_API ImageContainerD3D9 : public ImageContainer
 {
 public:
@@ -62,7 +64,7 @@ public:
 
   virtual gfxIntSize GetCurrentSize();
 
-  virtual PRBool SetLayerManager(LayerManager *aManager);
+  virtual bool SetLayerManager(LayerManager *aManager);
 
   virtual LayerManager::LayersBackend GetBackendType() { return LayerManager::LAYERS_D3D9; }
 
@@ -120,19 +122,21 @@ public:
    * up its textures
    */
   void FreeTextures();
-  PRBool HasData() { return mHasData; }
+  bool HasData() { return mHasData; }
+
+  PRUint32 GetDataSize() { return mBuffer ? mBufferSize : 0; }
 
   virtual already_AddRefed<gfxASurface> GetAsSurface();
 
   nsAutoArrayPtr<PRUint8> mBuffer;
+  PRUint32 mBufferSize;
   LayerManagerD3D9 *mManager;
   Data mData;
   gfxIntSize mSize;
   nsRefPtr<IDirect3DTexture9> mYTexture;
   nsRefPtr<IDirect3DTexture9> mCrTexture;
   nsRefPtr<IDirect3DTexture9> mCbTexture;
-  PRPackedBool mHasData;
-  gfx::YUVType mType; 
+  bool mHasData;
 };
 
 
@@ -171,6 +175,31 @@ private:
   nsRefPtr<IDirect3DDevice9> mDevice;
   nsRefPtr<IDirect3DTexture9> mTexture;
   LayerManagerD3D9 *mManager;
+};
+
+class ShadowImageLayerD3D9 : public ShadowImageLayer,
+                            public LayerD3D9
+{
+public:
+  ShadowImageLayerD3D9(LayerManagerD3D9* aManager);
+  virtual ~ShadowImageLayerD3D9();
+
+  // ShadowImageLayer impl
+  virtual void Swap(const SharedImage& aFront,
+                    SharedImage* aNewBack);
+
+  virtual void Disconnect();
+
+  // LayerD3D9 impl
+  virtual void Destroy();
+
+  virtual Layer* GetLayer();
+
+  virtual void RenderLayer();
+
+private:
+  nsRefPtr<ShadowBufferD3D9> mBuffer;
+  nsRefPtr<PlanarYCbCrImageD3D9> mYCbCrImage;
 };
 
 } /* layers */

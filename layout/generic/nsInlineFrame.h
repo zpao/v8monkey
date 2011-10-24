@@ -87,19 +87,19 @@ public:
 #endif
   virtual nsIAtom* GetType() const;
 
-  virtual PRBool IsFrameOfType(PRUint32 aFlags) const
+  virtual bool IsFrameOfType(PRUint32 aFlags) const
   {
     return nsInlineFrameSuper::IsFrameOfType(aFlags &
       ~(nsIFrame::eBidiInlineContainer | nsIFrame::eLineParticipant));
   }
 
-  virtual PRBool IsEmpty();
-  virtual PRBool IsSelfEmpty();
+  virtual bool IsEmpty();
+  virtual bool IsSelfEmpty();
 
   virtual void DestroyFrom(nsIFrame* aDestructRoot);
 
-  virtual PRBool PeekOffsetCharacter(PRBool aForward, PRInt32* aOffset,
-                                     PRBool aRespectClusters = PR_TRUE);
+  virtual bool PeekOffsetCharacter(bool aForward, PRInt32* aOffset,
+                                     bool aRespectClusters = true);
   
   // nsIHTMLReflow overrides
   virtual void AddInlineMinWidth(nsRenderingContext *aRenderingContext,
@@ -109,14 +109,14 @@ public:
   virtual nsSize ComputeSize(nsRenderingContext *aRenderingContext,
                              nsSize aCBSize, nscoord aAvailableWidth,
                              nsSize aMargin, nsSize aBorder, nsSize aPadding,
-                             PRBool aShrinkWrap);
+                             bool aShrinkWrap);
   virtual nsRect ComputeTightBounds(gfxContext* aContext) const;
   NS_IMETHOD Reflow(nsPresContext* aPresContext,
                     nsHTMLReflowMetrics& aDesiredSize,
                     const nsHTMLReflowState& aReflowState,
                     nsReflowStatus& aStatus);
 
-  virtual PRBool CanContinueTextRun() const;
+  virtual bool CanContinueTextRun() const;
 
   virtual void PullOverflowsFromPrevInFlow();
   virtual nscoord GetBaseline() const;
@@ -124,7 +124,7 @@ public:
   /**
    * Return true if the frame is leftmost frame or continuation.
    */
-  PRBool IsLeftMost() const {
+  bool IsLeftMost() const {
     // If the frame's bidi visual state is set, return is-leftmost state
     // else return true if it's the first continuation.
     return (GetStateBits() & NS_INLINE_FRAME_BIDI_VISUAL_STATE_IS_SET)
@@ -135,7 +135,7 @@ public:
   /**
    * Return true if the frame is rightmost frame or continuation.
    */
-  PRBool IsRightMost() const {
+  bool IsRightMost() const {
     // If the frame's bidi visual state is set, return is-rightmost state
     // else return true if it's the last continuation.
     return (GetStateBits() & NS_INLINE_FRAME_BIDI_VISUAL_STATE_IS_SET)
@@ -150,7 +150,7 @@ protected:
     nsInlineFrame* mNextInFlow;
     nsIFrame*      mLineContainer;
     nsLineLayout*  mLineLayout;
-    PRPackedBool mSetParentPointer;  // when reflowing child frame first set its
+    bool mSetParentPointer;  // when reflowing child frame first set its
                                      // parent frame pointer
 
     InlineReflowState()  {
@@ -158,7 +158,7 @@ protected:
       mNextInFlow = nsnull;
       mLineContainer = nsnull;
       mLineLayout = nsnull;
-      mSetParentPointer = PR_FALSE;
+      mSetParentPointer = false;
     }
   };
 
@@ -185,16 +185,18 @@ protected:
    * GetNextSibling chain reparenting them all
    */
   void ReparentFloatsForInlineChild(nsIFrame* aOurBlock, nsIFrame* aFrame,
-                                    PRBool aReparentSiblings);
+                                    bool aReparentSiblings);
 
   virtual nsIFrame* PullOneFrame(nsPresContext* aPresContext,
                                  InlineReflowState& rs,
-                                 PRBool* aIsComplete);
+                                 bool* aIsComplete);
 
   virtual void PushFrames(nsPresContext* aPresContext,
                           nsIFrame* aFromChild,
                           nsIFrame* aPrevSibling,
                           InlineReflowState& aState);
+
+  nscoord mBaseline;
 };
 
 //----------------------------------------------------------------------
@@ -225,7 +227,7 @@ protected:
 
   virtual nsIFrame* PullOneFrame(nsPresContext* aPresContext,
                                  InlineReflowState& rs,
-                                 PRBool* aIsComplete);
+                                 bool* aIsComplete);
 };
 
 #endif /* nsInlineFrame_h___ */

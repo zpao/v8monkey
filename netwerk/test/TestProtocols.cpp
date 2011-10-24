@@ -79,6 +79,7 @@
 #include "nsIPrefBranch.h"
 #include "nsIPropertyBag2.h"
 #include "nsIWritablePropertyBag2.h"
+#include "nsITimedChannel.h"
 #include "nsChannelProperties.h"
 
 #include "nsISimpleEnumerator.h"
@@ -101,9 +102,9 @@ static NS_DEFINE_CID(kIOServiceCID,              NS_IOSERVICE_CID);
 
 //static PRTime gElapsedTime; // enable when we time it...
 static int gKeepRunning = 0;
-static PRBool gVerbose = PR_FALSE;
-static PRBool gAskUserForInput = PR_FALSE;
-static PRBool gResume = PR_FALSE;
+static bool gVerbose = false;
+static bool gAskUserForInput = false;
+static bool gResume = false;
 static PRUint64 gStartAt = 0;
 
 static const char* gEntityID;
@@ -152,6 +153,39 @@ SetPACFile(const char* pacURL)
   }
   LOG(("connecting using PAC file %s\n", pacURL));
   return NS_OK;
+}
+
+//-----------------------------------------------------------------------------
+// Timing information
+//-----------------------------------------------------------------------------
+
+void PrintTimingInformation(nsITimedChannel* channel) {
+#define PRINT_VALUE(property)                                              \
+    {                                                                      \
+        PRTime value;                                                      \
+        channel->Get##property(&value);                                    \
+        if (value) {                                                       \
+          PRExplodedTime exploded;                                         \
+          PR_ExplodeTime(value, PR_LocalTimeParameters, &exploded);        \
+          char buf[256];                                                   \
+          PR_FormatTime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &exploded); \
+          LOG(("  " #property ":\t%s (%i usec)", buf, exploded.tm_usec));  \
+        } else {                                                           \
+          LOG(("  " #property ":\t0"));                                    \
+        }                                                                  \
+    }
+    LOG(("Timing data:"));
+    PRINT_VALUE(ChannelCreationTime)
+    PRINT_VALUE(AsyncOpenTime)
+    PRINT_VALUE(DomainLookupStartTime)
+    PRINT_VALUE(DomainLookupEndTime)
+    PRINT_VALUE(ConnectStartTime)
+    PRINT_VALUE(ConnectEndTime)
+    PRINT_VALUE(RequestStartTime)
+    PRINT_VALUE(ResponseStartTime)
+    PRINT_VALUE(ResponseEndTime)
+    PRINT_VALUE(CacheReadStartTime)
+    PRINT_VALUE(CacheReadEndTime)
 }
 
 //-----------------------------------------------------------------------------
@@ -280,9 +314,9 @@ TestAuthPrompt::Prompt(const PRUnichar *dialogTitle,
                        PRUint32 savePassword,
                        const PRUnichar *defaultText,
                        PRUnichar **result,
-                       PRBool *_retval)
+                       bool *_retval)
 {
-    *_retval = PR_FALSE;
+    *_retval = false;
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -293,7 +327,7 @@ TestAuthPrompt::PromptUsernameAndPassword(const PRUnichar *dialogTitle,
                                           PRUint32 savePassword,
                                           PRUnichar **user,
                                           PRUnichar **pwd,
-                                          PRBool *_retval)
+                                          bool *_retval)
 {
     NS_ConvertUTF16toUTF8 text(passwordRealm);
     printf("* --------------------------------------------------------------------------- *\n");
@@ -324,7 +358,7 @@ TestAuthPrompt::PromptUsernameAndPassword(const PRUnichar *dialogTitle,
     // zap buf 
     memset(buf, 0, sizeof(buf));
 
-    *_retval = PR_TRUE;
+    *_retval = true;
     return NS_OK;
 }
 
@@ -334,9 +368,9 @@ TestAuthPrompt::PromptPassword(const PRUnichar *dialogTitle,
                                const PRUnichar *passwordRealm,
                                PRUint32 savePassword,
                                PRUnichar **pwd,
-                               PRBool *_retval)
+                               bool *_retval)
 {
-    *_retval = PR_FALSE;
+    *_retval = false;
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -483,7 +517,7 @@ InputTestConsumer::OnDataAvailable(nsIRequest *request,
   URLLoadInfo* info = (URLLoadInfo*)context;
 
   while (aLength) {
-    size = PR_MIN(aLength, sizeof(buf));
+    size = NS_MIN<PRUint32>(aLength, sizeof(buf));
 
     rv = aIStream->Read(buf, size, &amt);
     if (NS_FAILED(rv)) {
@@ -516,7 +550,7 @@ InputTestConsumer::OnStopRequest(nsIRequest *request, nsISupports* context,
     double connectTime;
     double readTime;
     PRUint32 httpStatus;
-    PRBool bHTTPURL = PR_FALSE;
+    bool bHTTPURL = false;
 
     info->mTotalTime = PR_Now() - info->mTotalTime;
 
@@ -526,7 +560,7 @@ InputTestConsumer::OnStopRequest(nsIRequest *request, nsISupports* context,
     nsCOMPtr<nsIHttpChannel> pHTTPCon(do_QueryInterface(request));
     if (pHTTPCon) {
         pHTTPCon->GetResponseStatus(&httpStatus);
-        bHTTPURL = PR_TRUE;
+        bHTTPURL = true;
     }
 
     LOG(("\nFinished loading: %s  Status Code: %x\n", info->Name(), aStatus));
@@ -545,6 +579,10 @@ InputTestConsumer::OnStopRequest(nsIRequest *request, nsISupports* context,
     } else {
       LOG(("\tThroughput: REAL FAST!!\n"));
     }
+
+    nsCOMPtr<nsITimedChannel> timed(do_QueryInterface(request));
+    if (timed)
+        PrintTimingInformation(timed);
   } else {
     LOG(("\nFinished loading: UNKNOWN URL. Status Code: %x\n", aStatus));
   }
@@ -631,6 +669,10 @@ nsresult StartLoadingURL(const char* aUrlString)
             return rv;
         }
 
+        nsCOMPtr<nsITimedChannel> timed(do_QueryInterface(pChannel));
+        if (timed)
+            timed->SetTimingEnabled(true);
+
         nsCOMPtr<nsIWritablePropertyBag2> props = do_QueryInterface(pChannel);
         if (props) {
             rv = props->SetPropertyAsInterface(NS_LITERAL_STRING("test.foo"),
@@ -650,7 +692,7 @@ nsresult StartLoadingURL(const char* aUrlString)
             // Setting a sample header.
             rv = pHTTPCon->SetRequestHeader(NS_LITERAL_CSTRING("sample-header"),
                                             NS_LITERAL_CSTRING("Sample-Value"),
-                                            PR_FALSE);
+                                            false);
             if (NS_FAILED(rv)) return rv;
         }            
         InputTestConsumer* listener;
@@ -778,7 +820,7 @@ nsresult LoadURLFromConsole()
     printf("Enter URL (\"q\" to start): ");
     scanf("%s", buffer);
     if (buffer[0]=='q') 
-        gAskUserForInput = PR_FALSE;
+        gAskUserForInput = false;
     else
         StartLoadingURL(buffer);
     return NS_OK;
@@ -820,7 +862,7 @@ main(int argc, char* argv[])
         for (i=1; i<argc; i++) {
             // Turn on verbose printing...
             if (PL_strcasecmp(argv[i], "-verbose") == 0) {
-                gVerbose = PR_TRUE;
+                gVerbose = true;
                 continue;
             }
 
@@ -831,12 +873,12 @@ main(int argc, char* argv[])
             }
 
             if (PL_strcasecmp(argv[i], "-console") == 0) {
-                gAskUserForInput = PR_TRUE;
+                gAskUserForInput = true;
                 continue;
             }
 
             if (PL_strcasecmp(argv[i], "-resume") == 0) {
-                gResume = PR_TRUE;
+                gResume = true;
                 PR_sscanf(argv[++i], "%llu", &gStartAt);
                 continue;
             }

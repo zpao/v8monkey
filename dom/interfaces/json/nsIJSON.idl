@@ -42,10 +42,6 @@ interface nsIInputStream;
 interface nsIOutputStream;
 interface nsIScriptGlobalObject;
 
-%{ C++
-#include "jspubtd.h"
-%}
-
 [ptr] native JSValPtr(jsval);
 [ptr] native JSContext(JSContext);
 
@@ -55,14 +51,30 @@ interface nsIScriptGlobalObject;
 [scriptable, uuid(a4d68b4e-0c0b-4c7c-b540-ef2f9834171f)]
 interface nsIJSON : nsISupports
 {
-  AString encode(/* in JSObject value */);
+  /**
+   * New users should use JSON.stringify!
+   * The encode() method is only present for backward compatibility.
+   * encode() is not a conforming JSON stringify implementation!
+   */
+  [deprecated] AString encode(/* in JSObject value */);
 
-  void encodeToStream(in nsIOutputStream stream,
-                      in string charset,
-                      in boolean writeBOM
-                      /* in JSObject value */);
+  /**
+   * New users should use JSON.stringify.
+   * You may also want to have a look at nsIConverterOutputStream.
+   *
+   * The encodeToStream() method is only present for backward compatibility.
+   * encodeToStream() is not a conforming JSON stringify implementation!
+   */
+  [deprecated] void encodeToStream(in nsIOutputStream stream,
+                                   in string charset,
+                                   in boolean writeBOM
+                                   /* in JSObject value */);
 
-  void /* JSObject */ decode(in AString str);
+  /**
+   * New users should use JSON.parse!
+   * The decode() method is only present for backward compatibility.
+   */
+  [deprecated] void /* JSObject */ decode(in AString str);
 
   void /* JSObject */ decodeFromStream(in nsIInputStream stream,
                                        in long contentLength);
@@ -79,15 +91,17 @@ interface nsIJSON : nsISupports
    *
    * This method is provided only as a temporary transition path for users of
    * the old code who depended on the ability to decode leniently; new users
-   * should use the non-legacy decoding methods.
+   * should use JSON.parse.
+   *
+   * This method must only be called from script.
    *
    * @param str the string to parse
    */
-  void /* JSObject */ legacyDecode(in AString str);
+  void /* jsval */ legacyDecode(in AString str);
 
   /* Identical to legacyDecode, but decode the contents of stream. */
-  void /* JSObject */ legacyDecodeFromStream(in nsIInputStream stream,
-                                             in long contentLength);
+  void /* jsval */ legacyDecodeFromStream(in nsIInputStream stream,
+                                          in long contentLength);
 
   /* Identical to legacyDecode, but decode into a jsval. */
   // Make sure you GCroot the result of this function before using it.

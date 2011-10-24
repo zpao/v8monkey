@@ -7,8 +7,6 @@
         onload="RunTest();">
   <title>Preferences Window Tests</title>
 
-  <script type="application/javascript" 
-          src="chrome://mochikit/content/MochiKit/packed.js"/>
   <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
 
@@ -423,6 +421,14 @@
       WritePrefsToPreferences(aPrefWindow, kPrefValueSet2);
     }
 
+    function RunCheckCommandRedirect(aPrefWindow)
+    {
+      GetXULElement(aPrefWindow, "checkbox").click();
+      ok(GetXULElement(aPrefWindow, "tests.static_preference_bool").value, "redirected command bool");
+      GetXULElement(aPrefWindow, "checkbox").click();
+      ok(!GetXULElement(aPrefWindow, "tests.static_preference_bool").value, "redirected command bool");
+    }
+
     function RunResetPrefTest(aPrefWindow)
     {
       // try resetting the prefs to default values
@@ -504,10 +510,16 @@
       ok(found.file_data    === expected.file_data,    "non-instant reset deferred file"   );
     }
 
+    function RunTestCommandRedirect()
+    {
+      openDialog("window_preferences_commandretarget.xul", "", "modal", RunCheckCommandRedirect, true);
+    }
+
     function RunTest()
     {
       RunTestInstant();
       RunTestNonInstant();
+      RunTestCommandRedirect();
       SimpleTest.finish();
     }
   ]]>

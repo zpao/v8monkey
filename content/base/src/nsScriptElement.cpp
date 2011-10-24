@@ -53,7 +53,7 @@ using namespace mozilla::dom;
 NS_IMETHODIMP
 nsScriptElement::ScriptAvailable(nsresult aResult,
                                  nsIScriptElement *aElement,
-                                 PRBool aIsInline,
+                                 bool aIsInline,
                                  nsIURI *aURI,
                                  PRInt32 aLineNo)
 {
@@ -65,7 +65,7 @@ nsScriptElement::ScriptAvailable(nsresult aResult,
       nsContentUtils::GetContextForContent(cont);
 
     nsEventStatus status = nsEventStatus_eIgnore;
-    nsScriptErrorEvent event(PR_TRUE, NS_LOAD_ERROR);
+    nsScriptErrorEvent event(true, NS_LOAD_ERROR);
 
     event.lineNr = aLineNo;
 
@@ -87,7 +87,7 @@ nsScriptElement::ScriptAvailable(nsresult aResult,
 NS_IMETHODIMP
 nsScriptElement::ScriptEvaluated(nsresult aResult,
                                  nsIScriptElement *aElement,
-                                 PRBool aIsInline)
+                                 bool aIsInline)
 {
   nsresult rv = NS_OK;
   if (!aIsInline) {
@@ -99,7 +99,7 @@ nsScriptElement::ScriptEvaluated(nsresult aResult,
 
     nsEventStatus status = nsEventStatus_eIgnore;
     PRUint32 type = NS_SUCCEEDED(aResult) ? NS_LOAD : NS_LOAD_ERROR;
-    nsEvent event(PR_TRUE, type);
+    nsEvent event(true, type);
     if (type == NS_LOAD) {
       // Load event doesn't bubble.
       event.flags |= NS_EVENT_FLAG_CANT_BUBBLE;
@@ -163,9 +163,9 @@ nsScriptElement::MaybeProcessScript()
 
   FreezeUriAsyncDefer();
 
-  mAlreadyStarted = PR_TRUE;
+  mAlreadyStarted = true;
 
-  nsIDocument* ownerDoc = cont->GetOwnerDoc();
+  nsIDocument* ownerDoc = cont->OwnerDoc();
   nsCOMPtr<nsIParser> parser = ((nsIScriptElement*) this)->GetCreatorParser();
   if (parser) {
     nsCOMPtr<nsIContentSink> sink = parser->GetContentSink();

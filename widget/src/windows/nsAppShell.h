@@ -40,6 +40,7 @@
 
 #include "nsBaseAppShell.h"
 #include <windows.h>
+#include "mozilla/TimeStamp.h"
 
 /**
  * Native Win32 Application shell wrapper
@@ -49,8 +50,9 @@ class nsAppShell : public nsBaseAppShell
 public:
   nsAppShell() :
     mEventWnd(NULL),
-    mNativeCallbackPending(PR_FALSE)
+    mNativeCallbackPending(false)
   {}
+  typedef mozilla::TimeStamp TimeStamp;
 
   nsresult Init();
   void DoProcessMoreGeckoEvents();
@@ -64,14 +66,15 @@ protected:
   NS_IMETHOD Run();
 #endif
   virtual void ScheduleNativeEventCallback();
-  virtual PRBool ProcessNextNativeEvent(PRBool mayWait);
+  virtual bool ProcessNextNativeEvent(bool mayWait);
   virtual ~nsAppShell();
 
   static LRESULT CALLBACK EventWindowProc(HWND, UINT, WPARAM, LPARAM);
 
 protected:
   HWND mEventWnd;
-  PRBool mNativeCallbackPending;
+  bool mNativeCallbackPending;
+  TimeStamp mLastNativeEventScheduled;
 };
 
 #endif // nsAppShell_h__

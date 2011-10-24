@@ -40,11 +40,10 @@ struct {
   { HB_TAG('c','a','l','t'), DEFAULT_PRIORITY },
   { HB_TAG('c','c','m','p'), FIRST_PRIORITY },
   { HB_TAG('c','l','i','g'), DEFAULT_PRIORITY },
-  { HB_TAG('c','s','w','h'), DEFAULT_PRIORITY },
   { HB_TAG('c','u','r','s'), DEFAULT_PRIORITY },
   { HB_TAG('k','e','r','n'), DEFAULT_PRIORITY },
   { HB_TAG('l','i','g','a'), DEFAULT_PRIORITY },
-  { HB_TAG('l','o','c','l'), DEFAULT_PRIORITY },
+  { HB_TAG('l','o','c','l'), FIRST_PRIORITY },
   { HB_TAG('m','a','r','k'), DEFAULT_PRIORITY },
   { HB_TAG('m','k','m','k'), DEFAULT_PRIORITY },
   { HB_TAG('r','l','i','g'), DEFAULT_PRIORITY }

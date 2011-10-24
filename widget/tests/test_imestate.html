@@ -2,11 +2,10 @@
 <head>
   <title>Test for IME state controling</title>
   <script type="text/javascript"
-          src="chrome://mochikit/content/MochiKit/packed.js"></script>
-  <script type="text/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script type="text/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/ChromeUtils.js"></script>
   <link rel="stylesheet" type="text/css"
           href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 </head>
@@ -1112,9 +1111,11 @@ function runEditorFlagChangeTests()
   var flags = editor.flags;
 
   // start composition
-  synthesizeComposition(true);
+  synthesizeComposition({ type: "compositionstart" });
 
   // input characters
+  synthesizeComposition({ type: "compositionupdate",
+                          data: "\u3078\u3093\u3057\u3093" });
   synthesizeText(
     { "composition":
       { "string": "\u3078\u3093\u3057\u3093",
@@ -1145,6 +1146,7 @@ function runEditorFlagChangeTests()
      description + "#3 IME isn't enabled on HTML editor");
 
   // cancel the composition
+  synthesizeComposition({ type: "compositionupdate", data: "" });
   synthesizeText(
     { "composition":
       { "string": "",
@@ -1156,7 +1158,7 @@ function runEditorFlagChangeTests()
       "caret": { "start": 0, "length": 0 }
     });
 
-  synthesizeComposition(false);
+  synthesizeComposition({ type: "compositionend", data: "" });
 
   container.removeAttribute("contenteditable");
 }
@@ -1244,8 +1246,6 @@ function runTests()
 {
   if (!kIMEEnabledSupported && !kIMEOpenSupported)
     return;
-
-  netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
 
   // test for normal contents.
   runBasicTest(false, false, "Testing of normal contents");

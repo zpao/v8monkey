@@ -71,11 +71,14 @@ public:
                 nsIStreamListener* aListener);
 
   void InitializeByteRange(PRInt64 aStart, PRInt64 aEnd);
-  void SetIsLastPart() { mIsLastPart = PR_TRUE; }
+  void SetIsLastPart() { mIsLastPart = true; }
   nsresult SendOnStartRequest(nsISupports* aContext);
   nsresult SendOnDataAvailable(nsISupports* aContext, nsIInputStream* aStream,
                                PRUint32 aOffset, PRUint32 aLen);
   nsresult SendOnStopRequest(nsISupports* aContext, nsresult aStatus);
+  /* SetContentDisposition expects the full value of the Content-Disposition
+   * header */
+  void SetContentDisposition(const nsACString& aContentDispositionHeader);
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIREQUEST
@@ -97,16 +100,18 @@ protected:
 
   nsCString               mContentType;
   nsCString               mContentCharset;
-  nsCString               mContentDisposition;
+  PRUint32                mContentDisposition;
+  nsString                mContentDispositionFilename;
+  nsCString               mContentDispositionHeader;
   PRUint64                mContentLength;
 
-  PRBool                  mIsByteRangeRequest;
+  bool                    mIsByteRangeRequest;
   PRInt64                 mByteRangeStart;
   PRInt64                 mByteRangeEnd;
 
   PRUint32                mPartID; // unique ID that can be used to identify
                                    // this part of the multipart document
-  PRBool                  mIsLastPart;
+  bool                    mIsLastPart;
 };
 
 // The nsMultiMixedConv stream converter converts a stream of type "multipart/x-mixed-replace"
@@ -161,14 +166,14 @@ protected:
     nsresult SendStop(nsresult aStatus);
     nsresult SendData(char *aBuffer, PRUint32 aLen);
     nsresult ParseHeaders(nsIChannel *aChannel, char *&aPtr,
-                          PRUint32 &aLen, PRBool *_retval);
+                          PRUint32 &aLen, bool *_retval);
     PRInt32  PushOverLine(char *&aPtr, PRUint32 &aLen);
     char *FindToken(char *aCursor, PRUint32 aLen);
     nsresult BufferData(char *aData, PRUint32 aLen);
 
     // member data
-    PRBool              mNewPart;        // Are we processing the beginning of a part?
-    PRBool              mProcessingHeaders;
+    bool                mNewPart;        // Are we processing the beginning of a part?
+    bool                mProcessingHeaders;
     nsCOMPtr<nsIStreamListener> mFinalListener; // this guy gets the converted data via his OnDataAvailable()
 
     nsCString           mToken;
@@ -184,14 +189,14 @@ protected:
     char                *mBuffer;
     PRUint32            mBufLen;
     PRUint64            mTotalSent;
-    PRBool              mFirstOnData;   // used to determine if we're in our first OnData callback.
+    bool                mFirstOnData;   // used to determine if we're in our first OnData callback.
 
     // The following members are for tracking the byte ranges in
     // multipart/mixed content which specified the 'Content-Range:'
     // header...
     PRInt64             mByteRangeStart;
     PRInt64             mByteRangeEnd;
-    PRBool              mIsByteRangeRequest;
+    bool                mIsByteRangeRequest;
 
     PRUint32            mCurrentPartID;
 };

@@ -63,6 +63,8 @@ class RestyleTracker;
 } // namespace css
 } // namespace mozilla
 
+struct TreeMatchContext;
+
 /**
  * Frame manager interface. The frame manager serves two purposes:
  * <li>provides a service for mapping from content to frame and from
@@ -77,6 +79,7 @@ class RestyleTracker;
 class nsFrameManager : public nsFrameManagerBase
 {
   typedef mozilla::css::RestyleTracker RestyleTracker;
+  typedef nsIFrame::ChildListID ChildListID;
 
 public:
   nsFrameManager() NS_HIDDEN;
@@ -121,15 +124,15 @@ public:
 
   // Functions for manipulating the frame model
   NS_HIDDEN_(nsresult) AppendFrames(nsIFrame*       aParentFrame,
-                                    nsIAtom*        aListName,
+                                    ChildListID     aListID,
                                     nsFrameList&    aFrameList);
 
   NS_HIDDEN_(nsresult) InsertFrames(nsIFrame*       aParentFrame,
-                                    nsIAtom*        aListName,
+                                    ChildListID     aListID,
                                     nsIFrame*       aPrevFrame,
                                     nsFrameList&    aFrameList);
 
-  NS_HIDDEN_(nsresult) RemoveFrame(nsIAtom*        aListName,
+  NS_HIDDEN_(nsresult) RemoveFrame(ChildListID     aListID,
                                    nsIFrame*       aOldFrame);
 
   /*
@@ -158,7 +161,7 @@ public:
                           nsStyleChangeList* aChangeList,
                           nsChangeHint aMinChange,
                           RestyleTracker& aRestyleTracker,
-                          PRBool aRestyleDescendants);
+                          bool aRestyleDescendants);
 
   /*
    * Capture/restore frame state for the frame subtree rooted at aFrame.
@@ -225,7 +228,8 @@ private:
                           nsRestyleHint      aRestyleHint,
                           RestyleTracker&    aRestyleTracker,
                           DesiredA11yNotifications aDesiredA11yNotifications,
-                          nsTArray<nsIContent*>& aVisibleKidsOfHiddenElement);
+                          nsTArray<nsIContent*>& aVisibleKidsOfHiddenElement,
+                          TreeMatchContext &aTreeMatchContext);
 };
 
 #endif

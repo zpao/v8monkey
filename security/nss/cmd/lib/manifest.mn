@@ -44,9 +44,6 @@ MODULE		= nss
 DEFINES		= -DNSPR20
 
 PRIVATE_EXPORTS	= secutil.h \
-		  NSPRerrs.h \
-		  SECerrs.h \
-		  SSLerrs.h \
 		  pk11table.h \
 		  $(NULL)
 
@@ -55,11 +52,8 @@ CSRCS		= secutil.c \
 		derprint.c \
 		moreoids.c \
 		pppolicy.c \
-		secerror.c \
 		ffs.c \
 		pk11table.c \
 		$(NULL)
-
-REQUIRES	= dbm
 
 NO_MD_RELEASE	= 1

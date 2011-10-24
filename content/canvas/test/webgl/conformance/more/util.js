@@ -1,7 +1,7 @@
 /*
 Utilities for the OpenGL ES 2.0 HTML Canvas context
 
-Copyright (C) 2009  Ilmari Heikkinen <ilmari.heikkinen@gmail.com>
+Copyright (C) 2011  Ilmari Heikkinen <ilmari.heikkinen@gmail.com>
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -1045,18 +1045,17 @@ function assertThrowNoGLError(gl, name, f) {
   try { f(); } catch(e) { r=true; glErr = e.glError; exp = e;}
   if (!r) {
     testFailed(
-      "assertThrowNoGError: should have thrown exception", name, f);
+      "assertThrowNoGLError: should have thrown exception", name, f);
     return false;
   } else {
     if (glErr !== undefined) {
       testFailed(
-        "assertThrowNoGError: should be no GL error but generated: " +
+        "assertThrowNoGLError: should be no GL error but generated: " +
         getGLErrorAsString(gl, glErr), name, f);
       return false;
-    } else {
-      // console.log("threw:" + exp);
     }
   }
+  testPassed("assertThrowNoGLError", name, f);
   return true;
 }
 

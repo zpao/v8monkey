@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2010 The ANGLE Project Authors. All rights reserved.
+// Copyright (c) 2002-2011 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -31,7 +31,8 @@ class OutputHLSL : public TIntermTraverser
     static TString qualifierString(TQualifier qualifier);
     static TString arrayString(const TType &type);
     static TString initializer(const TType &type);
-    static TString decorate(const TString &string);   // Prepend an underscore to avoid naming clashes
+    static TString decorate(const TString &string);                      // Prepends an underscore to avoid naming clashes
+    static TString decorateUniform(const TString &string, bool array);
 
   protected:
     void header();
@@ -76,10 +77,13 @@ class OutputHLSL : public TIntermTraverser
     // Parameters determining what goes in the header output
     bool mUsesTexture2D;
     bool mUsesTexture2D_bias;
+    bool mUsesTexture2DLod;
     bool mUsesTexture2DProj;
     bool mUsesTexture2DProj_bias;
+    bool mUsesTexture2DProjLod;
     bool mUsesTextureCube;
     bool mUsesTextureCube_bias;
+    bool mUsesTextureCubeLod;
     bool mUsesDepthRange;
     bool mUsesFragCoord;
     bool mUsesPointCoord;

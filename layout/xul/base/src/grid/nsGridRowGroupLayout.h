@@ -48,13 +48,13 @@
 #include "nsGridRowLayout.h"
 
 /**
- * The nsIBoxLayout implementation for nsGridRowGroupFrame.
+ * The nsBoxLayout implementation for nsGridRowGroupFrame.
  */
 class nsGridRowGroupLayout : public nsGridRowLayout
 {
 public:
 
-  friend already_AddRefed<nsIBoxLayout> NS_NewGridRowGroupLayout();
+  friend already_AddRefed<nsBoxLayout> NS_NewGridRowGroupLayout();
 
   virtual nsGridRowGroupLayout* CastToRowGroupLayout() { return this; }
   virtual nsSize GetMinSize(nsIBox* aBox, nsBoxLayoutState& aBoxLayoutState);
@@ -63,7 +63,7 @@ public:
   virtual void CountRowsColumns(nsIBox* aBox, PRInt32& aRowCount, PRInt32& aComputedColumnCount);
   virtual void DirtyRows(nsIBox* aBox, nsBoxLayoutState& aState);
   virtual PRInt32 BuildRows(nsIBox* aBox, nsGridRow* aRows);
-  virtual nsMargin GetTotalMargin(nsIBox* aBox, PRBool aIsHorizontal);
+  virtual nsMargin GetTotalMargin(nsIBox* aBox, bool aIsHorizontal);
   virtual PRInt32 GetRowCount() { return mRowCount; }
   virtual Type GetType() { return eRowGroup; }
 
@@ -72,7 +72,7 @@ protected:
   virtual ~nsGridRowGroupLayout();
 
   virtual void ChildAddedOrRemoved(nsIBox* aBox, nsBoxLayoutState& aState);
-  static void AddWidth(nsSize& aSize, nscoord aSize2, PRBool aIsHorizontal);
+  static void AddWidth(nsSize& aSize, nscoord aSize2, bool aIsHorizontal);
 
 private:
   nsGridRow* mRowColumn;

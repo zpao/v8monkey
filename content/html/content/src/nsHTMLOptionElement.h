@@ -80,6 +80,9 @@ public:
   using nsGenericElement::GetText;
   NS_DECL_NSIDOMHTMLOPTIONELEMENT
 
+  bool Selected() const;
+  bool DefaultSelected() const;
+
   // nsIJSNativeInitializer
   NS_IMETHOD Initialize(nsISupports* aOwner, JSContext* aContext,
                         JSObject *aObj, PRUint32 argc, jsval *argv);
@@ -88,9 +91,9 @@ public:
                                               PRInt32 aModType) const;
 
   virtual nsresult BeforeSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                 const nsAString* aValue, PRBool aNotify);
+                                 const nsAString* aValue, bool aNotify);
   
-  void SetSelectedInternal(PRBool aValue, PRBool aNotify);
+  void SetSelectedInternal(bool aValue, bool aNotify);
 
   // nsIContent
   virtual nsEventStates IntrinsicState() const;
@@ -108,12 +111,12 @@ protected:
    */
   nsHTMLSelectElement* GetSelect();
 
-  PRPackedBool mSelectedChanged;
-  PRPackedBool mIsSelected;
+  bool mSelectedChanged;
+  bool mIsSelected;
 
   // True only while we're under the SetOptionsSelectedByIndex call when our
   // "selected" attribute is changing and mSelectedChanged is false.
-  PRPackedBool mIsInSetDefaultSelected;
+  bool mIsInSetDefaultSelected;
 };
 
 #endif

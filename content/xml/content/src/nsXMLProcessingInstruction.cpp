@@ -50,7 +50,10 @@ NS_NewXMLProcessingInstruction(nsIContent** aInstancePtrResult,
 {
   NS_PRECONDITION(aNodeInfoManager, "Missing nodeinfo manager");
 
-  if (aTarget.EqualsLiteral("xml-stylesheet")) {
+  nsCOMPtr<nsIAtom> target = do_GetAtom(aTarget);
+  NS_ENSURE_TRUE(target, NS_ERROR_OUT_OF_MEMORY);
+
+  if (target == nsGkAtoms::xml_stylesheet) {
     return NS_NewXMLStylesheetProcessingInstruction(aInstancePtrResult,
                                                     aNodeInfoManager, aData);
   }
@@ -59,11 +62,13 @@ NS_NewXMLProcessingInstruction(nsIContent** aInstancePtrResult,
 
   nsCOMPtr<nsINodeInfo> ni;
   ni = aNodeInfoManager->GetNodeInfo(nsGkAtoms::processingInstructionTagName,
-                                     nsnull, kNameSpaceID_None);
+                                     nsnull, kNameSpaceID_None,
+                                     nsIDOMNode::PROCESSING_INSTRUCTION_NODE,
+                                     target);
   NS_ENSURE_TRUE(ni, NS_ERROR_OUT_OF_MEMORY);
 
   nsXMLProcessingInstruction *instance =
-    new nsXMLProcessingInstruction(ni.forget(), aTarget, aData);
+    new nsXMLProcessingInstruction(ni.forget(), aData);
   if (!instance) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
@@ -74,14 +79,16 @@ NS_NewXMLProcessingInstruction(nsIContent** aInstancePtrResult,
 }
 
 nsXMLProcessingInstruction::nsXMLProcessingInstruction(already_AddRefed<nsINodeInfo> aNodeInfo,
-                                                       const nsAString& aTarget,
                                                        const nsAString& aData)
-  : nsGenericDOMDataNode(aNodeInfo),
-    mTarget(aTarget)
+  : nsGenericDOMDataNode(aNodeInfo)
 {
+  NS_ABORT_IF_FALSE(mNodeInfo->NodeType() ==
+                      nsIDOMNode::PROCESSING_INSTRUCTION_NODE,
+                    "Bad NodeType in aNodeInfo");
+
   SetTextInternal(0, mText.GetLength(),
                   aData.BeginReading(), aData.Length(),
-                  PR_FALSE);  // Don't notify (bug 420429).
+                  false);  // Don't notify (bug 420429).
 }
 
 nsXMLProcessingInstruction::~nsXMLProcessingInstruction()
@@ -95,6 +102,7 @@ DOMCI_NODE_DATA(ProcessingInstruction, nsXMLProcessingInstruction)
 NS_INTERFACE_TABLE_HEAD(nsXMLProcessingInstruction)
   NS_NODE_OFFSET_AND_INTERFACE_TABLE_BEGIN(nsXMLProcessingInstruction)
     NS_INTERFACE_TABLE_ENTRY(nsXMLProcessingInstruction, nsIDOMNode)
+    NS_INTERFACE_TABLE_ENTRY(nsXMLProcessingInstruction, nsIDOMCharacterData)
     NS_INTERFACE_TABLE_ENTRY(nsXMLProcessingInstruction,
                              nsIDOMProcessingInstruction)
   NS_OFFSET_AND_INTERFACE_TABLE_END
@@ -110,24 +118,12 @@ NS_IMPL_RELEASE_INHERITED(nsXMLProcessingInstruction, nsGenericDOMDataNode)
 NS_IMETHODIMP
 nsXMLProcessingInstruction::GetTarget(nsAString& aTarget)
 {
-  aTarget.Assign(mTarget);
+  aTarget = NodeName();
 
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXMLProcessingInstruction::SetData(const nsAString& aData)
-{
-  return SetNodeValue(aData);
-}
-
-NS_IMETHODIMP
-nsXMLProcessingInstruction::GetData(nsAString& aData)
-{
-  return nsGenericDOMDataNode::GetData(aData);
-}
-
-PRBool
+bool
 nsXMLProcessingInstruction::GetAttrValue(nsIAtom *aName, nsAString& aValue)
 {
   nsAutoString data;
@@ -136,46 +132,20 @@ nsXMLProcessingInstruction::GetAttrValue(nsIAtom *aName, nsAString& aValue)
   return nsParserUtils::GetQuotedAttributeValue(data, aName, aValue);
 }
 
-PRBool
+bool
 nsXMLProcessingInstruction::IsNodeOfType(PRUint32 aFlags) const
 {
   return !(aFlags & ~(eCONTENT | ePROCESSING_INSTRUCTION | eDATA_NODE));
 }
 
-NS_IMETHODIMP
-nsXMLProcessingInstruction::GetNodeName(nsAString& aNodeName)
-{
-  aNodeName.Assign(mTarget);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsXMLProcessingInstruction::GetNodeValue(nsAString& aNodeValue)
-{
-  return nsGenericDOMDataNode::GetNodeValue(aNodeValue);
-}
-
-NS_IMETHODIMP
-nsXMLProcessingInstruction::SetNodeValue(const nsAString& aNodeValue)
-{
-  return nsGenericDOMDataNode::SetNodeValue(aNodeValue);
-}
-
-NS_IMETHODIMP
-nsXMLProcessingInstruction::GetNodeType(PRUint16* aNodeType)
-{
-  *aNodeType = (PRUint16)nsIDOMNode::PROCESSING_INSTRUCTION_NODE;
-  return NS_OK;
-}
-
 nsGenericDOMDataNode*
 nsXMLProcessingInstruction::CloneDataNode(nsINodeInfo *aNodeInfo,
-                                          PRBool aCloneText) const
+                                          bool aCloneText) const
 {
   nsAutoString data;
   nsGenericDOMDataNode::GetData(data);
   nsCOMPtr<nsINodeInfo> ni = aNodeInfo;
-  return new nsXMLProcessingInstruction(ni.forget(), mTarget, data);
+  return new nsXMLProcessingInstruction(ni.forget(), data);
 }
 
 #ifdef DEBUG
@@ -189,7 +159,7 @@ nsXMLProcessingInstruction::List(FILE* out, PRInt32 aIndent) const
 
   nsAutoString tmp;
   ToCString(tmp, 0, mText.GetLength());
-  tmp.Insert(mTarget.get(), 0);
+  tmp.Insert(nsDependentAtomString(NodeInfo()->GetExtraName()).get(), 0);
   fputs(NS_LossyConvertUTF16toASCII(tmp).get(), out);
 
   fputs(">\n", out);
@@ -197,7 +167,7 @@ nsXMLProcessingInstruction::List(FILE* out, PRInt32 aIndent) const
 
 void
 nsXMLProcessingInstruction::DumpContent(FILE* out, PRInt32 aIndent,
-                                        PRBool aDumpAll) const
+                                        bool aDumpAll) const
 {
 }
 #endif

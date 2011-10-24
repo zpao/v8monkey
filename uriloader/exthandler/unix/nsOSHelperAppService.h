@@ -62,13 +62,13 @@ public:
   // method overrides for mime.types and mime.info look up steps
   already_AddRefed<nsIMIMEInfo> GetMIMEInfoFromOS(const nsACString& aMimeType,
                                                   const nsACString& aFileExt,
-                                                  PRBool     *aFound);
+                                                  bool       *aFound);
   NS_IMETHOD GetProtocolHandlerInfoFromOS(const nsACString &aScheme,
-                                          PRBool *found,
+                                          bool *found,
                                           nsIHandlerInfo **_retval);
 
   // override nsIExternalProtocolService methods
-  nsresult OSProtocolHandlerExists(const char * aProtocolScheme, PRBool * aHandlerExists);
+  nsresult OSProtocolHandlerExists(const char * aProtocolScheme, bool * aHandlerExists);
   NS_IMETHOD GetApplicationDescription(const nsACString& aScheme, nsAString& _retval);
 
   // GetFileTokenForPath must be implemented by each platform. 
@@ -93,18 +93,18 @@ private:
                                   nsACString& aUnEscapedCommand);
   static nsresult GetFileLocation(const char* aPrefName,
                                   const char* aEnvVarName,
-                                  PRUnichar** aFileLocation);
+                                  nsAString& aFileLocation);
   static nsresult LookUpTypeAndDescription(const nsAString& aFileExtension,
                                            nsAString& aMajorType,
                                            nsAString& aMinorType,
                                            nsAString& aDescription,
-                                           PRBool aUserData);
+                                           bool aUserData);
   static nsresult CreateInputStream(const nsAString& aFilename,
                                     nsIFileInputStream ** aFileInputStream,
                                     nsILineInputStream ** aLineInputStream,
                                     nsACString& aBuffer,
-                                    PRBool * aNetscapeFormat,
-                                    PRBool * aMore);
+                                    bool * aNetscapeFormat,
+                                    bool * aMore);
 
   static nsresult GetTypeAndDescriptionFromMimetypesFile(const nsAString& aFilename,
                                                          const nsAString& aFileExtension,
@@ -154,7 +154,7 @@ private:
                                                 nsAString& aHandler,
                                                 nsAString& aDescription,
                                                 nsAString& aMozillaFlags,
-                                                PRBool aUserData);
+                                                bool aUserData);
   
   static nsresult GetHandlerAndDescriptionFromMailcapFile(const nsAString& aFilename,
                                                           const nsAString& aMajorType,

@@ -57,13 +57,13 @@ public:
 
   NS_DECL_ISUPPORTS
 
-  NS_IMETHOD SetShowFrameBorders(PRBool aEnable);
+  NS_IMETHOD SetShowFrameBorders(bool aEnable);
 
-  NS_IMETHOD GetShowFrameBorders(PRBool* aResult);
+  NS_IMETHOD GetShowFrameBorders(bool* aResult);
 
-  NS_IMETHOD SetShowEventTargetFrameBorder(PRBool aEnable);
+  NS_IMETHOD SetShowEventTargetFrameBorder(bool aEnable);
 
-  NS_IMETHOD GetShowEventTargetFrameBorder(PRBool* aResult);
+  NS_IMETHOD GetShowEventTargetFrameBorder(bool* aResult);
 
   NS_IMETHOD GetContentSize(nsIDocument* aDocument,
                             PRInt32* aSizeInBytesResult);
@@ -84,9 +84,6 @@ NS_NewLayoutDebugger(nsILayoutDebugger** aResult)
     return NS_ERROR_NULL_POINTER;
   }
   nsLayoutDebugger* it = new nsLayoutDebugger();
-  if (!it) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
   return it->QueryInterface(NS_GET_IID(nsILayoutDebugger), (void**)aResult);
 }
 
@@ -101,28 +98,28 @@ nsLayoutDebugger::~nsLayoutDebugger()
 NS_IMPL_ISUPPORTS1(nsLayoutDebugger, nsILayoutDebugger)
 
 NS_IMETHODIMP
-nsLayoutDebugger::SetShowFrameBorders(PRBool aEnable)
+nsLayoutDebugger::SetShowFrameBorders(bool aEnable)
 {
   nsFrame::ShowFrameBorders(aEnable);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsLayoutDebugger::GetShowFrameBorders(PRBool* aResult)
+nsLayoutDebugger::GetShowFrameBorders(bool* aResult)
 {
   *aResult = nsFrame::GetShowFrameBorders();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsLayoutDebugger::SetShowEventTargetFrameBorder(PRBool aEnable)
+nsLayoutDebugger::SetShowEventTargetFrameBorder(bool aEnable)
 {
   nsFrame::ShowEventTargetFrameBorder(aEnable);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsLayoutDebugger::GetShowEventTargetFrameBorder(PRBool* aResult)
+nsLayoutDebugger::GetShowEventTargetFrameBorder(bool* aResult)
 {
   *aResult = nsFrame::GetShowEventTargetFrameBorder();
   return NS_OK;
@@ -182,12 +179,12 @@ PrintDisplayListTo(nsDisplayListBuilder* aBuilder, const nsDisplayList& aList,
     nsRect vis = i->GetVisibleRect();
     nsDisplayList* list = i->GetList();
     nsRegion opaque;
+    if (i->GetType() == nsDisplayItem::TYPE_TRANSFORM) {
+        nsDisplayTransform* t = static_cast<nsDisplayTransform*>(i);
+        list = t->GetStoredList()->GetList();
+    }
     if (!list || list->DidComputeVisibility()) {
       opaque = i->GetOpaqueRegion(aBuilder);
-    }
-    if (i->GetType() == nsDisplayItem::TYPE_TRANSFORM) {
-      nsDisplayTransform* t = static_cast<nsDisplayTransform*>(i);
-      list = t->GetStoredList()->GetList();
     }
     fprintf(aOutput, "%s %p(%s) (%d,%d,%d,%d)(%d,%d,%d,%d)%s%s",
             i->Name(), (void*)f, NS_ConvertUTF16toUTF8(fName).get(),
@@ -213,7 +210,7 @@ void
 nsFrame::PrintDisplayList(nsDisplayListBuilder* aBuilder,
                           const nsDisplayList& aList)
 {
-  PrintDisplayListTo(aBuilder, aList, 0, stderr);
+  PrintDisplayListTo(aBuilder, aList, 0, stdout);
 }
 
 #endif

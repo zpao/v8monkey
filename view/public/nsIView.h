@@ -62,14 +62,8 @@ enum nsViewVisibility {
 };
 
 #define NS_IVIEW_IID    \
-  { 0x63052d96, 0x2a4b, 0x434f, \
-    { 0xb4, 0xd3, 0x61, 0x41, 0x83, 0x24, 0x00, 0x76 } }
-
-// Public view flags are defined in this file
-#define NS_VIEW_FLAGS_PUBLIC              0x00FF
-// Private view flags are private to the view module,
-// and are defined in nsView.h
-#define NS_VIEW_FLAGS_PRIVATE             0xFF00
+  { 0x7caf32d2, 0xd82a, 0x4b9f, \
+    { 0x84, 0xc1, 0xbd, 0x20, 0xeb, 0x5c, 0x78, 0x55 } }
 
 // Public view flags
 
@@ -83,15 +77,6 @@ enum nsViewVisibility {
 // displayed above z-index:auto views if this view 
 // is z-index:auto also
 #define NS_VIEW_FLAG_TOPMOST              0x0010
-
-struct nsViewZIndex {
-  PRBool mIsAuto;
-  PRInt32 mZIndex;
-  PRBool mIsTopmost;
-  
-  nsViewZIndex(PRBool aIsAuto, PRInt32 aZIndex, PRBool aIsTopmost)
-    : mIsAuto(aIsAuto), mZIndex(aZIndex), mIsTopmost(aIsTopmost) {}
-};
 
 //----------------------------------------------------------------------
 
@@ -174,6 +159,14 @@ public:
   nsRect GetBounds() const { return mDimBounds; }
 
   /**
+   * The bounds of this view relative to this view. So this is the same as
+   * GetBounds except this is relative to this view instead of the parent view.
+   */
+  nsRect GetDimensions() const {
+    nsRect r = mDimBounds; r.MoveBy(-mPosX, -mPosY); return r;
+  }
+
+  /**
    * Set the dimensions at which invalidations are clipped, which can
    * be different than |GetDimensions()|.  |aRect| is relative to
    * |this|.  It can be null, in which case invalidations return to
@@ -214,23 +207,17 @@ public:
   nsPoint GetOffsetToWidget(nsIWidget* aWidget) const;
 
   /**
+   * Takes a point aPt that is in the coordinate system of |this|'s parent view
+   * and converts it to be in the coordinate system of |this| taking into
+   * account the offset and any app unit per dev pixel ratio differences.
+   */
+  nsPoint ConvertFromParentCoords(nsPoint aPt) const;
+
+  /**
    * Called to query the visibility state of a view.
    * @result current visibility state
    */
   nsViewVisibility GetVisibility() const { return mVis; }
-
-  /**
-   * Called to query the z-index of a view.
-   * The z-index is relative to all siblings of the view.
-   * @result mZIndex: explicit z-index value or 0 if none is set
-   *         mIsAuto: PR_TRUE if the view is zindex:auto
-   *         mIsTopMost: used when this view is zindex:auto
-   *                     PR_TRUE if the view is topmost when compared
-   *                     with another z-index:auto view
-   */
-  nsViewZIndex GetZIndex() const { return nsViewZIndex((mVFlags & NS_VIEW_FLAG_AUTO_ZINDEX) != 0,
-                                                       mZIndex,
-                                                       (mVFlags & NS_VIEW_FLAG_TOPMOST) != 0); }
 
   /**
    * Get whether the view "floats" above all other views,
@@ -238,9 +225,9 @@ public:
    * the view hierarchy that would geometrically intersect with
    * this view. This is a hack, but it fixes some problems with
    * views that need to be drawn in front of all other views.
-   * @result PR_TRUE if the view floats, PR_FALSE otherwise.
+   * @result true if the view floats, false otherwise.
    */
-  PRBool GetFloating() const { return (mVFlags & NS_VIEW_FLAG_FLOATING) != 0; }
+  bool GetFloating() const { return (mVFlags & NS_VIEW_FLAG_FLOATING) != 0; }
 
   /**
    * Called to query the parent of the view.
@@ -299,8 +286,8 @@ public:
    * @return error status
    */
   nsresult CreateWidget(nsWidgetInitData *aWidgetInitData = nsnull,
-                        PRBool aEnableDragDrop = PR_TRUE,
-                        PRBool aResetVisibility = PR_TRUE);
+                        bool aEnableDragDrop = true,
+                        bool aResetVisibility = true);
 
   /**
    * Create a widget for this view with an explicit parent widget.
@@ -309,8 +296,8 @@ public:
    */
   nsresult CreateWidgetForParent(nsIWidget* aParentWidget,
                                  nsWidgetInitData *aWidgetInitData = nsnull,
-                                 PRBool aEnableDragDrop = PR_TRUE,
-                                 PRBool aResetVisibility = PR_TRUE);
+                                 bool aEnableDragDrop = true,
+                                 bool aResetVisibility = true);
 
   /**
    * Create a popup widget for this view.  Pass |aParentWidget| to
@@ -321,8 +308,8 @@ public:
    */
   nsresult CreateWidgetForPopup(nsWidgetInitData *aWidgetInitData,
                                 nsIWidget* aParentWidget = nsnull,
-                                PRBool aEnableDragDrop = PR_TRUE,
-                                PRBool aResetVisibility = PR_TRUE);
+                                bool aEnableDragDrop = true,
+                                bool aResetVisibility = true);
 
   /**
    * Destroys the associated widget for this view.  If this method is
@@ -349,7 +336,7 @@ public:
    * Returns a flag indicating whether the view owns it's widget
    * or is attached to an existing top level widget.
    */
-  PRBool IsAttachedToTopLevel() const { return mWidgetIsTopLevel; }
+  bool IsAttachedToTopLevel() const { return mWidgetIsTopLevel; }
 
   /**
    * In 4.0, the "cutout" nature of a view is queryable.
@@ -361,9 +348,9 @@ public:
   nsIWidget* GetWidget() const { return mWindow; }
 
   /**
-   * Returns PR_TRUE if the view has a widget associated with it.
+   * Returns true if the view has a widget associated with it.
    */
-  PRBool HasWidget() const { return mWindow != nsnull; }
+  bool HasWidget() const { return mWindow != nsnull; }
 
   /**
    * Make aWidget direct its events to this view.
@@ -389,15 +376,15 @@ public:
   /**
    * @result true iff this is the root view for its view manager
    */
-  PRBool IsRoot() const;
+  bool IsRoot() const;
 
-  virtual PRBool ExternalIsRoot() const;
+  virtual bool ExternalIsRoot() const;
 
   void SetDeletionObserver(nsWeakView* aDeletionObserver);
 
   nsIntRect CalcWidgetBounds(nsWindowType aType);
 
-  PRBool IsEffectivelyVisible();
+  bool IsEffectivelyVisible();
 
   // This is an app unit offset to add when converting view coordinates to
   // widget coordinates.  It is the offset in view coordinates from widget
@@ -424,7 +411,7 @@ protected:
   float             mOpacity;
   PRUint32          mVFlags;
   nsWeakView*       mDeletionObserver;
-  PRBool            mWidgetIsTopLevel;
+  bool              mWidgetIsTopLevel;
 
   virtual ~nsIView() {}
 
@@ -458,7 +445,7 @@ public:
     }
   }
 
-  PRBool IsAlive() { return !!mView; }
+  bool IsAlive() { return !!mView; }
 
   nsIView* GetView() { return mView; }
 

@@ -147,7 +147,7 @@ nsInstallTrigger::HandleContent(const char * aContentType,
 
     // Save the referrer if any, for permission checks
     NS_NAMED_LITERAL_STRING(referrerProperty, "docshell.internalReferrer");
-    PRBool useReferrer = PR_FALSE;
+    bool useReferrer = false;
     nsCOMPtr<nsIURI> referringURI;
     nsCOMPtr<nsIPropertyBag2> channelprops(do_QueryInterface(channel));
 
@@ -168,7 +168,7 @@ nsInstallTrigger::HandleContent(const char * aContentType,
                                                   NS_GET_IID(nsIURI),
                                                   getter_AddRefs(referringURI));
         if (NS_SUCCEEDED(rv))
-            useReferrer = PR_TRUE;
+            useReferrer = true;
     }
 
     // Cancel the current request. nsXPInstallManager restarts the download
@@ -243,7 +243,7 @@ nsInstallTrigger::HandleContent(const char * aContentType,
     {
         // trigger will own the item now
         trigger->Add(item.forget());
-        nsCOMPtr<nsIDOMWindowInternal> win(do_QueryInterface(globalObject));
+        nsCOMPtr<nsIDOMWindow> win = do_QueryInterface(globalObject);
         nsCOMPtr<nsIXPIInstallInfo> installInfo =
                               new nsXPIInstallInfo(win, checkuri, trigger, 0);
         if (installInfo)
@@ -315,22 +315,22 @@ static void updatePermissions( const char* aPref,
 
 // Check whether an Install is allowed. The launching URI can be null,
 // in which case only the global pref-setting matters.
-PRBool
+bool
 nsInstallTrigger::AllowInstall(nsIURI* aLaunchURI)
 {
     // Check the global setting.
-    PRBool xpiEnabled = PR_FALSE;
+    bool xpiEnabled = false;
     nsCOMPtr<nsIPrefBranch> prefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID));
     if ( !prefBranch)
     {
-        return PR_TRUE; // no pref service in native install, it's OK
+        return true; // no pref service in native install, it's OK
     }
 
     prefBranch->GetBoolPref( XPINSTALL_ENABLE_PREF, &xpiEnabled);
     if ( !xpiEnabled )
     {
         // globally turned off
-        return PR_FALSE;
+        return false;
     }
 
 
@@ -340,8 +340,8 @@ nsInstallTrigger::AllowInstall(nsIURI* aLaunchURI)
 
     if ( permissionMgr && aLaunchURI )
     {
-        PRBool isChrome = PR_FALSE;
-        PRBool isFile = PR_FALSE;
+        bool isChrome = false;
+        bool isFile = false;
         aLaunchURI->SchemeIs( "chrome", &isChrome );
         aLaunchURI->SchemeIs( "file", &isFile );
 
@@ -359,7 +359,7 @@ nsInstallTrigger::AllowInstall(nsIURI* aLaunchURI)
                                nsIPermissionManager::DENY_ACTION,
                                permissionMgr, prefBranch );
 
-            PRBool requireWhitelist = PR_TRUE;
+            bool requireWhitelist = true;
             prefBranch->GetBoolPref( XPINSTALL_WHITELIST_REQUIRED, &requireWhitelist );
 
             PRUint32 permission = nsIPermissionManager::UNKNOWN_ACTION;
@@ -367,12 +367,12 @@ nsInstallTrigger::AllowInstall(nsIURI* aLaunchURI)
 
             if ( permission == nsIPermissionManager::DENY_ACTION )
             {
-                xpiEnabled = PR_FALSE;
+                xpiEnabled = false;
             }
             else if ( requireWhitelist &&
                       permission != nsIPermissionManager::ALLOW_ACTION )
             {
-                xpiEnabled = PR_FALSE;
+                xpiEnabled = false;
             }
         }
     }
@@ -402,7 +402,7 @@ nsInstallTrigger::GetOriginatingURI(nsIScriptGlobalObject* aGlobalObject, nsIURI
 }
 
 NS_IMETHODIMP
-nsInstallTrigger::UpdateEnabled(nsIScriptGlobalObject* aGlobalObject, PRBool aUseWhitelist, PRBool* aReturn)
+nsInstallTrigger::UpdateEnabled(nsIScriptGlobalObject* aGlobalObject, bool aUseWhitelist, bool* aReturn)
 {
     nsCOMPtr<nsIURI> uri;
     nsresult rv = GetOriginatingURI(aGlobalObject, getter_AddRefs(uri));
@@ -411,10 +411,10 @@ nsInstallTrigger::UpdateEnabled(nsIScriptGlobalObject* aGlobalObject, PRBool aUs
 }
 
 NS_IMETHODIMP
-nsInstallTrigger::UpdateEnabled(nsIURI* aURI, PRBool aUseWhitelist, PRBool* aReturn)
+nsInstallTrigger::UpdateEnabled(nsIURI* aURI, bool aUseWhitelist, bool* aReturn)
 {
     // disallow unless we successfully find otherwise
-    *aReturn = PR_FALSE;
+    *aReturn = false;
 
     if (!aUseWhitelist)
     {
@@ -433,17 +433,17 @@ nsInstallTrigger::UpdateEnabled(nsIURI* aURI, PRBool aUseWhitelist, PRBool* aRet
 
 
 NS_IMETHODIMP
-nsInstallTrigger::StartInstall(nsIXPIInstallInfo* aInstallInfo, PRBool* aReturn)
+nsInstallTrigger::StartInstall(nsIXPIInstallInfo* aInstallInfo, bool* aReturn)
 {
     if (aReturn)
-        *aReturn = PR_FALSE;
+        *aReturn = false;
 
     nsXPInstallManager *mgr = new nsXPInstallManager();
     if (mgr)
     {
         nsresult rv = mgr->InitManagerWithInstallInfo(aInstallInfo);
         if (NS_SUCCEEDED(rv) && aReturn)
-            *aReturn = PR_TRUE;
+            *aReturn = true;
         return rv;
     }
     else

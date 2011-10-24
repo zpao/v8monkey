@@ -88,9 +88,6 @@ public:
   // nsSVGContainerFrame methods:
   virtual gfxMatrix GetCanvasTM();
 
-  // nsISupportsWeakReference
-  // implementation inherited from nsSupportsWeakReference
-
   // nsISVGSVGFrame interface:
   NS_IMETHOD SuspendRedraw();
   NS_IMETHOD UnsuspendRedraw();
@@ -98,5 +95,5 @@ public:
 
 protected:
 
-  nsCOMPtr<nsIDOMSVGMatrix> mCanvasTM;
+  nsAutoPtr<gfxMatrix> mCanvasTM;
 };

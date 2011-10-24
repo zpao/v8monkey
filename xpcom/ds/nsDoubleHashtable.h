@@ -167,7 +167,7 @@
  * DESTRUCTOR
  * Called when the entry is destroyed (of course).
  *
- * PRBool MatchEntry(const void* aKey) - return true or false depending on
+ * bool MatchEntry(const void* aKey) - return true or false depending on
  *        whether the key pointed to by aKey matches this entry
  *
  * static PLDHashNumber HashKey(const void* aKey) - get a hashcode based on the
@@ -207,7 +207,7 @@ ENTRY_CLASS##HashKey(PLDHashTable* table, const void* key)                    \
 {                                                                             \
   return ENTRY_CLASS::HashKey(key);                                           \
 }                                                                             \
-static PRBool                                                                 \
+static bool                                                                   \
 ENTRY_CLASS##MatchEntry(PLDHashTable *table, const PLDHashEntryHdr *entry,    \
                         const void *key)                                      \
 {                                                                             \
@@ -220,12 +220,12 @@ ENTRY_CLASS##ClearEntry(PLDHashTable *table, PLDHashEntryHdr *entry)          \
   ENTRY_CLASS* e = static_cast<ENTRY_CLASS *>(entry);                         \
   e->~ENTRY_CLASS();                                                          \
 }                                                                             \
-static PRBool                                                                 \
+static bool                                                                   \
 ENTRY_CLASS##InitEntry(PLDHashTable *table, PLDHashEntryHdr *entry,           \
                        const void *key)                                       \
 {                                                                             \
   new (entry) ENTRY_CLASS(key);                                               \
-  return PR_TRUE;                                                             \
+  return true;                                                             \
 }
 
 //
@@ -253,7 +253,7 @@ PR_BEGIN_MACRO                                                                \
     PL_DHashFinalizeStub,                                                     \
     ENTRY_CLASS##InitEntry                                                    \
   };                                                                          \
-  PRBool isLive = PL_DHashTableInit(&(HASHTABLE),                             \
+  bool isLive = PL_DHashTableInit(&(HASHTABLE),                             \
                                     &hash_table_ops, nsnull,                  \
                                     sizeof(ENTRY_CLASS),                      \
                                     (NUM_INITIAL_ENTRIES));                   \
@@ -398,7 +398,7 @@ void CLASSNAME::Remove(const KEY_TYPE aKey) {                                 \
 //
 // String-key entry
 //
-class NS_COM PLDHashStringEntry : public PLDHashEntryHdr
+class PLDHashStringEntry : public PLDHashEntryHdr
 {
 public:
   PLDHashStringEntry(const void* aKey) :
@@ -408,7 +408,7 @@ public:
   static PLDHashNumber HashKey(const void* key) {
     return HashString(*static_cast<const nsAString*>(key));
   }
-  PRBool MatchEntry(const void* key) const {
+  bool MatchEntry(const void* key) const {
     return static_cast<const nsAString*>(key)->Equals(mKey);
   }
 
@@ -418,7 +418,7 @@ public:
 //
 // CString-key entry
 //
-class NS_COM PLDHashCStringEntry : public PLDHashEntryHdr
+class PLDHashCStringEntry : public PLDHashEntryHdr
 {
 public:
   PLDHashCStringEntry(const void* aKey) :
@@ -428,7 +428,7 @@ public:
   static PLDHashNumber HashKey(const void* key) {
     return HashString(*static_cast<const nsACString*>(key));
   }
-  PRBool MatchEntry(const void* key) const {
+  bool MatchEntry(const void* key) const {
     return static_cast<const nsACString*>(key)->Equals(mKey);
   }
 
@@ -438,7 +438,7 @@ public:
 //
 // Int-key entry
 //
-class NS_COM PLDHashInt32Entry : public PLDHashEntryHdr
+class PLDHashInt32Entry : public PLDHashEntryHdr
 {
 public:
   PLDHashInt32Entry(const void* aKey) :
@@ -448,7 +448,7 @@ public:
   static PLDHashNumber HashKey(const void* key) {
     return *static_cast<const PRInt32*>(key);
   }
-  PRBool MatchEntry(const void* key) const {
+  bool MatchEntry(const void* key) const {
     return *(static_cast<const PRInt32*>(key)) == mKey;
   }
 
@@ -459,7 +459,7 @@ public:
 //
 // Void-key entry
 //
-class NS_COM PLDHashVoidEntry : public PLDHashEntryHdr
+class PLDHashVoidEntry : public PLDHashEntryHdr
 {
 public:
   PLDHashVoidEntry(const void* aKey) :
@@ -469,7 +469,7 @@ public:
   static PLDHashNumber HashKey(const void* key) {
     return PLDHashNumber(NS_PTR_TO_INT32(*(const void**)key)) >> 2;
   }
-  PRBool MatchEntry(const void* key) const {
+  bool MatchEntry(const void* key) const {
     return *(const void**)key == mKey;
   }
 

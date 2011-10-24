@@ -37,7 +37,6 @@
 
 #include "nsCOMPtr.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMDocumentRange.h"
 #include "nsIDocument.h"
 #include "nsString.h"
 #include "nsTArray.h"
@@ -82,7 +81,7 @@ public:
   mozInlineSpellWordUtil()
     : mRootNode(nsnull),
       mSoftBegin(nsnull, 0), mSoftEnd(nsnull, 0),
-      mNextWordIndex(-1), mSoftTextValid(PR_FALSE) {}
+      mNextWordIndex(-1), mSoftTextValid(false) {}
 
   nsresult Init(nsWeakPtr aWeakEditor);
 
@@ -109,13 +108,13 @@ public:
   // aSkipChecking will be set if the word is "special" and shouldn't be
   // checked (e.g., an email address).
   nsresult GetNextWord(nsAString& aText, nsIDOMRange** aRange,
-                       PRBool* aSkipChecking);
+                       bool* aSkipChecking);
 
   // Call to normalize some punctuation. This function takes an autostring
   // so we can access characters directly.
   static void NormalizeWord(nsSubstring& aWord);
 
-  nsIDOMDocumentRange* GetDocumentRange() const { return mDOMDocumentRange; }
+  nsIDOMDocument* GetDOMDocument() const { return mDOMDocument; }
   nsIDocument* GetDocument() const { return mDocument; }
   nsIDOMNode* GetRootNode() { return mRootNode; }
   nsIUGenCategory* GetCategories() { return mCategories; }
@@ -123,7 +122,7 @@ public:
 private:
 
   // cached stuff for the editor, set by Init
-  nsCOMPtr<nsIDOMDocumentRange> mDOMDocumentRange;
+  nsCOMPtr<nsIDOMDocument> mDOMDocument;
   nsCOMPtr<nsIDocument>         mDocument;
   nsCOMPtr<nsIDOMWindow>        mCSSView;
   nsCOMPtr<nsIUGenCategory>     mCategories;
@@ -152,18 +151,18 @@ private:
   struct RealWord {
     PRInt32      mSoftTextOffset;
     PRInt32      mLength;
-    PRPackedBool mCheckableWord;
+    bool mCheckableWord;
     
-    RealWord(PRInt32 aOffset, PRInt32 aLength, PRPackedBool aCheckable)
+    RealWord(PRInt32 aOffset, PRInt32 aLength, bool aCheckable)
       : mSoftTextOffset(aOffset), mLength(aLength), mCheckableWord(aCheckable) {}
     PRInt32 EndOffset() const { return mSoftTextOffset + mLength; }
   };
   nsTArray<RealWord> mRealWords;
   PRInt32            mNextWordIndex;
 
-  PRPackedBool mSoftTextValid;
+  bool mSoftTextValid;
 
-  void InvalidateWords() { mSoftTextValid = PR_FALSE; }
+  void InvalidateWords() { mSoftTextValid = false; }
   void EnsureWords();
   
   PRInt32 MapDOMPositionToSoftTextOffset(NodeOffset aNodeOffset);
@@ -183,7 +182,7 @@ private:
   // If aSearchForward is true, then if we don't find a word at the given
   // position, search forward until we do find a word and return that (if found).
   PRInt32 FindRealWordContaining(PRInt32 aSoftTextOffset, DOMMapHint aHint,
-                                 PRBool aSearchForward);
+                                 bool aSearchForward);
     
   // build mSoftText and mSoftTextDOMMapping
   void BuildSoftText();

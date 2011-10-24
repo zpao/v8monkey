@@ -54,7 +54,7 @@ typedef struct
   const unsigned char* const charToOrderMap;    // [256] table use to find a char's order
   const PRUint8* const precedenceMatrix;  // [SAMPLE_SIZE][SAMPLE_SIZE]; table to find a 2-char sequence's frequency
   float  mTypicalPositiveRatio;     // = freqSeqs / totalSeqs 
-  PRBool keepEnglishLetter;         // says if this script contains English characters (not implemented)
+  bool keepEnglishLetter;         // says if this script contains English characters (not implemented)
   const char* const charsetName;
 } SequenceModel;
 
@@ -62,8 +62,8 @@ typedef struct
 class nsSingleByteCharSetProber : public nsCharSetProber{
 public:
   nsSingleByteCharSetProber(const SequenceModel *model) 
-    :mModel(model), mReversed(PR_FALSE), mNameProber(0) { Reset(); }
-  nsSingleByteCharSetProber(const SequenceModel *model, PRBool reversed, nsCharSetProber* nameProber)
+    :mModel(model), mReversed(false), mNameProber(0) { Reset(); }
+  nsSingleByteCharSetProber(const SequenceModel *model, bool reversed, nsCharSetProber* nameProber)
     :mModel(model), mReversed(reversed), mNameProber(nameProber) { Reset(); }
 
   virtual const char* GetCharSetName();
@@ -74,12 +74,12 @@ public:
   virtual void      SetOpion() {}
   
   // This feature is not implemented yet. any current language model
-  // contain this parameter as PR_FALSE. No one is looking at this
+  // contain this parameter as false. No one is looking at this
   // parameter or calling this method.
   // Moreover, the nsSBCSGroupProber which calls the HandleData of this
   // prober has a hard-coded call to FilterWithoutEnglishLetters which gets rid
   // of the English letters.
-  PRBool KeepEnglishLetters() {return mModel->keepEnglishLetter;} // (not implemented)
+  bool KeepEnglishLetters() {return mModel->keepEnglishLetter;} // (not implemented)
 
 #ifdef DEBUG_chardet
   virtual void  DumpStatus();
@@ -88,7 +88,7 @@ public:
 protected:
   nsProbingState mState;
   const SequenceModel* const mModel;
-  const PRBool mReversed; // PR_TRUE if we need to reverse every pair in the model lookup
+  const bool mReversed; // true if we need to reverse every pair in the model lookup
 
   //char order of last character
   unsigned char mLastOrder;

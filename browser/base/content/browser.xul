@@ -139,7 +139,7 @@
                 oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
       <menuseparator/>
       <menuitem id="context_reloadAllTabs" label="&reloadAllTabs.label;" accesskey="&reloadAllTabs.accesskey;"
-                tbattr="tabbrowser-multiple"
+                tbattr="tabbrowser-multiple-visible"
                 oncommand="gBrowser.reloadAllTabs();"/>
       <menuitem id="context_bookmarkAllTabs"
                 label="&bookmarkAllTabs.label;"
@@ -177,6 +177,7 @@
 
     <panel id="editBookmarkPanel"
            type="arrow"
+           footertype="promobox"
            orient="vertical"
            ignorekeys="true"
            hidden="true"
@@ -223,15 +224,6 @@
       </hbox>
     </panel>
 
-    <panel id="highlighter-panel"
-           hidden="true"
-           ignorekeys="true"
-           noautofocus="true"
-           noautohide="true"
-           onclick="InspectorUI.stopInspecting();"
-           onmousemove="InspectorUI.highlighter.handleMouseMove(event);"
-           onMozMousePixelScroll="InspectorUI.highlighter.handlePixelScroll(event);"/>
-
     <panel id="inspector-tree-panel"
            orient="vertical"
            hidden="true"
@@ -240,55 +232,11 @@
            noautohide="true"
            titlebar="normal"
            close="true"
-           onpopuphiding="InspectorUI.closeInspectorUI();"
            label="&inspectPanelTitle.label;">
-      <toolbar id="inspector-toolbar"
-               nowindowdrag="true">
-        <toolbarbutton id="inspector-inspect-toolbutton"
-                       label="&inspectButton.label;"
-                       accesskey="&inspectButton.accesskey;"
-                       class="toolbarbutton-text"
-                       command="Inspector:Inspect"/>
-        <toolbarbutton id="inspector-previous-toolbutton"
-                       label="&inspectPreviousButton.label;"
-                       accesskey="&inspectPreviousButton.accesskey;"
-                       class="toolbarbutton-text"
-                       command="Inspector:Previous"/>
-        <toolbarbutton id="inspector-next-toolbutton"
-                       label="&inspectNextButton.label;"
-                       accesskey="&inspectNextButton.accesskey;"
-                       class="toolbarbutton-text"
-                       command="Inspector:Next"/>
-        <toolbarbutton id="inspector-style-toolbutton"
-                       label="&inspectStyleButton.label;"
-                       accesskey="&inspectStyleButton.accesskey;"
-                       class="toolbarbutton-text"
-                       oncommand="InspectorUI.toggleStylePanel();"/>
-        <toolbarbutton id="inspector-dom-toolbutton"
-                       label="&inspectObjectButton.label;"
-                       accesskey="&inspectObjectButton.accesskey;"
-                       class="toolbarbutton-text"
-                       oncommand="InspectorUI.toggleDOMPanel();"/>
-      </toolbar>
       <hbox id="tree-panel-resizer-box" align="end">
         <spacer flex="1" />
         <resizer dir="bottomend" />
       </hbox>
-    </panel>
-
-    <panel id="inspector-style-panel"
-           hidden="true"
-           orient="vertical"
-           ignorekeys="true"
-           noautofocus="true"
-           noautohide="true"
-           titlebar="normal"
-           label="&inspectStylePanelTitle.label;">
-        <listbox id="inspector-style-listbox" flex="1"/>
-        <hbox align="end">
-          <spacer flex="1" />
-          <resizer dir="bottomend"/>
-        </hbox>
     </panel>
 
     <menupopup id="toolbar-context-menu"
@@ -324,10 +272,10 @@
                 oncommand="BrowserFullScreen();"/>
     </menupopup>
 
-    <menupopup id="contentAreaContextMenu"
+    <menupopup id="contentAreaContextMenu" pagemenu="start"
                onpopupshowing="if (event.target != this)
                                  return true;
-                               gContextMenu = new nsContextMenu(this, gBrowser);
+                               gContextMenu = new nsContextMenu(this, gBrowser, event.shiftKey);
                                if (gContextMenu.shouldDisplay)
                                  updateEditUIVisibility();
                                return gContextMenu.shouldDisplay;"
@@ -337,8 +285,13 @@
 
     <menupopup id="placesContext"/>
 
-    <panel id="notification-popup" type="arrow" position="after_start"
-           hidden="true" orient="vertical"/>
+    <panel id="notification-popup"
+           type="arrow"
+           footertype="promobox"
+           position="after_start"
+           hidden="true"
+           orient="vertical"
+           role="alert"/>
 
     <!-- Popup for site identity information -->
     <panel id="identity-popup"
@@ -437,6 +390,24 @@
     </panel>
 
     <tooltip id="tabbrowser-tab-tooltip" onpopupshowing="gBrowser.createTooltip(event);"/>
+
+    <tooltip id="back-button-tooltip">
+      <label value="&backButton.tooltip;"/>
+#ifdef XP_MACOSX
+      <label value="&backForwardButtonMenuMac.tooltip;"/>
+#else
+      <label value="&backForwardButtonMenu.tooltip;"/>
+#endif
+    </tooltip>
+  
+    <tooltip id="forward-button-tooltip">
+      <label value="&forwardButton.tooltip;"/>
+#ifdef XP_MACOSX
+      <label value="&backForwardButtonMenuMac.tooltip;"/>
+#else
+      <label value="&backForwardButtonMenu.tooltip;"/>
+#endif
+    </tooltip>
   </popupset>
 
 #ifdef CAN_DRAW_IN_TITLEBAR
@@ -501,17 +472,25 @@
 
       <toolbaritem id="unified-back-forward-button" class="chromeclass-toolbar-additional"
                    context="backForwardMenu" removable="true"
+                   forwarddisabled="true"
                    title="&backForwardItem.title;">
         <toolbarbutton id="back-button" class="toolbarbutton-1"
                        label="&backCmd.label;"
                        command="Browser:BackOrBackDuplicate"
                        onclick="checkForMiddleClick(this, event);"
-                       tooltiptext="&backButton.tooltip;"/>
+                       tooltip="back-button-tooltip"/>
         <toolbarbutton id="forward-button" class="toolbarbutton-1"
                        label="&forwardCmd.label;"
                        command="Browser:ForwardOrForwardDuplicate"
                        onclick="checkForMiddleClick(this, event);"
-                       tooltiptext="&forwardButton.tooltip;"/>
+                       tooltip="forward-button-tooltip"/>
+        <dummyobservertarget hidden="true"
+                             onbroadcast="if (this.getAttribute('disabled') == 'true')
+                                            this.parentNode.setAttribute('forwarddisabled', 'true');
+                                          else
+                                            this.parentNode.removeAttribute('forwarddisabled');">
+          <observes element="Browser:ForwardOrForwardDuplicate" attribute="disabled"/>
+        </dummyobservertarget>
       </toolbaritem>
 
       <toolbaritem id="urlbar-container" align="center" flex="400" persist="width" combined="true"
@@ -844,9 +823,8 @@
                     key="key_tabview"
                     label="&viewTabGroups.label;"
                     command="Browser:ToggleTabView"
-                    observes="tabviewGroupsNumber"
-                    keepme="true"/>
-          <menuseparator id="alltabs-popup-separator" keepme="true"/>
+                    observes="tabviewGroupsNumber"/>
+          <menuseparator id="alltabs-popup-separator"/>
         </menupopup>
       </toolbarbutton>
 
@@ -986,12 +964,25 @@
                   contentcontextmenu="contentAreaContextMenu"
                   autocompletepopup="PopupAutoComplete"
                   onclick="return contentAreaClick(event, false);"/>
-      <statuspanel id="statusbar-display" label=""/>
+      <statuspanel id="statusbar-display" inactive="true"/>
     </vbox>
     <vbox id="browser-border-end" hidden="true" layer="true"/>
   </hbox>
 
   <vbox id="browser-bottombox" layer="true">
+    <toolbar id="inspector-toolbar"
+             nowindowdrag="true"
+             hidden="true">
+      <toolbarbutton id="inspector-inspect-toolbutton"
+                     label="&inspectButton.label;"
+                     accesskey="&inspectButton.accesskey;"
+                     class="toolbarbutton-text"
+                     command="Inspector:Inspect"/>
+      <toolbarseparator />
+      <hbox id="inspector-tools">
+        <!-- registered tools go here -->
+      </hbox>
+    </toolbar>
     <toolbar id="addon-bar"
              toolbarname="&addonBarCmd.label;" accesskey="&addonBarCmd.accesskey;"
              collapsed="true"
@@ -1019,13 +1010,17 @@
       <svg:rect x="0" y="0" width="1" height="1" fill="white"/>
       <svg:circle cx="-0.35" cy="0.5" r="0.58"/>
     </svg:mask>
+    <svg:mask id="winstripe-urlbar-back-button-mask" maskContentUnits="userSpaceOnUse">
+      <svg:rect x="0" y="0" width="10000" height="50" fill="white"/>
+      <svg:circle cx="-11" cy="13" r="15"/>
+    </svg:mask>
   </svg:svg>
 #endif
 #ifdef XP_MACOSX
   <svg:svg height="0">
     <svg:mask id="pinstripe-keyhole-forward-mask" maskContentUnits="objectBoundingBox">
       <svg:rect x="0" y="0" width="1" height="1" fill="white"/>
-      <svg:circle cx="-0.46" cy="0.48" r="0.65"/>
+      <svg:circle cx="-0.41" cy="0.5" r="0.65"/>
     </svg:mask>
     <svg:mask id="pinstripe-tab-ontop-left-curve-mask" maskContentUnits="userSpaceOnUse">
       <svg:circle cx="9" cy="3" r="3" fill="white"/>

@@ -58,7 +58,7 @@ nsXBLProtoImplProperty::nsXBLProtoImplProperty(const PRUnichar* aName,
   mSetterText(nsnull),
   mJSAttributes(JSPROP_ENUMERATE)
 #ifdef DEBUG
-  , mIsCompiled(PR_FALSE)
+  , mIsCompiled(false)
 #endif
 {
   MOZ_COUNT_CTOR(nsXBLProtoImplProperty);
@@ -155,12 +155,12 @@ nsXBLProtoImplProperty::InstallMember(nsIScriptContext* aContext,
 {
   NS_PRECONDITION(mIsCompiled,
                   "Should not be installing an uncompiled property");
-  JSContext* cx = (JSContext*) aContext->GetNativeContext();
+  JSContext* cx = aContext->GetNativeContext();
 
-  nsIDocument *ownerDoc = aBoundElement->GetOwnerDoc();
+  nsIDocument *ownerDoc = aBoundElement->OwnerDoc();
   nsIScriptGlobalObject *sgo;
 
-  if (!ownerDoc || !(sgo = ownerDoc->GetScopeObject())) {
+  if (!(sgo = ownerDoc->GetScopeObject())) {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -226,7 +226,7 @@ nsXBLProtoImplProperty::CompileMember(nsIScriptContext* aContext, const nsCStrin
     }
   }
 
-  PRBool deletedGetter = PR_FALSE;
+  bool deletedGetter = false;
   if (mGetterText && mGetterText->GetText()) {
     nsDependentString getter(mGetterText->GetText());
     if (!getter.IsEmpty()) {
@@ -241,13 +241,13 @@ nsXBLProtoImplProperty::CompileMember(nsIScriptContext* aContext, const nsCStrin
                                      functionUri.get(),
                                      mGetterText->GetLineNumber(),
                                      JSVERSION_LATEST,
-                                     PR_TRUE,
+                                     true,
                                      (void **) &getterObject);
 
       // Make sure we free mGetterText here before setting mJSGetterObject, since
       // that'll overwrite mGetterText
       delete mGetterText;
-      deletedGetter = PR_TRUE;
+      deletedGetter = true;
       mJSGetterObject = getterObject;
     
       if (mJSGetterObject && NS_SUCCEEDED(rv)) {
@@ -276,7 +276,7 @@ nsXBLProtoImplProperty::CompileMember(nsIScriptContext* aContext, const nsCStrin
     return rv;
   }
 
-  PRBool deletedSetter = PR_FALSE;
+  bool deletedSetter = false;
   if (mSetterText && mSetterText->GetText()) {
     nsDependentString setter(mSetterText->GetText());
     if (!setter.IsEmpty()) {
@@ -291,13 +291,13 @@ nsXBLProtoImplProperty::CompileMember(nsIScriptContext* aContext, const nsCStrin
                                      functionUri.get(),
                                      mSetterText->GetLineNumber(),
                                      JSVERSION_LATEST,
-                                     PR_TRUE,
+                                     true,
                                      (void **) &setterObject);
 
       // Make sure we free mSetterText here before setting mJSGetterObject, since
       // that'll overwrite mSetterText
       delete mSetterText;
-      deletedSetter = PR_TRUE;
+      deletedSetter = true;
       mJSSetterObject = setterObject;
 
       if (mJSSetterObject && NS_SUCCEEDED(rv)) {

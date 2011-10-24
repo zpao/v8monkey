@@ -50,6 +50,7 @@ Cu.import("resource://services-sync/engines/clients.js");
 Cu.import("resource://services-sync/record.js");
 Cu.import("resource://services-sync/resource.js");
 Cu.import("resource://services-sync/util.js");
+Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/ext/Preferences.js");
 
 // It is safer to inspect the private browsing preferences rather than
@@ -65,7 +66,7 @@ function TabSetRecord(collection, id) {
 }
 TabSetRecord.prototype = {
   __proto__: CryptoWrapper.prototype,
-  _logName: "Record.Tabs",
+  _logName: "Sync.Record.Tabs",
   ttl: TABS_TTL
 };
 
@@ -179,7 +180,7 @@ TabStore.prototype = {
     record.clientName = Clients.localName;
 
     // Don't provide any tabs to compare against and ignore the update later.
-    if (Svc.Private.privateBrowsingEnabled && !PBPrefs.get("autostart")) {
+    if (Svc.Private && Svc.Private.privateBrowsingEnabled && !PBPrefs.get("autostart")) {
       record.tabs = [];
       return record;
     }
@@ -216,7 +217,7 @@ TabStore.prototype = {
   getAllIDs: function TabStore_getAllIds() {
     // Don't report any tabs if we're in private browsing for first syncs.
     let ids = {};
-    if (Svc.Private.privateBrowsingEnabled && !PBPrefs.get("autostart"))
+    if (Svc.Private && Svc.Private.privateBrowsingEnabled && !PBPrefs.get("autostart"))
       return ids;
 
     ids[Clients.localID] = true;
@@ -301,7 +302,7 @@ TabTracker.prototype = {
         if (!this._enabled) {
           Svc.Obs.add("private-browsing", this);
           Svc.Obs.add("domwindowopened", this);
-          let wins = Svc.WinMediator.getEnumerator("navigator:browser");
+          let wins = Services.wm.getEnumerator("navigator:browser");
           while (wins.hasMoreElements())
             this._registerListenersForWindow(wins.getNext());
           this._enabled = true;
@@ -311,7 +312,7 @@ TabTracker.prototype = {
         if (this._enabled) {
           Svc.Obs.remove("private-browsing", this);
           Svc.Obs.remove("domwindowopened", this);
-          let wins = Svc.WinMediator.getEnumerator("navigator:browser");
+          let wins = Services.wm.getEnumerator("navigator:browser");
           while (wins.hasMoreElements())
             this._unregisterListenersForWindow(wins.getNext());
           this._enabled = false;
@@ -333,7 +334,7 @@ TabTracker.prototype = {
   },
 
   onTab: function onTab(event) {
-    if (Svc.Private.privateBrowsingEnabled && !PBPrefs.get("autostart")) {
+    if (Svc.Private && Svc.Private.privateBrowsingEnabled && !PBPrefs.get("autostart")) {
       this._log.trace("Ignoring tab event from private browsing.");
       return;
     }
@@ -355,6 +356,6 @@ TabTracker.prototype = {
 
     // Only increase the score by whole numbers, so use random for partial score
     if (Math.random() < chance)
-      this.score++;
+      this.score += SCORE_INCREMENT_SMALL;
   },
 }

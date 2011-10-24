@@ -104,7 +104,7 @@ ByteBufferImpl::GetBuffer(void) const
   return mBuffer;
 }
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 ByteBufferImpl::Grow(PRUint32 aNewSize)
 {
   if (aNewSize < MIN_BUFFER_SIZE) {
@@ -117,9 +117,9 @@ ByteBufferImpl::Grow(PRUint32 aNewSize)
     }
     delete[] mBuffer;
     mBuffer = newbuf;
-    return PR_TRUE;
+    return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 NS_IMETHODIMP_(PRInt32)
@@ -151,7 +151,7 @@ ByteBufferImpl::Fill(nsresult* aErrorCode, nsIInputStream* aStream,
   return nb;
 }
 
-NS_COM nsresult NS_NewByteBuffer(nsIByteBuffer** aInstancePtrResult,
+nsresult NS_NewByteBuffer(nsIByteBuffer** aInstancePtrResult,
                                   nsISupports* aOuter,
                                   PRUint32 aBufferSize)
 {

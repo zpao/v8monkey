@@ -44,6 +44,31 @@
 typedef nsLeafAccessible nsFormControlAccessible;
 
 /**
+  * Generic class used for progress meters.
+  */
+template<int Max>
+class ProgressMeterAccessible: public nsFormControlAccessible
+{
+public:
+  ProgressMeterAccessible(nsIContent* aContent, nsIWeakReference* aShell) :
+    nsFormControlAccessible(aContent, aShell)
+  {
+  }
+
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_NSIACCESSIBLEVALUE
+
+  // nsIAccessible
+  NS_IMETHOD GetValue(nsAString &aValue);
+
+  // nsAccessible
+  virtual PRUint32 NativeRole();
+
+  // Widgets
+  virtual bool IsWidget() const;
+};
+
+/**
   * Generic class used for radio buttons.
   */
 class nsRadioButtonAccessible : public nsFormControlAccessible
@@ -53,14 +78,19 @@ public:
   nsRadioButtonAccessible(nsIContent *aContent, nsIWeakReference *aShell);
 
   // nsIAccessible
-  NS_IMETHOD GetNumActions(PRUint8 *_retval);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
   NS_IMETHOD DoAction(PRUint8 aIndex);
 
   // nsAccessible
   virtual PRUint32 NativeRole();
 
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
+
   enum { eAction_Click = 0 };
+
+  // Widgets
+  virtual bool IsWidget() const;
 };
 
 

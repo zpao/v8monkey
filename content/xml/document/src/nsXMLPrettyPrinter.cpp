@@ -52,7 +52,9 @@
 #include "nsIDOMDocumentFragment.h"
 #include "nsBindingManager.h"
 #include "nsIScriptSecurityManager.h"
+#include "mozilla/Preferences.h"
 
+using namespace mozilla;
 using namespace mozilla::dom;
 
 NS_IMPL_ISUPPORTS2(nsXMLPrettyPrinter,
@@ -61,7 +63,7 @@ NS_IMPL_ISUPPORTS2(nsXMLPrettyPrinter,
 
 nsXMLPrettyPrinter::nsXMLPrettyPrinter() : mDocument(nsnull),
                                            mUpdateDepth(0),
-                                           mUnhookPending(PR_FALSE)
+                                           mUnhookPending(false)
 {
 }
 
@@ -72,9 +74,9 @@ nsXMLPrettyPrinter::~nsXMLPrettyPrinter()
 
 nsresult
 nsXMLPrettyPrinter::PrettyPrint(nsIDocument* aDocument,
-                                PRBool* aDidPrettyPrint)
+                                bool* aDidPrettyPrint)
 {
-    *aDidPrettyPrint = PR_FALSE;
+    *aDidPrettyPrint = false;
     
     // Check for iframe with display:none. Such iframes don't have presshells
     if (!aDocument->GetShell()) {
@@ -114,12 +116,12 @@ nsXMLPrettyPrinter::PrettyPrint(nsIDocument* aDocument,
     }
 
     // check the pref
-    if (!nsContentUtils::GetBoolPref("layout.xml.prettyprint", PR_TRUE)) {
+    if (!Preferences::GetBool("layout.xml.prettyprint", true)) {
         return NS_OK;
     }
 
     // Ok, we should prettyprint. Let's do it!
-    *aDidPrettyPrint = PR_TRUE;
+    *aDidPrettyPrint = true;
     nsresult rv = NS_OK;
 
     // Load the XSLT
@@ -129,7 +131,7 @@ nsXMLPrettyPrinter::PrettyPrint(nsIDocument* aDocument,
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIDOMDocument> xslDocument;
-    rv = nsSyncLoadService::LoadDocument(xslUri, nsnull, nsnull, PR_TRUE,
+    rv = nsSyncLoadService::LoadDocument(xslUri, nsnull, nsnull, true,
                                          getter_AddRefs(xslDocument));
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -196,44 +198,33 @@ nsXMLPrettyPrinter::MaybeUnhook(nsIContent* aContent)
 {
     // If there either aContent is null (the document-node was modified) or
     // there isn't a binding parent we know it's non-anonymous content.
-    if (!aContent || !aContent->GetBindingParent()) {
-        mUnhookPending = PR_TRUE;
+    if ((!aContent || !aContent->GetBindingParent()) && !mUnhookPending) {
+        // Can't blindly to mUnhookPending after AddScriptRunner,
+        // since AddScriptRunner _could_ in theory run us
+        // synchronously
+        mUnhookPending = true;
+        nsContentUtils::AddScriptRunner(
+          NS_NewRunnableMethod(this, &nsXMLPrettyPrinter::Unhook));
     }
 }
 
-// nsIDocumentObserver implementation
-
 void
-nsXMLPrettyPrinter::BeginUpdate(nsIDocument* aDocument,
-                                nsUpdateType aUpdateType)
+nsXMLPrettyPrinter::Unhook()
 {
-    mUpdateDepth++;
-}
+    mDocument->RemoveObserver(this);
+    nsCOMPtr<nsIDOMDocument> document = do_QueryInterface(mDocument);
+    nsCOMPtr<nsIDOMElement> rootElem;
+    document->GetDocumentElement(getter_AddRefs(rootElem));
 
-void
-nsXMLPrettyPrinter::EndUpdate(nsIDocument* aDocument, nsUpdateType aUpdateType)
-{
-    mUpdateDepth--;
-
-    // Only remove the binding once we're outside all updates. This protects us
-    // from nasty surprices of elements being removed from the document in the
-    // midst of setting attributes etc.
-    if (mUnhookPending && mUpdateDepth == 0) {
-        mDocument->RemoveObserver(this);
-        nsCOMPtr<nsIDOMDocument> document = do_QueryInterface(mDocument);
-        nsCOMPtr<nsIDOMElement> rootElem;
-        document->GetDocumentElement(getter_AddRefs(rootElem));
-
-        if (rootElem) {
-            nsCOMPtr<nsIDOMDocumentXBL> xblDoc = do_QueryInterface(mDocument);
-            xblDoc->RemoveBinding(rootElem,
-                                  NS_LITERAL_STRING("chrome://global/content/xml/XMLPrettyPrint.xml#prettyprint"));
-        }
-
-        mDocument = nsnull;
-
-        NS_RELEASE_THIS();
+    if (rootElem) {
+        nsCOMPtr<nsIDOMDocumentXBL> xblDoc = do_QueryInterface(mDocument);
+        xblDoc->RemoveBinding(rootElem,
+                              NS_LITERAL_STRING("chrome://global/content/xml/XMLPrettyPrint.xml#prettyprint"));
     }
+
+    mDocument = nsnull;
+
+    NS_RELEASE_THIS();
 }
 
 void

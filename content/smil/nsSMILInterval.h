@@ -56,8 +56,7 @@ public:
   nsSMILInterval();
   nsSMILInterval(const nsSMILInterval& aOther);
   ~nsSMILInterval();
-  void NotifyChanged(const nsSMILTimeContainer* aContainer);
-  void Unlink(PRBool aFiltered = PR_FALSE);
+  void Unlink(bool aFiltered = false);
 
   const nsSMILInstanceTime* Begin() const
   {
@@ -86,17 +85,18 @@ public:
   void FixBegin();
   void FixEnd();
 
+  typedef nsTArray<nsRefPtr<nsSMILInstanceTime> > InstanceTimeList;
+
   void AddDependentTime(nsSMILInstanceTime& aTime);
   void RemoveDependentTime(const nsSMILInstanceTime& aTime);
+  void GetDependentTimes(InstanceTimeList& aTimes);
 
   // Cue for assessing if this interval can be filtered
-  PRBool IsDependencyChainLink() const;
+  bool IsDependencyChainLink() const;
 
 private:
   nsRefPtr<nsSMILInstanceTime> mBegin;
   nsRefPtr<nsSMILInstanceTime> mEnd;
-
-  typedef nsTArray<nsRefPtr<nsSMILInstanceTime> > InstanceTimeList;
 
   // nsSMILInstanceTimes to notify when this interval is changed or deleted.
   InstanceTimeList mDependentTimes;
@@ -104,29 +104,14 @@ private:
   // Indicates if the end points of the interval are fixed or not.
   //
   // Note that this is not the same as having an end point whose TIME is fixed
-  // (i.e. nsSMILInstanceTime::IsFixed() returns PR_TRUE). This is because it is
+  // (i.e. nsSMILInstanceTime::IsFixed() returns true). This is because it is
   // possible to have an end point with a fixed TIME and yet still update the
   // end point to refer to a different nsSMILInstanceTime object.
   //
-  // However, if mBegin/EndFixed is PR_TRUE, then BOTH the nsSMILInstanceTime
+  // However, if mBegin/EndFixed is true, then BOTH the nsSMILInstanceTime
   // OBJECT returned for that end point and its TIME value will not change.
-  PRPackedBool mBeginFixed;
-  PRPackedBool mEndFixed;
-
-  // When change notifications are passed around the timing model we try to
-  // filter out all changes where there is no observable difference to an
-  // instance time. Changes that may produce an observable difference are:
-  //
-  // * Changes to the time of an interval endpoint
-  // * Changes in the relative times of different time containers
-  // * Changes to the dependency chain (which may affect the animation sandwich)
-  //
-  // The nsSMILTimeValueSpec can detect the first two changes by recalculating
-  // the time but in order to help detect the third change we simply set a flag
-  // whenever the mBegin or mEnd pointers are changed. These flags are reset
-  // when the next change notification is sent.
-  PRPackedBool mBeginObjectChanged;
-  PRPackedBool mEndObjectChanged;
+  bool mBeginFixed;
+  bool mEndFixed;
 };
 
 #endif // NS_SMILINTERVAL_H_

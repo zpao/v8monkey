@@ -72,12 +72,12 @@ static NS_DEFINE_CID(kDOMScriptObjectFactoryCID, NS_DOM_SCRIPT_OBJECT_FACTORY_CI
 nsIExceptionProvider* gExceptionProvider = nsnull;
 
 nsDOMScriptObjectFactory::nsDOMScriptObjectFactory() :
-  mLoadedAllLanguages(PR_FALSE)
+  mLoadedAllLanguages(false)
 {
   nsCOMPtr<nsIObserverService> observerService =
     mozilla::services::GetObserverService();
   if (observerService) {
-    observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, PR_FALSE);
+    observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
   }
 
   nsCOMPtr<nsIExceptionProvider> provider(new nsDOMExceptionProvider());
@@ -88,9 +88,7 @@ nsDOMScriptObjectFactory::nsDOMScriptObjectFactory() :
     if (xs) {
       xs->RegisterExceptionProvider(provider, NS_ERROR_MODULE_DOM);
       xs->RegisterExceptionProvider(provider, NS_ERROR_MODULE_DOM_RANGE);
-#ifdef MOZ_SVG
       xs->RegisterExceptionProvider(provider, NS_ERROR_MODULE_SVG);
-#endif
       xs->RegisterExceptionProvider(provider, NS_ERROR_MODULE_DOM_XPATH);
       xs->RegisterExceptionProvider(provider, NS_ERROR_MODULE_DOM_INDEXEDDB);
       xs->RegisterExceptionProvider(provider, NS_ERROR_MODULE_XPCONNECT);
@@ -221,8 +219,8 @@ nsDOMScriptObjectFactory::GetIDForScriptType(const nsAString &aLanguageName,
 }
 
 NS_IMETHODIMP
-nsDOMScriptObjectFactory::NewScriptGlobalObject(PRBool aIsChrome,
-                                                PRBool aIsModalContentWindow,
+nsDOMScriptObjectFactory::NewScriptGlobalObject(bool aIsChrome,
+                                                bool aIsModalContentWindow,
                                                 nsIScriptGlobalObject **aGlobal)
 {
   return NS_NewScriptGlobalObject(aIsChrome, aIsModalContentWindow, aGlobal);
@@ -291,10 +289,8 @@ nsDOMScriptObjectFactory::Observe(nsISupports *aSubject,
                                         NS_ERROR_MODULE_DOM);
         xs->UnregisterExceptionProvider(gExceptionProvider,
                                         NS_ERROR_MODULE_DOM_RANGE);
-#ifdef MOZ_SVG
         xs->UnregisterExceptionProvider(gExceptionProvider,
                                         NS_ERROR_MODULE_SVG);
-#endif
         xs->UnregisterExceptionProvider(gExceptionProvider,
                                         NS_ERROR_MODULE_DOM_XPATH);
         xs->UnregisterExceptionProvider(gExceptionProvider,
@@ -337,7 +333,7 @@ nsDOMScriptObjectFactory::RegisterDOMClassInfo(const char *aName,
 					       const nsIID *aProtoChainInterface,
 					       const nsIID **aInterfaces,
 					       PRUint32 aScriptableFlags,
-					       PRBool aHasClassInterface,
+					       bool aHasClassInterface,
 					       const nsCID *aConstructorCID)
 {
   nsScriptNameSpaceManager *nameSpaceManager = nsJSRuntime::GetNameSpaceManager();
@@ -392,10 +388,8 @@ nsDOMExceptionProvider::GetException(nsresult result,
   {
     case NS_ERROR_MODULE_DOM_RANGE:
       return NS_NewRangeException(result, aDefaultException, _retval);
-#ifdef MOZ_SVG
     case NS_ERROR_MODULE_SVG:
       return NS_NewSVGException(result, aDefaultException, _retval);
-#endif
     case NS_ERROR_MODULE_DOM_XPATH:
       return NS_NewXPathException(result, aDefaultException, _retval);
     case NS_ERROR_MODULE_XPCONNECT:
@@ -404,8 +398,6 @@ nsDOMExceptionProvider::GetException(nsresult result,
       return NS_NewFileException(result, aDefaultException, _retval);
     case NS_ERROR_MODULE_DOM_INDEXEDDB:
       return NS_NewIDBDatabaseException(result, aDefaultException, _retval);
-    case NS_ERROR_MODULE_DOM_EVENTS:
-      return NS_NewEventException(result, aDefaultException, _retval);
     default:
       return NS_NewDOMException(result, aDefaultException, _retval);
   }

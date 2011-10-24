@@ -69,6 +69,7 @@ SVGAnimatedNumberList::SetBaseValueString(const nsAString& aValue)
   // nsSVGElement::ParseAttribute under nsGenericElement::SetAttr,
   // which takes care of notifying.
 
+  mIsBaseSet = true;
   rv = mBaseVal.CopyFrom(newBaseValue);
   if (NS_FAILED(rv) && domWrapper) {
     // Attempting to increase mBaseVal's length failed - reduce domWrapper
@@ -88,6 +89,7 @@ SVGAnimatedNumberList::ClearBaseValue(PRUint32 aAttrEnum)
     domWrapper->InternalBaseValListWillChangeTo(SVGNumberList());
   }
   mBaseVal.Clear();
+  mIsBaseSet = false;
   // Caller notifies
 }
 
@@ -162,7 +164,7 @@ SVGAnimatedNumberList::
   SMILAnimatedNumberList::ValueFromString(const nsAString& aStr,
                                const nsISMILAnimationElement* /*aSrcElement*/,
                                nsSMILValue& aValue,
-                               PRBool& aPreventCachingOfSandwich) const
+                               bool& aPreventCachingOfSandwich) const
 {
   nsSMILValue val(&SVGNumberListSMILType::sSingleton);
   SVGNumberListAndInfo *nlai = static_cast<SVGNumberListAndInfo*>(val.mU.mPtr);
@@ -171,7 +173,7 @@ SVGAnimatedNumberList::
     nlai->SetInfo(mElement);
     aValue.Swap(val);
   }
-  aPreventCachingOfSandwich = PR_FALSE;
+  aPreventCachingOfSandwich = false;
   return rv;
 }
 

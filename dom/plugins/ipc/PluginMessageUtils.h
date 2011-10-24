@@ -56,6 +56,12 @@
 #ifdef MOZ_CRASHREPORTER
 #  include "nsExceptionHandler.h"
 #endif
+#ifdef XP_MACOSX
+#include "PluginInterposeOSX.h"
+#else
+namespace mac_plugin_interposing { class NSCursorInfo { }; }
+#endif
+using mac_plugin_interposing::NSCursorInfo;
 
 namespace mozilla {
 namespace plugins {
@@ -104,7 +110,7 @@ typedef nsCString Buffer;
 
 struct NPRemoteWindow
 {
-  unsigned long window;
+  uint64_t window;
   int32_t x;
   int32_t y;
   uint32_t width;
@@ -124,7 +130,7 @@ struct NPRemoteWindow
 typedef HWND NativeWindowHandle;
 #elif defined(MOZ_X11)
 typedef XID NativeWindowHandle;
-#elif defined(XP_MACOSX) || defined(ANDROID)
+#elif defined(XP_MACOSX) || defined(ANDROID) || defined(MOZ_WIDGET_QT)
 typedef intptr_t NativeWindowHandle; // never actually used, will always be 0
 #else
 #error Need NativeWindowHandle for this platform
@@ -134,13 +140,6 @@ typedef intptr_t NativeWindowHandle; // never actually used, will always be 0
 typedef base::SharedMemoryHandle WindowsSharedMemoryHandle;
 #else
 typedef mozilla::null_t WindowsSharedMemoryHandle;
-#endif
-
-#ifdef MOZ_CRASHREPORTER
-typedef CrashReporter::ThreadId NativeThreadId;
-#else
-// unused in this case
-typedef int32 NativeThreadId;
 #endif
 
 // XXX maybe not the best place for these. better one?
@@ -207,6 +206,7 @@ NPNVariableToString(NPNVariable aVar)
         VARSTR(NPNVSupportsWindowless);
 
         VARSTR(NPNVprivateModeBool);
+        VARSTR(NPNVdocumentOrigin);
 
     default: return "???";
     }
@@ -252,7 +252,7 @@ NullableString(const char* aString)
 {
     if (!aString) {
         nsCString str;
-        str.SetIsVoid(PR_TRUE);
+        str.SetIsVoid(true);
         return str;
     }
     return nsCString(aString);
@@ -357,7 +357,7 @@ struct ParamTraits<mozilla::plugins::NPRemoteWindow>
 
   static void Write(Message* aMsg, const paramType& aParam)
   {
-    aMsg->WriteULong(aParam.window);
+    aMsg->WriteUInt64(aParam.window);
     WriteParam(aMsg, aParam.x);
     WriteParam(aMsg, aParam.y);
     WriteParam(aMsg, aParam.width);
@@ -375,12 +375,12 @@ struct ParamTraits<mozilla::plugins::NPRemoteWindow>
 
   static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
   {
-    unsigned long window;
+    uint64 window;
     int32_t x, y;
     uint32_t width, height;
     NPRect clipRect;
     NPWindowType type;
-    if (!(aMsg->ReadULong(aIter, &window) &&
+    if (!(aMsg->ReadUInt64(aIter, &window) &&
           ReadParam(aMsg, aIter, &x) &&
           ReadParam(aMsg, aIter, &y) &&
           ReadParam(aMsg, aIter, &width) &&
@@ -537,6 +537,100 @@ struct ParamTraits<NPNSString*>
   }
 };
 #endif
+
+#ifdef XP_MACOSX
+template <>
+struct ParamTraits<NSCursorInfo>
+{
+  typedef NSCursorInfo paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam)
+  {
+    NSCursorInfo::Type type = aParam.GetType();
+
+    aMsg->WriteInt(type);
+
+    nsPoint hotSpot = aParam.GetHotSpot();
+    WriteParam(aMsg, hotSpot.x);
+    WriteParam(aMsg, hotSpot.y);
+
+    uint32_t dataLength = aParam.GetCustomImageDataLength();
+    WriteParam(aMsg, dataLength);
+    if (dataLength == 0) {
+      return;
+    }
+
+    uint8_t* buffer = (uint8_t*)moz_xmalloc(dataLength);
+    memcpy(buffer, aParam.GetCustomImageData(), dataLength);
+    aMsg->WriteBytes(buffer, dataLength);
+    free(buffer);
+  }
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
+  {
+    NSCursorInfo::Type type;
+    if (!aMsg->ReadInt(aIter, (int*)&type)) {
+      return false;
+    }
+
+    nscoord hotSpotX, hotSpotY;
+    if (!ReadParam(aMsg, aIter, &hotSpotX) ||
+        !ReadParam(aMsg, aIter, &hotSpotY)) {
+      return false;
+    }
+
+    uint32_t dataLength;
+    if (!ReadParam(aMsg, aIter, &dataLength)) {
+      return false;
+    }
+
+    uint8_t* data = NULL;
+    if (dataLength != 0) {
+      if (!aMsg->ReadBytes(aIter, (const char**)&data, dataLength) || !data) {
+        return false;
+      }
+    }
+
+    aResult->SetType(type);
+    aResult->SetHotSpot(nsPoint(hotSpotX, hotSpotY));
+    aResult->SetCustomImageData(data, dataLength);
+
+    return true;
+  }
+
+  static void Log(const paramType& aParam, std::wstring* aLog)
+  {
+    const char* typeName = aParam.GetTypeName();
+    nsPoint hotSpot = aParam.GetHotSpot();
+    int hotSpotX, hotSpotY;
+#ifdef NS_COORD_IS_FLOAT
+    hotSpotX = rint(hotSpot.x);
+    hotSpotY = rint(hotSpot.y);
+#else
+    hotSpotX = hotSpot.x;
+    hotSpotY = hotSpot.y;
+#endif
+    uint32_t dataLength = aParam.GetCustomImageDataLength();
+    uint8_t* data = aParam.GetCustomImageData();
+
+    aLog->append(StringPrintf(L"[%s, (%i %i), %u, %p]",
+                              typeName, hotSpotX, hotSpotY, dataLength, data));
+  }
+};
+#else
+template<>
+struct ParamTraits<NSCursorInfo>
+{
+  typedef NSCursorInfo paramType;
+  static void Write(Message* aMsg, const paramType& aParam) {
+    NS_RUNTIMEABORT("NSCursorInfo isn't meaningful on this platform");
+  }
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult) {
+    NS_RUNTIMEABORT("NSCursorInfo isn't meaningful on this platform");
+    return false;
+  }
+};
+#endif // #ifdef XP_MACOSX
 
 template <>
 struct ParamTraits<NPVariant>
@@ -787,10 +881,10 @@ struct ParamTraits<NPCoordinateSpace>
 #  include "mozilla/plugins/NPEventWindows.h"
 #elif defined(XP_OS2)
 #  error Sorry, OS/2 is not supported
-#elif defined(XP_UNIX) && defined(MOZ_X11)
-#  include "mozilla/plugins/NPEventX11.h"
 #elif defined(ANDROID)
 #  include "mozilla/plugins/NPEventAndroid.h"
+#elif defined(XP_UNIX)
+#  include "mozilla/plugins/NPEventUnix.h"
 #else
 #  error Unsupported platform
 #endif

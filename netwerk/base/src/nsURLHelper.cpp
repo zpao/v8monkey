@@ -37,6 +37,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/RangedPtr.h"
+
 #include "nsURLHelper.h"
 #include "nsReadableUtils.h"
 #include "nsIServiceManager.h"
@@ -53,11 +55,13 @@
 #include "prprf.h"
 #include "prnetdb.h"
 
+using namespace mozilla;
+
 //----------------------------------------------------------------------------
 // Init/Shutdown
 //----------------------------------------------------------------------------
 
-static PRBool gInitialized = PR_FALSE;
+static bool gInitialized = false;
 static nsIURLParser *gNoAuthURLParser = nsnull;
 static nsIURLParser *gAuthURLParser = nsnull;
 static nsIURLParser *gStdURLParser = nsnull;
@@ -88,7 +92,7 @@ InitGlobals()
         NS_ADDREF(gStdURLParser);
     }
 
-    gInitialized = PR_TRUE;
+    gInitialized = true;
 }
 
 void
@@ -98,7 +102,7 @@ net_ShutdownURLHelper()
         NS_IF_RELEASE(gNoAuthURLParser);
         NS_IF_RELEASE(gAuthURLParser);
         NS_IF_RELEASE(gStdURLParser);
-        gInitialized = PR_FALSE;
+        gInitialized = false;
     }
 }
 
@@ -163,7 +167,7 @@ net_GetURLSpecFromFile(nsIFile *aFile, nsACString &result)
     // if the file does not exist, then we make no assumption about its type,
     // and simply leave the URL unmodified.
     if (escPath.Last() != '/') {
-        PRBool dir;
+        bool dir;
         rv = aFile->IsDirectory(&dir);
         if (NS_SUCCEEDED(rv) && dir)
             escPath += '/';
@@ -217,7 +221,6 @@ net_ParseFileURL(const nsACString &inURL,
     // invoke the parser to extract filepath from the path
     rv = parser->ParsePath(url + pathPos, pathLen,
                            &filepathPos, &filepathLen,
-                           nsnull, nsnull,  // don't care about param
                            nsnull, nsnull,  // don't care about query
                            nsnull, nsnull); // don't care about ref
     if (NS_FAILED(rv)) return rv;
@@ -428,7 +431,7 @@ net_ResolveRelativePath(const nsACString &relativePath,
 {
     nsCAutoString name;
     nsCAutoString path(basePath);
-    PRBool needsDelim = PR_FALSE;
+    bool needsDelim = false;
 
     if ( !path.IsEmpty() ) {
         PRUnichar last = path.Last();
@@ -439,7 +442,7 @@ net_ResolveRelativePath(const nsACString &relativePath,
     relativePath.BeginReading(beg);
     relativePath.EndReading(end);
 
-    PRBool stop = PR_FALSE;
+    bool stop = false;
     char c;
     for (; !stop; ++beg) {
         c = (beg == end) ? '\0' : *beg;
@@ -447,9 +450,8 @@ net_ResolveRelativePath(const nsACString &relativePath,
         switch (c) {
           case '\0':
           case '#':
-          case ';':
           case '?':
-            stop = PR_TRUE;
+            stop = true;
             // fall through...
           case '/':
             // delimiter found
@@ -461,7 +463,7 @@ net_ResolveRelativePath(const nsACString &relativePath,
                 // First check for errors
                 if (offset < 0 ) 
                     return NS_ERROR_MALFORMED_URI;
-                PRInt32 pos = path.RFind("/", PR_FALSE, offset);
+                PRInt32 pos = path.RFind("/", false, offset);
                 if (pos >= 0)
                     path.Truncate(pos + 1);
                 else
@@ -475,7 +477,7 @@ net_ResolveRelativePath(const nsACString &relativePath,
                 if (needsDelim)
                     path += '/';
                 path += name;
-                needsDelim = PR_TRUE;
+                needsDelim = true;
             }
             name.Truncate();
             break;
@@ -550,12 +552,12 @@ net_ExtractURLScheme(const nsACString &inURI,
     return NS_ERROR_MALFORMED_URI;
 }
 
-PRBool
+bool
 net_IsValidScheme(const char *scheme, PRUint32 schemeLen)
 {
     // first char must be alpha
     if (!nsCRT::IsAsciiAlpha(*scheme))
-        return PR_FALSE;
+        return false;
 
     // nsCStrings may have embedded nulls -- reject those too
     for (; schemeLen; ++scheme, --schemeLen) {
@@ -564,41 +566,86 @@ net_IsValidScheme(const char *scheme, PRUint32 schemeLen)
               *scheme == '+' ||
               *scheme == '.' ||
               *scheme == '-'))
-            return PR_FALSE;
+            return false;
     }
 
-    return PR_TRUE;
+    return true;
 }
 
-PRBool
+bool
 net_FilterURIString(const char *str, nsACString& result)
 {
     NS_PRECONDITION(str, "Must have a non-null string!");
-    PRBool writing = PR_FALSE;
+    bool writing = false;
     result.Truncate();
     const char *p = str;
 
     // Remove leading spaces, tabs, CR, LF if any.
     while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
-        writing = PR_TRUE;
+        writing = true;
         str = p + 1;
         p++;
     }
 
+    // Don't strip from the scheme, because other code assumes everything
+    // up to the ':' is the scheme, and it's bad not to have it match.
+    // If there's no ':', strip.
+    bool found_colon = false;
+    const char *first = nsnull;
     while (*p) {
-        if (*p == '\t' || *p == '\r' || *p == '\n') {
-            writing = PR_TRUE;
-            // append chars up to but not including *p
-            if (p > str)
-                result.Append(str, p - str);
-            str = p + 1;
+        switch (*p) {
+            case '\t': 
+            case '\r': 
+            case '\n':
+                if (found_colon) {
+                    writing = true;
+                    // append chars up to but not including *p
+                    if (p > str)
+                        result.Append(str, p - str);
+                    str = p + 1;
+                } else {
+                    // remember where the first \t\r\n was in case we find no scheme
+                    if (!first)
+                        first = p;
+                }
+                break;
+
+            case ':':
+                found_colon = true;
+                break;
+
+            case '/':
+            case '@':
+                if (!found_colon) {
+                    // colon also has to precede / or @ to be a scheme
+                    found_colon = true; // not really, but means ok to strip
+                    if (first) {
+                        // go back and replace
+                        p = first;
+                        continue; // process *p again
+                    }
+                }
+                break;
+
+            default:
+                break;
         }
         p++;
+
+        // At end, if there was no scheme, and we hit a control char, fix
+        // it up now.
+        if (!*p && first != nsnull && !found_colon) {
+            // TRICKY - to avoid duplicating code, we reset the loop back
+            // to the point we found something to do
+            p = first;
+            // This also stops us from looping after we finish
+            found_colon = true; // so we'll replace \t\r\n
+        }
     }
 
     // Remove trailing spaces if any
     while (((p-1) >= str) && (*(p-1) == ' ')) {
-        writing = PR_TRUE;
+        writing = true;
         p--;
     }
 
@@ -609,10 +656,10 @@ net_FilterURIString(const char *str, nsACString& result)
 }
 
 #if defined(XP_WIN) || defined(XP_OS2)
-PRBool
+bool
 net_NormalizeFileURL(const nsACString &aURL, nsCString &aResultBuf)
 {
-    PRBool writing = PR_FALSE;
+    bool writing = false;
 
     nsACString::const_iterator beginIter, endIter;
     aURL.BeginReading(beginIter);
@@ -624,7 +671,7 @@ net_NormalizeFileURL(const nsACString &aURL, nsCString &aResultBuf)
     {
         if (*s == '\\')
         {
-            writing = PR_TRUE;
+            writing = true;
             if (s > begin)
                 aResultBuf.Append(begin, s - begin);
             aResultBuf += '/';
@@ -746,7 +793,7 @@ net_FindStringEnd(const nsCString& flatStr,
 
         return stringEnd;
 
-    } while (PR_TRUE);
+    } while (true);
 
     NS_NOTREACHED("How did we get here?");
     return flatStr.Length();
@@ -782,7 +829,7 @@ net_FindMediaDelimiter(const nsCString& flatStr,
         // searchStart now points to the first char after the end of the
         // string, so just go back to the top of the loop and look for
         // |delimiter| again.
-    } while (PR_TRUE);
+    } while (true);
 
     NS_NOTREACHED("How did we get here?");
     return flatStr.Length();
@@ -795,7 +842,7 @@ net_ParseMediaType(const nsACString &aMediaTypeStr,
                    nsACString       &aContentType,
                    nsACString       &aContentCharset,
                    PRInt32          aOffset,
-                   PRBool           *aHadCharset,
+                   bool             *aHadCharset,
                    PRInt32          *aCharsetStart,
                    PRInt32          *aCharsetEnd)
 {
@@ -815,7 +862,7 @@ net_ParseMediaType(const nsACString &aMediaTypeStr,
     PRInt32 charsetParamEnd;
 
     // Iterate over parameters
-    PRBool typeHasCharset = PR_FALSE;
+    bool typeHasCharset = false;
     PRUint32 paramStart = flatStr.FindChar(';', typeEnd - start);
     if (paramStart != PRUint32(kNotFound)) {
         // We have parameters.  Iterate over them.
@@ -832,7 +879,7 @@ net_ParseMediaType(const nsACString &aMediaTypeStr,
                                sizeof(charsetStr) - 1) == 0) {
                 charset = paramName + sizeof(charsetStr) - 1;
                 charsetEnd = start + curParamEnd;
-                typeHasCharset = PR_TRUE;
+                typeHasCharset = true;
                 charsetParamStart = curParamStart - 1;
                 charsetParamEnd = curParamEnd;
             }
@@ -867,7 +914,7 @@ net_ParseMediaType(const nsACString &aMediaTypeStr,
     if (type != typeEnd && strncmp(type, "*/*", typeEnd - type) != 0 &&
         memchr(type, '/', typeEnd - type) != NULL) {
         // Common case here is that aContentType is empty
-        PRBool eq = !aContentType.IsEmpty() &&
+        bool eq = !aContentType.IsEmpty() &&
             aContentType.Equals(Substring(type, typeEnd),
                                 nsCaseInsensitiveCStringComparator());
         if (!eq) {
@@ -876,7 +923,7 @@ net_ParseMediaType(const nsACString &aMediaTypeStr,
         }
 
         if ((!eq && *aHadCharset) || typeHasCharset) {
-            *aHadCharset = PR_TRUE;
+            *aHadCharset = true;
             aContentCharset.Assign(charset, charsetEnd - charset);
             if (typeHasCharset) {
                 *aCharsetStart = charsetParamStart + aOffset;
@@ -903,7 +950,7 @@ void
 net_ParseContentType(const nsACString &aHeaderStr,
                      nsACString       &aContentType,
                      nsACString       &aContentCharset,
-                     PRBool           *aHadCharset)
+                     bool             *aHadCharset)
 {
     PRInt32 dummy1, dummy2;
     net_ParseContentType(aHeaderStr, aContentType, aContentCharset,
@@ -914,7 +961,7 @@ void
 net_ParseContentType(const nsACString &aHeaderStr,
                      nsACString       &aContentType,
                      nsACString       &aContentCharset,
-                     PRBool           *aHadCharset,
+                     bool             *aHadCharset,
                      PRInt32          *aCharsetStart,
                      PRInt32          *aCharsetEnd)
 {
@@ -941,7 +988,7 @@ net_ParseContentType(const nsACString &aHeaderStr,
     //   application/octet-stream
     //
 
-    *aHadCharset = PR_FALSE;
+    *aHadCharset = false;
     const nsCString& flatStr = PromiseFlatCString(aHeaderStr);
     
     // iterate over media-types.  Note that ',' characters can happen
@@ -965,7 +1012,7 @@ net_ParseContentType(const nsACString &aHeaderStr,
     } while (curTypeStart < flatStr.Length());
 }
 
-PRBool
+bool
 net_IsValidHostName(const nsCSubstring &host)
 {
     const char *end = host.EndReading();
@@ -983,10 +1030,101 @@ net_IsValidHostName(const nsCSubstring &host)
                              "abcdefghijklmnopqrstuvwxyz"
                              ".-0123456789"
                              "ABCDEFGHIJKLMNOPQRSTUVWXYZ$+_") == end)
-        return PR_TRUE;
+        return true;
 
     // Might be a valid IPv6 link-local address containing a percent sign
     nsCAutoString strhost(host);
     PRNetAddr addr;
     return PR_StringToNetAddr(strhost.get(), &addr) == PR_SUCCESS;
+}
+
+bool
+net_IsValidIPv4Addr(const char *addr, PRInt32 addrLen)
+{
+    RangedPtr<const char> p(addr, addrLen);
+
+    PRInt32 octet = -1;   // means no digit yet
+    PRInt32 dotCount = 0; // number of dots in the address
+
+    for (; addrLen; ++p, --addrLen) {
+        if (*p == '.') {
+            dotCount++;
+            if (octet == -1) {
+                // invalid octet
+                return false;
+            }
+            octet = -1;
+        } else if (*p >= '0' && *p <='9') {
+            if (octet == 0) {
+                // leading 0 is not allowed
+                return false;
+            } else if (octet == -1) {
+                octet = *p - '0';
+            } else {
+                octet *= 10;
+                octet += *p - '0';
+                if (octet > 255)
+                    return false;
+            }
+        } else {
+            // invalid character
+            return false;
+        }
+    }
+
+    return (dotCount == 3 && octet != -1);
+}
+
+bool
+net_IsValidIPv6Addr(const char *addr, PRInt32 addrLen)
+{
+    RangedPtr<const char> p(addr, addrLen);
+
+    PRInt32 digits = 0; // number of digits in current block
+    PRInt32 colons = 0; // number of colons in a row during parsing
+    PRInt32 blocks = 0; // number of hexadecimal blocks
+    bool haveZeros = false; // true if double colon is present in the address
+
+    for (; addrLen; ++p, --addrLen) {
+        if (*p == ':') {
+            if (colons == 0) {
+                if (digits != 0) {
+                    digits = 0;
+                    blocks++;
+                }
+            } else if (colons == 1) {
+                if (haveZeros)
+                    return false; // only one occurrence is allowed
+                haveZeros = true;
+            } else {
+                // too many colons in a row
+                return false;
+            }
+            colons++;
+        } else if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+                   (*p >= 'A' && *p <= 'F')) {
+            if (colons == 1 && blocks == 0) // starts with a single colon
+                return false;
+            if (digits == 4) // too many digits
+                return false;
+            colons = 0;
+            digits++;
+        } else if (*p == '.') {
+            // check valid IPv4 from the beginning of the last block
+            if (!net_IsValidIPv4Addr(p.get() - digits, addrLen + digits))
+                return false;
+            return (haveZeros && blocks < 6) || (!haveZeros && blocks == 6);
+        } else {
+            // invalid character
+            return false;
+        }
+    }
+
+    if (colons == 1) // ends with a single colon
+        return false;
+
+    if (digits) // there is a block at the end
+        blocks++;
+
+    return (haveZeros && blocks < 8) || (!haveZeros && blocks == 8);
 }

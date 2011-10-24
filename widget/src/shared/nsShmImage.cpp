@@ -38,7 +38,7 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#if defined(MOZ_WIDGET_GTK2)
+#if defined(MOZ_WIDGET_GTK2) || defined(MOZ_WIDGET_GTK3)
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
 #elif defined(MOZ_WIDGET_QT)
@@ -55,8 +55,8 @@ using namespace mozilla::ipc;
 
 // If XShm isn't available to our client, we'll try XShm once, fail,
 // set this to false and then never try again.
-static PRBool gShmAvailable = PR_TRUE;
-PRBool nsShmImage::UseShm()
+static bool gShmAvailable = true;
+bool nsShmImage::UseShm()
 {
     return gfxPlatform::GetPlatform()->
         ScreenReferenceSurface()->GetType() == gfxASurface::SurfaceTypeImage
@@ -91,7 +91,7 @@ nsShmImage::Create(const gfxIntSize& aSize,
     shm->mInfo.readOnly = False;
 
     int xerror = 0;
-#if defined(MOZ_WIDGET_GTK2)
+#if defined(MOZ_WIDGET_GTK2) || defined(MOZ_WIDGET_GTK3)
     gdk_error_trap_push();
     Status attachOk = XShmAttach(dpy, &shm->mInfo);
     XSync(dpy, False);
@@ -103,11 +103,11 @@ nsShmImage::Create(const gfxIntSize& aSize,
     if (!attachOk || xerror) {
         // Assume XShm isn't available, and don't attempt to use it
         // again.
-        gShmAvailable = PR_FALSE;
+        gShmAvailable = false;
         return nsnull;
     }
 
-    shm->mXAttached = PR_TRUE;
+    shm->mXAttached = true;
     shm->mSize = aSize;
     switch (shm->mImage->depth) {
     case 24:
@@ -124,7 +124,7 @@ nsShmImage::Create(const gfxIntSize& aSize,
     unsupported:
     default:
         NS_WARNING("Unsupported XShm Image format!");
-        gShmAvailable = PR_FALSE;
+        gShmAvailable = false;
         return nsnull;
     }
     return shm.forget();
@@ -162,7 +162,6 @@ nsShmImage::Put(GdkWindow* aWindow, GdkRectangle* aRects, GdkRectangle* aEnd)
     }
     XFreeGC(dpy, gc);
 
-#ifdef MOZ_WIDGET_GTK2
     // FIXME/bug 597336: we need to ensure that the shm image isn't
     // scribbled over before all its pending XShmPutImage()s complete.
     // However, XSync() is an unnecessarily heavyweight
@@ -170,8 +169,38 @@ nsShmImage::Put(GdkWindow* aWindow, GdkRectangle* aRects, GdkRectangle* aEnd)
     // XSync is shown to hurt responsiveness, we need to explore the
     // other options.
     XSync(dpy, False);
-#endif
 }
+
+#elif defined(MOZ_WIDGET_GTK3)
+void
+nsShmImage::Put(GdkWindow* aWindow, cairo_rectangle_list_t* aRects)
+{
+    Display* dpy = gdk_x11_get_default_xdisplay();
+    Drawable d = GDK_WINDOW_XID(aWindow);
+    int dx = 0, dy = 0;
+
+    GC gc = XCreateGC(dpy, d, 0, nsnull);
+    cairo_rectangle_t r;
+    for (int i = 0; i < aRects->num_rectangles; i++) {
+        r = aRects->rectangles[i];
+        XShmPutImage(dpy, d, gc, mImage,
+                     r.x, r.y,
+                     r.x - dx, r.y - dy,
+                     r.width, r.height,
+                     False);
+    }
+
+    XFreeGC(dpy, gc);
+
+    // FIXME/bug 597336: we need to ensure that the shm image isn't
+    // scribbled over before all its pending XShmPutImage()s complete.
+    // However, XSync() is an unnecessarily heavyweight
+    // synchronization mechanism; other options are possible.  If this
+    // XSync is shown to hurt responsiveness, we need to explore the
+    // other options.
+    XSync(dpy, False);
+}
+
 #elif defined(MOZ_WIDGET_QT)
 void
 nsShmImage::Put(QWidget* aWindow, QRect& aRect)

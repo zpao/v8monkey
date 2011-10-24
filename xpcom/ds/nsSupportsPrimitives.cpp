@@ -183,7 +183,7 @@ NS_IMPL_THREADSAFE_ISUPPORTS2(nsSupportsPRBoolImpl, nsISupportsPRBool,
                               nsISupportsPrimitive)
 
 nsSupportsPRBoolImpl::nsSupportsPRBoolImpl()
-    : mData(PR_FALSE)
+    : mData(false)
 {
 }
 
@@ -195,14 +195,14 @@ NS_IMETHODIMP nsSupportsPRBoolImpl::GetType(PRUint16 *aType)
     return NS_OK;
 }
 
-NS_IMETHODIMP nsSupportsPRBoolImpl::GetData(PRBool *aData)
+NS_IMETHODIMP nsSupportsPRBoolImpl::GetData(bool *aData)
 {
     NS_ASSERTION(aData, "Bad pointer");
     *aData = mData;
     return NS_OK;
 }
 
-NS_IMETHODIMP nsSupportsPRBoolImpl::SetData(PRBool aData)
+NS_IMETHODIMP nsSupportsPRBoolImpl::SetData(bool aData)
 {
     mData = aData;
     return NS_OK;

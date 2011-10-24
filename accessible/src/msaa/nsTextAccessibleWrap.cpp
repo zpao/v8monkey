@@ -41,11 +41,15 @@
 
 #include "nsCoreUtils.h"
 #include "nsDocAccessible.h"
+#include "Statistics.h"
 #include "nsIFrame.h"
 #include "nsFontMetrics.h"
 #include "nsPresContext.h"
+#include "nsLayoutUtils.h"
 
 #include "gfxFont.h"
+
+using namespace mozilla::a11y;
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsTextAccessibleWrap Accessible
@@ -71,11 +75,14 @@ STDMETHODIMP nsTextAccessibleWrap::QueryInterface(REFIID iid, void** ppv)
 {
   *ppv = nsnull;
 
-  if (IID_IUnknown == iid || IID_ISimpleDOMText == iid)
+  if (IID_IUnknown == iid) {
     *ppv = static_cast<ISimpleDOMText*>(this);
-
-  if (nsnull == *ppv)
+  } else if (IID_ISimpleDOMText == iid) {
+    statistics::ISimpleDOMUsed();
+    *ppv = static_cast<ISimpleDOMText*>(this);
+  } else {
     return nsAccessibleWrap::QueryInterface(iid, ppv);
+  }
    
   (reinterpret_cast<IUnknown*>(*ppv))->AddRef(); 
   return S_OK;
@@ -188,7 +195,7 @@ __try {
 
 nsIFrame* nsTextAccessibleWrap::GetPointFromOffset(nsIFrame *aContainingFrame, 
                                                    PRInt32 aOffset, 
-                                                   PRBool aPreferNext, 
+                                                   bool aPreferNext, 
                                                    nsPoint& aOutPoint)
 {
   nsIFrame *textFrame = nsnull;
@@ -217,8 +224,8 @@ nsresult nsTextAccessibleWrap::GetCharacterExtents(PRInt32 aStartOffset, PRInt32
   NS_ENSURE_TRUE(frame, NS_ERROR_FAILURE);
 
   nsPoint startPoint, endPoint;
-  nsIFrame *startFrame = GetPointFromOffset(frame, aStartOffset, PR_TRUE, startPoint);
-  nsIFrame *endFrame = GetPointFromOffset(frame, aEndOffset, PR_FALSE, endPoint);
+  nsIFrame *startFrame = GetPointFromOffset(frame, aStartOffset, true, startPoint);
+  nsIFrame *endFrame = GetPointFromOffset(frame, aEndOffset, false, endPoint);
   if (!startFrame || !endFrame) {
     return E_FAIL;
   }
@@ -256,11 +263,7 @@ __try {
   }
 
   nsRefPtr<nsFontMetrics> fm;
-  frame->PresContext()->DeviceContext()->
-    GetMetricsFor(frame->GetStyleFont()->mFont,
-                  frame->GetStyleVisibility()->mLanguage,
-                  frame->PresContext()->GetUserFontSet(),
-                  *getter_AddRefs(fm));
+  nsLayoutUtils::GetFontMetricsForFrame(frame, getter_AddRefs(fm));
 
   const nsString& name = fm->GetThebesFontGroup()->GetFontAt(0)->GetName();
   if (name.IsEmpty())

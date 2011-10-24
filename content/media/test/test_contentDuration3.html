@@ -2,7 +2,10 @@
 <html>
 <head>
   <title>Media test: seek test 1</title>
-  <script type="text/javascript" src="/MochiKit/packed.js"></script>
+  <script type="text/javascript" src="/MochiKit/Base.js"></script>
+  <script type="text/javascript" src="/MochiKit/DOM.js"></script>
+  <script type="text/javascript" src="/MochiKit/Style.js"></script>
+  <script type="text/javascript" src="/MochiKit/Signal.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -13,7 +16,7 @@
 function on_metadataloaded() {
   var v = document.getElementById('v');
   var d = Math.round(v.duration*1000);
-  ok(d.toString() == "NaN", "Checking duration: " + d);
+  ok(d.toString() == "Infinity", "Checking duration: " + d);
   SimpleTest.finish();
 }
 

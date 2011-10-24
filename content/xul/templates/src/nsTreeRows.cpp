@@ -181,7 +181,7 @@ nsTreeRows::FindByResource(nsIRDFResource* aResource)
 
     nsresult rv;
     nsAutoString resourceid;
-    PRBool stringmode = PR_FALSE;
+    bool stringmode = false;
 
     for (iter = First(); iter != last; ++iter) {
         if (!stringmode) {
@@ -198,7 +198,7 @@ nsTreeRows::FindByResource(nsIRDFResource* aResource)
                 CopyUTF8toUTF16(uri, resourceid);
 
                 // set stringmode and fall through
-                stringmode = PR_TRUE;
+                stringmode = true;
             }
         }
 
@@ -399,14 +399,14 @@ nsTreeRows::iterator::Push(Subtree *aParent, PRInt32 aChildIndex)
         NS_ERROR("out of memory");
 }
 
-PRBool
+bool
 nsTreeRows::iterator::operator==(const iterator& aIterator) const
 {
     if (GetDepth() != aIterator.GetDepth())
-        return PR_FALSE;
+        return false;
 
     if (GetDepth() == 0)
-        return PR_TRUE;
+        return true;
 
     return GetTop() == aIterator.GetTop();
 }

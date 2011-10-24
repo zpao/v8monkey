@@ -99,7 +99,7 @@ txStylesheet::init()
 
     nt.forget();
 
-    mCharactersTemplate = new txValueOf(nodeExpr, PR_FALSE);
+    mCharactersTemplate = new txValueOf(nodeExpr, false);
     NS_ENSURE_TRUE(mCharactersTemplate, NS_ERROR_OUT_OF_MEMORY);
 
     mCharactersTemplate->mNext = new txReturn();
@@ -265,25 +265,25 @@ txStylesheet::getKeyMap()
     return mKeys;
 }
 
-PRBool
+bool
 txStylesheet::isStripSpaceAllowed(const txXPathNode& aNode, txIMatchContext* aContext)
 {
     PRInt32 frameCount = mStripSpaceTests.Length();
     if (frameCount == 0) {
-        return PR_FALSE;
+        return false;
     }
 
     txXPathTreeWalker walker(aNode);
 
     if (txXPathNodeUtils::isText(walker.getCurrentPosition()) &&
         (!txXPathNodeUtils::isWhitespace(aNode) || !walker.moveToParent())) {
-        return PR_FALSE;
+        return false;
     }
 
     const txXPathNode& node = walker.getCurrentPosition();
 
     if (!txXPathNodeUtils::isElement(node)) {
-        return PR_FALSE;
+        return false;
     }
 
     // check Whitespace stipping handling list against given Node
@@ -295,7 +295,7 @@ txStylesheet::isStripSpaceAllowed(const txXPathNode& aNode, txIMatchContext* aCo
         }
     }
 
-    return PR_FALSE;
+    return false;
 }
 
 nsresult
@@ -317,7 +317,7 @@ txStylesheet::doneCompiling()
     frameIter.reset();
     ImportFrame* frame;
     while ((frame = static_cast<ImportFrame*>(frameIter.next()))) {
-        nsTPtrArray<txStripSpaceTest> frameStripSpaceTests;
+        nsTArray<txStripSpaceTest*> frameStripSpaceTests;
 
         txListIterator itemIter(&frame->mToplevelItems);
         itemIter.resetToEnd();
@@ -502,7 +502,7 @@ txStylesheet::addFrames(txListIterator& aInsertIter)
 
 nsresult
 txStylesheet::addStripSpace(txStripSpaceItem* aStripSpaceItem,
-                            nsTPtrArray<txStripSpaceTest>& aFrameStripSpaceTests)
+                            nsTArray<txStripSpaceTest*>& aFrameStripSpaceTests)
 {
     PRInt32 testCount = aStripSpaceItem->mStripSpaceTests.Length();
     for (; testCount > 0; --testCount) {
@@ -636,7 +636,7 @@ txStylesheet::ImportFrame::~ImportFrame()
 
 txStylesheet::GlobalVariable::GlobalVariable(nsAutoPtr<Expr> aExpr,
                                              nsAutoPtr<txInstruction> aFirstInstruction,
-                                             PRBool aIsParam)
+                                             bool aIsParam)
     : mExpr(aExpr), mFirstInstruction(aFirstInstruction), mIsParam(aIsParam)
 {
 }

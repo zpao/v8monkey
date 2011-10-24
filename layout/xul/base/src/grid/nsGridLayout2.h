@@ -53,14 +53,14 @@ class nsBoxLayoutState;
 class nsGridCell;
 
 /**
- * The nsIBoxLayout implementation for a grid.
+ * The nsBoxLayout implementation for a grid.
  */
 class nsGridLayout2 : public nsStackLayout, 
                       public nsIGridPart
 {
 public:
 
-  friend nsresult NS_NewGridLayout2(nsIPresShell* aPresShell, nsIBoxLayout** aNewLayout);
+  friend nsresult NS_NewGridLayout2(nsIPresShell* aPresShell, nsBoxLayout** aNewLayout);
 
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -70,14 +70,16 @@ public:
   virtual nsGridRowGroupLayout* CastToRowGroupLayout() { return nsnull; }
   virtual nsGridLayout2* CastToGridLayout() { return this; }
   virtual nsGrid* GetGrid(nsIBox* aBox, PRInt32* aIndex, nsGridRowLayout* aRequestor=nsnull);
-  virtual void GetParentGridPart(nsIBox* aBox, nsIBox** aParentBox, nsIGridPart** aParentGridPart) { NS_NOTREACHED("Should not be called"); }
+  virtual nsIGridPart* GetParentGridPart(nsIBox* aBox, nsIBox** aParentBox) {
+    NS_NOTREACHED("Should not be called"); return nsnull;
+  }
   virtual nsSize GetMinSize(nsIBox* aBox, nsBoxLayoutState& aBoxLayoutState);
   virtual nsSize GetMaxSize(nsIBox* aBox, nsBoxLayoutState& aBoxLayoutState);
   virtual nsSize GetPrefSize(nsIBox* aBox, nsBoxLayoutState& aBoxLayoutState);
   virtual void CountRowsColumns(nsIBox* aBox, PRInt32& aRowCount, PRInt32& aComputedColumnCount) { aRowCount++; }
   virtual void DirtyRows(nsIBox* aBox, nsBoxLayoutState& aState) { }
   virtual PRInt32 BuildRows(nsIBox* aBox, nsGridRow* aRows);
-  virtual nsMargin GetTotalMargin(nsIBox* aBox, PRBool aIsHorizontal);
+  virtual nsMargin GetTotalMargin(nsIBox* aBox, bool aIsHorizontal);
   virtual Type GetType() { return eGrid; }
   virtual void ChildrenInserted(nsIBox* aBox, nsBoxLayoutState& aState,
                                 nsIBox* aPrevBox,
@@ -89,6 +91,8 @@ public:
   virtual void ChildrenSet(nsIBox* aBox, nsBoxLayoutState& aState,
                          nsIBox* aChildList);
 
+  virtual nsIGridPart* AsGridPart() { return this; }
+
   static void AddOffset(nsBoxLayoutState& aState, nsIBox* aChild, nsSize& aSize);
 
 protected:
@@ -97,7 +101,7 @@ protected:
   nsGrid mGrid;
 
 private:
-  void AddWidth(nsSize& aSize, nscoord aSize2, PRBool aIsHorizontal);
+  void AddWidth(nsSize& aSize, nscoord aSize2, bool aIsHorizontal);
 
 
 }; // class nsGridLayout2

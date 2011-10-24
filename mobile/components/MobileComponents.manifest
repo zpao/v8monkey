@@ -1,8 +1,6 @@
 # AboutRedirector.js
 component {433d2d75-5923-49b0-854d-f37267b03dc7} AboutRedirector.js
 contract @mozilla.org/network/protocol/about;1?what=empty {433d2d75-5923-49b0-854d-f37267b03dc7}
-component {077ea23e-0f22-4168-a744-8e444b560197} AboutRedirector.js
-contract @mozilla.org/network/protocol/about;1?what=firstrun {077ea23e-0f22-4168-a744-8e444b560197}
 component {842a6d11-b369-4610-ba66-c3b5217e82be} AboutRedirector.js
 contract @mozilla.org/network/protocol/about;1?what=fennec {842a6d11-b369-4610-ba66-c3b5217e82be}
 component {dd40c467-d206-4f22-9215-8fcc74c74e38} AboutRedirector.js
@@ -39,7 +37,7 @@ category app-startup SessionStore service,@mozilla.org/browser/sessionstore;1
 component {1d542abc-c88b-4636-a4ef-075b49806317} BrowserStartup.js
 contract @mozilla.org/browser/browser-startup;1 {1d542abc-c88b-4636-a4ef-075b49806317}
 category app-startup BrowserStartup service,@mozilla.org/browser/browser-startup;1
-category agent-style-sheets browser-content-stylesheet chrome://browser/content/content.css
+category agent-style-sheets browser-content-stylesheet chrome://browser/skin/content.css
 category agent-style-sheets browser-cursor-stylesheet chrome://browser/content/cursor.css
 
 # ContentPermissionPrompt.js
@@ -122,3 +120,8 @@ category app-startup SafeBrowsing service,@mozilla.org/safebrowsing/application;
 component {88b3eb21-d072-4e3b-886d-f89d8c49fe59} UpdatePrompt.js
 contract @mozilla.org/updates/update-prompt;1 {88b3eb21-d072-4e3b-886d-f89d8c49fe59}
 #endif
+
+# CapturePicker.js
+component {cb5a47f0-b58c-4fc3-b61a-358ee95f8238} CapturePicker.js
+contract @mozilla.org/capturepicker;1 {cb5a47f0-b58c-4fc3-b61a-358ee95f8238}
+

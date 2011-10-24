@@ -50,7 +50,7 @@
 #include "plgetopt.h"
 #include "softoken.h"
 #include "nspr.h"
-#include "nss.h"
+#include "secport.h"
 #include "secoid.h"
 
 #ifdef NSS_ENABLE_ECC
@@ -78,7 +78,7 @@ char *testdir = NULL;
     if (rv) { \
 	PRErrorCode prerror = PR_GetError(); \
 	PR_fprintf(PR_STDERR, "%s: ERR %d (%s) at line %d.\n", progName, \
-                   prerror, SECU_Strerror(prerror), ln); \
+	prerror, PORT_ErrorToString(prerror), ln); \
 	exit(-1); \
     }
 
@@ -271,7 +271,7 @@ atob(SECItem *ascii, SECItem *binary, PRArenaPool *arena)
     binary->len = 0;
     it.item = binary;
     it.arena = arena;
-    len = (strncmp(&ascii->data[ascii->len-2],"\r\n",2)) ? 
+    len = (strncmp((const char *)&ascii->data[ascii->len-2],"\r\n",2)) ?
            ascii->len : ascii->len-2;
     cx = NSSBase64Decoder_Create(get_binary, &it);
     status = NSSBase64Decoder_Update(cx, (const char *)ascii->data, len);
@@ -296,9 +296,6 @@ btoa_file(SECItem *binary, PRFileDesc *outfile)
 {
     SECStatus status;
     NSSBase64Encoder *cx;
-    SECItem ascii;
-    ascii.data = NULL;
-    ascii.len = 0;
     if (binary->len == 0)
 	return SECSuccess;
     cx = NSSBase64Encoder_Create(output_ascii, outfile);
@@ -354,9 +351,6 @@ serialize_key(SECItem *it, int ni, PRFileDesc *file)
     int i;
     SECStatus status;
     NSSBase64Encoder *cx;
-    SECItem ascii;
-    ascii.data = NULL;
-    ascii.len = 0;
     cx = NSSBase64Encoder_Create(output_ascii, file);
     for (i=0; i<ni; i++, it++) {
 	len[0] = (it->len >> 24) & 0xff;
@@ -692,6 +686,7 @@ typedef enum {
     bltestMD2,		  /* Hash algorithms	   */
     bltestMD5,		  /* .			   */
     bltestSHA1,           /* .			   */
+    bltestSHA224,         /* .			   */
     bltestSHA256,         /* .			   */
     bltestSHA384,         /* .			   */
     bltestSHA512,         /* .			   */
@@ -726,6 +721,7 @@ static char *mode_strings[] =
     "md2",
     "md5",
     "sha1",
+    "sha224",
     "sha256",
     "sha384",
     "sha512",
@@ -1766,6 +1762,46 @@ finish:
 }
 
 SECStatus
+SHA224_restart(unsigned char *dest, const unsigned char *src, uint32 src_length)
+{
+    SECStatus rv = SECSuccess;
+    SHA224Context *cx, *cx_cpy;
+    unsigned char *cxbytes;
+    unsigned int len;
+    unsigned int i, quarter;
+    cx = SHA224_NewContext();
+    SHA224_Begin(cx);
+    /* divide message by 4, restarting 3 times */
+    quarter = (src_length + 3) / 4;
+    for (i=0; i < 4 && src_length > 0; i++) {
+	SHA224_Update(cx, src + i*quarter, PR_MIN(quarter, src_length));
+	len = SHA224_FlattenSize(cx);
+	cxbytes = PORT_Alloc(len);
+	SHA224_Flatten(cx, cxbytes);
+	cx_cpy = SHA224_Resurrect(cxbytes, NULL);
+	if (!cx_cpy) {
+	    PR_fprintf(PR_STDERR, "%s: SHA224_Resurrect failed!\n", progName);
+	    rv = SECFailure;
+	    goto finish;
+	}
+	rv = PORT_Memcmp(cx, cx_cpy, len);
+	if (rv) {
+	    SHA224_DestroyContext(cx_cpy, PR_TRUE);
+	    PR_fprintf(PR_STDERR, "%s: SHA224_restart failed!\n", progName);
+	    goto finish;
+	}
+	
+	SHA224_DestroyContext(cx_cpy, PR_TRUE);
+	PORT_Free(cxbytes);
+	src_length -= quarter;
+    }
+    SHA224_End(cx, dest, &len, MD5_LENGTH);
+finish:
+    SHA224_DestroyContext(cx, PR_TRUE);
+    return rv;
+}
+
+SECStatus
 SHA256_restart(unsigned char *dest, const unsigned char *src, uint32 src_length)
 {
     SECStatus rv = SECSuccess;
@@ -2055,6 +2091,14 @@ cipherInit(bltestCipherInfo *cipherInfo, PRBool encrypt)
 	SECITEM_AllocItem(cipherInfo->arena, &cipherInfo->output.buf,
 			  SHA1_LENGTH);
 	cipherInfo->cipher.hashCipher = (restart) ? sha1_restart : SHA1_HashBuf;
+	return SECSuccess;
+	break;
+    case bltestSHA224:
+	restart = cipherInfo->params.hash.restart;
+	SECITEM_AllocItem(cipherInfo->arena, &cipherInfo->output.buf,
+			  SHA224_LENGTH);
+	cipherInfo->cipher.hashCipher = (restart) ? SHA224_restart 
+	                                          : SHA224_HashBuf;
 	return SECSuccess;
 	break;
     case bltestSHA256:
@@ -2498,6 +2542,7 @@ cipherFinish(bltestCipherInfo *cipherInfo)
     case bltestMD2: /* hash contexts are ephemeral */
     case bltestMD5:
     case bltestSHA1:
+    case bltestSHA224:
     case bltestSHA256:
     case bltestSHA384:
     case bltestSHA512:
@@ -2851,6 +2896,7 @@ get_params(PRArenaPool *arena, bltestParams *params,
     case bltestMD2:
     case bltestMD5:
     case bltestSHA1:
+    case bltestSHA224:
     case bltestSHA256:
     case bltestSHA384:
     case bltestSHA512:

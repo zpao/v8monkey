@@ -47,10 +47,8 @@
 #include "nsIDOMCSSMediaRule.h"
 #include "nsIDOMCSSMozDocumentRule.h"
 #include "nsIDOMCSSFontFaceRule.h"
-#ifdef MOZ_CSS_ANIMATIONS
 #include "nsIDOMMozCSSKeyframeRule.h"
 #include "nsIDOMMozCSSKeyframesRule.h"
-#endif
 #include "nsIDOMCSSStyleDeclaration.h"
 #include "nsICSSRuleList.h"
 #include "nsAutoPtr.h"
@@ -105,7 +103,7 @@ public:
   NS_DECL_NSIDOMCSSMEDIARULE
 
   // rest of GroupRule
-  virtual PRBool UseForPresentation(nsPresContext* aPresContext,
+  virtual bool UseForPresentation(nsPresContext* aPresContext,
                                     nsMediaQueryResultCacheKey& aKey);
 
   // @media rule methods
@@ -147,7 +145,7 @@ public:
   NS_DECL_NSIDOMCSSMOZDOCUMENTRULE
 
   // rest of GroupRule
-  virtual PRBool UseForPresentation(nsPresContext* aPresContext,
+  virtual bool UseForPresentation(nsPresContext* aPresContext,
                                     nsMediaQueryResultCacheKey& aKey);
 
   enum Function {
@@ -313,7 +311,6 @@ private:
 } // namespace css
 } // namespace mozilla
 
-#ifdef MOZ_CSS_ANIMATIONS
 class nsCSSKeyframeRule;
 
 class NS_FINAL_CLASS nsCSSKeyframeStyleDeclaration
@@ -325,7 +322,7 @@ public:
 
   NS_IMETHOD GetParentRule(nsIDOMCSSRule **aParent);
   void DropReference() { mRule = nsnull; }
-  virtual mozilla::css::Declaration* GetCSSDeclaration(PRBool aAllocate);
+  virtual mozilla::css::Declaration* GetCSSDeclaration(bool aAllocate);
   virtual nsresult SetCSSDeclaration(mozilla::css::Declaration* aDecl);
   virtual void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv);
   virtual nsIDocument* DocToUpdate();
@@ -426,7 +423,7 @@ public:
   NS_DECL_NSIDOMMOZCSSKEYFRAMESRULE
 
   // rest of GroupRule
-  virtual PRBool UseForPresentation(nsPresContext* aPresContext,
+  virtual bool UseForPresentation(nsPresContext* aPresContext,
                                     nsMediaQueryResultCacheKey& aKey);
 
   const nsString& GetName() { return mName; }
@@ -436,6 +433,5 @@ private:
 
   nsString                                   mName;
 };
-#endif
 
 #endif /* !defined(nsCSSRules_h_) */

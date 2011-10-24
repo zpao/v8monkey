@@ -46,8 +46,6 @@ include $(topsrcdir)/config/rules.mk
 
 # Disabled due to timeouts.
 # 		test_bug563329.html
-# Disabled due to lack of present support for JSD in JM
-#		test_bug448602.html
 _TEST_FILES = \
 		test_bug226361.xhtml \
 		     bug226361_iframe.xhtml \
@@ -60,9 +58,7 @@ _TEST_FILES = \
 		     bug322588-popup.html \
 		test_bug328885.html \
 		test_bug336682_1.html \
-		test_bug336682_2.xul \
 		test_bug336682.js \
-		test_bug350471.xul \
 		test_bug367781.html \
 		test_bug368835.html \
 		test_bug379120.html \
@@ -72,8 +68,11 @@ _TEST_FILES = \
 		test_bug409604.html \
 		test_bug412567.html \
 		test_bug426082.html \
+		test_bug427537.html \
+		test_bug432698.html \
 		test_bug443985.html \
 		test_bug447736.html \
+		test_bug448602.html \
 		test_bug450876.html \
 		test_bug456273.html \
 		test_bug457672.html \
@@ -81,7 +80,6 @@ _TEST_FILES = \
 		bug457672.html \
 		test_draggableprop.html \
 		test_bug489671.html \
-		test_bug493251.html \
 		test_bug502818.html \
 		test_bug508479.html \
 		test_bug508906.html \
@@ -92,7 +90,6 @@ _TEST_FILES = \
 		test_bug547996-2.xhtml \
 		test_bug556493.html \
 		test_bug574663.html \
-		test_bug586961.xul \
 		test_clickevent_on_input.html \
 		test_bug593959.html \
 		test_bug591815.html \
@@ -104,6 +101,16 @@ _TEST_FILES = \
 		test_bug641477.html \
 		test_bug648573.html \
 		test_bug615597.html \
+		test_bug656379-1.html \
+		test_bug656379-2.html \
+		test_bug656954.html \
+		test_bug659350.html \
+		test_bug662678.html \
+		test_bug667919-1.html \
+		test_bug667919-2.html \
+		test_bug667612.html \
+		empty.js \
+		test_bug689564.html \
 		$(NULL)
 
 #bug 585630
@@ -113,12 +120,29 @@ _TEST_FILES += \
 		$(NULL)
 endif
 
+# bug 565245
+ifneq (Linux,$(OS_ARCH))
+_TEST_FILES += \
+		test_bug493251.html \
+		$(NULL)
+endif
+
 _CHROME_FILES = \
+		test_bug336682_2.xul \
+		test_bug336682.js \
+		test_bug350471.xul \
+		test_bug586961.xul \
 		test_bug415498.xul \
 		bug415498-doc1.html \
 		bug415498-doc2.html \
+		test_bug591249.xul \
+		bug591249_iframe.xul \
 		bug602962.xul \
 		test_bug602962.xul \
+		test_bug617528.xul \
+		window_bug617528.xul \
+		test_bug679494.xul \
+		file_bug679494.html \
 		$(NULL)
 
 libs:: $(_TEST_FILES)

@@ -36,9 +36,12 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsCOMPtr.h"
 #include "nsSVGForeignObjectElement.h"
-#include "nsSVGMatrix.h"
+
+using namespace mozilla;
 
 nsSVGElement::LengthInfo nsSVGForeignObjectElement::sLengthInfo[4] =
 {
@@ -108,21 +111,22 @@ NS_IMETHODIMP nsSVGForeignObjectElement::GetHeight(nsIDOMSVGAnimatedLength * *aH
 // nsSVGElement methods
 
 /* virtual */ gfxMatrix
-nsSVGForeignObjectElement::PrependLocalTransformTo(const gfxMatrix &aMatrix)
+nsSVGForeignObjectElement::PrependLocalTransformTo(const gfxMatrix &aMatrix) const
 {
   // 'transform' attribute:
   gfxMatrix matrix = nsSVGForeignObjectElementBase::PrependLocalTransformTo(aMatrix);
   
   // now translate by our 'x' and 'y':
   float x, y;
-  GetAnimatedLengthValues(&x, &y, nsnull);
+  const_cast<nsSVGForeignObjectElement*>(this)->
+    GetAnimatedLengthValues(&x, &y, nsnull);
   return gfxMatrix().Translate(gfxPoint(x, y)) * matrix;
 }
 
 //----------------------------------------------------------------------
 // nsIContent methods
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGForeignObjectElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -136,7 +140,7 @@ nsSVGForeignObjectElement::IsAttributeMapped(const nsIAtom* name) const
     sViewportsMap
   };
 
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGForeignObjectElementBase::IsAttributeMapped(name);
 }
 
@@ -147,5 +151,5 @@ nsSVGElement::LengthAttributesInfo
 nsSVGForeignObjectElement::GetLengthInfo()
 {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              NS_ARRAY_LENGTH(sLengthInfo));
+                              ArrayLength(sLengthInfo));
 }

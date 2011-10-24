@@ -50,13 +50,13 @@
 class UTF8traits
   {
     public:
-      static PRBool isASCII(char c) { return (c & 0x80) == 0x00; }
-      static PRBool isInSeq(char c) { return (c & 0xC0) == 0x80; }
-      static PRBool is2byte(char c) { return (c & 0xE0) == 0xC0; }
-      static PRBool is3byte(char c) { return (c & 0xF0) == 0xE0; }
-      static PRBool is4byte(char c) { return (c & 0xF8) == 0xF0; }
-      static PRBool is5byte(char c) { return (c & 0xFC) == 0xF8; }
-      static PRBool is6byte(char c) { return (c & 0xFE) == 0xFC; }
+      static bool isASCII(char c) { return (c & 0x80) == 0x00; }
+      static bool isInSeq(char c) { return (c & 0xC0) == 0x80; }
+      static bool is2byte(char c) { return (c & 0xE0) == 0xC0; }
+      static bool is3byte(char c) { return (c & 0xF0) == 0xE0; }
+      static bool is4byte(char c) { return (c & 0xF8) == 0xF0; }
+      static bool is5byte(char c) { return (c & 0xFC) == 0xF8; }
+      static bool is6byte(char c) { return (c & 0xFE) == 0xFC; }
   };
 
 /**
@@ -71,16 +71,16 @@ class UTF8CharEnumerator
 {
 public:
   static PRUint32 NextChar(const char **buffer, const char *end,
-                           PRBool *err)
+                           bool *err)
   {
     NS_ASSERTION(buffer && *buffer, "null buffer!");
 
     const char *p = *buffer;
-    *err = PR_FALSE;
+    *err = false;
 
     if (p >= end)
       {
-        *err = PR_TRUE;
+        *err = true;
 
         return 0;
       }
@@ -99,7 +99,7 @@ public:
 
     if (!CalcState(c, ucs4, minUcs4, state)) {
         NS_ERROR("Not a UTF-8 string. This code should only be used for converting from known UTF-8 strings.");
-        *err = PR_TRUE;
+        *err = true;
 
         return 0;
     }
@@ -108,7 +108,7 @@ public:
       {
         if (p == end)
           {
-            *err = PR_TRUE;
+            *err = true;
 
             return 0;
           }
@@ -117,7 +117,7 @@ public:
 
         if (!AddByte(c, state, ucs4))
           {
-            *err = PR_TRUE;
+            *err = true;
 
             return 0;
           }
@@ -140,7 +140,7 @@ public:
   }
 
 private:
-  static PRBool CalcState(char c, PRUint32& ucs4, PRUint32& minUcs4,
+  static bool CalcState(char c, PRUint32& ucs4, PRUint32& minUcs4,
                           PRInt32& state)
   {
     if ( UTF8traits::is2byte(c) )
@@ -175,22 +175,22 @@ private:
       }
     else
       {
-        return PR_FALSE;
+        return false;
       }
 
-    return PR_TRUE;
+    return true;
   }
 
-  static PRBool AddByte(char c, PRInt32 state, PRUint32& ucs4)
+  static bool AddByte(char c, PRInt32 state, PRUint32& ucs4)
   {
     if ( UTF8traits::isInSeq(c) )
       {
         PRInt32 shift = state * 6;
         ucs4 |= (PRUint32(c) & 0x3F) << shift;
-        return PR_TRUE;
+        return true;
       }
 
-    return PR_FALSE;
+    return false;
   }
 };
 
@@ -206,7 +206,7 @@ class UTF16CharEnumerator
 {
 public:
   static PRUint32 NextChar(const PRUnichar **buffer, const PRUnichar *end,
-                           PRBool *err = nsnull)
+                           bool *err = nsnull)
   {
     NS_ASSERTION(buffer && *buffer, "null buffer!");
 
@@ -216,7 +216,7 @@ public:
       {
         NS_ERROR("No input to work with");
         if (err)
-          *err = PR_TRUE;
+          *err = true;
 
         return 0;
       }
@@ -226,7 +226,7 @@ public:
     if (!IS_SURROGATE(c)) // U+0000 - U+D7FF,U+E000 - U+FFFF
       {
         if (err)
-          *err = PR_FALSE;
+          *err = false;
         *buffer = p;
         return c;
       }
@@ -241,7 +241,7 @@ public:
             NS_WARNING("Unexpected end of buffer after high surrogate");
 
             if (err)
-              *err = PR_TRUE;
+              *err = true;
             *buffer = p;
             return 0xFFFD;
           }
@@ -257,7 +257,7 @@ public:
             // N = (H - D800) *400 + 10000 + (L - DC00)
             PRUint32 ucs4 = SURROGATE_TO_UCS4(h, c);
             if (err)
-              *err = PR_FALSE;
+              *err = false;
             *buffer = p;
             return ucs4;
           }
@@ -275,7 +275,7 @@ public:
             NS_WARNING("got a High Surrogate but no low surrogate");
 
             if (err)
-              *err = PR_TRUE;
+              *err = true;
             *buffer = p - 1;
             return 0xFFFD;
           }
@@ -290,13 +290,13 @@ public:
 
         NS_WARNING("got a low Surrogate but no high surrogate");
         if (err)
-          *err = PR_TRUE;
+          *err = true;
         *buffer = p;
         return 0xFFFD;
       }
 
     if (err)
-      *err = PR_TRUE;
+      *err = true;
     return 0;
   }
 };
@@ -313,11 +313,11 @@ class ConvertUTF8toUTF16
       typedef PRUnichar buffer_type;
 
     ConvertUTF8toUTF16( buffer_type* aBuffer )
-        : mStart(aBuffer), mBuffer(aBuffer), mErrorEncountered(PR_FALSE) {}
+        : mStart(aBuffer), mBuffer(aBuffer), mErrorEncountered(false) {}
 
     size_t Length() const { return mBuffer - mStart; }
 
-    PRBool ErrorEncountered() const { return mErrorEncountered; }
+    bool ErrorEncountered() const { return mErrorEncountered; }
 
     void NS_ALWAYS_INLINE write( const value_type* start, PRUint32 N )
       {
@@ -331,12 +331,12 @@ class ConvertUTF8toUTF16
         buffer_type* out = mBuffer;
         for ( ; p != end /* && *p */; )
           {
-            PRBool err;
+            bool err;
             PRUint32 ucs4 = UTF8CharEnumerator::NextChar(&p, end, &err);
 
             if ( err )
               {
-                mErrorEncountered = PR_TRUE;
+                mErrorEncountered = true;
                 mBuffer = out;
                 return;
               }
@@ -362,7 +362,7 @@ class ConvertUTF8toUTF16
     private:
       buffer_type* const mStart;
       buffer_type* mBuffer;
-      PRBool mErrorEncountered;
+      bool mErrorEncountered;
   };
 
 /**
@@ -374,7 +374,7 @@ class CalculateUTF8Length
     public:
       typedef char value_type;
 
-    CalculateUTF8Length() : mLength(0), mErrorEncountered(PR_FALSE) { }
+    CalculateUTF8Length() : mLength(0), mErrorEncountered(false) { }
 
     size_t Length() const { return mLength; }
 
@@ -443,21 +443,23 @@ class CalculateUTF8Length
                 p += 5;
             else if ( UTF8traits::is6byte(*p) )
                 p += 6;
-            else
+            else // error
               {
+                ++mLength; // to account for the decrement below
                 break;
               }
           }
         if ( p != end )
           {
             NS_ERROR("Not a UTF-8 string. This code should only be used for converting from known UTF-8 strings.");
-            mErrorEncountered = PR_TRUE;
+            --mLength; // The last multi-byte char wasn't complete, discard it.
+            mErrorEncountered = true;
           }
       }
 
     private:
       size_t mLength;
-      PRBool mErrorEncountered;
+      bool mErrorEncountered;
   };
 
 /**

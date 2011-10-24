@@ -58,15 +58,6 @@
 
 #include "nsHtml5UTF16Buffer.h"
 
-
-nsHtml5UTF16Buffer::nsHtml5UTF16Buffer(PRUnichar* buffer, PRInt32 start, PRInt32 end)
-  : buffer(buffer),
-    start(start),
-    end(end)
-{
-  MOZ_COUNT_CTOR(nsHtml5UTF16Buffer);
-}
-
 PRInt32 
 nsHtml5UTF16Buffer::getStart()
 {
@@ -91,14 +82,14 @@ nsHtml5UTF16Buffer::getEnd()
   return end;
 }
 
-PRBool 
+bool 
 nsHtml5UTF16Buffer::hasMore()
 {
   return start < end;
 }
 
 void 
-nsHtml5UTF16Buffer::adjust(PRBool lastWasCR)
+nsHtml5UTF16Buffer::adjust(bool lastWasCR)
 {
   if (lastWasCR && buffer[start] == '\n') {
     start++;

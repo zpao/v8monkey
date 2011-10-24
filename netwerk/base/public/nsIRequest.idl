@@ -135,6 +135,11 @@ interface nsIRequest : nsISupports
      */
     attribute nsLoadFlags loadFlags;
 
+    /**
+     * Mask defining the bits reserved for nsIRequest LoadFlags
+     */
+    const unsigned long LOAD_REQUESTMASK = 0xFFFF;
+
     /**************************************************************************
      * Listed below are the various load flags which may be or'd together.
      */
@@ -219,4 +224,10 @@ interface nsIRequest : nsISupports
      * tokens or cookie headers should not be added.
      */
     const unsigned long LOAD_ANONYMOUS = 1 << 14;
+
+    /**
+     * When set, this flag indicates that caches of network connections,
+     * particularly HTTP persistent connections, should not be used.
+     */
+    const unsigned long LOAD_FRESH_CONNECTION = 1 << 15;
 };

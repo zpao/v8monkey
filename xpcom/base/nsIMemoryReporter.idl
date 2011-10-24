@@ -40,59 +40,179 @@
 
 interface nsISimpleEnumerator;
 
-[scriptable, uuid(d298b942-3e66-4cd3-9ff5-46abc69147a7)]
+/*
+ * An nsIMemoryReporter reports a single memory measurement as an object.
+ * Use this when it makes sense to gather this measurement without gathering
+ * related measurements at the same time.
+ *
+ * Note that the |amount| field may be implemented as a function, and so
+ * accessing it can trigger significant computation;  the other fields can
+ * be accessed without triggering this computation.  (Compare and contrast
+ * this with nsIMemoryMultiReporter.)  
+ */
+[scriptable, uuid(b2c39f65-1799-4b92-a806-ab3cf6af3cfa)]
 interface nsIMemoryReporter : nsISupports
 {
   /*
-   * The path that this memory usage should be reported under.  Paths can
-   * begin with a process name plus a colon, eg "Content:", but this is not
-   * necessary for the main process.  After the process name, paths are
+   * The name of the process containing this reporter.  Each reporter initially
+   * has "" in this field, indicating that it applies to the current process.
+   * (This is true even for reporters in a child process.)  When a reporter
+   * from a child process is copied into the main process, the copy has its
+   * 'process' field set appropriately.
+   */
+  readonly attribute ACString process;
+
+  /*
+   * The path that this memory usage should be reported under.  Paths are
    * '/'-delimited, eg. "a/b/c".  There are three categories of paths.
    *
-   * - Paths starting with "mapped" represent non-overlapping regions of mapped
-   *   memory.  Each one can be viewed as representing a path in a tree from
-   *   the root node ("mapped") to a leaf node.  The one exception is the
-   *   special "mapped" path which represents the root of that tree.  So, for
-   *   example, "mapped/heap/used", "mapped/heap/unused",
-   *   "mapped/js/mjit-code", mapped/js/tjit-code", plus the special "mapped"
-   *   path, define this tree:
+   * - Paths starting with "explicit" represent regions of memory that have
+   *   been explicitly allocated with an OS-level allocation (eg.
+   *   mmap/VirtualAlloc/vm_allocate) or a heap-level allocation (eg.
+   *   malloc/calloc/operator new).
    *
-   *     mapped
-   *     |--heap
-   *     |  |--used
-   *     |  \--unused
-   *     \--js
-   *        |--mjit-code
-   *        \--tjit-code
+   *   Each reporter can be viewed as representing a node in a tree rooted at
+   *   "explicit".  Not all nodes of the tree need have an associated reporter.
+   *   So, for example, the reporters "explicit/a/b", "explicit/a/c",
+   *   "explicit/d", "explicit/d/e", and "explicit/d/f" define this tree:
    *
-   *   "mapped/heap" would not be a valid path in this example because "heap"
-   *   is not a leaf node.
+   *     explicit
+   *     |--a
+   *     |  |--b [*]
+   *     |  \--c [*]
+   *     \--d [*]
+   *        |--e [*]
+   *        \--f [*]
    *
-   * - Paths starting with "heap-used" represent non-overlapping regions of
-   *   used heap memory.  The "mapped" rules above apply equally here.  The
-   *   exceptional path for this tree is "mapped/heap/used" (and so this tree
-   *   is a sub-tree of the "mapped" tree).  When shown in about:memory, this
-   *   tree's root node is given the synonym "heap-used".
+   *   Nodes marked with a [*] have a reporter.  Notice that "explicit/a" is
+   *   implicitly defined.
    *
-   * - All other paths represent cross-cuttings memory regions, ie. ones that
-   *   may overlap arbitrarily with regions in the "mapped" and "heap-used"
-   *   trees.
+   *   A node's children divide their parent's memory into disjoint pieces.
+   *   So in the example above, |a| may not count any allocations counted by
+   *   |d|, and vice versa.
+   *
+   * - Paths starting with "map" represent regions of virtual memory that the
+   *   process has mapped.  The reporter immediately beneath "map" describes
+   *   the type of measurement; for instance, the reporter "map/rss/[stack]"
+   *   might report how much of the process's stack is currently in physical
+   *   memory.
+   *
+   *   Reporters in this category must have kind NONHEAP and units BYTES.
+   *
+   * - All other paths represent cross-cutting values and may overlap with any
+   *   other reporter.
    */
-  readonly attribute string path;
+  readonly attribute AUTF8String path;
 
   /*
-   * A human-readable description of this memory usage report
+   * There are three categories of memory reporters:
+   *
+   *  - HEAP: memory allocated by the heap allocator, e.g. by calling malloc,
+   *    calloc, realloc, memalign, operator new, or operator new[].  Reporters
+   *    in this category must have units UNITS_BYTES and must have a path
+   *    starting with "explicit".
+
+   *  - NONHEAP: memory which the program explicitly allocated, but does not
+   *    live on the heap.  Such memory is commonly allocated by calling one of
+   *    the OS's memory-mapping functions (e.g. mmap, VirtualAlloc, or
+   *    vm_allocate).  Reporters in this category must have units UNITS_BYTES
+   *    and must have a path starting with "explicit" or "map".
+   *
+   *  - OTHER: reporters which don't fit into either of these categories. Such
+   *    reporters must have a path that does not start with "explicit" or "map"
+   *    and may have any units.
    */
-  readonly attribute string description;
+  const PRInt32 KIND_NONHEAP = 0;
+  const PRInt32 KIND_HEAP    = 1;
+  const PRInt32 KIND_OTHER   = 2;
 
   /*
-   * The current amount of memory in use, as reported by this memory
-   * reporter.
+   * KIND_MAPPED is a deprecated synonym for KIND_NONHEAP.  We keep it around
+   * to as not to break extensions which might use this interface, but we will
+   * remove it eventually.
    */
-  readonly attribute long long memoryUsed;
+  const PRInt32 KIND_MAPPED  = 0;
+
+  /*
+   * The reporter kind.  See KIND_* above.
+   */
+  readonly attribute PRInt32 kind;
+
+  /*
+   * The amount reported by a memory reporter must have one of the following
+   * units, but you may of course add new units as necessary:
+   *
+   *  - BYTES: The amount contains a number of bytes.
+   *
+   *  - COUNT: The amount is an instantaneous count of things currently in
+   *    existence.  For instance, the number of tabs currently open would have
+   *    units COUNT.
+   *
+   *  - COUNT_CUMULATIVE: The amount contains the number of times some event
+   *    has occurred since the application started up.  For instance, the
+   *    number of times the user has opened a new tab would have units
+   *    COUNT_CUMULATIVE.
+   *
+   *    The amount returned by a reporter with units COUNT_CUMULATIVE must
+   *    never decrease over the lifetime of the application.
+   *
+   *  - PERCENTAGE: The amount contains a fraction that should be expressed as
+   *    a percentage.  NOTE!  The |amount| field should be given a value 100x
+   *    the actual percentage;  this number will be divided by 100 when shown.
+   *    This allows a fractional percentage to be shown even though |amount| is
+   *    an integer.  E.g. if the actual percentage is 12.34%, |amount| should
+   *    be 1234.
+   */
+  const PRInt32 UNITS_BYTES = 0;
+  const PRInt32 UNITS_COUNT = 1;
+  const PRInt32 UNITS_COUNT_CUMULATIVE = 2;
+  const PRInt32 UNITS_PERCENTAGE = 3;
+
+  /*
+   * The units on the reporter's amount.  See UNITS_* above.
+   */
+  readonly attribute PRInt32 units;
+
+  /*
+   * The numeric value reported by this memory reporter.  -1 means "unknown",
+   * ie. something went wrong when getting the amount.
+   */
+  readonly attribute PRInt64 amount;
+
+  /*
+   * A human-readable description of this memory usage report.
+   */
+  readonly attribute AUTF8String description;
 };
 
-[scriptable, uuid(7c62de18-1edd-40f8-9da2-a8c622763074)]
+[scriptable, function, uuid(5b15f3fa-ba15-443c-8337-7770f5f0ce5d)]
+interface nsIMemoryMultiReporterCallback : nsISupports
+{
+  void callback(in ACString process, in AUTF8String path, in PRInt32 kind,
+                in PRInt32 units, in PRInt64 amount,
+                in AUTF8String description, in nsISupports closure);
+};
+
+/*
+ * An nsIMemoryMultiReporter reports multiple memory measurements via a
+ * callback function which is called once for each measurement.  Use this
+ * when you want to gather multiple measurements in a single operation (eg.
+ * a single traversal of a large data structure).
+ *
+ * The arguments to the callback deliberately match the fields in
+ * nsIMemoryReporter, but note that seeing any of these arguments requires
+ * calling collectReports which will trigger all relevant computation.
+ * (Compare and contrast this with nsIMemoryReporter, which allows all
+ * fields except |amount| to be accessed without triggering computation.)
+ */
+[scriptable, uuid(eae277ad-b67d-4389-95f4-03fa11c09d06)]
+interface nsIMemoryMultiReporter : nsISupports
+{
+  void collectReports(in nsIMemoryMultiReporterCallback callback,
+                      in nsISupports closure);
+};
+
+[scriptable, uuid(84ba9c85-3372-4423-b7ab-74708b9269a6)]
 interface nsIMemoryReporterManager : nsISupports
 {
   /*
@@ -101,12 +221,25 @@ interface nsIMemoryReporterManager : nsISupports
   nsISimpleEnumerator enumerateReporters ();
 
   /*
-   * Register the given nsIMemoryReporter.  It is an error to register
-   * more than one reporter with the same path.  After a reporter is
-   * registered, it will be available via enumerateReporters().  The
-   * Manager service will hold a strong reference to the given reporter.
+   * Return an enumerator of nsIMemoryMultiReporters that are currently
+   * registered.
+   */
+  nsISimpleEnumerator enumerateMultiReporters ();
+
+  /*
+   * Register the given nsIMemoryReporter.  After a reporter is registered,
+   * it will be available via enumerateReporters().  The Manager service
+   * will hold a strong reference to the given reporter.
    */
   void registerReporter (in nsIMemoryReporter reporter);
+
+  /*
+   * Register the given nsIMemoryMultiReporter.  After a multi-reporter is
+   * registered, it will be available via enumerateMultiReporters().  The
+   * Manager service will hold a strong reference to the given
+   * multi-reporter.
+   */
+  void registerMultiReporter (in nsIMemoryMultiReporter reporter);
 
   /*
    * Unregister the given memory reporter.
@@ -114,26 +247,63 @@ interface nsIMemoryReporterManager : nsISupports
   void unregisterReporter (in nsIMemoryReporter reporter);
 
   /*
+   * Unregister the given memory multi-reporter.
+   */
+  void unregisterMultiReporter (in nsIMemoryMultiReporter reporter);
+
+  /*
    * Initialize.
    */
   void init ();
+
+  /*
+   * Get the resident size (aka. RSS, physical memory used).  This reporter
+   * is special-cased because it's interesting, is available on all
+   * platforms, and returns a meaningful result on all common platforms.
+   * -1 means unknown.
+   */
+  readonly attribute PRInt64 resident;
+
+  /*
+   * Get the total size of explicit memory allocations, both at the OS-level
+   * (eg. via mmap, VirtualAlloc) and at the heap level (eg. via malloc,
+   * calloc, operator new).  (Nb: it covers all heap allocations, but will
+   * miss any OS-level ones not covered by memory reporters.)  This reporter
+   * is special-cased because it's interesting, and is moderately difficult
+   * to compute in JS.  -1 means unknown.
+   */
+  readonly attribute PRInt64 explicit;
 };
 
 %{C++
 
-#define NS_MEMORY_REPORTER_IMPLEMENT(_classname,_path,_desc,_usageFunction,_dataptr) \
-    class MemoryReporter_##_classname : public nsIMemoryReporter {      \
-    public:                                                             \
-      NS_DECL_ISUPPORTS                                                 \
-      NS_IMETHOD GetPath(char **memoryPath) { *memoryPath = strdup(_path); return NS_OK; } \
-      NS_IMETHOD GetDescription(char **desc) { *desc = strdup(_desc); return NS_OK; } \
-      NS_IMETHOD GetMemoryUsed(PRInt64 *memoryUsed) { *memoryUsed = _usageFunction(_dataptr); return NS_OK; } \
-    };                                                                  \
-    NS_IMPL_ISUPPORTS1(MemoryReporter_##_classname, nsIMemoryReporter)
+/*
+ * Note that this defaults 'process' to "", which is usually what's desired.
+ */
+#define NS_MEMORY_REPORTER_IMPLEMENT_HELPER(_classname, _path, _kind, _units, _amountFunction, _desc, _ts) \
+    class MemoryReporter_##_classname : public nsIMemoryReporter {                            \
+    public:                                                                                   \
+      NS_DECL_ISUPPORTS                                                                       \
+      NS_IMETHOD GetProcess(nsACString &process) { process.Truncate(); return NS_OK; } \
+      NS_IMETHOD GetPath(nsACString &memoryPath) { memoryPath.Assign(_path); return NS_OK; } \
+      NS_IMETHOD GetKind(int *kind) { *kind = _kind; return NS_OK; }                          \
+      NS_IMETHOD GetUnits(int *units) { *units = _units; return NS_OK; }                      \
+      NS_IMETHOD GetAmount(PRInt64 *amount) { *amount = _amountFunction(); return NS_OK; }     \
+      NS_IMETHOD GetDescription(nsACString &desc) { desc.Assign(_desc); return NS_OK; } \
+    };                                                                                        \
+    NS_IMPL##_ts##ISUPPORTS1(MemoryReporter_##_classname, nsIMemoryReporter)
+
+#define NS_MEMORY_REPORTER_IMPLEMENT(_c, _p, _k, _u, _a, _d) \
+        NS_MEMORY_REPORTER_IMPLEMENT_HELPER(_c, _p, _k, _u, _a, _d, _)
+#define NS_THREADSAFE_MEMORY_REPORTER_IMPLEMENT(_c, _p, _k, _u, _a, _d) \
+        NS_MEMORY_REPORTER_IMPLEMENT_HELPER(_c, _p, _k, _u, _a, _d, _THREADSAFE_)
 
 #define NS_MEMORY_REPORTER_NAME(_classname)  MemoryReporter_##_classname
 
-NS_COM nsresult NS_RegisterMemoryReporter (nsIMemoryReporter *reporter);
-NS_COM nsresult NS_UnregisterMemoryReporter (nsIMemoryReporter *reporter);
+nsresult NS_RegisterMemoryReporter (nsIMemoryReporter *reporter);
+nsresult NS_RegisterMemoryMultiReporter (nsIMemoryMultiReporter *reporter);
+
+nsresult NS_UnregisterMemoryReporter (nsIMemoryReporter *reporter);
+nsresult NS_UnregisterMemoryMultiReporter (nsIMemoryMultiReporter *reporter);
 
 %}

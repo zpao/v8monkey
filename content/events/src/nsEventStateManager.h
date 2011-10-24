@@ -49,6 +49,7 @@
 #include "nsCOMPtr.h"
 #include "nsIDocument.h"
 #include "nsCOMArray.h"
+#include "nsIFrameLoader.h"
 #include "nsIFrame.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsIMarkupDocumentViewer.h"
@@ -56,6 +57,8 @@
 #include "nsFocusManager.h"
 #include "nsIDocument.h"
 #include "nsEventStates.h"
+#include "mozilla/TimeStamp.h"
+#include "nsContentUtils.h"
 
 class nsIPresShell;
 class nsIDocShell;
@@ -63,6 +66,7 @@ class nsIDocShellTreeNode;
 class nsIDocShellTreeItem;
 class imgIContainer;
 class nsDOMDataTransfer;
+class MouseEnterLeaveDispatcher;
 
 namespace mozilla {
 namespace dom {
@@ -79,6 +83,10 @@ class nsEventStateManager : public nsSupportsWeakReference,
 {
   friend class nsMouseWheelTransaction;
 public:
+
+  typedef mozilla::TimeStamp TimeStamp;
+  typedef mozilla::TimeDuration TimeDuration;
+
   nsEventStateManager();
   virtual ~nsEventStateManager();
 
@@ -120,32 +128,19 @@ public:
   already_AddRefed<nsIContent> GetEventTargetContent(nsEvent* aEvent);
 
   /**
-   * Returns the content state of aContent.
-   * @param aContent      The control whose state is requested.
-   * @param aFollowLabels Whether to reflect a label's content state on its
-   *                      associated control. If aFollowLabels is true and
-   *                      aContent is a control which has a label that has the 
-   *                      hover or active content state set, GetContentState
-   *                      will pretend that those states are also set on aContent.
-   * @return              The content state.
-   */
-  virtual nsEventStates GetContentState(nsIContent *aContent,
-                                        PRBool aFollowLabels = PR_FALSE);
-
-  /**
    * Notify that the given NS_EVENT_STATE_* bit has changed for this content.
    * @param aContent Content which has changed states
    * @param aState   Corresponding state flags such as NS_EVENT_STATE_FOCUS
-   * @return  Whether the content was able to change all states. Returns PR_FALSE
+   * @return  Whether the content was able to change all states. Returns false
    *                  if a resulting DOM event causes the content node passed in
    *                  to not change states. Note, the frame for the content may
    *                  change as a result of the content state change, because of
    *                  frame reconstructions that may occur, but this does not
    *                  affect the return value.
    */
-  PRBool SetContentState(nsIContent *aContent, nsEventStates aState);
+  bool SetContentState(nsIContent *aContent, nsEventStates aState);
   void ContentRemoved(nsIDocument* aDocument, nsIContent* aContent);
-  PRBool EventStatusOK(nsGUIEvent* aEvent);
+  bool EventStatusOK(nsGUIEvent* aEvent);
 
   /**
    * Register accesskey on the given element. When accesskey is activated then
@@ -172,23 +167,36 @@ public:
    */
   PRUint32 GetRegisteredAccessKey(nsIContent* aContent);
 
+  bool GetAccessKeyLabelPrefix(nsAString& aPrefix);
+
   nsresult SetCursor(PRInt32 aCursor, imgIContainer* aContainer,
-                     PRBool aHaveHotspot, float aHotspotX, float aHotspotY,
-                     nsIWidget* aWidget, PRBool aLockCursor); 
+                     bool aHaveHotspot, float aHotspotX, float aHotspotY,
+                     nsIWidget* aWidget, bool aLockCursor); 
 
   static void StartHandlingUserInput()
   {
     ++sUserInputEventDepth;
+    if (sUserInputEventDepth == 1) {
+      sHandlingInputStart = TimeStamp::Now();
+    }
   }
 
   static void StopHandlingUserInput()
   {
     --sUserInputEventDepth;
+    if (sUserInputEventDepth == 0) {
+      sHandlingInputStart = TimeStamp();
+    }
   }
 
-  static PRBool IsHandlingUserInput()
+  static bool IsHandlingUserInput()
   {
-    return sUserInputEventDepth > 0;
+    if (sUserInputEventDepth <= 0) {
+      return false;
+    }
+    TimeDuration timeout = nsContentUtils::HandlingUserInputTimeout();
+    return timeout <= TimeDuration(0) ||
+           (TimeStamp::Now() - sHandlingInputStart) <= timeout;
   }
 
   /**
@@ -196,9 +204,12 @@ public:
    * This includes timers or anything else that is initiated from user input.
    * However, mouse hover events are not counted as user input, nor are
    * page load events. If this method is called from asynchronously executed code,
-   * such as during layout reflows, it will return false.
+   * such as during layout reflows, it will return false. If more time has elapsed
+   * since the user input than is specified by the
+   * dom.event.handling-user-input-time-limit pref (default 1 second), this
+   * function also returns false.
    */
-  NS_IMETHOD_(PRBool) IsHandlingUserInputExternal() { return IsHandlingUserInput(); }
+  NS_IMETHOD_(bool) IsHandlingUserInputExternal() { return IsHandlingUserInput(); }
   
   nsPresContext* GetPresContext() { return mPresContext; }
 
@@ -213,7 +224,13 @@ public:
   // if aContent is non-null, marks the object as active.
   static void SetActiveManager(nsEventStateManager* aNewESM,
                                nsIContent* aContent);
+
+  // Sets the full-screen event state on aElement to aIsFullScreen.
+  static void SetFullScreenState(mozilla::dom::Element* aElement, bool aIsFullScreen);
+
 protected:
+  friend class MouseEnterLeaveDispatcher;
+
   void UpdateCursor(nsPresContext* aPresContext, nsEvent* aEvent, nsIFrame* aTargetFrame, nsEventStatus* aStatus);
   /**
    * Turn a GUI mouse event into a mouse event targeted at the specified
@@ -304,15 +321,15 @@ protected:
                        ProcessingAccessKeyState aAccessKeyState,
                        PRInt32 aModifierMask);
 
-  PRBool ExecuteAccessKey(nsTArray<PRUint32>& aAccessCharCodes,
-                          PRBool aIsTrustedEvent);
+  bool ExecuteAccessKey(nsTArray<PRUint32>& aAccessCharCodes,
+                          bool aIsTrustedEvent);
 
   //---------------------------------------------
   // DocShell Focus Traversal Methods
   //---------------------------------------------
 
   nsIContent* GetFocusedContent();
-  PRBool IsShellVisible(nsIDocShell* aShell);
+  bool IsShellVisible(nsIDocShell* aShell);
 
   // These functions are for mousewheel and pixel scrolling
   void SendLineScrollEvent(nsIFrame* aTargetFrame,
@@ -324,15 +341,57 @@ protected:
                             nsMouseScrollEvent* aEvent,
                             nsPresContext* aPresContext,
                             nsEventStatus* aStatus);
+  /**
+   * @param aQueryEvent If you set vailid pointer for this, DoScrollText()
+   *                    computes the line-height and page size of current
+   *                    mouse wheel scroll target and sets it to the event.
+   *                    And then, this method does NOT scroll any scrollable
+   *                    elements.  I.e., you can just query the scroll target
+   *                    information.
+   */
   nsresult DoScrollText(nsIFrame* aTargetFrame,
                         nsMouseScrollEvent* aMouseEvent,
                         nsIScrollableFrame::ScrollUnit aScrollQuantity,
-                        PRBool aAllowScrollSpeedOverride);
+                        bool aAllowScrollSpeedOverride,
+                        nsQueryContentEvent* aQueryEvent = nsnull);
   void DoScrollHistory(PRInt32 direction);
   void DoScrollZoom(nsIFrame *aTargetFrame, PRInt32 adjustment);
   nsresult GetMarkupDocumentViewer(nsIMarkupDocumentViewer** aMv);
   nsresult ChangeTextSize(PRInt32 change);
   nsresult ChangeFullZoom(PRInt32 change);
+  /**
+   * Computes actual delta value used for scrolling.  If user customized the
+   * scrolling speed and/or direction, this would return the customized value.
+   * Otherwise, it would return the original delta value of aMouseEvent.
+   */
+  PRInt32 ComputeWheelDeltaFor(nsMouseScrollEvent* aMouseEvent);
+  /**
+   * Computes the action for the aMouseEvent with prefs.  The result is
+   * MOUSE_SCROLL_N_LINES, MOUSE_SCROLL_PAGE, MOUSE_SCROLL_HISTORY,
+   * MOUSE_SCROLL_ZOOM, MOUSE_SCROLL_PIXELS or -1.
+   * When the result is -1, nothing happens for the event.
+   *
+   * @param aUseSystemSettings    Set the result of UseSystemScrollSettingFor().
+   */
+  PRInt32 ComputeWheelActionFor(nsMouseScrollEvent* aMouseEvent,
+                                bool aUseSystemSettings);
+  /**
+   * Gets the wheel action for the aMouseEvent ONLY with the pref.
+   * When you actually do something for the event, probably you should use
+   * ComputeWheelActionFor().
+   */
+  PRInt32 GetWheelActionFor(nsMouseScrollEvent* aMouseEvent);
+  /**
+   * Gets the pref value for line scroll amount for the aMouseEvent.
+   * Note that this method doesn't check whether the aMouseEvent is line scroll
+   * event and doesn't use system settings.
+   */
+  PRInt32 GetScrollLinesFor(nsMouseScrollEvent* aMouseEvent);
+  /**
+   * Whether use system scroll settings or settings in our prefs for the event.
+   * TRUE, if use system scroll settings.  Otherwise, FALSE.
+   */
+  bool UseSystemScrollSettingFor(nsMouseScrollEvent* aMouseEvent);
   // end mousewheel functions
 
   /*
@@ -365,8 +424,8 @@ protected:
   void DetermineDragTarget(nsPresContext* aPresContext,
                            nsIContent* aSelectionTarget,
                            nsDOMDataTransfer* aDataTransfer,
-                           PRBool* aIsSelection,
-                           PRBool* aIsInEditor,
+                           bool* aIsSelection,
+                           bool* aIsInEditor,
                            nsIContent** aTargetNode);
 
   /*
@@ -379,13 +438,13 @@ protected:
    * aDragTarget - the target of the drag
    * aIsSelection - true if a selection is being dragged
    */
-  PRBool DoDefaultDragStart(nsPresContext* aPresContext,
+  bool DoDefaultDragStart(nsPresContext* aPresContext,
                             nsDragEvent* aDragEvent,
                             nsDOMDataTransfer* aDataTransfer,
                             nsIContent* aDragTarget,
-                            PRBool aIsSelection);
+                            bool aIsSelection);
 
-  PRBool IsTrackingDragGesture ( ) const { return mGestureDownContent != nsnull; }
+  bool IsTrackingDragGesture ( ) const { return mGestureDownContent != nsnull; }
   /**
    * Set the fields of aEvent to reflect the mouse position and modifier keys
    * that were set when the user first pressed the mouse button (stored by
@@ -397,9 +456,29 @@ protected:
   nsresult DoContentCommandEvent(nsContentCommandEvent* aEvent);
   nsresult DoContentCommandScrollEvent(nsContentCommandEvent* aEvent);
 
-  PRBool RemoteQueryContentEvent(nsEvent *aEvent);
+  void DoQueryScrollTargetInfo(nsQueryContentEvent* aEvent,
+                               nsIFrame* aTargetFrame);
+  void DoQuerySelectedText(nsQueryContentEvent* aEvent);
+
+  bool RemoteQueryContentEvent(nsEvent *aEvent);
   mozilla::dom::TabParent *GetCrossProcessTarget();
-  PRBool IsTargetCrossProcess(nsGUIEvent *aEvent);
+  bool IsTargetCrossProcess(nsGUIEvent *aEvent);
+
+  void DispatchCrossProcessEvent(nsEvent* aEvent, nsIFrameLoader* remote);
+  bool IsRemoteTarget(nsIContent* target);
+  bool HandleCrossProcessEvent(nsEvent *aEvent,
+                                 nsIFrame* aTargetFrame,
+                                 nsEventStatus *aStatus);
+
+private:
+  static inline void DoStateChange(mozilla::dom::Element* aElement,
+                                   nsEventStates aState, bool aAddState);
+  static inline void DoStateChange(nsIContent* aContent, nsEventStates aState,
+                                   bool aAddState);
+  static void UpdateAncestorState(nsIContent* aStartNode,
+                                  nsIContent* aStopBefore,
+                                  nsEventStates aState,
+                                  bool aAddState);
 
   PRInt32     mLockCursor;
 
@@ -407,7 +486,7 @@ protected:
   nsCOMPtr<nsIContent> mCurrentTargetContent;
   nsWeakFrame mLastMouseOverFrame;
   nsCOMPtr<nsIContent> mLastMouseOverElement;
-  nsWeakFrame mLastDragOverFrame;
+  static nsWeakFrame sLastDragOverFrame;
 
   // member variables for the d&d gesture state machine
   nsIntPoint mGestureDownPoint; // screen coordinates
@@ -418,10 +497,10 @@ protected:
   // an <area> of an image map this is the image. (bug 289667)
   nsCOMPtr<nsIContent> mGestureDownFrameOwner;
   // State of keys when the original gesture-down happened
-  PRPackedBool mGestureDownShift;
-  PRPackedBool mGestureDownControl;
-  PRPackedBool mGestureDownAlt;
-  PRPackedBool mGestureDownMeta;
+  bool mGestureDownShift;
+  bool mGestureDownControl;
+  bool mGestureDownAlt;
+  bool mGestureDownMeta;
 
   nsCOMPtr<nsIContent> mLastLeftMouseDownContent;
   nsCOMPtr<nsIContent> mLastLeftMouseDownContentParent;
@@ -432,7 +511,7 @@ protected:
 
   nsCOMPtr<nsIContent> mActiveContent;
   nsCOMPtr<nsIContent> mHoverContent;
-  nsCOMPtr<nsIContent> mDragOverContent;
+  static nsCOMPtr<nsIContent> sDragOverContent;
   nsCOMPtr<nsIContent> mURLTargetContent;
 
   // The last element on which we fired a mouseover event, or null if
@@ -450,8 +529,10 @@ protected:
   PRUint32 mMClickCount;
   PRUint32 mRClickCount;
 
-  PRPackedBool m_haveShutdown;
+  bool m_haveShutdown;
 
+  // Time at which we began handling user input.
+  static TimeStamp sHandlingInputStart;
 
 public:
   static nsresult UpdateUserActivityTimer(void);
@@ -459,19 +540,19 @@ public:
   nsCOMArray<nsIContent> mAccessKeys;
 
   // Unlocks pixel scrolling
-  PRPackedBool mLastLineScrollConsumedX;
-  PRPackedBool mLastLineScrollConsumedY;
+  bool mLastLineScrollConsumedX;
+  bool mLastLineScrollConsumedY;
 
   static PRInt32 sUserInputEventDepth;
   
-  static PRBool sNormalLMouseEventInProcess;
+  static bool sNormalLMouseEventInProcess;
 
   static nsEventStateManager* sActiveESM;
   
   static void ClearGlobalActiveContent(nsEventStateManager* aClearer);
 
   // Functions used for click hold context menus
-  PRBool mClickHoldContextMenu;
+  bool mClickHoldContextMenu;
   nsCOMPtr<nsITimer> mClickHoldTimer;
   void CreateClickHoldTimer ( nsPresContext* aPresContext, nsIFrame* inDownFrame,
                               nsGUIEvent* inMouseDownEvent ) ;
@@ -487,23 +568,23 @@ public:
 class nsAutoHandlingUserInputStatePusher
 {
 public:
-  nsAutoHandlingUserInputStatePusher(PRBool aIsHandlingUserInput,
+  nsAutoHandlingUserInputStatePusher(bool aIsHandlingUserInput,
                                      nsEvent* aEvent,
                                      nsIDocument* aDocument)
     : mIsHandlingUserInput(aIsHandlingUserInput),
       mIsMouseDown(aEvent && aEvent->message == NS_MOUSE_BUTTON_DOWN),
-      mResetFMMouseDownState(PR_FALSE)
+      mResetFMMouseDownState(false)
   {
     if (aIsHandlingUserInput) {
       nsEventStateManager::StartHandlingUserInput();
       if (mIsMouseDown) {
         nsIPresShell::SetCapturingContent(nsnull, 0);
-        nsIPresShell::AllowMouseCapture(PR_TRUE);
+        nsIPresShell::AllowMouseCapture(true);
         if (aDocument && NS_IS_TRUSTED_EVENT(aEvent)) {
           nsFocusManager* fm = nsFocusManager::GetFocusManager();
           if (fm) {
             fm->SetMouseButtonDownHandlingDocument(aDocument);
-            mResetFMMouseDownState = PR_TRUE;
+            mResetFMMouseDownState = true;
           }
         }
       }
@@ -515,7 +596,7 @@ public:
     if (mIsHandlingUserInput) {
       nsEventStateManager::StopHandlingUserInput();
       if (mIsMouseDown) {
-        nsIPresShell::AllowMouseCapture(PR_FALSE);
+        nsIPresShell::AllowMouseCapture(false);
         if (mResetFMMouseDownState) {
           nsFocusManager* fm = nsFocusManager::GetFocusManager();
           if (fm) {
@@ -527,9 +608,9 @@ public:
   }
 
 protected:
-  PRBool mIsHandlingUserInput;
-  PRBool mIsMouseDown;
-  PRBool mResetFMMouseDownState;
+  bool mIsHandlingUserInput;
+  bool mIsMouseDown;
+  bool mResetFMMouseDownState;
 
 private:
   // Hide so that this class can only be stack-allocated

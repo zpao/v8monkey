@@ -43,7 +43,6 @@
 #include "nsITransferable.h"
 #include "nsISupportsArray.h"
 #include "nsSize.h"
-#include "nsIRegion.h"
 #include "nsXPCOM.h"
 #include "nsISupportsPrimitives.h"
 #include "nsCOMPtr.h"
@@ -66,19 +65,23 @@
 #include "nsIViewObserver.h"
 #include "nsRegion.h"
 #include "nsGUIEvent.h"
-#include "nsIPrefService.h"
+#include "nsXULPopupManager.h"
+#include "nsMenuPopupFrame.h"
+#include "mozilla/Preferences.h"
 
 #include "gfxContext.h"
 #include "gfxPlatform.h"
 
+using namespace mozilla;
+
 #define DRAGIMAGES_PREF "nglayout.enable_drag_images"
 
 nsBaseDragService::nsBaseDragService()
-  : mCanDrop(PR_FALSE), mOnlyChromeDrop(PR_FALSE), mDoingDrag(PR_FALSE),
-    mHasImage(PR_FALSE), mUserCancelled(PR_FALSE),
+  : mCanDrop(false), mOnlyChromeDrop(false), mDoingDrag(false),
+    mHasImage(false), mUserCancelled(false),
     mDragAction(DRAGDROP_ACTION_NONE), mTargetSize(0,0),
     mImageX(0), mImageY(0), mScreenX(-1), mScreenY(-1), mSuppressLevel(0),
-    mInputSource(nsIDOMNSMouseEvent::MOZ_SOURCE_MOUSE)
+    mInputSource(nsIDOMMouseEvent::MOZ_SOURCE_MOUSE)
 {
 }
 
@@ -90,7 +93,7 @@ NS_IMPL_ISUPPORTS2(nsBaseDragService, nsIDragService, nsIDragSession)
 
 //---------------------------------------------------------
 NS_IMETHODIMP
-nsBaseDragService::SetCanDrop(PRBool aCanDrop)
+nsBaseDragService::SetCanDrop(bool aCanDrop)
 {
   mCanDrop = aCanDrop;
   return NS_OK;
@@ -98,14 +101,14 @@ nsBaseDragService::SetCanDrop(PRBool aCanDrop)
 
 //---------------------------------------------------------
 NS_IMETHODIMP
-nsBaseDragService::GetCanDrop(PRBool * aCanDrop)
+nsBaseDragService::GetCanDrop(bool * aCanDrop)
 {
   *aCanDrop = mCanDrop;
   return NS_OK;
 }
 //---------------------------------------------------------
 NS_IMETHODIMP
-nsBaseDragService::SetOnlyChromeDrop(PRBool aOnlyChrome)
+nsBaseDragService::SetOnlyChromeDrop(bool aOnlyChrome)
 {
   mOnlyChromeDrop = aOnlyChrome;
   return NS_OK;
@@ -113,7 +116,7 @@ nsBaseDragService::SetOnlyChromeDrop(PRBool aOnlyChrome)
 
 //---------------------------------------------------------
 NS_IMETHODIMP
-nsBaseDragService::GetOnlyChromeDrop(PRBool* aOnlyChrome)
+nsBaseDragService::GetOnlyChromeDrop(bool* aOnlyChrome)
 {
   *aOnlyChrome = mOnlyChromeDrop;
   return NS_OK;
@@ -204,7 +207,7 @@ nsBaseDragService::GetData(nsITransferable * aTransferable,
 //-------------------------------------------------------------------------
 NS_IMETHODIMP
 nsBaseDragService::IsDataFlavorSupported(const char *aDataFlavor,
-                                         PRBool *_retval)
+                                         bool *_retval)
 {
   return NS_ERROR_FAILURE;
 }
@@ -270,16 +273,15 @@ nsBaseDragService::InvokeDragSessionWithImage(nsIDOMNode* aDOMNode,
 
   mDataTransfer = aDataTransfer;
   mSelection = nsnull;
-  mHasImage = PR_TRUE;
+  mHasImage = true;
+  mDragPopup = nsnull;
   mImage = aImage;
   mImageX = aImageX;
   mImageY = aImageY;
 
   aDragEvent->GetScreenX(&mScreenX);
   aDragEvent->GetScreenY(&mScreenY);
-
-  nsCOMPtr<nsIDOMNSMouseEvent> mouseEvent = do_QueryInterface(aDragEvent);
-  mouseEvent->GetMozInputSource(&mInputSource);
+  aDragEvent->GetMozInputSource(&mInputSource);
 
   return InvokeDragSession(aDOMNode, aTransferableArray, aRegion, aActionType);
 }
@@ -297,16 +299,15 @@ nsBaseDragService::InvokeDragSessionWithSelection(nsISelection* aSelection,
 
   mDataTransfer = aDataTransfer;
   mSelection = aSelection;
-  mHasImage = PR_TRUE;
+  mHasImage = true;
+  mDragPopup = nsnull;
   mImage = nsnull;
   mImageX = 0;
   mImageY = 0;
 
   aDragEvent->GetScreenX(&mScreenX);
   aDragEvent->GetScreenY(&mScreenY);
-
-  nsCOMPtr<nsIDOMNSMouseEvent> mouseEvent = do_QueryInterface(aDragEvent);
-  mouseEvent->GetMozInputSource(&mInputSource);
+  aDragEvent->GetMozInputSource(&mInputSource);
 
   // just get the focused node from the selection
   // XXXndeakin this should actually be the deepest node that contains both
@@ -343,15 +344,27 @@ nsBaseDragService::StartDragSession()
   if (mDoingDrag) {
     return NS_ERROR_FAILURE;
   }
-  mDoingDrag = PR_TRUE;
+  mDoingDrag = true;
   // By default dispatch drop also to content.
-  mOnlyChromeDrop = PR_FALSE;
+  mOnlyChromeDrop = false;
+
   return NS_OK;
+}
+
+void
+nsBaseDragService::OpenDragPopup()
+{
+  if (mDragPopup) {
+    nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
+    if (pm) {
+      pm->ShowPopupAtScreen(mDragPopup, mScreenX - mImageX, mScreenY - mImageY, false, nsnull);
+    }
+  }
 }
 
 //-------------------------------------------------------------------------
 NS_IMETHODIMP
-nsBaseDragService::EndDragSession(PRBool aDoneDrag)
+nsBaseDragService::EndDragSession(bool aDoneDrag)
 {
   if (!mDoingDrag) {
     return NS_ERROR_FAILURE;
@@ -360,21 +373,29 @@ nsBaseDragService::EndDragSession(PRBool aDoneDrag)
   if (aDoneDrag && !mSuppressLevel)
     FireDragEventAtSource(NS_DRAGDROP_END);
 
-  mDoingDrag = PR_FALSE;
+  if (mDragPopup) {
+    nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
+    if (pm) {
+      pm->HidePopup(mDragPopup, false, true, false);
+    }
+  }
+
+  mDoingDrag = false;
 
   // release the source we've been holding on to.
   mSourceDocument = nsnull;
   mSourceNode = nsnull;
   mSelection = nsnull;
   mDataTransfer = nsnull;
-  mHasImage = PR_FALSE;
-  mUserCancelled = PR_FALSE;
+  mHasImage = false;
+  mUserCancelled = false;
+  mDragPopup = nsnull;
   mImage = nsnull;
   mImageX = 0;
   mImageY = 0;
   mScreenX = -1;
   mScreenY = -1;
-  mInputSource = nsIDOMNSMouseEvent::MOZ_SOURCE_MOUSE;
+  mInputSource = nsIDOMMouseEvent::MOZ_SOURCE_MOUSE;
 
   return NS_OK;
 }
@@ -388,7 +409,7 @@ nsBaseDragService::FireDragEventAtSource(PRUint32 aMsg)
       nsCOMPtr<nsIPresShell> presShell = doc->GetShell();
       if (presShell) {
         nsEventStatus status = nsEventStatus_eIgnore;
-        nsDragEvent event(PR_TRUE, aMsg, nsnull);
+        nsDragEvent event(true, aMsg, nsnull);
         event.inputSource = mInputSource;
         if (aMsg == NS_DRAGDROP_END) {
           event.refPoint.x = mEndDragPoint.x;
@@ -399,6 +420,23 @@ nsBaseDragService::FireDragEventAtSource(PRUint32 aMsg)
         nsCOMPtr<nsIContent> content = do_QueryInterface(mSourceNode);
         return presShell->HandleDOMEventWithTarget(content, &event, &status);
       }
+    }
+  }
+
+  return NS_OK;
+}
+
+/* This is used by Windows and Mac to update the position of a popup being
+ * used as a drag image during the drag. This isn't used on GTK as it manages
+ * the drag popup itself.
+ */
+NS_IMETHODIMP
+nsBaseDragService::DragMoved(PRInt32 aX, PRInt32 aY)
+{
+  if (mDragPopup) {
+    nsIFrame* frame = mDragPopup->GetPrimaryFrame();
+    if (frame && frame->GetType() == nsGkAtoms::menuPopupFrame) {
+      (static_cast<nsMenuPopupFrame *>(frame))->MoveTo(aX - mImageX, aY - mImageY, true);
     }
   }
 
@@ -436,8 +474,8 @@ nsBaseDragService::DrawDrag(nsIDOMNode* aDOMNode,
   // use a default size, in case of an error.
   aScreenDragRect->x = aScreenX - mImageX;
   aScreenDragRect->y = aScreenY - mImageY;
-  aScreenDragRect->width = 20;
-  aScreenDragRect->height = 20;
+  aScreenDragRect->width = 1;
+  aScreenDragRect->height = 1;
 
   // if a drag image was specified, use that, otherwise, use the source node
   nsCOMPtr<nsIDOMNode> dragNode = mImage ? mImage.get() : aDOMNode;
@@ -453,10 +491,7 @@ nsBaseDragService::DrawDrag(nsIDOMNode* aDOMNode,
   *aPresContext = presShell->GetPresContext();
 
   // check if drag images are disabled
-  PRBool enableDragImages = PR_TRUE;
-  nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (prefs)
-    prefs->GetBoolPref(DRAGIMAGES_PREF, &enableDragImages);
+  bool enableDragImages = Preferences::GetBool(DRAGIMAGES_PREF, true);
 
   // didn't want an image, so just set the screen rectangle to the frame size
   if (!enableDragImages || !mHasImage) {
@@ -500,9 +535,9 @@ nsBaseDragService::DrawDrag(nsIDOMNode* aDOMNode,
     return NS_OK;
   }
 
-  // if an custom image was specified, check if it is an image node and draw
+  // if a custom image was specified, check if it is an image node and draw
   // using the source rather than the displayed image. But if mImage isn't
-  // an image, fall through to RenderNode below.
+  // an image or canvas, fall through to RenderNode below.
   if (mImage) {
     nsCOMPtr<nsICanvasElementExternal> canvas = do_QueryInterface(dragNode);
     if (canvas) {
@@ -516,22 +551,31 @@ nsBaseDragService::DrawDrag(nsIDOMNode* aDOMNode,
       return DrawDragForImage(*aPresContext, imageLoader, nsnull, aScreenX,
                               aScreenY, aScreenDragRect, aSurface);
     }
-  }
 
-  // otherwise, just draw the node
-  nsIntRegion clipRegion;
-  if (aRegion) {
-    nsCOMPtr<nsIRegion> clipIRegion;
-    aRegion->GetRegion(getter_AddRefs(clipIRegion));
-    if (clipIRegion) {
-      clipRegion = clipIRegion->GetUnderlyingRegion();
+    // If the image is a popup, use that as the image. This allows custom drag
+    // images that can change during the drag, but means that any platform
+    // default image handling won't occur.
+    // XXXndeakin this should be chrome-only
+
+    nsCOMPtr<nsIContent> content = do_QueryInterface(dragNode);
+    nsIFrame* frame = content->GetPrimaryFrame();
+    if (frame && frame->GetType() == nsGkAtoms::menuPopupFrame) {
+      mDragPopup = content;
     }
   }
 
-  nsIntPoint pnt(aScreenDragRect->x, aScreenDragRect->y);
-  nsRefPtr<gfxASurface> surface =
-    presShell->RenderNode(dragNode, aRegion ? &clipRegion : nsnull,
-                          pnt, aScreenDragRect);
+  nsRefPtr<gfxASurface> surface;
+  if (!mDragPopup) {
+    // otherwise, just draw the node
+    nsIntRegion clipRegion;
+    if (aRegion) {
+      aRegion->GetRegion(&clipRegion);
+    }
+
+    nsIntPoint pnt(aScreenDragRect->x, aScreenDragRect->y);
+    surface = presShell->RenderNode(dragNode, aRegion ? &clipRegion : nsnull,
+                                    pnt, aScreenDragRect);
+  }
 
   // if an image was specified, reposition the drag rectangle to
   // the supplied offset in mImageX and mImageY.
@@ -595,9 +639,9 @@ nsBaseDragService::DrawDragForImage(nsPresContext* aPresContext,
   if (destSize.width > maxWidth || destSize.height > maxHeight) {
     float scale = 1.0;
     if (destSize.width > maxWidth)
-      scale = PR_MIN(scale, float(maxWidth) / destSize.width);
+      scale = NS_MIN(scale, float(maxWidth) / destSize.width);
     if (destSize.height > maxHeight)
-      scale = PR_MIN(scale, float(maxHeight) / destSize.height);
+      scale = NS_MIN(scale, float(maxHeight) / destSize.height);
 
     destSize.width = NSToIntFloor(float(destSize.width) * scale);
     destSize.height = NSToIntFloor(float(destSize.height) * scale);
@@ -646,7 +690,7 @@ nsBaseDragService::ConvertToUnscaledDevPixels(nsPresContext* aPresContext,
 NS_IMETHODIMP
 nsBaseDragService::Suppress()
 {
-  EndDragSession(PR_FALSE);
+  EndDragSession(false);
   ++mSuppressLevel;
   return NS_OK;
 }

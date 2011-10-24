@@ -91,7 +91,9 @@ nsNodeInfoManager::NodeInfoInnerKeyCompare(const void *key1, const void *key2)
     reinterpret_cast<const nsINodeInfo::nsNodeInfoInner *>(key2);
 
   if (node1->mPrefix != node2->mPrefix ||
-      node1->mNamespaceID != node2->mNamespaceID) {
+      node1->mNamespaceID != node2->mNamespaceID ||
+      node1->mNodeType != node2->mNodeType ||
+      node1->mExtraName != node2->mExtraName) {
     return 0;
   }
 
@@ -110,6 +112,7 @@ nsNodeInfoManager::NodeInfoInnerKeyCompare(const void *key1, const void *key2)
 
 nsNodeInfoManager::nsNodeInfoManager()
   : mDocument(nsnull),
+    mNonDocumentNodeInfos(0),
     mPrincipal(nsnull),
     mTextNodeInfo(nsnull),
     mCommentNodeInfo(nsnull),
@@ -158,6 +161,9 @@ NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(nsNodeInfoManager, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(nsNodeInfoManager, Release)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_NATIVE_0(nsNodeInfoManager)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NATIVE_BEGIN(nsNodeInfoManager)
+  if (tmp->mNonDocumentNodeInfos) {
+    NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(mDocument)
+  }
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(mBindingManager)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -192,6 +198,14 @@ nsNodeInfoManager::Init(nsIDocument *aDocument)
   return NS_OK;
 }
 
+// static
+PRIntn
+nsNodeInfoManager::DropNodeInfoDocument(PLHashEntry *he, PRIntn hashIndex, void *arg)
+{
+  static_cast<nsINodeInfo*>(he->value)->mDocument = nsnull;
+  return HT_ENUMERATE_NEXT;
+}
+
 void
 nsNodeInfoManager::DropDocumentReference()
 {
@@ -199,19 +213,23 @@ nsNodeInfoManager::DropDocumentReference()
     mBindingManager->DropDocumentReference();
   }
 
+  // This is probably not needed anymore.
+  PL_HashTableEnumerateEntries(mNodeInfoHash, DropNodeInfoDocument, nsnull);
+
+  NS_ASSERTION(!mNonDocumentNodeInfos, "Shouldn't have non-document nodeinfos!");
   mDocument = nsnull;
 }
 
 
 already_AddRefed<nsINodeInfo>
 nsNodeInfoManager::GetNodeInfo(nsIAtom *aName, nsIAtom *aPrefix,
-                               PRInt32 aNamespaceID)
+                               PRInt32 aNamespaceID, PRUint16 aNodeType,
+                               nsIAtom* aExtraName /* = nsnull */)
 {
-  NS_ENSURE_TRUE(aName, nsnull);
-  NS_ASSERTION(!aName->Equals(EmptyString()),
-               "Don't pass an empty string to GetNodeInfo, fix caller.");
+  CHECK_VALID_NODEINFO(aNodeType, aName, aNamespaceID, aExtraName);
 
-  nsINodeInfo::nsNodeInfoInner tmpKey(aName, aPrefix, aNamespaceID);
+  nsINodeInfo::nsNodeInfoInner tmpKey(aName, aPrefix, aNamespaceID, aNodeType,
+                                      aExtraName);
 
   void *node = PL_HashTableLookup(mNodeInfoHash, &tmpKey);
 
@@ -224,7 +242,8 @@ nsNodeInfoManager::GetNodeInfo(nsIAtom *aName, nsIAtom *aPrefix,
   }
 
   nsRefPtr<nsNodeInfo> newNodeInfo =
-    nsNodeInfo::Create(aName, aPrefix, aNamespaceID, this);
+    nsNodeInfo::Create(aName, aPrefix, aNamespaceID, aNodeType, aExtraName,
+                       this);
   NS_ENSURE_TRUE(newNodeInfo, nsnull);
   
   PLHashEntry *he;
@@ -233,6 +252,11 @@ nsNodeInfoManager::GetNodeInfo(nsIAtom *aName, nsIAtom *aPrefix,
 
   // Have to do the swap thing, because already_AddRefed<nsNodeInfo>
   // doesn't cast to already_AddRefed<nsINodeInfo>
+  ++mNonDocumentNodeInfos;
+  if (mNonDocumentNodeInfos == 1) {
+    NS_IF_ADDREF(mDocument);
+  }
+
   nsNodeInfo *nodeInfo = nsnull;
   newNodeInfo.swap(nodeInfo);
 
@@ -242,12 +266,17 @@ nsNodeInfoManager::GetNodeInfo(nsIAtom *aName, nsIAtom *aPrefix,
 
 nsresult
 nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
-                               PRInt32 aNamespaceID, nsINodeInfo** aNodeInfo)
+                               PRInt32 aNamespaceID, PRUint16 aNodeType,
+                               nsINodeInfo** aNodeInfo)
 {
-  NS_ASSERTION(!aName.IsEmpty(),
-               "Don't pass an empty string to GetNodeInfo, fix caller.");
+#ifdef DEBUG
+  {
+    nsCOMPtr<nsIAtom> nameAtom = do_GetAtom(aName);
+    CHECK_VALID_NODEINFO(aNodeType, nameAtom, aNamespaceID, nsnull);
+  }
+#endif
 
-  nsINodeInfo::nsNodeInfoInner tmpKey(aName, aPrefix, aNamespaceID);
+  nsINodeInfo::nsNodeInfoInner tmpKey(aName, aPrefix, aNamespaceID, aNodeType);
 
   void *node = PL_HashTableLookup(mNodeInfoHash, &tmpKey);
 
@@ -264,12 +293,18 @@ nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
   NS_ENSURE_TRUE(nameAtom, NS_ERROR_OUT_OF_MEMORY);
 
   nsRefPtr<nsNodeInfo> newNodeInfo =
-      nsNodeInfo::Create(nameAtom, aPrefix, aNamespaceID, this);
+      nsNodeInfo::Create(nameAtom, aPrefix, aNamespaceID, aNodeType, nsnull,
+                         this);
   NS_ENSURE_TRUE(newNodeInfo, NS_ERROR_OUT_OF_MEMORY);
 
   PLHashEntry *he;
   he = PL_HashTableAdd(mNodeInfoHash, &newNodeInfo->mInner, newNodeInfo);
   NS_ENSURE_TRUE(he, NS_ERROR_FAILURE);
+
+  ++mNonDocumentNodeInfos;
+  if (mNonDocumentNodeInfos == 1) {
+    NS_IF_ADDREF(mDocument);
+  }
 
   newNodeInfo.forget(aNodeInfo);
 
@@ -280,11 +315,9 @@ nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
 nsresult
 nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
                                const nsAString& aNamespaceURI,
+                               PRUint16 aNodeType,
                                nsINodeInfo** aNodeInfo)
 {
-  nsCOMPtr<nsIAtom> nameAtom = do_GetAtom(aName);
-  NS_ENSURE_TRUE(nameAtom, NS_ERROR_OUT_OF_MEMORY);
-
   PRInt32 nsid = kNameSpaceID_None;
 
   if (!aNamespaceURI.IsEmpty()) {
@@ -293,15 +326,16 @@ nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  *aNodeInfo = GetNodeInfo(nameAtom, aPrefix, nsid).get();
-  return *aNodeInfo ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+  return GetNodeInfo(aName, aPrefix, nsid, aNodeType, aNodeInfo);
 }
 
 already_AddRefed<nsINodeInfo>
 nsNodeInfoManager::GetTextNodeInfo()
 {
   if (!mTextNodeInfo) {
-    mTextNodeInfo = GetNodeInfo(nsGkAtoms::textTagName, nsnull, kNameSpaceID_None).get();
+    mTextNodeInfo = GetNodeInfo(nsGkAtoms::textTagName, nsnull,
+                                kNameSpaceID_None,
+                                nsIDOMNode::TEXT_NODE, nsnull).get();
   }
   else {
     NS_ADDREF(mTextNodeInfo);
@@ -314,7 +348,9 @@ already_AddRefed<nsINodeInfo>
 nsNodeInfoManager::GetCommentNodeInfo()
 {
   if (!mCommentNodeInfo) {
-    mCommentNodeInfo = GetNodeInfo(nsGkAtoms::commentTagName, nsnull, kNameSpaceID_None).get();
+    mCommentNodeInfo = GetNodeInfo(nsGkAtoms::commentTagName, nsnull,
+                                   kNameSpaceID_None,
+                                   nsIDOMNode::COMMENT_NODE, nsnull).get();
   }
   else {
     NS_ADDREF(mCommentNodeInfo);
@@ -327,7 +363,14 @@ already_AddRefed<nsINodeInfo>
 nsNodeInfoManager::GetDocumentNodeInfo()
 {
   if (!mDocumentNodeInfo) {
-    mDocumentNodeInfo = GetNodeInfo(nsGkAtoms::documentNodeName, nsnull, kNameSpaceID_None).get();
+    NS_ASSERTION(mDocument, "Should have mDocument!");
+    mDocumentNodeInfo = GetNodeInfo(nsGkAtoms::documentNodeName, nsnull,
+                                    kNameSpaceID_None,
+                                    nsIDOMNode::DOCUMENT_NODE, nsnull).get();
+    --mNonDocumentNodeInfos;
+    if (!mNonDocumentNodeInfos) {
+      mDocument->Release(); // Don't set mDocument to null!
+    }
   }
   else {
     NS_ADDREF(mDocumentNodeInfo);
@@ -354,19 +397,28 @@ nsNodeInfoManager::RemoveNodeInfo(nsNodeInfo *aNodeInfo)
 {
   NS_PRECONDITION(aNodeInfo, "Trying to remove null nodeinfo from manager!");
 
-  // Drop weak reference if needed
-  if (aNodeInfo == mTextNodeInfo) {
-    mTextNodeInfo = nsnull;
-  }
-  else if (aNodeInfo == mCommentNodeInfo) {
-    mCommentNodeInfo = nsnull;
-  }
-  else if (aNodeInfo == mDocumentNodeInfo) {
+  if (aNodeInfo == mDocumentNodeInfo) {
     mDocumentNodeInfo = nsnull;
+    mDocument = nsnull;
+  } else {
+    if (--mNonDocumentNodeInfos == 0) {
+      if (mDocument) {
+        // Note, whoever calls this method should keep NodeInfoManager alive,
+        // even if mDocument gets deleted.
+        mDocument->Release();
+      }
+    }
+    // Drop weak reference if needed
+    if (aNodeInfo == mTextNodeInfo) {
+      mTextNodeInfo = nsnull;
+    }
+    else if (aNodeInfo == mCommentNodeInfo) {
+      mCommentNodeInfo = nsnull;
+    }
   }
 
 #ifdef DEBUG
-  PRBool ret =
+  bool ret =
 #endif
   PL_HashTableRemove(mNodeInfoHash, &aNodeInfo->mInner);
 

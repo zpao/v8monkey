@@ -100,13 +100,13 @@ protected:
    * @return
    *   This method returns "true" if a native event was processed.
    */
-  virtual PRBool ProcessNextNativeEvent(PRBool mayWait) = 0;
+  virtual bool ProcessNextNativeEvent(bool mayWait) = 0;
 
   PRInt32 mSuspendNativeCount;
   PRUint32 mEventloopNestingLevel;
 
 private:
-  PRBool DoProcessNextNativeEvent(PRBool mayWait);
+  bool DoProcessNextNativeEvent(bool mayWait);
 
   /**
    * Runs all synchronous sections which are queued up in mSyncSections.
@@ -117,10 +117,10 @@ private:
   /**
    * mBlockedWait points back to a slot that controls the wait loop in
    * an outer OnProcessNextEvent invocation.  Nested calls always set
-   * it to PR_FALSE to unblock an outer loop, since all events may
+   * it to false to unblock an outer loop, since all events may
    * have been consumed by the inner event loop(s).
    */
-  PRBool *mBlockedWait;
+  bool *mBlockedWait;
   PRInt32 mFavorPerf;
   PRInt32 mNativeEventPending;
   PRIntervalTime mStarvationDelay;
@@ -133,18 +133,18 @@ private:
   };
   EventloopNestingState mEventloopNestingState;
   nsCOMArray<nsIRunnable> mSyncSections;
-  PRPackedBool mRunning;
-  PRPackedBool mExiting;
+  bool mRunning;
+  bool mExiting;
   /**
    * mBlockNativeEvent blocks the appshell from processing native events.
-   * It is set to PR_TRUE while a nested native event loop (eEventloopOther)
+   * It is set to true while a nested native event loop (eEventloopOther)
    * is processing gecko events in NativeEventCallback(), thus queuing up
    * native events until we return to that loop (bug 420148).
-   * We force mBlockNativeEvent to PR_FALSE in case handling one of the gecko
+   * We force mBlockNativeEvent to false in case handling one of the gecko
    * events spins up a nested XPCOM event loop (eg. modal window) which would
    * otherwise lead to a "deadlock" where native events aren't processed at all.
    */
-  PRPackedBool mBlockNativeEvent;
+  bool mBlockNativeEvent;
   /**
    * Tracks whether we have processed any gecko events in NativeEventCallback so
    * that we can avoid erroneously entering a blocking loop waiting for gecko
@@ -156,11 +156,11 @@ private:
    * waiting loop, this is the only way to make the loop aware that events may
    * have been processed.
    *
-   * This variable is set to PR_FALSE in OnProcessNextEvent prior to the first
-   * call to DoProcessNextNativeEvent.  It is set to PR_TRUE by
+   * This variable is set to false in OnProcessNextEvent prior to the first
+   * call to DoProcessNextNativeEvent.  It is set to true by
    * NativeEventCallback after calling NS_ProcessPendingEvents.
    */
-  PRPackedBool mProcessedGeckoEvents;
+  bool mProcessedGeckoEvents;
 };
 
 #endif // nsBaseAppShell_h__

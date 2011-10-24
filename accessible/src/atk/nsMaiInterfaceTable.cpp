@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:expandtab:shiftwidth=2:tabstop=2: */
+/* vim: set ts=2 et sw=2 tw=80: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -464,7 +464,7 @@ isColumnSelectedCB(AtkTable *aTable, gint aColumn)
                             getter_AddRefs(accTable));
     NS_ENSURE_TRUE(accTable, FALSE);
 
-    PRBool outValue;
+    bool outValue;
     nsresult rv = accTable->IsColumnSelected(aColumn, &outValue);
     return NS_FAILED(rv) ? FALSE : static_cast<gboolean>(outValue);
 }
@@ -481,7 +481,7 @@ isRowSelectedCB(AtkTable *aTable, gint aRow)
                             getter_AddRefs(accTable));
     NS_ENSURE_TRUE(accTable, FALSE);
 
-    PRBool outValue;
+    bool outValue;
     nsresult rv = accTable->IsRowSelected(aRow, &outValue);
     return NS_FAILED(rv) ? FALSE : static_cast<gboolean>(outValue);
 }
@@ -498,7 +498,7 @@ isCellSelectedCB(AtkTable *aTable, gint aRow, gint aColumn)
                             getter_AddRefs(accTable));
     NS_ENSURE_TRUE(accTable, FALSE);
 
-    PRBool outValue;
+    bool outValue;
     nsresult rv = accTable->IsCellSelected(aRow, aColumn, &outValue);
     return NS_FAILED(rv) ? FALSE : static_cast<gboolean>(outValue);
 }

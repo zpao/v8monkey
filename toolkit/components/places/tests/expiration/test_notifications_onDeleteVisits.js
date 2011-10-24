@@ -117,7 +117,7 @@ function run_next_test() {
     gCurrentTest.receivedNotifications = 0;
 
     // Setup visits.
-    let now = Date.now() * 1000;
+    let now = getExpirablePRTime();
     for (let j = 0; j < gCurrentTest.visitsPerPage; j++) {
       for (let i = 0; i < gCurrentTest.addPages; i++) {
         let page = "http://" + gTestIndex + "." + i + ".mozilla.org/";
@@ -142,13 +142,17 @@ function run_next_test() {
       onVisit: function() {},
       onTitleChanged: function() {},
       onBeforeDeleteURI: function() {},
-      onDeleteURI: function(aURI) {
+      onDeleteURI: function(aURI, aGUID, aReason) {
         // Check this uri was not bookmarked.
         do_check_eq(gCurrentTest.bookmarks.indexOf(aURI.spec), -1);
+        do_check_valid_places_guid(aGUID);
+        do_check_eq(aReason, Ci.nsINavHistoryObserver.REASON_EXPIRED);
       },
       onPageChanged: function() {},
-      onDeleteVisits: function(aURI, aTime) {
+      onDeleteVisits: function(aURI, aTime, aGUID, aReason) {
         gCurrentTest.receivedNotifications++;
+        do_check_guid_for_uri(aURI, aGUID);
+        do_check_eq(aReason, Ci.nsINavHistoryObserver.REASON_EXPIRED);
       },
     };
     hs.addObserver(historyObserver, false);

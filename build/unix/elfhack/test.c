@@ -79,6 +79,7 @@ DEF(several)
 DEF(times)
 
 #else
+#pragma GCC visibility push(default)
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -109,14 +110,16 @@ const char *strings2[] = {
 
 static int ret = 1;
 
-__attribute__((visibility("default"))) int print_status() {
+int print_status() {
     fprintf(stderr, "%s\n", ret ? "FAIL" : "PASS");
     return ret;
 }
 
 /* On ARM, this creates a .tbss section before .init_array, which
- * elfhack could then pick instead of .init_array */
-__thread int foo;
+ * elfhack could then pick instead of .init_array.
+ * Also, when .tbss is big enough, elfhack may wrongfully consider
+ * following sections as part of the PT_TLS segment. */
+__thread int foo[1024];
 
 __attribute__((constructor)) void end_test() {
     static int count = 0;
@@ -147,4 +150,5 @@ __attribute__((constructor)) void test() {
     end_test();
 }
 
+#pragma GCC visibility pop
 #endif

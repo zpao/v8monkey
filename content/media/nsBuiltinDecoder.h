@@ -37,24 +37,28 @@
  *
  * ***** END LICENSE BLOCK ***** */
 /*
-Each video element based on nsBuiltinDecoder has at least one thread
-dedicated to decoding video.
+Each video element based on nsBuiltinDecoder has a state machine to manage
+its play state and keep the current frame up to date. All state machines
+share time in a single shared thread. Each decoder also has one thread
+dedicated to decoding audio and video data. This thread is shutdown when
+playback is paused. Each decoder also has a thread to push decoded audio
+to the hardware. This thread is not created until playback starts, but
+currently is not destroyed when paused, only when playback ends.
 
-This thread (called the state machine thread owns the resources for
-downloading and reading the media file. nsDecoderStateMachine is the
-class that needs to be implemented and it gets run on the state
-machine thread.
+The decoder owns the resources for downloading the media file, and the
+high level state. It holds an owning reference to the state machine
+(a subclass of nsDecoderStateMachine; nsBuiltinDecoderStateMachine) that
+owns all the resources related to decoding data, and manages the low level
+decoding operations and A/V sync. 
 
-The state machine thread has one event that is dispatched to it (the
-implementation of nsDecoderStateMachine) and that event runs for the
-lifetime of the playback of the resource. State shared between threads
-is synchronised with the main thread via a monitor held by the
-nsBuiltinDecoder object.
-
-The state machine thread event consist of a Run method which is an
-infinite loop that performs the decoding operation and checks the
-state that the state machine is in and processes operations on that
-state.
+Each state machine runs on the shared state machine thread. Every time some
+action is required for a state machine, it is scheduled to run on the shared
+the state machine thread. The state machine runs one "cycle" on the state
+machine thread, and then returns. If necessary, it will schedule itself to
+run again in future. While running this cycle, it must not block the
+thread, as other state machines' events may need to run. State shared
+between a state machine's threads is synchronised via the monitor owned
+by its nsBuiltinDecoder object.
 
 The Main thread controls the decode state machine by setting the value
 of a mPlayState variable and notifying on the monitor based on the
@@ -85,25 +89,37 @@ SHUTDOWN
 State transition occurs when the Media Element calls the Play, Seek,
 etc methods on the nsBuiltinDecoder object. When the transition
 occurs nsBuiltinDecoder then calls the methods on the decoder state
-machine object to cause it to behave appropriate to the play state.
+machine object to cause it to behave as required by the play state.
+State transitions will likely schedule the state machine to run to
+affect the change.
 
 An implementation of the nsDecoderStateMachine class is the event
-that gets dispatched to the state machine thread. It has the following states:
+that gets dispatched to the state machine thread. Each time the event is run,
+the state machine must cycle the state machine once, and then return.
+
+The state machine has the following states:
 
 DECODING_METADATA
   The media headers are being loaded, and things like framerate, etc are
   being determined, and the first frame of audio/video data is being decoded.
 DECODING
-  The decode and audio threads are started and video frames displayed at
-  the required time. 
+  The decode has started. If the PlayState is PLAYING, the decode thread
+  should be alive and decoding video and audio frame, the audio thread
+  should be playing audio, and the state machine should run periodically
+  to update the video frames being displayed.
 SEEKING
-  A seek operation is in progress.
+  A seek operation is in progress. The decode thread should be seeking.
 BUFFERING
-  Decoding is paused while data is buffered for smooth playback.
+  Decoding is paused while data is buffered for smooth playback. If playback
+  is paused (PlayState transitions to PAUSED) we'll destory the decode thread.
 COMPLETED
-  The resource has completed decoding, but not finished playback. 
+  The resource has completed decoding, but possibly not finished playback.
+  The decode thread will be destroyed. Once playback finished, the audio
+  thread will also be destroyed.
 SHUTDOWN
-  The decoder object is about to be destroyed.
+  The decoder object and its state machine are about to be destroyed.
+  Once the last state machine has been destroyed, the shared state machine
+  thread will also be destroyed. It will be recreated later if needed.
 
 The following result in state transitions.
 
@@ -157,41 +173,41 @@ player SHUTDOWN  decoder SHUTDOWN
 The general sequence of events is:
 
 1) The video element calls Load on nsMediaDecoder. This creates the
-   state machine thread and starts the channel for downloading the
-   file. It instantiates and starts the nsDecoderStateMachine. The
+   state machine and starts the channel for downloading the
+   file. It instantiates and schedules the nsDecoderStateMachine. The
    high level LOADING state is entered, which results in the decode
-   state machine to start decoding metadata. These are the headers
-   that give the video size, framerate, etc.  It returns immediately
-   to the calling video element.
+   thread being created and starting to decode metadata. These are
+   the headers that give the video size, framerate, etc. Load() returns
+   immediately to the calling video element.
 
-2) When the metadata has been loaded by the decode thread it will call
-   a method on the video element object to inform it that this step is
-   done, so it can do the things required by the video specification
-   at this stage. The decoder then continues to decode the first frame
+2) When the metadata has been loaded by the decode thread, the state machine
+   will call a method on the video element object to inform it that this
+   step is done, so it can do the things required by the video specification
+   at this stage. The decode thread then continues to decode the first frame
    of data.
 
-3) When the first frame of data has been successfully decoded it calls
-   a method on the video element object to inform it that this step
-   has been done, once again so it can do the required things by the
-   video specification at this stage.
+3) When the first frame of data has been successfully decoded the state
+   machine calls a method on the video element object to inform it that
+   this step has been done, once again so it can do the required things
+   by the video specification at this stage.
 
    This results in the high level state changing to PLAYING or PAUSED
    depending on any user action that may have occurred.
 
-   The decode thread plays audio and video, if the correct frame time
-   comes around and the decoder play state is PLAYING.
-   
-a/v synchronisation is handled by the nsDecoderStateMachine implementation.
+   While the play state is PLAYING, the decode thread will decode
+   data, and the audio thread will push audio data to the hardware to
+   be played. The state machine will run periodically on the shared
+   state machine thread to ensure video frames are played at the 
+   correct time; i.e. the state machine manages A/V sync.
 
-The Shutdown method on nsBuiltinDecoder can spin the event loop as it
-waits for threads to complete. Spinning the event loop is a bad thing
-to happen during certain times like destruction of the media
-element. To work around this the Shutdown method does nothing but
-queue an event to the main thread to perform the actual Shutdown. This
-way the shutdown can occur at a safe time.
+The Shutdown method on nsBuiltinDecoder closes the download channel, and
+signals to the state machine that it should shutdown. The state machine
+shuts down asynchronously, and will release the owning reference to the
+state machine once its threads are shutdown.
 
-This means the owning object of a nsBuiltinDecoder object *MUST* call
-Shutdown when destroying the nsBuiltinDecoder object.  
+The owning object of a nsBuiltinDecoder object *MUST* call Shutdown when
+destroying the nsBuiltinDecoder object.
+
 */
 #if !defined(nsBuiltinDecoder_h_)
 #define nsBuiltinDecoder_h_
@@ -216,7 +232,7 @@ Shutdown when destroying the nsBuiltinDecoder object.
 
 class nsAudioStream;
 
-static inline PRBool IsCurrentThread(nsIThread* aThread) {
+static inline bool IsCurrentThread(nsIThread* aThread) {
   return NS_GetCurrentThread() == aThread;
 }
 
@@ -265,9 +281,15 @@ public:
   // aEndTime is in microseconds.
   virtual void SetEndTime(PRInt64 aEndTime) = 0;
 
+  // Set the media fragment end time. aEndTime is in microseconds.
+  virtual void SetFragmentEndTime(PRInt64 aEndTime) = 0;
+
   // Functions used by assertions to ensure we're calling things
   // on the appropriate threads.
-  virtual PRBool OnDecodeThread() const = 0;
+  virtual bool OnDecodeThread() const = 0;
+
+  // Returns true if the current thread is the state machine thread.
+  virtual bool OnStateMachineThread() const = 0;
 
   virtual nsHTMLMediaElement::NextFrameStatus GetNextFrameStatus() = 0;
 
@@ -292,12 +314,12 @@ public:
   // Called from the main thread to set whether the media resource can
   // seek into unbuffered ranges. The decoder monitor must be obtained
   // before calling this.
-  virtual void SetSeekable(PRBool aSeekable) = 0;
+  virtual void SetSeekable(bool aSeekable) = 0;
 
-  // Returns PR_TRUE if the media resource can seek into unbuffered ranges,
+  // Returns true if the media resource can seek into unbuffered ranges,
   // as set by SetSeekable(). The decoder monitor must be obtained before
   // calling this.
-  virtual PRBool GetSeekable() = 0;
+  virtual bool IsSeekable() = 0;
 
   // Update the playback position. This can result in a timeupdate event
   // and an invalidate of the frame being dispatched asynchronously if
@@ -307,6 +329,9 @@ public:
   virtual void UpdatePlaybackPosition(PRInt64 aTime) = 0;
 
   virtual nsresult GetBuffered(nsTimeRanges* aBuffered) = 0;
+
+  virtual PRInt64 VideoQueueMemoryInUse() = 0;
+  virtual PRInt64 AudioQueueMemoryInUse() = 0;
 
   virtual void NotifyDataArrived(const char* aBuffer, PRUint32 aLength, PRUint32 aOffset) = 0;
 
@@ -346,7 +371,7 @@ class nsBuiltinDecoder : public nsMediaDecoder
   nsBuiltinDecoder();
   ~nsBuiltinDecoder();
   
-  virtual PRBool Init(nsHTMLMediaElement* aElement);
+  virtual bool Init(nsHTMLMediaElement* aElement);
 
   // This method must be called by the owning object before that
   // object disposes of this decoder object.
@@ -373,6 +398,9 @@ class nsBuiltinDecoder : public nsMediaDecoder
   virtual void SetVolume(double aVolume);
   virtual double GetDuration();
 
+  virtual void SetInfinite(bool aInfinite);
+  virtual bool IsInfinite();
+
   virtual nsMediaStream* GetCurrentStream();
   virtual already_AddRefed<nsIPrincipal> GetCurrentPrincipal();
 
@@ -391,13 +419,13 @@ class nsBuiltinDecoder : public nsMediaDecoder
   // Call on the main thread only.
   virtual void NetworkError();
 
-  // Call from any thread safely. Return PR_TRUE if we are currently
+  // Call from any thread safely. Return true if we are currently
   // seeking in the media resource.
-  virtual PRBool IsSeeking() const;
+  virtual bool IsSeeking() const;
 
-  // Return PR_TRUE if the decoder has reached the end of playback.
+  // Return true if the decoder has reached the end of playback.
   // Call on the main thread only.
-  virtual PRBool IsEnded() const;
+  virtual bool IsEnded() const;
 
   // Set the duration of the media resource in units of seconds.
   // This is called via a channel listener if it can pick up the duration
@@ -405,10 +433,16 @@ class nsBuiltinDecoder : public nsMediaDecoder
   virtual void SetDuration(double aDuration);
 
   // Set a flag indicating whether seeking is supported
-  virtual void SetSeekable(PRBool aSeekable);
+  virtual void SetSeekable(bool aSeekable);
 
-  // Return PR_TRUE if seeking is supported.
-  virtual PRBool GetSeekable();
+  // Return true if seeking is supported.
+  virtual bool IsSeekable();
+
+  virtual nsresult GetSeekable(nsTimeRanges* aSeekable);
+
+  // Set the end time of the media resource. When playback reaches
+  // this point the media pauses. aTime is in seconds.
+  virtual void SetEndTime(double aTime);
 
   virtual Statistics GetStatistics();
 
@@ -420,14 +454,10 @@ class nsBuiltinDecoder : public nsMediaDecoder
   // Resume any media downloads that have been suspended. Called by the
   // media element when it is restored from the bfcache. Call on the
   // main thread only.
-  virtual void Resume(PRBool aForceBuffering);
+  virtual void Resume(bool aForceBuffering);
 
   // Tells our nsMediaStream to put all loads in the background.
   virtual void MoveLoadsToBackground();
-
-  // Stop the state machine thread and drop references to the thread and
-  // state machine.
-  void Stop();
 
   void AudioAvailable(float* aFrameBuffer, PRUint32 aFrameBufferLength, float aTime);
 
@@ -435,11 +465,9 @@ class nsBuiltinDecoder : public nsMediaDecoder
   // has changed.
   void DurationChanged();
 
-  PRBool OnStateMachineThread() {
-    return IsCurrentThread(mStateMachineThread);
-  }
+  bool OnStateMachineThread() const;
 
-  PRBool OnDecodeThread() const {
+  bool OnDecodeThread() const {
     return mDecoderStateMachine->OnDecodeThread();
   }
 
@@ -456,6 +484,20 @@ class nsBuiltinDecoder : public nsMediaDecoder
       return mDecoderStateMachine->GetBuffered(aBuffered);
     }
     return NS_ERROR_FAILURE;
+  }
+
+  virtual PRInt64 VideoQueueMemoryInUse() {
+    if (mDecoderStateMachine) {
+      return mDecoderStateMachine->VideoQueueMemoryInUse();
+    }
+    return 0;
+  }
+
+  virtual PRInt64 AudioQueueMemoryInUse() {
+    if (mDecoderStateMachine) {
+      return mDecoderStateMachine->AudioQueueMemoryInUse();
+    }
+    return 0;
   }
 
   virtual void NotifyDataArrived(const char* aBuffer, PRUint32 aLength, PRUint32 aOffset) {
@@ -487,7 +529,7 @@ class nsBuiltinDecoder : public nsMediaDecoder
   void UpdatePlaybackRate();
 
   // The actual playback rate computation. The monitor must be held.
-  double ComputePlaybackRate(PRPackedBool* aReliable);
+  double ComputePlaybackRate(bool* aReliable);
 
   // Make the decoder state machine update the playback position. Called by
   // the reader on the decoder thread (Assertions for this checked by 
@@ -563,13 +605,16 @@ class nsBuiltinDecoder : public nsMediaDecoder
   // obtained before calling this.
   nsDecoderStateMachine::State GetDecodeState() { return mDecoderStateMachine->GetState(); }
 
+  // Drop reference to state machine.  Only called during shutdown dance.
+  void ReleaseStateMachine() { mDecoderStateMachine = nsnull; }
+
 public:
   // Notifies the element that decoding has failed.
   void DecodeError();
 
-  // Ensures the state machine thread is running, starting a new one
-  // if necessary.
-  nsresult StartStateMachineThread();
+  // Schedules the state machine to run one cycle on the shared state
+  // machine thread. Main thread only.
+  nsresult ScheduleStateMachineThread();
 
   /******
    * The following members should be accessed with the decoder lock held.
@@ -589,9 +634,6 @@ public:
   // this estimate is "decode time" (where the "current time" is the
   // time of the last decoded video frame).
   nsChannelStatistics mPlaybackStatistics;
-
-  // Thread to manage playback state machine.
-  nsCOMPtr<nsIThread> mStateMachineThread;
 
   // The current playback position of the media resource in units of
   // seconds. This is updated approximately at the framerate of the
@@ -617,7 +659,7 @@ public:
 
   // True if the media resource is seekable (server supports byte range
   // requests).
-  PRPackedBool mSeekable;
+  bool mSeekable;
 
   /******
    * The following member variables can be accessed from any thread.
@@ -653,14 +695,17 @@ public:
   // True when we have fully loaded the resource and reported that
   // to the element (i.e. reached NETWORK_LOADED state).
   // Accessed on the main thread only.
-  PRPackedBool mResourceLoaded;
+  bool mResourceLoaded;
 
   // True when seeking or otherwise moving the play position around in
   // such a manner that progress event data is inaccurate. This is set
   // during seek and duration operations to prevent the progress indicator
   // from jumping around. Read/Write from any thread. Must have decode monitor
   // locked before accessing.
-  PRPackedBool mIgnoreProgressData;
+  bool mIgnoreProgressData;
+
+  // True if the stream is infinite (e.g. a webradio).
+  bool mInfiniteStream;
 };
 
 #endif

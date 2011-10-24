@@ -229,9 +229,9 @@ class NS_STACK_CLASS nsWSRunObject
     struct NS_STACK_CLASS WSPoint
     {
       nsCOMPtr<nsIContent> mTextNode;
-      PRInt16 mOffset;
+      PRUint32 mOffset;
       PRUnichar mChar;
-      
+
       WSPoint() : mTextNode(0),mOffset(0),mChar(0) {}
       WSPoint(nsIDOMNode *aNode, PRInt32 aOffset, PRUnichar aChar) : 
                      mTextNode(do_QueryInterface(aNode)),mOffset(aOffset),mChar(aChar)
@@ -301,7 +301,7 @@ class NS_STACK_CLASS nsWSRunObject
     nsresult GetAsciiWSBounds(PRInt16 aDir, nsIDOMNode *aNode, PRInt32 aOffset,
                                 nsCOMPtr<nsIDOMNode> *outStartNode, PRInt32 *outStartOffset,
                                 nsCOMPtr<nsIDOMNode> *outEndNode, PRInt32 *outEndOffset);
-    nsresult FindRun(nsIDOMNode *aNode, PRInt32 aOffset, WSFragment **outRun, PRBool after);
+    nsresult FindRun(nsIDOMNode *aNode, PRInt32 aOffset, WSFragment **outRun, bool after);
     PRUnichar GetCharAt(nsIContent *aTextNode, PRInt32 aOffset);
     nsresult GetWSPointAfter(nsIDOMNode *aNode, PRInt32 aOffset, WSPoint *outPoint);
     nsresult GetWSPointBefore(nsIDOMNode *aNode, PRInt32 aOffset, WSPoint *outPoint);
@@ -320,7 +320,7 @@ class NS_STACK_CLASS nsWSRunObject
     PRInt32 mOffset;                      // the offset passed to our contructor
     // together, the above represent the point at which we are building up ws info.
     
-    PRBool  mPRE;                         // true if we are in preformatted whitespace context
+    bool    mPRE;                         // true if we are in preformatted whitespace context
     nsCOMPtr<nsIDOMNode> mStartNode;      // node/offset where ws starts
     PRInt32 mStartOffset;                 // ...
     PRInt16 mStartReason;                 // reason why ws starts (eText, eOtherBlock, etc)

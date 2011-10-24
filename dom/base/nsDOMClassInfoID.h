@@ -44,6 +44,8 @@
 #ifndef nsDOMClassInfoID_h__
 #define nsDOMClassInfoID_h__
 
+#include "nsIXPCScriptable.h"
+
 #define DOMCI_CLASS(_dom_class)                                               \
   eDOMClassInfo_##_dom_class##_id,
 
@@ -80,14 +82,17 @@ DOMCI_CASTABLE_INTERFACE(nsIContent, nsIContent, 1, _extra)                   \
 DOMCI_CASTABLE_INTERFACE(nsIDocument, nsIDocument, 2, _extra)                 \
 DOMCI_CASTABLE_INTERFACE(nsINodeList, nsINodeList, 3, _extra)                 \
 DOMCI_CASTABLE_INTERFACE(nsICSSDeclaration, nsICSSDeclaration, 4, _extra)     \
-DOMCI_CASTABLE_INTERFACE(nsGenericTextNode, nsGenericTextNode, 5, _extra)     \
-DOMCI_CASTABLE_INTERFACE(nsDocument, nsIDocument, 6, _extra)                  \
-DOMCI_CASTABLE_INTERFACE(nsGenericHTMLElement, nsGenericHTMLElement, 7,       \
+DOMCI_CASTABLE_INTERFACE(nsDocument, nsIDocument, 5, _extra)                  \
+DOMCI_CASTABLE_INTERFACE(nsGenericHTMLElement, nsGenericHTMLElement, 6,       \
                          _extra)                                              \
-DOMCI_CASTABLE_INTERFACE(nsHTMLDocument, nsIDocument, 8, _extra)              \
-DOMCI_CASTABLE_INTERFACE(nsStyledElement, nsStyledElement, 9, _extra)         \
-DOMCI_CASTABLE_INTERFACE(nsSVGStylableElement, nsIContent, 10, _extra)
-
+DOMCI_CASTABLE_INTERFACE(nsHTMLDocument, nsIDocument, 7, _extra)              \
+DOMCI_CASTABLE_INTERFACE(nsStyledElement, nsStyledElement, 8, _extra)         \
+DOMCI_CASTABLE_INTERFACE(nsSVGStylableElement, nsIContent, 9, _extra)         \
+DOMCI_CASTABLE_INTERFACE(nsIDOMWebGLRenderingContext,                         \
+                         nsIDOMWebGLRenderingContext, 10, _extra)             \
+DOMCI_CASTABLE_INTERFACE(nsIWebGLUniformLocation,                             \
+                         nsIWebGLUniformLocation, 11, _extra)
+ 
 // Make sure all classes mentioned in DOMCI_CASTABLE_INTERFACES
 // have been declared.
 #define DOMCI_CASTABLE_INTERFACE(_interface, _u1, _u2, _u3) class _interface;

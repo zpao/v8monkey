@@ -71,18 +71,20 @@ enum {
 // (depending on the type of nsGlyphTable where this comes from). The 'font' is a
 // numeric identifier given to the font to which the glyph belongs.
 struct nsGlyphCode {
-  PRUnichar code; 
+  PRUnichar code[2]; 
   PRInt32   font;
 
-  PRBool Exists() const
+  PRInt32 Length() { return (code[1] == PRUnichar('\0') ? 1 : 2); }
+  bool Exists() const
   {
-    return (code != 0);
+    return (code[0] != 0);
   }
-  PRBool operator==(const nsGlyphCode& other) const
+  bool operator==(const nsGlyphCode& other) const
   {
-    return other.code == code && other.font == font;
+    return (other.code[0] == code[0] && other.code[1] == code[1] && 
+            other.font == font);
   }
-  PRBool operator!=(const nsGlyphCode& other) const
+  bool operator!=(const nsGlyphCode& other) const
   {
     return ! operator==(other);
   }
@@ -109,7 +111,7 @@ public:
     mParent = aParent;
     mUnscaledAscent = 0;
     mScaleX = mScaleY = 1.0;
-    mDrawNormal = PR_TRUE;
+    mDrawNormal = true;
   }
 
   ~nsMathMLChar() { // not a virtual destructor: this class is not intended to be subclassed
@@ -133,7 +135,7 @@ public:
   void PaintForeground(nsPresContext* aPresContext,
                        nsRenderingContext& aRenderingContext,
                        nsPoint aPt,
-                       PRBool aIsSelected);
+                       bool aIsSelected);
 
   // This is the method called to ask the char to stretch itself.
   // @param aContainerSize - IN - suggested size for the stretched char
@@ -198,7 +200,7 @@ public:
   // It is used to determine whether the operator is stretchy or a largeop.
   // @param aMaxSize is the value of the "maxsize" attribute.
   // @param aMaxSizeIsAbsolute indicates whether the aMaxSize is an absolute
-  // value in app units (PR_TRUE) or a multiplier of the base size (PR_FALSE).
+  // value in app units (true) or a multiplier of the base size (false).
   nscoord
   GetMaxWidth(nsPresContext* aPresContext,
               nsRenderingContext& aRenderingContext,
@@ -207,7 +209,7 @@ public:
               // Perhaps just nsOperatorFlags aFlags.
               // But need DisplayStyle for largeOp,
               // or remove the largeop bit from flags.
-              PRBool aMaxSizeIsAbsolute = PR_FALSE);
+              bool aMaxSizeIsAbsolute = false);
 
   // Metrics that _exactly_ enclose the char. The char *must* have *already*
   // being stretched before you can call the GetBoundingMetrics() method.
@@ -255,7 +257,7 @@ private:
   // mScaleX, mScaleY are the factors by which we scale the char.
   float              mScaleX, mScaleY;
   // mDrawNormal indicates whether we use special glyphs or not.
-  PRPackedBool       mDrawNormal;
+  bool               mDrawNormal;
 
   class StretchEnumContext;
   friend class StretchEnumContext;
@@ -269,7 +271,7 @@ private:
                   nsBoundingMetrics&       aDesiredStretchSize,
                   PRUint32                 aStretchHint,
                   float           aMaxSize = NS_MATHML_OPERATOR_SIZE_INFINITY,
-                  PRBool          aMaxSizeIsAbsolute = PR_FALSE);
+                  bool            aMaxSizeIsAbsolute = false);
 
   nsresult
   ComposeChildren(nsPresContext*       aPresContext,

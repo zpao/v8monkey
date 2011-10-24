@@ -48,19 +48,8 @@ MODULE		= libpixman
 LIBRARY_NAME	= mozlibpixman
 LIBXUL_LIBRARY = 1
 
-ifdef GNU_CC
+ifeq ($(OS_TARGET),Android)
 MODULE_OPTIMIZE_FLAGS = -O2
-else
-ifeq ($(OS_ARCH),SunOS)
-MODULE_OPTIMIZE_FLAGS = -xO5
-endif
-ifeq ($(OS_ARCH),WINNT)
-ifneq ($(OS_TEST),x86_64)
-# FIXME: bug 413019
-OS_COMPILE_CFLAGS += -GL-
-endif
-MODULE_OPTIMIZE_FLAGS = -O2
-endif
 endif
 
 DEFINES += -DPIXMAN_NO_TLS
@@ -105,11 +94,17 @@ MMX_CFLAGS+=--param inline-unit-growth=10000 --param large-function-growth=10000
 endif
 endif
 ifeq (arm,$(findstring arm,$(OS_TEST)))
+# Apple's arm assembler doesn't support the same syntax as
+# the standard GNU assembler, so use the C fallback paths for now.
+# This may be fixable if clang's ARM/iOS assembler improves into a
+# viable solution in the future.
+ifneq (Darwin,$(OS_ARCH))
 ifdef HAVE_ARM_SIMD
 USE_ARM_SIMD_GCC=1
 endif
 ifdef HAVE_ARM_NEON
 USE_ARM_NEON_GCC=1
+endif
 endif
 endif
 
@@ -166,6 +161,7 @@ endif
 ifdef USE_ARM_NEON_GCC
 CSRCS += pixman-arm-neon.c
 SSRCS += pixman-arm-neon-asm.S
+SSRCS += pixman-arm-neon-asm-bilinear.S
 DEFINES += -DUSE_ARM_NEON
 ARM_NEON_CFLAGS = -mfpu=neon
 endif
@@ -179,18 +175,6 @@ FORCE_STATIC_LIB = 1
 FORCE_USE_PIC = 1
 
 include $(topsrcdir)/config/config.mk
-
-ifndef MOZ_ENABLE_LIBXUL
-ifdef GNU_CC
-# -fvisibility=hidden works fine but PIXMAN_EXPORT is not used in header
-# files, so pixman.h needs to be included before
-# "#pragma GCC visibility -push(hidden)".
-ifdef WRAP_SYSTEM_INCLUDES
-MY_VISIBILITY_FLAGS := -DPIXMAN_USE_INTERNAL_API -include pixman.h $(VISIBILITY_FLAGS)
-COMPILE_CFLAGS += $(MY_VISIBILITY_FLAGS)
-endif # WRAP_SYSTEM_INCLUDES
-endif # GNU_CC
-endif # !MOZ_ENABLE_LIBXUL
 
 include $(topsrcdir)/config/rules.mk
 

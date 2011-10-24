@@ -85,11 +85,14 @@ public:
    * Methods for creating nodeinfo's from atoms and/or strings.
    */
   already_AddRefed<nsINodeInfo> GetNodeInfo(nsIAtom *aName, nsIAtom *aPrefix,
-                                            PRInt32 aNamespaceID);
+                                            PRInt32 aNamespaceID,
+                                            PRUint16 aNodeType,
+                                            nsIAtom* aExtraName = nsnull);
   nsresult GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
-                       PRInt32 aNamespaceID, nsINodeInfo** aNodeInfo);
+                       PRInt32 aNamespaceID, PRUint16 aNodeType,
+                       nsINodeInfo** aNodeInfo);
   nsresult GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
-                       const nsAString& aNamespaceURI,
+                       const nsAString& aNamespaceURI, PRUint16 aNodeType,
                        nsINodeInfo** aNodeInfo);
 
   /**
@@ -136,7 +139,6 @@ protected:
   friend class nsXULPrototypeDocument;
   friend nsresult NS_NewDOMDocumentType(nsIDOMDocumentType** ,
                                         nsNodeInfoManager *,
-                                        nsIPrincipal *,
                                         nsIAtom *,
                                         const nsAString& ,
                                         const nsAString& ,
@@ -150,9 +152,12 @@ protected:
 private:
   static PRIntn NodeInfoInnerKeyCompare(const void *key1, const void *key2);
   static PLHashNumber GetNodeInfoInnerHashValue(const void *key);
+  static PRIntn DropNodeInfoDocument(PLHashEntry *he, PRIntn hashIndex,
+                                     void *arg);
 
   PLHashTable *mNodeInfoHash;
   nsIDocument *mDocument; // WEAK
+  PRUint32 mNonDocumentNodeInfos;
   nsIPrincipal *mPrincipal; // STRONG, but not nsCOMPtr to avoid include hell
                             // while inlining DocumentPrincipal().  Never null
                             // after Init() succeeds.

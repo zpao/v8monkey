@@ -35,6 +35,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGAElement.h"
 #include "nsSVGGraphicElement.h"
 #include "nsIDOMSVGAElement.h"
@@ -43,12 +45,14 @@
 #include "nsSVGString.h"
 #include "nsCOMPtr.h"
 #include "nsGkAtoms.h"
+#include "nsContentUtils.h"
 
+using namespace mozilla;
 
 nsSVGElement::StringInfo nsSVGAElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_XLink, PR_TRUE },
-  { &nsGkAtoms::target, kNameSpaceID_None, PR_TRUE }
+  { &nsGkAtoms::href, kNameSpaceID_XLink, true },
+  { &nsGkAtoms::target, kNameSpaceID_None, true }
 };
 
 NS_IMPL_NS_NEW_SVG_ELEMENT(A)
@@ -79,7 +83,8 @@ NS_INTERFACE_MAP_END_INHERITING(nsSVGAElementBase)
 // Implementation
 
 nsSVGAElement::nsSVGAElement(already_AddRefed<nsINodeInfo> aNodeInfo)
-  : nsSVGAElementBase(aNodeInfo)
+  : nsSVGAElementBase(aNodeInfo),
+    Link(this)
 {
 }
 
@@ -132,7 +137,7 @@ nsSVGAElement::GetTarget(nsIDOMSVGAnimatedString * *aTarget)
 nsresult
 nsSVGAElement::BindToTree(nsIDocument *aDocument, nsIContent *aParent,
                           nsIContent *aBindingParent,
-                          PRBool aCompileEventHandlers)
+                          bool aCompileEventHandlers)
 {
   Link::ResetLinkState(false);
 
@@ -145,7 +150,7 @@ nsSVGAElement::BindToTree(nsIDocument *aDocument, nsIContent *aParent,
 }
 
 void
-nsSVGAElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+nsSVGAElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
   // If this link is ever reinserted into a document, it might
   // be under a different xml:base, so forget the cached state now.
@@ -160,6 +165,12 @@ nsSVGAElement::GetLinkState() const
   return Link::GetLinkState();
 }
 
+void
+nsSVGAElement::RequestLinkStateUpdate()
+{
+  UpdateLinkState(Link::LinkState());
+}
+
 already_AddRefed<nsIURI>
 nsSVGAElement::GetHrefURI() const
 {
@@ -168,7 +179,7 @@ nsSVGAElement::GetHrefURI() const
 }
 
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGAElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -182,29 +193,29 @@ nsSVGAElement::IsAttributeMapped(const nsIAtom* name) const
     sViewportsMap
   };
 
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGAElementBase::IsAttributeMapped(name);
 }
 
-PRBool
-nsSVGAElement::IsFocusable(PRInt32 *aTabIndex, PRBool aWithMouse)
+bool
+nsSVGAElement::IsFocusable(PRInt32 *aTabIndex, bool aWithMouse)
 {
   nsCOMPtr<nsIURI> uri;
   if (IsLink(getter_AddRefs(uri))) {
     if (aTabIndex) {
       *aTabIndex = ((sTabFocusModel & eTabFocus_linksMask) == 0 ? -1 : 0);
     }
-    return PR_TRUE;
+    return true;
   }
 
   if (aTabIndex) {
     *aTabIndex = -1;
   }
 
-  return PR_FALSE;
+  return false;
 }
 
-PRBool
+bool
 nsSVGAElement::IsLink(nsIURI** aURI) const
 {
   // To be a clickable XLink for styling and interaction purposes, we require:
@@ -215,7 +226,7 @@ nsSVGAElement::IsLink(nsIURI** aURI) const
   //   xlink:actuate - must be unset or set to "" or "onRequest"
   //
   // For any other values, we're either not a *clickable* XLink, or the end
-  // result is poorly specified. Either way, we return PR_FALSE.
+  // result is poorly specified. Either way, we return false.
 
   static nsIContent::AttrValuesArray sTypeVals[] =
     { &nsGkAtoms::_empty, &nsGkAtoms::simple, nsnull };
@@ -244,13 +255,13 @@ nsSVGAElement::IsLink(nsIURI** aURI) const
     nsAutoString str;
     mStringAttributes[HREF].GetAnimValue(str, this);
     nsContentUtils::NewURIWithDocumentCharset(aURI, str,
-                                              GetOwnerDoc(), baseURI);
+                                              OwnerDoc(), baseURI);
     // must promise out param is non-null if we return true
     return !!*aURI;
   }
 
   *aURI = nsnull;
-  return PR_FALSE;
+  return false;
 }
 
 void
@@ -270,7 +281,7 @@ nsSVGAElement::GetLinkTarget(nsAString& aTarget)
     case 1:
       return;
     }
-    nsIDocument* ownerDoc = GetOwnerDoc();
+    nsIDocument* ownerDoc = OwnerDoc();
     if (ownerDoc) {
       ownerDoc->GetBaseTarget(aTarget);
     }
@@ -286,7 +297,7 @@ nsSVGAElement::IntrinsicState() const
 nsresult
 nsSVGAElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                        nsIAtom* aPrefix, const nsAString& aValue,
-                       PRBool aNotify)
+                       bool aNotify)
 {
   nsresult rv = nsSVGAElementBase::SetAttr(aNameSpaceID, aName, aPrefix,
                                            aValue, aNotify);
@@ -305,7 +316,7 @@ nsSVGAElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 
 nsresult
 nsSVGAElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttr,
-                         PRBool aNotify)
+                         bool aNotify)
 {
   nsresult rv = nsSVGAElementBase::UnsetAttr(aNameSpaceID, aAttr, aNotify);
 
@@ -328,5 +339,5 @@ nsSVGElement::StringAttributesInfo
 nsSVGAElement::GetStringInfo()
 {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              NS_ARRAY_LENGTH(sStringInfo));
+                              ArrayLength(sStringInfo));
 }

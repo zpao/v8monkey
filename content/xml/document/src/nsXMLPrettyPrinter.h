@@ -51,10 +51,6 @@ public:
 
     NS_DECL_ISUPPORTS
 
-    // nsIDocumentObserver
-    NS_DECL_NSIDOCUMENTOBSERVER_BEGINUPDATE
-    NS_DECL_NSIDOCUMENTOBSERVER_ENDUPDATE
-
     // nsIMutationObserver
     NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
     NS_DECL_NSIMUTATIONOBSERVER_CONTENTAPPENDED
@@ -70,8 +66,12 @@ public:
      * @param [out] aDidPrettyPrint if true, and error not returned, actually
      *              went ahead with prettyprinting the document.
      */
-    nsresult PrettyPrint(nsIDocument* aDocument, PRBool* aDidPrettyPrint);
+    nsresult PrettyPrint(nsIDocument* aDocument, bool* aDidPrettyPrint);
 
+    /**
+     * Unhook the prettyprinter
+     */
+    void Unhook();
 private:
     /**
      * Signals for unhooking by setting mUnhookPending if the node changed is
@@ -83,7 +83,7 @@ private:
 
     nsIDocument* mDocument; //weak. Set as long as we're observing the document
     PRUint32 mUpdateDepth;
-    PRPackedBool mUnhookPending;
+    bool mUnhookPending;
 };
 
 nsresult NS_NewXMLPrettyPrinter(nsXMLPrettyPrinter** aPrinter);

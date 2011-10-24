@@ -38,6 +38,7 @@
 #include "nsIDocument.h"
 #include "nsSVGOuterSVGFrame.h"
 #include "nsGkAtoms.h"
+#include "nsSVGEffects.h"
 #include "nsSVGUtils.h"
 #include "nsSVGFilterElement.h"
 #include "nsSVGFilters.h"
@@ -135,7 +136,6 @@ nsAutoFilterInstance::nsAutoFilterInstance(nsIFrame *aTarget,
   
   gfxRect filterRegion = nsSVGUtils::GetRelativeRect(filterUnits,
     filter->mLengthAttributes, bbox, aTarget);
-  filterRegion.RoundOut();
 
   if (filterRegion.Width() <= 0 || filterRegion.Height() <= 0) {
     // 0 disables rendering, < 0 is error. dispatch error console warning
@@ -144,19 +144,31 @@ nsAutoFilterInstance::nsAutoFilterInstance(nsIFrame *aTarget,
   }
 
   gfxMatrix userToDeviceSpace = nsSVGUtils::GetCanvasTM(aTarget);
+  if (userToDeviceSpace.IsSingular()) {
+    // nothing to draw
+    return;
+  }
   
   // Calculate filterRes (the width and height of the pixel buffer of the
   // temporary offscreen surface that we'll paint into):
 
   gfxIntSize filterRes;
-  if (filter->HasAttr(kNameSpaceID_None, nsGkAtoms::filterRes)) {
-    PRInt32 filterResX, filterResY;
-    filter->GetAnimatedIntegerValues(&filterResX, &filterResY, nsnull);
-    // XXX what if the 'filterRes' attribute has a bad value? error console warning?
+  const nsSVGIntegerPair& filterResAttrs =
+    filter->mIntegerPairAttributes[nsSVGFilterElement::FILTERRES];
+  if (filterResAttrs.IsExplicitlySet()) {
+    PRInt32 filterResX = filterResAttrs.GetAnimValue(nsSVGIntegerPair::eFirst);
+    PRInt32 filterResY = filterResAttrs.GetAnimValue(nsSVGIntegerPair::eSecond);
+    if (filterResX <= 0 || filterResY <= 0) {
+      // 0 disables rendering, < 0 is error. dispatch error console warning?
+      return;
+    }
 
+    filterRegion.Scale(filterResX, filterResY);
+    filterRegion.RoundOut();
+    filterRegion.Scale(1.0 / filterResX, 1.0 / filterResY);
     // We don't care if this overflows, because we can handle upscaling/
     // downscaling to filterRes
-    PRBool overflow;
+    bool overflow;
     filterRes =
       nsSVGUtils::ConvertToSurfaceSize(gfxSize(filterResX, filterResY),
                                        &overflow);
@@ -166,16 +178,15 @@ nsAutoFilterInstance::nsAutoFilterInstance(nsIFrame *aTarget,
     // Match filterRes as closely as possible to the pixel density of the nearest
     // outer 'svg' device space:
     float scale = nsSVGUtils::MaxExpansion(userToDeviceSpace);
+
+    filterRegion.Scale(scale);
+    filterRegion.RoundOut();
     // We don't care if this overflows, because we can handle upscaling/
     // downscaling to filterRes
-    PRBool overflow;
-    filterRes = nsSVGUtils::ConvertToSurfaceSize(filterRegion.Size() * scale,
+    bool overflow;
+    filterRes = nsSVGUtils::ConvertToSurfaceSize(filterRegion.Size(),
                                                  &overflow);
-  }
-
-  if (filterRes.width <= 0 || filterRes.height <= 0) {
-    // 0 disables rendering, < 0 is error. dispatch error console warning?
-    return;
+    filterRegion.Scale(1.0 / scale);
   }
 
   // XXX we haven't taken account of the fact that filterRegion may be
@@ -196,17 +207,46 @@ nsAutoFilterInstance::nsAutoFilterInstance(nsIFrame *aTarget,
     MapDeviceRectToFilterSpace(deviceToFilterSpace, filterRes, aDirtyOutputRect);
   nsIntRect dirtyInputRect =
     MapDeviceRectToFilterSpace(deviceToFilterSpace, filterRes, aDirtyInputRect);
+  nsIntRect targetBoundsDeviceSpace;
+  nsISVGChildFrame* svgTarget = do_QueryFrame(aTarget);
+  if (svgTarget) {
+    targetBoundsDeviceSpace.UnionRect(targetBoundsDeviceSpace,
+      svgTarget->GetCoveredRegion().ToOutsidePixels(aTarget->PresContext()->AppUnitsPerDevPixel()));
+  }
+  nsIntRect targetBoundsFilterSpace =
+    MapDeviceRectToFilterSpace(deviceToFilterSpace, filterRes, &targetBoundsDeviceSpace);
 
   // Setup instance data
   mInstance = new nsSVGFilterInstance(aTarget, aPaint, filter, bbox, filterRegion,
                                       nsIntSize(filterRes.width, filterRes.height),
-                                      filterToDeviceSpace,
+                                      filterToDeviceSpace, targetBoundsFilterSpace,
                                       dirtyOutputRect, dirtyInputRect,
                                       primitiveUnits);
 }
 
 nsAutoFilterInstance::~nsAutoFilterInstance()
 {
+}
+
+NS_IMETHODIMP
+nsSVGFilterFrame::AttributeChanged(PRInt32  aNameSpaceID,
+                                   nsIAtom* aAttribute,
+                                   PRInt32  aModType)
+{
+  if ((aNameSpaceID == kNameSpaceID_None &&
+       (aAttribute == nsGkAtoms::x ||
+        aAttribute == nsGkAtoms::y ||
+        aAttribute == nsGkAtoms::width ||
+        aAttribute == nsGkAtoms::height ||
+        aAttribute == nsGkAtoms::filterRes ||
+        aAttribute == nsGkAtoms::filterUnits ||
+        aAttribute == nsGkAtoms::primitiveUnits)) ||
+       (aNameSpaceID == kNameSpaceID_XLink &&
+        aAttribute == nsGkAtoms::href)) {
+    nsSVGEffects::InvalidateRenderingObservers(this);
+  }
+  return nsSVGFilterFrameBase::AttributeChanged(aNameSpaceID,
+                                                aAttribute, aModType);
 }
 
 nsresult

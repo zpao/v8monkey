@@ -35,7 +35,6 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#include "nsContentUtils.h"
 #include "nsHtml5AttributeName.h"
 #include "nsHtml5ElementName.h"
 #include "nsHtml5HtmlAttributes.h"
@@ -49,10 +48,13 @@
 #include "nsIObserverService.h"
 #include "nsIServiceManager.h"
 #include "mozilla/Services.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 // static
-PRBool nsHtml5Module::sEnabled = PR_FALSE;
-PRBool nsHtml5Module::sOffMainThread = PR_TRUE;
+bool nsHtml5Module::sEnabled = false;
+bool nsHtml5Module::sOffMainThread = true;
 nsIThread* nsHtml5Module::sStreamParserThread = nsnull;
 nsIThread* nsHtml5Module::sMainThread = nsnull;
 
@@ -60,8 +62,8 @@ nsIThread* nsHtml5Module::sMainThread = nsnull;
 void
 nsHtml5Module::InitializeStatics()
 {
-  nsContentUtils::AddBoolPrefVarCache("html5.parser.enable", &sEnabled);
-  nsContentUtils::AddBoolPrefVarCache("html5.offmainthread", &sOffMainThread);
+  Preferences::AddBoolVarCache(&sEnabled, "html5.parser.enable");
+  Preferences::AddBoolVarCache(&sOffMainThread, "html5.offmainthread");
   nsHtml5Atoms::AddRefAtoms();
   nsHtml5AttributeName::initializeStatics();
   nsHtml5ElementName::initializeStatics();
@@ -74,7 +76,7 @@ nsHtml5Module::InitializeStatics()
   nsHtml5UTF16Buffer::initializeStatics();
   nsHtml5StreamParser::InitializeStatics();
 #ifdef DEBUG
-  sNsHtml5ModuleInitialized = PR_TRUE;
+  sNsHtml5ModuleInitialized = true;
 #endif
 }
 
@@ -83,7 +85,7 @@ void
 nsHtml5Module::ReleaseStatics()
 {
 #ifdef DEBUG
-  sNsHtml5ModuleInitialized = PR_FALSE;
+  sNsHtml5ModuleInitialized = false;
 #endif
   nsHtml5AttributeName::releaseStatics();
   nsHtml5ElementName::releaseStatics();
@@ -152,7 +154,7 @@ nsHtml5Module::GetStreamParserThread()
       NS_ASSERTION(os, "do_GetService failed");
       os->AddObserver(new nsHtml5ParserThreadTerminator(sStreamParserThread), 
                       "xpcom-shutdown-threads",
-                      PR_FALSE);
+                      false);
     }
     return sStreamParserThread;
   }
@@ -164,5 +166,5 @@ nsHtml5Module::GetStreamParserThread()
 }
 
 #ifdef DEBUG
-PRBool nsHtml5Module::sNsHtml5ModuleInitialized = PR_FALSE;
+bool nsHtml5Module::sNsHtml5ModuleInitialized = false;
 #endif

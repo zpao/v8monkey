@@ -40,13 +40,15 @@
 
 #include "nsBlockFrame.h"
 #include "nsIFormControlFrame.h"
-#include "nsIDOMMouseListener.h"
+#include "nsIDOMEventListener.h"
 #include "nsIAnonymousContentCreator.h"
 #include "nsICapturePicker.h"
 #include "nsCOMPtr.h"
 
 #include "nsTextControlFrame.h"
 typedef   nsTextControlFrame nsNewFrame;
+
+class nsIDOMDragEvent;
 
 class nsFileControlFrame : public nsBlockFrame,
                            public nsIFormControlFrame,
@@ -69,7 +71,7 @@ public:
   // nsIFormControlFrame
   virtual nsresult SetFormProperty(nsIAtom* aName, const nsAString& aValue);
   virtual nsresult GetFormProperty(nsIAtom* aName, nsAString& aValue) const;
-  virtual void SetFocus(PRBool aOn, PRBool aRepaint);
+  virtual void SetFocus(bool aOn, bool aRepaint);
 
   virtual nscoord GetMinWidth(nsRenderingContext *aRenderingContext);
   
@@ -88,7 +90,7 @@ public:
                               nsIAtom*        aAttribute,
                               PRInt32         aModType);
   virtual void ContentStatesChanged(nsEventStates aStates);
-  virtual PRBool IsLeaf() const;
+  virtual bool IsLeaf() const;
 
 
 
@@ -101,7 +103,7 @@ public:
   virtual already_AddRefed<nsAccessible> CreateAccessible();
 #endif
 
-  typedef PRBool (*AcceptAttrCallback)(const nsAString&, void*);
+  typedef bool (*AcceptAttrCallback)(const nsAString&, void*);
   void ParseAcceptAttribute(AcceptAttrCallback aCallback, void* aClosure) const;
 
   nsIFrame* GetTextFrame() { return mTextFrame; }
@@ -110,7 +112,7 @@ protected:
 
   class MouseListener;
   friend class MouseListener;
-  class MouseListener : public nsIDOMMouseListener {
+  class MouseListener : public nsIDOMEventListener {
   public:
     NS_DECL_ISUPPORTS
     
@@ -121,16 +123,6 @@ protected:
     void ForgetFrame() {
       mFrame = nsnull;
     }
-    
-    // We just want to capture the click events on our browse button
-    // and textfield.
-    NS_IMETHOD MouseDown(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-    NS_IMETHOD MouseUp(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-    NS_IMETHOD MouseClick(nsIDOMEvent* aMouseEvent) = 0;
-    NS_IMETHOD MouseDblClick(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-    NS_IMETHOD MouseOver(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-    NS_IMETHOD MouseOut(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-    NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) { return NS_OK; }
 
   protected:
     nsFileControlFrame* mFrame;
@@ -161,17 +153,19 @@ protected:
   public:
     CaptureMouseListener(nsFileControlFrame* aFrame) : MouseListener(aFrame),
                                                        mMode(0) {};
-    NS_IMETHOD MouseClick(nsIDOMEvent* aMouseEvent);
+    NS_DECL_NSIDOMEVENTLISTENER
     PRUint32 mMode;
   };
   
   class BrowseMouseListener: public MouseListener {
   public:
     BrowseMouseListener(nsFileControlFrame* aFrame) : MouseListener(aFrame) {};
-     NS_IMETHOD MouseClick(nsIDOMEvent* aMouseEvent);
+    NS_DECL_NSIDOMEVENTLISTENER
+
+    static bool IsValidDropData(nsIDOMDragEvent* aEvent);
   };
 
-  virtual PRBool IsFrameOfType(PRUint32 aFlags) const
+  virtual bool IsFrameOfType(PRUint32 aFlags) const
   {
     return nsBlockFrame::IsFrameOfType(aFlags &
       ~(nsIFrame::eReplaced | nsIFrame::eReplacedContainsBlock));

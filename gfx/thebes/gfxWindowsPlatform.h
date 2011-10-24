@@ -39,10 +39,6 @@
 #ifndef GFX_WINDOWS_PLATFORM_H
 #define GFX_WINDOWS_PLATFORM_H
 
-#if defined(WINCE)
-#define MOZ_FT2_FONTS 1
-#endif
-
 
 /**
  * XXX to get CAIRO_HAS_D2D_SURFACE, CAIRO_HAS_DWRITE_FONT
@@ -53,22 +49,14 @@
 #include "gfxFontUtils.h"
 #include "gfxWindowsSurface.h"
 #include "gfxFont.h"
-#ifdef MOZ_FT2_FONTS
-#include "gfxFT2Fonts.h"
-#else
 #ifdef CAIRO_HAS_DWRITE_FONT
 #include "gfxDWriteFonts.h"
-#endif
 #endif
 #include "gfxPlatform.h"
 #include "gfxContext.h"
 
 #include "nsTArray.h"
 #include "nsDataHashtable.h"
-
-#ifdef MOZ_FT2_FONTS
-typedef struct FT_LibraryRec_ *FT_Library;
-#endif
 
 #include <windows.h>
 #include <objbase.h>
@@ -85,7 +73,7 @@ struct DCFromContext {
              aSurface->GetType() == gfxASurface::SurfaceTypeWin32Printing))
         {
             dc = static_cast<gfxWindowsSurface*>(aSurface.get())->GetDC();
-            needsRelease = PR_FALSE;
+            needsRelease = false;
             SaveDC(dc);
             cairo_scaled_font_t* scaled =
                 cairo_get_scaled_font(aContext->GetCairo());
@@ -94,7 +82,7 @@ struct DCFromContext {
         if (!dc) {
             dc = GetDC(NULL);
             SetGraphicsMode(dc, GM_ADVANCED);
-            needsRelease = PR_TRUE;
+            needsRelease = true;
         }
     }
 
@@ -111,7 +99,7 @@ struct DCFromContext {
     }
 
     HDC dc;
-    PRBool needsRelease;
+    bool needsRelease;
 };
 
 // ClearType parameters set by running ClearType tuner
@@ -139,6 +127,10 @@ public:
 
     already_AddRefed<gfxASurface> CreateOffscreenSurface(const gfxIntSize& size,
                                                          gfxASurface::gfxContentType contentType);
+    virtual mozilla::RefPtr<mozilla::gfx::ScaledFont>
+      GetScaledFontForFont(gfxFont *aFont);
+    virtual already_AddRefed<gfxASurface>
+      GetThebesSurfaceForDrawTarget(mozilla::gfx::DrawTarget *aTarget);
 
     enum RenderMode {
         /* Use GDI and windows surfaces */
@@ -149,15 +141,6 @@ public:
 
         /* Use 32bpp image surfaces, and do 32->24 conversion before calling StretchDIBits */
         RENDER_IMAGE_STRETCH24,
-
-        /* Use DirectDraw on Windows CE */
-        RENDER_DDRAW,
-
-        /* Use 24bpp image surfaces, with final DirectDraw 16bpp blt on Windows CE */
-        RENDER_IMAGE_DDRAW16,
-
-        /* Use DirectDraw with OpenGL on Windows CE */
-        RENDER_DDRAW_GL,
 
         /* Use Direct2D rendering */
         RENDER_DIRECT2D,
@@ -182,7 +165,7 @@ public:
      * \param aAttemptForce Attempt to force D2D cairo device creation by using
      * cairo device creation routines.
      */
-    void VerifyD2DDevice(PRBool aAttemptForce);
+    void VerifyD2DDevice(bool aAttemptForce);
 
     HDC GetScreenDC() { return mScreenDC; }
 
@@ -194,7 +177,7 @@ public:
 
     nsresult ResolveFontName(const nsAString& aFontName,
                              FontResolverCallback aCallback,
-                             void *aClosure, PRBool& aAborted);
+                             void *aClosure, bool& aAborted);
 
     nsresult GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName);
 
@@ -218,21 +201,21 @@ public:
     /**
      * Check whether format is supported on a platform or not (if unclear, returns true)
      */
-    virtual PRBool IsFontFormatSupported(nsIURI *aFontURI, PRUint32 aFormatFlags);
+    virtual bool IsFontFormatSupported(nsIURI *aFontURI, PRUint32 aFormatFlags);
 
     /* Find a FontFamily/FontEntry object that represents a font on your system given a name */
     gfxFontFamily *FindFontFamily(const nsAString& aName);
     gfxFontEntry *FindFontEntry(const nsAString& aName, const gfxFontStyle& aFontStyle);
 
-    PRBool GetPrefFontEntries(const nsCString& aLangGroup, nsTArray<nsRefPtr<gfxFontEntry> > *array);
+    bool GetPrefFontEntries(const nsCString& aLangGroup, nsTArray<nsRefPtr<gfxFontEntry> > *array);
     void SetPrefFontEntries(const nsCString& aLangGroup, nsTArray<nsRefPtr<gfxFontEntry> >& array);
 
     void ClearPrefFonts() { mPrefFonts.Clear(); }
 
     // ClearType is not always enabled even when available (e.g. Windows XP)
     // if either of these prefs are enabled and apply, use ClearType rendering
-    PRBool UseClearTypeForDownloadableFonts();
-    PRBool UseClearTypeAlways();
+    bool UseClearTypeForDownloadableFonts();
+    bool UseClearTypeAlways();
 
     // OS version in 16.16 major/minor form
     // based on http://msdn.microsoft.com/en-us/library/ms724834(VS.85).aspx
@@ -252,24 +235,20 @@ public:
     // returns ClearType tuning information for each display
     static void GetCleartypeParams(nsTArray<ClearTypeParameterInfo>& aParams);
 
-    virtual void FontsPrefsChanged(nsIPrefBranch *aPrefBranch, const char *aPref);
+    virtual void FontsPrefsChanged(const char *aPref);
 
-    void SetupClearTypeParams(nsIPrefBranch *aPrefBranch);
+    void SetupClearTypeParams();
 
 #ifdef CAIRO_HAS_DWRITE_FONT
     IDWriteFactory *GetDWriteFactory() { return mDWriteFactory; }
-    inline PRBool DWriteEnabled() { return mUseDirectWrite; }
+    inline bool DWriteEnabled() { return mUseDirectWrite; }
     inline DWRITE_MEASURING_MODE DWriteMeasuringMode() { return mMeasuringMode; }
 #else
-    inline PRBool DWriteEnabled() { return PR_FALSE; }
+    inline bool DWriteEnabled() { return false; }
 #endif
 #ifdef CAIRO_HAS_D2D_SURFACE
     cairo_device_t *GetD2DDevice() { return mD2DDevice; }
     ID3D10Device1 *GetD3D10Device() { return mD2DDevice ? cairo_d2d_device_get_device(mD2DDevice) : nsnull; }
-#endif
-
-#ifdef MOZ_FT2_FONTS
-    FT_Library GetFTLibrary();
 #endif
 
     static bool IsOptimus();
@@ -277,15 +256,15 @@ public:
 protected:
     RenderMode mRenderMode;
 
-    PRBool mUseClearTypeForDownloadableFonts;
-    PRBool mUseClearTypeAlways;
+    PRInt8 mUseClearTypeForDownloadableFonts;
+    PRInt8 mUseClearTypeAlways;
     HDC mScreenDC;
 
 private:
     void Init();
 
-    PRBool mUseDirectWrite;
-    PRBool mUsingGDIFonts;
+    bool mUseDirectWrite;
+    bool mUsingGDIFonts;
 
 #ifdef CAIRO_HAS_DWRITE_FONT
     nsRefPtr<IDWriteFactory> mDWriteFactory;

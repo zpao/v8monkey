@@ -9,8 +9,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=636465
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="Mozilla Bug 636465" onload="runTest();">
   <script type="application/javascript"
-          src="chrome://mochikit/content/MochiKit/packed.js"/>
-  <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
   <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
@@ -32,16 +30,20 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=636465
   SimpleTest.waitForExplicitFinish();
 
   function runTest() {
+    var x = document.getElementById("x");
+    x.focus();
     setTimeout(function(){
+      x.blur();
       setTimeout(function(){
-        var x = document.getElementById("x");
         var spellCheckTrue = snapshotWindow(window);
         x.setAttribute("spellcheck", "false");
         setTimeout(function(){
           setTimeout(function(){
             var spellCheckFalse = snapshotWindow(window);
             x.setAttribute("spellcheck", "true");
+            x.focus();
             setTimeout(function(){
+              x.blur();
               setTimeout(function(){
                 var spellCheckTrueAgain = snapshotWindow(window);
                 x.removeAttribute("spellcheck");

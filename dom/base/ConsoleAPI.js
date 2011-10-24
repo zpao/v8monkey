@@ -1,3 +1,5 @@
+/* -*- Mode: js2; js2-basic-offset: 2; indent-tabs-mode: nil; -*- */
+/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -43,6 +45,7 @@ let Cc = Components.classes;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/ConsoleAPIStorage.jsm");
 
 function ConsoleAPI() {}
 ConsoleAPI.prototype = {
@@ -53,12 +56,16 @@ ConsoleAPI.prototype = {
 
   // nsIDOMGlobalPropertyInitializer
   init: function CA_init(aWindow) {
-    let id;
+    let outerID;
+    let innerID;
     try {
-      id = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                  .getInterface(Ci.nsIDOMWindowUtils)
-                  .outerWindowID;
-    } catch (ex) {
+      let windowUtils = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                          .getInterface(Ci.nsIDOMWindowUtils);
+
+      outerID = windowUtils.outerWindowID;
+      innerID = windowUtils.currentInnerWindowID;
+    }
+    catch (ex) {
       Cu.reportError(ex);
     }
 
@@ -66,22 +73,35 @@ ConsoleAPI.prototype = {
     let chromeObject = {
       // window.console API
       log: function CA_log() {
-        self.notifyObservers(id, "log", arguments);
+        self.notifyObservers(outerID, innerID, "log", self.processArguments(arguments));
       },
       info: function CA_info() {
-        self.notifyObservers(id, "info", arguments);
+        self.notifyObservers(outerID, innerID, "info", self.processArguments(arguments));
       },
       warn: function CA_warn() {
-        self.notifyObservers(id, "warn", arguments);
+        self.notifyObservers(outerID, innerID, "warn", self.processArguments(arguments));
       },
       error: function CA_error() {
-        self.notifyObservers(id, "error", arguments);
+        self.notifyObservers(outerID, innerID, "error", self.processArguments(arguments));
       },
       debug: function CA_debug() {
-        self.notifyObservers(id, "log", arguments);
+        self.notifyObservers(outerID, innerID, "log", self.processArguments(arguments));
       },
       trace: function CA_trace() {
-        self.notifyObservers(id, "trace", self.getStackTrace());
+        self.notifyObservers(outerID, innerID, "trace", self.getStackTrace());
+      },
+      // Displays an interactive listing of all the properties of an object.
+      dir: function CA_dir() {
+        self.notifyObservers(outerID, innerID, "dir", arguments);
+      },
+      group: function CA_group() {
+        self.notifyObservers(outerID, innerID, "group", self.beginGroup(arguments));
+      },
+      groupCollapsed: function CA_groupCollapsed() {
+        self.notifyObservers(outerID, innerID, "groupCollapsed", self.beginGroup(arguments));
+      },
+      groupEnd: function CA_groupEnd() {
+        self.notifyObservers(outerID, innerID, "groupEnd", arguments);
       },
       __exposedProps__: {
         log: "r",
@@ -90,48 +110,115 @@ ConsoleAPI.prototype = {
         error: "r",
         debug: "r",
         trace: "r",
+        dir: "r",
+        group: "r",
+        groupCollapsed: "r",
+        groupEnd: "r"
       }
     };
 
     // We need to return an actual content object here, instead of a wrapped
     // chrome object. This allows things like console.log.bind() to work.
-    let sandbox = Cu.Sandbox(aWindow);
-    let contentObject = Cu.evalInSandbox(
-        "(function(x) {\
-          var bind = Function.bind;\
-          var obj = {\
-            log: bind.call(x.log, x),\
-            info: bind.call(x.info, x),\
-            warn: bind.call(x.warn, x),\
-            error: bind.call(x.error, x),\
-            debug: bind.call(x.debug, x),\
-            trace: bind.call(x.trace, x),\
-            __noSuchMethod__: function() {}\
-          };\
-          Object.defineProperty(obj, '__mozillaConsole__', { value: true });\
-          return obj;\
-        })", sandbox)(chromeObject);
+    let contentObj = Cu.createObjectIn(aWindow);
+    function genPropDesc(fun) {
+      return { enumerable: true, configurable: true, writable: true,
+               value: chromeObject[fun].bind(chromeObject) };
+    }
+    const properties = {
+      log: genPropDesc('log'),
+      info: genPropDesc('info'),
+      warn: genPropDesc('warn'),
+      error: genPropDesc('error'),
+      debug: genPropDesc('debug'),
+      trace: genPropDesc('trace'),
+      dir: genPropDesc('dir'),
+      group: genPropDesc('group'),
+      groupCollapsed: genPropDesc('groupCollapsed'),
+      groupEnd: genPropDesc('groupEnd'),
+      __noSuchMethod__: { enumerable: true, configurable: true, writable: true,
+                          value: function() {} },
+      __mozillaConsole__: { value: true }
+    };
 
-      return contentObject;
+    Object.defineProperties(contentObj, properties);
+    Cu.makeObjectPropsNormal(contentObj);
+
+    return contentObj;
   },
 
   /**
-   * Notify all observers of any console API call
+   * Notify all observers of any console API call.
+   *
+   * @param number aOuterWindowID
+   *        The outer window ID from where the message came from.
+   * @param number aInnerWindowID
+   *        The inner window ID from where the message came from.
+   * @param string aLevel
+   *        The message level.
+   * @param mixed aArguments
+   *        The arguments given to the console API call.
    **/
-  notifyObservers: function CA_notifyObservers(aID, aLevel, aArguments) {
-    if (!aID)
+  notifyObservers:
+  function CA_notifyObservers(aOuterWindowID, aInnerWindowID, aLevel, aArguments) {
+    if (!aOuterWindowID) {
       return;
+    }
 
+    let stack = this.getStackTrace();
+    // Skip the first frame since it contains an internal call.
+    let frame = stack[1];
     let consoleEvent = {
-      ID: aID,
+      ID: aOuterWindowID,
+      innerID: aInnerWindowID,
       level: aLevel,
+      filename: frame.filename,
+      lineNumber: frame.lineNumber,
+      functionName: frame.functionName,
       arguments: aArguments
     };
 
     consoleEvent.wrappedJSObject = consoleEvent;
 
+    ConsoleAPIStorage.recordEvent(aInnerWindowID, consoleEvent);
+
     Services.obs.notifyObservers(consoleEvent,
-                                 "console-api-log-event", aID);
+                                 "console-api-log-event", aOuterWindowID);
+  },
+
+  /**
+   * Process the console API call arguments in order to perform printf-like
+   * string substitution.
+   * TODO: object substitution should display an interactive property list (bug
+   * 685815) and width and precision qualifiers should be taken into account
+   * (bug 685813).
+   *
+   * @param mixed aArguments
+   *        The arguments given to the console API call.
+   **/
+  processArguments: function CA_processArguments(aArguments) {
+    if (aArguments.length < 2) {
+      return aArguments;
+    }
+    let args = Array.prototype.slice.call(aArguments);
+    let format = args.shift();
+    // Format specification regular expression.
+    let pattern = /%(\d*).?(\d*)[a-zA-Z]/g;
+    let processed = format.replace(pattern, function CA_PA_substitute(spec) {
+      switch (spec[spec.length-1]) {
+        case "o":
+        case "s":
+          return String(args.shift());
+        case "d":
+        case "i":
+          return parseInt(args.shift());
+        case "f":
+          return parseFloat(args.shift());
+        default:
+          return spec;
+      };
+    });
+    args.unshift(processed);
+    return args;
   },
 
   /**
@@ -158,6 +245,13 @@ ConsoleAPI.prototype = {
 
     return stack;
   },
+
+  /**
+   * Begin a new group for logging output together.
+   **/
+  beginGroup: function CA_beginGroup() {
+    return Array.prototype.join.call(arguments[0], " ");
+  }
 };
 
 let NSGetFactory = XPCOMUtils.generateNSGetFactory([ConsoleAPI]);

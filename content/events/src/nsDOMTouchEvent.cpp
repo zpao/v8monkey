@@ -41,6 +41,9 @@
 #include "nsIClassInfo.h"
 #include "nsIXPCScriptable.h"
 #include "nsContentUtils.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 DOMCI_DATA(Touch, nsDOMTouch)
 
@@ -197,12 +200,12 @@ nsDOMTouchList::IdentifiedTouch(PRInt32 aIdentifier, nsIDOMTouch** aRetVal)
 nsDOMTouchEvent::nsDOMTouchEvent(nsPresContext* aPresContext,
                                  nsInputEvent* aEvent)
   : nsDOMUIEvent(aPresContext, aEvent ? aEvent :
-                                        new nsInputEvent(PR_FALSE, 0, nsnull))
+                                        new nsInputEvent(false, 0, nsnull))
 {
   if (aEvent) {
-    mEventIsInternal = PR_FALSE;
+    mEventIsInternal = false;
   } else {
-    mEventIsInternal = PR_TRUE;
+    mEventIsInternal = true;
     mEvent->time = PR_Now();
   }
 }
@@ -242,14 +245,14 @@ NS_IMPL_RELEASE_INHERITED(nsDOMTouchEvent, nsDOMUIEvent)
 
 NS_IMETHODIMP
 nsDOMTouchEvent::InitTouchEvent(const nsAString& aType,
-                                PRBool aCanBubble,
-                                PRBool aCancelable,
+                                bool aCanBubble,
+                                bool aCancelable,
                                 nsIDOMWindow* aView,
                                 PRInt32 aDetail,
-                                PRBool aCtrlKey,
-                                PRBool aAltKey,
-                                PRBool aShiftKey,
-                                PRBool aMetaKey,
+                                bool aCtrlKey,
+                                bool aAltKey,
+                                bool aShiftKey,
+                                bool aMetaKey,
                                 nsIDOMTouchList* aTouches,
                                 nsIDOMTouchList* aTargetTouches,
                                 nsIDOMTouchList* aChangedTouches)
@@ -289,41 +292,41 @@ nsDOMTouchEvent::GetChangedTouches(nsIDOMTouchList** aChangedTouches)
 }
 
 NS_IMETHODIMP
-nsDOMTouchEvent::GetAltKey(PRBool* aAltKey)
+nsDOMTouchEvent::GetAltKey(bool* aAltKey)
 {
   *aAltKey = static_cast<nsInputEvent*>(mEvent)->isAlt;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsDOMTouchEvent::GetMetaKey(PRBool* aMetaKey)
+nsDOMTouchEvent::GetMetaKey(bool* aMetaKey)
 {
   *aMetaKey = static_cast<nsInputEvent*>(mEvent)->isMeta;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsDOMTouchEvent::GetCtrlKey(PRBool* aCtrlKey)
+nsDOMTouchEvent::GetCtrlKey(bool* aCtrlKey)
 {
   *aCtrlKey = static_cast<nsInputEvent*>(mEvent)->isControl;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsDOMTouchEvent::GetShiftKey(PRBool* aShiftKey)
+nsDOMTouchEvent::GetShiftKey(bool* aShiftKey)
 {
   *aShiftKey = static_cast<nsInputEvent*>(mEvent)->isShift;
   return NS_OK;
 }
 
-PRBool
+bool
 nsDOMTouchEvent::PrefEnabled()
 {
-  static PRBool sDidCheckPref = PR_FALSE;
-  static PRBool sPrefValue = PR_FALSE;
+  static bool sDidCheckPref = false;
+  static bool sPrefValue = false;
   if (!sDidCheckPref) {
-    sDidCheckPref = PR_TRUE;
-    sPrefValue = nsContentUtils::GetBoolPref("dom.w3c_touch_events.enabled", PR_FALSE);
+    sDidCheckPref = true;
+    sPrefValue = Preferences::GetBool("dom.w3c_touch_events.enabled", false);
     if (sPrefValue) {
       nsContentUtils::InitializeTouchEventTable();
     }

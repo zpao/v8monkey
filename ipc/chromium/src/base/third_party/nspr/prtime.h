@@ -55,13 +55,7 @@
 #include "base/logging.h"
 #include "base/third_party/nspr/prtypes.h"
 
-#ifdef CHROMIUM_MOZILLA_BUILD
 PR_BEGIN_EXTERN_C
-#endif
-
-#ifndef CHROMIUM_MOZILLA_BUILD
-#define PR_ASSERT DCHECK
-#endif
 
 #define LL_I2L(l, i)    ((l) = (PRInt64)(i))
 #define LL_MUL(r, a, b) ((r) = (a) * (b))
@@ -171,9 +165,7 @@ typedef struct PRExplodedTime {
 
 typedef PRTimeParameters (PR_CALLBACK *PRTimeParamFn)(const PRExplodedTime *gmt);
 
-#ifdef CHROMIUM_MOZILLA_BUILD
 PR_END_EXTERN_C
-#endif
 
 namespace nspr {
 
@@ -238,7 +230,7 @@ PRTimeParameters PR_GMTParameters(const PRExplodedTime *gmt);
 
 PRStatus PR_ParseTimeString (
 	const char *string,
-	PRBool default_to_gmt,
+	bool default_to_gmt,
 	PRTime *result);
 
 } // namespace nspr

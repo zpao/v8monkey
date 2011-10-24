@@ -44,14 +44,13 @@
 #include "nsScriptElement.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
-
+#include "nsContentUtils.h"
 #include "nsUnicharUtils.h"  // for nsCaseInsensitiveStringComparator()
 #include "jsapi.h"
 #include "nsIScriptContext.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIXPConnect.h"
 #include "nsServiceManagerUtils.h"
-#include "nsIScriptEventHandler.h"
 #include "nsIDOMDocument.h"
 #include "nsContentErrors.h"
 #include "nsIArray.h"
@@ -59,250 +58,6 @@
 #include "nsDOMJSUtils.h"
 
 using namespace mozilla::dom;
-
-//
-// Helper class used to support <SCRIPT FOR=object EVENT=handler ...>
-// style script tags...
-//
-class nsHTMLScriptEventHandler : public nsIScriptEventHandler
-{
-public:
-  nsHTMLScriptEventHandler(nsIDOMHTMLScriptElement *aOuter);
-  virtual ~nsHTMLScriptEventHandler() {}
-
-  // nsISupports
-  NS_DECL_ISUPPORTS
-
-  // nsIScriptEventHandler interface...
-  NS_DECL_NSISCRIPTEVENTHANDLER
-
-  // Helper method called by nsHTMLScriptElement
-  nsresult ParseEventString(const nsAString &aValue);
-
-protected:
-  // WEAK reference to outer object.
-  nsIDOMHTMLScriptElement *mOuter;
-
-  // Javascript argument names must be ASCII...
-  nsTArray<nsCString> mArgNames;
-
-  // The event name is kept UCS2 for 'quick comparisions'...
-  nsString mEventName;
-};
-
-
-nsHTMLScriptEventHandler::nsHTMLScriptEventHandler(nsIDOMHTMLScriptElement *aOuter)
-{
-
-  // Weak reference...
-  mOuter = aOuter;
-}
-
-//
-// nsISupports Implementation
-//
-NS_IMPL_ADDREF (nsHTMLScriptEventHandler)
-NS_IMPL_RELEASE(nsHTMLScriptEventHandler)
-
-NS_INTERFACE_MAP_BEGIN(nsHTMLScriptEventHandler)
-// All interfaces are delegated to the outer object...
-NS_INTERFACE_MAP_END_AGGREGATED(mOuter)
-
-
-//
-// Parse the EVENT attribute into an array of argument names...
-//
-nsresult nsHTMLScriptEventHandler::ParseEventString(const nsAString &aValue)
-{
-  nsAutoString eventSig(aValue);
-  nsAutoString::const_iterator start, next, end;
-
-  // Clear out the arguments array...
-  mArgNames.Clear();
-
-  // Eliminate all whitespace.
-  eventSig.StripWhitespace();
-
-  // Parse out the event name from the signature...
-  eventSig.BeginReading(start);
-  eventSig.EndReading(end);
-
-  next = start;
-  if (FindCharInReadable('(', next, end)) {
-    mEventName = Substring(start, next);
-  } else {
-    // There is no opening parenthesis...
-    return NS_ERROR_FAILURE;
-  }
-
-  ++next;  // skip over the '('
-  --end;   // Move back 1 character -- hopefully to the ')'
-  if (*end != ')') {
-    // The arguments are not enclosed in parentheses...
-    return NS_ERROR_FAILURE;
-  }
-
-  // Javascript expects all argument names to be ASCII.
-  NS_LossyConvertUTF16toASCII sig(Substring(next, end));
-
-  // Store each (comma separated) argument in mArgNames
-  ParseString(sig, ',', mArgNames);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsHTMLScriptEventHandler::IsSameEvent(const nsAString &aObjectName,
-                                      const nsAString &aEventName,
-                                      PRUint32 aArgCount,
-                                      PRBool *aResult)
-{
-  *aResult = PR_FALSE;
-
-  // First compare the event name.
-  // Currently, both the case and number of arguments associated with the
-  // event are ignored...
-  if (aEventName.Equals(mEventName, nsCaseInsensitiveStringComparator())) {
-    nsAutoString id;
-
-    // Next compare the target object...
-    mOuter->GetHtmlFor(id);
-    if (aObjectName.Equals(id)) {
-      *aResult = PR_TRUE;
-    }
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsHTMLScriptEventHandler::Invoke(nsISupports *aTargetObject,
-                                 void *aArgs,
-                                 PRUint32 aArgCount)
-{
-  nsresult rv;
-  nsAutoString scriptBody;
-
-  // Initial sanity checking
-  //
-  // It's 'ok' for aArgCount to be different from mArgNames.Count().
-  // This just means that the number of args being passed in is
-  // different from the number it is compiled with...
-  if (!aTargetObject || (aArgCount && !aArgs) ) {
-    return NS_ERROR_FAILURE;
-  }
-
-  // Get the text of the script to execute...
-  rv = mOuter->GetText(scriptBody);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  // Get the line number of the script (used when compiling)
-  PRUint32 lineNumber = 0;
-  nsCOMPtr<nsIScriptElement> sele(do_QueryInterface(mOuter));
-  if (sele) {
-    lineNumber = sele->GetScriptLineNumber();
-  }
-
-  // Get the script context...
-  nsCOMPtr<nsIDOMDocument> domdoc;
-  nsCOMPtr<nsIScriptContext> scriptContext;
-  nsIScriptGlobalObject *sgo = nsnull;
-
-  mOuter->GetOwnerDocument(getter_AddRefs(domdoc));
-
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domdoc));
-  if (doc) {
-    sgo = doc->GetScriptGlobalObject();
-    if (sgo) {
-      scriptContext = sgo->GetContext();
-    }
-  }
-  // Fail if is no script context is available...
-  if (!scriptContext) {
-    return NS_ERROR_FAILURE;
-  }
-
-  // wrap the target object...
-  JSContext *cx = (JSContext *)scriptContext->GetNativeContext();
-  JSObject *scope = sgo->GetGlobalJSObject();
-
-  nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
-  jsval v;
-  rv = nsContentUtils::WrapNative(cx, scope, aTargetObject, &v,
-                                  getter_AddRefs(holder));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // Build up the array of argument names...
-  //
-  // Since this array is temporary (and const) the 'argument name' strings
-  // are NOT copied.  Instead each element points into the underlying buffer
-  // of the corresponding element in the mArgNames array...
-  //
-  // Remember, this is the number of arguments to compile the function with...
-  // So, use mArgNames.Count()
-  //
-  const int kMaxArgsOnStack = 10;
-
-  PRInt32 argc, i;
-  const char** args;
-  const char*  stackArgs[kMaxArgsOnStack];
-
-  args = stackArgs;
-  argc = PRInt32(mArgNames.Length());
-
-  // If there are too many arguments then allocate the array from the heap
-  // otherwise build it up on the stack...
-  if (argc >= kMaxArgsOnStack) {
-    args = new const char*[argc+1];
-    if (!args) return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  for(i=0; i<argc; i++) {
-    args[i] = mArgNames[i].get();
-  }
-
-  // Null terminate for good luck ;-)
-  args[i] = nsnull;
-
-  // Compile the event handler script...
-  void* funcObject = nsnull;
-  NS_NAMED_LITERAL_CSTRING(funcName, "anonymous");
-
-  rv = scriptContext->CompileFunction(JSVAL_TO_OBJECT(v),
-                                      funcName,   // method name
-                                      argc,       // no of arguments
-                                      args,       // argument names
-                                      scriptBody, // script text
-                                      nsnull,     // XXX: URL
-                                      lineNumber, // line no (for errors)
-                                      JSVERSION_DEFAULT, // Default for now?
-                                      PR_FALSE,   // shared ?
-                                      &funcObject);
-  // Free the argument names array if it was heap allocated...
-  if (args != stackArgs) {
-    delete [] args;
-  }
-
-  // Fail if there was an error compiling the script.
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  // Create an nsIArray for the args (the JS context will efficiently
-  // re-fetch the jsvals from this object)
-  nsCOMPtr<nsIArray> argarray;
-  rv = NS_CreateJSArgv(cx, aArgCount, (jsval *)aArgs, getter_AddRefs(argarray));
-  if (NS_FAILED(rv))
-    return rv;
-
-  // Invoke the event handler script...
-  nsCOMPtr<nsIVariant> ret;
-  return scriptContext->CallEventHandler(aTargetObject, scope, funcObject,
-                                         argarray, getter_AddRefs(ret));
-}
-
 
 class nsHTMLScriptElement : public nsGenericHTMLElement,
                             public nsIDOMHTMLScriptElement,
@@ -339,29 +94,25 @@ public:
   // nsIContent
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
-                              PRBool aCompileEventHandlers);
+                              bool aCompileEventHandlers);
 
   virtual nsresult GetInnerHTML(nsAString& aInnerHTML);
   virtual nsresult SetInnerHTML(const nsAString& aInnerHTML);
-  virtual nsresult DoneAddingChildren(PRBool aHaveNotified);
-  virtual PRBool IsDoneAddingChildren();
+  virtual nsresult DoneAddingChildren(bool aHaveNotified);
+  virtual bool IsDoneAddingChildren();
 
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
 
   // nsGenericElement
   virtual nsresult AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                const nsAString* aValue, PRBool aNotify);
+                                const nsAString* aValue, bool aNotify);
 
   virtual nsXPCClassInfo* GetClassInfo();
 protected:
-  PRBool IsOnloadEventForWindow();
-
-
-  // Pointer to the script handler helper object (OWNING reference)
-  nsCOMPtr<nsHTMLScriptEventHandler> mScriptEventHandler;
+  bool IsOnloadEventForWindow();
 
   // nsScriptElement
-  virtual PRBool HasScriptContent();
+  virtual bool HasScriptContent();
   virtual nsresult MaybeProcessScript();
 };
 
@@ -396,10 +147,6 @@ NS_INTERFACE_TABLE_HEAD(nsHTMLScriptElement)
                                    nsIMutationObserver)
   NS_HTML_CONTENT_INTERFACE_TABLE_TO_MAP_SEGUE(nsHTMLScriptElement,
                                                nsGenericHTMLElement)
-  if (mScriptEventHandler && aIID.Equals(NS_GET_IID(nsIScriptEventHandler)))
-    foundInterface = static_cast<nsIScriptEventHandler*>
-                                (mScriptEventHandler);
-  else
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(HTMLScriptElement)
 NS_HTML_CONTENT_INTERFACE_MAP_END
 
@@ -407,7 +154,7 @@ NS_HTML_CONTENT_INTERFACE_MAP_END
 nsresult
 nsHTMLScriptElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                 nsIContent* aBindingParent,
-                                PRBool aCompileEventHandlers)
+                                bool aCompileEventHandlers)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
                                                  aBindingParent,
@@ -447,14 +194,14 @@ nsHTMLScriptElement::Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const
 NS_IMETHODIMP
 nsHTMLScriptElement::GetText(nsAString& aValue)
 {
-  nsContentUtils::GetNodeTextContent(this, PR_FALSE, aValue);
+  nsContentUtils::GetNodeTextContent(this, false, aValue);
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsHTMLScriptElement::SetText(const nsAString& aValue)
 {
-  return nsContentUtils::SetNodeTextContent(this, aValue, PR_TRUE);
+  return nsContentUtils::SetNodeTextContent(this, aValue, true);
 }
 
 
@@ -466,28 +213,28 @@ NS_IMPL_STRING_ATTR(nsHTMLScriptElement, HtmlFor, _for)
 NS_IMPL_STRING_ATTR(nsHTMLScriptElement, Event, event)
 
 nsresult
-nsHTMLScriptElement::GetAsync(PRBool* aValue)
+nsHTMLScriptElement::GetAsync(bool* aValue)
 {
   if (mForceAsync) {
-    *aValue = PR_TRUE;
+    *aValue = true;
     return NS_OK;
   }
   return GetBoolAttr(nsGkAtoms::async, aValue);
 }
 
 nsresult
-nsHTMLScriptElement::SetAsync(PRBool aValue)
+nsHTMLScriptElement::SetAsync(bool aValue)
 {
-  mForceAsync = PR_FALSE;
+  mForceAsync = false;
   return SetBoolAttr(nsGkAtoms::async, aValue);
 }
 
 nsresult
 nsHTMLScriptElement::AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                  const nsAString* aValue, PRBool aNotify)
+                                  const nsAString* aValue, bool aNotify)
 {
   if (nsGkAtoms::async == aName && kNameSpaceID_None == aNamespaceID) {
-    mForceAsync = PR_FALSE;
+    mForceAsync = false;
   }
   return nsGenericHTMLElement::AfterSetAttr(aNamespaceID, aName, aValue,
                                             aNotify);
@@ -496,20 +243,20 @@ nsHTMLScriptElement::AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
 nsresult
 nsHTMLScriptElement::GetInnerHTML(nsAString& aInnerHTML)
 {
-  nsContentUtils::GetNodeTextContent(this, PR_FALSE, aInnerHTML);
+  nsContentUtils::GetNodeTextContent(this, false, aInnerHTML);
   return NS_OK;
 }
 
 nsresult
 nsHTMLScriptElement::SetInnerHTML(const nsAString& aInnerHTML)
 {
-  return nsContentUtils::SetNodeTextContent(this, aInnerHTML, PR_TRUE);
+  return nsContentUtils::SetNodeTextContent(this, aInnerHTML, true);
 }
 
 nsresult
-nsHTMLScriptElement::DoneAddingChildren(PRBool aHaveNotified)
+nsHTMLScriptElement::DoneAddingChildren(bool aHaveNotified)
 {
-  mDoneAddingChildren = PR_TRUE;
+  mDoneAddingChildren = true;
   nsresult rv = MaybeProcessScript();
   if (!mAlreadyStarted) {
     // Need to lose parser-insertedness here to allow another script to cause
@@ -519,7 +266,7 @@ nsHTMLScriptElement::DoneAddingChildren(PRBool aHaveNotified)
   return rv;
 }
 
-PRBool
+bool
 nsHTMLScriptElement::IsDoneAddingChildren()
 {
   return mDoneAddingChildren;
@@ -560,9 +307,9 @@ nsHTMLScriptElement::FreezeUriAsyncDefer()
     GetSrc(src);
     NS_NewURI(getter_AddRefs(mUri), src);
     // At this point mUri will be null for invalid URLs.
-    mExternal = PR_TRUE;
+    mExternal = true;
 
-    PRBool defer, async;
+    bool defer, async;
     GetAsync(&async);
     GetDefer(&defer);
 
@@ -570,10 +317,10 @@ nsHTMLScriptElement::FreezeUriAsyncDefer()
     mAsync = async;
   }
   
-  mFrozen = PR_TRUE;
+  mFrozen = true;
 }
 
-PRBool
+bool
 nsHTMLScriptElement::HasScriptContent()
 {
   return (mFrozen ? mExternal : HasAttr(kNameSpaceID_None, nsGkAtoms::src)) ||
@@ -584,22 +331,9 @@ nsresult
 nsHTMLScriptElement::MaybeProcessScript()
 {
   nsresult rv = nsScriptElement::MaybeProcessScript();
-  if (rv == NS_CONTENT_SCRIPT_IS_EVENTHANDLER) {
+  if (rv == NS_CONTENT_SCRIPT_IS_EVENTHANDLER)
     // Don't return NS_CONTENT_SCRIPT_IS_EVENTHANDLER since callers can't deal
     rv = NS_OK;
-
-    // We tried to evaluate the script but realized it was an eventhandler
-    // mEvaluated will already be set at this point
-    NS_ASSERTION(mAlreadyStarted, "should have set mIsEvaluated already");
-    NS_ASSERTION(!mScriptEventHandler, "how could we have an SEH already?");
-
-    mScriptEventHandler = new nsHTMLScriptEventHandler(this);
-    NS_ENSURE_TRUE(mScriptEventHandler, NS_ERROR_OUT_OF_MEMORY);
-
-    nsAutoString event_val;
-    GetAttr(kNameSpaceID_None, nsGkAtoms::event, event_val);
-    mScriptEventHandler->ParseEventString(event_val);
-  }
 
   return rv;
 }

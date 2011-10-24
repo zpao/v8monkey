@@ -37,7 +37,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsXPathNSResolver.h"
-#include "nsIDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsDOMString.h"
 #include "nsContentUtils.h"
 
@@ -55,8 +55,8 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsXPathNSResolver)
 NS_INTERFACE_MAP_END
 
 nsXPathNSResolver::nsXPathNSResolver(nsIDOMNode* aNode)
+  : mNode(aNode)
 {
-    mNode = do_QueryInterface(aNode);
     NS_ASSERTION(mNode, "Need a node to resolve namespaces.");
 }
 

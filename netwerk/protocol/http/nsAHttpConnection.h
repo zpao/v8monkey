@@ -45,6 +45,9 @@ class nsHttpRequestHead;
 class nsHttpResponseHead;
 class nsHttpConnectionInfo;
 class nsHttpConnection;
+class nsISocketTransport;
+class nsIAsyncInputStream;
+class nsIAsyncOutputStream;
 
 //-----------------------------------------------------------------------------
 // Abstract base class for a HTTP connection
@@ -67,7 +70,7 @@ public:
     virtual nsresult OnHeadersAvailable(nsAHttpTransaction *,
                                         nsHttpRequestHead *,
                                         nsHttpResponseHead *,
-                                        PRBool *reset) = 0;
+                                        bool *reset) = 0;
 
     //
     // called by a transaction to resume either sending or receiving data
@@ -93,15 +96,21 @@ public:
     // get a reference to the connection's connection info object.
     virtual void GetConnectionInfo(nsHttpConnectionInfo **) = 0;
 
+    // get the transport level information for this connection. This may fail
+    // if it is in use.
+    virtual nsresult TakeTransport(nsISocketTransport **,
+                                   nsIAsyncInputStream **,
+                                   nsIAsyncOutputStream **) = 0;
+
     // called by a transaction to get the security info from the socket.
     virtual void GetSecurityInfo(nsISupports **) = 0;
 
     // called by a transaction to determine whether or not the connection is
     // persistent... important in determining the end of a response.
-    virtual PRBool IsPersistent() = 0;
+    virtual bool IsPersistent() = 0;
 
     // called to determine if a connection has been reused.
-    virtual PRBool IsReused() = 0;
+    virtual bool IsReused() = 0;
     
     // called by a transaction when the transaction reads more from the socket
     // than it should have (eg. containing part of the next pipelined response).
@@ -109,8 +118,8 @@ public:
 
     // Used by a transaction to manage the state of previous response bodies on
     // the same connection and work around buggy servers.
-    virtual PRBool LastTransactionExpectedNoContent() = 0;
-    virtual void   SetLastTransactionExpectedNoContent(PRBool) = 0;
+    virtual bool LastTransactionExpectedNoContent() = 0;
+    virtual void   SetLastTransactionExpectedNoContent(bool) = 0;
 
     // Transfer the base http connection object along with a
     // reference to it to the caller.
@@ -118,17 +127,20 @@ public:
 };
 
 #define NS_DECL_NSAHTTPCONNECTION \
-    nsresult OnHeadersAvailable(nsAHttpTransaction *, nsHttpRequestHead *, nsHttpResponseHead *, PRBool *reset); \
+    nsresult OnHeadersAvailable(nsAHttpTransaction *, nsHttpRequestHead *, nsHttpResponseHead *, bool *reset); \
     nsresult ResumeSend(); \
     nsresult ResumeRecv(); \
     void CloseTransaction(nsAHttpTransaction *, nsresult); \
     void GetConnectionInfo(nsHttpConnectionInfo **); \
+    nsresult TakeTransport(nsISocketTransport **,    \
+                           nsIAsyncInputStream **,   \
+                           nsIAsyncOutputStream **); \
     void GetSecurityInfo(nsISupports **); \
-    PRBool IsPersistent(); \
-    PRBool IsReused(); \
+    bool IsPersistent(); \
+    bool IsReused(); \
     nsresult PushBack(const char *, PRUint32); \
-    PRBool LastTransactionExpectedNoContent(); \
-    void   SetLastTransactionExpectedNoContent(PRBool); \
+    bool LastTransactionExpectedNoContent(); \
+    void   SetLastTransactionExpectedNoContent(bool); \
     nsHttpConnection *TakeHttpConnection();
 
 #endif // nsAHttpConnection_h__

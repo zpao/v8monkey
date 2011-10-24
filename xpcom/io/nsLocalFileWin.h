@@ -63,6 +63,11 @@ DEFINE_OLEGUID(IID_IPersistFile, 0x0000010BL, 0, 0);
 
 #include <sys/stat.h>
 
+typedef LPITEMIDLIST (WINAPI *ILCreateFromPathWPtr)(PCWSTR);
+typedef HRESULT (WINAPI *SHOpenFolderAndSelectItemsPtr)(PCIDLIST_ABSOLUTE, UINT, 
+                                                        PCUITEMID_CHILD_ARRAY,
+                                                        DWORD);
+
 class nsLocalFile : public nsILocalFileWin,
                     public nsIHashable
 {
@@ -96,8 +101,8 @@ private:
     nsLocalFile(const nsLocalFile& other);
     ~nsLocalFile() {}
 
-    PRPackedBool mDirty;            // cached information can only be used when this is PR_FALSE
-    PRPackedBool mFollowSymlinks;   // should we follow symlinks when working on this file
+    bool mDirty;            // cached information can only be used when this is false
+    bool mFollowSymlinks;   // should we follow symlinks when working on this file
     
     // this string will always be in native format!
     nsString mWorkingPath;
@@ -112,7 +117,7 @@ private:
 
     PRFileInfo64 mFileInfo64;
 
-    void MakeDirty() { mDirty = PR_TRUE; mShortWorkingPath.Truncate(); }
+    void MakeDirty() { mDirty = true; mShortWorkingPath.Truncate(); }
 
     nsresult ResolveAndStat();
     nsresult ResolveShortcut();
@@ -120,15 +125,22 @@ private:
     void EnsureShortPath();
     
     nsresult CopyMove(nsIFile *newParentDir, const nsAString &newName,
-                      PRBool followSymlinks, PRBool move);
+                      bool followSymlinks, bool move);
     nsresult CopySingleFile(nsIFile *source, nsIFile* dest,
                             const nsAString &newName,
-                            PRBool followSymlinks, PRBool move);
+                            bool followSymlinks, bool move,
+                            bool skipNtfsAclReset = false);
 
     nsresult SetModDate(PRInt64 aLastModifiedTime, const PRUnichar *filePath);
-    nsresult HasFileAttribute(DWORD fileAttrib, PRBool *_retval);
+    nsresult HasFileAttribute(DWORD fileAttrib, bool *_retval);
     nsresult AppendInternal(const nsAFlatString &node,
-                            PRBool multipleComponents);
+                            bool multipleComponents);
+    nsresult RevealClassic(); // Reveals the path using explorer.exe cmdline
+    nsresult RevealUsingShell(); // Uses newer shell API to reveal the path
+
+    static ILCreateFromPathWPtr sILCreateFromPathW;
+    static SHOpenFolderAndSelectItemsPtr sSHOpenFolderAndSelectItems;
+    static PRLibrary *sLibShell;
 };
 
 #endif

@@ -45,7 +45,9 @@
 #include "nsDocAccessible.h"
 
 #include "nsIDOMElement.h"
+#include "nsMenuPopupFrame.h"
 
+using namespace mozilla::a11y;
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsXULColorPickerTileAccessible
@@ -68,7 +70,7 @@ nsXULColorPickerTileAccessible::GetValue(nsAString& aValue)
   if (IsDefunct())
     return NS_ERROR_FAILURE;
 
-  mContent->GetAttr(kNameSpaceID_None, nsAccessibilityAtoms::color, aValue);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::color, aValue);
   return NS_OK;
 }
 
@@ -84,27 +86,30 @@ nsXULColorPickerTileAccessible::NativeRole()
 PRUint64
 nsXULColorPickerTileAccessible::NativeState()
 {
-  // Possible states: focused, focusable, selected.
+  PRUint64 state = nsAccessibleWrap::NativeState();
+  if (!(state & states::UNAVAILABLE))
+    state |= states::FOCUSABLE | states::SELECTABLE;
 
-  // get focus and disable status from base class
-  PRUint64 states = nsAccessibleWrap::NativeState();
+  if (mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::selected))
+    state |= states::SELECTED;
 
-  states |= states::FOCUSABLE;
-
-  // Focused?
-  PRBool isFocused = mContent->HasAttr(kNameSpaceID_None,
-                                       nsAccessibilityAtoms::hover);
-  if (isFocused)
-    states |= states::FOCUSED;
-
-  PRBool isSelected = mContent->HasAttr(kNameSpaceID_None,
-                                        nsAccessibilityAtoms::selected);
-  if (isSelected)
-    states |= states::SELECTED;
-
-  return states;
+  return state;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// nsXULColorPickerTileAccessible: Widgets
+
+nsAccessible*
+nsXULColorPickerTileAccessible::ContainerWidget() const
+{
+  nsAccessible* parent = Parent();
+  if (parent) {
+    nsAccessible* grandParent = parent->Parent();
+    if (grandParent && grandParent->IsMenuButton())
+      return grandParent;
+  }
+  return nsnull;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsXULColorPickerAccessible
@@ -114,6 +119,7 @@ nsXULColorPickerAccessible::
   nsXULColorPickerAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
   nsXULColorPickerTileAccessible(aContent, aShell)
 {
+  mFlags |= eMenuButtonAccessible;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -139,12 +145,38 @@ nsXULColorPickerAccessible::NativeRole()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// nsXULColorPickerAccessible: Widgets
+
+bool
+nsXULColorPickerAccessible::IsWidget() const
+{
+  return true;
+}
+
+bool
+nsXULColorPickerAccessible::IsActiveWidget() const
+{
+  return FocusMgr()->HasDOMFocus(mContent);
+}
+
+bool
+nsXULColorPickerAccessible::AreItemsOperable() const
+{
+  nsAccessible* menuPopup = mChildren.SafeElementAt(0, nsnull);
+  if (menuPopup) {
+    nsMenuPopupFrame* menuPopupFrame = do_QueryFrame(menuPopup->GetFrame());
+    return menuPopupFrame && menuPopupFrame->IsOpen();
+  }
+  return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // nsXULColorPickerAccessible: protected nsAccessible
 
 void
 nsXULColorPickerAccessible::CacheChildren()
 {
-  nsAccTreeWalker walker(mWeakShell, mContent, PR_TRUE);
+  nsAccTreeWalker walker(mWeakShell, mContent, true);
 
   nsAccessible* child = nsnull;
   while ((child = walker.NextChild())) {

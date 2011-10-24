@@ -39,11 +39,11 @@
 #ifndef __txCore_h__
 #define __txCore_h__
 
+#include "nsContentUtils.h"
 #include "nscore.h"
 #include "nsDebug.h"
 #include "nsTraceRefcnt.h"
 #include "prtypes.h"
-#include "txDouble.h"
 
 class nsAString;
 
@@ -73,25 +73,25 @@ public:
     /**
      * Useful constants
      */
-    static const txdpun NaN;
-    static const txdpun POSITIVE_INFINITY;
-    static const txdpun NEGATIVE_INFINITY;
+    static const dpun NaN;
+    static const dpun POSITIVE_INFINITY;
+    static const dpun NEGATIVE_INFINITY;
 
     /**
      * Determines whether the given double represents positive or negative
      * inifinity.
      */
-    static PRBool isInfinite(double aDbl);
+    static bool isInfinite(double aDbl);
 
     /**
      * Determines whether the given double is NaN.
      */
-    static PRBool isNaN(double aDbl);
+    static bool isNaN(double aDbl);
 
     /**
      * Determines whether the given double is negative.
      */
-    static PRBool isNeg(double aDbl);
+    static bool isNeg(double aDbl);
 
     /**
      * Converts the value of the given double to a string, and appends
@@ -109,10 +109,10 @@ public:
 // XXX These should go away eventually.
 #define TxObject txObject
 typedef txDouble Double;
-typedef PRBool MBool;
+typedef bool MBool;
 
-#define MB_TRUE  PR_TRUE
-#define MB_FALSE PR_FALSE
+#define MB_TRUE  true
+#define MB_FALSE false
 // XXX
 
 #endif

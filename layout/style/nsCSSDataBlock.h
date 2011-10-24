@@ -55,6 +55,16 @@ class Declaration;
 }
 }
 
+/*
+ * nsCSSCompressedDataBlock holds property-value pairs corresponding
+ * to CSS declaration blocks.  Each pair is stored in a CDBValueStorage
+ * object; these objects form an array at the end of the data block.
+ */
+struct CDBValueStorage {
+    nsCSSProperty property;
+    nsCSSValue value;
+};
+
 /**
  * An |nsCSSCompressedDataBlock| holds a usually-immutable chunk of
  * property-value data for a CSS declaration block (which we misname a
@@ -92,14 +102,14 @@ public:
     /**
      * Attempt to replace the value for |aProperty| stored in this block
      * with the matching value stored in |aFromBlock|.
-     * This method will fail (returning PR_FALSE) if |aProperty| is not
+     * This method will fail (returning false) if |aProperty| is not
      * already in this block.  It will set |aChanged| to true if it
      * actually made a change to the block, but regardless, if it
-     * returns PR_TRUE, the value in |aFromBlock| was erased.
+     * returns true, the value in |aFromBlock| was erased.
      */
-    PRBool TryReplaceValue(nsCSSProperty aProperty,
+    bool TryReplaceValue(nsCSSProperty aProperty,
                            nsCSSExpandedDataBlock& aFromBlock,
-                           PRBool* aChanged);
+                           bool* aChanged);
 
     /**
      * Clone this block, or return null on out-of-memory.
@@ -112,16 +122,10 @@ public:
     static nsCSSCompressedDataBlock* CreateEmptyBlock();
 
 private:
-    PRInt32 mStyleBits; // the structs for which we have data, according to
-                        // |nsCachedStyleData::GetBitForSID|.
-
-    enum { block_chars = 4 }; // put 4 chars in the definition of the class
-                              // to ensure size not inflated by alignment
-
     void* operator new(size_t aBaseSize, size_t aDataSize) {
-        // subtract off the extra size to store |mBlock_|
-        return ::operator new(aBaseSize + aDataSize -
-                              sizeof(char) * block_chars);
+        NS_ABORT_IF_FALSE(aBaseSize == sizeof(nsCSSCompressedDataBlock),
+                          "unexpected size for nsCSSCompressedDataBlock");
+        return ::operator new(aBaseSize + aDataSize);
     }
 
     /**
@@ -129,15 +133,34 @@ private:
      */
     void Destroy();
 
-    char* mBlockEnd; // the byte after the last valid byte
-    char mBlock_[block_chars]; // must be the last member!
-
-    char* Block() { return mBlock_; }
-    char* BlockEnd() { return mBlockEnd; }
-    const char* Block() const { return mBlock_; }
-    const char* BlockEnd() const { return mBlockEnd; }
-    ptrdiff_t DataSize() const { return BlockEnd() - Block(); }
+    PRInt32 mStyleBits; // the structs for which we have data, according to
+                        // |nsCachedStyleData::GetBitForSID|.
+    PRUint32 mDataSize;
+    // CDBValueStorage elements are stored after these fields.  Space for them
+    // is allocated in |operator new| above.  The static assertions following
+    // this class make sure that the CDBValueStorage elements are aligned
+    // appropriately.
+    
+    char* Block() { return (char*)this + sizeof(*this); }
+    char* BlockEnd() { return Block() + mDataSize; }
+    const char* Block() const { return (char*)this + sizeof(*this); }
+    const char* BlockEnd() const { return Block() + mDataSize; }
+    void SetBlockEnd(char *blockEnd) { 
+        /*
+         * Note:  if we ever change nsCSSDeclaration to store the declarations
+         * in order and also store repeated declarations of the same property,
+         * then we need to worry about checking for integer overflow here.
+         */
+        NS_ABORT_IF_FALSE(size_t(blockEnd - Block()) <= size_t(PR_UINT32_MAX),
+                          "overflow of mDataSize");
+        mDataSize = PRUint32(blockEnd - Block());
+    }
+    ptrdiff_t DataSize() const { return mDataSize; }
 };
+
+/* Make sure the CDBValueStorage elements are aligned appropriately. */
+PR_STATIC_ASSERT(sizeof(nsCSSCompressedDataBlock) == 8);
+PR_STATIC_ASSERT(NS_ALIGNMENT_OF(CDBValueStorage) <= 8); 
 
 class nsCSSExpandedDataBlock {
     friend class nsCSSCompressedDataBlock;
@@ -209,11 +232,11 @@ public:
      * |ValueAppended| on |aDeclaration| if the property was not
      * previously set, or in any case if |aMustCallValueAppended| is true.
      */
-    PRBool TransferFromBlock(nsCSSExpandedDataBlock& aFromBlock,
+    bool TransferFromBlock(nsCSSExpandedDataBlock& aFromBlock,
                              nsCSSProperty aPropID,
-                             PRBool aIsImportant,
-                             PRBool aOverrideImportant,
-                             PRBool aMustCallValueAppended,
+                             bool aIsImportant,
+                             bool aOverrideImportant,
+                             bool aMustCallValueAppended,
                              mozilla::css::Declaration* aDeclaration);
 
     void AssertInitialState() {
@@ -232,16 +255,16 @@ private:
     };
     ComputeSizeResult ComputeSize();
 
-    void DoExpand(nsCSSCompressedDataBlock *aBlock, PRBool aImportant);
+    void DoExpand(nsCSSCompressedDataBlock *aBlock, bool aImportant);
 
     /**
      * Worker for TransferFromBlock; cannot be used with shorthands.
      */
-    PRBool DoTransferFromBlock(nsCSSExpandedDataBlock& aFromBlock,
+    bool DoTransferFromBlock(nsCSSExpandedDataBlock& aFromBlock,
                                nsCSSProperty aPropID,
-                               PRBool aIsImportant,
-                               PRBool aOverrideImportant,
-                               PRBool aMustCallValueAppended,
+                               bool aIsImportant,
+                               bool aOverrideImportant,
+                               bool aMustCallValueAppended,
                                mozilla::css::Declaration* aDeclaration);
 
 #ifdef DEBUG
@@ -279,7 +302,7 @@ private:
         mPropertiesSet.RemoveProperty(aProperty);
     }
 
-    PRBool HasPropertyBit(nsCSSProperty aProperty) {
+    bool HasPropertyBit(nsCSSProperty aProperty) {
         return mPropertiesSet.HasProperty(aProperty);
     }
 
@@ -291,7 +314,7 @@ private:
         mPropertiesImportant.RemoveProperty(aProperty);
     }
 
-    PRBool HasImportantBit(nsCSSProperty aProperty) {
+    bool HasImportantBit(nsCSSProperty aProperty) {
         return mPropertiesImportant.HasProperty(aProperty);
     }
 

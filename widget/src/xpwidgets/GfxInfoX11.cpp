@@ -46,7 +46,7 @@
 
 #include "GfxInfoX11.h"
 
-#if defined(MOZ_CRASHREPORTER) && defined(MOZ_ENABLE_LIBXUL)
+#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
 #include "nsICrashReporter.h"
 #endif
@@ -63,9 +63,11 @@ GfxInfo::Init()
 {
     mMajorVersion = 0;
     mMinorVersion = 0;
+    mRevisionVersion = 0;
     mIsMesa = false;
     mIsNVIDIA = false;
     mIsFGLRX = false;
+    mHasTextureFromPixmap = false;
     return GfxInfoBase::Init();
 }
 
@@ -118,6 +120,7 @@ GfxInfo::GetData()
 
     bool error = waiting_for_glxtest_process_failed || exited_with_error_code || received_signal;
 
+    nsCString textureFromPixmap; 
     nsCString *stringToFill = nsnull;
     char *bufptr = buf;
     if (!error) {
@@ -135,8 +138,13 @@ GfxInfo::GetData()
                 stringToFill = &mRenderer;
             else if(!strcmp(line, "VERSION"))
                 stringToFill = &mVersion;
+            else if(!strcmp(line, "TFP"))
+                stringToFill = &textureFromPixmap;
         }
     }
+
+    if (!strcmp(textureFromPixmap.get(), "TRUE"))
+        mHasTextureFromPixmap = true;
 
     const char *spoofedVendor = PR_GetEnv("MOZ_GFX_SPOOF_GL_VENDOR");
     if (spoofedVendor)
@@ -165,7 +173,7 @@ GfxInfo::GetData()
             mAdapterDescription.Append(nsDependentCString(buf));
             mAdapterDescription.AppendLiteral("\n");
         }
-#if defined(MOZ_CRASHREPORTER) && defined(MOZ_ENABLE_LIBXUL)
+#ifdef MOZ_CRASHREPORTER
         CrashReporter::AppendAppNotesToCrashReport(mAdapterDescription);
 #endif
         return;
@@ -180,8 +188,10 @@ GfxInfo::GetData()
     note.Append(mAdapterDescription);
     note.Append(" -- ");
     note.Append(mVersion);
+    if (mHasTextureFromPixmap)
+        note.Append(" -- texture_from_pixmap");
     note.Append("\n");
-#if defined(MOZ_CRASHREPORTER) && defined(MOZ_ENABLE_LIBXUL)
+#ifdef MOZ_CRASHREPORTER
     CrashReporter::AppendAppNotesToCrashReport(note);
 #endif
 
@@ -221,15 +231,19 @@ GfxInfo::GetData()
         if (token) {
             mMajorVersion = strtol(token, 0, 10);
             token = NS_strtok(".", &bufptr);
-            if (token)
+            if (token) {
                 mMinorVersion = strtol(token, 0, 10);
+                token = NS_strtok(".", &bufptr);
+                if (token)
+                    mRevisionVersion = strtol(token, 0, 10);
+            }
         }
     }
 }
 
-static inline PRUint64 version(PRUint32 major, PRUint32 minor)
+static inline PRUint64 version(PRUint32 major, PRUint32 minor, PRUint32 revision = 0)
 {
-    return (PRUint64(major) << 32) + PRUint64(minor);
+    return (PRUint64(major) << 32) + (PRUint64(minor) << 16) + PRUint64(revision);
 }
 
 nsresult
@@ -237,12 +251,25 @@ GfxInfo::GetFeatureStatusImpl(PRInt32 aFeature, PRInt32 *aStatus, nsAString & aS
 {
     GetData();
     *aStatus = nsIGfxInfo::FEATURE_NO_INFO;
-    aSuggestedDriverVersion.SetIsVoid(PR_TRUE);
+    aSuggestedDriverVersion.SetIsVoid(true);
+
+    if (aDriverInfo) {
+      // We don't implement the downloaded blacklist yet. Don't evaluate
+      // anything.
+      return NS_OK;
+    }
 
 #ifdef MOZ_PLATFORM_MAEMO
     // on Maemo, the glxtest probe doesn't build, and we don't really need GfxInfo anyway
     return NS_OK;
 #endif
+
+    // Disable OpenGL layers when we don't have texture_from_pixmap because it regresses performance. 
+    if (aFeature == nsIGfxInfo::FEATURE_OPENGL_LAYERS && !mHasTextureFromPixmap) {
+        *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION;
+        aSuggestedDriverVersion.AssignLiteral("<Anything with EXT_texture_from_pixmap support>");
+        return NS_OK;
+    }
 
     // whitelist the linux test slaves' current configuration.
     // this is necessary as they're still using the slightly outdated 190.42 driver.
@@ -257,25 +284,19 @@ GfxInfo::GetFeatureStatusImpl(PRInt32 aFeature, PRInt32 *aStatus, nsAString & aS
     }
 
     if (mIsMesa) {
-        if (version(mMajorVersion, mMinorVersion) < version(7,10)) {
+        if (version(mMajorVersion, mMinorVersion, mRevisionVersion) < version(7,10,3)) {
             *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION;
-            aSuggestedDriverVersion.AssignLiteral("Mesa 7.10");
-        }
-        else if (strstr(mRenderer.get(), "Gallium")) {
-            // see bug 624935
-            // and http://marc.info/?l=mesa3d-dev&m=126525088903956&w=2
-            *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION;
-            aSuggestedDriverVersion.AssignLiteral("<NOT Gallium>");
+            aSuggestedDriverVersion.AssignLiteral("Mesa 7.10.3");
         }
     } else if (mIsNVIDIA) {
-        if (version(mMajorVersion, mMinorVersion) < version(257,21)) {
+        if (version(mMajorVersion, mMinorVersion, mRevisionVersion) < version(257,21)) {
             *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION;
             aSuggestedDriverVersion.AssignLiteral("NVIDIA 257.21");
         }
     } else if (mIsFGLRX) {
         // FGLRX does not report a driver version number, so we have the OpenGL version instead.
         // by requiring OpenGL 3, we effectively require recent drivers.
-        if (version(mMajorVersion, mMinorVersion) < version(3, 0)) {
+        if (version(mMajorVersion, mMinorVersion, mRevisionVersion) < version(3, 0)) {
             *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION;
         }
     } else {
@@ -288,13 +309,19 @@ GfxInfo::GetFeatureStatusImpl(PRInt32 aFeature, PRInt32 *aStatus, nsAString & aS
 
 
 NS_IMETHODIMP
-GfxInfo::GetD2DEnabled(PRBool *aEnabled)
+GfxInfo::GetD2DEnabled(bool *aEnabled)
 {
   return NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-GfxInfo::GetDWriteEnabled(PRBool *aEnabled)
+GfxInfo::GetDWriteEnabled(bool *aEnabled)
+{
+  return NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
+GfxInfo::GetAzureEnabled(bool *aEnabled)
 {
   return NS_ERROR_FAILURE;
 }
@@ -322,6 +349,13 @@ GfxInfo::GetAdapterDescription(nsAString & aAdapterDescription)
   return NS_OK;
 }
 
+/* readonly attribute DOMString adapterDescription2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDescription2(nsAString & aAdapterDescription)
+{
+  return NS_ERROR_FAILURE;
+}
+
 /* readonly attribute DOMString adapterRAM; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterRAM(nsAString & aAdapterRAM)
@@ -330,12 +364,26 @@ GfxInfo::GetAdapterRAM(nsAString & aAdapterRAM)
   return NS_OK;
 }
 
+/* readonly attribute DOMString adapterRAM2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterRAM2(nsAString & aAdapterRAM)
+{
+  return NS_ERROR_FAILURE;
+}
+
 /* readonly attribute DOMString adapterDriver; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriver(nsAString & aAdapterDriver)
 {
   aAdapterDriver.AssignLiteral("");
   return NS_OK;
+}
+
+/* readonly attribute DOMString adapterDriver2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDriver2(nsAString & aAdapterDriver)
+{
+  return NS_ERROR_FAILURE;
 }
 
 /* readonly attribute DOMString adapterDriverVersion; */
@@ -347,12 +395,26 @@ GfxInfo::GetAdapterDriverVersion(nsAString & aAdapterDriverVersion)
   return NS_OK;
 }
 
+/* readonly attribute DOMString adapterDriverVersion2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDriverVersion2(nsAString & aAdapterDriverVersion)
+{
+  return NS_ERROR_FAILURE;
+}
+
 /* readonly attribute DOMString adapterDriverDate; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriverDate(nsAString & aAdapterDriverDate)
 {
   aAdapterDriverDate.AssignLiteral("");
   return NS_OK;
+}
+
+/* readonly attribute DOMString adapterDriverDate2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDriverDate2(nsAString & aAdapterDriverDate)
+{
+  return NS_ERROR_FAILURE;
 }
 
 /* readonly attribute unsigned long adapterVendorID; */
@@ -363,12 +425,33 @@ GfxInfo::GetAdapterVendorID(PRUint32 *aAdapterVendorID)
   return NS_OK;
 }
 
+/* readonly attribute unsigned long adapterVendorID2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterVendorID2(PRUint32 *aAdapterVendorID)
+{
+  return NS_ERROR_FAILURE;
+}
+
 /* readonly attribute unsigned long adapterDeviceID; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDeviceID(PRUint32 *aAdapterDeviceID)
 {
   *aAdapterDeviceID = 0;
   return NS_OK;
+}
+
+/* readonly attribute unsigned long adapterDeviceID2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterDeviceID2(PRUint32 *aAdapterDeviceID)
+{
+  return NS_ERROR_FAILURE;
+}
+
+/* readonly attribute boolean isGPU2Active; */
+NS_IMETHODIMP
+GfxInfo::GetIsGPU2Active(bool* aIsGPU2Active)
+{
+  return NS_ERROR_FAILURE;
 }
 
 

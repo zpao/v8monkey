@@ -43,15 +43,15 @@
 nsDOMKeyboardEvent::nsDOMKeyboardEvent(nsPresContext* aPresContext,
                                        nsKeyEvent* aEvent)
   : nsDOMUIEvent(aPresContext, aEvent ? aEvent :
-                 new nsKeyEvent(PR_FALSE, 0, nsnull))
+                 new nsKeyEvent(false, 0, nsnull))
 {
   NS_ASSERTION(mEvent->eventStructType == NS_KEY_EVENT, "event type mismatch");
 
   if (aEvent) {
-    mEventIsInternal = PR_FALSE;
+    mEventIsInternal = false;
   }
   else {
-    mEventIsInternal = PR_TRUE;
+    mEventIsInternal = true;
     mEvent->time = PR_Now();
   }
 }
@@ -75,7 +75,7 @@ NS_INTERFACE_MAP_BEGIN(nsDOMKeyboardEvent)
 NS_INTERFACE_MAP_END_INHERITING(nsDOMUIEvent)
 
 NS_IMETHODIMP
-nsDOMKeyboardEvent::GetAltKey(PRBool* aIsDown)
+nsDOMKeyboardEvent::GetAltKey(bool* aIsDown)
 {
   NS_ENSURE_ARG_POINTER(aIsDown);
   *aIsDown = ((nsInputEvent*)mEvent)->isAlt;
@@ -83,7 +83,7 @@ nsDOMKeyboardEvent::GetAltKey(PRBool* aIsDown)
 }
 
 NS_IMETHODIMP
-nsDOMKeyboardEvent::GetCtrlKey(PRBool* aIsDown)
+nsDOMKeyboardEvent::GetCtrlKey(bool* aIsDown)
 {
   NS_ENSURE_ARG_POINTER(aIsDown);
   *aIsDown = ((nsInputEvent*)mEvent)->isControl;
@@ -91,7 +91,7 @@ nsDOMKeyboardEvent::GetCtrlKey(PRBool* aIsDown)
 }
 
 NS_IMETHODIMP
-nsDOMKeyboardEvent::GetShiftKey(PRBool* aIsDown)
+nsDOMKeyboardEvent::GetShiftKey(bool* aIsDown)
 {
   NS_ENSURE_ARG_POINTER(aIsDown);
   *aIsDown = ((nsInputEvent*)mEvent)->isShift;
@@ -99,7 +99,7 @@ nsDOMKeyboardEvent::GetShiftKey(PRBool* aIsDown)
 }
 
 NS_IMETHODIMP
-nsDOMKeyboardEvent::GetMetaKey(PRBool* aIsDown)
+nsDOMKeyboardEvent::GetMetaKey(bool* aIsDown)
 {
   NS_ENSURE_ARG_POINTER(aIsDown);
   *aIsDown = ((nsInputEvent*)mEvent)->isMeta;
@@ -144,8 +144,9 @@ nsDOMKeyboardEvent::GetKeyCode(PRUint32* aKeyCode)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsDOMKeyboardEvent::GetWhich(PRUint32* aWhich)
+/* virtual */
+nsresult
+nsDOMKeyboardEvent::Which(PRUint32* aWhich)
 {
   NS_ENSURE_ARG_POINTER(aWhich);
 
@@ -174,9 +175,9 @@ nsDOMKeyboardEvent::GetWhich(PRUint32* aWhich)
 }
 
 NS_IMETHODIMP
-nsDOMKeyboardEvent::InitKeyEvent(const nsAString& aType, PRBool aCanBubble, PRBool aCancelable,
-                                 nsIDOMWindow* aView, PRBool aCtrlKey, PRBool aAltKey,
-                                 PRBool aShiftKey, PRBool aMetaKey,
+nsDOMKeyboardEvent::InitKeyEvent(const nsAString& aType, bool aCanBubble, bool aCancelable,
+                                 nsIDOMWindow* aView, bool aCtrlKey, bool aAltKey,
+                                 bool aShiftKey, bool aMetaKey,
                                  PRUint32 aKeyCode, PRUint32 aCharCode)
 {
   nsresult rv = nsDOMUIEvent::InitUIEvent(aType, aCanBubble, aCancelable, aView, 0);

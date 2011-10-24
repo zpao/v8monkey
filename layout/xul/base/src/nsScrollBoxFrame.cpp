@@ -92,9 +92,9 @@ protected:
     static_cast<nsAutoRepeatBoxFrame*>(aData)->Notify();
   }
 
-  PRPackedBool mTrustedEvent;
+  bool mTrustedEvent;
   
-  PRBool IsActivatedOnHover();
+  bool IsActivatedOnHover();
 };
 
 nsIFrame*
@@ -133,7 +133,7 @@ nsAutoRepeatBoxFrame::HandleEvent(nsPresContext* aPresContext,
       // always stop on mouse exit
       StopRepeat();
       // Not really necessary but do this to be safe
-      mTrustedEvent = PR_FALSE;
+      mTrustedEvent = false;
       break;
 
     case NS_MOUSE_CLICK:
@@ -198,7 +198,7 @@ nsAutoRepeatBoxFrame::DestroyFrom(nsIFrame* aDestructRoot)
   nsButtonBoxFrame::DestroyFrom(aDestructRoot);
 }
 
-PRBool
+bool
 nsAutoRepeatBoxFrame::IsActivatedOnHover()
 {
   return mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::repeat,

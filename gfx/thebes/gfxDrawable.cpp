@@ -38,6 +38,7 @@
 #include "gfxASurface.h"
 #include "gfxContext.h"
 #include "gfxPlatform.h"
+#include "mozilla/arm.h"
 #ifdef MOZ_X11
 #include "cairo.h"
 #include "gfxXlibSurface.h"
@@ -68,71 +69,57 @@ DeviceToImageTransform(gfxContext* aContext,
 static void
 PreparePatternForUntiledDrawing(gfxPattern* aPattern,
                                 const gfxMatrix& aDeviceToImage,
-                                gfxASurface::gfxSurfaceType aSurfaceType,
-                                nsRefPtr<gfxASurface> currentTarget,
+                                gfxASurface *currentTarget,
                                 const gfxPattern::GraphicsFilter aDefaultFilter)
 {
     // In theory we can handle this using cairo's EXTEND_PAD,
     // but implementation limitations mean we have to consult
     // the surface type.
-    switch (aSurfaceType) {
+    switch (currentTarget->GetType()) {
+
+#ifdef MOZ_X11
         case gfxASurface::SurfaceTypeXlib:
-        case gfxASurface::SurfaceTypeXcb:
         {
-            // See bug 324698.  This is a workaround for EXTEND_PAD not being
-            // implemented correctly on linux in the X server.
+            // See bugs 324698, 422179, and 468496.  This is a workaround for
+            // XRender's RepeatPad not being implemented correctly on old X
+            // servers.
             //
-            // Set the filter to CAIRO_FILTER_FAST --- otherwise,
-            // pixman's sampling will sample transparency for the outside edges
-            // and we'll get blurry edges.  CAIRO_EXTEND_PAD would also work
-            // here, if available
+            // In this situation, cairo avoids XRender and instead reads back
+            // to perform EXTEND_PAD with pixman.  This is too slow so we
+            // avoid EXTEND_PAD and set the filter to CAIRO_FILTER_FAST ---
+            // otherwise, pixman's sampling will sample transparency for the
+            // outside edges and we'll get blurry edges.
             //
             // But don't do this for simple downscales because it's horrible.
             // Downscaling means that device-space coordinates are
             // scaled *up* to find the image pixel coordinates.
             //
-            // Update 8/11/09: The underlying X server/driver bugs are now
-            // fixed, and cairo uses the fast XRender code-path as of 1.9.2
-            // (commit a1d0a06b6275cac3974be84919993e187394fe43) --
-            // but only if running on a 1.7 X server.
-            // So we enable EXTEND_PAD provided that we're running a recent
-            // enough cairo version (obviously, this is only relevant if
-            // --enable-system-cairo is used) AND running on a recent
-            // enough X server.  This should finally bring linux up to par
-            // with other systems.
+            // Cairo, and hence Gecko, can use RepeatPad on Xorg 1.7. We
+            // enable EXTEND_PAD provided that we're running on a recent
+            // enough X server.
 
-            PRBool isDownscale =
-                aDeviceToImage.xx >= 1.0 && aDeviceToImage.yy >= 1.0 &&
-                aDeviceToImage.xy == 0.0 && aDeviceToImage.yx == 0.0;
-            if (!isDownscale) {
-#ifdef MOZ_X11
-                PRBool fastExtendPad = PR_FALSE;
-                if (currentTarget->GetType() == gfxASurface::SurfaceTypeXlib &&
-                    cairo_version() >= CAIRO_VERSION_ENCODE(1,9,2)) {
-                    gfxXlibSurface *xlibSurface =
-                        static_cast<gfxXlibSurface *>(currentTarget.get());
-                    Display *dpy = xlibSurface->XDisplay();
-                    // This is the exact condition for cairo to use XRender for
-                    // EXTEND_PAD
-                    if (VendorRelease (dpy) < 60700000 &&
-                        VendorRelease (dpy) >= 10699000)
-                        fastExtendPad = PR_TRUE;
-                }
-                if (fastExtendPad) {
-                    aPattern->SetExtend(gfxPattern::EXTEND_PAD);
-                    aPattern->SetFilter(aDefaultFilter);
-                } else
-#endif
-                    aPattern->SetFilter(gfxPattern::FILTER_FAST);
+            gfxXlibSurface *xlibSurface =
+                static_cast<gfxXlibSurface *>(currentTarget);
+            Display *dpy = xlibSurface->XDisplay();
+            // This is the exact condition for cairo to avoid XRender for
+            // EXTEND_PAD
+            if (VendorRelease(dpy) >= 60700000 ||
+                VendorRelease(dpy) < 10699000) {
+
+                bool isDownscale =
+                    aDeviceToImage.xx >= 1.0 && aDeviceToImage.yy >= 1.0 &&
+                    aDeviceToImage.xy == 0.0 && aDeviceToImage.yx == 0.0;
+
+                gfxPattern::GraphicsFilter filter =
+                    isDownscale ? aDefaultFilter : gfxPattern::FILTER_FAST;
+                aPattern->SetFilter(filter);
+
+                // Use the default EXTEND_NONE
+                break;
             }
-            break;
+            // else fall through to EXTEND_PAD and the default filter.
         }
-
-        case gfxASurface::SurfaceTypeQuartz:
-        case gfxASurface::SurfaceTypeQuartzImage:
-            // Don't set EXTEND_PAD, Mac seems to be OK. Really?
-            aPattern->SetFilter(aDefaultFilter);
-            break;
+#endif
 
         default:
             // turn on EXTEND_PAD.
@@ -144,10 +131,10 @@ PreparePatternForUntiledDrawing(gfxPattern* aPattern,
     }
 }
 
-PRBool
+bool
 gfxSurfaceDrawable::Draw(gfxContext* aContext,
                          const gfxRect& aFillRect,
-                         PRBool aRepeat,
+                         bool aRepeat,
                          const gfxPattern::GraphicsFilter& aFilter,
                          const gfxMatrix& aTransform)
 {
@@ -166,21 +153,17 @@ gfxSurfaceDrawable::Draw(gfxContext* aContext,
           filter = gfxPattern::FILTER_FAST;
         }
         nsRefPtr<gfxASurface> currentTarget = aContext->CurrentSurface();
-        gfxASurface::gfxSurfaceType surfaceType = currentTarget->GetType();
         gfxMatrix deviceSpaceToImageSpace =
             DeviceToImageTransform(aContext, aTransform);
         PreparePatternForUntiledDrawing(pattern, deviceSpaceToImageSpace,
-                                        surfaceType, currentTarget, filter);
+                                        currentTarget, filter);
     }
-#ifdef MOZ_GFX_OPTIMIZE_MOBILE
-    pattern->SetFilter(gfxPattern::FILTER_FAST); 
-#endif
     pattern->SetMatrix(gfxMatrix(aTransform).Multiply(mTransform));
     aContext->NewPath();
     aContext->SetPattern(pattern);
     aContext->Rectangle(aFillRect);
     aContext->Fill();
-    return PR_TRUE;
+    return true;
 }
 
 gfxCallbackDrawable::gfxCallbackDrawable(gfxDrawingCallback* aCallback,
@@ -199,15 +182,15 @@ gfxCallbackDrawable::MakeSurfaceDrawable(const gfxPattern::GraphicsFilter aFilte
         return nsnull;
 
     nsRefPtr<gfxContext> ctx = new gfxContext(surface);
-    Draw(ctx, gfxRect(0, 0, mSize.width, mSize.height), PR_FALSE, aFilter);
+    Draw(ctx, gfxRect(0, 0, mSize.width, mSize.height), false, aFilter);
     nsRefPtr<gfxSurfaceDrawable> drawable = new gfxSurfaceDrawable(surface, mSize);
     return drawable.forget();
 }
 
-PRBool
+bool
 gfxCallbackDrawable::Draw(gfxContext* aContext,
                           const gfxRect& aFillRect,
-                          PRBool aRepeat,
+                          bool aRepeat,
                           const gfxPattern::GraphicsFilter& aFilter,
                           const gfxMatrix& aTransform)
 {
@@ -222,7 +205,7 @@ gfxCallbackDrawable::Draw(gfxContext* aContext,
     if (mCallback)
         return (*mCallback)(aContext, aFillRect, aFilter, aTransform);
 
-    return PR_FALSE;
+    return false;
 }
 
 gfxPatternDrawable::gfxPatternDrawable(gfxPattern* aPattern,
@@ -241,12 +224,12 @@ public:
 
     virtual ~DrawingCallbackFromDrawable() {}
 
-    virtual PRBool operator()(gfxContext* aContext,
+    virtual bool operator()(gfxContext* aContext,
                               const gfxRect& aFillRect,
                               const gfxPattern::GraphicsFilter& aFilter,
                               const gfxMatrix& aTransform = gfxMatrix())
     {
-        return mDrawable->Draw(aContext, aFillRect, PR_FALSE, aFilter,
+        return mDrawable->Draw(aContext, aFillRect, false, aFilter,
                                aTransform);
     }
 private:
@@ -263,15 +246,15 @@ gfxPatternDrawable::MakeCallbackDrawable()
     return callbackDrawable.forget();
 }
 
-PRBool
+bool
 gfxPatternDrawable::Draw(gfxContext* aContext,
                          const gfxRect& aFillRect,
-                         PRBool aRepeat,
+                         bool aRepeat,
                          const gfxPattern::GraphicsFilter& aFilter,
                          const gfxMatrix& aTransform)
 {
     if (!mPattern)
-        return PR_FALSE;
+        return false;
 
     if (aRepeat) {
         // We can't use mPattern directly: We want our repeated tiles to have
@@ -280,9 +263,9 @@ gfxPatternDrawable::Draw(gfxContext* aContext,
         // a pattern from the surface and draw that pattern.
         // gfxCallbackDrawable and gfxSurfaceDrawable already know how to do
         // those things, so we use them here. Drawing mPattern into the surface
-        // will happen through this Draw() method with aRepeat = PR_FALSE.
+        // will happen through this Draw() method with aRepeat = false.
         nsRefPtr<gfxCallbackDrawable> callbackDrawable = MakeCallbackDrawable();
-        return callbackDrawable->Draw(aContext, aFillRect, PR_TRUE, aFilter,
+        return callbackDrawable->Draw(aContext, aFillRect, true, aFilter,
                                       aTransform);
     }
 
@@ -293,5 +276,5 @@ gfxPatternDrawable::Draw(gfxContext* aContext,
     aContext->Rectangle(aFillRect);
     aContext->Fill();
     mPattern->SetMatrix(oldMatrix);
-    return PR_TRUE;
+    return true;
 }

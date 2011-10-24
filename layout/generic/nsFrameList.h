@@ -42,8 +42,34 @@
 #include "nsTraceRefcnt.h"
 #include <stdio.h> /* for FILE* */
 #include "nsDebug.h"
+#include "nsTArray.h"
 
 class nsIFrame;
+namespace mozilla {
+namespace layout {
+  class FrameChildList;
+  enum FrameChildListID {
+      // The individual concrete child lists.
+      kPrincipalList                = 0x1,
+      kPopupList                    = 0x2,
+      kCaptionList                  = 0x4,
+      kColGroupList                 = 0x8,
+      kSelectPopupList              = 0x10,
+      kAbsoluteList                 = 0x20,
+      kFixedList                    = 0x40,
+      kOverflowList                 = 0x80,
+      kOverflowContainersList       = 0x100,
+      kExcessOverflowContainersList = 0x200,
+      kOverflowOutOfFlowList        = 0x400,
+      kFloatList                    = 0x800,
+      kBulletList                   = 0x1000,
+      kPushedFloatsList             = 0x2000,
+      // A special alias for kPrincipalList that suppress the reflow request that
+      // is normally done when manipulating child lists.
+      kNoReflowPrincipalList        = 0x4000
+  };
+}
+}
 
 // Uncomment this to enable expensive frame-list integrity checking
 // #define DEBUG_FRAME_LIST
@@ -147,9 +173,9 @@ public:
    * Take aFrame out of the frame list, if present. This also disconnects
    * aFrame from the sibling list. aFrame must be non-null but is not
    * required to be on the list.
-   * @return PR_TRUE if aFrame was removed
+   * @return true if aFrame was removed
    */
-  PRBool RemoveFrameIfPresent(nsIFrame* aFrame);
+  bool RemoveFrameIfPresent(nsIFrame* aFrame);
 
   /**
    * Take the frames after aAfterFrame out of the frame list.  If
@@ -174,9 +200,9 @@ public:
   /**
    * If aFrame is present on this list then take it out of the list and
    * then destroy it. The frame must be non-null.
-   * @return PR_TRUE if the frame was found
+   * @return true if the frame was found
    */
-  PRBool DestroyFrameIfPresent(nsIFrame* aFrame);
+  bool DestroyFrameIfPresent(nsIFrame* aFrame);
 
   /**
    * Insert aFrame right after aPrevSibling, or prepend it to this
@@ -227,15 +253,15 @@ public:
   nsIFrame* FrameAt(PRInt32 aIndex) const;
   PRInt32 IndexOf(nsIFrame* aFrame) const;
 
-  PRBool IsEmpty() const {
+  bool IsEmpty() const {
     return nsnull == mFirstChild;
   }
 
-  PRBool NotEmpty() const {
+  bool NotEmpty() const {
     return nsnull != mFirstChild;
   }
 
-  PRBool ContainsFrame(const nsIFrame* aFrame) const;
+  bool ContainsFrame(const nsIFrame* aFrame) const;
 
   PRInt32 GetLength() const;
 
@@ -256,6 +282,14 @@ public:
    */
   void ApplySetParent(nsIFrame* aParent) const;
 
+  /**
+   * If this frame list is non-empty then append it to aLists as the
+   * aListID child list.
+   * (this method is implemented in FrameChildList.h for dependency reasons)
+   */
+  inline void AppendIfNonempty(nsTArray<mozilla::layout::FrameChildList>* aLists,
+                               mozilla::layout::FrameChildListID aListID) const;
+
 #ifdef IBMBIDI
   /**
    * Return the frame before this frame in visual order (after Bidi reordering).
@@ -274,7 +308,7 @@ public:
   void List(FILE* out) const;
 #endif
 
-  static nsresult Init();
+  static void Init();
   static void Shutdown() { delete sEmptyList; }
   static const nsFrameList& EmptyList() { return *sEmptyList; }
 
@@ -340,7 +374,7 @@ public:
       mEnd(aOther.mEnd)
     {}
 
-    PRBool AtEnd() const {
+    bool AtEnd() const {
       // Can't just check mEnd, because some table code goes and destroys the
       // tail of the frame list (including mEnd!) while iterating over the
       // frame list.
@@ -431,7 +465,7 @@ public:
       Enumerator::Next();
     }
 
-    PRBool AtEnd() const { return Enumerator::AtEnd(); }
+    bool AtEnd() const { return Enumerator::AtEnd(); }
 
     nsIFrame* PrevFrame() const { return mPrev; }
     nsIFrame* NextFrame() const { return mFrame; }

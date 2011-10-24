@@ -48,7 +48,7 @@ from runtests import Mochitest
 from runtests import MochitestOptions
 from runtests import MochitestServer
 
-import devicemanager
+import devicemanager, devicemanagerADB, devicemanagerSUT
 
 class RemoteOptions(MochitestOptions):
 
@@ -65,6 +65,11 @@ class RemoteOptions(MochitestOptions):
                     type = "string", dest = "deviceIP",
                     help = "ip address of remote device to test")
         defaults["deviceIP"] = None
+
+        self.add_option("--dm_trans", action="store",
+                    type = "string", dest = "dm_trans",
+                    help = "the transport to use to communicate with device: [adb|sut]; default=sut")
+        defaults["dm_trans"] = "sut"
 
         self.add_option("--devicePort", action="store",
                     type = "string", dest = "devicePort",
@@ -131,7 +136,7 @@ class RemoteOptions(MochitestOptions):
             return None
 
         if (options.remoteLogFile == None):
-            options.remoteLogFile = options.remoteTestRoot + '/mochitest.log'
+            options.remoteLogFile = options.remoteTestRoot + '/logs/mochitest.log'
 
         if (options.remoteLogFile.count('/') < 1):
             options.remoteLogFile = options.remoteTestRoot + '/' + options.remoteLogFile
@@ -187,6 +192,7 @@ class MochiRemote(Mochitest):
         self._dm = devmgr
         self.runSSLTunnel = False
         self.remoteProfile = options.remoteTestRoot + "/profile"
+        self._automation.setRemoteProfile(self.remoteProfile)
         self.remoteLog = options.remoteLogFile
 
     def cleanup(self, manifest, options):
@@ -196,6 +202,7 @@ class MochiRemote(Mochitest):
         if (options.pidFile != ""):
             try:
                 os.remove(options.pidFile)
+                os.remove(options.pidFile + ".xpcshell.pid")
             except:
                 print "Warning: cleaning up pidfile '%s' was unsuccessful from the test harness" % options.pidFile
 
@@ -251,7 +258,12 @@ class MochiRemote(Mochitest):
         self.server = MochitestServer(localAutomation, options)
         self.server.start()
 
+        if (options.pidFile != ""):
+            f = open(options.pidFile + ".xpcshell.pid", 'w')
+            f.write("%s" % self.server._process.pid)
+            f.close()
         self.server.ensureReady(self.SERVER_STARTUP_TIMEOUT)
+
         options.xrePath = remoteXrePath
         options.utilityPath = remoteUtilityPath
         options.profilePath = remoteProfilePath
@@ -268,11 +280,11 @@ class MochiRemote(Mochitest):
         options.profilePath = self.remoteProfile
         return manifest
     
-    def buildURLOptions(self, options):
+    def buildURLOptions(self, options, env):
         self.localLog = options.logFile
         options.logFile = self.remoteLog
         options.profilePath = self.localProfile
-        retVal = Mochitest.buildURLOptions(self, options)
+        retVal = Mochitest.buildURLOptions(self, options, env)
         #we really need testConfig.js (for browser chrome)
         if self._dm.pushDir(options.profilePath, self.remoteProfile) == None:
             raise devicemanager.FileError("Unable to copy profile to device.")
@@ -296,12 +308,17 @@ class MochiRemote(Mochitest):
 
 def main():
     scriptdir = os.path.abspath(os.path.realpath(os.path.dirname(__file__)))
-    dm_none = devicemanager.DeviceManager(None, None)
+    dm_none = devicemanagerADB.DeviceManagerADB()
     auto = RemoteAutomation(dm_none, "fennec")
     parser = RemoteOptions(auto, scriptdir)
     options, args = parser.parse_args()
-
-    dm = devicemanager.DeviceManager(options.deviceIP, options.devicePort)
+    if (options.dm_trans == "adb"):
+        if (options.deviceIP):
+            dm = devicemanagerADB.DeviceManagerADB(options.deviceIP, options.devicePort)
+        else:
+            dm = dm_none
+    else:
+         dm = devicemanagerSUT.DeviceManagerSUT(options.deviceIP, options.devicePort)
     auto.setDeviceManager(dm)
     options = parser.verifyRemoteOptions(options, auto)
     if (options == None):
@@ -320,6 +337,8 @@ def main():
     if (options == None):
         sys.exit(1)
     
+    logParent = os.path.dirname(options.remoteLogFile)
+    dm.mkDir(logParent);
     auto.setRemoteLog(options.remoteLogFile)
     auto.setServerInfo(options.webServer, options.httpPort, options.sslPort)
 
@@ -327,8 +346,16 @@ def main():
     if (dm.processExist(procName)):
       dm.killProcess(procName)
 
-    sys.exit(mochitest.runTests(options))
-    
+    try:
+      retVal = mochitest.runTests(options)
+    except:
+      print "TEST-UNEXPECTED-ERROR | | Exception caught while running tests."
+      mochitest.stopWebServer(options)
+      mochitest.stopWebSocketServer(options)
+      sys.exit(1)
+      
+    sys.exit(retVal)
+        
 if __name__ == "__main__":
     main()
 

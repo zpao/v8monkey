@@ -84,7 +84,7 @@ nsresult ParseData(char* anInputStream,char* anOutputStream) {
 
   nsString stream;
   char buffer[1024] = {0}; // XXX Yikes!
-  PRBool done = PR_FALSE;
+  bool done = false;
   PRInt32 length = 0;
   while(!done) {
     length = PR_Read(in, buffer, sizeof(buffer));
@@ -92,13 +92,13 @@ nsresult ParseData(char* anInputStream,char* anOutputStream) {
       stream.Append(NS_ConvertUTF8toUTF16(buffer, length));
     }
     else {
-      done=PR_TRUE;
+      done=true;
     }
   }
 
   sink->SetOutputStream(out);
   parser->SetContentSink(sink);
-  result = parser->Parse(stream, 0, NS_LITERAL_CSTRING("text/html"), PR_TRUE);
+  result = parser->Parse(stream, 0, NS_LITERAL_CSTRING("text/html"), true);
   
   PR_Close(in);
   PR_Close(out);

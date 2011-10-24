@@ -41,6 +41,7 @@
 #include "prdtoa.h"
 #include "nsTextFormatter.h"
 #include "nsCharSeparatedTokenizer.h"
+#include "nsMathUtils.h"
 #ifdef MOZ_SMIL
 #include "nsSMILValue.h"
 #include "SVGViewBoxSMILType.h"
@@ -51,11 +52,11 @@ using namespace mozilla;
 
 /* Implementation of nsSVGViewBoxRect methods */
 
-PRBool
+bool
 nsSVGViewBoxRect::operator==(const nsSVGViewBoxRect& aOther) const
 {
   if (&aOther == this)
-    return PR_TRUE;
+    return true;
 
   return x == aOther.x &&
     y == aOther.y &&
@@ -105,7 +106,7 @@ nsSVGViewBox::Init()
 {
   mBaseVal = nsSVGViewBoxRect();
   mAnimVal = nsnull;
-  mHasBaseVal = PR_FALSE;
+  mHasBaseVal = false;
 }
 
 void
@@ -126,12 +127,12 @@ nsSVGViewBox::SetAnimValue(float aX, float aY, float aWidth, float aHeight,
 
 void
 nsSVGViewBox::SetBaseValue(float aX, float aY, float aWidth, float aHeight,
-                           nsSVGElement *aSVGElement, PRBool aDoSetAttr)
+                           nsSVGElement *aSVGElement)
 {
   mBaseVal = nsSVGViewBoxRect(aX, aY, aWidth, aHeight);
-  mHasBaseVal = PR_TRUE;
+  mHasBaseVal = true;
 
-  aSVGElement->DidChangeViewBox(aDoSetAttr);
+  aSVGElement->DidChangeViewBox(true);
 #ifdef MOZ_SMIL
   if (mAnimVal) {
     aSVGElement->AnimationNeedsResample();
@@ -142,7 +143,7 @@ nsSVGViewBox::SetBaseValue(float aX, float aY, float aWidth, float aHeight,
 static nsresult
 ToSVGViewBoxRect(const nsAString& aStr, nsSVGViewBoxRect *aViewBox)
 {
-  nsCharSeparatedTokenizer
+  nsCharSeparatedTokenizerTemplate<IsSVGWhitespace>
     tokenizer(aStr, ',',
               nsCharSeparatedTokenizer::SEPARATOR_OPTIONAL);
   float vals[NUM_VIEWBOX_COMPONENTS];
@@ -156,7 +157,7 @@ ToSVGViewBoxRect(const nsAString& aStr, nsSVGViewBoxRect *aViewBox)
 
     char *end;
     vals[i] = float(PR_strtod(token, &end));
-    if (*end != '\0' || !NS_FloatIsFinite(vals[i])) {
+    if (*end != '\0' || !NS_finite(vals[i])) {
       return NS_ERROR_DOM_SYNTAX_ERR; // parse error
     }
   }
@@ -165,25 +166,34 @@ ToSVGViewBoxRect(const nsAString& aStr, nsSVGViewBoxRect *aViewBox)
       tokenizer.hasMoreTokens() ||                // Too many values.
       tokenizer.lastTokenEndedWithSeparator()) {  // Trailing comma.
     return NS_ERROR_DOM_SYNTAX_ERR;
-  } else {
-    aViewBox->x = vals[0];
-    aViewBox->y = vals[1];
-    aViewBox->width = vals[2];
-    aViewBox->height = vals[3];
   }
+
+  aViewBox->x = vals[0];
+  aViewBox->y = vals[1];
+  aViewBox->width = vals[2];
+  aViewBox->height = vals[3];
 
   return NS_OK;
 }
 
 nsresult
 nsSVGViewBox::SetBaseValueString(const nsAString& aValue,
-                                 nsSVGElement *aSVGElement,
-                                 PRBool aDoSetAttr)
+                                 nsSVGElement *aSVGElement)
 {
   nsSVGViewBoxRect viewBox;
   nsresult res = ToSVGViewBoxRect(aValue, &viewBox);
   if (NS_SUCCEEDED(res)) {
-    SetBaseValue(viewBox.x, viewBox.y, viewBox.width, viewBox.height, aSVGElement, aDoSetAttr);
+    mBaseVal = nsSVGViewBoxRect(viewBox.x, viewBox.y, viewBox.width, viewBox.height);
+    mHasBaseVal = true;
+
+#ifdef MOZ_SMIL
+    if (mAnimVal) {
+      aSVGElement->AnimationNeedsResample();
+    }
+#endif
+    // We don't need to call DidChange* here - we're only called by
+    // nsSVGElement::ParseAttribute under nsGenericElement::SetAttr,
+    // which takes care of notifying.
   }
   return res;
 }
@@ -236,7 +246,7 @@ nsSVGViewBox::DOMBaseVal::SetX(float aX)
   nsSVGViewBoxRect rect = mVal->GetBaseValue();
   rect.x = aX;
   mVal->SetBaseValue(rect.x, rect.y, rect.width, rect.height,
-                     mSVGElement, PR_TRUE);
+                     mSVGElement);
   return NS_OK;
 }
 
@@ -246,7 +256,7 @@ nsSVGViewBox::DOMBaseVal::SetY(float aY)
   nsSVGViewBoxRect rect = mVal->GetBaseValue();
   rect.y = aY;
   mVal->SetBaseValue(rect.x, rect.y, rect.width, rect.height,
-                     mSVGElement, PR_TRUE);
+                     mSVGElement);
   return NS_OK;
 }
 
@@ -256,7 +266,7 @@ nsSVGViewBox::DOMBaseVal::SetWidth(float aWidth)
   nsSVGViewBoxRect rect = mVal->GetBaseValue();
   rect.width = aWidth;
   mVal->SetBaseValue(rect.x, rect.y, rect.width, rect.height,
-                     mSVGElement, PR_TRUE);
+                     mSVGElement);
   return NS_OK;
 }
 
@@ -266,7 +276,7 @@ nsSVGViewBox::DOMBaseVal::SetHeight(float aHeight)
   nsSVGViewBoxRect rect = mVal->GetBaseValue();
   rect.height = aHeight;
   mVal->SetBaseValue(rect.x, rect.y, rect.width, rect.height,
-                     mSVGElement, PR_TRUE);
+                     mSVGElement);
   return NS_OK;
 }
 
@@ -282,7 +292,7 @@ nsSVGViewBox::SMILViewBox
             ::ValueFromString(const nsAString& aStr,
                               const nsISMILAnimationElement* /*aSrcElement*/,
                               nsSMILValue& aValue,
-                              PRBool& aPreventCachingOfSandwich) const
+                              bool& aPreventCachingOfSandwich) const
 {
   nsSVGViewBoxRect viewBox;
   nsresult res = ToSVGViewBoxRect(aStr, &viewBox);
@@ -292,7 +302,7 @@ nsSVGViewBox::SMILViewBox
   nsSMILValue val(&SVGViewBoxSMILType::sSingleton);
   *static_cast<nsSVGViewBoxRect*>(val.mU.mPtr) = viewBox;
   aValue.Swap(val);
-  aPreventCachingOfSandwich = PR_FALSE;
+  aPreventCachingOfSandwich = false;
   
   return NS_OK;
 }

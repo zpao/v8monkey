@@ -38,7 +38,7 @@
 #ifndef nsINode_h___
 #define nsINode_h___
 
-#include "nsPIDOMEventTarget.h"
+#include "nsIDOMEventTarget.h"
 #include "nsEvent.h"
 #include "nsPropertyTable.h"
 #include "nsTObserverArray.h"
@@ -48,18 +48,21 @@
 #include "nsIProgrammingLanguage.h" // for ::JAVASCRIPT
 #include "nsDOMError.h"
 #include "nsDOMString.h"
+#include "jspubtd.h"
+#include "nsDOMMemoryReporter.h"
 
 class nsIContent;
 class nsIDocument;
 class nsIDOMEvent;
 class nsIDOMNode;
+class nsIDOMElement;
 class nsIDOMNodeList;
 class nsINodeList;
 class nsIPresShell;
 class nsEventChainVisitor;
 class nsEventChainPreVisitor;
 class nsEventChainPostVisitor;
-class nsIEventListenerManager;
+class nsEventListenerManager;
 class nsIPrincipal;
 class nsIMutationObserver;
 class nsChildContentList;
@@ -238,7 +241,7 @@ public:
    * Returns true if any unexpected mutations have occurred. You can pass in
    * an 8-bit ignore count to ignore a number of expected mutations.
    */
-  PRBool Mutated(PRUint8 aIgnoreCount)
+  bool Mutated(PRUint8 aIgnoreCount)
   {
     return sMutationCount < static_cast<PRUint32>(eMaxMutations - aIgnoreCount);
   }
@@ -280,19 +283,21 @@ private:
 
 // IID for the nsINode interface
 #define NS_INODE_IID \
-{ 0x4776aa9a, 0xa886, 0x40c9, \
- { 0xae, 0x4c, 0x4d, 0x92, 0xe2, 0xf0, 0xd9, 0x61 } }
+{ 0x20d16be2, 0x3c58, 0x4099, \
+  { 0xbf, 0xa6, 0xd0, 0xe7, 0x6b, 0xb1, 0x3d, 0xc5 } }
 
 /**
  * An internal interface that abstracts some DOMNode-related parts that both
  * nsIContent and nsIDocument share.  An instance of this interface has a list
  * of nsIContent children and provides access to them.
  */
-class nsINode : public nsPIDOMEventTarget,
+class nsINode : public nsIDOMEventTarget,
                 public nsWrapperCache
 {
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_INODE_IID)
+
+  NS_DECL_DOM_MEMORY_REPORTER_SIZEOF
 
   friend class nsNodeUtils;
   friend class nsNodeWeakReference;
@@ -355,7 +360,7 @@ public:
    * @param aFlags what types you want to test for (see above)
    * @return whether the content matches ALL flags passed in
    */
-  virtual PRBool IsNodeOfType(PRUint32 aFlags) const = 0;
+  virtual bool IsNodeOfType(PRUint32 aFlags) const = 0;
 
   /**
    * Return whether the node is an Element node
@@ -410,7 +415,7 @@ public:
    * nsIDocument GetOwnerDocument returns the document itself.  For nsIContent
    * implementations the two are the same.
    */
-  nsIDocument *GetOwnerDoc() const
+  nsIDocument *OwnerDoc() const
   {
     return mNodeInfo->GetDocument();
   }
@@ -433,20 +438,35 @@ public:
    */
   nsIDocument *GetCurrentDoc() const
   {
-    return IsInDoc() ? GetOwnerDoc() : nsnull;
+    return IsInDoc() ? OwnerDoc() : nsnull;
   }
 
-  NS_IMETHOD GetNodeType(PRUint16* aNodeType) = 0;
+  /**
+   * The values returned by this function are the ones defined for
+   * nsIDOMNode.nodeType
+   */
+  PRUint16 NodeType() const
+  {
+    return mNodeInfo->NodeType();
+  }
+  const nsString& NodeName() const
+  {
+    return mNodeInfo->NodeName();
+  }
+  const nsString& LocalName() const
+  {
+    return mNodeInfo->LocalName();
+  }
 
   nsINode*
   InsertBefore(nsINode *aNewChild, nsINode *aRefChild, nsresult *aReturn)
   {
-    return ReplaceOrInsertBefore(PR_FALSE, aNewChild, aRefChild, aReturn);
+    return ReplaceOrInsertBefore(false, aNewChild, aRefChild, aReturn);
   }
   nsINode*
   ReplaceChild(nsINode *aNewChild, nsINode *aOldChild, nsresult *aReturn)
   {
-    return ReplaceOrInsertBefore(PR_TRUE, aNewChild, aOldChild, aReturn);
+    return ReplaceOrInsertBefore(true, aNewChild, aOldChild, aReturn);
   }
   nsINode*
   AppendChild(nsINode *aNewChild, nsresult *aReturn)
@@ -476,7 +496,7 @@ public:
    * @throws NS_ERROR_OUT_OF_MEMORY in some cases (from BindToTree).
    */
   virtual nsresult InsertChildAt(nsIContent* aKid, PRUint32 aIndex,
-                                 PRBool aNotify) = 0;
+                                 bool aNotify) = 0;
 
   /**
    * Append a content node to the end of the child list.  This method handles
@@ -496,7 +516,7 @@ public:
    *
    * @throws NS_ERROR_OUT_OF_MEMORY in some cases (from BindToTree).
    */
-  nsresult AppendChildTo(nsIContent* aKid, PRBool aNotify)
+  nsresult AppendChildTo(nsIContent* aKid, bool aNotify)
   {
     return InsertChildAt(aKid, GetChildCount(), aNotify);
   }
@@ -514,8 +534,7 @@ public:
    * Note: If there is no child at aIndex, this method will simply do nothing.
    */
   virtual nsresult RemoveChildAt(PRUint32 aIndex, 
-                                 PRBool aNotify, 
-                                 PRBool aMutationEvent = PR_TRUE) = 0;
+                                 bool aNotify) = 0;
 
   /**
    * Get a property associated with this node.
@@ -559,8 +578,8 @@ public:
    * @param aValue         new value of property.
    * @param aDtor          destructor function to be used when this property
    *                       is destroyed.
-   * @param aTransfer      if PR_TRUE the property will not be deleted when the
-   *                       ownerDocument of the node changes, if PR_FALSE it
+   * @param aTransfer      if true the property will not be deleted when the
+   *                       ownerDocument of the node changes, if false it
    *                       will be deleted.
    *
    * @return NS_PROPTABLE_PROP_OVERWRITTEN (success value) if the property
@@ -570,7 +589,7 @@ public:
   nsresult SetProperty(nsIAtom *aPropertyName,
                        void *aValue,
                        NSPropertyDtorFunc aDtor = nsnull,
-                       PRBool aTransfer = PR_FALSE)
+                       bool aTransfer = false)
   {
     return SetProperty(0, aPropertyName, aValue, aDtor, aTransfer);
   }
@@ -585,8 +604,8 @@ public:
    * @param aValue          new value of property.
    * @param aDtor           destructor function to be used when this property
    *                        is destroyed.
-   * @param aTransfer       if PR_TRUE the property will not be deleted when the
-   *                        ownerDocument of the node changes, if PR_FALSE it
+   * @param aTransfer       if true the property will not be deleted when the
+   *                        ownerDocument of the node changes, if false it
    *                        will be deleted.
    * @param aOldValue [out] previous value of property.
    *
@@ -598,7 +617,7 @@ public:
                                nsIAtom *aPropertyName,
                                void *aValue,
                                NSPropertyDtorFunc aDtor = nsnull,
-                               PRBool aTransfer = PR_FALSE,
+                               bool aTransfer = false,
                                void **aOldValue = nsnull);
 
   /**
@@ -658,7 +677,7 @@ public:
                               nsIAtom *aPropertyName,
                               nsresult *aStatus = nsnull);
   
-  PRBool HasProperties() const
+  bool HasProperties() const
   {
     return HasFlag(NODE_HAS_PROPERTIES);
   }
@@ -689,6 +708,21 @@ public:
   {
     return mParent;
   }
+  
+  /**
+   * Get the parent nsINode for this node if it is an Element.
+   * @return the parent node
+   */
+  nsINode* GetElementParent() const
+  {
+    return mParent && mParent->IsElement() ? mParent : nsnull;
+  }
+
+  /**
+   * See nsIDOMEventTarget
+   */
+  NS_DECL_NSIDOMEVENTTARGET
+  using nsIDOMEventTarget::AddEventListener;
 
   /**
    * Adds a mutation observer to be notified when this node, or any of its
@@ -748,14 +782,14 @@ public:
   /**
    * Checks if a node has the same ownerDocument as this one. Note that this
    * actually compares nodeinfo managers because nodes always have one, even
-   * when they don't have an ownerDocument. If this function returns PR_TRUE
+   * when they don't have an ownerDocument. If this function returns true
    * it doesn't mean that the nodes actually have an ownerDocument.
    *
    * @param aOther Other node to check
    * @return Whether the owner documents of this node and of aOther are the
    *         same.
    */
-  PRBool HasSameOwnerDoc(nsINode *aOther)
+  bool HasSameOwnerDoc(nsINode *aOther)
   {
     // We compare nodeinfo managers because nodes always have one, even when
     // they don't have an ownerDocument.
@@ -776,6 +810,9 @@ public:
     // If needed we could remove the vtable pointer this dtor causes by
     // putting a DestroySlots function on nsINode
     virtual ~nsSlots();
+
+    void Traverse(nsCycleCollectionTraversalCallback &cb);
+    void Unlink();
 
     /**
      * A list of mutation observers
@@ -807,7 +844,7 @@ public:
   }
 #endif
 
-  PRBool HasFlag(PtrBits aFlag) const
+  bool HasFlag(PtrBits aFlag) const
   {
     return !!(GetFlags() & aFlag);
   }
@@ -840,7 +877,7 @@ public:
     mFlags &= ~aFlagsToUnset;
   }
 
-  void SetEditableFlag(PRBool aEditable)
+  void SetEditableFlag(bool aEditable)
   {
     if (aEditable) {
       SetFlags(NODE_IS_EDITABLE);
@@ -850,7 +887,7 @@ public:
     }
   }
 
-  PRBool IsEditable() const
+  bool IsEditable() const
   {
 #ifdef _IMPL_NS_LAYOUT
     return IsEditableInternal();
@@ -860,16 +897,16 @@ public:
   }
 
   /**
-   * Returns PR_TRUE if |this| or any of its ancestors is native anonymous.
+   * Returns true if |this| or any of its ancestors is native anonymous.
    */
-  PRBool IsInNativeAnonymousSubtree() const
+  bool IsInNativeAnonymousSubtree() const
   {
 #ifdef DEBUG
     if (HasFlag(NODE_IS_IN_ANONYMOUS_SUBTREE)) {
-      return PR_TRUE;
+      return true;
     }
     CheckNotNativeAnonymous();
-    return PR_FALSE;
+    return false;
 #else
     return HasFlag(NODE_IS_IN_ANONYMOUS_SUBTREE);
 #endif
@@ -909,42 +946,6 @@ public:
   nsIDocument* GetOwnerDocument() const;
 
   /**
-   * Iterator that can be used to easily iterate over the children.  This has
-   * the same restrictions on its use as GetChildArray does.
-   */
-  class ChildIterator {
-  public:
-    ChildIterator(const nsINode* aNode) { Init(aNode); }
-    ChildIterator(const nsINode* aNode, PRUint32 aOffset) {
-      Init(aNode);
-      Advance(aOffset);
-    }
-    ~ChildIterator() {
-      NS_ASSERTION(!mGuard.Mutated(0), "Unexpected mutations happened");
-    }
-
-    PRBool IsDone() const { return mCur == mEnd; }
-    operator nsIContent*() const { return *mCur; }
-    void Next() { NS_PRECONDITION(mCur != mEnd, "Check IsDone"); ++mCur; }
-    void Advance(PRUint32 aOffset) {
-      NS_ASSERTION(mCur + aOffset <= mEnd, "Unexpected offset");
-      mCur += aOffset;
-    }
-  private:
-    void Init(const nsINode* aNode) {
-      NS_PRECONDITION(aNode, "Must have node here!");
-      PRUint32 childCount;
-      mCur = aNode->GetChildArray(&childCount);
-      mEnd = mCur + childCount;
-    }
-#ifdef DEBUG
-    nsMutationGuard mGuard;
-#endif
-    nsIContent* const * mCur;
-    nsIContent* const * mEnd;
-  };
-
-  /**
    * The default script type (language) ID for this node.
    * All nodes must support fetching the default script language.
    */
@@ -960,6 +961,8 @@ public:
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
+  nsresult Normalize();
+
   /**
    * Get the base URI for any relative URIs within this piece of
    * content. Generally, this is the document's base URI, but certain
@@ -970,13 +973,16 @@ public:
    */
   virtual already_AddRefed<nsIURI> GetBaseURI() const = 0;
 
-  void GetBaseURI(nsAString &aURI) const;
+  nsresult GetDOMBaseURI(nsAString &aURI) const;
 
-  virtual void GetTextContent(nsAString &aTextContent)
+  // Note! This function must never fail. It only return an nsresult so that
+  // we can use it to implement nsIDOMNode
+  NS_IMETHOD GetTextContent(nsAString &aTextContent)
   {
     SetDOMStringToNull(aTextContent);
+    return NS_OK;
   }
-  virtual nsresult SetTextContent(const nsAString& aTextContent)
+  NS_IMETHOD SetTextContent(const nsAString& aTextContent)
   {
     return NS_OK;
   }
@@ -1016,9 +1022,13 @@ public:
     return static_cast<nsIVariant*>(GetProperty(DOM_USER_DATA, key));
   }
 
-  nsresult GetFeature(const nsAString& aFeature,
-                      const nsAString& aVersion,
-                      nsISupports** aReturn);
+  nsresult GetUserData(const nsAString& aKey, nsIVariant** aResult)
+  {
+    NS_IF_ADDREF(*aResult = GetUserData(aKey));
+  
+    return NS_OK;
+  }
+
 
   /**
    * Compares the document position of a node to this node.
@@ -1030,34 +1040,33 @@ public:
    *          DOCUMENT_POSITION_PRECEDING will be set.
    *
    * @see nsIDOMNode
-   * @see nsIDOM3Node
    */
-  PRUint16 CompareDocumentPosition(nsINode* aOtherNode);
-  nsresult CompareDocumentPosition(nsINode* aOtherNode, PRUint16* aResult)
+  PRUint16 CompareDocPosition(nsINode* aOtherNode);
+  nsresult CompareDocPosition(nsINode* aOtherNode, PRUint16* aReturn)
   {
     NS_ENSURE_ARG(aOtherNode);
-
-    *aResult = CompareDocumentPosition(aOtherNode);
-
+    *aReturn = CompareDocPosition(aOtherNode);
     return NS_OK;
   }
+  nsresult CompareDocumentPosition(nsIDOMNode* aOther,
+                                   PRUint16* aReturn);
 
-  PRBool IsSameNode(nsINode *aOtherNode)
-  {
-    return aOtherNode == this;
-  }
+  nsresult IsSameNode(nsIDOMNode* aOther,
+                      bool* aReturn);
 
-  virtual PRBool IsEqualNode(nsINode *aOtherNode) = 0;
-
-  void LookupPrefix(const nsAString& aNamespaceURI, nsAString& aPrefix);
-  PRBool IsDefaultNamespace(const nsAString& aNamespaceURI)
+  nsresult LookupPrefix(const nsAString& aNamespaceURI, nsAString& aPrefix);
+  nsresult IsDefaultNamespace(const nsAString& aNamespaceURI, bool* aResult)
   {
     nsAutoString defaultNamespace;
     LookupNamespaceURI(EmptyString(), defaultNamespace);
-    return aNamespaceURI.Equals(defaultNamespace);
+    *aResult = aNamespaceURI.Equals(defaultNamespace);
+    return NS_OK;
   }
-  void LookupNamespaceURI(const nsAString& aNamespacePrefix,
-                          nsAString& aNamespaceURI);
+  nsresult LookupNamespaceURI(const nsAString& aNamespacePrefix,
+                              nsAString& aNamespaceURI);
+
+  nsresult IsEqualNode(nsIDOMNode* aOther, bool* aReturn);
+  bool IsEqualTo(nsINode* aOther);
 
   nsIContent* GetNextSibling() const { return mNextSibling; }
   nsIContent* GetPreviousSibling() const { return mPreviousSibling; }
@@ -1071,6 +1080,34 @@ public:
    */
   nsIContent* GetNextNode(const nsINode* aRoot = nsnull) const
   {
+    return GetNextNodeImpl(aRoot, false);
+  }
+
+  /**
+   * Get the next node in the pre-order tree traversal of the DOM but ignoring
+   * the children of this node.  If aRoot is non-null, then it must be an
+   * ancestor of |this| (possibly equal to |this|) and only nodes that are
+   * descendants of aRoot, not including aRoot itself, will be returned.
+   * Returns null if there are no more nodes to traverse.
+   */
+  nsIContent* GetNextNonChildNode(const nsINode* aRoot = nsnull) const
+  {
+    return GetNextNodeImpl(aRoot, true);
+  }
+
+  /**
+   * Returns true if 'this' is either document or element or
+   * document fragment and aOther is a descendant in the same
+   * anonymous tree.
+   */
+  bool Contains(const nsINode* aOther) const;
+  nsresult Contains(nsIDOMNode* aOther, bool* aReturn);
+
+private:
+
+  nsIContent* GetNextNodeImpl(const nsINode* aRoot,
+                              const bool aSkipChildren) const
+  {
     // Can't use nsContentUtils::ContentIsDescendantOf here, since we
     // can't include it here.
 #ifdef DEBUG
@@ -1081,9 +1118,11 @@ public:
       NS_ASSERTION(cur, "aRoot not an ancestor of |this|?");
     }
 #endif
-    nsIContent* kid = GetFirstChild();
-    if (kid) {
-      return kid;
+    if (!aSkipChildren) {
+      nsIContent* kid = GetFirstChild();
+      if (kid) {
+        return kid;
+      }
     }
     if (this == aRoot) {
       return nsnull;
@@ -1102,6 +1141,8 @@ public:
     }
     NS_NOTREACHED("How did we get here?");
   }
+
+public:
 
   /**
    * Get the previous nsIContent in the pre-order tree traversal of the DOM.  If
@@ -1216,7 +1257,7 @@ protected:
   // Override this function to create a custom slots class.
   virtual nsINode::nsSlots* CreateSlots();
 
-  PRBool HasSlots() const
+  bool HasSlots() const
   {
     return mSlots != nsnull;
   }
@@ -1239,8 +1280,8 @@ protected:
     return HasSlots() ? &GetExistingSlots()->mMutationObservers : nsnull;
   }
 
-  PRBool IsEditableInternal() const;
-  virtual PRBool IsEditableExternal() const
+  bool IsEditableInternal() const;
+  virtual bool IsEditableExternal() const
   {
     return IsEditableInternal();
   }
@@ -1252,6 +1293,7 @@ protected:
 #endif
 
   nsresult GetParentNode(nsIDOMNode** aParentNode);
+  nsresult GetParentElement(nsIDOMElement** aParentElement);
   nsresult GetChildNodes(nsIDOMNodeList** aChildNodes);
   nsresult GetFirstChild(nsIDOMNode** aFirstChild);
   nsresult GetLastChild(nsIDOMNode** aLastChild);
@@ -1259,9 +1301,9 @@ protected:
   nsresult GetNextSibling(nsIDOMNode** aNextSibling);
   nsresult GetOwnerDocument(nsIDOMDocument** aOwnerDocument);
 
-  nsresult ReplaceOrInsertBefore(PRBool aReplace, nsIDOMNode *aNewChild,
+  nsresult ReplaceOrInsertBefore(bool aReplace, nsIDOMNode *aNewChild,
                                  nsIDOMNode *aRefChild, nsIDOMNode **aReturn);
-  nsINode* ReplaceOrInsertBefore(PRBool aReplace, nsINode *aNewChild,
+  nsINode* ReplaceOrInsertBefore(bool aReplace, nsINode *aNewChild,
                                  nsINode *aRefChild, nsresult *aReturn)
   {
     *aReturn = ReplaceOrInsertBefore(aReplace, aNewChild, aRefChild);
@@ -1271,7 +1313,7 @@ protected:
 
     return aReplace ? aRefChild : aNewChild;
   }
-  virtual nsresult ReplaceOrInsertBefore(PRBool aReplace, nsINode* aNewChild,
+  virtual nsresult ReplaceOrInsertBefore(bool aReplace, nsINode* aNewChild,
                                          nsINode* aRefChild);
   nsresult RemoveChild(nsIDOMNode* aOldChild, nsIDOMNode** aReturn);
 
@@ -1294,9 +1336,8 @@ protected:
    * @param aChildArray The child array to work with.
    * @param aMutationEvent whether to fire a mutation event for this removal.
    */
-  nsresult doRemoveChildAt(PRUint32 aIndex, PRBool aNotify, nsIContent* aKid,
-                           nsAttrAndChildArray& aChildArray,
-                           PRBool aMutationEvent);
+  nsresult doRemoveChildAt(PRUint32 aIndex, bool aNotify, nsIContent* aKid,
+                           nsAttrAndChildArray& aChildArray);
 
   /**
    * Most of the implementation of the nsINode InsertChildAt method.
@@ -1309,7 +1350,31 @@ protected:
    * @param aChildArray The child array to work with
    */
   nsresult doInsertChildAt(nsIContent* aKid, PRUint32 aIndex,
-                           PRBool aNotify, nsAttrAndChildArray& aChildArray);
+                           bool aNotify, nsAttrAndChildArray& aChildArray);
+
+public:
+  /* Event stuff that documents and elements share.  This needs to be
+     NS_IMETHOD because some subclasses implement DOM methods with
+     this exact name and signature and then the calling convention
+     needs to match.
+
+     Note that we include DOCUMENT_ONLY_EVENT events here so that we
+     can forward all the document stuff to this implementation.
+  */
+#define EVENT(name_, id_, type_, struct_)                         \
+  NS_IMETHOD GetOn##name_(JSContext *cx, JS::Value *vp);          \
+  NS_IMETHOD SetOn##name_(JSContext *cx, const JS::Value &v);
+#define TOUCH_EVENT EVENT
+#define DOCUMENT_ONLY_EVENT EVENT
+#include "nsEventNameList.h"
+#undef DOCUMENT_ONLY_EVENT
+#undef TOUCH_EVENT
+#undef EVENT  
+
+protected:
+  static void Trace(nsINode *tmp, TraceCallback cb, void *closure);
+  static bool Traverse(nsINode *tmp, nsCycleCollectionTraversalCallback &cb);
+  static void Unlink(nsINode *tmp);
 
   nsCOMPtr<nsINodeInfo> mNodeInfo;
 

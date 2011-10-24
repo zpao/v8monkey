@@ -12,7 +12,7 @@ static nsIIOService *gIOService = nsnull;
 
 //-----------------------------------------------------------------------------
 
-static PRBool
+static bool
 load_sync_1(nsISupports *element, void *data)
 {
     nsCOMPtr<nsIInputStream> stream;
@@ -24,7 +24,7 @@ load_sync_1(nsISupports *element, void *data)
     if (NS_FAILED(rv)) {
         uri->GetAsciiSpec(spec);
         fprintf(stderr, "*** failed opening %s [rv=%x]\n", spec.get(), rv);
-        return PR_TRUE;
+        return true;
     }
 
     char buf[4096];
@@ -41,7 +41,7 @@ load_sync_1(nsISupports *element, void *data)
         }
     }
 
-    return PR_TRUE;
+    return true;
 }
 
 static nsresult
@@ -83,7 +83,7 @@ MyListener::OnDataAvailable(nsIRequest *req, nsISupports *ctx,
     char buf[4096];
     PRUint32 n, bytesRead;
     while (count) {
-        n = PR_MIN(count, sizeof(buf));
+        n = NS_MIN<PRUint32>(count, sizeof(buf));
         rv = stream->Read(buf, n, &bytesRead);
         if (NS_FAILED(rv))
             break;
@@ -109,16 +109,16 @@ MyListener::OnStopRequest(nsIRequest *req, nsISupports *ctx, nsresult status)
     return NS_OK;
 }
 
-static PRBool
+static bool
 load_async_1(nsISupports *element, void *data)
 {
     nsCOMPtr<nsIURI> uri( do_QueryInterface(element) );
     if (!uri)
-        return PR_TRUE;
+        return true;
 
     MyListener *listener = new MyListener();
     if (!listener)
-        return PR_TRUE;
+        return true;
     NS_ADDREF(listener);
     nsresult rv = NS_OpenURI(listener, nsnull, uri, gIOService);
     NS_RELEASE(listener);
@@ -126,7 +126,7 @@ load_async_1(nsISupports *element, void *data)
         gRequestCount++;
     else 
         printf(">> NS_OpenURI failed [rv=%x]\n", rv);
-    return PR_TRUE;
+    return true;
 }
 
 static nsresult
@@ -189,7 +189,7 @@ main(int argc, char **argv)
         return -1;
 
     nsresult rv;
-    PRBool sync;
+    bool sync;
 
     if (argc < 3) {
         print_usage();
@@ -197,9 +197,9 @@ main(int argc, char **argv)
     }
 
     if (PL_strcasecmp(argv[1], "-sync") == 0)
-        sync = PR_TRUE;
+        sync = true;
     else if (PL_strcasecmp(argv[1], "-async") == 0)
-        sync = PR_FALSE;
+        sync = false;
     else {
         print_usage();
         return -1;

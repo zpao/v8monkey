@@ -97,14 +97,14 @@ GetZeroValueForUnit(nsStyleAnimation::Unit aUnit)
 // This method requires at least one of its arguments to be non-null.
 //
 // If one argument is null, this method updates it to point to "zero"
-// for the other argument's Unit (if applicable; otherwise, we return PR_FALSE).
+// for the other argument's Unit (if applicable; otherwise, we return false).
 //
 // If neither argument is null, this method generally does nothing, though it
 // may apply a workaround for the special case where a 0 length-value is mixed
 // with a eUnit_Float value.  (See comment below.)
 //
-// Returns PR_TRUE on success, or PR_FALSE.
-static const PRBool
+// Returns true on success, or false.
+static const bool
 FinalizeStyleAnimationValues(const nsStyleAnimation::Value*& aValue1,
                              const nsStyleAnimation::Value*& aValue2)
 {
@@ -134,7 +134,7 @@ FinalizeStyleAnimationValues(const nsStyleAnimation::Value*& aValue1,
     aValue2 = &sZeroFloat;
   }
 
-  return PR_TRUE;
+  return true;
 }
 
 static void
@@ -212,7 +212,7 @@ nsSMILCSSValueType::Assign(nsSMILValue& aDest, const nsSMILValue& aSrc) const
   return NS_OK;
 }
 
-PRBool
+bool
 nsSMILCSSValueType::IsEqual(const nsSMILValue& aLeft,
                             const nsSMILValue& aRight) const
 {
@@ -231,14 +231,14 @@ nsSMILCSSValueType::IsEqual(const nsSMILValue& aLeft,
               leftWrapper->mCSSValue == rightWrapper->mCSSValue);
     }
     // Left non-null, right null
-    return PR_FALSE;
+    return false;
   }
   if (rightWrapper) {
     // Left null, right non-null
-    return PR_FALSE;
+    return false;
   }
   // Both null
-  return PR_TRUE;
+  return true;
 }
 
 nsresult
@@ -366,28 +366,30 @@ GetPresContextForElement(Element* aElem)
 }
 
 // Helper function to parse a string into a nsStyleAnimation::Value
-static PRBool
+static bool
 ValueFromStringHelper(nsCSSProperty aPropID,
                       Element* aTargetElement,
                       nsPresContext* aPresContext,
                       const nsAString& aString,
-                      nsStyleAnimation::Value& aStyleAnimValue)
+                      nsStyleAnimation::Value& aStyleAnimValue,
+                      bool* aIsContextSensitive)
 {
   // If value is negative, we'll strip off the "-" so the CSS parser won't
   // barf, and then manually make the parsed value negative.
   // (This is a partial solution to let us accept some otherwise out-of-bounds
   // CSS values. Bug 501188 will provide a more complete fix.)
-  PRBool isNegative = PR_FALSE;
+  bool isNegative = false;
   PRUint32 subStringBegin = 0;
   PRInt32 absValuePos = nsSMILParserUtils::CheckForNegativeNumber(aString);
   if (absValuePos > 0) {
-    isNegative = PR_TRUE;
+    isNegative = true;
     subStringBegin = (PRUint32)absValuePos; // Start parsing after '-' sign
   }
   nsDependentSubstring subString(aString, subStringBegin);
   if (!nsStyleAnimation::ComputeValue(aPropID, aTargetElement, subString,
-                                      PR_TRUE, aStyleAnimValue)) {
-    return PR_FALSE;
+                                      true, aStyleAnimValue,
+                                      aIsContextSensitive)) {
+    return false;
   }
   if (isNegative) {
     InvertSign(aStyleAnimValue);
@@ -401,7 +403,7 @@ ValueFromStringHelper(nsCSSProperty aPropID,
     aStyleAnimValue.SetCoordValue(aStyleAnimValue.GetCoordValue() /
                                   aPresContext->TextZoom());
   }
-  return PR_TRUE;
+  return true;
 }
 
 // static
@@ -409,7 +411,8 @@ void
 nsSMILCSSValueType::ValueFromString(nsCSSProperty aPropID,
                                     Element* aTargetElement,
                                     const nsAString& aString,
-                                    nsSMILValue& aValue)
+                                    nsSMILValue& aValue,
+                                    bool* aIsContextSensitive)
 {
   NS_ABORT_IF_FALSE(aValue.IsNull(), "Outparam should be null-typed");
   nsPresContext* presContext = GetPresContextForElement(aTargetElement);
@@ -420,14 +423,14 @@ nsSMILCSSValueType::ValueFromString(nsCSSProperty aPropID,
 
   nsStyleAnimation::Value parsedValue;
   if (ValueFromStringHelper(aPropID, aTargetElement, presContext,
-                            aString, parsedValue)) {
+                            aString, parsedValue, aIsContextSensitive)) {
     sSingleton.Init(aValue);
     aValue.mU.mPtr = new ValueWrapper(aPropID, parsedValue, presContext);
   }
 }
 
 // static
-PRBool
+bool
 nsSMILCSSValueType::ValueToString(const nsSMILValue& aValue,
                                   nsAString& aString)
 {

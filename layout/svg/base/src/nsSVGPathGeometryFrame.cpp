@@ -153,19 +153,19 @@ nsSVGPathGeometryFrame::PaintSVG(nsSVGRenderState *aContext,
 NS_IMETHODIMP_(nsIFrame*)
 nsSVGPathGeometryFrame::GetFrameForPoint(const nsPoint &aPoint)
 {
-  PRUint16 fillRule, mask;
+  PRUint16 fillRule, hitTestFlags;
   if (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) {
-    mask = HITTEST_MASK_FILL;
+    hitTestFlags = SVG_HIT_TEST_FILL;
     fillRule = GetClipRule();
   } else {
-    mask = GetHittestMask();
-    if (!mask || ((mask & HITTEST_MASK_CHECK_MRECT) &&
-                  !mRect.Contains(aPoint)))
+    hitTestFlags = GetHitTestFlags();
+    if (!hitTestFlags || ((hitTestFlags & SVG_HIT_TEST_CHECK_MRECT) &&
+                          !mRect.Contains(aPoint)))
       return nsnull;
     fillRule = GetStyleSVG()->mFillRule;
   }
 
-  PRBool isHit = PR_FALSE;
+  bool isHit = false;
 
   nsRefPtr<gfxContext> context =
     new gfxContext(gfxPlatform::GetPlatform()->ScreenReferenceSurface());
@@ -180,9 +180,9 @@ nsSVGPathGeometryFrame::GetFrameForPoint(const nsPoint &aPoint)
   else
     context->SetFillRule(gfxContext::FILL_RULE_WINDING);
 
-  if (mask & HITTEST_MASK_FILL)
+  if (hitTestFlags & SVG_HIT_TEST_FILL)
     isHit = context->PointInFill(userSpacePoint);
-  if (!isHit && (mask & HITTEST_MASK_STROKE)) {
+  if (!isHit && (hitTestFlags & SVG_HIT_TEST_STROKE)) {
     SetupCairoStrokeHitGeometry(context);
     isHit = context->PointInStroke(userSpacePoint);
   }
@@ -196,100 +196,17 @@ nsSVGPathGeometryFrame::GetFrameForPoint(const nsPoint &aPoint)
 NS_IMETHODIMP_(nsRect)
 nsSVGPathGeometryFrame::GetCoveredRegion()
 {
-  // XXX why are we adding in markers here each time someone gets the covered
-  // region? Isn't UpdateCoveredRegion called whenever markers change?
-  // And why are the answers to these questions not documented here??!!
-
-  if (static_cast<nsSVGPathGeometryElement*>(mContent)->IsMarkable()) {
-    MarkerProperties properties = GetMarkerProperties(this);
-
-    if (!properties.MarkersExist())
-      return mRect;
-
-    nsRect rect(mRect);
-
-    float strokeWidth = GetStrokeWidth();
-
-    nsTArray<nsSVGMark> marks;
-    static_cast<nsSVGPathGeometryElement*>(mContent)->GetMarkPoints(&marks);
-
-    PRUint32 num = marks.Length();
-
-    if (num) {
-      nsSVGMarkerFrame *frame = properties.GetMarkerStartFrame();
-      if (frame) {
-        nsRect mark = frame->RegionMark(this, &marks[0], strokeWidth);
-        rect.UnionRect(rect, mark);
-      }
-
-      frame = properties.GetMarkerMidFrame();
-      if (frame) {
-        for (PRUint32 i = 1; i < num - 1; i++) {
-          nsRect mark = frame->RegionMark(this, &marks[i], strokeWidth);
-          rect.UnionRect(rect, mark);
-        }
-      }
-
-      frame = properties.GetMarkerEndFrame();
-      if (frame) {
-        nsRect mark = frame->RegionMark(this, &marks[num-1], strokeWidth);
-        rect.UnionRect(rect, mark);
-      }
-    }
-
-    return rect;
-  }
-
   return mRect;
 }
 
 NS_IMETHODIMP
 nsSVGPathGeometryFrame::UpdateCoveredRegion()
 {
-  mRect.SetEmpty();
-
-  nsRefPtr<gfxContext> context =
-    new gfxContext(gfxPlatform::GetPlatform()->ScreenReferenceSurface());
-
-  GeneratePath(context);
-  context->IdentityMatrix();
-
-  gfxRect extent = context->GetUserPathExtent();
-
-  // Be careful when replacing the following logic to get the fill and stroke
-  // extents independently (instead of computing the stroke extents from the
-  // path extents). You may think that you can just use the stroke extents if
-  // there is both a fill and a stroke. In reality it's necessary to calculate
-  // both the fill and stroke extents, and take the union of the two. There are
-  // two reasons for this:
-  //
-  // # Due to stroke dashing, in certain cases the fill extents could actually
-  //   extend outside the stroke extents.
-  // # If the stroke is very thin, cairo won't paint any stroke, and so the
-  //   stroke bounds that it will return will be empty.
-
-  if (HasStroke()) {
-    SetupCairoStrokeGeometry(context);
-    if (extent.Width() <= 0 && extent.Height() <= 0) {
-      // If 'extent' is empty, its position will not be set. Although
-      // GetUserStrokeExtent gets the extents wrong we can still use it
-      // to get the device space position of zero length stroked paths.
-      extent = context->GetUserStrokeExtent();
-      extent += gfxPoint(extent.width, extent.height)/2;
-      extent.SizeTo(gfxSize(0, 0));
-    }
-    extent = nsSVGUtils::PathExtentsToMaxStrokeExtents(extent, this);
-  } else if (GetStyleSVG()->mFill.mType == eStyleSVGPaintType_None) {
-    extent = gfxRect(0, 0, 0, 0);
-  }
-
-  if (!extent.IsEmpty()) {
-    mRect = nsSVGUtils::ToAppPixelRect(PresContext(), extent);
-  }
-
-  // Add in markers
-  mRect = GetCoveredRegion();
-
+  gfxRect extent = GetBBoxContribution(GetCanvasTM(),
+    nsSVGUtils::eBBoxIncludeFill | nsSVGUtils::eBBoxIgnoreFillIfNone |
+    nsSVGUtils::eBBoxIncludeStroke | nsSVGUtils::eBBoxIgnoreStrokeIfNone |
+    nsSVGUtils::eBBoxIncludeMarkers);
+  mRect = nsSVGUtils::ToAppPixelRect(PresContext(), extent);
   return NS_OK;
 }
 
@@ -336,17 +253,107 @@ nsSVGPathGeometryFrame::NotifyRedrawUnsuspended()
 }
 
 gfxRect
-nsSVGPathGeometryFrame::GetBBoxContribution(const gfxMatrix &aToBBoxUserspace)
+nsSVGPathGeometryFrame::GetBBoxContribution(const gfxMatrix &aToBBoxUserspace,
+                                            PRUint32 aFlags)
 {
   if (aToBBoxUserspace.IsSingular()) {
     // XXX ReportToConsole
     return gfxRect(0.0, 0.0, 0.0, 0.0);
   }
+
   nsRefPtr<gfxContext> context =
     new gfxContext(gfxPlatform::GetPlatform()->ScreenReferenceSurface());
+
   GeneratePath(context, &aToBBoxUserspace);
   context->IdentityMatrix();
-  return context->GetUserPathExtent();
+
+  gfxRect bbox;
+
+  // Be careful when replacing the following logic to get the fill and stroke
+  // extents independently (instead of computing the stroke extents from the
+  // path extents). You may think that you can just use the stroke extents if
+  // there is both a fill and a stroke. In reality it's necessary to calculate
+  // both the fill and stroke extents, and take the union of the two. There are
+  // two reasons for this:
+  //
+  // # Due to stroke dashing, in certain cases the fill extents could actually
+  //   extend outside the stroke extents.
+  // # If the stroke is very thin, cairo won't paint any stroke, and so the
+  //   stroke bounds that it will return will be empty.
+
+  gfxRect pathExtents = context->GetUserPathExtent();
+
+  // Account for fill:
+  if ((aFlags & nsSVGUtils::eBBoxIncludeFill) != 0 &&
+      ((aFlags & nsSVGUtils::eBBoxIgnoreFillIfNone) == 0 ||
+       GetStyleSVG()->mFill.mType != eStyleSVGPaintType_None)) {
+    bbox = pathExtents;
+  }
+
+  // Account for stroke:
+  if ((aFlags & nsSVGUtils::eBBoxIncludeStroke) != 0 &&
+      ((aFlags & nsSVGUtils::eBBoxIgnoreStrokeIfNone) == 0 || HasStroke())) {
+    // We can't use context->GetUserStrokeExtent() since it doesn't work for
+    // device space extents. Instead we approximate the stroke extents from
+    // pathExtents using PathExtentsToMaxStrokeExtents.
+    if (pathExtents.Width() <= 0 && pathExtents.Height() <= 0) {
+      // We have a zero length path, but it may still have non-empty stroke
+      // bounds depending on the value of stroke-linecap. We need to fix up
+      // pathExtents before it can be used with PathExtentsToMaxStrokeExtents
+      // though, because if pathExtents is empty, its position will not have
+      // been set. Happily we can use context->GetUserStrokeExtent() to find
+      // the center point of the extents even though it gets the extents wrong.
+      SetupCairoStrokeGeometry(context);
+      pathExtents.MoveTo(context->GetUserStrokeExtent().Center());
+      pathExtents.SizeTo(0, 0);
+    }
+    bbox =
+      bbox.Union(nsSVGUtils::PathExtentsToMaxStrokeExtents(pathExtents, this));
+  }
+
+  // Account for markers:
+  if ((aFlags & nsSVGUtils::eBBoxIncludeMarkers) != 0 &&
+      static_cast<nsSVGPathGeometryElement*>(mContent)->IsMarkable()) {
+
+    float strokeWidth = GetStrokeWidth();
+    MarkerProperties properties = GetMarkerProperties(this);
+
+    if (properties.MarkersExist()) {
+      nsTArray<nsSVGMark> marks;
+      static_cast<nsSVGPathGeometryElement*>(mContent)->GetMarkPoints(&marks);
+      PRUint32 num = marks.Length();
+
+      if (num) {
+        nsSVGMarkerFrame *frame = properties.GetMarkerStartFrame();
+        if (frame) {
+          gfxRect mbbox =
+            frame->GetMarkBBoxContribution(aToBBoxUserspace, aFlags, this,
+                                           &marks[0], strokeWidth);
+          bbox.UnionRect(bbox, mbbox);
+        }
+
+        frame = properties.GetMarkerMidFrame();
+        if (frame) {
+          for (PRUint32 i = 1; i < num - 1; i++) {
+            gfxRect mbbox =
+              frame->GetMarkBBoxContribution(aToBBoxUserspace, aFlags, this,
+                                             &marks[i], strokeWidth);
+            bbox.UnionRect(bbox, mbbox);
+          }
+        }
+
+        frame = properties.GetMarkerEndFrame();
+        if (frame) {
+          gfxRect mbbox =
+            frame->GetMarkBBoxContribution(aToBBoxUserspace, aFlags, this,
+                                           &marks[num-1], strokeWidth);
+          bbox.UnionRect(bbox, mbbox);
+        }
+      }
+    }
+  }
+
+  return bbox;
 }
 
 //----------------------------------------------------------------------

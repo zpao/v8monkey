@@ -155,6 +155,10 @@ nsFilePicker.prototype = {
   set filterIndex(a) { this.mFilterIndex = a; },
   get filterIndex() { return this.mFilterIndex; },
 
+  /* attribute boolean addToRecentDocs; */
+  set addToRecentDocs(a) {},
+  get addToRecentDocs()  { return false; },
+
   /* members */
   mFilesEnumerator: undefined,
   mParentWindow: null,
@@ -252,14 +256,10 @@ nsFilePicker.prototype = {
       dump("file picker couldn't get base window\n"+ex+"\n");
     }
     try {
-      if (parentWin)
-        parentWin.blurSuppression = true;
       parent.openDialog("chrome://global/content/filepicker.xul",
                         "",
                         "chrome,modal,titlebar,resizable=yes,dependent=yes",
                         o);
-      if (parentWin)
-        parentWin.blurSuppression = false;
 
       this.mFilterIndex = o.retvals.filterIndex;
       this.mFilesEnumerator = o.retvals.files;

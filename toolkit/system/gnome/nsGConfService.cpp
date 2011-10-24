@@ -54,7 +54,6 @@ nsGConfService::~nsGConfService()
 nsresult
 nsGConfService::Init()
 {
-  g_type_init();
   mClient = gconf_client_get_default();
   return mClient ? NS_OK : NS_ERROR_FAILURE;
 }
@@ -62,7 +61,7 @@ nsGConfService::Init()
 NS_IMPL_ISUPPORTS1(nsGConfService, nsIGConfService)
 
 NS_IMETHODIMP
-nsGConfService::GetBool(const nsACString &aKey, PRBool *aResult)
+nsGConfService::GetBool(const nsACString &aKey, bool *aResult)
 {
   GError* error = nsnull;
   *aResult = gconf_client_get_bool(mClient, PromiseFlatCString(aKey).get(),
@@ -150,7 +149,7 @@ nsGConfService::GetStringList(const nsACString &aKey, nsIArray** aResult)
       return NS_ERROR_OUT_OF_MEMORY;
     }
     obj->SetData(NS_ConvertUTF8toUTF16((const char*)l->data));
-    items->AppendElement(obj, PR_FALSE);
+    items->AppendElement(obj, false);
     g_free(l->data);
   }
   
@@ -160,9 +159,9 @@ nsGConfService::GetStringList(const nsACString &aKey, nsIArray** aResult)
 }
 
 NS_IMETHODIMP
-nsGConfService::SetBool(const nsACString &aKey, PRBool aValue)
+nsGConfService::SetBool(const nsACString &aKey, bool aValue)
 {
-  PRBool res = gconf_client_set_bool(mClient, PromiseFlatCString(aKey).get(),
+  bool res = gconf_client_set_bool(mClient, PromiseFlatCString(aKey).get(),
                                      aValue, nsnull);
 
   return res ? NS_OK : NS_ERROR_FAILURE;
@@ -171,7 +170,7 @@ nsGConfService::SetBool(const nsACString &aKey, PRBool aValue)
 NS_IMETHODIMP
 nsGConfService::SetString(const nsACString &aKey, const nsACString &aValue)
 {
-  PRBool res = gconf_client_set_string(mClient, PromiseFlatCString(aKey).get(),
+  bool res = gconf_client_set_string(mClient, PromiseFlatCString(aKey).get(),
                                        PromiseFlatCString(aValue).get(),
                                        nsnull);
 
@@ -181,7 +180,7 @@ nsGConfService::SetString(const nsACString &aKey, const nsACString &aValue)
 NS_IMETHODIMP
 nsGConfService::SetInt(const nsACString &aKey, PRInt32 aValue)
 {
-  PRBool res = gconf_client_set_int(mClient, PromiseFlatCString(aKey).get(),
+  bool res = gconf_client_set_int(mClient, PromiseFlatCString(aKey).get(),
                                     aValue, nsnull);
 
   return res ? NS_OK : NS_ERROR_FAILURE;
@@ -190,14 +189,14 @@ nsGConfService::SetInt(const nsACString &aKey, PRInt32 aValue)
 NS_IMETHODIMP
 nsGConfService::SetFloat(const nsACString &aKey, float aValue)
 {
-  PRBool res = gconf_client_set_float(mClient, PromiseFlatCString(aKey).get(),
+  bool res = gconf_client_set_float(mClient, PromiseFlatCString(aKey).get(),
                                       aValue, nsnull);
 
   return res ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-nsGConfService::GetAppForProtocol(const nsACString &aScheme, PRBool *aEnabled,
+nsGConfService::GetAppForProtocol(const nsACString &aScheme, bool *aEnabled,
                                   nsACString &aHandler)
 {
   nsCAutoString key("/desktop/gnome/url-handlers/");
@@ -210,12 +209,11 @@ nsGConfService::GetAppForProtocol(const nsACString &aScheme, PRBool *aEnabled,
     key.Replace(key.Length() - 7, 7, NS_LITERAL_CSTRING("enabled"));
     *aEnabled = gconf_client_get_bool(mClient, key.get(), &err);
   } else {
-    *aEnabled = PR_FALSE;
+    *aEnabled = false;
   }
 
   aHandler.Assign(command);
-  if (command)
-    g_free(command);
+  g_free(command);
 
   if (err) {
     g_error_free(err);
@@ -227,7 +225,7 @@ nsGConfService::GetAppForProtocol(const nsACString &aScheme, PRBool *aEnabled,
 
 NS_IMETHODIMP
 nsGConfService::HandlerRequiresTerminal(const nsACString &aScheme,
-                                        PRBool *aResult)
+                                        bool *aResult)
 {
   nsCAutoString key("/desktop/gnome/url-handlers/");
   key.Append(aScheme);
@@ -251,15 +249,15 @@ nsGConfService::SetAppForProtocol(const nsACString &aScheme,
   key.Append(aScheme);
   key.Append("/command");
 
-  PRBool res = gconf_client_set_string(mClient, key.get(),
+  bool res = gconf_client_set_string(mClient, key.get(),
                                        PromiseFlatCString(aCommand).get(),
                                        nsnull);
   if (res) {
     key.Replace(key.Length() - 7, 7, NS_LITERAL_CSTRING("enabled"));
-    res = gconf_client_set_bool(mClient, key.get(), PR_TRUE, nsnull);
+    res = gconf_client_set_bool(mClient, key.get(), true, nsnull);
     if (res) {
       key.Replace(key.Length() - 7, 7, NS_LITERAL_CSTRING("needs_terminal"));
-      res = gconf_client_set_bool(mClient, key.get(), PR_FALSE, nsnull);
+      res = gconf_client_set_bool(mClient, key.get(), false, nsnull);
       if (res) {
         key.Replace(key.Length() - 14, 14, NS_LITERAL_CSTRING("command-id"));
         res = gconf_client_unset(mClient, key.get(), nsnull);

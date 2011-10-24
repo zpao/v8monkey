@@ -59,14 +59,14 @@ namespace net {
 //-----------------------------------------------------------------------------
 
 HttpChannelChild::HttpChannelChild()
-  : ChannelEventQueue<HttpChannelChild>(this)
-  , mIsFromCache(PR_FALSE)
-  , mCacheEntryAvailable(PR_FALSE)
+  : HttpAsyncAborter<HttpChannelChild>(this)
+  , mIsFromCache(false)
+  , mCacheEntryAvailable(false)
   , mCacheExpirationTime(nsICache::NO_EXPIRATION_TIME)
   , mSendResumeAt(false)
-  , mSuspendCount(0)
   , mIPCOpen(false)
   , mKeptAlive(false)
+  , mEventQ(static_cast<nsIHttpChannel*>(this))
 {
   LOG(("Creating HttpChannelChild @%x\n", this));
 }
@@ -90,7 +90,11 @@ NS_IMETHODIMP_(nsrefcnt) HttpChannelChild::Release()
   --mRefCnt;
   NS_LOG_RELEASE(this, mRefCnt, "HttpChannelChild");
 
-  if (mRefCnt == 1 && mKeptAlive && mIPCOpen) {
+  // Normally we Send_delete in OnStopRequest, but when we need to retain the
+  // remote channel for security info IPDL itself holds 1 reference, so we
+  // Send_delete when refCnt==1.
+  if (mKeptAlive && mRefCnt == 1) {
+    NS_ASSERTION(mIPCOpen, "mIPCOpen false!");
     mKeptAlive = false;
     // Send_delete calls NeckoChild::DeallocPHttpChannel, which will release
     // again to refcount==0
@@ -144,15 +148,57 @@ HttpChannelChild::ReleaseIPDLReference()
   Release();
 }
 
+class AssociateApplicationCacheEvent : public ChannelEvent
+{
+  public:
+    AssociateApplicationCacheEvent(HttpChannelChild* child,
+                                   const nsCString &groupID,
+                                   const nsCString &clientID)
+    : mChild(child)
+    , groupID(groupID)
+    , clientID(clientID) {}
+
+    void Run() { mChild->AssociateApplicationCache(groupID, clientID); }
+  private:
+    HttpChannelChild* mChild;
+    nsCString groupID;
+    nsCString clientID;
+};
+
+bool
+HttpChannelChild::RecvAssociateApplicationCache(const nsCString &groupID,
+                                                const nsCString &clientID)
+{
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new AssociateApplicationCacheEvent(this, groupID, clientID));
+  } else {
+    AssociateApplicationCache(groupID, clientID);
+  }
+  return true;
+}
+
+void
+HttpChannelChild::AssociateApplicationCache(const nsCString &groupID,
+                                            const nsCString &clientID)
+{
+  nsresult rv;
+  mApplicationCache = do_CreateInstance(NS_APPLICATIONCACHE_CONTRACTID, &rv);
+  if (NS_FAILED(rv))
+    return;
+
+  mLoadedFromApplicationCache = true;
+  mApplicationCache->InitAsHandle(groupID, clientID);
+}
+
 class StartRequestEvent : public ChannelEvent
 {
  public:
   StartRequestEvent(HttpChannelChild* child,
                     const nsHttpResponseHead& responseHead,
-                    const PRBool& useResponseHead,
+                    const bool& useResponseHead,
                     const RequestHeaderTuples& requestHeaders,
-                    const PRBool& isFromCache,
-                    const PRBool& cacheEntryAvailable,
+                    const bool& isFromCache,
+                    const bool& cacheEntryAvailable,
                     const PRUint32& cacheExpirationTime,
                     const nsCString& cachedCharset,
                     const nsCString& securityInfoSerialization,
@@ -182,9 +228,9 @@ class StartRequestEvent : public ChannelEvent
   HttpChannelChild* mChild;
   nsHttpResponseHead mResponseHead;
   RequestHeaderTuples mRequestHeaders;
-  PRPackedBool mUseResponseHead;
-  PRPackedBool mIsFromCache;
-  PRPackedBool mCacheEntryAvailable;
+  bool mUseResponseHead;
+  bool mIsFromCache;
+  bool mCacheEntryAvailable;
   PRUint32 mCacheExpirationTime;
   nsCString mCachedCharset;
   nsCString mSecurityInfoSerialization;
@@ -192,40 +238,25 @@ class StartRequestEvent : public ChannelEvent
   PRNetAddr mPeerAddr;
 };
 
-bool
-HttpChannelChild::RecvAssociateApplicationCache(const nsCString &groupID,
-                                                const nsCString &clientID)
-{
-  nsresult rv;
-  mApplicationCache = do_CreateInstance(
-    NS_APPLICATIONCACHE_CONTRACTID, &rv);
-  if (NS_FAILED(rv))
-    return true;
-
-  mLoadedFromApplicationCache = PR_TRUE;
-  mApplicationCache->InitAsHandle(groupID, clientID);
-  return true;
-}
-
 bool 
 HttpChannelChild::RecvOnStartRequest(const nsHttpResponseHead& responseHead,
-                                     const PRBool& useResponseHead,
+                                     const bool& useResponseHead,
                                      const RequestHeaderTuples& requestHeaders,
-                                     const PRBool& isFromCache,
-                                     const PRBool& cacheEntryAvailable,
+                                     const bool& isFromCache,
+                                     const bool& cacheEntryAvailable,
                                      const PRUint32& cacheExpirationTime,
                                      const nsCString& cachedCharset,
                                      const nsCString& securityInfoSerialization,
                                      const PRNetAddr& selfAddr,
                                      const PRNetAddr& peerAddr)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new StartRequestEvent(this, responseHead, useResponseHead,
-                                       requestHeaders,
-                                       isFromCache, cacheEntryAvailable,
-                                       cacheExpirationTime, cachedCharset,
-                                       securityInfoSerialization, selfAddr,
-                                       peerAddr));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new StartRequestEvent(this, responseHead, useResponseHead,
+                                          requestHeaders, isFromCache,
+                                          cacheEntryAvailable,
+                                          cacheExpirationTime, cachedCharset,
+                                          securityInfoSerialization, selfAddr,
+                                          peerAddr));
   } else {
     OnStartRequest(responseHead, useResponseHead, requestHeaders, isFromCache,
                    cacheEntryAvailable, cacheExpirationTime, cachedCharset,
@@ -236,10 +267,10 @@ HttpChannelChild::RecvOnStartRequest(const nsHttpResponseHead& responseHead,
 
 void 
 HttpChannelChild::OnStartRequest(const nsHttpResponseHead& responseHead,
-                                 const PRBool& useResponseHead,
+                                 const bool& useResponseHead,
                                  const RequestHeaderTuples& requestHeaders,
-                                 const PRBool& isFromCache,
-                                 const PRBool& cacheEntryAvailable,
+                                 const bool& isFromCache,
+                                 const bool& cacheEntryAvailable,
                                  const PRUint32& cacheExpirationTime,
                                  const nsCString& cachedCharset,
                                  const nsCString& securityInfoSerialization,
@@ -255,13 +286,13 @@ HttpChannelChild::OnStartRequest(const nsHttpResponseHead& responseHead,
     NS_DeserializeObject(securityInfoSerialization, 
                          getter_AddRefs(mSecurityInfo));
   }
- 
+
   mIsFromCache = isFromCache;
   mCacheEntryAvailable = cacheEntryAvailable;
   mCacheExpirationTime = cacheExpirationTime;
   mCachedCharset = cachedCharset;
 
-  AutoEventEnqueuer ensureSerialDispatch(this);
+  AutoEventEnqueuer ensureSerialDispatch(mEventQ);
 
   // replace our request headers with what actually got sent in the parent
   mRequestHead.ClearHeaders();
@@ -269,6 +300,10 @@ HttpChannelChild::OnStartRequest(const nsHttpResponseHead& responseHead,
     mRequestHead.Headers().SetHeader(nsHttp::ResolveAtom(requestHeaders[i].mHeader),
                                      requestHeaders[i].mValue);
   }
+
+  // notify "http-on-examine-response" observers
+  gHttpHandler->OnExamineResponse(this);
+  mTracingEnabled = false;
 
   nsresult rv = mListener->OnStartRequest(this, mListenerContext);
   if (NS_FAILED(rv)) {
@@ -325,9 +360,10 @@ HttpChannelChild::RecvOnTransportAndData(const nsresult& status,
                                          const PRUint32& offset,
                                          const PRUint32& count)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new TransportAndDataEvent(this, status, progress, progressMax,
-                                           data, offset, count));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new TransportAndDataEvent(this, status, progress,
+                                              progressMax, data, offset, 
+                                              count));
   } else {
     OnTransportAndData(status, progress, progressMax, data, offset, count);
   }
@@ -353,7 +389,7 @@ HttpChannelChild::OnTransportAndData(const nsresult& status,
 
   // Hold queue lock throughout all three calls, else we might process a later
   // necko msg in between them.
-  AutoEventEnqueuer ensureSerialDispatch(this);
+  AutoEventEnqueuer ensureSerialDispatch(mEventQ);
 
   // block status/progress after Cancel or OnStopRequest has been called,
   // or if channel has LOAD_BACKGROUND set.
@@ -421,8 +457,8 @@ class StopRequestEvent : public ChannelEvent
 bool 
 HttpChannelChild::RecvOnStopRequest(const nsresult& statusCode)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new StopRequestEvent(this, statusCode));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new StopRequestEvent(this, statusCode));
   } else {
     OnStopRequest(statusCode);
   }
@@ -435,7 +471,7 @@ HttpChannelChild::OnStopRequest(const nsresult& statusCode)
   LOG(("HttpChannelChild::OnStopRequest [this=%x status=%u]\n", 
            this, statusCode));
 
-  mIsPending = PR_FALSE;
+  mIsPending = false;
 
   if (!mCanceled && NS_SUCCEEDED(mStatus))
     mStatus = statusCode;
@@ -443,26 +479,25 @@ HttpChannelChild::OnStopRequest(const nsresult& statusCode)
   { // We must flush the queue before we Send__delete__
     // (although we really shouldn't receive any msgs after OnStop),
     // so make sure this goes out of scope before then.
-    AutoEventEnqueuer ensureSerialDispatch(this);
+    AutoEventEnqueuer ensureSerialDispatch(mEventQ);
 
     mListener->OnStopRequest(this, mListenerContext, mStatus);
 
     mListener = 0;
     mListenerContext = 0;
-    mCacheEntryAvailable = PR_FALSE;
+    mCacheEntryAvailable = false;
     if (mLoadGroup)
       mLoadGroup->RemoveRequest(this, nsnull, mStatus);
   }
 
-  if (!(mLoadFlags & LOAD_DOCUMENT_URI)) {
+  if (mLoadFlags & LOAD_DOCUMENT_URI) {
+    // Keep IPDL channel open, but only for updating security info.
+    mKeptAlive = true;
+    SendDocumentChannelCleanup();
+  } else {
     // This calls NeckoChild::DeallocPHttpChannel(), which deletes |this| if IPDL
     // holds the last reference.  Don't rely on |this| existing after here.
     PHttpChannelChild::Send__delete__(this);
-  } else {
-    // We need to keep the document loading channel alive for further 
-    // communication, mainly for collecting a security state values.
-    mKeptAlive = true;
-    SendDocumentChannelCleanup();
   }
 }
 
@@ -486,8 +521,8 @@ bool
 HttpChannelChild::RecvOnProgress(const PRUint64& progress,
                                  const PRUint64& progressMax)
 {
-  if (ShouldEnqueue())  {
-    EnqueueEvent(new ProgressEvent(this, progress, progressMax));
+  if (mEventQ.ShouldEnqueue())  {
+    mEventQ.Enqueue(new ProgressEvent(this, progress, progressMax));
   } else {
     OnProgress(progress, progressMax);
   }
@@ -508,7 +543,7 @@ HttpChannelChild::OnProgress(const PRUint64& progress,
   if (!mProgressSink)
     GetCallback(mProgressSink);
 
-  AutoEventEnqueuer ensureSerialDispatch(this);
+  AutoEventEnqueuer ensureSerialDispatch(mEventQ);
 
   // block socket status event after Cancel or OnStopRequest has been called,
   // or if channel has LOAD_BACKGROUND set
@@ -539,8 +574,8 @@ class StatusEvent : public ChannelEvent
 bool
 HttpChannelChild::RecvOnStatus(const nsresult& status)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new StatusEvent(this, status));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new StatusEvent(this, status));
   } else {
     OnStatus(status);
   }
@@ -559,7 +594,7 @@ HttpChannelChild::OnStatus(const nsresult& status)
   if (!mProgressSink)
     GetCallback(mProgressSink);
 
-  AutoEventEnqueuer ensureSerialDispatch(this);
+  AutoEventEnqueuer ensureSerialDispatch(mEventQ);
 
   // block socket status event after Cancel or OnStopRequest has been called,
   // or if channel has LOAD_BACKGROUND set
@@ -573,53 +608,53 @@ HttpChannelChild::OnStatus(const nsresult& status)
   }
 }
 
-class CancelEvent : public ChannelEvent
+class FailedAsyncOpenEvent : public ChannelEvent
 {
  public:
-  CancelEvent(HttpChannelChild* child, const nsresult& status)
+  FailedAsyncOpenEvent(HttpChannelChild* child, const nsresult& status)
   : mChild(child)
   , mStatus(status) {}
 
-  void Run() { mChild->OnCancel(mStatus); }
+  void Run() { mChild->FailedAsyncOpen(mStatus); }
  private:
   HttpChannelChild* mChild;
   nsresult mStatus;
 };
 
 bool
-HttpChannelChild::RecvCancelEarly(const nsresult& status)
+HttpChannelChild::RecvFailedAsyncOpen(const nsresult& status)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new CancelEvent(this, status));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new FailedAsyncOpenEvent(this, status));
   } else {
-    OnCancel(status);
+    FailedAsyncOpen(status);
   }
   return true;
 }
 
+// We need to have an implementation of this function just so that we can keep
+// all references to mCallOnResume of type HttpChannelChild:  it's not OK in C++
+// to set a member function ptr to a base class function.
 void
-HttpChannelChild::OnCancel(const nsresult& status)
+HttpChannelChild::HandleAsyncAbort()
 {
-  LOG(("HttpChannelChild::OnCancel [this=%p status=%x]\n", this, status));
+  HttpAsyncAborter<HttpChannelChild>::HandleAsyncAbort();
+}
 
-  if (mCanceled)
-    return;
+void
+HttpChannelChild::FailedAsyncOpen(const nsresult& status)
+{
+  LOG(("HttpChannelChild::FailedAsyncOpen [this=%p status=%x]\n", this, status));
 
-  mCanceled = true;
   mStatus = status;
-
   mIsPending = false;
-  if (mLoadGroup)
-    mLoadGroup->RemoveRequest(this, nsnull, mStatus);
+  // We're already being called from IPDL, therefore already "async"
+  HandleAsyncAbort();
+}
 
-  if (mListener) {
-    mListener->OnStartRequest(this, mListenerContext);
-    mListener->OnStopRequest(this, mListenerContext, mStatus);
-  }
-
-  mListener = NULL;
-  mListenerContext = NULL;
-
+void
+HttpChannelChild::DoNotifyListenerCleanup()
+{
   if (mIPCOpen)
     PHttpChannelChild::Send__delete__(this);
 }
@@ -636,8 +671,8 @@ class DeleteSelfEvent : public ChannelEvent
 bool
 HttpChannelChild::RecvDeleteSelf()
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new DeleteSelfEvent(this));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new DeleteSelfEvent(this));
   } else {
     DeleteSelf();
   }
@@ -683,9 +718,9 @@ HttpChannelChild::RecvRedirect1Begin(const PRUint32& newChannelId,
                                      const PRUint32& redirectFlags,
                                      const nsHttpResponseHead& responseHead)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new Redirect1Event(this, newChannelId, newUri, redirectFlags,
-                                    responseHead)); 
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new Redirect1Event(this, newChannelId, newUri,
+                                       redirectFlags, responseHead));
   } else {
     Redirect1Begin(newChannelId, newUri, redirectFlags, responseHead);
   }
@@ -722,8 +757,10 @@ HttpChannelChild::Redirect1Begin(const PRUint32& newChannelId,
   mResponseHead = new nsHttpResponseHead(responseHead);
   SetCookie(mResponseHead->PeekHeader(nsHttp::Set_Cookie));
 
-  PRBool preserveMethod = (mResponseHead->Status() == 307);
-  rv = SetupReplacementChannel(uri, newChannel, preserveMethod);
+  bool rewriteToGET = ShouldRewriteRedirectToGET(mResponseHead->Status(), 
+                                                 mRequestHead.Method());
+  
+  rv = SetupReplacementChannel(uri, newChannel, !rewriteToGET);
   if (NS_FAILED(rv)) {
     // Veto redirect.  nsHttpChannel decides to cancel or continue.
     OnRedirectVerifyCallback(rv);
@@ -756,8 +793,8 @@ class Redirect3Event : public ChannelEvent
 bool
 HttpChannelChild::RecvRedirect3Complete()
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new Redirect3Event(this));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new Redirect3Event(this));
   } else {
     Redirect3Complete();
   }
@@ -828,8 +865,8 @@ HttpChannelChild::CompleteRedirectSetup(nsIStreamListener *listener,
    * channel reflect AsyncOpen'ed state.
    */
 
-  mIsPending = PR_TRUE;
-  mWasOpened = PR_TRUE;
+  mIsPending = true;
+  mWasOpened = true;
   mListener = listener;
   mListenerContext = aContext;
 
@@ -855,7 +892,7 @@ HttpChannelChild::OnRedirectVerifyCallback(nsresult result)
 
   if (newHttpChannel) {
     // Must not be called until after redirect observers called.
-    newHttpChannel->SetOriginalURI(mRedirectOriginalURI);
+    newHttpChannel->SetOriginalURI(mOriginalURI);
   }
 
   RequestHeaderTuples emptyHeaders;
@@ -873,7 +910,10 @@ HttpChannelChild::OnRedirectVerifyCallback(nsresult result)
   if (NS_SUCCEEDED(result))
     gHttpHandler->OnModifyRequest(newHttpChannel);
 
-  return SendRedirect2Verify(result, *headerTuples);
+  if (mIPCOpen)
+    SendRedirect2Verify(result, *headerTuples);
+
+  return NS_OK;
 }
 
 //-----------------------------------------------------------------------------
@@ -888,7 +928,7 @@ HttpChannelChild::Cancel(nsresult status)
     // is responsible for cleaning up.
     mCanceled = true;
     mStatus = status;
-    if (mIPCOpen)
+    if (RemoteChannelExists())
       SendCancel(status);
   }
   return NS_OK;
@@ -897,29 +937,40 @@ HttpChannelChild::Cancel(nsresult status)
 NS_IMETHODIMP
 HttpChannelChild::Suspend()
 {
-  NS_ENSURE_TRUE(mIPCOpen, NS_ERROR_NOT_AVAILABLE);
-  SendSuspend();
-  mSuspendCount++;
+  NS_ENSURE_TRUE(RemoteChannelExists(), NS_ERROR_NOT_AVAILABLE);
+  if (!mSuspendCount++) {
+    SendSuspend();
+    mEventQ.Suspend();
+  }
   return NS_OK;
+}
+
+void
+HttpChannelChild::CompleteResume()
+{
+  if (mCallOnResume) {
+    (this->*mCallOnResume)();
+    mCallOnResume = 0;
+  }
+
+  // Don't resume event queue until now, else queued events could get
+  // flushed/called before mCallOnResume, which needs to run first.
+  mEventQ.Resume();
 }
 
 NS_IMETHODIMP
 HttpChannelChild::Resume()
 {
-  NS_ENSURE_TRUE(mIPCOpen, NS_ERROR_NOT_AVAILABLE);
+  NS_ENSURE_TRUE(RemoteChannelExists(), NS_ERROR_NOT_AVAILABLE);
   NS_ENSURE_TRUE(mSuspendCount > 0, NS_ERROR_UNEXPECTED);
-  SendResume();
-  mSuspendCount--;
-  if (!mSuspendCount) {
-    // If we were suspended outside of an event handler (bug 595972) we'll
-    // consider ourselves unqueued. This is a legal state of affairs but
-    // FlushEventQueue() can't easily ensure this fact, so we'll do some
-    // fudging to set the invariants correctly.    
-    if (mQueuePhase == PHASE_UNQUEUED)
-      mQueuePhase = PHASE_FINISHED_QUEUEING;
-    FlushEventQueue();
+
+  nsresult rv = NS_OK;
+
+  if (!--mSuspendCount) {
+    SendResume();
+    rv = AsyncCall(&HttpChannelChild::CompleteResume);
   }
-  return NS_OK;
+  return rv;
 }
 
 //-----------------------------------------------------------------------------
@@ -969,8 +1020,8 @@ HttpChannelChild::AsyncOpen(nsIStreamListener *listener, nsISupports *aContext)
   // notify "http-on-modify-request" observers
   gHttpHandler->OnModifyRequest(this);
 
-  mIsPending = PR_TRUE;
-  mWasOpened = PR_TRUE;
+  mIsPending = true;
+  mWasOpened = true;
   mListener = listener;
   mListenerContext = aContext;
 
@@ -982,10 +1033,7 @@ HttpChannelChild::AsyncOpen(nsIStreamListener *listener, nsISupports *aContext)
     // We may have been canceled already, either by on-modify-request
     // listeners or by load group observers; in that case, don't create IPDL
     // connection. See nsHttpChannel::AsyncOpen().
-
-    // Clear mCanceled here, or we will bail out at top of OnCancel().
-    mCanceled = false;
-    OnCancel(mStatus);
+    AsyncAbort(mStatus);
     return NS_OK;
   }
 
@@ -1043,7 +1091,7 @@ HttpChannelChild::AsyncOpen(nsIStreamListener *listener, nsISupports *aContext)
 NS_IMETHODIMP
 HttpChannelChild::SetRequestHeader(const nsACString& aHeader, 
                                    const nsACString& aValue, 
-                                   PRBool aMerge)
+                                   bool aMerge)
 {
   nsresult rv = HttpBaseChannel::SetRequestHeader(aHeader, aValue, aMerge);
   if (NS_FAILED(rv))
@@ -1126,7 +1174,7 @@ HttpChannelChild::GetCacheTokenCachedCharset(nsACString &_retval)
 NS_IMETHODIMP
 HttpChannelChild::SetCacheTokenCachedCharset(const nsACString &aCharset)
 {
-  if (!mCacheEntryAvailable || !mIPCOpen)
+  if (!mCacheEntryAvailable || !RemoteChannelExists())
     return NS_ERROR_NOT_AVAILABLE;
 
   mCachedCharset = aCharset;
@@ -1137,7 +1185,7 @@ HttpChannelChild::SetCacheTokenCachedCharset(const nsACString &aCharset)
 }
 
 NS_IMETHODIMP
-HttpChannelChild::IsFromCache(PRBool *value)
+HttpChannelChild::IsFromCache(bool *value)
 {
   if (!mIsPending)
     return NS_ERROR_NOT_AVAILABLE;
@@ -1173,7 +1221,7 @@ HttpChannelChild::SetPriority(PRInt32 aPriority)
   if (mPriority == newValue)
     return NS_OK;
   mPriority = newValue;
-  if (mIPCOpen) 
+  if (RemoteChannelExists())
     SendSetPriority(mPriority);
   return NS_OK;
 }
@@ -1184,17 +1232,6 @@ HttpChannelChild::SetPriority(PRInt32 aPriority)
 
 NS_IMETHODIMP
 HttpChannelChild::GetProxyInfo(nsIProxyInfo **aProxyInfo)
-{
-  DROP_DEAD();
-}
-
-//-----------------------------------------------------------------------------
-// HttpChannelChild::nsITraceableChannel
-//-----------------------------------------------------------------------------
-
-NS_IMETHODIMP
-HttpChannelChild::SetNewListener(nsIStreamListener *listener, 
-                                 nsIStreamListener **oldListener)
 {
   DROP_DEAD();
 }
@@ -1223,34 +1260,34 @@ HttpChannelChild::SetApplicationCache(nsIApplicationCache *aApplicationCache)
 //-----------------------------------------------------------------------------
 
 NS_IMETHODIMP
-HttpChannelChild::GetLoadedFromApplicationCache(PRBool *aLoadedFromApplicationCache)
+HttpChannelChild::GetLoadedFromApplicationCache(bool *aLoadedFromApplicationCache)
 {
   *aLoadedFromApplicationCache = mLoadedFromApplicationCache;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-HttpChannelChild::GetInheritApplicationCache(PRBool *aInherit)
+HttpChannelChild::GetInheritApplicationCache(bool *aInherit)
 {
   *aInherit = mInheritApplicationCache;
   return NS_OK;
 }
 NS_IMETHODIMP
-HttpChannelChild::SetInheritApplicationCache(PRBool aInherit)
+HttpChannelChild::SetInheritApplicationCache(bool aInherit)
 {
   mInheritApplicationCache = aInherit;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-HttpChannelChild::GetChooseApplicationCache(PRBool *aChoose)
+HttpChannelChild::GetChooseApplicationCache(bool *aChoose)
 {
   *aChoose = mChooseApplicationCache;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-HttpChannelChild::SetChooseApplicationCache(PRBool aChoose)
+HttpChannelChild::SetChooseApplicationCache(bool aChoose)
 {
   mChooseApplicationCache = aChoose;
   return NS_OK;

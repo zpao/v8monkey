@@ -87,13 +87,28 @@ public:
    
     nsresult Init(const char *charsetHint);
     nsresult FormatSpec(const nsACString &entryPath, nsACString &result,
-                        PRBool aIncludeScheme = PR_TRUE);
+                        bool aIncludeScheme = true);
     nsresult CreateEntryURL(const nsACString& entryFilename,
                             const char* charset,
                             nsIURL** url);
     nsresult SetSpecWithBase(const nsACString& aSpec, nsIURI* aBaseURL);
 
 protected:
+    // enum used in a few places to specify how .ref attribute should be handled
+    enum RefHandlingEnum {
+        eIgnoreRef,
+        eHonorRef
+    };
+
+    // Helper to share code between Equals methods.
+    virtual nsresult EqualsInternal(nsIURI* other,
+                                    RefHandlingEnum refHandlingMode,
+                                    bool* result);
+
+    // Helper to share code between Clone methods.
+    nsresult CloneWithJARFileInternal(nsIURI *jarFile,
+                                      RefHandlingEnum refHandlingMode,
+                                      nsIJARURI **result);
     nsCOMPtr<nsIURI> mJARFile;
     // mJarEntry stored as a URL so that we can easily access things
     // like extensions, refs, etc.

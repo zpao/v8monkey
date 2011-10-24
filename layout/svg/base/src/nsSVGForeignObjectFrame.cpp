@@ -47,7 +47,6 @@
 #include "nsSVGUtils.h"
 #include "nsIURI.h"
 #include "nsSVGRect.h"
-#include "nsSVGMatrix.h"
 #include "nsINameSpaceManager.h"
 #include "nsSVGForeignObjectElement.h"
 #include "nsSVGContainerFrame.h"
@@ -68,7 +67,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsSVGForeignObjectFrame)
 
 nsSVGForeignObjectFrame::nsSVGForeignObjectFrame(nsStyleContext* aContext)
   : nsSVGForeignObjectFrameBase(aContext),
-    mInReflow(PR_FALSE)
+    mInReflow(false)
 {
   AddStateBits(NS_FRAME_REFLOW_ROOT | NS_FRAME_MAY_BE_TRANSFORMED);
 }
@@ -124,6 +123,8 @@ nsSVGForeignObjectFrame::AttributeChanged(PRInt32  aNameSpaceID,
       RequestReflow(nsIPresShell::eStyleChange);
     } else if (aAttribute == nsGkAtoms::x ||
                aAttribute == nsGkAtoms::y ||
+               aAttribute == nsGkAtoms::viewBox ||
+               aAttribute == nsGkAtoms::preserveAspectRatio ||
                aAttribute == nsGkAtoms::transform) {
       // make sure our cached transform matrix gets (lazily) updated
       mCanvasTM = nsnull;
@@ -202,7 +203,7 @@ nsSVGForeignObjectFrame::PaintSVG(nsSVGRenderState *aContext,
   if (IsDisabled())
     return NS_OK;
 
-  nsIFrame* kid = GetFirstChild(nsnull);
+  nsIFrame* kid = GetFirstPrincipalChild();
   if (!kid)
     return NS_OK;
 
@@ -268,7 +269,7 @@ nsSVGForeignObjectFrame::PaintSVG(nsSVGRenderState *aContext,
   return rv;
 }
 
-gfxMatrix
+gfx3DMatrix
 nsSVGForeignObjectFrame::GetTransformMatrix(nsIFrame **aOutAncestor)
 {
   NS_PRECONDITION(aOutAncestor, "We need an ancestor to write to!");
@@ -278,7 +279,7 @@ nsSVGForeignObjectFrame::GetTransformMatrix(nsIFrame **aOutAncestor)
   NS_ASSERTION(*aOutAncestor, "How did we end up without an outer frame?");
 
   /* Return the matrix back to the root, factoring in the x and y offsets. */
-  return GetCanvasTMForChildren();
+  return gfx3DMatrix::From2D(GetCanvasTMForChildren());
 }
  
 NS_IMETHODIMP_(nsIFrame*)
@@ -287,7 +288,7 @@ nsSVGForeignObjectFrame::GetFrameForPoint(const nsPoint &aPoint)
   if (IsDisabled() || (GetStateBits() & NS_STATE_SVG_NONDISPLAY_CHILD))
     return nsnull;
 
-  nsIFrame* kid = GetFirstChild(nsnull);
+  nsIFrame* kid = GetFirstPrincipalChild();
   if (!kid)
     return nsnull;
 
@@ -371,7 +372,7 @@ nsSVGForeignObjectFrame::InitialUpdate()
 void
 nsSVGForeignObjectFrame::NotifySVGChanged(PRUint32 aFlags)
 {
-  PRBool reflow = PR_FALSE;
+  bool reflow = false;
 
   if (aFlags & TRANSFORM_CHANGED) {
     // In an ideal world we would reflow when our CTM changes. This is because
@@ -393,7 +394,7 @@ nsSVGForeignObjectFrame::NotifySVGChanged(PRUint32 aFlags)
       static_cast<nsSVGForeignObjectElement*>(mContent);
     if (fO->mLengthAttributes[nsSVGForeignObjectElement::WIDTH].IsPercentage() ||
         fO->mLengthAttributes[nsSVGForeignObjectElement::HEIGHT].IsPercentage()) {
-      reflow = PR_TRUE;
+      reflow = true;
     }
   }
 
@@ -432,7 +433,8 @@ nsSVGForeignObjectFrame::NotifyRedrawUnsuspended()
 }
 
 gfxRect
-nsSVGForeignObjectFrame::GetBBoxContribution(const gfxMatrix &aToBBoxUserspace)
+nsSVGForeignObjectFrame::GetBBoxContribution(const gfxMatrix &aToBBoxUserspace,
+                                             PRUint32 aFlags)
 {
   NS_ASSERTION(!(GetStateBits() & NS_STATE_SVG_NONDISPLAY_CHILD),
                "Should not be calling this on a non-display child");
@@ -467,9 +469,9 @@ nsSVGForeignObjectFrame::GetCanvasTM()
 
     gfxMatrix tm = content->PrependLocalTransformTo(parent->GetCanvasTM());
 
-    mCanvasTM = NS_NewSVGMatrix(tm);
+    mCanvasTM = new gfxMatrix(tm);
   }
-  return nsSVGUtils::ConvertSVGMatrixToThebes(mCanvasTM);
+  return *mCanvasTM;
 }
 
 //----------------------------------------------------------------------
@@ -490,7 +492,7 @@ void nsSVGForeignObjectFrame::RequestReflow(nsIPresShell::IntrinsicDirty aType)
     // If we haven't had an InitialUpdate yet, nothing to do.
     return;
 
-  nsIFrame* kid = GetFirstChild(nsnull);
+  nsIFrame* kid = GetFirstPrincipalChild();
   if (!kid)
     return;
 
@@ -519,7 +521,7 @@ nsSVGForeignObjectFrame::MaybeReflowFromOuterSVGFrame()
     return;
   }
 
-  nsIFrame* kid = GetFirstChild(nsnull);
+  nsIFrame* kid = GetFirstPrincipalChild();
 
   // If we're already scheduled to reflow (if we or our kid is dirty) we don't
   // want to reflow now or else our presShell will do extra work trying to
@@ -555,7 +557,7 @@ nsSVGForeignObjectFrame::DoReflow()
     return;
 
   nsPresContext *presContext = PresContext();
-  nsIFrame* kid = GetFirstChild(nsnull);
+  nsIFrame* kid = GetFirstPrincipalChild();
   if (!kid)
     return;
 
@@ -583,7 +585,7 @@ nsSVGForeignObjectFrame::DoReflow()
   nsSize size(nsPresContext::CSSPixelsToAppUnits(width),
               nsPresContext::CSSPixelsToAppUnits(height));
 
-  mInReflow = PR_TRUE;
+  mInReflow = true;
 
   nsHTMLReflowState reflowState(presContext, kid,
                                 renderingContext,
@@ -608,7 +610,7 @@ nsSVGForeignObjectFrame::DoReflow()
   FinishReflowChild(kid, presContext, &reflowState, desiredSize, 0, 0,
                     NS_FRAME_NO_MOVE_FRAME);
   
-  mInReflow = PR_FALSE;
+  mInReflow = false;
   FlushDirtyRegion(0);
 }
 

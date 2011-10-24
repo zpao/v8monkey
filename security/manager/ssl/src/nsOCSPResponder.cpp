@@ -81,7 +81,7 @@ NS_IMETHODIMP nsOCSPResponder::GetServiceURL(PRUnichar** aURL)
   return NS_OK;
 }
 
-PRBool nsOCSPResponder::IncludeCert(CERTCertificate *aCert)
+bool nsOCSPResponder::IncludeCert(CERTCertificate *aCert)
 {
   CERTCertTrust *trust;
   char *nickname;
@@ -93,21 +93,21 @@ PRBool nsOCSPResponder::IncludeCert(CERTCertificate *aCert)
 
   // Check that trust is non-null //
   if (trust == nsnull) {
-    return PR_FALSE;
+    return false;
   }
 
   if ( ( ( trust->sslFlags & CERTDB_INVISIBLE_CA ) ||
          (trust->emailFlags & CERTDB_INVISIBLE_CA ) ||
          (trust->objectSigningFlags & CERTDB_INVISIBLE_CA ) ) ||
        nickname == NULL) {
-      return PR_FALSE;
+      return false;
   }
   if ((trust->sslFlags & CERTDB_VALID_CA) ||
       (trust->emailFlags & CERTDB_VALID_CA) ||
       (trust->objectSigningFlags & CERTDB_VALID_CA)) {
-      return PR_TRUE;
+      return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 // CmpByCAName

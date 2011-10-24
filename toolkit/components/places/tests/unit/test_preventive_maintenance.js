@@ -109,7 +109,7 @@ let current_test = null;
 //------------------------------------------------------------------------------
 
 tests.push({
-  name: "A.1",
+  name: "A.3",
   desc: "Remove unused attributes",
 
   _usedPageAttribute: "usedPage",
@@ -144,7 +144,7 @@ tests.push({
     stmt.params['item_id'] = this._bookmarkId;
     stmt.params['anno'] = this._usedItemAttribute;
     stmt.execute();
-    stmt.finalize();    
+    stmt.finalize();
   },
 
   check: function() {
@@ -272,12 +272,9 @@ tests.push({
 
     // Remove the root.
     mDBConn.executeSimpleSQL("DELETE FROM moz_bookmarks WHERE parent = 0");
-    try {
-      bs.getFolderIdForItem(bs.placesRoot);
-      do_throw("Places root should not exist now!");
-    } catch(e) {
-      // Root has been removed so this call should throw.
-    }
+    let stmt = mDBConn.createStatement("SELECT id FROM moz_bookmarks WHERE parent = 0");
+    do_check_false(stmt.executeStep());
+    stmt.finalize();
   },
 
   check: function() {
@@ -490,7 +487,7 @@ tests.push({
     stmt.params["item_id"] = this._bookmarkId;
     stmt.params["parent"] = this._orphanFolderId;
     do_check_true(stmt.executeStep());
-    stmt.finalize();    
+    stmt.finalize();
   }
 });
 
@@ -628,7 +625,7 @@ tests.push({
     // Add a valid dynamic container with a folder type
     this._validDynamicContainerId = addBookmark(null, bs.TYPE_DYNAMIC_CONTAINER, null, null, "test");
     // Add an invalid dynamic container without a folder type
-    this._invalidDynamicContainerId = addBookmark(null, bs.TYPE_DYNAMIC_CONTAINER, null, null, null);    
+    this._invalidDynamicContainerId = addBookmark(null, bs.TYPE_DYNAMIC_CONTAINER, null, null, null);
   },
 
   check: function() {
@@ -689,7 +686,7 @@ tests.push({
     stmt.params["item_id"] = this._bookmarkId3;
     stmt.params["parent"] = bs.unfiledBookmarksFolder;
     do_check_true(stmt.executeStep());
-    stmt.finalize();    
+    stmt.finalize();
   }
 });
 
@@ -965,7 +962,7 @@ tests.push({
     stmt.reset();
     stmt.params["place_id"] = this._invalidPlaceId;
     stmt.params["input"] = "moz";
-    stmt.execute();    
+    stmt.execute();
     stmt.finalize();
   },
 
@@ -1168,17 +1165,79 @@ tests.push({
 });
 
 //------------------------------------------------------------------------------
-//XXX TODO
+
 tests.push({
   name: "L.2",
-  desc: "Recalculate visit_count",
+  desc: "Recalculate visit_count and last_visit_date",
 
   setup: function() {
+    function setVisitCount(aURL, aValue) {
+      let stmt = mDBConn.createStatement(
+        "UPDATE moz_places SET visit_count = :count WHERE url = :url"
+      );
+      stmt.params.count = aValue;
+      stmt.params.url = aURL;
+      stmt.execute();
+      stmt.finalize();
+    }
+    function setLastVisitDate(aURL, aValue) {
+      let stmt = mDBConn.createStatement(
+        "UPDATE moz_places SET last_visit_date = :date WHERE url = :url"
+      );
+      stmt.params.date = aValue;
+      stmt.params.url = aURL;
+      stmt.execute();
+      stmt.finalize();
+    }
 
+    let now = Date.now() * 1000;
+    // Add a page with 1 visit.
+    let url = "http://1.moz.org/";
+    hs.addVisit(NetUtil.newURI(url), now++, null, hs.TRANSITION_TYPED, false, 0);
+    // Add a page with 1 visit and set wrong visit_count.
+    url = "http://2.moz.org/";
+    hs.addVisit(NetUtil.newURI(url), now++, null, hs.TRANSITION_TYPED, false, 0);
+    setVisitCount(url, 10);
+    // Add a page with 1 visit and set wrong last_visit_date.
+    url = "http://3.moz.org/";
+    hs.addVisit(NetUtil.newURI(url), now++, null, hs.TRANSITION_TYPED, false, 0);
+    setLastVisitDate(url, now++);
+    // Add a page with 1 visit and set wrong stats.
+    url = "http://4.moz.org/";
+    hs.addVisit(NetUtil.newURI(url), now++, null, hs.TRANSITION_TYPED, false, 0);
+    setVisitCount(url, 10);
+    setLastVisitDate(url, now++);
+
+    // Add a page without visits.
+    let url = "http://5.moz.org/";
+    addPlace(url);
+    // Add a page without visits and set wrong visit_count.
+    url = "http://6.moz.org/";
+    addPlace(url);
+    setVisitCount(url, 10);
+    // Add a page without visits and set wrong last_visit_date.
+    url = "http://7.moz.org/";
+    addPlace(url);
+    setLastVisitDate(url, now++);
+    // Add a page without visits and set wrong stats.
+    url = "http://8.moz.org/";
+    addPlace(url);
+    setVisitCount(url, 10);
+    setLastVisitDate(url, now++);
   },
 
   check: function() {
-
+    let stmt = mDBConn.createStatement(
+      "SELECT h.id FROM moz_places h " +
+      "JOIN moz_historyvisits v ON v.place_id = h.id AND visit_type NOT IN (0,4,7,8) " +
+      "GROUP BY h.id HAVING h.visit_count <> count(*) " +
+      "UNION ALL " +
+      "SELECT h.id FROM moz_places h " +
+      "JOIN moz_historyvisits v ON v.place_id = h.id " +
+      "GROUP BY h.id HAVING h.last_visit_date <> MAX(v.visit_date) "
+    );
+    do_check_false(stmt.executeStep());
+    stmt.finalize();
   }
 });
 
@@ -1222,7 +1281,7 @@ tests.push({
     // Check that all items are correct
     do_check_true(bh.isVisited(this._uri1));
     do_check_true(bh.isVisited(this._uri2));
-    
+
     do_check_eq(bs.getBookmarkURI(this._bookmarkId).spec, this._uri1.spec);
     do_check_eq(bs.getItemIndex(this._folderId), 0);
 

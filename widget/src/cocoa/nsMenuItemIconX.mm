@@ -48,7 +48,7 @@
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsINameSpaceManager.h"
-#include "nsWidgetAtoms.h"
+#include "nsGkAtoms.h"
 #include "nsIDOMElement.h"
 #include "nsIDOMCSSStyleDeclaration.h"
 #include "nsIDOMCSSValue.h"
@@ -83,8 +83,8 @@ nsMenuItemIconX::nsMenuItemIconX(nsMenuObjectX* aMenuItem,
                                  NSMenuItem*    aNativeMenuItem)
 : mContent(aContent)
 , mMenuObject(aMenuItem)
-, mLoadedIcon(PR_FALSE)
-, mSetIcon(PR_FALSE)
+, mLoadedIcon(false)
+, mSetIcon(false)
 , mNativeMenuItem(aNativeMenuItem)
 {
   //  printf("Creating icon for menu item %d, menu %d, native item is %d\n", aMenuItem, aMenu, aNativeMenuItem);
@@ -187,9 +187,9 @@ nsMenuItemIconX::GetIconURI(nsIURI** aIconURI)
 
   // First, look at the content node's "image" attribute.
   nsAutoString imageURIString;
-  PRBool hasImageAttr = mContent->GetAttr(kNameSpaceID_None,
-                                          nsWidgetAtoms::image,
-                                          imageURIString);
+  bool hasImageAttr = mContent->GetAttr(kNameSpaceID_None,
+                                        nsGkAtoms::image,
+                                        imageURIString);
 
   nsresult rv;
   nsCOMPtr<nsIDOMCSSValue> cssValue;
@@ -303,12 +303,11 @@ nsMenuItemIconX::LoadIcon(nsIURI* aIconURI)
     mIconRequest = nsnull;
   }
 
-  mLoadedIcon = PR_FALSE;
+  mLoadedIcon = false;
 
   if (!mContent) return NS_ERROR_FAILURE;
 
-  nsCOMPtr<nsIDocument> document = mContent->GetOwnerDoc();
-  if (!document) return NS_ERROR_FAILURE;
+  nsCOMPtr<nsIDocument> document = mContent->OwnerDoc();
 
   nsCOMPtr<nsILoadGroup> loadGroup = document->GetDocumentLoadGroup();
   if (!loadGroup) return NS_ERROR_FAILURE;
@@ -324,10 +323,10 @@ nsMenuItemIconX::LoadIcon(nsIURI* aIconURI)
     // position that it will be displayed when the real icon is loaded, and
     // prevents it from jumping around or looking misaligned.
 
-    static PRBool sInitializedPlaceholder;
+    static bool sInitializedPlaceholder;
     static NSImage* sPlaceholderIconImage;
     if (!sInitializedPlaceholder) {
-      sInitializedPlaceholder = PR_TRUE;
+      sInitializedPlaceholder = true;
 
       // Note that we only create the one and reuse it forever, so this is not a leak.
       sPlaceholderIconImage = [[NSImage alloc] initWithSize:NSMakeSize(kIconWidth, kIconHeight)];
@@ -341,7 +340,7 @@ nsMenuItemIconX::LoadIcon(nsIURI* aIconURI)
 
   // Passing in null for channelPolicy here since nsMenuItemIconX::LoadIcon is
   // not exposed to web content
-  rv = loader->LoadImage(aIconURI, nsnull, nsnull, loadGroup, this,
+  rv = loader->LoadImage(aIconURI, nsnull, nsnull, nsnull, loadGroup, this,
                          nsnull, nsIRequest::LOAD_NORMAL, nsnull, nsnull,
                          nsnull, getter_AddRefs(mIconRequest));
   if (NS_FAILED(rv)) return rv;
@@ -397,7 +396,7 @@ nsMenuItemIconX::OnStartFrame(imgIRequest* aRequest, PRUint32 aFrame)
 
 NS_IMETHODIMP
 nsMenuItemIconX::OnDataAvailable(imgIRequest*     aRequest,
-                                 PRBool           aCurrentFrame,
+                                 bool             aCurrentFrame,
                                  const nsIntRect* aRect)
 {
   return NS_OK;
@@ -458,7 +457,7 @@ nsMenuItemIconX::OnStopFrame(imgIRequest*    aRequest,
     return NS_ERROR_FAILURE;
   }
 
-  PRBool createSubImage = !(mImageRegionRect.x == 0 && mImageRegionRect.y == 0 &&
+  bool createSubImage = !(mImageRegionRect.x == 0 && mImageRegionRect.y == 0 &&
                             mImageRegionRect.width == origWidth && mImageRegionRect.height == origHeight);
   
   CGImageRef finalImage = NULL;
@@ -521,8 +520,8 @@ nsMenuItemIconX::OnStopFrame(imgIRequest*    aRequest,
   [newImage release];
   ::CGImageRelease(iconImage);
 
-  mLoadedIcon = PR_TRUE;
-  mSetIcon = PR_TRUE;
+  mLoadedIcon = true;
+  mSetIcon = true;
 
   return NS_OK;
 
@@ -546,10 +545,9 @@ nsMenuItemIconX::OnStopDecode(imgIRequest*     aRequest,
 
 NS_IMETHODIMP
 nsMenuItemIconX::OnStopRequest(imgIRequest* aRequest,
-                              PRBool       aIsLastPart)
+                              bool         aIsLastPart)
 {
-  NS_ASSERTION(mIconRequest, "NULL mIconRequest!  Multiple calls to OnStopRequest()?");
-  if (mIconRequest) {
+  if (mIconRequest && mIconRequest == aRequest) {
     mIconRequest->Cancel(NS_BINDING_ABORTED);
     mIconRequest = nsnull;
   }

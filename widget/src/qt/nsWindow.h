@@ -52,7 +52,7 @@
 
 #include "nsWeakReference.h"
 
-#include "nsWidgetAtoms.h"
+#include "nsGkAtoms.h"
 
 #ifdef MOZ_LOGGING
 
@@ -128,7 +128,6 @@ public:
                               const nsIntRect  &aRect,
                               EVENT_CALLBACK   aHandleEventFunction,
                               nsDeviceContext *aContext,
-                              nsIAppShell      *aAppShell,
                               nsIToolkit       *aToolkit,
                               nsWidgetInitData *aInitData);
 
@@ -136,49 +135,48 @@ public:
     CreateChild(const nsIntRect&  aRect,
                 EVENT_CALLBACK    aHandleEventFunction,
                 nsDeviceContext* aContext,
-                nsIAppShell*      aAppShell = nsnull,
                 nsIToolkit*       aToolkit = nsnull,
                 nsWidgetInitData* aInitData = nsnull,
-                PRBool            aForceUseIWidgetParent = PR_TRUE);
+                bool              aForceUseIWidgetParent = true);
 
     NS_IMETHOD         Destroy(void);
     NS_IMETHOD         SetParent(nsIWidget* aNewParent);
     virtual nsIWidget *GetParent(void);
     virtual float      GetDPI();
-    NS_IMETHOD         Show(PRBool aState);
-    NS_IMETHOD         SetModal(PRBool aModal);
-    NS_IMETHOD         IsVisible(PRBool & aState);
-    NS_IMETHOD         ConstrainPosition(PRBool aAllowSlop,
+    NS_IMETHOD         Show(bool aState);
+    NS_IMETHOD         SetModal(bool aModal);
+    NS_IMETHOD         IsVisible(bool & aState);
+    NS_IMETHOD         ConstrainPosition(bool aAllowSlop,
                                          PRInt32 *aX,
                                          PRInt32 *aY);
     NS_IMETHOD         Move(PRInt32 aX,
                             PRInt32 aY);
     NS_IMETHOD         Resize(PRInt32 aWidth,
                               PRInt32 aHeight,
-                              PRBool  aRepaint);
+                              bool    aRepaint);
     NS_IMETHOD         Resize(PRInt32 aX,
                               PRInt32 aY,
                               PRInt32 aWidth,
                               PRInt32 aHeight,
-                              PRBool   aRepaint);
+                              bool     aRepaint);
     NS_IMETHOD         PlaceBehind(nsTopLevelWidgetZPlacement  aPlacement,
                                    nsIWidget                  *aWidget,
-                                   PRBool                      aActivate);
+                                   bool                        aActivate);
     NS_IMETHOD         SetSizeMode(PRInt32 aMode);
-    NS_IMETHOD         Enable(PRBool aState);
-    NS_IMETHOD         SetFocus(PRBool aRaise = PR_FALSE);
+    NS_IMETHOD         Enable(bool aState);
+    NS_IMETHOD         SetFocus(bool aRaise = false);
     NS_IMETHOD         GetScreenBounds(nsIntRect &aRect);
     NS_IMETHOD         SetForegroundColor(const nscolor &aColor);
     NS_IMETHOD         SetBackgroundColor(const nscolor &aColor);
     NS_IMETHOD         SetCursor(nsCursor aCursor);
     NS_IMETHOD         SetCursor(imgIContainer* aCursor,
                                  PRUint32 aHotspotX, PRUint32 aHotspotY);
-    NS_IMETHOD         SetHasTransparentBackground(PRBool aTransparent);
-    NS_IMETHOD         GetHasTransparentBackground(PRBool& aTransparent);
-    NS_IMETHOD         HideWindowChrome(PRBool aShouldHide);
-    NS_IMETHOD         MakeFullScreen(PRBool aFullScreen);
+    NS_IMETHOD         SetHasTransparentBackground(bool aTransparent);
+    NS_IMETHOD         GetHasTransparentBackground(bool& aTransparent);
+    NS_IMETHOD         HideWindowChrome(bool aShouldHide);
+    NS_IMETHOD         MakeFullScreen(bool aFullScreen);
     NS_IMETHOD         Invalidate(const nsIntRect &aRect,
-                                  PRBool        aIsSynchronous);
+                                  bool          aIsSynchronous);
     NS_IMETHOD         Update();
 
     virtual void*      GetNativeData(PRUint32 aDataType);
@@ -187,12 +185,12 @@ public:
     virtual nsIntPoint WidgetToScreenOffset();
     NS_IMETHOD         DispatchEvent(nsGUIEvent *aEvent, nsEventStatus &aStatus);
 
-    NS_IMETHOD         EnableDragDrop(PRBool aEnable);
-    NS_IMETHOD         CaptureMouse(PRBool aCapture);
+    NS_IMETHOD         EnableDragDrop(bool aEnable);
+    NS_IMETHOD         CaptureMouse(bool aCapture);
     NS_IMETHOD         CaptureRollupEvents(nsIRollupListener *aListener,
                                            nsIMenuRollup *aMenuRollup,
-                                           PRBool aDoCapture,
-                                           PRBool aConsumeRollupEvent);
+                                           bool aDoCapture,
+                                           bool aConsumeRollupEvent);
 
     NS_IMETHOD         SetWindowClass(const nsAString& xulWinType);
 
@@ -224,13 +222,13 @@ public:
     }
 
     // Some of the nsIWidget methods
-    NS_IMETHOD         IsEnabled        (PRBool *aState);
+    NS_IMETHOD         IsEnabled        (bool *aState);
 
     // called when we are destroyed
     void OnDestroy(void);
 
     // called to check and see if a widget's dimensions are sane
-    PRBool AreBoundsSane(void);
+    bool AreBoundsSane(void);
 
     NS_IMETHOD         ReparentNativeWidget(nsIWidget* aNewParent);
 
@@ -239,17 +237,17 @@ public:
 protected:
     nsCOMPtr<nsIWidget> mParent;
     // Is this a toplevel window?
-    PRPackedBool        mIsTopLevel;
+    bool                mIsTopLevel;
     // Has this widget been destroyed yet?
-    PRPackedBool        mIsDestroyed;
+    bool                mIsDestroyed;
 
     // This flag tracks if we're hidden or shown.
-    PRPackedBool        mIsShown;
+    bool                mIsShown;
     // is this widget enabled?
-    PRBool              mEnabled;
+    bool                mEnabled;
     // Has anyone set an x/y location for this widget yet? Toplevels
     // shouldn't be automatically set to 0,0 for first show.
-    PRBool              mPlaced;
+    bool                mPlaced;
 
     // Remember the last sizemode so that we can restore it when
     // leaving fullscreen
@@ -282,7 +280,7 @@ protected:
     virtual nsEventStatus OnScrollEvent(QGraphicsSceneWheelEvent *);
 
     virtual nsEventStatus contextMenuEvent(QGraphicsSceneContextMenuEvent *);
-    virtual nsEventStatus imComposeEvent(QInputMethodEvent *, PRBool &handled);
+    virtual nsEventStatus imComposeEvent(QInputMethodEvent *, bool &handled);
     virtual nsEventStatus OnDragEnter (QGraphicsSceneDragDropEvent *);
     virtual nsEventStatus OnDragMotionEvent(QGraphicsSceneDragDropEvent *);
     virtual nsEventStatus OnDragLeaveEvent(QGraphicsSceneDragDropEvent *);
@@ -292,9 +290,9 @@ protected:
 
 //Gestures are only supported in qt > 4.6
 #if (QT_VERSION >= QT_VERSION_CHECK(4, 6, 0))
-    virtual nsEventStatus OnTouchEvent(QTouchEvent *event, PRBool &handled);
+    virtual nsEventStatus OnTouchEvent(QTouchEvent *event, bool &handled);
 
-    virtual nsEventStatus OnGestureEvent(QGestureEvent *event, PRBool &handled);
+    virtual nsEventStatus OnGestureEvent(QGestureEvent *event, bool &handled);
     nsEventStatus DispatchGestureEvent(PRUint32 aMsg, PRUint32 aDirection,
                                        double aDelta, const nsIntPoint& aRefPoint);
 
@@ -303,15 +301,15 @@ protected:
 
     void               NativeResize(PRInt32 aWidth,
                                     PRInt32 aHeight,
-                                    PRBool  aRepaint);
+                                    bool    aRepaint);
 
     void               NativeResize(PRInt32 aX,
                                     PRInt32 aY,
                                     PRInt32 aWidth,
                                     PRInt32 aHeight,
-                                    PRBool  aRepaint);
+                                    bool    aRepaint);
 
-    void               NativeShow  (PRBool  aAction);
+    void               NativeShow  (bool    aAction);
 
     enum PluginType {
         PluginType_NONE = 0,   /* do not have any plugin */
@@ -345,10 +343,12 @@ private:
     nsresult           SetWindowIconList(const nsTArray<nsCString> &aIconList);
     void               SetDefaultIcon(void);
     void               InitButtonEvent(nsMouseEvent &event, QGraphicsSceneMouseEvent *aEvent, int aClickCount = 1);
-    PRBool             DispatchCommandEvent(nsIAtom* aCommand);
-    MozQWidget*        createQWidget(MozQWidget *parent, nsWidgetInitData *aInitData);
-
-    PRBool             IsAcceleratedQView(QGraphicsView* aView);
+    nsEventStatus      DispatchCommandEvent(nsIAtom* aCommand);
+    nsEventStatus      DispatchContentCommandEvent(PRInt32 aMsg);
+    MozQWidget*        createQWidget(MozQWidget* parent,
+                                     nsNativeWidget nativeParent,
+                                     nsWidgetInitData* aInitData);
+    void               SetSoftwareKeyboardState(bool aOpen);
 
     MozQWidget*        mWidget;
 
@@ -360,7 +360,7 @@ private:
     nsRefPtr<gfxASurface> mThebesSurface;
     nsCOMPtr<nsIdleService> mIdleService;
 
-    PRBool       mIsTransparent;
+    bool         mIsTransparent;
  
     // all of our DND stuff
     // this is the last window that had a drag event happen on it.
@@ -381,7 +381,7 @@ private:
         return &mKeyDownFlags[(aKeyCode >> 5)];
     }
 
-    PRBool IsKeyDown(PRUint32 aKeyCode) {
+    bool IsKeyDown(PRUint32 aKeyCode) {
         PRUint32 mask;
         PRUint32* flag = GetFlagWord32(aKeyCode, &mask);
         return ((*flag) & mask) != 0;
@@ -415,7 +415,7 @@ private:
             mPinchEvent.prevDistance = distance;
         }
         if (mMoveEvent.needDispatch) {
-            nsMouseEvent event(PR_TRUE, NS_MOUSE_MOVE, this, nsMouseEvent::eReal);
+            nsMouseEvent event(true, NS_MOUSE_MOVE, this, nsMouseEvent::eReal);
 
             event.refPoint.x = nscoord(mMoveEvent.pos.x());
             event.refPoint.y = nscoord(mMoveEvent.pos.y());
@@ -430,7 +430,7 @@ private:
             mMoveEvent.needDispatch = false;
         }
 
-        mTimerStarted = PR_FALSE;
+        mTimerStarted = false;
     }
 
     void DispatchMotionToMainThread() {
@@ -438,7 +438,7 @@ private:
             nsCOMPtr<nsIRunnable> event =
                 NS_NewRunnableMethod(this, &nsWindow::ProcessMotionEvent);
             NS_DispatchToMainThread(event);
-            mTimerStarted = PR_TRUE;
+            mTimerStarted = true;
         }
     }
 
@@ -449,14 +449,14 @@ private:
     QTime mLastMultiTouchTime;
 #endif
 
-    PRPackedBool mNeedsResize;
-    PRPackedBool mNeedsMove;
-    PRPackedBool mListenForResizes;
-    PRPackedBool mNeedsShow;
-    PRPackedBool mGesturesCancelled;
+    bool mNeedsResize;
+    bool mNeedsMove;
+    bool mListenForResizes;
+    bool mNeedsShow;
+    bool mGesturesCancelled;
     MozCachedTouchEvent mPinchEvent;
     MozCachedMoveEvent mMoveEvent;
-    PRPackedBool mTimerStarted;
+    bool mTimerStarted;
 };
 
 class nsChildWindow : public nsWindow

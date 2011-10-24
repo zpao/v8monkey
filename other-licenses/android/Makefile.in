@@ -42,19 +42,25 @@ VPATH		= @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
-MODULE           = mozutils
-LIBRARY_NAME     = mozutils
-FORCE_SHARED_LIB = 1
-DIST_INSTALL     = 1
+MODULE           = android
+LIBRARY_NAME     = android
+FORCE_STATIC_LIB = 1
 
 DEFINES += \
   -DLINKER_DEBUG=0 \
-  -DANDROID_ARM_LINKER \
   -DMOZ_LINKER \
   -DLINKER_TEXT_BASE=0xB0001000 \
   -DLINKER_AREA_SIZE=0x01000000 \
   -DANDROID_PACKAGE_NAME='"$(ANDROID_PACKAGE_NAME)"' \
   $(NULL)
+
+ifeq ($(CPU_ARCH),arm)
+DEFINES += -DANDROID_ARM_LINKER
+else
+ifeq ($(CPU_ARCH),x86)
+DEFINES += -DANDROID_X86_LINKER
+endif
+endif
 
 CPPSRCS = \
   nsGeckoUtils.cpp \
@@ -71,10 +77,5 @@ CSRCS = \
   $(NULL)
 
 EXPORTS = APKOpen.h
-
-EXTRA_DSO_LDOPTS += $(ZLIB_LIBS)
-
-WRAP_MALLOC_LIB =
-WRAP_MALLOC_CFLAGS =
 
 include $(topsrcdir)/config/rules.mk

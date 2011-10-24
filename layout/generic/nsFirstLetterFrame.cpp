@@ -50,6 +50,8 @@
 #include "nsPlaceholderFrame.h"
 #include "nsCSSFrameConstructor.h"
 
+using namespace::mozilla;
+
 nsIFrame*
 NS_NewFirstLetterFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
 {
@@ -105,7 +107,7 @@ nsFirstLetterFrame::Init(nsIContent*      aContent,
 }
 
 NS_IMETHODIMP
-nsFirstLetterFrame::SetInitialChildList(nsIAtom*     aListName,
+nsFirstLetterFrame::SetInitialChildList(ChildListID  aListID,
                                         nsFrameList& aChildList)
 {
   nsFrameManager *frameManager = PresContext()->FrameManager();
@@ -121,7 +123,7 @@ nsFirstLetterFrame::SetInitialChildList(nsIAtom*     aListName,
 
 NS_IMETHODIMP
 nsFirstLetterFrame::GetChildFrameContainingOffset(PRInt32 inContentOffset,
-                                                  PRBool inHint,
+                                                  bool inHint,
                                                   PRInt32* outFrameContentOffset,
                                                   nsIFrame **outChildFrame)
 {
@@ -170,7 +172,7 @@ nsFirstLetterFrame::GetPrefWidth(nsRenderingContext *aRenderingContext)
 nsFirstLetterFrame::ComputeSize(nsRenderingContext *aRenderingContext,
                                 nsSize aCBSize, nscoord aAvailableWidth,
                                 nsSize aMargin, nsSize aBorder, nsSize aPadding,
-                                PRBool aShrinkWrap)
+                                bool aShrinkWrap)
 {
   if (GetPrevInFlow()) {
     // We're wrapping the text *after* the first letter, so behave like an
@@ -215,29 +217,47 @@ nsFirstLetterFrame::Reflow(nsPresContext*          aPresContext,
     // line context is when its floating.
     nsHTMLReflowState rs(aPresContext, aReflowState, kid, availSize);
     nsLineLayout ll(aPresContext, nsnull, &aReflowState, nsnull);
+
+    // For unicode-bidi: plaintext, we need to get the direction of the line
+    // from the resolved paragraph level of the child, not the block frame,
+    // because the block frame could be split by hard line breaks into
+    // multiple paragraphs with different base direction
+    PRUint8 direction;
+    nsIFrame* containerFrame = ll.GetLineContainerFrame();
+    if (containerFrame->GetStyleTextReset()->mUnicodeBidi &
+        NS_STYLE_UNICODE_BIDI_PLAINTEXT) {
+      FramePropertyTable *propTable = aPresContext->PropertyTable();
+      direction = NS_PTR_TO_INT32(propTable->Get(kid, BaseLevelProperty())) & 1;
+    } else {
+      direction = containerFrame->GetStyleVisibility()->mDirection;
+    }
     ll.BeginLineReflow(bp.left, bp.top, availSize.width, NS_UNCONSTRAINEDSIZE,
-                       PR_FALSE, PR_TRUE);
+                       false, true, direction);
     rs.mLineLayout = &ll;
-    ll.SetInFirstLetter(PR_TRUE);
-    ll.SetFirstLetterStyleOK(PR_TRUE);
+    ll.SetInFirstLetter(true);
+    ll.SetFirstLetterStyleOK(true);
 
     kid->WillReflow(aPresContext);
     kid->Reflow(aPresContext, aMetrics, rs, aReflowStatus);
 
     ll.EndLineReflow();
-    ll.SetInFirstLetter(PR_FALSE);
+    ll.SetInFirstLetter(false);
+
+    // In the floating first-letter case, we need to set this ourselves;
+    // nsLineLayout::BeginSpan will set it in the other case
+    mBaseline = aMetrics.ascent;
   }
   else {
     // Pretend we are a span and reflow the child frame
     nsLineLayout* ll = aReflowState.mLineLayout;
-    PRBool        pushedFrame;
+    bool          pushedFrame;
 
     ll->SetInFirstLetter(
       mStyleContext->GetPseudo() == nsCSSPseudoElements::firstLetter);
-    ll->BeginSpan(this, &aReflowState, bp.left, availSize.width);
+    ll->BeginSpan(this, &aReflowState, bp.left, availSize.width, &mBaseline);
     ll->ReflowFrame(kid, aReflowStatus, &aMetrics, pushedFrame);
     ll->EndSpan(this);
-    ll->SetInFirstLetter(PR_FALSE);
+    ll->SetInFirstLetter(false);
   }
 
   // Place and size the child and update the output metrics
@@ -248,7 +268,6 @@ nsFirstLetterFrame::Reflow(nsPresContext*          aPresContext,
   aMetrics.width += lr;
   aMetrics.height += tb;
   aMetrics.ascent += bp.top;
-  mBaseline = aMetrics.ascent;
 
   // Ensure that the overflow rect contains the child textframe's overflow rect.
   // Note that if this is floating, the overline/underline drawable area is in
@@ -256,41 +275,43 @@ nsFirstLetterFrame::Reflow(nsPresContext*          aPresContext,
   aMetrics.UnionOverflowAreasWithDesiredBounds();
   ConsiderChildOverflow(aMetrics.mOverflowAreas, kid);
 
-  // Create a continuation or remove existing continuations based on
-  // the reflow completion status.
-  if (NS_FRAME_IS_COMPLETE(aReflowStatus)) {
-    if (aReflowState.mLineLayout) {
-      aReflowState.mLineLayout->SetFirstLetterStyleOK(PR_FALSE);
-    }
-    nsIFrame* kidNextInFlow = kid->GetNextInFlow();
-    if (kidNextInFlow) {
-      // Remove all of the childs next-in-flows
-      static_cast<nsContainerFrame*>(kidNextInFlow->GetParent())
-        ->DeleteNextInFlowChild(aPresContext, kidNextInFlow, PR_TRUE);
-    }
-  }
-  else {
-    // Create a continuation for the child frame if it doesn't already
-    // have one.
-    if (!GetStyleDisplay()->IsFloating()) {
-      nsIFrame* nextInFlow;
-      rv = CreateNextInFlow(aPresContext, kid, nextInFlow);
-      if (NS_FAILED(rv)) {
-        return rv;
+  if (!NS_INLINE_IS_BREAK_BEFORE(aReflowStatus)) {
+    // Create a continuation or remove existing continuations based on
+    // the reflow completion status.
+    if (NS_FRAME_IS_COMPLETE(aReflowStatus)) {
+      if (aReflowState.mLineLayout) {
+        aReflowState.mLineLayout->SetFirstLetterStyleOK(false);
       }
-
-      // And then push it to our overflow list
-      const nsFrameList& overflow = mFrames.RemoveFramesAfter(kid);
-      if (overflow.NotEmpty()) {
-        SetOverflowFrames(aPresContext, overflow);
+      nsIFrame* kidNextInFlow = kid->GetNextInFlow();
+      if (kidNextInFlow) {
+        // Remove all of the childs next-in-flows
+        static_cast<nsContainerFrame*>(kidNextInFlow->GetParent())
+          ->DeleteNextInFlowChild(aPresContext, kidNextInFlow, true);
       }
-    } else if (!kid->GetNextInFlow()) {
-      // For floating first letter frames (if a continuation wasn't already
-      // created for us) we need to put the continuation with the rest of the
-      // text that the first letter frame was made out of.
-      nsIFrame* continuation;
-      rv = CreateContinuationForFloatingParent(aPresContext, kid,
-                                               &continuation, PR_TRUE);
+    }
+    else {
+      // Create a continuation for the child frame if it doesn't already
+      // have one.
+      if (!GetStyleDisplay()->IsFloating()) {
+        nsIFrame* nextInFlow;
+        rv = CreateNextInFlow(aPresContext, kid, nextInFlow);
+        if (NS_FAILED(rv)) {
+          return rv;
+        }
+    
+        // And then push it to our overflow list
+        const nsFrameList& overflow = mFrames.RemoveFramesAfter(kid);
+        if (overflow.NotEmpty()) {
+          SetOverflowFrames(aPresContext, overflow);
+        }
+      } else if (!kid->GetNextInFlow()) {
+        // For floating first letter frames (if a continuation wasn't already
+        // created for us) we need to put the continuation with the rest of the
+        // text that the first letter frame was made out of.
+        nsIFrame* continuation;
+        rv = CreateContinuationForFloatingParent(aPresContext, kid,
+                                                 &continuation, true);
+      }
     }
   }
 
@@ -300,18 +321,18 @@ nsFirstLetterFrame::Reflow(nsPresContext*          aPresContext,
   return rv;
 }
 
-/* virtual */ PRBool
+/* virtual */ bool
 nsFirstLetterFrame::CanContinueTextRun() const
 {
   // We can continue a text run through a first-letter frame.
-  return PR_TRUE;
+  return true;
 }
 
 nsresult
 nsFirstLetterFrame::CreateContinuationForFloatingParent(nsPresContext* aPresContext,
                                                         nsIFrame* aChild,
                                                         nsIFrame** aContinuation,
-                                                        PRBool aIsFluid)
+                                                        bool aIsFluid)
 {
   NS_ASSERTION(GetStyleDisplay()->IsFloating(),
                "can only call this on floating first letter frames");
@@ -345,11 +366,11 @@ nsFirstLetterFrame::CreateContinuationForFloatingParent(nsPresContext* aPresCont
   }
 
   //XXX Bidi may not be involved but we have to use the list name
-  // nsGkAtoms::nextBidi because this is just like creating a continuation
+  // kNoReflowPrincipalList because this is just like creating a continuation
   // except we have to insert it in a different place and we don't want a
   // reflow command to try to be issued.
   nsFrameList temp(continuation, continuation);
-  rv = parent->InsertFrames(nsGkAtoms::nextBidi, placeholderFrame, temp);
+  rv = parent->InsertFrames(kNoReflowPrincipalList, placeholderFrame, temp);
 
   *aContinuation = continuation;
   return rv;

@@ -56,11 +56,9 @@ browser/components/preferences/Makefile
 browser/components/privatebrowsing/Makefile
 browser/components/privatebrowsing/src/Makefile
 browser/components/safebrowsing/Makefile
-browser/components/safebrowsing/src/Makefile
 browser/components/search/Makefile
 browser/components/sessionstore/Makefile
 browser/components/sessionstore/src/Makefile
-browser/components/sidebar/Makefile
 browser/components/sidebar/src/Makefile
 browser/components/shell/Makefile
 browser/components/shell/public/Makefile
@@ -90,7 +88,6 @@ if [ "$ENABLE_TESTS" ]; then
     browser/components/certerror/test/Makefile
     browser/components/preferences/tests/Makefile
     browser/components/search/test/Makefile
-    browser/components/sessionstore/test/Makefile
     browser/components/sessionstore/test/browser/Makefile
     browser/components/shell/test/Makefile
     browser/components/feeds/test/Makefile
@@ -98,7 +95,6 @@ if [ "$ENABLE_TESTS" ]; then
     browser/components/places/tests/Makefile
     browser/components/places/tests/chrome/Makefile
     browser/components/places/tests/browser/Makefile
-    browser/components/places/tests/perf/Makefile
     browser/components/privatebrowsing/test/Makefile
     browser/components/privatebrowsing/test/browser/Makefile
     browser/components/safebrowsing/content/test/Makefile

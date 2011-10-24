@@ -41,10 +41,13 @@
 
 #include "nsIFile.h"
 #include "nsIObserverService.h"
+#include "nsISHEntry.h"
 #include "nsISimpleEnumerator.h"
 #include "nsITimer.h"
 
+#include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
+#include "mozilla/storage.h"
 #include "nsContentUtils.h"
 #include "nsThreadUtils.h"
 #include "nsXPCOM.h"
@@ -56,7 +59,6 @@
 #include "IDBFactory.h"
 #include "LazyIdleThread.h"
 #include "TransactionThreadPool.h"
-#include "nsISHEntry.h"
 
 // The amount of time, in milliseconds, that our IO thread will stay alive
 // after the last event it processes.
@@ -66,8 +68,18 @@
 // transactions on shutdown before aborting them.
 #define DEFAULT_SHUTDOWN_TIMER_MS 30000
 
+// Amount of space that IndexedDB databases may use by default in megabytes.
+#define DEFAULT_QUOTA_MB 50
+
+// Preference that users can set to override DEFAULT_QUOTA_MB
+#define PREF_INDEXEDDB_QUOTA "dom.indexedDB.warningQuota"
+
+// A bad TLS index number.
+#define BAD_TLS_INDEX (PRUintn)-1
+
 USING_INDEXEDDB_NAMESPACE
 using namespace mozilla::services;
+using mozilla::Preferences;
 
 namespace {
 
@@ -75,6 +87,39 @@ PRInt32 gShutdown = 0;
 
 // Does not hold a reference.
 IndexedDatabaseManager* gInstance = nsnull;
+
+PRUintn gCurrentDatabaseIndex = BAD_TLS_INDEX;
+
+PRInt32 gIndexedDBQuotaMB = DEFAULT_QUOTA_MB;
+
+class QuotaCallback : public mozIStorageQuotaCallback
+{
+public:
+  NS_DECL_ISUPPORTS
+
+  NS_IMETHOD
+  QuotaExceeded(const nsACString& aFilename,
+                PRInt64 aCurrentSizeLimit,
+                PRInt64 aCurrentTotalSize,
+                nsISupports* aUserData,
+                PRInt64* _retval)
+  {
+    NS_ASSERTION(gCurrentDatabaseIndex != BAD_TLS_INDEX,
+                 "This should be impossible!");
+
+    IDBDatabase* database =
+      static_cast<IDBDatabase*>(PR_GetThreadPrivate(gCurrentDatabaseIndex));
+
+    if (database && database->IsQuotaDisabled()) {
+      *_retval = 0;
+      return NS_OK;
+    }
+
+    return NS_ERROR_FAILURE;
+  }
+};
+
+NS_IMPL_THREADSAFE_ISUPPORTS1(QuotaCallback, mozIStorageQuotaCallback)
 
 // Adds all databases in the hash to the given array.
 PLDHashOperator
@@ -104,14 +149,20 @@ class DelayedSetVersion : public nsRunnable
 {
 public:
   DelayedSetVersion(IDBDatabase* aDatabase,
-                    IDBVersionChangeRequest* aRequest,
-                    const nsAString& aVersion,
+                    IDBOpenDBRequest* aRequest,
+                    PRInt64 aOldVersion,
+                    PRInt64 aNewVersion,
                     AsyncConnectionHelper* aHelper)
   : mDatabase(aDatabase),
     mRequest(aRequest),
-    mVersion(aVersion),
+    mOldVersion(aOldVersion),
+    mNewVersion(aNewVersion),
     mHelper(aHelper)
-  { }
+  {
+    NS_ASSERTION(aDatabase, "Null database!");
+    NS_ASSERTION(aRequest, "Null request!");
+    NS_ASSERTION(aHelper, "Null helper!");
+  }
 
   NS_IMETHOD Run()
   {
@@ -120,7 +171,8 @@ public:
     IndexedDatabaseManager* mgr = IndexedDatabaseManager::Get();
     NS_ASSERTION(mgr, "This should never be null!");
 
-    nsresult rv = mgr->SetDatabaseVersion(mDatabase, mRequest, mVersion,
+    nsresult rv = mgr->SetDatabaseVersion(mDatabase, mRequest,
+                                          mOldVersion, mNewVersion,
                                           mHelper);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -129,8 +181,9 @@ public:
 
 private:
   nsRefPtr<IDBDatabase> mDatabase;
-  nsRefPtr<IDBVersionChangeRequest> mRequest;
-  nsString mVersion;
+  nsRefPtr<IDBOpenDBRequest> mRequest;
+  PRInt64 mOldVersion;
+  PRInt64 mNewVersion;
   nsRefPtr<AsyncConnectionHelper> mHelper;
 };
 
@@ -142,12 +195,14 @@ class VersionChangeEventsRunnable : public nsRunnable
 public:
   VersionChangeEventsRunnable(
                             IDBDatabase* aRequestingDatabase,
-                            IDBVersionChangeRequest* aRequest,
+                            IDBOpenDBRequest* aRequest,
                             nsTArray<nsRefPtr<IDBDatabase> >& aWaitingDatabases,
-                            const nsAString& aVersion)
+                            PRInt64 aOldVersion,
+                            PRInt64 aNewVersion)
   : mRequestingDatabase(aRequestingDatabase),
     mRequest(aRequest),
-    mVersion(aVersion)
+    mOldVersion(aOldVersion),
+    mNewVersion(aNewVersion)
   {
     NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
     NS_ASSERTION(aRequestingDatabase, "Null pointer!");
@@ -185,10 +240,11 @@ public:
       }
 
       // Otherwise fire a versionchange event.
-      nsCOMPtr<nsIDOMEvent> event(IDBVersionChangeEvent::Create(mVersion));
+      nsRefPtr<nsDOMEvent> event = 
+        IDBVersionChangeEvent::Create(mOldVersion, mNewVersion);
       NS_ENSURE_TRUE(event, NS_ERROR_FAILURE);
 
-      PRBool dummy;
+      bool dummy;
       database->DispatchEvent(event, &dummy);
     }
 
@@ -196,11 +252,11 @@ public:
     // then fire the blocked event.
     for (PRUint32 index = 0; index < mWaitingDatabases.Length(); index++) {
       if (!mWaitingDatabases[index]->IsClosed()) {
-        nsCOMPtr<nsIDOMEvent> event =
-          IDBVersionChangeEvent::CreateBlocked(mVersion);
+        nsRefPtr<nsDOMEvent> event =
+          IDBVersionChangeEvent::CreateBlocked(mOldVersion, mNewVersion);
         NS_ENSURE_TRUE(event, NS_ERROR_FAILURE);
 
-        PRBool dummy;
+        bool dummy;
         mRequest->DispatchEvent(event, &dummy);
 
         break;
@@ -212,9 +268,10 @@ public:
 
 private:
   nsRefPtr<IDBDatabase> mRequestingDatabase;
-  nsRefPtr<IDBVersionChangeRequest> mRequest;
+  nsRefPtr<IDBOpenDBRequest> mRequest;
   nsTArray<nsRefPtr<IDBDatabase> > mWaitingDatabases;
-  nsString mVersion;
+  PRInt64 mOldVersion;
+  PRInt64 mNewVersion;
 };
 
 } // anonymous namespace
@@ -246,6 +303,23 @@ IndexedDatabaseManager::GetOrCreate()
   nsRefPtr<IndexedDatabaseManager> instance(gInstance);
 
   if (!instance) {
+    // We need a thread-local to hold our current database.
+    if (gCurrentDatabaseIndex == BAD_TLS_INDEX) {
+      if (PR_NewThreadPrivateIndex(&gCurrentDatabaseIndex, nsnull) !=
+          PR_SUCCESS) {
+        NS_ERROR("PR_NewThreadPrivateIndex failed!");
+        gCurrentDatabaseIndex = BAD_TLS_INDEX;
+        return nsnull;
+      }
+
+      if (NS_FAILED(Preferences::AddIntVarCache(&gIndexedDBQuotaMB,
+                                                PREF_INDEXEDDB_QUOTA,
+                                                DEFAULT_QUOTA_MB))) {
+        NS_WARNING("Unable to respond to quota pref changes!");
+        gIndexedDBQuotaMB = DEFAULT_QUOTA_MB;
+      }
+    }
+
     instance = new IndexedDatabaseManager();
 
     if (!instance->mLiveDatabases.Init()) {
@@ -263,20 +337,23 @@ IndexedDatabaseManager::GetOrCreate()
 
     // We need this callback to know when to shut down all our threads.
     nsresult rv = obs->AddObserver(instance, NS_XPCOM_SHUTDOWN_OBSERVER_ID,
-                                   PR_FALSE);
+                                   false);
     NS_ENSURE_SUCCESS(rv, nsnull);
 
     // We don't really need this callback but we want the observer service to
     // hold us alive until XPCOM shutdown. That way other consumers can continue
     // to use this service until shutdown.
     rv = obs->AddObserver(instance, NS_XPCOM_SHUTDOWN_THREADS_OBSERVER_ID,
-                          PR_FALSE);
+                          false);
     NS_ENSURE_SUCCESS(rv, nsnull);
 
     // Make a lazy thread for any IO we need (like clearing or enumerating the
     // contents of indexedDB database directories).
     instance->mIOThread = new LazyIdleThread(DEFAULT_THREAD_TIMEOUT_MS,
                                              LazyIdleThread::ManualShutdown);
+
+    // We need one quota callback object to hand to SQLite.
+    instance->mQuotaCallbackSingleton = new QuotaCallback();
 
     // The observer service will hold our last reference, don't AddRef here.
     gInstance = instance;
@@ -447,8 +524,9 @@ IndexedDatabaseManager::IsShuttingDown()
 
 nsresult
 IndexedDatabaseManager::SetDatabaseVersion(IDBDatabase* aDatabase,
-                                           IDBVersionChangeRequest* aRequest,
-                                           const nsAString& aVersion,
+                                           IDBOpenDBRequest* aRequest,
+                                           PRInt64 aOldVersion,
+                                           PRInt64 aNewVersion,
                                            AsyncConnectionHelper* aHelper)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
@@ -465,7 +543,8 @@ IndexedDatabaseManager::SetDatabaseVersion(IDBDatabase* aDatabase,
         // Same database, just queue this call to run after the current
         // SetVersion transaction completes.
         nsRefPtr<DelayedSetVersion> delayed =
-          new DelayedSetVersion(aDatabase, aRequest, aVersion, aHelper);
+          new DelayedSetVersion(aDatabase, aRequest, aOldVersion, aNewVersion,
+                                aHelper);
         if (!runnable->mDelayedRunnables.AppendElement(delayed)) {
           NS_WARNING("Out of memory!");
           return NS_ERROR_OUT_OF_MEMORY;
@@ -535,7 +614,7 @@ IndexedDatabaseManager::SetDatabaseVersion(IDBDatabase* aDatabase,
 
     nsRefPtr<VersionChangeEventsRunnable> eventsRunnable =
       new VersionChangeEventsRunnable(aDatabase, aRequest, waitingDatabases,
-                                      aVersion);
+                                      aOldVersion, aNewVersion);
 
     rv = NS_DispatchToCurrentThread(eventsRunnable);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -648,6 +727,120 @@ IndexedDatabaseManager::OnDatabaseClosed(IDBDatabase* aDatabase)
   }
 }
 
+// static
+bool
+IndexedDatabaseManager::SetCurrentDatabase(IDBDatabase* aDatabase)
+{
+  NS_ASSERTION(gCurrentDatabaseIndex != BAD_TLS_INDEX,
+               "This should have been set already!");
+
+#ifdef DEBUG
+  if (aDatabase) {
+    NS_ASSERTION(!PR_GetThreadPrivate(gCurrentDatabaseIndex),
+                 "Someone forgot to unset gCurrentDatabaseIndex!");
+  }
+  else {
+    NS_ASSERTION(PR_GetThreadPrivate(gCurrentDatabaseIndex),
+                 "Someone forgot to set gCurrentDatabaseIndex!");
+  }
+#endif
+
+  if (PR_SetThreadPrivate(gCurrentDatabaseIndex, aDatabase) != PR_SUCCESS) {
+    NS_WARNING("Failed to set gCurrentDatabaseIndex!");
+    return false;
+  }
+
+  return true;
+}
+
+// static
+PRUint32
+IndexedDatabaseManager::GetIndexedDBQuotaMB()
+{
+  return PRUint32(NS_MAX(gIndexedDBQuotaMB, 0));
+}
+
+nsresult
+IndexedDatabaseManager::EnsureQuotaManagementForDirectory(nsIFile* aDirectory)
+{
+#ifdef DEBUG
+  {
+    bool correctThread;
+    NS_ASSERTION(NS_SUCCEEDED(mIOThread->IsOnCurrentThread(&correctThread)) &&
+                 correctThread,
+                 "Running on the wrong thread!");
+  }
+#endif
+  NS_ASSERTION(aDirectory, "Null pointer!");
+
+  nsCString path;
+  nsresult rv = aDirectory->GetNativePath(path);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (mTrackedQuotaPaths.Contains(path)) {
+    return true;
+  }
+
+  // First figure out the filename pattern we'll use.
+  nsCOMPtr<nsIFile> patternFile;
+  rv = aDirectory->Clone(getter_AddRefs(patternFile));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = patternFile->Append(NS_LITERAL_STRING("*"));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCString pattern;
+  rv = patternFile->GetNativePath(pattern);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Now tell SQLite to start tracking this pattern.
+  nsCOMPtr<mozIStorageServiceQuotaManagement> ss =
+    do_GetService(MOZ_STORAGE_SERVICE_CONTRACTID);
+  NS_ENSURE_TRUE(ss, NS_ERROR_FAILURE);
+
+  rv = ss->SetQuotaForFilenamePattern(pattern,
+                                      GetIndexedDBQuotaMB() * 1024 * 1024,
+                                      mQuotaCallbackSingleton, nsnull);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // If the directory exists then we need to see if there are any files in it
+  // already. We need to tell SQLite about all of them.
+  bool exists;
+  rv = aDirectory->Exists(&exists);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (exists) {
+    // Make sure this really is a directory.
+    bool isDirectory;
+    rv = aDirectory->IsDirectory(&isDirectory);
+    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_TRUE(isDirectory, NS_ERROR_UNEXPECTED);
+
+    nsCOMPtr<nsISimpleEnumerator> entries;
+    rv = aDirectory->GetDirectoryEntries(getter_AddRefs(entries));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    bool hasMore;
+    while (NS_SUCCEEDED((rv = entries->HasMoreElements(&hasMore))) && hasMore) {
+      nsCOMPtr<nsISupports> entry;
+      rv = entries->GetNext(getter_AddRefs(entry));
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      nsCOMPtr<nsIFile> file = do_QueryInterface(entry);
+      NS_ENSURE_TRUE(file, NS_NOINTERFACE);
+
+      rv = ss->UpdateQutoaInformationForFile(file);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  NS_ASSERTION(!mTrackedQuotaPaths.Contains(path), "What?!");
+
+  mTrackedQuotaPaths.AppendElement(path);
+  return rv;
+}
+
 NS_IMPL_ISUPPORTS2(IndexedDatabaseManager, nsIIndexedDatabaseManager,
                                            nsIObserver)
 
@@ -713,7 +906,7 @@ IndexedDatabaseManager::CancelGetUsageForURI(
   for (PRUint32 index = 0; index < mUsageRunnables.Length(); index++) {
     nsRefPtr<AsyncUsageRunnable>& runnable = mUsageRunnables[index];
 
-    PRBool equals;
+    bool equals;
     nsresult rv = runnable->mURI->Equals(aURI, &equals);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -914,10 +1107,10 @@ IndexedDatabaseManager::OriginClearRunnable::Run()
   nsresult rv = IDBFactory::GetDirectoryForOrigin(mOrigin,
                                                   getter_AddRefs(directory));
   if (NS_SUCCEEDED(rv)) {
-    PRBool exists;
+    bool exists;
     rv = directory->Exists(&exists);
     if (NS_SUCCEEDED(rv) && exists) {
-      rv = directory->Remove(PR_TRUE);
+      rv = directory->Remove(true);
     }
   }
   NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "Failed to remove directory!");
@@ -985,7 +1178,7 @@ IndexedDatabaseManager::AsyncUsageRunnable::RunInternal()
                                                   getter_AddRefs(directory));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool exists;
+  bool exists;
   rv = directory->Exists(&exists);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -997,7 +1190,7 @@ IndexedDatabaseManager::AsyncUsageRunnable::RunInternal()
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (entries) {
-      PRBool hasMore;
+      bool hasMore;
       while (NS_SUCCEEDED((rv = entries->HasMoreElements(&hasMore))) &&
              hasMore && !mCanceled) {
         nsCOMPtr<nsISupports> entry;

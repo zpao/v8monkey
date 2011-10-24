@@ -86,24 +86,24 @@ PredicateList::evaluatePredicates(txNodeSet* nodes,
     return NS_OK;
 }
 
-PRBool
+bool
 PredicateList::isSensitiveTo(Expr::ContextSensitivity aContext)
 {
     // We're creating a new node/nodeset so we can ignore those bits.
     Expr::ContextSensitivity context =
         aContext & ~(Expr::NODE_CONTEXT | Expr::NODESET_CONTEXT);
     if (context == Expr::NO_CONTEXT) {
-        return PR_FALSE;
+        return false;
     }
 
     PRUint32 i, len = mPredicates.Length();
     for (i = 0; i < len; ++i) {
         if (mPredicates[i]->isSensitiveTo(context)) {
-            return PR_TRUE;
+            return true;
         }
     }
 
-    return PR_FALSE;
+    return false;
 }
 
 #ifdef TX_TO_STRING

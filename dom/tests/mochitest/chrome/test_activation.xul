@@ -3,11 +3,11 @@
 <?xml-stylesheet href="chrome://mochikit/content/tests/SimpleTest/test.css" type="text/css"?>
 <?xml-stylesheet href="data:text/css,
 
-#box {
+%23box {
   background: blue;
 }
 
-#box:-moz-window-inactive {
+%23box:-moz-window-inactive {
   background: cyan;
 }
 
@@ -18,8 +18,6 @@
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         sizemode="fullscreen">
 
-  <script type="application/javascript" 
-          src="chrome://mochikit/content/MochiKit/packed.js"></script>
   <script type="application/javascript" 
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>      
 

@@ -101,9 +101,26 @@ _TEST_FILES = \
 		test_bug640387_1.html \
 		test_bug640387_2.html \
 		file_bug640387.html \
+		test_bug653741.html \
+		file_bug653741.html \
 		test_framedhistoryframes.html \
 		test_windowedhistoryframes.html \
 		historyframes.html \
+		test_bug660404.html \
+		file_bug660404 \
+		file_bug660404^headers^ \
+		test_bug662170.html \
+		file_bug662170.html \
+		test_bug570341.html \
+		bug570341_recordevents.html \
+		test_bug668513.html \
+		bug668513_redirect.html \
+		bug668513_redirect.html^headers^ \
+		test_bug669671.html \
+		file_bug669671.sjs \
+		test_bug675587.html \
+		test_bug680257.html \
+		file_bug680257.html \
 		$(NULL)
 
 ifeq ($(MOZ_WIDGET_TOOLKIT),cocoa)

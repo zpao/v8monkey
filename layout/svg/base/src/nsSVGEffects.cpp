@@ -69,7 +69,7 @@ nsSVGRenderingObserver::StopListening()
     target->RemoveMutationObserver(this);
     if (mInObserverList) {
       nsSVGEffects::RemoveRenderingObserver(target, this);
-      mInObserverList = PR_FALSE;
+      mInObserverList = false;
     }
   }
   NS_ASSERTION(!mInObserverList, "still in an observer list?");
@@ -103,7 +103,7 @@ nsSVGRenderingObserver::StopListening()
 #endif
 nsSVGIDRenderingObserver::nsSVGIDRenderingObserver(nsIURI *aURI,
                                                    nsIFrame *aFrame,
-                                                   PRBool aReferenceImage)
+                                                   bool aReferenceImage)
   : mElement(this), mFrame(aFrame),
     mFramePresShell(aFrame->PresContext()->PresShell())
 #ifdef _MSC_VER
@@ -111,7 +111,7 @@ nsSVGIDRenderingObserver::nsSVGIDRenderingObserver(nsIURI *aURI,
 #endif
 {
   // Start watching the target element
-  mElement.Reset(aFrame->GetContent(), aURI, PR_TRUE, aReferenceImage);
+  mElement.Reset(aFrame->GetContent(), aURI, true, aReferenceImage);
   StartListening();
 }
 
@@ -134,7 +134,7 @@ nsSVGRenderingObserver::GetReferencedElement()
 #ifdef DEBUG
   if (target) {
     nsSVGRenderingObserverList *observerList = GetObserverList(target);
-    PRBool inObserverList = observerList && observerList->Contains(this);
+    bool inObserverList = observerList && observerList->Contains(this);
     NS_ASSERTION(inObserverList == mInObserverList, "failed to track whether we're in our referenced element's observer list!");
   } else {
     NS_ASSERTION(!mInObserverList, "In whose observer list are we, then?");
@@ -142,7 +142,7 @@ nsSVGRenderingObserver::GetReferencedElement()
 #endif
   if (target && !mInObserverList) {
     nsSVGEffects::AddRenderingObserver(target, this);
-    mInObserverList = PR_TRUE;
+    mInObserverList = true;
   }
   return target;
 }
@@ -155,14 +155,14 @@ nsSVGRenderingObserver::GetReferencedFrame()
 }
 
 nsIFrame*
-nsSVGRenderingObserver::GetReferencedFrame(nsIAtom* aFrameType, PRBool* aOK)
+nsSVGRenderingObserver::GetReferencedFrame(nsIAtom* aFrameType, bool* aOK)
 {
   nsIFrame* frame = GetReferencedFrame();
   if (frame) {
     if (frame->GetType() == aFrameType)
       return frame;
     if (aOK) {
-      *aOK = PR_FALSE;
+      *aOK = false;
     }
   }
   return nsnull;
@@ -178,7 +178,7 @@ nsSVGIDRenderingObserver::DoUpdate()
   }
   if (mElement.get() && mInObserverList) {
     nsSVGEffects::RemoveRenderingObserver(mElement.get(), this);
-    mInObserverList = PR_FALSE;
+    mInObserverList = false;
   }
   if (mFrame && mFrame->IsFrameOfType(nsIFrame::eSVG)) {
     // Changes should propagate out to things that might be observing
@@ -190,14 +190,14 @@ nsSVGIDRenderingObserver::DoUpdate()
 void
 nsSVGRenderingObserver::InvalidateViaReferencedElement()
 {
-  mInObserverList = PR_FALSE;
+  mInObserverList = false;
   DoUpdate();
 }
 
 void
 nsSVGRenderingObserver::NotifyEvictedFromRenderingObserverList()
 {
-  mInObserverList = PR_FALSE; // We've been removed from rendering-obs. list.
+  mInObserverList = false; // We've been removed from rendering-obs. list.
   StopListening();            // Remove ourselves from mutation-obs. list.
 }
 
@@ -338,25 +338,25 @@ nsSVGPaintingProperty::DoUpdate()
 }
 
 static nsSVGRenderingObserver *
-CreateFilterProperty(nsIURI *aURI, nsIFrame *aFrame, PRBool aReferenceImage)
+CreateFilterProperty(nsIURI *aURI, nsIFrame *aFrame, bool aReferenceImage)
 { return new nsSVGFilterProperty(aURI, aFrame, aReferenceImage); }
 
 static nsSVGRenderingObserver *
-CreateMarkerProperty(nsIURI *aURI, nsIFrame *aFrame, PRBool aReferenceImage)
+CreateMarkerProperty(nsIURI *aURI, nsIFrame *aFrame, bool aReferenceImage)
 { return new nsSVGMarkerProperty(aURI, aFrame, aReferenceImage); }
 
 static nsSVGRenderingObserver *
-CreateTextPathProperty(nsIURI *aURI, nsIFrame *aFrame, PRBool aReferenceImage)
+CreateTextPathProperty(nsIURI *aURI, nsIFrame *aFrame, bool aReferenceImage)
 { return new nsSVGTextPathProperty(aURI, aFrame, aReferenceImage); }
 
 static nsSVGRenderingObserver *
-CreatePaintingProperty(nsIURI *aURI, nsIFrame *aFrame, PRBool aReferenceImage)
+CreatePaintingProperty(nsIURI *aURI, nsIFrame *aFrame, bool aReferenceImage)
 { return new nsSVGPaintingProperty(aURI, aFrame, aReferenceImage); }
 
 static nsSVGRenderingObserver *
 GetEffectProperty(nsIURI *aURI, nsIFrame *aFrame,
                   const FramePropertyDescriptor *aProperty,
-                  nsSVGRenderingObserver * (* aCreate)(nsIURI *, nsIFrame *, PRBool))
+                  nsSVGRenderingObserver * (* aCreate)(nsIURI *, nsIFrame *, bool))
 {
   if (!aURI)
     return nsnull;
@@ -366,7 +366,7 @@ GetEffectProperty(nsIURI *aURI, nsIFrame *aFrame,
     static_cast<nsSVGRenderingObserver*>(props.Get(aProperty));
   if (prop)
     return prop;
-  prop = aCreate(aURI, aFrame, PR_FALSE);
+  prop = aCreate(aURI, aFrame, false);
   if (!prop)
     return nsnull;
   NS_ADDREF(prop);
@@ -401,7 +401,7 @@ nsSVGEffects::GetPaintingProperty(nsIURI *aURI, nsIFrame *aFrame,
 static nsSVGRenderingObserver *
 GetEffectPropertyForURI(nsIURI *aURI, nsIFrame *aFrame,
                         const FramePropertyDescriptor *aProperty,
-                        nsSVGRenderingObserver * (* aCreate)(nsIURI *, nsIFrame *, PRBool))
+                        nsSVGRenderingObserver * (* aCreate)(nsIURI *, nsIFrame *, bool))
 {
   if (!aURI)
     return nsnull;
@@ -417,7 +417,7 @@ GetEffectPropertyForURI(nsIURI *aURI, nsIFrame *aFrame,
   nsSVGRenderingObserver* prop =
     static_cast<nsSVGRenderingObserver*>(hashtable->GetWeak(aURI));
   if (!prop) {
-    PRBool watchImage = aProperty == nsSVGEffects::BackgroundImageProperty();
+    bool watchImage = aProperty == nsSVGEffects::BackgroundImageProperty();
     prop = aCreate(aURI, aFrame, watchImage);
     hashtable->Put(aURI, prop);
   }
@@ -450,7 +450,7 @@ nsSVGEffects::GetEffectProperties(nsIFrame *aFrame)
 }
 
 nsSVGClipPathFrame *
-nsSVGEffects::EffectProperties::GetClipPathFrame(PRBool *aOK)
+nsSVGEffects::EffectProperties::GetClipPathFrame(bool *aOK)
 {
   if (!mClipPath)
     return nsnull;
@@ -463,7 +463,7 @@ nsSVGEffects::EffectProperties::GetClipPathFrame(PRBool *aOK)
 }
 
 nsSVGMaskFrame *
-nsSVGEffects::EffectProperties::GetMaskFrame(PRBool *aOK)
+nsSVGEffects::EffectProperties::GetMaskFrame(bool *aOK)
 {
   if (!mMask)
     return nsnull;
@@ -504,7 +504,7 @@ nsSVGEffects::UpdateEffects(nsIFrame *aFrame)
                       CreateMarkerProperty);
   }
 
-  nsIFrame *kid = aFrame->GetFirstChild(nsnull);
+  nsIFrame *kid = aFrame->GetFirstPrincipalChild();
   while (kid) {
     if (kid->GetContent()->IsElement()) {
       UpdateEffects(kid);

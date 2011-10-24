@@ -36,11 +36,13 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "txStylesheetCompiler.h"
 #include "txStylesheetCompileHandlers.h"
 #include "nsWhitespaceTokenizer.h"
 #include "txInstructions.h"
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txCore.h"
 #include "txStringUtils.h"
 #include "txStylesheet.h"
@@ -49,6 +51,8 @@
 #include "txNamespaceMap.h"
 #include "txURIUtils.h"
 #include "txXSLTFunctions.h"
+
+using namespace mozilla;
 
 txHandlerTable* gTxIgnoreHandler = 0;
 txHandlerTable* gTxRootHandler = 0;
@@ -92,7 +96,7 @@ getStyleAttr(txStylesheetAttr* aAttributes,
              PRInt32 aAttrCount,
              PRInt32 aNamespace,
              nsIAtom* aName,
-             PRBool aRequired,
+             bool aRequired,
              txStylesheetAttr** aAttr)
 {
     PRInt32 i;
@@ -119,14 +123,14 @@ getStyleAttr(txStylesheetAttr* aAttributes,
 static nsresult
 parseUseAttrSets(txStylesheetAttr* aAttributes,
                  PRInt32 aAttrCount,
-                 PRBool aInXSLTNS,
+                 bool aInXSLTNS,
                  txStylesheetCompilerState& aState)
 {
     txStylesheetAttr* attr = nsnull;
     nsresult rv = getStyleAttr(aAttributes, aAttrCount,
                                aInXSLTNS ? kNameSpaceID_XSLT
                                          : kNameSpaceID_None,
-                               txXSLTAtoms::useAttributeSets, PR_FALSE,
+                               nsGkAtoms::useAttributeSets, false,
                                &attr);
     if (!attr) {
         return rv;
@@ -136,7 +140,7 @@ parseUseAttrSets(txStylesheetAttr* aAttributes,
     while (tok.hasMoreTokens()) {
         txExpandedName name;
         rv = name.init(tok.nextToken(), aState.mElementContext->mMappings,
-                       PR_FALSE);
+                       false);
         NS_ENSURE_SUCCESS(rv, rv);
 
         nsAutoPtr<txInstruction> instr(new txInsertAttrSet(name));
@@ -155,7 +159,7 @@ parseExcludeResultPrefixes(txStylesheetAttr* aAttributes,
 {
     txStylesheetAttr* attr = nsnull;
     nsresult rv = getStyleAttr(aAttributes, aAttrCount, aNamespaceID,
-                               txXSLTAtoms::excludeResultPrefixes, PR_FALSE,
+                               nsGkAtoms::excludeResultPrefixes, false,
                                &attr);
     if (!attr) {
         return rv;
@@ -170,7 +174,7 @@ static nsresult
 getQNameAttr(txStylesheetAttr* aAttributes,
              PRInt32 aAttrCount,
              nsIAtom* aName,
-             PRBool aRequired,
+             bool aRequired,
              txStylesheetCompilerState& aState,
              txExpandedName& aExpName)
 {
@@ -183,7 +187,7 @@ getQNameAttr(txStylesheetAttr* aAttributes,
     }
 
     rv = aExpName.init(attr->mValue, aState.mElementContext->mMappings,
-                       PR_FALSE);
+                       false);
     if (!aRequired && NS_FAILED(rv) && aState.fcp()) {
         aExpName.reset();
         rv = NS_OK;
@@ -196,7 +200,7 @@ static nsresult
 getExprAttr(txStylesheetAttr* aAttributes,
             PRInt32 aAttrCount,
             nsIAtom* aName,
-            PRBool aRequired,
+            bool aRequired,
             txStylesheetCompilerState& aState,
             nsAutoPtr<Expr>& aExpr)
 {
@@ -233,7 +237,7 @@ static nsresult
 getAVTAttr(txStylesheetAttr* aAttributes,
            PRInt32 aAttrCount,
            nsIAtom* aName,
-           PRBool aRequired,
+           bool aRequired,
            txStylesheetCompilerState& aState,
            nsAutoPtr<Expr>& aAVT)
 {
@@ -270,7 +274,7 @@ static nsresult
 getPatternAttr(txStylesheetAttr* aAttributes,
                PRInt32 aAttrCount,
                nsIAtom* aName,
-               PRBool aRequired,
+               bool aRequired,
                txStylesheetCompilerState& aState,
                nsAutoPtr<txPattern>& aPattern)
 {
@@ -295,7 +299,7 @@ static nsresult
 getNumberAttr(txStylesheetAttr* aAttributes,
               PRInt32 aAttrCount,
               nsIAtom* aName,
-              PRBool aRequired,
+              bool aRequired,
               txStylesheetCompilerState& aState,
               double& aNumber)
 {
@@ -320,7 +324,7 @@ static nsresult
 getAtomAttr(txStylesheetAttr* aAttributes,
             PRInt32 aAttrCount,
             nsIAtom* aName,
-            PRBool aRequired,
+            bool aRequired,
             txStylesheetCompilerState& aState,
             nsIAtom** aAtom)
 {
@@ -342,7 +346,7 @@ static nsresult
 getYesNoAttr(txStylesheetAttr* aAttributes,
              PRInt32 aAttrCount,
              nsIAtom* aName,
-             PRBool aRequired,
+             bool aRequired,
              txStylesheetCompilerState& aState,
              txThreeState& aRes)
 {
@@ -354,10 +358,10 @@ getYesNoAttr(txStylesheetAttr* aAttributes,
         return rv;
     }
 
-    if (atom == txXSLTAtoms::yes) {
+    if (atom == nsGkAtoms::yes) {
         aRes = eTrue;
     }
-    else if (atom == txXSLTAtoms::no) {
+    else if (atom == nsGkAtoms::no) {
         aRes = eFalse;
     }
     else if (aRequired || !aState.fcp()) {
@@ -372,7 +376,7 @@ static nsresult
 getCharAttr(txStylesheetAttr* aAttributes,
             PRInt32 aAttrCount,
             nsIAtom* aName,
-            PRBool aRequired,
+            bool aRequired,
             txStylesheetCompilerState& aState,
             PRUnichar& aChar)
 {
@@ -501,14 +505,14 @@ txFnStartStylesheet(PRInt32 aNamespaceID,
 
     txStylesheetAttr* attr;
     nsresult rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                               txXSLTAtoms::id, PR_FALSE, &attr);
+                               nsGkAtoms::id, false, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = parseExcludeResultPrefixes(aAttributes, aAttrCount, kNameSpaceID_None);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                      txXSLTAtoms::version, PR_TRUE, &attr);
+                      nsGkAtoms::version, true, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     return aState.pushHandlerTable(gTxImportHandler);
@@ -544,7 +548,7 @@ txFnStartLREStylesheet(PRInt32 aNamespaceID,
 {
     txStylesheetAttr* attr;
     nsresult rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_XSLT,
-                               txXSLTAtoms::version, PR_TRUE, &attr);
+                               nsGkAtoms::version, true, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     txExpandedName nullExpr;
@@ -601,8 +605,8 @@ txFnStartEmbed(PRInt32 aNamespaceID,
         return NS_OK;
     }
     if (aNamespaceID != kNameSpaceID_XSLT ||
-        (aLocalName != txXSLTAtoms::stylesheet &&
-         aLocalName != txXSLTAtoms::transform)) {
+        (aLocalName != nsGkAtoms::stylesheet &&
+         aLocalName != nsGkAtoms::transform)) {
         return NS_ERROR_XSLT_PARSE_FAILURE;
     }
     return txFnStartStylesheet(aNamespaceID, aLocalName, aPrefix,
@@ -659,7 +663,7 @@ txFnStartAttributeSet(PRInt32 aNamespaceID,
 {
     nsresult rv = NS_OK;
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -673,7 +677,7 @@ txFnStartAttributeSet(PRInt32 aNamespaceID,
 
     attrSet.forget();
 
-    rv = parseUseAttrSets(aAttributes, aAttrCount, PR_FALSE, aState);
+    rv = parseUseAttrSets(aAttributes, aAttrCount, false, aState);
     NS_ENSURE_SUCCESS(rv, rv);
 
     return aState.pushHandlerTable(gTxAttributeSetHandler);
@@ -707,60 +711,60 @@ txFnStartDecimalFormat(PRInt32 aNamespaceID,
 {
     nsresult rv = NS_OK;
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_FALSE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, false,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<txDecimalFormat> format(new txDecimalFormat);
     NS_ENSURE_TRUE(format, NS_ERROR_OUT_OF_MEMORY);
 
-    rv = getCharAttr(aAttributes, aAttrCount, txXSLTAtoms::decimalSeparator,
-                     PR_FALSE, aState, format->mDecimalSeparator);
+    rv = getCharAttr(aAttributes, aAttrCount, nsGkAtoms::decimalSeparator,
+                     false, aState, format->mDecimalSeparator);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = getCharAttr(aAttributes, aAttrCount, txXSLTAtoms::groupingSeparator,
-                     PR_FALSE, aState, format->mGroupingSeparator);
+    rv = getCharAttr(aAttributes, aAttrCount, nsGkAtoms::groupingSeparator,
+                     false, aState, format->mGroupingSeparator);
     NS_ENSURE_SUCCESS(rv, rv);
 
     txStylesheetAttr* attr = nsnull;
     rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                      txXSLTAtoms::infinity, PR_FALSE, &attr);
+                      nsGkAtoms::infinity, false, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (attr) {
         format->mInfinity = attr->mValue;
     }
 
-    rv = getCharAttr(aAttributes, aAttrCount, txXSLTAtoms::minusSign,
-                     PR_FALSE, aState, format->mMinusSign);
+    rv = getCharAttr(aAttributes, aAttrCount, nsGkAtoms::minusSign,
+                     false, aState, format->mMinusSign);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                      txXSLTAtoms::NaN, PR_FALSE, &attr);
+                      nsGkAtoms::NaN, false, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (attr) {
         format->mNaN = attr->mValue;
     }
 
-    rv = getCharAttr(aAttributes, aAttrCount, txXSLTAtoms::percent,
-                     PR_FALSE, aState, format->mPercent);
+    rv = getCharAttr(aAttributes, aAttrCount, nsGkAtoms::percent,
+                     false, aState, format->mPercent);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = getCharAttr(aAttributes, aAttrCount, txXSLTAtoms::perMille,
-                     PR_FALSE, aState, format->mPerMille);
+    rv = getCharAttr(aAttributes, aAttrCount, nsGkAtoms::perMille,
+                     false, aState, format->mPerMille);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = getCharAttr(aAttributes, aAttrCount, txXSLTAtoms::zeroDigit,
-                     PR_FALSE, aState, format->mZeroDigit);
+    rv = getCharAttr(aAttributes, aAttrCount, nsGkAtoms::zeroDigit,
+                     false, aState, format->mZeroDigit);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = getCharAttr(aAttributes, aAttrCount, txXSLTAtoms::digit,
-                     PR_FALSE, aState, format->mDigit);
+    rv = getCharAttr(aAttributes, aAttrCount, nsGkAtoms::digit,
+                     false, aState, format->mDigit);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = getCharAttr(aAttributes, aAttrCount, txXSLTAtoms::patternSeparator,
-                     PR_FALSE, aState, format->mPatternSeparator);
+    rv = getCharAttr(aAttributes, aAttrCount, nsGkAtoms::patternSeparator,
+                     false, aState, format->mPatternSeparator);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = aState.mStylesheet->addDecimalFormat(name, format);
@@ -799,7 +803,7 @@ txFnStartImport(PRInt32 aNamespaceID,
     
     txStylesheetAttr* attr = nsnull;
     rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                      txXSLTAtoms::href, PR_TRUE, &attr);
+                      nsGkAtoms::href, true, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoString absUri;
@@ -830,7 +834,7 @@ txFnStartInclude(PRInt32 aNamespaceID,
 {
     txStylesheetAttr* attr = nsnull;
     nsresult rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                               txXSLTAtoms::href, PR_TRUE, &attr);
+                               nsGkAtoms::href, true, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoString absUri;
@@ -861,17 +865,17 @@ txFnStartKey(PRInt32 aNamespaceID,
 {
     nsresult rv = NS_OK;
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<txPattern> match;
-    rv = getPatternAttr(aAttributes, aAttrCount, txXSLTAtoms::match, PR_TRUE,
+    rv = getPatternAttr(aAttributes, aAttrCount, nsGkAtoms::match, true,
                         aState, match);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> use;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::use, PR_TRUE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::use, true,
                      aState, use);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -900,11 +904,11 @@ txFnStartNamespaceAlias(PRInt32 aNamespaceID,
 {
     txStylesheetAttr* attr = nsnull;
     nsresult rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                               txXSLTAtoms::stylesheetPrefix, PR_TRUE, &attr);
+                               nsGkAtoms::stylesheetPrefix, true, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                      txXSLTAtoms::resultPrefix, PR_TRUE, &attr);
+                      nsGkAtoms::resultPrefix, true, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // XXX Needs to be implemented.
@@ -935,7 +939,7 @@ txFnStartOutput(PRInt32 aNamespaceID,
     NS_ENSURE_TRUE(item, NS_ERROR_OUT_OF_MEMORY);
 
     txExpandedName methodExpName;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::method, PR_FALSE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::method, false,
                       aState, methodExpName);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -944,13 +948,13 @@ txFnStartOutput(PRInt32 aNamespaceID,
             // The spec doesn't say what to do here so we'll just ignore the
             // value. We could possibly warn.
         }
-        else if (methodExpName.mLocalName == txXSLTAtoms::html) {
+        else if (methodExpName.mLocalName == nsGkAtoms::html) {
             item->mFormat.mMethod = eHTMLOutput;
         }
-        else if (methodExpName.mLocalName == txXSLTAtoms::text) {
+        else if (methodExpName.mLocalName == nsGkAtoms::text) {
             item->mFormat.mMethod = eTextOutput;
         }
-        else if (methodExpName.mLocalName == txXSLTAtoms::xml) {
+        else if (methodExpName.mLocalName == nsGkAtoms::xml) {
             item->mFormat.mMethod = eXMLOutput;
         }
         else {
@@ -960,41 +964,41 @@ txFnStartOutput(PRInt32 aNamespaceID,
 
     txStylesheetAttr* attr = nsnull;
     getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                 txXSLTAtoms::version, PR_FALSE, &attr);
+                 nsGkAtoms::version, false, &attr);
     if (attr) {
         item->mFormat.mVersion = attr->mValue;
     }
 
     getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                 txXSLTAtoms::encoding, PR_FALSE, &attr);
+                 nsGkAtoms::encoding, false, &attr);
     if (attr) {
         item->mFormat.mEncoding = attr->mValue;
     }
 
     rv = getYesNoAttr(aAttributes, aAttrCount,
-                      txXSLTAtoms::omitXmlDeclaration, PR_FALSE, aState,
+                      nsGkAtoms::omitXmlDeclaration, false, aState,
                       item->mFormat.mOmitXMLDeclaration);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = getYesNoAttr(aAttributes, aAttrCount,
-                      txXSLTAtoms::standalone, PR_FALSE, aState,
+                      nsGkAtoms::standalone, false, aState,
                       item->mFormat.mStandalone);
     NS_ENSURE_SUCCESS(rv, rv);
 
     getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                 txXSLTAtoms::doctypePublic, PR_FALSE, &attr);
+                 nsGkAtoms::doctypePublic, false, &attr);
     if (attr) {
         item->mFormat.mPublicId = attr->mValue;
     }
 
     getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                 txXSLTAtoms::doctypeSystem, PR_FALSE, &attr);
+                 nsGkAtoms::doctypeSystem, false, &attr);
     if (attr) {
         item->mFormat.mSystemId = attr->mValue;
     }
 
     getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                 txXSLTAtoms::cdataSectionElements, PR_FALSE, &attr);
+                 nsGkAtoms::cdataSectionElements, false, &attr);
     if (attr) {
         nsWhitespaceTokenizer tokens(attr->mValue);
         while (tokens.hasMoreTokens()) {
@@ -1002,7 +1006,7 @@ txFnStartOutput(PRInt32 aNamespaceID,
             NS_ENSURE_TRUE(qname, NS_ERROR_OUT_OF_MEMORY);
 
             rv = qname->init(tokens.nextToken(),
-                             aState.mElementContext->mMappings, PR_FALSE);
+                             aState.mElementContext->mMappings, false);
             NS_ENSURE_SUCCESS(rv, rv);
 
             rv = item->mFormat.mCDATASectionElements.add(qname);
@@ -1012,12 +1016,12 @@ txFnStartOutput(PRInt32 aNamespaceID,
     }
 
     rv = getYesNoAttr(aAttributes, aAttrCount,
-                      txXSLTAtoms::indent, PR_FALSE, aState,
+                      nsGkAtoms::indent, false, aState,
                       item->mFormat.mIndent);
     NS_ENSURE_SUCCESS(rv, rv);
 
     getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                 txXSLTAtoms::mediaType, PR_FALSE, &attr);
+                 nsGkAtoms::mediaType, false, &attr);
     if (attr) {
         item->mFormat.mMediaType = attr->mValue;
     }
@@ -1049,10 +1053,10 @@ txFnStartStripSpace(PRInt32 aNamespaceID,
 {
     txStylesheetAttr* attr = nsnull;
     nsresult rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
-                               txXSLTAtoms::elements, PR_TRUE, &attr);
+                               nsGkAtoms::elements, true, &attr);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    PRBool strip = aLocalName == txXSLTAtoms::stripSpace;
+    bool strip = aLocalName == nsGkAtoms::stripSpace;
 
     nsAutoPtr<txStripSpaceItem> stripItem(new txStripSpaceItem);
     NS_ENSURE_TRUE(stripItem, NS_ERROR_OUT_OF_MEMORY);
@@ -1089,7 +1093,7 @@ txFnStartStripSpace(PRInt32 aNamespaceID,
                 }
                 prefix = localName;
             }
-            localName = txXPathAtoms::_asterix;
+            localName = nsGkAtoms::_asterix;
         }
         if (prefix) {
             ns = aState.mElementContext->mMappings->lookupNamespace(prefix);
@@ -1132,22 +1136,22 @@ txFnStartTemplate(PRInt32 aNamespaceID,
 {
     nsresult rv = NS_OK;
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_FALSE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, false,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
     txExpandedName mode;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::mode, PR_FALSE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::mode, false,
                       aState, mode);
     NS_ENSURE_SUCCESS(rv, rv);
 
     double prio = Double::NaN;
-    rv = getNumberAttr(aAttributes, aAttrCount, txXSLTAtoms::priority,
-                       PR_FALSE, aState, prio);
+    rv = getNumberAttr(aAttributes, aAttrCount, nsGkAtoms::priority,
+                       false, aState, prio);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<txPattern> match;
-    rv = getPatternAttr(aAttributes, aAttrCount, txXSLTAtoms::match,
+    rv = getPatternAttr(aAttributes, aAttrCount, nsGkAtoms::match,
                         name.isNull(), aState, match);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1190,17 +1194,17 @@ txFnStartTopVariable(PRInt32 aNamespaceID,
 {
     nsresult rv = NS_OK;
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_FALSE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, false,
                      aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<txVariableItem> var(
-        new txVariableItem(name, select, aLocalName == txXSLTAtoms::param));
+        new txVariableItem(name, select, aLocalName == nsGkAtoms::param));
     NS_ENSURE_TRUE(var, NS_ERROR_OUT_OF_MEMORY);
 
     aState.openInstructionContainer(var);
@@ -1309,7 +1313,7 @@ txFnStartLRE(PRInt32 aNamespaceID,
     rv = parseExcludeResultPrefixes(aAttributes, aAttrCount, kNameSpaceID_XSLT);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = parseUseAttrSets(aAttributes, aAttrCount, PR_TRUE, aState);
+    rv = parseUseAttrSets(aAttributes, aAttrCount, true, aState);
     NS_ENSURE_SUCCESS(rv, rv);
 
     txStylesheetAttr* attr = nsnull;
@@ -1318,7 +1322,7 @@ txFnStartLRE(PRInt32 aNamespaceID,
         attr = aAttributes + i;
         
         if (attr->mNamespaceID == kNameSpaceID_XSLT) {
-            if (attr->mLocalName == txXSLTAtoms::version) {
+            if (attr->mLocalName == nsGkAtoms::version) {
                 attr->mLocalName = nsnull;
             }
 
@@ -1438,7 +1442,7 @@ txFnStartApplyTemplates(PRInt32 aNamespaceID,
     NS_ENSURE_SUCCESS(rv, rv);
 
     txExpandedName mode;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::mode, PR_FALSE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::mode, false,
                       aState, mode);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1451,7 +1455,7 @@ txFnStartApplyTemplates(PRInt32 aNamespaceID,
     instr.forget();
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_FALSE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, false,
                      aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1531,19 +1535,19 @@ txFnStartAttribute(PRInt32 aNamespaceID,
 {
     nsresult rv = NS_OK;
 
-    nsAutoPtr<txInstruction> instr(new txPushStringHandler(PR_TRUE));
+    nsAutoPtr<txInstruction> instr(new txPushStringHandler(true));
     NS_ENSURE_TRUE(instr, NS_ERROR_OUT_OF_MEMORY);
 
     rv = aState.addInstruction(instr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> name;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                     aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> nspace;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::_namespace, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::_namespace, false,
                     aState, nspace);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1597,7 +1601,7 @@ txFnStartCallTemplate(PRInt32 aNamespaceID,
     NS_ENSURE_SUCCESS(rv, rv);
 
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1691,7 +1695,7 @@ txFnStartComment(PRInt32 aNamespaceID,
                  PRInt32 aAttrCount,
                  txStylesheetCompilerState& aState)
 {
-    nsAutoPtr<txInstruction> instr(new txPushStringHandler(PR_TRUE));
+    nsAutoPtr<txInstruction> instr(new txPushStringHandler(true));
     NS_ENSURE_TRUE(instr, NS_ERROR_OUT_OF_MEMORY);
 
     nsresult rv = aState.addInstruction(instr);
@@ -1739,7 +1743,7 @@ txFnStartCopy(PRInt32 aNamespaceID,
     rv = aState.addInstruction(instr);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = parseUseAttrSets(aAttributes, aAttrCount, PR_FALSE, aState);
+    rv = parseUseAttrSets(aAttributes, aAttrCount, false, aState);
     NS_ENSURE_SUCCESS(rv, rv);
 
     return NS_OK;
@@ -1777,7 +1781,7 @@ txFnStartCopyOf(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_TRUE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, true,
                     aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1816,12 +1820,12 @@ txFnStartElement(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     nsAutoPtr<Expr> name;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                     aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> nspace;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::_namespace, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::_namespace, false,
                     aState, nspace);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1832,7 +1836,7 @@ txFnStartElement(PRInt32 aNamespaceID,
     rv = aState.addInstruction(instr);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = parseUseAttrSets(aAttributes, aAttrCount, PR_FALSE, aState);
+    rv = parseUseAttrSets(aAttributes, aAttrCount, false, aState);
     NS_ENSURE_SUCCESS(rv, rv);
 
     return NS_OK;
@@ -1863,7 +1867,7 @@ txFnStartFallback(PRInt32 aNamespaceID,
                   PRInt32 aAttrCount,
                   txStylesheetCompilerState& aState)
 {
-    aState.mSearchingForFallback = PR_FALSE;
+    aState.mSearchingForFallback = false;
 
     return aState.pushHandlerTable(gTxTemplateHandler);
 }
@@ -1898,7 +1902,7 @@ txFnStartForEach(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_TRUE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, true,
                      aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1990,7 +1994,7 @@ txFnStartIf(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     nsAutoPtr<Expr> test;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::test, PR_TRUE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::test, true,
                      aState, test);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2030,15 +2034,15 @@ txFnStartMessage(PRInt32 aNamespaceID,
                  PRInt32 aAttrCount,
                  txStylesheetCompilerState& aState)
 {
-    nsAutoPtr<txInstruction> instr(new txPushStringHandler(PR_FALSE));
+    nsAutoPtr<txInstruction> instr(new txPushStringHandler(false));
     NS_ENSURE_TRUE(instr, NS_ERROR_OUT_OF_MEMORY);
 
     nsresult rv = aState.addInstruction(instr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     txThreeState term;
-    rv = getYesNoAttr(aAttributes, aAttrCount, txXSLTAtoms::terminate,
-                      PR_FALSE, aState, term);
+    rv = getYesNoAttr(aAttributes, aAttrCount, nsGkAtoms::terminate,
+                      false, aState, term);
     NS_ENSURE_SUCCESS(rv, rv);
 
     instr = new txMessage(term == eTrue);
@@ -2078,59 +2082,59 @@ txFnStartNumber(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     nsCOMPtr<nsIAtom> levelAtom;
-    rv = getAtomAttr(aAttributes, aAttrCount, txXSLTAtoms::level, PR_FALSE,
+    rv = getAtomAttr(aAttributes, aAttrCount, nsGkAtoms::level, false,
                      aState, getter_AddRefs(levelAtom));
     NS_ENSURE_SUCCESS(rv, rv);
     
     txXSLTNumber::LevelType level = txXSLTNumber::eLevelSingle;
-    if (levelAtom == txXSLTAtoms::multiple) {
+    if (levelAtom == nsGkAtoms::multiple) {
         level = txXSLTNumber::eLevelMultiple;
     }
-    else if (levelAtom == txXSLTAtoms::any) {
+    else if (levelAtom == nsGkAtoms::any) {
         level = txXSLTNumber::eLevelAny;
     }
-    else if (levelAtom && levelAtom != txXSLTAtoms::single && !aState.fcp()) {
+    else if (levelAtom && levelAtom != nsGkAtoms::single && !aState.fcp()) {
         return NS_ERROR_XSLT_PARSE_FAILURE;
     }
     
     nsAutoPtr<txPattern> count;
-    rv = getPatternAttr(aAttributes, aAttrCount, txXSLTAtoms::count, PR_FALSE,
+    rv = getPatternAttr(aAttributes, aAttrCount, nsGkAtoms::count, false,
                         aState, count);
     NS_ENSURE_SUCCESS(rv, rv);
     
     nsAutoPtr<txPattern> from;
-    rv = getPatternAttr(aAttributes, aAttrCount, txXSLTAtoms::from, PR_FALSE,
+    rv = getPatternAttr(aAttributes, aAttrCount, nsGkAtoms::from, false,
                         aState, from);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> value;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::value, PR_FALSE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::value, false,
                      aState, value);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> format;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::format, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::format, false,
                     aState, format);
     NS_ENSURE_SUCCESS(rv, rv);
     
     nsAutoPtr<Expr> lang;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::lang, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::lang, false,
                       aState, lang);
     NS_ENSURE_SUCCESS(rv, rv);
     
     nsAutoPtr<Expr> letterValue;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::letterValue, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::letterValue, false,
                     aState, letterValue);
     NS_ENSURE_SUCCESS(rv, rv);
     
     nsAutoPtr<Expr> groupingSeparator;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::groupingSeparator,
-                    PR_FALSE, aState, groupingSeparator);
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::groupingSeparator,
+                    false, aState, groupingSeparator);
     NS_ENSURE_SUCCESS(rv, rv);
     
     nsAutoPtr<Expr> groupingSize;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::groupingSize,
-                    PR_FALSE, aState, groupingSize);
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::groupingSize,
+                    false, aState, groupingSize);
     NS_ENSURE_SUCCESS(rv, rv);
     
     nsAutoPtr<txInstruction> instr(new txNumber(level, count, from, value,
@@ -2197,7 +2201,7 @@ txFnStartParam(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2212,7 +2216,7 @@ txFnStartParam(PRInt32 aNamespaceID,
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_FALSE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, false,
                      aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2281,14 +2285,14 @@ txFnStartPI(PRInt32 aNamespaceID,
             PRInt32 aAttrCount,
             txStylesheetCompilerState& aState)
 {
-    nsAutoPtr<txInstruction> instr(new txPushStringHandler(PR_TRUE));
+    nsAutoPtr<txInstruction> instr(new txPushStringHandler(true));
     NS_ENSURE_TRUE(instr, NS_ERROR_OUT_OF_MEMORY);
 
     nsresult rv = aState.addInstruction(instr);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> name;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                     aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2330,7 +2334,7 @@ txFnStartSort(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_FALSE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, false,
                      aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2346,22 +2350,22 @@ txFnStartSort(PRInt32 aNamespaceID,
     }
 
     nsAutoPtr<Expr> lang;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::lang, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::lang, false,
                     aState, lang);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> dataType;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::dataType, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::dataType, false,
                     aState, dataType);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> order;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::order, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::order, false,
                     aState, order);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> caseOrder;
-    rv = getAVTAttr(aAttributes, aAttrCount, txXSLTAtoms::caseOrder, PR_FALSE,
+    rv = getAVTAttr(aAttributes, aAttrCount, nsGkAtoms::caseOrder, false,
                     aState, caseOrder);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2397,7 +2401,7 @@ txFnStartText(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
     txThreeState doe;
     rv = getYesNoAttr(aAttributes, aAttrCount,
-                      txXSLTAtoms::disableOutputEscaping, PR_FALSE, aState,
+                      nsGkAtoms::disableOutputEscaping, false, aState,
                       doe);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2443,12 +2447,12 @@ txFnStartValueOf(PRInt32 aNamespaceID,
 
     txThreeState doe;
     rv = getYesNoAttr(aAttributes, aAttrCount,
-                     txXSLTAtoms::disableOutputEscaping, PR_FALSE, aState,
+                     nsGkAtoms::disableOutputEscaping, false, aState,
                      doe);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_TRUE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, true,
                      aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2486,12 +2490,12 @@ txFnStartVariable(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_FALSE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, false,
                      aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2594,7 +2598,7 @@ txFnStartWhen(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     nsAutoPtr<Expr> test;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::test, PR_TRUE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::test, true,
                      aState, test);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2651,12 +2655,12 @@ txFnStartWithParam(PRInt32 aNamespaceID,
     nsresult rv = NS_OK;
 
     txExpandedName name;
-    rv = getQNameAttr(aAttributes, aAttrCount, txXSLTAtoms::name, PR_TRUE,
+    rv = getQNameAttr(aAttributes, aAttrCount, nsGkAtoms::name, true,
                       aState, name);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<Expr> select;
-    rv = getExprAttr(aAttributes, aAttrCount, txXSLTAtoms::select, PR_FALSE,
+    rv = getExprAttr(aAttributes, aAttrCount, nsGkAtoms::select, false,
                      aState, select);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2725,7 +2729,7 @@ txFnStartUnknownInstruction(PRInt32 aNamespaceID,
         return NS_ERROR_XSLT_PARSE_FAILURE;
     }
 
-    aState.mSearchingForFallback = PR_TRUE;
+    aState.mSearchingForFallback = true;
 
     return aState.pushHandlerTable(gTxFallbackHandler);
 }
@@ -2743,7 +2747,7 @@ txFnEndUnknownInstruction(txStylesheetCompilerState& aState)
         NS_ENSURE_SUCCESS(rv, rv);
     }
 
-    aState.mSearchingForFallback = PR_FALSE;
+    aState.mSearchingForFallback = false;
 
     return NS_OK;
 }
@@ -3025,15 +3029,15 @@ txHandlerTable::find(PRInt32 aNamespaceID, nsIAtom* aLocalName)
                            &gTx##_name##TableData.mLREHandler,       \
                            &gTx##_name##TableData.mOtherHandler);    \
     if (!gTx##_name##Handler)                                        \
-        return PR_FALSE
+        return false
 
 #define INIT_HANDLER_WITH_ELEMENT_HANDLERS(_name)                    \
     INIT_HANDLER(_name);                                             \
                                                                      \
     rv = gTx##_name##Handler->init(gTx##_name##ElementHandlers,      \
-                                   NS_ARRAY_LENGTH(gTx##_name##ElementHandlers)); \
+                                   ArrayLength(gTx##_name##ElementHandlers)); \
     if (NS_FAILED(rv))                                               \
-        return PR_FALSE
+        return false
 
 #define SHUTDOWN_HANDLER(_name)                                      \
     delete gTx##_name##Handler;                                      \

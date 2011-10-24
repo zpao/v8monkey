@@ -5,7 +5,7 @@ parsing command lines into argv and making sure that no shell magic is being use
 
 #TODO: ship pyprocessing?
 import multiprocessing, multiprocessing.dummy
-import subprocess, shlex, re, logging, sys, traceback, os, imp
+import subprocess, shlex, re, logging, sys, traceback, os, imp, glob
 # XXXkhuey Work around http://bugs.python.org/issue1731717
 subprocess._cleanup = lambda: None
 import command, util
@@ -14,23 +14,39 @@ if sys.platform=='win32':
 
 _log = logging.getLogger('pymake.process')
 
-_blacklist = re.compile(r'[$><;*?[{~`|&]|\\\n')
+_escapednewlines = re.compile(r'\\\n')
+_blacklist = re.compile(r'[$><;[{~`|&]')
+_needsglob = re.compile(r'[\*\?]')
 def clinetoargv(cline):
     """
     If this command line can safely skip the shell, return an argv array.
     @returns argv, badchar
     """
 
-    m = _blacklist.search(cline)
+    str = _escapednewlines.sub('', cline)
+    m = _blacklist.search(str)
     if m is not None:
         return None, m.group(0)
 
-    args = shlex.split(cline, comments=True)
+    args = shlex.split(str, comments=True)
 
     if len(args) and args[0].find('=') != -1:
         return None, '='
 
     return args, None
+
+def doglobbing(args, cwd):
+    """
+    Perform any needed globbing on the argument list passed in
+    """
+    globbedargs = []
+    for arg in args:
+        if _needsglob.search(arg):
+            globbedargs.extend(glob.glob(os.path.join(cwd, arg)))
+        else:
+            globbedargs.append(arg)
+
+    return globbedargs
 
 shellwords = (':', '.', 'break', 'cd', 'continue', 'exec', 'exit', 'export',
               'getopts', 'hash', 'pwd', 'readonly', 'return', 'shift', 
@@ -40,7 +56,7 @@ shellwords = (':', '.', 'break', 'cd', 'continue', 'exec', 'exit', 'export',
               'printf', 'read', 'shopt', 'source', 'type', 'typeset',
               'ulimit', 'unalias', 'set')
 
-def call(cline, env, cwd, loc, cb, context, echo):
+def call(cline, env, cwd, loc, cb, context, echo, justprint=False):
     #TODO: call this once up-front somewhere and save the result?
     shell, msys = util.checkmsyscompat()
 
@@ -53,6 +69,8 @@ def call(cline, env, cwd, loc, cb, context, echo):
             shellreason = "command contains shell-special character '%s'" % (badchar,)
         elif len(argv) and argv[0] in shellwords:
             shellreason = "command starts with shell primitive '%s'" % (argv[0],)
+        else:
+            argv = doglobbing(argv, cwd)
 
     if shellreason is not None:
         _log.debug("%s: using shell: %s: '%s'", loc, shellreason, cline)
@@ -60,7 +78,8 @@ def call(cline, env, cwd, loc, cb, context, echo):
             if len(cline) > 3 and cline[1] == ':' and cline[2] == '/':
                 cline = '/' + cline[0] + cline[2:]
             cline = [shell, "-c", cline]
-        context.call(cline, shell=not msys, env=env, cwd=cwd, cb=cb, echo=echo)
+        context.call(cline, shell=not msys, env=env, cwd=cwd, cb=cb, echo=echo,
+                     justprint=justprint)
         return
 
     if not len(argv):
@@ -81,12 +100,14 @@ def call(cline, env, cwd, loc, cb, context, echo):
     else:
         executable = None
 
-    context.call(argv, executable=executable, shell=False, env=env, cwd=cwd, cb=cb, echo=echo)
+    context.call(argv, executable=executable, shell=False, env=env, cwd=cwd, cb=cb,
+                 echo=echo, justprint=justprint)
 
-def call_native(module, method, argv, env, cwd, loc, cb, context, echo,
+def call_native(module, method, argv, env, cwd, loc, cb, context, echo, justprint=False,
                 pycommandpath=None):
+    argv = doglobbing(argv, cwd)
     context.call_native(module, method, argv, env=env, cwd=cwd, cb=cb,
-                        echo=echo, pycommandpath=pycommandpath)
+                        echo=echo, justprint=justprint, pycommandpath=pycommandpath)
 
 def statustoresult(status):
     """
@@ -195,6 +216,7 @@ class PythonJob(Job):
             return e.exitcode
         except:
             print >>sys.stderr, sys.exc_info()[1]
+            print >>sys.stderr, traceback.print_exc()
             return -127
         finally:
             os.environ = oldenv
@@ -242,36 +264,32 @@ class ParallelContext(object):
         assert self.jcount > 1 or not len(self.pending), "Serial execution error defering %r %r %r: currently pending %r" % (cb, args, kwargs, self.pending)
         self.pending.append((cb, args, kwargs))
 
-    def _docall(self, argv, executable, shell, env, cwd, cb, echo):
+    def _docall_generic(self, pool, job, cb, echo, justprint):
         if echo is not None:
             print echo
-        job = PopenJob(argv, executable=executable, shell=shell, env=env, cwd=cwd)
-        self.threadpool.apply_async(job_runner, args=(job,), callback=job.get_callback(ParallelContext._condition))
+        processcb = job.get_callback(ParallelContext._condition)
+        if justprint:
+            processcb(0)
+        else:
+            pool.apply_async(job_runner, args=(job,), callback=processcb)
         self.running.append((job, cb))
 
-    def _docallnative(self, module, method, argv, env, cwd, cb, echo,
-                      pycommandpath=None):
-        if echo is not None:
-            print echo
-        job = PythonJob(module, method, argv, env, cwd, pycommandpath)
-        self.processpool.apply_async(job_runner, args=(job,), callback=job.get_callback(ParallelContext._condition))
-        self.running.append((job, cb))
-
-    def call(self, argv, shell, env, cwd, cb, echo, executable=None):
+    def call(self, argv, shell, env, cwd, cb, echo, justprint=False, executable=None):
         """
         Asynchronously call the process
         """
 
-        self.defer(self._docall, argv, executable, shell, env, cwd, cb, echo)
+        job = PopenJob(argv, executable=executable, shell=shell, env=env, cwd=cwd)
+        self.defer(self._docall_generic, self.threadpool, job, cb, echo, justprint)
 
     def call_native(self, module, method, argv, env, cwd, cb,
-                    echo, pycommandpath=None):
+                    echo, justprint=False, pycommandpath=None):
         """
         Asynchronously call the native function
         """
 
-        self.defer(self._docallnative, module, method, argv, env, cwd, cb,
-                   echo, pycommandpath)
+        job = PythonJob(module, method, argv, env, cwd, pycommandpath)
+        self.defer(self._docall_generic, self.processpool, job, cb, echo, justprint)
 
     @staticmethod
     def _waitany(condition):

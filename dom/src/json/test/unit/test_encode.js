@@ -19,6 +19,11 @@ if (!outputDir.exists()) {
 
 function testStringEncode()
 {
+  var obj1 = {a:1};
+  var obj2 = {foo:"bar"};
+  do_check_eq(nativeJSON.encode(obj1), '{"a":1}');
+  do_check_eq(nativeJSON.encode(obj2), '{"foo":"bar"}');
+
   do_check_eq(nativeJSON.encode(), null);
 
   // useless roots are dropped
@@ -31,6 +36,46 @@ function testStringEncode()
 
   // All other testing should occur in js/src/tests/ecma_5/JSON/ using
   // the otherwise-exactly-identical JSON.stringify.
+}
+
+function testToJSON() {
+  var obj1 = {a:1};
+  var obj2 = {foo:"bar"};
+  do_check_eq(nativeJSON.encode({toJSON: function() obj1}), '{"a":1}');
+  do_check_eq(nativeJSON.encode({toJSON: function() obj2}), '{"foo":"bar"}');
+  
+  do_check_eq(nativeJSON.encode({toJSON: function() null}), null);
+  do_check_eq(nativeJSON.encode({toJSON: function() ""}), null);
+  do_check_eq(nativeJSON.encode({toJSON: function() undefined }), null);
+  do_check_eq(nativeJSON.encode({toJSON: function() 5}), null);
+  do_check_eq(nativeJSON.encode({toJSON: function() function(){}}), null);
+  do_check_eq(nativeJSON.encode({toJSON: function() dump}), null);
+}
+
+function testThrowingToJSON() {
+  var obj1 = {
+    "b": 1,
+    "c": 2,
+    toJSON: function() { throw("uh oh"); }
+  };
+  try {
+    var y = nativeJSON.encode(obj1);
+    throw "didn't throw";
+  } catch (ex) {
+    do_check_eq(ex, "uh oh");
+  }
+
+  var obj2 = {
+    "b": 1,
+    "c": 2,
+    get toJSON() { throw("crash and burn"); }
+  };
+  try {
+    var y = nativeJSON.encode(obj2);
+    throw "didn't throw";
+  } catch (ex) {
+    do_check_eq(ex, "crash and burn");
+  }
 }
 
 function testOutputStreams() {
@@ -87,24 +132,11 @@ function testOutputStreams() {
   outputDir.remove(true);
 }
 
-function throwingToJSON() {
-  var a = {
-    "b": 1,
-    "c": 2,
-    toJSON: function() { throw("uh oh"); }
-  }
-  try {
-    var y = nativeJSON.encode(a);
-    throw "didn't throw";
-  } catch (ex) {
-    do_check_eq(ex, "uh oh");
-  }
-}
-
 function run_test()
 {
   testStringEncode();
-  throwingToJSON();
+  testToJSON();
+  testThrowingToJSON();
   
   testOutputStreams();
   

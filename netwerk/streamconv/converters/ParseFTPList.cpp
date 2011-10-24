@@ -1022,7 +1022,7 @@ int ParseFTPList(const char *line, struct list_state *state,
        * "drwxr-xr-x  2 0  0  512 May 28 22:17 etc"
       */
     
-      PRBool is_old_Hellsoft = PR_FALSE;
+      bool is_old_Hellsoft = false;
     
       if (numtoks >= 6)
       {
@@ -1050,7 +1050,7 @@ int ParseFTPList(const char *line, struct list_state *state,
               /* rest is FMA[S] or AFM[S] */
               lstyle = 'U'; /* very likely one of the NetWare servers */
               if (toklen[0] == 10)
-                is_old_Hellsoft = PR_TRUE;
+                is_old_Hellsoft = true;
             }
           }
         }

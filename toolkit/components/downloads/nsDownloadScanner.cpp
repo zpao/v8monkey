@@ -177,7 +177,7 @@ private:
 };
 
 nsDownloadScanner::nsDownloadScanner() :
-  mAESExists(PR_FALSE)
+  mAESExists(false)
 {
 }
  
@@ -203,7 +203,7 @@ nsDownloadScanner::Init()
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  mAESExists = PR_TRUE;
+  mAESExists = true;
 
   // Initialize scanning
   mWatchdog = new nsDownloadScannerWatchdog();
@@ -221,7 +221,7 @@ nsDownloadScanner::Init()
   return rv;
 }
 
-PRBool
+bool
 nsDownloadScanner::IsAESAvailable()
 {
   // Try to instantiate IAE to see if it's available.    
@@ -231,9 +231,9 @@ nsDownloadScanner::IsAESAvailable()
                         IID_IAttachmentExecute, getter_AddRefs(ae));
   if (FAILED(hr)) {
     NS_WARNING("Could not instantiate attachment execution service\n");
-    return PR_FALSE;
+    return false;
   }
-  return PR_TRUE;
+  return true;
 }
 
 // If IAttachementExecute is available, use the CheckPolicy call to find out
@@ -264,7 +264,7 @@ nsDownloadScanner::CheckPolicy(nsIURI *aSource, nsIURI *aTarget)
   // IAttachementExecute prohibits src data: schemes by default but we
   // support them. If this is a data src, skip off doing a policy check.
   // (The file will still be scanned once it lands on the local system.)
-  PRBool isDataScheme(PR_FALSE);
+  bool isDataScheme(false);
   nsCOMPtr<nsIURI> innerURI = NS_GetInnermostURI(aSource);
   if (innerURI)
     (void)innerURI->SchemeIs("data", &isDataScheme);
@@ -342,7 +342,7 @@ nsresult ReleaseDispatcher::Run() {
 nsDownloadScanner::Scan::Scan(nsDownloadScanner *scanner, nsDownload *download)
   : mDLScanner(scanner), mThread(NULL), 
     mDownload(download), mStatus(AVSCAN_NOTSTARTED),
-    mSkipSource(PR_FALSE)
+    mSkipSource(false)
 {
   InitializeCriticalSection(&mStateSync);
 }
@@ -399,7 +399,7 @@ nsDownloadScanner::Scan::Start()
   CopyUTF8toUTF16(origin, mOrigin);
 
   // We count https/ftp/http as an http download
-  PRBool isHttp(PR_FALSE), isFtp(PR_FALSE), isHttps(PR_FALSE);
+  bool isHttp(false), isFtp(false), isHttps(false);
   nsCOMPtr<nsIURI> innerURI = NS_GetInnermostURI(uri);
   if (!innerURI) innerURI = uri;
   (void)innerURI->SchemeIs("http", &isHttp);
@@ -472,7 +472,7 @@ ExceptionFilterFunction(DWORD exceptionCode) {
   }
 }
 
-PRBool
+bool
 nsDownloadScanner::Scan::DoScanAES()
 {
   // This warning is for the destructor of ae which will not be invoked in the
@@ -480,10 +480,10 @@ nsDownloadScanner::Scan::DoScanAES()
 #pragma warning(disable: 4509)
   HRESULT hr;
   nsRefPtr<IAttachmentExecute> ae;
-  __try {
+  MOZ_SEH_TRY {
     hr = CoCreateInstance(CLSID_AttachmentServices, NULL, CLSCTX_ALL,
                           IID_IAttachmentExecute, getter_AddRefs(ae));
-  } __except(ExceptionFilterFunction(GetExceptionCode())) {
+  } MOZ_SEH_EXCEPT(ExceptionFilterFunction(GetExceptionCode())) {
     return CheckAndSetState(AVSCAN_NOTSTARTED,AVSCAN_FAILED);
   }
 
@@ -491,8 +491,8 @@ nsDownloadScanner::Scan::DoScanAES()
   if (CheckAndSetState(AVSCAN_SCANNING, AVSCAN_NOTSTARTED)) {
     AVScanState newState;
     if (SUCCEEDED(hr)) {
-      PRBool gotException = PR_FALSE;
-      __try {
+      bool gotException = false;
+      MOZ_SEH_TRY {
         (void)ae->SetClientGuid(GUID_MozillaVirusScannerPromptGeneric);
         (void)ae->SetLocalPath(mPath.BeginWriting());
         // Provide the src for everything but data: schemes.
@@ -501,14 +501,14 @@ nsDownloadScanner::Scan::DoScanAES()
 
         // Save() will invoke the scanner
         hr = ae->Save();
-      } __except(ExceptionFilterFunction(GetExceptionCode())) {
-        gotException = PR_TRUE;
+      } MOZ_SEH_EXCEPT(ExceptionFilterFunction(GetExceptionCode())) {
+        gotException = true;
       }
 
-      __try {
+      MOZ_SEH_TRY {
         ae = NULL;
-      } __except(ExceptionFilterFunction(GetExceptionCode())) {
-        gotException = PR_TRUE;
+      } MOZ_SEH_EXCEPT(ExceptionFilterFunction(GetExceptionCode())) {
+        gotException = true;
       }
 
       if(gotException) {
@@ -534,7 +534,7 @@ nsDownloadScanner::Scan::DoScanAES()
     }
     return CheckAndSetState(newState, AVSCAN_SCANNING);
   }
-  return PR_FALSE;
+  return false;
 }
 #pragma warning(default: 4509)
 
@@ -555,9 +555,9 @@ nsDownloadScanner::Scan::DoScan()
     }
   }
 
-  __try {
+  MOZ_SEH_TRY {
     CoUninitialize();
-  } __except(ExceptionFilterFunction(GetExceptionCode())) {
+  } MOZ_SEH_EXCEPT(ExceptionFilterFunction(GetExceptionCode())) {
     // Not much we can do at this point...
   }
 }
@@ -574,10 +574,10 @@ nsDownloadScanner::Scan::GetWaitableThreadHandle() const
   return targetHandle;
 }
 
-PRBool
+bool
 nsDownloadScanner::Scan::NotifyTimeout()
 {
-  PRBool didTimeout = CheckAndSetState(AVSCAN_TIMEDOUT, AVSCAN_SCANNING) ||
+  bool didTimeout = CheckAndSetState(AVSCAN_TIMEDOUT, AVSCAN_SCANNING) ||
                       CheckAndSetState(AVSCAN_TIMEDOUT, AVSCAN_NOTSTARTED);
   if (didTimeout) {
     // We need to do a few more things on the main thread
@@ -586,9 +586,9 @@ nsDownloadScanner::Scan::NotifyTimeout()
   return didTimeout;
 }
 
-PRBool
+bool
 nsDownloadScanner::Scan::CheckAndSetState(AVScanState newState, AVScanState expectedState) {
-  PRBool gotExpectedState = PR_FALSE;
+  bool gotExpectedState = false;
   EnterCriticalSection(&mStateSync);
   if(gotExpectedState = (mStatus == expectedState))
     mStatus = newState;
@@ -673,7 +673,7 @@ nsDownloadScannerWatchdog::Shutdown() {
 
 void
 nsDownloadScannerWatchdog::Watch(Scan *scan) {
-  PRBool wasEmpty;
+  bool wasEmpty;
   // Note that there is no release in this method
   // The scan will be released by the watchdog ALWAYS on the main thread
   // when either the watchdog thread processes the scan or the watchdog

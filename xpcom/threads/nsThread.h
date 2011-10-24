@@ -48,17 +48,17 @@
 #include "nsTObserverArray.h"
 
 // A native thread
-class nsThread : public nsIThreadInternal2, public nsISupportsPriority
+class nsThread : public nsIThreadInternal, public nsISupportsPriority
 {
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIEVENTTARGET
   NS_DECL_NSITHREAD
   NS_DECL_NSITHREADINTERNAL
-  NS_DECL_NSITHREADINTERNAL2
   NS_DECL_NSISUPPORTSPRIORITY
 
   nsThread();
+  nsThread(PRUint32 aStackSize);
 
   // Initialize this as a wrapper for a new PRThread.
   nsresult Init();
@@ -71,7 +71,7 @@ public:
 
   // If this flag is true, then the nsThread was created using
   // nsIThreadManager::NewThread.
-  PRBool ShutdownRequired() { return mShutdownRequired; }
+  bool ShutdownRequired() { return mShutdownRequired; }
 
   // The global thread observer
   static nsIThreadObserver* sGlobalObserver;
@@ -81,7 +81,7 @@ private:
 
   ~nsThread();
 
-  PRBool ShuttingDown() { return mShutdownContext != nsnull; }
+  bool ShuttingDown() { return mShutdownContext != nsnull; }
 
   static void ThreadFunc(void *arg);
 
@@ -93,7 +93,7 @@ private:
   }
 
   // Wrappers for event queue methods:
-  PRBool GetEvent(PRBool mayWait, nsIRunnable **event) {
+  bool GetEvent(bool mayWait, nsIRunnable **event) {
     return mEvents->GetEvent(mayWait, event);
   }
   nsresult PutEvent(nsIRunnable *event);
@@ -105,13 +105,13 @@ private:
       : mNext(nsnull), mFilter(filter) {
     }
 
-    PRBool GetEvent(PRBool mayWait, nsIRunnable **event) {
+    bool GetEvent(bool mayWait, nsIRunnable **event) {
       return mQueue.GetEvent(mayWait, event);
     }
 
-    PRBool PutEvent(nsIRunnable *event);
+    bool PutEvent(nsIRunnable *event);
     
-    PRBool HasPendingEvent() {
+    bool HasPendingEvent() {
       return mQueue.HasPendingEvent();
     }
 
@@ -139,13 +139,14 @@ private:
   PRInt32   mPriority;
   PRThread *mThread;
   PRUint32  mRunningEvent;  // counter
+  PRUint32  mStackSize;
 
   struct nsThreadShutdownContext *mShutdownContext;
 
-  PRPackedBool mShutdownRequired;
-  PRPackedBool mShutdownPending;
+  bool mShutdownRequired;
+  bool mShutdownPending;
   // Set to true when events posted to this thread will never run.
-  PRPackedBool mEventsAreDoomed;
+  bool mEventsAreDoomed;
 };
 
 //-----------------------------------------------------------------------------
@@ -156,7 +157,7 @@ public:
     : mOrigin(origin), mSyncTask(task), mResult(NS_ERROR_NOT_INITIALIZED) {
   }
 
-  PRBool IsPending() {
+  bool IsPending() {
     return mSyncTask != nsnull;
   }
 

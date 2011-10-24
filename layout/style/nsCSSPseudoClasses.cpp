@@ -38,10 +38,14 @@
 
 /* atom list for CSS pseudo-classes */
 
+#include "mozilla/Util.h"
+
 #include "nsCSSPseudoClasses.h"
 #include "nsAtomListUtils.h"
 #include "nsStaticAtom.h"
 #include "nsMemory.h"
+
+using namespace mozilla;
 
 // define storage for all atoms
 #define CSS_PSEUDO_CLASS(_name, _value) static nsIAtom* sPseudoClass_##_name;
@@ -63,10 +67,10 @@ static const nsStaticAtom CSSPseudoClasses_info[] = {
 void nsCSSPseudoClasses::AddRefAtoms()
 {
   NS_RegisterStaticAtoms(CSSPseudoClasses_info,
-                         NS_ARRAY_LENGTH(CSSPseudoClasses_info));
+                         ArrayLength(CSSPseudoClasses_info));
 }
 
-PRBool
+bool
 nsCSSPseudoClasses::HasStringArg(Type aType)
 {
   return aType == ePseudoClass_lang ||
@@ -75,7 +79,7 @@ nsCSSPseudoClasses::HasStringArg(Type aType)
          aType == ePseudoClass_mozLocaleDir;
 }
 
-PRBool
+bool
 nsCSSPseudoClasses::HasNthPairArg(Type aType)
 {
   return aType == ePseudoClass_nthChild ||
@@ -95,7 +99,7 @@ nsCSSPseudoClasses::PseudoTypeToString(Type aType, nsAString& aString)
 nsCSSPseudoClasses::Type
 nsCSSPseudoClasses::GetPseudoType(nsIAtom* aAtom)
 {
-  for (PRUint32 i = 0; i < NS_ARRAY_LENGTH(CSSPseudoClasses_info); ++i) {
+  for (PRUint32 i = 0; i < ArrayLength(CSSPseudoClasses_info); ++i) {
     if (*CSSPseudoClasses_info[i].mAtom == aAtom) {
       return Type(i);
     }

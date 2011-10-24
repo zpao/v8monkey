@@ -78,10 +78,10 @@ public:
   /**
    * The prevailing direction of lines.
    *
-   * @return PR_TRUE if the CSS direction property for the block is
-   *         "rtl", otherwise PR_FALSE
+   * @return true if the CSS direction property for the block is
+   *         "rtl", otherwise false
    */
-  virtual PRBool GetDirection() = 0;
+  virtual bool GetDirection() = 0;
 
   // Return structural information about a line. aFirstFrameOnLine is
   // the first frame on the line and aNumFramesOnLine is the number of
@@ -104,9 +104,12 @@ public:
 
   /**
    * Given a frame that's a child of the block, find which line its on
-   * and return that line index. Returns -1 if the frame cannot be found.
+   * and return that line index, as long as it's at least as big as
+   * aStartLine.  Returns -1 if the frame cannot be found on lines
+   * starting with aStartLine.
    */
-  virtual PRInt32 FindLineContaining(nsIFrame* aFrame) = 0;
+  virtual PRInt32 FindLineContaining(nsIFrame* aFrame,
+                                     PRInt32 aStartLine = 0) = 0;
 
   // Given a line number and an X coordinate, find the frame on the
   // line that is nearest to the X coordinate. The
@@ -115,8 +118,8 @@ public:
   NS_IMETHOD FindFrameAt(PRInt32 aLineNumber,
                          nscoord aX,
                          nsIFrame** aFrameFound,
-                         PRBool* aXIsBeforeFirstFrame,
-                         PRBool* aXIsAfterLastFrame) = 0;
+                         bool* aXIsBeforeFirstFrame,
+                         bool* aXIsAfterLastFrame) = 0;
 
   // Give the line iterator implementor a chance todo something more complicated than
   // nsIFrame::GetNextSibling()
@@ -126,7 +129,7 @@ public:
   // Check whether visual and logical order of frames within a line are identical.
   //  If not, return the first and last visual frames
   NS_IMETHOD CheckLineOrder(PRInt32                  aLine,
-                            PRBool                   *aIsReordered,
+                            bool                     *aIsReordered,
                             nsIFrame                 **aFirstVisual,
                             nsIFrame                 **aLastVisual) = 0;
 #endif

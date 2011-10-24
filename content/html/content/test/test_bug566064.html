@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=566064
 -->
 <head>
   <title>Test for Bug 566064</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
@@ -48,13 +47,10 @@ function checkFormTarget(aElement)
   isFormTargetEquals(aElement, "", true);
 }
 
-var input = document.createElement('input');
 var button = document.createElement('button');
 
-ok('formTarget' in input, "formTarget is a HTMLInputElement property");
 ok('formTarget' in button, "formTarget is a HTMLButtonElement property");
 
-checkFormTarget(input);
 checkFormTarget(button);
 
 </script>

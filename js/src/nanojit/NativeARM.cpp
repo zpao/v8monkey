@@ -42,10 +42,6 @@
 
 #include "nanojit.h"
 
-#ifdef UNDER_CE
-#include <cmnintrin.h>
-#endif
-
 #if defined(FEATURE_NANOJIT) && defined(NANOJIT_ARM)
 
 namespace nanojit
@@ -133,10 +129,16 @@ Assembler::CountLeadingZeroes(uint32_t data)
         // On Android gcc compiler, the clz instruction is not supported with a
         // target smaller than armv7, despite it being legal for armv5+.
             "   .arch armv7-a\n"
+        // Force the object to be tagged as armv4t to avoid it bumping the final
+        // binary target.
+            "   .object_arch armv4t\n"
 #elif (NJ_COMPILER_ARM_ARCH < 5)
         // Targetting armv5t allows a toolchain with armv4t target to still build
         // with clz, and clz to be used when appropriate at runtime.
             "   .arch armv5t\n"
+        // Force the object file to be tagged as armv4t to avoid it bumping the
+        // final binary target.
+            "   .object_arch armv4t\n"
 #endif
             "   clz     %0, %1  \n"
             :   "=r"    (leading_zeroes)
@@ -145,9 +147,6 @@ Assembler::CountLeadingZeroes(uint32_t data)
     } else {
         leading_zeroes = CountLeadingZeroesSlow(data);
     }
-#elif defined(UNDER_CE)
-    // WinCE can do this with an intrinsic.
-    leading_zeroes = _CountLeadingZeros(data);
 #else
     leading_zeroes = CountLeadingZeroesSlow(data);
 #endif
@@ -604,7 +603,8 @@ Assembler::genEpilogue()
  * will update r and stkd as appropriate so that the next argument can be
  * encoded.
  *
- * Linux has used ARM's EABI for some time. Windows CE uses the legacy ABI.
+ * Linux has used ARM's EABI for some time; support for the legacy ABI
+ * has now been removed.
  *
  * Under EABI:
  * - doubles are 64-bit aligned both in registers and on the stack.
@@ -616,14 +616,6 @@ Assembler::genEpilogue()
  *
  * Under EABI with hardware floating-point procedure-call variant:
  * - Same as EABI, but doubles are passed in D0..D7 registers.
- *
- * Under legacy ABI:
- * - doubles are placed in subsequent arg registers; if the next
- *   available register is r3, the low order word goes into r3
- *   and the high order goes on the stack.
- * - 32-bit arguments are placed in the next available arg register,
- * - both doubles and 32-bit arguments are placed on stack with 32-bit
- *   alignment.
  */
 void
 Assembler::asm_arg(ArgType ty, LIns* arg, ParameterRegisters& params)
@@ -674,7 +666,6 @@ Assembler::asm_arg_64(LIns* arg, ParameterRegisters& params)
     // is for LIR_ii2d.
     NanoAssert(ARM_VFP || arg->isop(LIR_ii2d));
 
-#ifdef NJ_ARM_EABI
     // EABI requires that 64-bit arguments are aligned on even-numbered
     // registers, as R0:R1 or R2:R3. If the register base is at an
     // odd-numbered register, advance it. Note that this will push r past
@@ -683,18 +674,15 @@ Assembler::asm_arg_64(LIns* arg, ParameterRegisters& params)
     if ((params.r == R1) || (params.r == R3)) {
         params.r = Register(params.r + 1);
     }
-#endif
 
     if (params.r < R3) {
         Register    ra = params.r;
         Register    rb = Register(params.r + 1);
         params.r = Register(rb + 1);
 
-#ifdef NJ_ARM_EABI
         // EABI requires that 64-bit arguments are aligned on even-numbered
         // registers, as R0:R1 or R2:R3.
         NanoAssert( ((ra == R0) && (rb == R1)) || ((ra == R2) && (rb == R3)) );
-#endif
 
         // Put the argument in ra and rb. If the argument is in a VFP register,
         // use FMRRD to move it to ra and rb. Otherwise, let asm_regarg deal
@@ -706,48 +694,14 @@ Assembler::asm_arg_64(LIns* arg, ParameterRegisters& params)
             asm_regarg(ARGTYPE_I, arg->oprnd1(), ra);
             asm_regarg(ARGTYPE_I, arg->oprnd2(), rb);
         }
-
-#ifndef NJ_ARM_EABI
-    } else if (params.r == R3) {
-        // We only have one register left, but the legacy ABI requires that we
-        // put 32 bits of the argument in the register (R3) and the remaining
-        // 32 bits on the stack.
-        Register    ra = params.r; // R3
-        params.r = R4;
-
-        // We're splitting the argument between registers and the stack.  This
-        // must be the first time that the stack is used, so stkd must be at 0.
-        NanoAssert(params.stkd == 0);
-
-        if (ARM_VFP) {
-            Register dm = findRegFor(arg, FpRegs);
-            // TODO: We could optimize the this to store directly from
-            // the VFP register to memory using "FMRRD ra, fp_reg[31:0]" and
-            // "STR fp_reg[63:32], [SP, #stkd]".
-
-            // Load from the floating-point register as usual, but use IP
-            // as a swap register.
-            STR(IP, SP, 0);
-            FMRRD(ra, IP, dm);
-        } else {
-            // Without VFP, we can simply use asm_regarg and asm_stkarg to
-            // encode the two 32-bit words as we don't need to load from a VFP
-            // register.
-            asm_regarg(ARGTYPE_I, arg->oprnd1(), ra);
-            asm_stkarg(arg->oprnd2(), 0);
-        }
-        params.stkd += 4;
-#endif
     } else {
         // The argument won't fit in registers, so pass on to asm_stkarg.
-#ifdef NJ_ARM_EABI
         // EABI requires that 64-bit arguments are 64-bit aligned.
         if ((params.stkd & 7) != 0) {
             // stkd will always be aligned to at least 4 bytes; this was
             // asserted on entry to this function.
             params.stkd += 4;
         }
-#endif
         if (ARM_VFP) {
             asm_stkarg(arg, params.stkd);
         } else {
@@ -805,10 +759,8 @@ Assembler::asm_stkarg(LIns* arg, int stkd)
         NanoAssert(arg->isD());
         NanoAssert(ARM_VFP);
         Register dt = findRegFor(arg, FpRegs);
-#ifdef NJ_ARM_EABI
         // EABI requires that 64-bit arguments are 64-bit aligned.
         NanoAssert((stkd % 8) == 0);
-#endif
         FSTD(dt, SP, stkd);
     }
 }
@@ -906,14 +858,7 @@ Assembler::asm_call(LIns* ins)
     } else {
         // Indirect call: we assign the address arg to LR
         if (ARM_ARCH_AT_LEAST(5)) {
-#ifndef UNDER_CE
-            // workaround for msft device emulator bug (blx lr emulated as no-op)
-            underrunProtect(8);
-            BLX(IP);
-            MOV(IP, LR);
-#else
             BLX(LR);
-#endif
         } else {
             underrunProtect(12);
             BX(IP);
@@ -1304,7 +1249,10 @@ Assembler::asm_restore(LIns* i, Register r)
                    do_peep_2_1(&merged, _nIns[0], _nIns[1])) {
                 _nIns[1] = merged;
                 _nIns++;
-                verbose_only( asm_output("merge next into LDMDB"); )
+                verbose_only(
+                    _nInsAfter++;
+                    asm_output("merge next into LDMDB");
+                )
             }
         }
     }
@@ -1340,7 +1288,10 @@ Assembler::asm_spill(Register rr, int d, bool quad)
                     do_peep_2_1(&merged, _nIns[0], _nIns[1])) {
                 _nIns[1] = merged;
                 _nIns++;
-                verbose_only( asm_output("merge next into STMDB"); )
+                verbose_only(
+                    _nInsAfter++;
+                    asm_output("merge next into STMDB");
+                )
             }
         }
     }
@@ -1668,8 +1619,7 @@ void Assembler::asm_inc_m32(uint32_t* pCtr)
     // We need to temporarily free up two registers to do this, so
     // just push r0 and r1 on the stack.  This assumes that the area
     // at r13 - 8 .. r13 - 1 isn't being used for anything else at
-    // this point.  This guaranteed us by the EABI; although the
-    // situation with the legacy ABI I'm not sure of.
+    // this point (this is guaranteed by the EABI).
     //
     // Plan: emit the following bit of code.  It's not efficient, but
     // this is for profiling debug builds only, and is self contained,
@@ -1844,11 +1794,6 @@ Assembler::BLX(Register addr, bool chk /* = true */)
     NanoAssert(ARM_ARCH_AT_LEAST(5));
 
     NanoAssert(IsGpReg(addr));
-#ifdef UNDER_CE
-    // There is a bug in the WinCE device emulator which stops "BLX LR" from
-    // working as expected. Assert that we never do that!
-    NanoAssert(addr != LR);
-#endif
 
     if (chk) {
         underrunProtect(4);

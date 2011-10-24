@@ -138,7 +138,7 @@ NS_InitLineBuffer (nsLineBuffer<CharT> ** aBufferPtr) {
 template<typename CharT, class StreamType, class StringType>
 nsresult
 NS_ReadLine (StreamType* aStream, nsLineBuffer<CharT> * aBuffer,
-             StringType & aLine, PRBool *more)
+             StringType & aLine, bool *more)
 {
   CharT eolchar = 0; // the first eol char or 1 after \r\n or \n\r is found
 
@@ -149,7 +149,7 @@ NS_ReadLine (StreamType* aStream, nsLineBuffer<CharT> * aBuffer,
       PRUint32 bytesRead;
       nsresult rv = aStream->Read(aBuffer->buf, kLineBufferSize, &bytesRead);
       if (NS_FAILED(rv) || NS_UNLIKELY(bytesRead == 0)) {
-        *more = PR_FALSE;
+        *more = false;
         return rv;
       }
       aBuffer->start = aBuffer->buf;
@@ -186,7 +186,7 @@ NS_ReadLine (StreamType* aStream, nsLineBuffer<CharT> * aBuffer,
           continue;
         }
         aBuffer->start = current;
-        *more = PR_TRUE;
+        *more = true;
         return NS_OK;
       }
     }

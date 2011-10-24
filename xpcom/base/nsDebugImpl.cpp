@@ -146,12 +146,12 @@ nsDebugImpl::Abort(const char *aFile, PRInt32 aLine)
 }
 
 NS_IMETHODIMP
-nsDebugImpl::GetIsDebugBuild(PRBool* aResult)
+nsDebugImpl::GetIsDebugBuild(bool* aResult)
 {
 #ifdef DEBUG
-  *aResult = PR_TRUE;
+  *aResult = true;
 #else
-  *aResult = PR_FALSE;
+  *aResult = false;
 #endif
   return NS_OK;
 }
@@ -329,7 +329,7 @@ NS_DebugBreak(PRUint32 aSeverity, const char *aStr, const char *aExpr,
      return;
 
    case NS_DEBUG_ABORT: {
-#if defined(MOZ_CRASHREPORTER) && defined(MOZ_ENABLE_LIBXUL)
+#if defined(MOZ_CRASHREPORTER)
      nsCString note("xpcom_runtime_abort(");
      note += buf.buffer;
      note += ")";
@@ -400,7 +400,16 @@ RealBreak()
 #elif defined(__GNUC__) && (defined(__i386__) || defined(__i386) || defined(__x86_64__))
    asm("int $3");
 #elif defined(__arm__)
-   asm("BKPT #0");
+   asm(
+#ifdef __ARM_ARCH_4T__
+/* ARMv4T doesn't support the BKPT instruction, so if the compiler target
+ * is ARMv4T, we want to ensure the assembler will understand that ARMv5T
+ * instruction, while keeping the resulting object tagged as ARMv4T.
+ */
+       ".arch armv5t\n"
+       ".object_arch armv4t\n"
+#endif
+       "BKPT #0");
 #elif defined(SOLARIS)
 #if defined(__i386__) || defined(__i386) || defined(__x86_64__)
    asm("int $3");
@@ -450,7 +459,7 @@ Break(const char *aMsg)
        NULL != 
        wcscpy((WCHAR*)
        pName+1, L"windbgdlg.exe") &&
-       CreateProcessW((LPCWSTR)executable, (LPWSTR)msgCopy, NULL, NULL, PR_FALSE,
+       CreateProcessW((LPCWSTR)executable, (LPWSTR)msgCopy, NULL, NULL, false,
                      DETACHED_PROCESS | NORMAL_PRIORITY_CLASS,
                      NULL, NULL, &si, &pi)) {
       WaitForSingleObject(pi.hProcess, INFINITE);
@@ -524,7 +533,7 @@ nsDebugImpl::Create(nsISupports* outer, const nsIID& aIID, void* *aInstancePtr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NS_COM nsresult
+nsresult
 NS_ErrorAccordingToNSPR()
 {
     PRErrorCode err = PR_GetError();
@@ -550,11 +559,11 @@ NS_ErrorAccordingToNSPR()
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef XP_WIN
-NS_COM PRBool sXPCOMHasLoadedNewDLLs = PR_FALSE;
+bool sXPCOMHasLoadedNewDLLs = false;
 
 NS_EXPORT void
 NS_SetHasLoadedNewDLLs()
 {
-  sXPCOMHasLoadedNewDLLs = PR_TRUE;
+  sXPCOMHasLoadedNewDLLs = true;
 }
 #endif

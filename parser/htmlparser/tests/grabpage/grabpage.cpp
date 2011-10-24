@@ -79,21 +79,21 @@ public:
   NS_IMETHOD OnDataAvailable(nsIRequest* aRequest, nsISupports *, nsIInputStream *pIStream, PRUint32 aOffset, PRUint32 aCount);
   NS_IMETHOD OnStopRequest(nsIRequest* aRequest, nsISupports *, PRUint32 status);
 
-  PRBool IsDone() const { return mDone; }
-  PRBool HaveError() const { return mError; }
+  bool IsDone() const { return mDone; }
+  bool HaveError() const { return mError; }
 
 protected:
   virtual ~StreamToFile();
 
-  PRBool mDone;
-  PRBool mError;
+  bool mDone;
+  bool mError;
   FILE* mFile;
 };
 
 StreamToFile::StreamToFile(FILE* fp)
 {
-  mDone = PR_FALSE;
-  mError = PR_FALSE;
+  mDone = false;
+  mError = false;
   mFile = fp;
 }
 
@@ -157,9 +157,9 @@ StreamToFile::OnDataAvailable(
 NS_IMETHODIMP
 StreamToFile::OnStopRequest(nsIRequest *aRequest, nsISupports *aSomething, PRUint32 status)
 {
-  mDone = PR_TRUE;
+  mDone = true;
   if (0 != status) {
-    mError = PR_TRUE;
+    mError = true;
   }
   return 0;
 }

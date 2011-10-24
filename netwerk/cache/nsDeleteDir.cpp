@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *  Darin Fisher <darin@meer.net>
+ *  Jason Duell <jduell.mcbugs@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -40,16 +41,32 @@
 #include "nsIFile.h"
 #include "nsString.h"
 #include "prthread.h"
+#include "mozilla/Telemetry.h"
+#include "nsITimer.h"
+
+using namespace mozilla;
 
 static void DeleteDirThreadFunc(void *arg)
 {
+  Telemetry::AutoTimer<Telemetry::NETWORK_DISK_CACHE_DELETEDIR> timer;
   nsIFile *dir = static_cast<nsIFile *>(arg);
-  dir->Remove(PR_TRUE);
+  dir->Remove(true);
   NS_RELEASE(dir);
 }
 
-nsresult DeleteDir(nsIFile *dirIn, PRBool moveToTrash, PRBool sync)
+static void CreateDeleterThread(nsITimer *aTimer, void *arg)
 {
+  nsIFile *dir = static_cast<nsIFile *>(arg);
+
+  // create the worker thread
+  PR_CreateThread(PR_USER_THREAD, DeleteDirThreadFunc, dir, PR_PRIORITY_LOW,
+                  PR_GLOBAL_THREAD, PR_UNJOINABLE_THREAD, 0);
+}
+
+nsresult DeleteDir(nsIFile *dirIn, bool moveToTrash, bool sync,
+                   PRUint32 delay)
+{
+  Telemetry::AutoTimer<Telemetry::NETWORK_DISK_CACHE_TRASHRENAME> timer;
   nsresult rv;
   nsCOMPtr<nsIFile> trash, dir;
 
@@ -59,31 +76,33 @@ nsresult DeleteDir(nsIFile *dirIn, PRBool moveToTrash, PRBool sync)
   if (NS_FAILED(rv))
     return rv;
 
-  if (moveToTrash)
-  {
+  if (moveToTrash) {
     rv = GetTrashDir(dir, &trash);
     if (NS_FAILED(rv))
       return rv;
-
-    nsCOMPtr<nsIFile> subDir;
-    rv = trash->Clone(getter_AddRefs(subDir));
+    nsCAutoString leaf;
+    rv = trash->GetNativeLeafName(leaf);
     if (NS_FAILED(rv))
       return rv;
 
-    rv = subDir->AppendNative(NS_LITERAL_CSTRING("Trash"));
-    if (NS_FAILED(rv))
-      return rv;
-
-    rv = subDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0700);
-    if (NS_FAILED(rv))
-      return rv;
-
-    rv = dir->MoveToNative(subDir, EmptyCString());
-    if (NS_FAILED(rv))
-      return rv;
-  }
-  else
-  {
+    // Important: must rename directory w/o changing parent directory: else on
+    // NTFS we'll wait (with cache lock) while nsIFile's ACL reset walks file
+    // tree: was hanging GUI for *minutes* on large cache dirs.
+    rv = dir->MoveToNative(nsnull, leaf);
+    if (NS_FAILED(rv)) {
+      nsresult rvMove = rv;
+      // TrashDir may already exist (if we crashed while deleting it, etc.)
+      // In that case current Cache dir should be small--just move it to
+      // subdirectory of TrashDir and eat the NTFS ACL overhead.
+      leaf.AppendInt(rand()); // support this happening multiple times
+      rv = dir->MoveToNative(trash, leaf);
+      if (NS_FAILED(rv))
+        return rvMove;
+      // Be paranoid and delete immediately if we're seeing old trash when
+      // we're creating a new one
+      delay = 0;
+    }
+  } else {
     // we want to pass a clone of the original off to the worker thread.
     trash.swap(dir);
   }
@@ -92,22 +111,18 @@ nsresult DeleteDir(nsIFile *dirIn, PRBool moveToTrash, PRBool sync)
   nsIFile *trashRef = nsnull;
   trash.swap(trashRef);
 
-  if (sync)
-  {
+  if (sync) {
     DeleteDirThreadFunc(trashRef);
-  }
-  else
-  {
-    // now, invoke the worker thread
-    PRThread *thread = PR_CreateThread(PR_USER_THREAD,
-                                       DeleteDirThreadFunc,
-                                       trashRef,
-                                       PR_PRIORITY_LOW,
-                                       PR_GLOBAL_THREAD,
-                                       PR_UNJOINABLE_THREAD,
-                                       0);
-    if (!thread)
-      return NS_ERROR_UNEXPECTED;
+  } else {
+    if (delay) {
+      nsCOMPtr<nsITimer> timer = do_CreateInstance("@mozilla.org/timer;1", &rv);
+      if (NS_FAILED(rv))
+        return NS_ERROR_UNEXPECTED;
+      timer->InitWithFuncCallback(CreateDeleterThread, trashRef, delay,
+                                  nsITimer::TYPE_ONE_SHOT);
+    } else {
+      CreateDeleterThread(nsnull, trashRef);
+    }
   }
 
   return NS_OK;

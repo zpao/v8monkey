@@ -37,6 +37,7 @@
 #include "SVGNumberListSMILType.h"
 #include "nsSMILValue.h"
 #include "SVGNumberList.h"
+#include "nsMathUtils.h"
 #include <math.h>
 
 /* The "identity" number list for a given number list attribute (the effective
@@ -98,7 +99,7 @@ SVGNumberListSMILType::Assign(nsSMILValue& aDest,
   return dest->CopyFrom(*src);
 }
 
-PRBool
+bool
 SVGNumberListSMILType::IsEqual(const nsSMILValue& aLeft,
                                const nsSMILValue& aRight) const
 {
@@ -185,7 +186,7 @@ SVGNumberListSMILType::ComputeDistance(const nsSMILValue& aFrom,
     total += delta * delta;
   }
   double distance = sqrt(total);
-  if (!NS_FloatIsFinite(distance)) {
+  if (!NS_finite(distance)) {
     return NS_ERROR_FAILURE;
   }
   aDistance = distance;

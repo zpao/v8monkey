@@ -48,6 +48,9 @@
 #include "gfx3DMatrix.h"
 #include "gfxColor.h"
 #include "gfxPattern.h"
+#include "nsTArray.h"
+
+#include "mozilla/gfx/2D.h"
 
 #if defined(DEBUG) || defined(PR_LOGGING)
 #  include <stdio.h>            // FILE
@@ -77,9 +80,11 @@ class ImageLayer;
 class ColorLayer;
 class ImageContainer;
 class CanvasLayer;
-class ShadowLayer;
 class ReadbackLayer;
 class ReadbackProcessor;
+class ShadowLayer;
+class ShadowLayerForwarder;
+class ShadowLayerManager;
 class SpecificLayerAttributes;
 
 /**
@@ -106,29 +111,34 @@ public:
 
   // Default copy ctor and operator= are fine
 
-  PRBool operator==(const FrameMetrics& aOther) const
+  bool operator==(const FrameMetrics& aOther) const
   {
     return (mViewport.IsEqualEdges(aOther.mViewport) &&
             mViewportScrollOffset == aOther.mViewportScrollOffset &&
             mDisplayPort.IsEqualEdges(aOther.mDisplayPort) &&
             mScrollId == aOther.mScrollId);
   }
+  bool operator!=(const FrameMetrics& aOther) const
+  { 
+    return !operator==(aOther);
+  }
 
-  PRBool IsDefault() const
+  bool IsDefault() const
   {
     return (FrameMetrics() == *this);
   }
 
-  PRBool IsRootScrollable() const
+  bool IsRootScrollable() const
   {
     return mScrollId == ROOT_SCROLL_ID;
   }
 
-  PRBool IsScrollable() const
+  bool IsScrollable() const
   {
     return mScrollId != NULL_SCROLL_ID;
   }
 
+  // These are all in layer coordinate space.
   nsIntRect mViewport;
   nsIntSize mContentSize;
   nsIntPoint mViewportScrollOffset;
@@ -203,7 +213,7 @@ public:
   /**
    * This getter can be used anytime.
    */
-  PRBool Has(void* aKey)
+  bool Has(void* aKey)
   {
     return mKey == aKey;
   }
@@ -265,7 +275,7 @@ public:
     LAYERS_LAST
   };
 
-  LayerManager() : mDestroyed(PR_FALSE), mSnapEffectiveTransforms(PR_TRUE)
+  LayerManager() : mDestroyed(false), mSnapEffectiveTransforms(true)
   {
     InitLog();
   }
@@ -277,8 +287,14 @@ public:
    * for its widget going away.  After this call, only user data calls
    * are valid on the layer manager.
    */
-  virtual void Destroy() { mDestroyed = PR_TRUE; mUserData.Clear(); }
-  PRBool IsDestroyed() { return mDestroyed; }
+  virtual void Destroy() { mDestroyed = true; mUserData.Clear(); }
+  bool IsDestroyed() { return mDestroyed; }
+
+  virtual ShadowLayerForwarder* AsShadowForwarder()
+  { return nsnull; }
+
+  virtual ShadowLayerManager* AsShadowManager()
+  { return nsnull; }
 
   /**
    * Start a new transaction. Nested transactions are not allowed so
@@ -336,6 +352,12 @@ public:
                                            const nsIntRegion& aRegionToDraw,
                                            const nsIntRegion& aRegionToInvalidate,
                                            void* aCallbackData);
+
+  enum EndTransactionFlags {
+    END_DEFAULT = 0,
+    END_NO_IMMEDIATE_REDRAW = 1 << 0  // Do not perform the drawing phase
+  };
+
   /**
    * Finish the construction phase of the transaction, perform the
    * drawing phase, and end the transaction.
@@ -344,9 +366,10 @@ public:
    * where it is known that the visible region is empty.
    */
   virtual void EndTransaction(DrawThebesLayerCallback aCallback,
-                              void* aCallbackData) = 0;
+                              void* aCallbackData,
+                              EndTransactionFlags aFlags = END_DEFAULT) = 0;
 
-  PRBool IsSnappingEffectiveTransforms() { return mSnapEffectiveTransforms; } 
+  bool IsSnappingEffectiveTransforms() { return mSnapEffectiveTransforms; } 
 
   /**
    * CONSTRUCTION PHASE ONLY
@@ -424,6 +447,16 @@ public:
                          gfxASurface::gfxImageFormat imageFormat);
 
   /**
+   * Creates a DrawTarget which is optimized for inter-operating with this
+   * layermanager.
+   */
+  virtual TemporaryRef<mozilla::gfx::DrawTarget>
+    CreateDrawTarget(const mozilla::gfx::IntSize &aSize,
+                     mozilla::gfx::SurfaceFormat aFormat);
+
+  virtual bool CanUseCanvasLayerForSize(const gfxIntSize &aSize) { return true; }
+
+  /**
    * Return the name of the layer manager's backend.
    */
   virtual void GetBackendName(nsAString& aName) = 0;
@@ -442,7 +475,7 @@ public:
   /**
    * This getter can be used anytime.
    */
-  PRBool HasUserData(void* aKey)
+  bool HasUserData(void* aKey)
   { return mUserData.Has(aKey); }
   /**
    * This getter can be used anytime. Ownership is retained by the layer
@@ -482,16 +515,16 @@ public:
   static bool IsLogEnabled();
   static PRLogModuleInfo* GetLog() { return sLog; }
 
-  PRBool IsCompositingCheap(LayerManager::LayersBackend aBackend)
+  bool IsCompositingCheap(LayerManager::LayersBackend aBackend)
   { return LAYERS_BASIC != aBackend; }
 
-  virtual PRBool IsCompositingCheap() { return PR_TRUE; }
+  virtual bool IsCompositingCheap() { return true; }
 
 protected:
   nsRefPtr<Layer> mRoot;
   LayerUserDataSet mUserData;
-  PRPackedBool mDestroyed;
-  PRPackedBool mSnapEffectiveTransforms;
+  bool mDestroyed;
+  bool mSnapEffectiveTransforms;
 
   // Print interesting information about this into aTo.  Internally
   // used to implement Dump*() and Log*().
@@ -545,7 +578,13 @@ public:
      * paint time.
      * This should never be set at the same time as CONTENT_OPAQUE.
      */
-    CONTENT_COMPONENT_ALPHA = 0x02
+    CONTENT_COMPONENT_ALPHA = 0x02,
+
+    /**
+     * If this is set then this layer is part of a preserve-3d group, and should
+     * be sorted with sibling layers that are also part of the same group.
+     */
+    CONTENT_PRESERVE_3D = 0x04
   };
   /**
    * CONSTRUCTION PHASE ONLY
@@ -625,7 +664,7 @@ public:
     if (mUseClipRect) {
       mClipRect.IntersectRect(mClipRect, aRect);
     } else {
-      mUseClipRect = PR_TRUE;
+      mUseClipRect = true;
       mClipRect = aRect;
     }
     Mutated();
@@ -677,7 +716,7 @@ public:
     Mutated();
   }
 
-  void SetIsFixedPosition(PRBool aFixedPosition) { mIsFixedPosition = aFixedPosition; }
+  void SetIsFixedPosition(bool aFixedPosition) { mIsFixedPosition = aFixedPosition; }
 
   // These getters can be used anytime.
   float GetOpacity() { return mOpacity; }
@@ -706,7 +745,7 @@ public:
   // If we can use a surface without an alpha channel, we should, because
   // it will often make painting of antialiased text faster and higher
   // quality.
-  PRBool CanUseOpaqueSurface();
+  bool CanUseOpaqueSurface();
 
   enum SurfaceMode {
     SURFACE_OPAQUE,
@@ -736,7 +775,7 @@ public:
   /**
    * This getter can be used anytime.
    */
-  PRBool HasUserData(void* aKey)
+  bool HasUserData(void* aKey)
   { return mUserData.Has(aKey); }
   /**
    * This getter can be used anytime. Ownership is retained by the layer
@@ -809,17 +848,16 @@ public:
   
   /**
    * Calculate the scissor rect required when rendering this layer.
-   *
-   * @param aIntermediate true if the layer is being rendered to an
-   * intermediate surface, false otherwise.
-   * @param aVisibleRect The bounds of the parent's visible region.
-   * @param aParentScissor The existing scissor rect set for the parent.
-   * @param aTransform The current 2d transform of the parent.
+   * Returns a rectangle relative to the intermediate surface belonging to the
+   * nearest ancestor that has an intermediate surface, or relative to the root
+   * viewport if no ancestor has an intermediate surface, corresponding to the
+   * clip rect for this layer intersected with aCurrentScissorRect.
+   * If no ancestor has an intermediate surface, the clip rect is transformed
+   * by aWorldTransform before being combined with aCurrentScissorRect, if
+   * aWorldTransform is non-null.
    */
-  nsIntRect CalculateScissorRect(bool aIntermediate,
-                                 const nsIntRect& aVisibleRect,
-                                 const nsIntRect& aParentScissor,
-                                 const gfxMatrix& aTransform);
+  nsIntRect CalculateScissorRect(const nsIntRect& aCurrentScissorRect,
+                                 const gfxMatrix* aWorldTransform);
 
   virtual const char* Name() const =0;
   virtual LayerType GetType() const =0;
@@ -871,9 +909,9 @@ protected:
     mImplData(aImplData),
     mOpacity(1.0),
     mContentFlags(0),
-    mUseClipRect(PR_FALSE),
-    mUseTileSourceRect(PR_FALSE),
-    mIsFixedPosition(PR_FALSE)
+    mUseClipRect(false),
+    mUseTileSourceRect(false),
+    mIsFixedPosition(false)
     {}
 
   void Mutated() { mManager->Mutated(this); }
@@ -919,9 +957,9 @@ protected:
   nsIntRect mClipRect;
   nsIntRect mTileSourceRect;
   PRUint32 mContentFlags;
-  PRPackedBool mUseClipRect;
-  PRPackedBool mUseTileSourceRect;
-  PRPackedBool mIsFixedPosition;
+  bool mUseClipRect;
+  bool mUseTileSourceRect;
+  bool mIsFixedPosition;
 };
 
 /**
@@ -944,13 +982,24 @@ public:
    * region.
    */
   virtual void InvalidateRegion(const nsIntRegion& aRegion) = 0;
+  /**
+   * CONSTRUCTION PHASE ONLY
+   * Set whether ComputeEffectiveTransforms should compute the
+   * "residual translation" --- the translation that should be applied *before*
+   * mEffectiveTransform to get the ideal transform for this ThebesLayer.
+   * When this is true, ComputeEffectiveTransforms will compute the residual
+   * and ensure that the layer is invalidated whenever the residual changes.
+   * When it's false, a change in the residual will not trigger invalidation
+   * and GetResidualTranslation will return 0,0.
+   * So when the residual is to be ignored, set this to false for better
+   * performance.
+   */
+  void SetAllowResidualTranslation(bool aAllow) { mAllowResidualTranslation = aAllow; }
 
   /**
    * Can be used anytime
    */
   const nsIntRegion& GetValidRegion() const { return mValidRegion; }
-  float GetXResolution() const { return mXResolution; }
-  float GetYResolution() const { return mYResolution; }
 
   virtual ThebesLayer* AsThebesLayer() { return this; }
 
@@ -960,46 +1009,63 @@ public:
   {
     // The default implementation just snaps 0,0 to pixels.
     gfx3DMatrix idealTransform = GetLocalTransform()*aTransformToSurface;
-    mEffectiveTransform = SnapTransform(idealTransform, gfxRect(0, 0, 0, 0), nsnull);
+    gfxMatrix residual;
+    mEffectiveTransform = SnapTransform(idealTransform, gfxRect(0, 0, 0, 0),
+        mAllowResidualTranslation ? &residual : nsnull);
+    // The residual can only be a translation because ThebesLayer snapping
+    // only aligns a single point with the pixel grid; scale factors are always
+    // preserved exactly
+    NS_ASSERTION(!residual.HasNonTranslation(),
+                 "Residual transform can only be a translation");
+    if (residual.GetTranslation() != mResidualTranslation) {
+      mResidualTranslation = residual.GetTranslation();
+      NS_ASSERTION(-0.5 <= mResidualTranslation.x && mResidualTranslation.x < 0.5 &&
+                   -0.5 <= mResidualTranslation.y && mResidualTranslation.y < 0.5,
+                   "Residual translation out of range");
+      mValidRegion.SetEmpty();
+    }
   }
 
   bool UsedForReadback() { return mUsedForReadback; }
   void SetUsedForReadback(bool aUsed) { mUsedForReadback = aUsed; }
+  /**
+   * Returns the residual translation. Apply this translation when drawing
+   * into the ThebesLayer so that when mEffectiveTransform is applied afterwards
+   * by layer compositing, the results exactly match the "ideal transform"
+   * (the product of the transform of this layer and its ancestors).
+   * Returns 0,0 unless SetAllowResidualTranslation(true) has been called.
+   * The residual translation components are always in the range [-0.5, 0.5).
+   */
+  gfxPoint GetResidualTranslation() const { return mResidualTranslation; }
 
 protected:
   ThebesLayer(LayerManager* aManager, void* aImplData)
     : Layer(aManager, aImplData)
     , mValidRegion()
-    , mXResolution(1.0)
-    , mYResolution(1.0)
     , mUsedForReadback(false)
+    , mAllowResidualTranslation(false)
   {
     mContentFlags = 0; // Clear NO_TEXT, NO_TEXT_OVER_TRANSPARENT
   }
 
   virtual nsACString& PrintInfo(nsACString& aTo, const char* aPrefix);
 
+  /**
+   * ComputeEffectiveTransforms snaps the ideal transform to get mEffectiveTransform.
+   * mResidualTranslation is the translation that should be applied *before*
+   * mEffectiveTransform to get the ideal transform.
+   */
+  gfxPoint mResidualTranslation;
   nsIntRegion mValidRegion;
-  // Resolution values tell this to paint its content scaled by
-  // <aXResolution, aYResolution>, into a backing buffer with
-  // dimensions scaled the same.  A non-1.0 resolution also tells this
-  // to set scaling factors that compensate for the re-paint
-  // resolution when rendering itself to render targets
-  //
-  // Resolution doesn't affect the visible region, valid region, or
-  // re-painted regions at all.  It only affects how scalable thebes
-  // content is rasterized to device pixels.
-  //
-  // Setting the resolution isn't part of the public ThebesLayer API
-  // because it's backend-specific, and it doesn't necessarily make
-  // sense for all backends to fully support it.
-  float mXResolution;
-  float mYResolution;
   /**
    * Set when this ThebesLayer is participating in readback, i.e. some
    * ReadbackLayer (may) be getting its background from this layer.
    */
   bool mUsedForReadback;
+  /**
+   * True when
+   */
+  bool mAllowResidualTranslation;
 };
 
 /**
@@ -1031,7 +1097,12 @@ public:
   void SetFrameMetrics(const FrameMetrics& aFrameMetrics)
   {
     mFrameMetrics = aFrameMetrics;
+    Mutated();
   }
+
+  virtual void FillSpecificAttributes(SpecificLayerAttributes& aAttrs);
+
+  void SortChildrenBy3DZOrder(nsTArray<Layer*>& aArray);
 
   // These getters can be used anytime.
 
@@ -1057,18 +1128,28 @@ public:
    * Returns true if this will use an intermediate surface. This is largely
    * backend-dependent, but it affects the operation of GetEffectiveOpacity().
    */
-  PRBool UseIntermediateSurface() { return mUseIntermediateSurface; }
+  bool UseIntermediateSurface() { return mUseIntermediateSurface; }
+
+  /**
+   * Returns the rectangle covered by the intermediate surface,
+   * in this layer's coordinate system
+   */
+  nsIntRect GetIntermediateSurfaceRect()
+  {
+    NS_ASSERTION(mUseIntermediateSurface, "Must have intermediate surface");
+    return mVisibleRegion.GetBounds();
+  }
 
   /**
    * Returns true if this container has more than one non-empty child
    */
-  PRBool HasMultipleChildren();
+  bool HasMultipleChildren();
 
   /**
    * Returns true if this container supports children with component alpha.
    * Should only be called while painting a child of this layer.
    */
-  PRBool SupportsComponentAlphaChildren() { return mSupportsComponentAlphaChildren; }
+  bool SupportsComponentAlphaChildren() { return mSupportsComponentAlphaChildren; }
 
 protected:
   friend class ReadbackProcessor;
@@ -1080,9 +1161,9 @@ protected:
     : Layer(aManager, aImplData),
       mFirstChild(nsnull),
       mLastChild(nsnull),
-      mUseIntermediateSurface(PR_FALSE),
-      mSupportsComponentAlphaChildren(PR_FALSE),
-      mMayHaveReadbackChild(PR_FALSE)
+      mUseIntermediateSurface(false),
+      mSupportsComponentAlphaChildren(false),
+      mMayHaveReadbackChild(false)
   {
     mContentFlags = 0; // Clear NO_TEXT, NO_TEXT_OVER_TRANSPARENT
   }
@@ -1103,9 +1184,9 @@ protected:
   Layer* mFirstChild;
   Layer* mLastChild;
   FrameMetrics mFrameMetrics;
-  PRPackedBool mUseIntermediateSurface;
-  PRPackedBool mSupportsComponentAlphaChildren;
-  PRPackedBool mMayHaveReadbackChild;
+  bool mUseIntermediateSurface;
+  bool mSupportsComponentAlphaChildren;
+  bool mMayHaveReadbackChild;
 };
 
 /**
@@ -1161,13 +1242,14 @@ class THEBES_API CanvasLayer : public Layer {
 public:
   struct Data {
     Data()
-      : mSurface(nsnull), mGLContext(nsnull),
-        mGLBufferIsPremultiplied(PR_FALSE)
+      : mSurface(nsnull), mGLContext(nsnull)
+      , mDrawTarget(nsnull), mGLBufferIsPremultiplied(false)
     { }
 
     /* One of these two must be specified, but never both */
     gfxASurface* mSurface;  // a gfx Surface for the canvas contents
     mozilla::gl::GLContext* mGLContext; // a GL PBuffer Context
+    mozilla::gfx::DrawTarget *mDrawTarget; // a DrawTarget for the canvas contents
 
     /* The size of the canvas content */
     nsIntSize mSize;
@@ -1175,7 +1257,7 @@ public:
     /* Whether the GLContext contains premultiplied alpha
      * values in the framebuffer or not.  Defaults to FALSE.
      */
-    PRPackedBool mGLBufferIsPremultiplied;
+    bool mGLBufferIsPremultiplied;
   };
 
   /**
@@ -1192,7 +1274,7 @@ public:
    * Notify this CanvasLayer that the canvas surface contents have
    * changed (or will change) before the next transaction.
    */
-  void Updated() { mDirty = PR_TRUE; }
+  void Updated() { mDirty = true; }
 
   /**
    * Register a callback to be called at the end of each transaction.
@@ -1229,7 +1311,7 @@ protected:
   CanvasLayer(LayerManager* aManager, void* aImplData)
     : Layer(aManager, aImplData),
       mCallback(nsnull), mCallbackData(nsnull), mFilter(gfxPattern::FILTER_GOOD),
-      mDirty(PR_FALSE) {}
+      mDirty(false) {}
 
   virtual nsACString& PrintInfo(nsACString& aTo, const char* aPrefix);
 
@@ -1250,7 +1332,7 @@ protected:
   /**
    * Set to true in Updated(), cleared during a transaction.
    */
-  PRPackedBool mDirty;
+  bool mDirty;
 };
 
 }

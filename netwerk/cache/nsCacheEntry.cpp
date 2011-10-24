@@ -54,7 +54,7 @@
 
 
 nsCacheEntry::nsCacheEntry(nsCString *          key,
-                           PRBool               streamBased,
+                           bool                 streamBased,
                            nsCacheStoragePolicy storagePolicy)
     : mKey(key),
       mFetchCount(0),
@@ -89,7 +89,7 @@ nsCacheEntry::~nsCacheEntry()
 
 nsresult
 nsCacheEntry::Create( const char *          key,
-                      PRBool                streamBased,
+                      bool                  streamBased,
                       nsCacheStoragePolicy  storagePolicy,
                       nsCacheDevice *       device,
                       nsCacheEntry **       result)
@@ -234,7 +234,7 @@ nsCacheEntry::CreateDescriptor(nsCacheRequest *           request,
 }
 
 
-PRBool
+bool
 nsCacheEntry::RemoveRequest(nsCacheRequest * request)
 {
     // XXX if debug: verify this request belongs to this entry
@@ -246,7 +246,7 @@ nsCacheEntry::RemoveRequest(nsCacheRequest * request)
 }
 
 
-PRBool
+bool
 nsCacheEntry::RemoveDescriptor(nsCacheEntryDescriptor * descriptor)
 {
     NS_ASSERTION(descriptor->CacheEntry() == this, "### Wrong cache entry!!");
@@ -255,12 +255,12 @@ nsCacheEntry::RemoveDescriptor(nsCacheEntryDescriptor * descriptor)
     PR_REMOVE_AND_INIT_LINK(descriptor);
 
     if (!PR_CLIST_IS_EMPTY(&mDescriptorQ))
-        return PR_TRUE;  // stay active if we still have open descriptors
+        return true;  // stay active if we still have open descriptors
 
     if (PR_CLIST_IS_EMPTY(&mRequestQ))
-        return PR_FALSE; // no descriptors or requests, we can deactivate
+        return false; // no descriptors or requests, we can deactivate
 
-    return PR_TRUE;     // find next best request to give a descriptor to
+    return true;     // find next best request to give a descriptor to
 }
 
 
@@ -375,7 +375,7 @@ nsCacheEntryInfo::GetDataSize(PRUint32 * dataSize)
 
 
 NS_IMETHODIMP
-nsCacheEntryInfo::IsStreamBased(PRBool * result)
+nsCacheEntryInfo::IsStreamBased(bool * result)
 {
     NS_ENSURE_ARG_POINTER(result);
     if (!mCacheEntry)  return NS_ERROR_NOT_AVAILABLE;
@@ -403,7 +403,7 @@ nsCacheEntryHashTable::ops =
 
 
 nsCacheEntryHashTable::nsCacheEntryHashTable()
-    : initialized(PR_FALSE)
+    : initialized(false)
 {
     MOZ_COUNT_CTOR(nsCacheEntryHashTable);
 }
@@ -434,7 +434,7 @@ nsCacheEntryHashTable::Shutdown()
 {
     if (initialized) {
         PL_DHashTableFinish(&table);
-        initialized = PR_FALSE;
+        initialized = false;
     }
 }
 
@@ -512,7 +512,7 @@ nsCacheEntryHashTable::HashKey( PLDHashTable *table, const void *key)
     return PL_DHashStringKey(table,((nsCString *)key)->get());
 }
 
-PRBool
+bool
 nsCacheEntryHashTable::MatchEntry(PLDHashTable *       /* table */,
                                   const PLDHashEntryHdr * hashEntry,
                                   const void *            key)

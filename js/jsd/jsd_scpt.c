@@ -530,8 +530,10 @@ jsd_GetClosestPC(JSDContext* jsdc, JSDScript* jsdscript, uintN line)
     jsuword pc;
     JSCrossCompartmentCall *call;
 
+    if( !jsdscript )
+        return 0;
 #ifdef LIVEWIRE
-    if( jsdscript && jsdscript->lwscript )
+    if( jsdscript->lwscript )
     {
         uintN newline;
         jsdlw_RawToProcessedLineNumber(jsdc, jsdscript, line, &newline);
@@ -578,6 +580,44 @@ jsd_GetClosestLine(JSDContext* jsdc, JSDScript* jsdscript, jsuword pc)
 #endif
 
     return line;    
+}
+
+JSBool
+jsd_GetLinePCs(JSDContext* jsdc, JSDScript* jsdscript,
+               uintN startLine, uintN maxLines,
+               uintN* count, uintN** retLines, jsuword** retPCs)
+{
+    JSCrossCompartmentCall *call;
+    uintN first = jsdscript->lineBase;
+    uintN last = first + jsd_GetScriptLineExtent(jsdc, jsdscript) - 1;
+    JSBool ok;
+    uintN *lines;
+    jsbytecode **pcs;
+    uintN i;
+
+    if (last < startLine)
+        return JS_TRUE;
+
+    call = JS_EnterCrossCompartmentCallScript(jsdc->dumbContext, jsdscript->script);
+    if (!call)
+        return JS_FALSE;
+
+    ok = JS_GetLinePCs(jsdc->dumbContext, jsdscript->script,
+                       startLine, maxLines,
+                       count, retLines, &pcs);
+
+    if (ok) {
+        if (retPCs) {
+            for (i = 0; i < *count; ++i) {
+                (*retPCs)[i] = (*pcs)[i];
+            }
+        }
+
+        JS_free(jsdc->dumbContext, pcs);
+    }
+
+    JS_LeaveCrossCompartmentCall(call);
+    return ok;
 }
 
 JSBool

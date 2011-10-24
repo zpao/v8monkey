@@ -108,7 +108,7 @@ class nsClientAuthRememberEntry : public PLDHashEntryHdr
       return HostWithCertPtr();
     }
 
-    PRBool KeyEquals(KeyTypePointer aKey) const
+    bool KeyEquals(KeyTypePointer aKey) const
     {
       return !strcmp(HostWithCertPtr(), aKey);
     }
@@ -125,7 +125,7 @@ class nsClientAuthRememberEntry : public PLDHashEntryHdr
       return PL_DHashStringKey(nsnull, aKey);
     }
 
-    enum { ALLOW_MEMMOVE = PR_FALSE };
+    enum { ALLOW_MEMMOVE = false };
 
     // get methods
     inline const nsCString &HostWithCert() const { return mHostWithCert; }
@@ -158,7 +158,7 @@ public:
                             CERTCertificate *aServerCert, CERTCertificate *aClientCert);
   nsresult HasRememberedDecision(const nsACString & aHostName, 
                                  CERTCertificate *aServerCert, 
-                                 nsACString & aCertDBKey, PRBool *_retval);
+                                 nsACString & aCertDBKey, bool *_retval);
 
   void ClearRememberedDecisions();
 

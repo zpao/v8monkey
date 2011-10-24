@@ -55,8 +55,8 @@ let gSyncUtils = {
     else if (thisDocEl.id == "BrowserPreferences" && !thisDocEl.instantApply)
       openUILinkIn(url, "window");
     else if (document.documentElement.id == "change-dialog")
-      Weave.Svc.WinMediator.getMostRecentWindow("navigator:browser")
-        .openUILinkIn(url, "tab");
+      Services.wm.getMostRecentWindow("navigator:browser")
+              .openUILinkIn(url, "tab");
     else
       openUILinkIn(url, "tab");
   },
@@ -69,7 +69,7 @@ let gSyncUtils = {
 
   openChange: function openChange(type, duringSetup) {
     // Just re-show the dialog if it's already open
-    let openedDialog = Weave.Svc.WinMediator.getMostRecentWindow("Sync:" + type);
+    let openedDialog = Services.wm.getMostRecentWindow("Sync:" + type);
     if (openedDialog != null) {
       openedDialog.focus();
       return;
@@ -78,8 +78,8 @@ let gSyncUtils = {
     // Open up the change dialog
     let changeXUL = "chrome://browser/content/syncGenericChange.xul";
     let changeOpt = "centerscreen,chrome,resizable=no";
-    Weave.Svc.WinWatcher.activeWindow.openDialog(changeXUL, "", changeOpt,
-                                                 type, duringSetup);
+    Services.ww.activeWindow.openDialog(changeXUL, "", changeOpt,
+                                        type, duringSetup);
   },
 
   changePassword: function () {
@@ -193,13 +193,14 @@ let gSyncUtils = {
    * @param elid : ID of the form element containing the passphrase.
    */
   passphraseSave: function(elid) {
-    let dialogTitle = this.bundle.GetStringFromName("save.synckey.title");
+    let dialogTitle = this.bundle.GetStringFromName("save.recoverykey.title");
+    let defaultSaveName = this.bundle.GetStringFromName("save.recoverykey.defaultfilename");
     this._preparePPiframe(elid, function(iframe) {
       let filepicker = Cc["@mozilla.org/filepicker;1"]
                          .createInstance(Ci.nsIFilePicker);
       filepicker.init(window, dialogTitle, Ci.nsIFilePicker.modeSave);
       filepicker.appendFilters(Ci.nsIFilePicker.filterHTML);
-      filepicker.defaultString = "Firefox Sync Key.html";
+      filepicker.defaultString = defaultSaveName;
       let rv = filepicker.show();
       if (rv == Ci.nsIFilePicker.returnOK
           || rv == Ci.nsIFilePicker.returnReplace) {
@@ -242,7 +243,7 @@ let gSyncUtils = {
     else if (val1 && val1 == Weave.Service.password)
       error = "change.password.pwSameAsPassword";
     else if (val1 && val1 == Weave.Service.passphrase)
-      error = "change.password.pwSameAsSyncKey";
+      error = "change.password.pwSameAsRecoveryKey";
     else if (val1 && val2) {
       if (val1 == val2 && val1.length >= Weave.MIN_PASS_LENGTH)
         valid = true;

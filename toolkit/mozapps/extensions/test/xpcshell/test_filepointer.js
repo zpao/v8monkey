@@ -64,6 +64,25 @@ function writePointer(aId, aName) {
   fos.close();
 }
 
+function writeRelativePointer(aId, aName) {
+  let file = profileDir.clone();
+  file.append(aName ? aName : aId);
+
+  let absTarget = sourceDir.clone();
+  absTarget.append(do_get_expected_addon_name(aId));
+  
+  var relTarget = absTarget.QueryInterface(Ci.nsILocalFile)
+                       .getRelativeDescriptor(profileDir);
+
+  var fos = AM_Cc["@mozilla.org/network/file-output-stream;1"].
+            createInstance(AM_Ci.nsIFileOutputStream);
+  fos.init(file,
+           FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE | FileUtils.MODE_TRUNCATE,
+           FileUtils.PERMS_FILE, 0);
+  fos.write(relTarget, relTarget.length);
+  fos.close();
+}
+
 function run_test() {
   // pointer files only work with unpacked directories
   if (Services.prefs.getBoolPref("extensions.alwaysUnpack") == false)
@@ -325,7 +344,60 @@ function run_test_8() {
 
       restartManager();
 
-      end_test();
+      run_test_9();
     });
+  });
+}
+
+// Removing the add-on the pointer file points at should uninstall the add-on
+function run_test_9() {
+  var dest = writeInstallRDFForExtension(addon1, sourceDir);
+  writePointer(addon1.id);
+
+  restartManager();
+
+  AddonManager.getAddonByID(addon1.id, function(a1) {
+    do_check_neq(a1, null);
+    do_check_eq(a1.version, "1.0");
+
+    dest.remove(true);
+
+    restartManager();
+
+    AddonManager.getAddonByID(addon1.id, function(a1) {
+      do_check_eq(a1, null);
+
+      let pointer = profileDir.clone();
+      pointer.append(addon1.id);
+      do_check_false(pointer.exists());
+
+      run_test_10();
+    });
+  });
+}
+
+// Tests that installing a new add-on by pointer with a relative path works
+function run_test_10() {
+  writeInstallRDFForExtension(addon1, sourceDir);
+  writeRelativePointer(addon1.id);
+
+  restartManager();
+
+  AddonManager.getAddonByID(addon1.id, function(a1) {
+    do_check_neq(a1, null);
+    do_check_eq(a1.version, "1.0");
+
+    let file = a1.getResourceURI().QueryInterface(AM_Ci.nsIFileURL).file;
+    do_check_eq(file.parent.path, sourceDir.path);
+
+    let rootUri = do_get_addon_root_uri(sourceDir, addon1.id);
+    let uri = a1.getResourceURI("/");
+    do_check_eq(uri.spec, rootUri);
+    uri = a1.getResourceURI("install.rdf");
+    do_check_eq(uri.spec, rootUri + "install.rdf");
+    
+    // Check that upgrade is disabled for addons installed by file-pointers.
+    do_check_eq(a1.permissions & AddonManager.PERM_CAN_UPGRADE, 0);
+    end_test();
   });
 }

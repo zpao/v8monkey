@@ -73,10 +73,10 @@ PSArenaFreeCB(size_t aSize, void* aPtr, void* aClosure)
 nsFloatManager::nsFloatManager(nsIPresShell* aPresShell)
   : mX(0), mY(0),
     mFloatDamage(PSArenaAllocCB, PSArenaFreeCB, aPresShell),
-    mPushedLeftFloatPastBreak(PR_FALSE),
-    mPushedRightFloatPastBreak(PR_FALSE),
-    mSplitLeftFloatAcrossBreak(PR_FALSE),
-    mSplitRightFloatAcrossBreak(PR_FALSE)
+    mPushedLeftFloatPastBreak(false),
+    mPushedRightFloatPastBreak(false),
+    mSplitLeftFloatAcrossBreak(false),
+    mSplitRightFloatAcrossBreak(false)
 {
   MOZ_COUNT_CTOR(nsFloatManager);
 }
@@ -173,7 +173,7 @@ nsFloatManager::GetFlowArea(nscoord aYOffset, BandInfoType aInfoType,
       (mFloats[floatCount-1].mLeftYMost <= top &&
        mFloats[floatCount-1].mRightYMost <= top)) {
     return nsFlowAreaRect(aContentArea.x, aYOffset, aContentArea.width,
-                          aHeight, PR_FALSE);
+                          aHeight, false);
   }
 
   nscoord bottom;
@@ -199,7 +199,7 @@ nsFloatManager::GetFlowArea(nscoord aYOffset, BandInfoType aInfoType,
 
   // Walk backwards through the floats until we either hit the front of
   // the list or we're above |top|.
-  PRBool haveFloats = PR_FALSE;
+  bool haveFloats = false;
   for (PRUint32 i = floatCount; i > 0; --i) {
     const FloatInfo &fi = mFloats[i-1];
     if (fi.mLeftYMost <= top && fi.mRightYMost <= top) {
@@ -243,7 +243,7 @@ nsFloatManager::GetFlowArea(nscoord aYOffset, BandInfoType aInfoType,
           // containing block.  This matches the spec for what some
           // callers want and disagrees for other callers, so we should
           // probably provide better information at some point.
-          haveFloats = PR_TRUE;
+          haveFloats = true;
         }
       } else {
         // A right float.
@@ -251,7 +251,7 @@ nsFloatManager::GetFlowArea(nscoord aYOffset, BandInfoType aInfoType,
         if (leftEdge < right) {
           right = leftEdge;
           // See above.
-          haveFloats = PR_TRUE;
+          haveFloats = true;
         }
       }
     }
@@ -338,11 +338,10 @@ nsFloatManager::GetRegionFor(nsIFrame* aFloat)
   return region;
 }
 
-nsresult
+void
 nsFloatManager::StoreRegionFor(nsIFrame* aFloat,
                                nsRect&   aRegion)
 {
-  nsresult rv = NS_OK;
   nsRect rect = aFloat->GetRect();
   FrameProperties props = aFloat->Properties();
   if (aRegion.IsEqualEdges(rect)) {
@@ -357,7 +356,6 @@ nsFloatManager::StoreRegionFor(nsIFrame* aFloat,
     }
     *storedMargin = aRegion - rect;
   }
-  return rv;
 }
 
 nsresult
@@ -515,7 +513,7 @@ nsFloatManager::ClearFloats(nscoord aY, PRUint8 aBreakType,
   return bottom;
 }
 
-PRBool
+bool
 nsFloatManager::ClearContinues(PRUint8 aBreakType) const
 {
   return ((mPushedLeftFloatPastBreak || mSplitLeftFloatAcrossBreak) &&

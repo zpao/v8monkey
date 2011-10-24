@@ -48,20 +48,11 @@ MODULE		= layout
 DIRS +=		chrome \
 		$(NULL)
 
-# XXX Yuck.  We can't transfer everything from autoconf to HOST_CFLAGS,
-# but it would be nice to pick up anything affecting nsCSSPropList.h
-# automatically.
-ifdef MOZ_SVG
-HOST_CFLAGS	+= -DMOZ_SVG=1
-HOST_CXXFLAGS	+= -DMOZ_SVG=1
-endif
-
 HOST_CPPSRCS	= \
 		ListCSSProperties.cpp \
 		$(NULL)
 
 HOST_SIMPLE_PROGRAMS	= $(addprefix host_, $(HOST_CPPSRCS:.cpp=$(HOST_BIN_SUFFIX)))
-
 
 # ParseCSS.cpp used to be built as a test program, but it was not
 # being used for anything, and recent changes to the CSS loader have
@@ -70,13 +61,9 @@ HOST_SIMPLE_PROGRAMS	= $(addprefix host_, $(HOST_CPPSRCS:.cpp=$(HOST_BIN_SUFFIX)
 #
 # TestCSSPropertyLookup.cpp needs the internal XPCOM APIs and so cannot
 # be built with libxul enabled.
-
-ifndef BUILD_STATIC_LIBS
-ifndef MOZ_ENABLE_LIBXUL
-CPP_UNIT_TESTS = TestCSSPropertyLookup.cpp
-LIBS += ../nsCSSKeywords.$(OBJ_SUFFIX) ../nsCSSProps.$(OBJ_SUFFIX) $(XPCOM_LIBS)
-endif
-endif
+#
+#CPP_UNIT_TESTS = TestCSSPropertyLookup.cpp
+#LIBS += ../nsCSSKeywords.$(OBJ_SUFFIX) ../nsCSSProps.$(OBJ_SUFFIX) $(XPCOM_LIBS)
 
 include $(topsrcdir)/config/rules.mk
 
@@ -95,12 +82,14 @@ GARBAGE += css_properties.js
 
 
 _TEST_FILES =	test_acid3_test46.html \
+		test_animations.html \
 		test_any_dynamic.html \
 		test_at_rule_parse_serialize.html \
 		test_bug73586.html \
 		test_bug74880.html \
 		test_bug98997.html \
 		test_bug160403.html \
+		test_bug200089.html \
 		test_bug221428.html \
 		test_bug229915.html \
 		test_bug302186.html \
@@ -136,7 +125,15 @@ _TEST_FILES =	test_acid3_test46.html \
 		test_bug573255.html \
 		test_bug580685.html \
 		test_bug635286.html \
+		test_bug652486.html \
+		test_bug657143.html \
+		test_bug664955.html \
+		test_bug667520.html \
+		test_bug645998.html \
+		file_bug645998-1.css \
+		file_bug645998-2.css \
 		test_cascade.html \
+		test_ch_ex_no_infloops.html \
 		test_compute_data_with_start_struct.html \
 		test_computed_style.html \
 		test_computed_style_no_pseudo.html \
@@ -147,11 +144,13 @@ _TEST_FILES =	test_acid3_test46.html \
 		test_dont_use_document_colors.html \
 		test_font_face_parser.html \
 		test_garbage_at_end_of_declarations.html \
+		test_html_attribute_computed_values.html \
 		test_ident_escaping.html \
 		test_inherit_computation.html \
 		test_inherit_storage.html \
 		test_initial_computation.html \
 		test_initial_storage.html \
+		test_keyframes_rules.html \
 		test_media_queries.html \
 		test_media_queries_dynamic.html \
 		test_media_queries_dynamic_xbl.html \
@@ -168,6 +167,7 @@ _TEST_FILES =	test_acid3_test46.html \
 		test_priority_preservation.html \
 		test_property_syntax_errors.html \
 		test_rem_unit.html \
+		test_rule_serialization.html \
 		test_rules_out_of_sheets.html \
 		test_selectors.html \
 		test_selectors_on_anonymous_content.html \
@@ -226,14 +226,8 @@ _TEST_FILES =	test_acid3_test46.html \
 		visited_image_loading.sjs \
 		visited_image_loading_frame.html \
 		visited_image_loading_frame_empty.html \
+		test_load_events_on_stylesheets.html \
 		$(NULL)
-
-ifdef MOZ_CSS_ANIMATIONS
-_TEST_FILES +=	\
-		test_animations.html \
-		test_keyframes_rules.html \
-		$(NULL)
-endif
 
 _VISITED_REFTEST_FILES = \
 		$(shell find $(topsrcdir)/layout/reftests/css-visited/ -name '*.html' -o -name '*.xhtml') \

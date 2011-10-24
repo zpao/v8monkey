@@ -45,6 +45,7 @@
 #include "gfxFont.h"
 #include "gfxUserFontSet.h"
 #include "nsFontMetrics.h"
+#include "nsLayoutUtils.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constants and structures
@@ -69,19 +70,19 @@ const char* const kCopyValue = nsnull;
 static nsCSSTextAttrMapItem gCSSTextAttrsMap[] =
 {
   // CSS name            CSS value        Attribute name                                Attribute value
-  { "color",             kAnyValue,       &nsAccessibilityAtoms::color,                 kCopyValue },
-  { "font-family",       kAnyValue,       &nsAccessibilityAtoms::fontFamily,            kCopyValue },
-  { "font-style",        kAnyValue,       &nsAccessibilityAtoms::fontStyle,             kCopyValue },
-  { "text-decoration",   "line-through",  &nsAccessibilityAtoms::textLineThroughStyle,  "solid" },
-  { "text-decoration",   "underline",     &nsAccessibilityAtoms::textUnderlineStyle,    "solid" },
-  { "vertical-align",    kAnyValue,       &nsAccessibilityAtoms::textPosition,          kCopyValue }
+  { "color",             kAnyValue,       &nsGkAtoms::color,                 kCopyValue },
+  { "font-family",       kAnyValue,       &nsGkAtoms::font_family,            kCopyValue },
+  { "font-style",        kAnyValue,       &nsGkAtoms::font_style,             kCopyValue },
+  { "text-decoration",   "line-through",  &nsGkAtoms::textLineThroughStyle,  "solid" },
+  { "text-decoration",   "underline",     &nsGkAtoms::textUnderlineStyle,    "solid" },
+  { "vertical-align",    kAnyValue,       &nsGkAtoms::textPosition,          kCopyValue }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsTextAttrs
 
 nsTextAttrsMgr::nsTextAttrsMgr(nsHyperTextAccessible *aHyperTextAcc,
-                               PRBool aIncludeDefAttrs,
+                               bool aIncludeDefAttrs,
                                nsAccessible *aOffsetAcc,
                                PRInt32 aOffsetAccIdx) :
   mHyperTextAcc(aHyperTextAcc), mIncludeDefAttrs(aIncludeDefAttrs),
@@ -147,7 +148,7 @@ nsTextAttrsMgr::GetAttributes(nsIPersistentProperties *aAttributes,
     frame = offsetElm->GetPrimaryFrame();
   }
 
-  nsTPtrArray<nsITextAttr> textAttrArray(10);
+  nsTArray<nsITextAttr*> textAttrArray(10);
 
   // "language" text attribute
   nsLangTextAttr langTextAttr(mHyperTextAcc, hyperTextElm, offsetNode);
@@ -212,7 +213,7 @@ nsTextAttrsMgr::GetAttributes(nsIPersistentProperties *aAttributes,
 }
 
 nsresult
-nsTextAttrsMgr::GetRange(const nsTPtrArray<nsITextAttr>& aTextAttrArray,
+nsTextAttrsMgr::GetRange(const nsTArray<nsITextAttr*>& aTextAttrArray,
                          PRInt32 *aStartHTOffset, PRInt32 *aEndHTOffset)
 {
   PRUint32 attrLen = aTextAttrArray.Length();
@@ -229,11 +230,11 @@ nsTextAttrsMgr::GetRange(const nsTPtrArray<nsITextAttr>& aTextAttrArray,
     nsIContent *currElm = nsCoreUtils::GetDOMElementFor(currAcc->GetContent());
     NS_ENSURE_STATE(currElm);
 
-    PRBool offsetFound = PR_FALSE;
+    bool offsetFound = false;
     for (PRUint32 attrIdx = 0; attrIdx < attrLen; attrIdx++) {
       nsITextAttr *textAttr = aTextAttrArray[attrIdx];
       if (!textAttr->Equal(currElm)) {
-        offsetFound = PR_TRUE;
+        offsetFound = true;
         break;
       }
     }
@@ -254,14 +255,14 @@ nsTextAttrsMgr::GetRange(const nsTPtrArray<nsITextAttr>& aTextAttrArray,
     nsIContent *currElm = nsCoreUtils::GetDOMElementFor(currAcc->GetContent());
     NS_ENSURE_STATE(currElm);
 
-    PRBool offsetFound = PR_FALSE;
+    bool offsetFound = false;
     for (PRUint32 attrIdx = 0; attrIdx < attrLen; attrIdx++) {
       nsITextAttr *textAttr = aTextAttrArray[attrIdx];
 
       // Alter the end offset when text attribute changes its value and stop
       // the search.
       if (!textAttr->Equal(currElm)) {
-        offsetFound = PR_TRUE;
+        offsetFound = true;
         break;
       }
     }
@@ -289,7 +290,7 @@ nsLangTextAttr::nsLangTextAttr(nsHyperTextAccessible *aRootAcc,
     mIsDefined = GetLang(aContent, mNativeValue);
 }
 
-PRBool
+bool
 nsLangTextAttr::GetValueFor(nsIContent *aElm, nsAutoString *aValue)
 {
   return GetLang(aElm, *aValue);
@@ -301,7 +302,7 @@ nsLangTextAttr::Format(const nsAutoString& aValue, nsAString& aFormattedValue)
   aFormattedValue = aValue;
 }
 
-PRBool
+bool
 nsLangTextAttr::GetLang(nsIContent *aContent, nsAString& aLang)
 {
   nsCoreUtils::GetLanguageFor(aContent, mRootContent, aLang);
@@ -324,30 +325,30 @@ nsCSSTextAttr::nsCSSTextAttr(PRUint32 aIndex, nsIContent *aRootContent,
 }
 
 nsIAtom*
-nsCSSTextAttr::GetName()
+nsCSSTextAttr::GetName() const
 {
   return *gCSSTextAttrsMap[mIndex].mAttrName;
 }
 
-PRBool
+bool
 nsCSSTextAttr::GetValueFor(nsIContent *aContent, nsAutoString *aValue)
 {
   nsCOMPtr<nsIDOMCSSStyleDeclaration> currStyleDecl =
     nsCoreUtils::GetComputedStyleDeclaration(EmptyString(), aContent);
   if (!currStyleDecl)
-    return PR_FALSE;
+    return false;
 
   NS_ConvertASCIItoUTF16 cssName(gCSSTextAttrsMap[mIndex].mCSSName);
 
   nsresult rv = currStyleDecl->GetPropertyValue(cssName, *aValue);
   if (NS_FAILED(rv))
-    return PR_TRUE;
+    return true;
 
   const char *cssValue = gCSSTextAttrsMap[mIndex].mCSSValue;
   if (cssValue != kAnyValue && !aValue->EqualsASCII(cssValue))
-    return PR_FALSE;
+    return false;
 
-  return PR_TRUE;
+  return true;
 }
 
 void
@@ -373,12 +374,12 @@ nsBGColorTextAttr::nsBGColorTextAttr(nsIFrame *aRootFrame, nsIFrame *aFrame) :
     mIsDefined = GetColor(aFrame, &mNativeValue);
 }
 
-PRBool
+bool
 nsBGColorTextAttr::GetValueFor(nsIContent *aContent, nscolor *aValue)
 {
   nsIFrame *frame = aContent->GetPrimaryFrame();
   if (!frame)
-    return PR_FALSE;
+    return false;
 
   return GetColor(frame, aValue);
 }
@@ -399,27 +400,27 @@ nsBGColorTextAttr::Format(const nscolor& aValue, nsAString& aFormattedValue)
   aFormattedValue = value;
 }
 
-PRBool
+bool
 nsBGColorTextAttr::GetColor(nsIFrame *aFrame, nscolor *aColor)
 {
   const nsStyleBackground *styleBackground = aFrame->GetStyleBackground();
 
   if (NS_GET_A(styleBackground->mBackgroundColor) > 0) {
     *aColor = styleBackground->mBackgroundColor;
-    return PR_TRUE;
+    return true;
   }
 
   nsIFrame *parentFrame = aFrame->GetParent();
   if (!parentFrame) {
     *aColor = aFrame->PresContext()->DefaultBackgroundColor();
-    return PR_TRUE;
+    return true;
   }
 
   // Each frame of parents chain for the initially passed 'aFrame' has
   // transparent background color. So background color isn't changed from
   // 'mRootFrame' to initially passed 'aFrame'.
   if (parentFrame == mRootFrame)
-    return PR_FALSE;
+    return false;
 
   return GetColor(parentFrame, aColor);
 }
@@ -435,23 +436,23 @@ nsFontSizeTextAttr::nsFontSizeTextAttr(nsIFrame *aRootFrame, nsIFrame *aFrame) :
   mDC = aRootFrame->PresContext()->DeviceContext();
 
   mRootNativeValue = GetFontSize(aRootFrame);
-  mIsRootDefined = PR_TRUE;
+  mIsRootDefined = true;
 
   if (aFrame) {
     mNativeValue = GetFontSize(aFrame);
-    mIsDefined = PR_TRUE;
+    mIsDefined = true;
   }
 }
 
-PRBool
+bool
 nsFontSizeTextAttr::GetValueFor(nsIContent *aContent, nscoord *aValue)
 {
   nsIFrame *frame = aContent->GetPrimaryFrame();
   if (!frame)
-    return PR_FALSE;
+    return false;
   
   *aValue = GetFontSize(frame);
-  return PR_TRUE;
+  return true;
 }
 
 void
@@ -479,10 +480,7 @@ nsFontSizeTextAttr::Format(const nscoord& aValue, nsAString& aFormattedValue)
 nscoord
 nsFontSizeTextAttr::GetFontSize(nsIFrame *aFrame)
 {
-  nsStyleFont* styleFont =
-    (nsStyleFont*)(aFrame->GetStyleDataExternal(eStyleStruct_Font));
-
-  return styleFont->mSize;
+  return aFrame->GetStyleFont()->mSize;
 }
 
 
@@ -495,23 +493,23 @@ nsFontWeightTextAttr::nsFontWeightTextAttr(nsIFrame *aRootFrame,
   nsTextAttr<PRInt32>(aFrame == nsnull)
 {
   mRootNativeValue = GetFontWeight(aRootFrame);
-  mIsRootDefined = PR_TRUE;
+  mIsRootDefined = true;
 
   if (aFrame) {
     mNativeValue = GetFontWeight(aFrame);
-    mIsDefined = PR_TRUE;
+    mIsDefined = true;
   }
 }
 
-PRBool
+bool
 nsFontWeightTextAttr::GetValueFor(nsIContent *aContent, PRInt32 *aValue)
 {
   nsIFrame *frame = aContent->GetPrimaryFrame();
   if (!frame)
-    return PR_FALSE;
+    return false;
 
   *aValue = GetFontWeight(frame);
-  return PR_TRUE;
+  return true;
 }
 
 void
@@ -527,15 +525,8 @@ nsFontWeightTextAttr::GetFontWeight(nsIFrame *aFrame)
 {
   // nsFont::width isn't suitable here because it's necessary to expose real
   // value of font weight (used font might not have some font weight values).
-  nsStyleFont* styleFont =
-    (nsStyleFont*)(aFrame->GetStyleDataExternal(eStyleStruct_Font));
-
-  gfxUserFontSet *fs = aFrame->PresContext()->GetUserFontSet();
-
   nsRefPtr<nsFontMetrics> fm;
-  aFrame->PresContext()->DeviceContext()->
-    GetMetricsFor(styleFont->mFont, aFrame->GetStyleVisibility()->mLanguage,
-                  fs, *getter_AddRefs(fm));
+  nsLayoutUtils::GetFontMetricsForFrame(aFrame, getter_AddRefs(fm));
 
   gfxFontGroup *fontGroup = fm->GetThebesFontGroup();
   gfxFont *font = fontGroup->GetFontAt(0);

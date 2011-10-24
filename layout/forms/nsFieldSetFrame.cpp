@@ -71,7 +71,7 @@ public:
 
   nsFieldSetFrame(nsStyleContext* aContext);
 
-  NS_IMETHOD SetInitialChildList(nsIAtom*       aListName,
+  NS_IMETHOD SetInitialChildList(ChildListID    aListID,
                                  nsFrameList&   aChildList);
 
   NS_HIDDEN_(nscoord)
@@ -82,8 +82,9 @@ public:
   virtual nsSize ComputeSize(nsRenderingContext *aRenderingContext,
                              nsSize aCBSize, nscoord aAvailableWidth,
                              nsSize aMargin, nsSize aBorder, nsSize aPadding,
-                             PRBool aShrinkWrap);
+                             bool aShrinkWrap);
   virtual nscoord GetBaseline() const;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot);
 
   NS_IMETHOD Reflow(nsPresContext*           aPresContext,
                     nsHTMLReflowMetrics&     aDesiredSize,
@@ -97,16 +98,15 @@ public:
   void PaintBorderBackground(nsRenderingContext& aRenderingContext,
     nsPoint aPt, const nsRect& aDirtyRect, PRUint32 aBGFlags);
 
-  NS_IMETHOD AppendFrames(nsIAtom*       aListName,
+  NS_IMETHOD AppendFrames(ChildListID    aListID,
                           nsFrameList&   aFrameList);
-  NS_IMETHOD InsertFrames(nsIAtom*       aListName,
+  NS_IMETHOD InsertFrames(ChildListID    aListID,
                           nsIFrame*      aPrevFrame,
                           nsFrameList&   aFrameList);
-  NS_IMETHOD RemoveFrame(nsIAtom*       aListName,
+  NS_IMETHOD RemoveFrame(ChildListID    aListID,
                          nsIFrame*      aOldFrame);
 
   virtual nsIAtom* GetType() const;
-  virtual PRBool IsContainingBlock() const;
 
 #ifdef ACCESSIBILITY  
   virtual already_AddRefed<nsAccessible> CreateAccessible();
@@ -145,20 +145,21 @@ nsFieldSetFrame::nsFieldSetFrame(nsStyleContext* aContext)
   mLegendSpace  = 0;
 }
 
+void
+nsFieldSetFrame::DestroyFrom(nsIFrame* aDestructRoot)
+{
+  DestroyAbsoluteFrames(aDestructRoot);
+  nsHTMLContainerFrame::DestroyFrom(aDestructRoot);
+}
+
 nsIAtom*
 nsFieldSetFrame::GetType() const
 {
   return nsGkAtoms::fieldSetFrame;
 }
 
-PRBool
-nsFieldSetFrame::IsContainingBlock() const
-{
-  return PR_TRUE;
-}
-
 NS_IMETHODIMP
-nsFieldSetFrame::SetInitialChildList(nsIAtom*       aListName,
+nsFieldSetFrame::SetInitialChildList(ChildListID    aListID,
                                      nsFrameList&   aChildList)
 {
   // Get the content and legend frames.
@@ -172,7 +173,7 @@ nsFieldSetFrame::SetInitialChildList(nsIAtom*       aListName,
   }
 
   // Queue up the frames for the content frame
-  return nsHTMLContainerFrame::SetInitialChildList(nsnull, aChildList);
+  return nsHTMLContainerFrame::SetInitialChildList(kPrincipalList, aChildList);
 }
 
 class nsDisplayFieldSetBorderBackground : public nsDisplayItem {
@@ -395,7 +396,7 @@ nsFieldSetFrame::GetPrefWidth(nsRenderingContext* aRenderingContext)
 nsFieldSetFrame::ComputeSize(nsRenderingContext *aRenderingContext,
                              nsSize aCBSize, nscoord aAvailableWidth,
                              nsSize aMargin, nsSize aBorder, nsSize aPadding,
-                             PRBool aShrinkWrap)
+                             bool aShrinkWrap)
 {
   nsSize result =
     nsHTMLContainerFrame::ComputeSize(aRenderingContext, aCBSize,
@@ -426,8 +427,8 @@ nsFieldSetFrame::Reflow(nsPresContext*           aPresContext,
   aStatus = NS_FRAME_COMPLETE;
 
   //------------ Handle Incremental Reflow -----------------
-  PRBool reflowContent;
-  PRBool reflowLegend;
+  bool reflowContent;
+  bool reflowLegend;
 
   if (aReflowState.ShouldReflowAllKids()) {
     reflowContent = mContentFrame != nsnull;
@@ -491,7 +492,7 @@ nsFieldSetFrame::Reflow(nsPresContext*           aPresContext,
     // if the legend space changes then we need to reflow the 
     // content area as well.
     if (mLegendSpace != oldSpace && mContentFrame) {
-      reflowContent = PR_TRUE;
+      reflowContent = true;
     }
 
     FinishReflowChild(mLegendFrame, aPresContext, &legendReflowState, 
@@ -603,7 +604,7 @@ nsFieldSetFrame::Reflow(nsPresContext*           aPresContext,
     ConsiderChildOverflow(aDesiredSize.mOverflowAreas, mLegendFrame);
   if (mContentFrame)
     ConsiderChildOverflow(aDesiredSize.mOverflowAreas, mContentFrame);
-  FinishAndStoreOverflow(&aDesiredSize);
+  FinishReflowWithAbsoluteFrames(aPresContext, aDesiredSize, aReflowState, aStatus);
 
   Invalidate(aDesiredSize.VisualOverflow());
 
@@ -618,16 +619,16 @@ nsFieldSetFrame::GetSkipSides() const
 }
 
 NS_IMETHODIMP
-nsFieldSetFrame::AppendFrames(nsIAtom*       aListName,
+nsFieldSetFrame::AppendFrames(ChildListID    aListID,
                               nsFrameList&   aFrameList)
 {
   // aFrameList is not allowed to contain "the legend" for this fieldset
   ReparentFrameList(aFrameList);
-  return mContentFrame->AppendFrames(aListName, aFrameList);
+  return mContentFrame->AppendFrames(aListID, aFrameList);
 }
 
 NS_IMETHODIMP
-nsFieldSetFrame::InsertFrames(nsIAtom*       aListName,
+nsFieldSetFrame::InsertFrames(ChildListID    aListID,
                               nsIFrame*      aPrevFrame,
                               nsFrameList&   aFrameList)
 {
@@ -640,16 +641,16 @@ nsFieldSetFrame::InsertFrames(nsIAtom*       aListName,
   if (NS_UNLIKELY(aPrevFrame == mLegendFrame)) {
     aPrevFrame = nsnull;
   }
-  return mContentFrame->InsertFrames(aListName, aPrevFrame, aFrameList);
+  return mContentFrame->InsertFrames(aListID, aPrevFrame, aFrameList);
 }
 
 NS_IMETHODIMP
-nsFieldSetFrame::RemoveFrame(nsIAtom*       aListName,
+nsFieldSetFrame::RemoveFrame(ChildListID    aListID,
                              nsIFrame*      aOldFrame)
 {
   // For reference, see bug 70648, bug 276104 and bug 236071.
   NS_ASSERTION(aOldFrame != mLegendFrame, "Cannot remove mLegendFrame here");
-  return mContentFrame->RemoveFrame(aListName, aOldFrame);
+  return mContentFrame->RemoveFrame(aListID, aOldFrame);
 }
 
 #ifdef ACCESSIBILITY

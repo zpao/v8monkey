@@ -57,7 +57,7 @@ static PRUint32 greenMaski[] = { 0x0000ff00, 0x0000ff00, 0x0000ff00, 0x0000ff00 
 static PRUint32 alphaMaski[] = { 0xff000000, 0xff000000, 0xff000000, 0xff000000 };
 #endif
 
-PRBool
+bool
 gfxAlphaRecovery::RecoverAlphaSSE2(gfxImageSurface* blackSurf,
                                    const gfxImageSurface* whiteSurf)
 {
@@ -68,7 +68,7 @@ gfxAlphaRecovery::RecoverAlphaSSE2(gfxImageSurface* blackSurf,
          blackSurf->Format() != gfxASurface::ImageFormatRGB24) ||
         (whiteSurf->Format() != gfxASurface::ImageFormatARGB32 &&
          whiteSurf->Format() != gfxASurface::ImageFormatRGB24))
-        return PR_FALSE;
+        return false;
 
     blackSurf->Flush();
     whiteSurf->Flush();
@@ -79,7 +79,7 @@ gfxAlphaRecovery::RecoverAlphaSSE2(gfxImageSurface* blackSurf,
     if ((NS_PTR_TO_UINT32(blackData) & 0xf) != (NS_PTR_TO_UINT32(whiteData) & 0xf) ||
         (blackSurf->Stride() - whiteSurf->Stride()) & 0xf) {
         // Cannot keep these in alignment.
-        return PR_FALSE;
+        return false;
     }
 
     __m128i greenMask = _mm_load_si128((__m128i*)greenMaski);
@@ -158,7 +158,7 @@ gfxAlphaRecovery::RecoverAlphaSSE2(gfxImageSurface* blackSurf,
 
     blackSurf->MarkDirty();
 
-    return PR_TRUE;
+    return true;
 }
 
 static PRInt32

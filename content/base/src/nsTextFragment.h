@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -47,6 +46,8 @@
 #include "nsString.h"
 #include "nsReadableUtils.h"
 #include "nsTraceRefcnt.h"
+#include "nsDOMMemoryReporter.h"
+
 class nsString;
 class nsCString;
 
@@ -79,7 +80,7 @@ class nsCString;
  * This class does not have a virtual destructor therefore it is not
  * meant to be subclassed.
  */
-class nsTextFragment {
+class NS_FINAL_CLASS nsTextFragment {
 public:
   static nsresult Init();
   static void Shutdown();
@@ -103,19 +104,19 @@ public:
   nsTextFragment& operator=(const nsTextFragment& aOther);
 
   /**
-   * Return PR_TRUE if this fragment is represented by PRUnichar data
+   * Return true if this fragment is represented by PRUnichar data
    */
-  PRBool Is2b() const
+  bool Is2b() const
   {
     return mState.mIs2b;
   }
 
   /**
-   * Return PR_TRUE if this fragment contains Bidi text
-   * For performance reasons this flag is not set automatically, but
-   * requires an explicit call to UpdateBidiFlag()
+   * Return true if this fragment contains Bidi text
+   * For performance reasons this flag is only set if explicitely requested (by
+   * setting the aUpdateBidi argument on SetTo or Append to true).
    */
-  PRBool IsBidi() const
+  bool IsBidi() const
   {
     return mState.mIsBidi;
   }
@@ -147,21 +148,24 @@ public:
     return mState.mLength;
   }
 
-  PRBool CanGrowBy(size_t n) const
+  bool CanGrowBy(size_t n) const
   {
     return n < (1 << 29) && mState.mLength + n < (1 << 29);
   }
 
   /**
    * Change the contents of this fragment to be a copy of the given
-   * buffer.
+   * buffer. If aUpdateBidi is true, contents of the fragment will be scanned,
+   * and mState.mIsBidi will be turned on if it includes any Bidi characters.
    */
-  void SetTo(const PRUnichar* aBuffer, PRInt32 aLength);
+  void SetTo(const PRUnichar* aBuffer, PRInt32 aLength, bool aUpdateBidi);
 
   /**
-   * Append aData to the end of this fragment.
+   * Append aData to the end of this fragment. If aUpdateBidi is true, contents
+   * of the fragment will be scanned, and mState.mIsBidi will be turned on if
+   * it includes any Bidi characters.
    */
-  void Append(const PRUnichar* aBuffer, PRUint32 aLength);
+  void Append(const PRUnichar* aBuffer, PRUint32 aLength, bool aUpdateBidi);
 
   /**
    * Append the contents of this string fragment to aString
@@ -206,16 +210,10 @@ public:
     return mState.mIs2b ? m2b[aIndex] : static_cast<unsigned char>(m1b[aIndex]);
   }
 
-  /**
-   * Scan the contents of the fragment and turn on mState.mIsBidi if it
-   * includes any Bidi characters.
-   */
-  void UpdateBidiFlag(const PRUnichar* aBuffer, PRUint32 aLength);
-
   struct FragmentBits {
     // PRUint32 to ensure that the values are unsigned, because we
     // want 0/1, not 0/-1!
-    // Making these PRPackedBool causes Windows to not actually pack them,
+    // Making these bool causes Windows to not actually pack them,
     // which causes crashes because we assume this structure is no more than
     // 32 bits!
     PRUint32 mInHeap : 1;
@@ -224,9 +222,26 @@ public:
     PRUint32 mLength : 29;
   };
 
+  /**
+   * Returns the size taken in memory by this text fragment.
+   * @return the size taken in memory by this text fragment.
+   */
+  PRInt64 SizeOf() const
+  {
+    PRInt64 size = sizeof(*this);
+    size += GetLength() * Is2b() ? sizeof(*m2b) : sizeof(*m1b);
+    return size;
+  }
+
 private:
   void ReleaseText();
 
+  /**
+   * Scan the contents of the fragment and turn on mState.mIsBidi if it
+   * includes any Bidi characters.
+   */
+  void UpdateBidiFlag(const PRUnichar* aBuffer, PRUint32 aLength);
+ 
   union {
     PRUnichar *m2b;
     const char *m1b; // This is const since it can point to shared data

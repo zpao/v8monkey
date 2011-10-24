@@ -115,15 +115,15 @@ int main(int argc, char *argv[])
         bObserver->AddRef();
             
         printf("Adding Observer-A as observer of topic-A...\n");
-        rv = anObserverService->AddObserver(aObserver, topicA.get(), PR_FALSE);
+        rv = anObserverService->AddObserver(aObserver, topicA.get(), false);
         testResult(rv);
  
         printf("Adding Observer-B as observer of topic-A...\n");
-        rv = anObserverService->AddObserver(bObserver, topicA.get(), PR_FALSE);
+        rv = anObserverService->AddObserver(bObserver, topicA.get(), false);
         testResult(rv);
  
         printf("Adding Observer-B as observer of topic-B...\n");
-        rv = anObserverService->AddObserver(bObserver, topicB.get(), PR_FALSE);
+        rv = anObserverService->AddObserver(bObserver, topicB.get(), false);
         testResult(rv);
 
         printf("Testing Notify(observer-A, topic-A)...\n");
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
         printf("Enumerating observers of topic-A...\n");
         if ( e ) {
           nsCOMPtr<nsIObserver> observer;
-          PRBool loop = PR_TRUE;
+          bool loop = true;
           while( NS_SUCCEEDED(e->HasMoreElements(&loop)) && loop) 
           {
               e->GetNext(getter_AddRefs(observer));

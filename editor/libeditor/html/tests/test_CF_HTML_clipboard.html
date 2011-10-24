@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=572642
 -->
 <head>
   <title>Test for Bug 572642</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
@@ -90,6 +89,8 @@ var gTests = [
   {fileName: "cfhtml-ie.txt", expected: "browser"},
   // Copied from Chromium
   {fileName: "cfhtml-chromium.txt", expected: "Pacific"},
+  // CF_HTML with no context specified (StartHTML and EndHTML set to -1)
+  {fileName: "cfhtml-nocontext.txt", expected: "3.1415926535897932"},
 ];
 var gTestIndex = 0;
 

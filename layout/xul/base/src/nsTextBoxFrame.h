@@ -75,8 +75,8 @@ public:
 #endif
 
   void UpdateAttributes(nsIAtom*         aAttribute,
-                        PRBool&          aResize,
-                        PRBool&          aRedraw);
+                        bool&          aResize,
+                        bool&          aRedraw);
 
   NS_IMETHOD BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                               const nsRect&           aDirtyRect,
@@ -86,17 +86,19 @@ public:
 
   void PaintTitle(nsRenderingContext& aRenderingContext,
                   const nsRect&        aDirtyRect,
-                  nsPoint              aPt);
+                  nsPoint              aPt,
+                  const nscolor*       aOverrideColor);
 
   nsRect GetComponentAlphaBounds();
 
-  virtual PRBool ComputesOwnOverflowArea();
+  virtual bool ComputesOwnOverflowArea();
 
 protected:
   friend class nsAsyncAccesskeyUpdate;
+  friend class nsDisplayXULTextBox;
   // Should be called only by nsAsyncAccesskeyUpdate.
-  // Returns PR_TRUE if accesskey was updated.
-  PRBool UpdateAccesskey(nsWeakFrame& aWeakThis);
+  // Returns true if accesskey was updated.
+  bool UpdateAccesskey(nsWeakFrame& aWeakThis);
   void UpdateAccessTitle();
   void UpdateAccessIndex();
 
@@ -123,22 +125,17 @@ protected:
                    nsSize&              aSize,
                    nscoord&             aAscent);
 
-  nsresult RegUnregAccessKey(PRBool aDoReg);
+  nsresult RegUnregAccessKey(bool aDoReg);
 
 private:
 
-  PRBool AlwaysAppendAccessKey();
-  PRBool InsertSeparatorBeforeAccessKey();
+  bool AlwaysAppendAccessKey();
+  bool InsertSeparatorBeforeAccessKey();
 
   void DrawText(nsRenderingContext& aRenderingContext,
-                         const nsRect&        aTextRect,
-                         const nscolor*       aOverrideColor);
-
-  void PaintOneShadow(gfxContext *     aCtx,
-                      const nsRect&    aTextRect,
-                      nsCSSShadowItem* aShadowDetails,
-                      const nscolor&   aForegroundColor,
-                      const nsRect&    aDirtyRect);
+                const nsRect&       aDirtyRect,
+                const nsRect&       aTextRect,
+                const nscolor*      aOverrideColor);
 
   nsString mTitle;
   nsString mCroppedTitle;
@@ -149,13 +146,13 @@ private:
 
   CroppingStyle mCropType;
   nscoord mAscent;
-  PRPackedBool mNeedsRecalc;
-  PRPackedBool mNeedsReflowCallback;
+  bool mNeedsRecalc;
+  bool mNeedsReflowCallback;
 
-  static PRBool gAlwaysAppendAccessKey;
-  static PRBool gAccessKeyPrefInitialized;
-  static PRBool gInsertSeparatorBeforeAccessKey;
-  static PRBool gInsertSeparatorPrefInitialized;
+  static bool gAlwaysAppendAccessKey;
+  static bool gAccessKeyPrefInitialized;
+  static bool gInsertSeparatorBeforeAccessKey;
+  static bool gInsertSeparatorPrefInitialized;
 
 }; // class nsTextBoxFrame
 

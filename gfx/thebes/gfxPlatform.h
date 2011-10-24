@@ -42,7 +42,7 @@
 #include "prtypes.h"
 #include "prlog.h"
 #include "nsTArray.h"
-
+#include "nsString.h"
 #include "nsIObserver.h"
 
 #include "gfxTypes.h"
@@ -50,6 +50,10 @@
 #include "gfxColor.h"
 
 #include "qcms.h"
+
+#include "gfx2DGlue.h"
+#include "mozilla/RefPtr.h"
+
 #ifdef XP_OS2
 #undef OS2EMX_PLAIN_CHAR
 #endif
@@ -65,7 +69,8 @@ class gfxPlatformFontList;
 class gfxTextRun;
 class nsIURI;
 class nsIAtom;
-class nsIPrefBranch;
+
+extern cairo_user_data_key_t kDrawTarget;
 
 // pref lang id's for font prefs
 // !!! needs to match the list of pref font.default.xx entries listed in all.js !!!
@@ -168,6 +173,18 @@ public:
     virtual already_AddRefed<gfxASurface> OptimizeImage(gfxImageSurface *aSurface,
                                                         gfxASurface::gfxImageFormat format);
 
+    virtual mozilla::RefPtr<mozilla::gfx::DrawTarget>
+      CreateDrawTargetForSurface(gfxASurface *aSurface);
+
+    virtual mozilla::RefPtr<mozilla::gfx::SourceSurface>
+      GetSourceSurfaceForSurface(mozilla::gfx::DrawTarget *aTarget, gfxASurface *aSurface);
+
+    virtual mozilla::RefPtr<mozilla::gfx::ScaledFont>
+      GetScaledFontForFont(gfxFont *aFont);
+
+    virtual already_AddRefed<gfxASurface>
+      GetThebesSurfaceForDrawTarget(mozilla::gfx::DrawTarget *aTarget);
+
     /*
      * Font bits
      */
@@ -201,15 +218,15 @@ public:
     /**
      * Font name resolver, this returns actual font name(s) by the callback
      * function. If the font doesn't exist, the callback function is not called.
-     * If the callback function returns PR_FALSE, the aAborted value is set to
-     * PR_TRUE, otherwise, PR_FALSE.
+     * If the callback function returns false, the aAborted value is set to
+     * true, otherwise, false.
      */
-    typedef PRBool (*FontResolverCallback) (const nsAString& aName,
+    typedef bool (*FontResolverCallback) (const nsAString& aName,
                                             void *aClosure);
     virtual nsresult ResolveFontName(const nsAString& aFontName,
                                      FontResolverCallback aCallback,
                                      void *aClosure,
-                                     PRBool& aAborted) = 0;
+                                     bool& aAborted) = 0;
 
     /**
      * Resolving a font name to family name. The result MUST be in the result of GetFontList().
@@ -250,36 +267,36 @@ public:
     /**
      * Whether to allow downloadable fonts via @font-face rules
      */
-    PRBool DownloadableFontsEnabled();
+    bool DownloadableFontsEnabled();
 
     /**
      * Whether to sanitize downloaded fonts using the OTS library
      */
-    PRBool SanitizeDownloadedFonts();
+    bool SanitizeDownloadedFonts();
 
     /**
      * Whether to use the harfbuzz shaper (depending on script complexity).
      *
      * This allows harfbuzz to be enabled selectively via the preferences.
      */
-    PRBool UseHarfBuzzForScript(PRInt32 aScriptCode);
+    bool UseHarfBuzzForScript(PRInt32 aScriptCode);
 
     // check whether format is supported on a platform or not (if unclear, returns true)
-    virtual PRBool IsFontFormatSupported(nsIURI *aFontURI, PRUint32 aFormatFlags) { return PR_FALSE; }
+    virtual bool IsFontFormatSupported(nsIURI *aFontURI, PRUint32 aFormatFlags) { return false; }
 
-    void GetPrefFonts(nsIAtom *aLanguage, nsString& array, PRBool aAppendUnicode = PR_TRUE);
+    void GetPrefFonts(nsIAtom *aLanguage, nsString& array, bool aAppendUnicode = true);
 
     // in some situations, need to make decisions about ambiguous characters, may need to look at multiple pref langs
     void GetLangPrefs(eFontPrefLang aPrefLangs[], PRUint32 &aLen, eFontPrefLang aCharLang, eFontPrefLang aPageLang);
     
     /**
      * Iterate over pref fonts given a list of lang groups.  For a single lang
-     * group, multiple pref fonts are possible.  If error occurs, returns PR_FALSE,
-     * PR_TRUE otherwise.  Callback returns PR_FALSE to abort process.
+     * group, multiple pref fonts are possible.  If error occurs, returns false,
+     * true otherwise.  Callback returns false to abort process.
      */
-    typedef PRBool (*PrefFontCallback) (eFontPrefLang aLang, const nsAString& aName,
+    typedef bool (*PrefFontCallback) (eFontPrefLang aLang, const nsAString& aName,
                                         void *aClosure);
-    static PRBool ForEachPrefFont(eFontPrefLang aLangArray[], PRUint32 aLangArrayLen,
+    static bool ForEachPrefFont(eFontPrefLang aLangArray[], PRUint32 aLangArrayLen,
                                   PrefFontCallback aCallback,
                                   void *aClosure);
 
@@ -296,7 +313,7 @@ public:
     static eFontPrefLang GetFontPrefLangFor(PRUint8 aUnicodeRange);
 
     // returns true if a pref lang is CJK
-    static PRBool IsLangCJK(eFontPrefLang aLang);
+    static bool IsLangCJK(eFontPrefLang aLang);
     
     // helper method to add a pref lang to an array, if not already in array
     static void AppendPrefLang(eFontPrefLang aPrefLangs[], PRUint32& aLen, eFontPrefLang aAddLang);
@@ -350,7 +367,7 @@ public:
      */
     static qcms_transform* GetCMSRGBATransform();
 
-    virtual void FontsPrefsChanged(nsIPrefBranch *aPrefBranch, const char *aPref);
+    virtual void FontsPrefsChanged(const char *aPref);
 
     /**
      * Returns a 1x1 surface that can be used to create graphics contexts
@@ -370,13 +387,11 @@ protected:
     gfxPlatform();
     virtual ~gfxPlatform();
 
-    static PRBool GetBoolPref(const char *aPref, PRBool aDefault);
-
     void AppendCJKPrefLangs(eFontPrefLang aPrefLangs[], PRUint32 &aLen, 
                             eFontPrefLang aCharLang, eFontPrefLang aPageLang);
                                                
-    PRBool  mAllowDownloadableFonts;
-    PRBool  mDownloadableFontsSanitize;
+    PRInt8  mAllowDownloadableFonts;
+    PRInt8  mDownloadableFontsSanitize;
 
     // which scripts should be shaped with harfbuzz
     PRInt32 mUseHarfBuzzScripts;
@@ -386,7 +401,8 @@ private:
 
     nsRefPtr<gfxASurface> mScreenReferenceSurface;
     nsTArray<PRUint32> mCJKPrefLangs;
-    nsCOMPtr<nsIObserver> overrideObserver;
+    nsCOMPtr<nsIObserver> mSRGBOverrideObserver;
+    nsCOMPtr<nsIObserver> mFontPrefsObserver;
 };
 
 #endif /* GFX_PLATFORM_H */

@@ -40,7 +40,7 @@
 #include "nsIDOMSVGLength.h"
 #include "nsIContent.h"
 #include "nsAString.h"
-#include "nsContentUtils.h"
+#include "nsMathUtils.h"
 
 class nsSVGElement;
 
@@ -87,17 +87,17 @@ public:
     return *this;
   }
 
-  PRBool operator==(const SVGLength &rhs) const {
+  bool operator==(const SVGLength &rhs) const {
     return mValue == rhs.mValue && mUnit == rhs.mUnit;
   }
 
   void GetValueAsString(nsAString& aValue) const;
 
   /**
-   * This method returns PR_TRUE, unless there was a parse failure, in which
-   * case it returns PR_FALSE (and the length is left unchanged).
+   * This method returns true, unless there was a parse failure, in which
+   * case it returns false (and the length is left unchanged).
    */
-  PRBool SetValueFromString(const nsAString& aValue);
+  bool SetValueFromString(const nsAString& aValue);
 
   /**
    * This will usually return a valid, finite number. There is one exception
@@ -143,21 +143,21 @@ public:
    * Sets this length's value, converting the supplied user unit value to this
    * lengths *current* unit (i.e. leaving the length's unit unchanged).
    *
-   * This method returns PR_TRUE, unless the user unit value couldn't be
-   * converted to this length's current unit, in which case it returns PR_FALSE
+   * This method returns true, unless the user unit value couldn't be
+   * converted to this length's current unit, in which case it returns false
    * (and the length is left unchanged).
    */
-  PRBool SetFromUserUnitValue(float aUserUnitValue,
+  bool SetFromUserUnitValue(float aUserUnitValue,
                               nsSVGElement *aElement,
                               PRUint8 aAxis) {
     float uuPerUnit = GetUserUnitsPerUnit(aElement, aAxis);
     float value = aUserUnitValue / uuPerUnit;
-    if (uuPerUnit > 0 && NS_FloatIsFinite(value)) {
+    if (uuPerUnit > 0 && NS_finite(value)) {
       mValue = value;
       NS_ASSERTION(IsValid(), "Set invalid SVGLength");
-      return PR_TRUE;
+      return true;
     }
-    return PR_FALSE;
+    return false;
   }
 
   /**
@@ -173,26 +173,26 @@ public:
   /**
    * Convert this length's value to the unit specified.
    *
-   * This method returns PR_TRUE, unless it isn't possible to convert the
+   * This method returns true, unless it isn't possible to convert the
    * length to the specified unit. In that case the length is left unchanged
-   * and this method returns PR_FALSE.
+   * and this method returns false.
    */
-  PRBool ConvertToUnit(PRUint32 aUnit, nsSVGElement *aElement, PRUint8 aAxis) {
+  bool ConvertToUnit(PRUint32 aUnit, nsSVGElement *aElement, PRUint8 aAxis) {
     float val = GetValueInSpecifiedUnit(aUnit, aElement, aAxis);
-    if (NS_FloatIsFinite(val)) {
+    if (NS_finite(val)) {
       mValue = val;
       mUnit = aUnit;
       NS_ASSERTION(IsValid(), "Set invalid SVGLength");
-      return PR_TRUE;
+      return true;
     }
-    return PR_FALSE;
+    return false;
   }
 
-  PRBool IsPercentage() const {
+  bool IsPercentage() const {
     return mUnit == nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE;
   }
 
-  static PRBool IsValidUnitType(PRUint16 unit) {
+  static bool IsValidUnitType(PRUint16 unit) {
     return unit > nsIDOMSVGLength::SVG_LENGTHTYPE_UNKNOWN &&
            unit <= nsIDOMSVGLength::SVG_LENGTHTYPE_PC;
   }
@@ -200,8 +200,8 @@ public:
 private:
 
 #ifdef DEBUG
-  PRBool IsValid() const {
-    return NS_FloatIsFinite(mValue) && IsValidUnitType(mUnit);
+  bool IsValid() const {
+    return NS_finite(mValue) && IsValidUnitType(mUnit);
   }
 #endif
 

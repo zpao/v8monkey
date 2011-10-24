@@ -24,6 +24,7 @@
  *   David J. Fiddes <D.J.Fiddes@hw.ac.uk>
  *   Pierre Phaneuf <pp@ludusdesign.com>
  *   Frederic Wang <fred.wang@free.fr>
+ *   Florian Scholz <elchi3@elchi3.de>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -74,17 +75,24 @@ nsMathMLmfencedFrame::InheritAutomaticData(nsIFrame* aParent)
 
   mPresentationData.flags |= NS_MATHML_STRETCH_ALL_CHILDREN_VERTICALLY;
 
+  RemoveFencesAndSeparators();
+  CreateFencesAndSeparators(PresContext());
+
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsMathMLmfencedFrame::SetInitialChildList(nsIAtom*        aListName,
+nsMathMLmfencedFrame::SetInitialChildList(ChildListID     aListID,
                                           nsFrameList&    aChildList)
 {
   // First, let the base class do its work
-  nsresult rv = nsMathMLContainerFrame::SetInitialChildList(aListName, aChildList);
+  nsresult rv = nsMathMLContainerFrame::SetInitialChildList(aListID, aChildList);
   if (NS_FAILED(rv)) return rv;
 
+  // InheritAutomaticData will not get called if our parent is not a mathml
+  // frame, so initialize NS_MATHML_STRETCH_ALL_CHILDREN_VERTICALLY for
+  // GetPreferredStretchSize() from Reflow().
+  mPresentationData.flags |= NS_MATHML_STRETCH_ALL_CHILDREN_VERTICALLY;
   // No need to track the style contexts given to our MathML chars. 
   // The Style System will use Get/SetAdditionalStyleContext() to keep them
   // up-to-date if dynamic changes arise.
@@ -116,8 +124,8 @@ nsMathMLmfencedFrame::ChildListChanged(PRInt32 aModType)
 void
 nsMathMLmfencedFrame::RemoveFencesAndSeparators()
 {
-  if (mOpenChar) delete mOpenChar;
-  if (mCloseChar) delete mCloseChar;
+  delete mOpenChar;
+  delete mCloseChar;
   if (mSeparatorsChar) delete[] mSeparatorsChar;
 
   mOpenChar = nsnull;
@@ -130,7 +138,7 @@ void
 nsMathMLmfencedFrame::CreateFencesAndSeparators(nsPresContext* aPresContext)
 {
   nsAutoString value;
-  PRBool isMutable = PR_FALSE;
+  bool isMutable = false;
 
   //////////////  
   // see if the opening fence is there ...
@@ -242,9 +250,9 @@ nsMathMLmfencedFrame::Reflow(nsPresContext*          aPresContext,
 
   PRInt32 i;
   const nsStyleFont* font = GetStyleFont();
-  aReflowState.rendContext->SetFont(font->mFont,
-                                    aPresContext->GetUserFontSet());
-  nsFontMetrics* fm = aReflowState.rendContext->FontMetrics();
+  nsRefPtr<nsFontMetrics> fm;
+  nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm));
+  aReflowState.rendContext->SetFont(fm);
   nscoord axisHeight, em;
   GetAxisHeight(*aReflowState.rendContext, fm, axisHeight);
   GetEmHeight(fm, em);
@@ -265,7 +273,7 @@ nsMathMLmfencedFrame::Reflow(nsPresContext*          aPresContext,
 
   nsReflowStatus childStatus;
   nsSize availSize(aReflowState.ComputedWidth(), NS_UNCONSTRAINEDSIZE);
-  nsIFrame* firstChild = GetFirstChild(nsnull);
+  nsIFrame* firstChild = GetFirstPrincipalChild();
   nsIFrame* childFrame = firstChild;
   nscoord ascent = 0, descent = 0;
   if (firstChild || mOpenChar || mCloseChar || mSeparatorsCount > 0) {
@@ -307,8 +315,6 @@ nsMathMLmfencedFrame::Reflow(nsPresContext*          aPresContext,
   nsBoundingMetrics containerSize;
   nsStretchDirection stretchDir = NS_STRETCH_DIRECTION_VERTICAL;
 
-  nsPresentationData presentationData;
-  GetPresentationData(presentationData);
   GetPreferredStretchSize(*aReflowState.rendContext,
                           0, /* i.e., without embellishments */
                           stretchDir, containerSize);
@@ -346,12 +352,10 @@ nsMathMLmfencedFrame::Reflow(nsPresContext*          aPresContext,
   // adjust the origin of children.
 
   // we need to center around the axis
-  if (firstChild) { // do nothing for an empty <mfenced></mfenced>
-    nscoord delta = NS_MAX(containerSize.ascent - axisHeight, 
-                           containerSize.descent + axisHeight);
-    containerSize.ascent = delta + axisHeight;
-    containerSize.descent = delta - axisHeight;
-  }
+  nscoord delta = NS_MAX(containerSize.ascent - axisHeight, 
+                         containerSize.descent + axisHeight);
+  containerSize.ascent = delta + axisHeight;
+  containerSize.descent = delta - axisHeight;
 
   /////////////////
   // opening fence ...
@@ -378,11 +382,11 @@ nsMathMLmfencedFrame::Reflow(nsPresContext*          aPresContext,
   i = 0;
   nscoord dx = 0;
   nsBoundingMetrics bm;
-  PRBool firstTime = PR_TRUE;
+  bool firstTime = true;
   if (mOpenChar) {
     PlaceChar(mOpenChar, ascent, bm, dx);
     aDesiredSize.mBoundingMetrics = bm;
-    firstTime = PR_FALSE;
+    firstTime = false;
   }
 
   childFrame = firstChild;
@@ -390,7 +394,7 @@ nsMathMLmfencedFrame::Reflow(nsPresContext*          aPresContext,
     nsHTMLReflowMetrics childSize;
     GetReflowAndBoundingMetricsFor(childFrame, childSize, bm);
     if (firstTime) {
-      firstTime = PR_FALSE;
+      firstTime = false;
       aDesiredSize.mBoundingMetrics  = bm;
     }
     else  
@@ -451,7 +455,7 @@ GetCharSpacing(nsMathMLChar*        aMathMLChar,
   nsOperatorFlags flags = 0;
   float lspace = 0.0f;
   float rspace = 0.0f;
-  PRBool found = nsMathMLOperators::LookupOperator(data, aForm,
+  bool found = nsMathMLOperators::LookupOperator(data, aForm,
                                                    &flags, &lspace, &rspace);
 
   // We don't want extra space when we are a script
@@ -590,7 +594,8 @@ nsMathMLmfencedFrame::GetIntrinsicWidth(nsRenderingContext* aRenderingContext)
 
   nsPresContext* presContext = PresContext();
   const nsStyleFont* font = GetStyleFont();
-  nsRefPtr<nsFontMetrics> fm = presContext->GetMetricsFor(font->mFont);
+  nsRefPtr<nsFontMetrics> fm;
+  nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm));
   nscoord em;
   GetEmHeight(fm, em);
 
@@ -601,7 +606,7 @@ nsMathMLmfencedFrame::GetIntrinsicWidth(nsRenderingContext* aRenderingContext)
   }
 
   PRInt32 i = 0;
-  nsIFrame* childFrame = GetFirstChild(nsnull);
+  nsIFrame* childFrame = GetFirstPrincipalChild();
   while (childFrame) {
     // XXX This includes margin while Reflow currently doesn't consider
     // margin, so we may end up with too much space, but, with stretchy

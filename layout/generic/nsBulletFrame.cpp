@@ -76,7 +76,7 @@ public:
   NS_DECL_ISUPPORTS
   // imgIDecoderObserver (override nsStubImageDecoderObserver)
   NS_IMETHOD OnStartContainer(imgIRequest *aRequest, imgIContainer *aImage);
-  NS_IMETHOD OnDataAvailable(imgIRequest *aRequest, PRBool aCurrentFrame,
+  NS_IMETHOD OnDataAvailable(imgIRequest *aRequest, bool aCurrentFrame,
                              const nsIntRect *aRect);
   NS_IMETHOD OnStopDecode(imgIRequest *aRequest, nsresult status,
                           const PRUnichar *statusArg);
@@ -126,13 +126,13 @@ nsBulletFrame::GetType() const
   return nsGkAtoms::bulletFrame;
 }
 
-PRBool
+bool
 nsBulletFrame::IsEmpty()
 {
   return IsSelfEmpty();
 }
 
-PRBool
+bool
 nsBulletFrame::IsSelfEmpty() 
 {
   return GetStyleList()->mListStyleType == NS_STYLE_LIST_STYLE_NONE;
@@ -156,7 +156,7 @@ nsBulletFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
       NS_RELEASE(listener);
     }
 
-    PRBool needNewRequest = PR_TRUE;
+    bool needNewRequest = true;
 
     if (mImageRequest) {
       // Reload the image, maybe...
@@ -165,10 +165,10 @@ nsBulletFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
       nsCOMPtr<nsIURI> newURI;
       newRequest->GetURI(getter_AddRefs(newURI));
       if (oldURI && newURI) {
-        PRBool same;
+        bool same;
         newURI->Equals(oldURI, &same);
         if (same) {
-          needNewRequest = PR_FALSE;
+          needNewRequest = false;
         } else {
           mImageRequest->Cancel(NS_ERROR_FAILURE);
           mImageRequest = nsnull;
@@ -290,9 +290,9 @@ nsBulletFrame::PaintBullet(nsRenderingContext& aRenderingContext, nsPoint aPt,
   }
 
   nsRefPtr<nsFontMetrics> fm;
-  aRenderingContext.SetColor(GetVisitedDependentColor(eCSSProperty_color));
+  aRenderingContext.SetColor(nsLayoutUtils::GetColor(this, eCSSProperty_color));
 
-  mTextIsRTL = PR_FALSE;
+  mTextIsRTL = false;
 
   nsAutoString text;
   switch (listStyleType) {
@@ -335,16 +335,11 @@ nsBulletFrame::PaintBullet(nsRenderingContext& aRenderingContext, nsPoint aPt,
     break;
 
   case NS_STYLE_LIST_STYLE_DECIMAL:
-  case NS_STYLE_LIST_STYLE_OLD_DECIMAL:
   case NS_STYLE_LIST_STYLE_DECIMAL_LEADING_ZERO:
   case NS_STYLE_LIST_STYLE_LOWER_ROMAN:
   case NS_STYLE_LIST_STYLE_UPPER_ROMAN:
   case NS_STYLE_LIST_STYLE_LOWER_ALPHA:
   case NS_STYLE_LIST_STYLE_UPPER_ALPHA:
-  case NS_STYLE_LIST_STYLE_OLD_LOWER_ROMAN:
-  case NS_STYLE_LIST_STYLE_OLD_UPPER_ROMAN:
-  case NS_STYLE_LIST_STYLE_OLD_LOWER_ALPHA:
-  case NS_STYLE_LIST_STYLE_OLD_UPPER_ALPHA:
   case NS_STYLE_LIST_STYLE_LOWER_GREEK:
   case NS_STYLE_LIST_STYLE_HEBREW:
   case NS_STYLE_LIST_STYLE_ARMENIAN:
@@ -398,7 +393,7 @@ nsBulletFrame::PaintBullet(nsRenderingContext& aRenderingContext, nsPoint aPt,
 
 PRInt32
 nsBulletFrame::SetListItemOrdinal(PRInt32 aNextOrdinal,
-                                  PRBool* aChanged)
+                                  bool* aChanged)
 {
   // Assume that the ordinal comes from the caller
   PRInt32 oldOrdinal = mOrdinal;
@@ -430,25 +425,25 @@ nsBulletFrame::SetListItemOrdinal(PRInt32 aNextOrdinal,
 // maxnegint will work
 
 /**
- * For all functions below, a return value of PR_TRUE means that we
- * could represent mOrder in the desired numbering system.  PR_FALSE
+ * For all functions below, a return value of true means that we
+ * could represent mOrder in the desired numbering system.  false
  * means we had to fall back to decimal
  */
-static PRBool DecimalToText(PRInt32 ordinal, nsString& result)
+static bool DecimalToText(PRInt32 ordinal, nsString& result)
 {
    char cbuf[40];
    PR_snprintf(cbuf, sizeof(cbuf), "%ld", ordinal);
    result.AppendASCII(cbuf);
-   return PR_TRUE;
+   return true;
 }
-static PRBool DecimalLeadingZeroToText(PRInt32 ordinal, nsString& result)
+static bool DecimalLeadingZeroToText(PRInt32 ordinal, nsString& result)
 {
    char cbuf[40];
    PR_snprintf(cbuf, sizeof(cbuf), "%02ld", ordinal);
    result.AppendASCII(cbuf);
-   return PR_TRUE;
+   return true;
 }
-static PRBool OtherDecimalToText(PRInt32 ordinal, PRUnichar zeroChar, nsString& result)
+static bool OtherDecimalToText(PRInt32 ordinal, PRUnichar zeroChar, nsString& result)
 {
    PRUnichar diff = zeroChar - PRUnichar('0');
    DecimalToText(ordinal, result);
@@ -459,21 +454,21 @@ static PRBool OtherDecimalToText(PRInt32 ordinal, PRUnichar zeroChar, nsString& 
    }     
    for(; nsnull != *p ; p++) 
       *p += diff;
-   return PR_TRUE;
+   return true;
 }
-static PRBool TamilToText(PRInt32 ordinal,  nsString& result)
+static bool TamilToText(PRInt32 ordinal,  nsString& result)
 {
    PRUnichar diff = 0x0BE6 - PRUnichar('0');
    DecimalToText(ordinal, result); 
    if (ordinal < 1 || ordinal > 9999) {
      // Can't do those in this system.
-     return PR_FALSE;
+     return false;
    }
    PRUnichar* p = result.BeginWriting();
    for(; nsnull != *p ; p++) 
       if(*p != PRUnichar('0'))
          *p += diff;
-   return PR_TRUE;
+   return true;
 }
 
 
@@ -482,11 +477,11 @@ static const char gUpperRomanCharsA[] = "IXCM";
 static const char gLowerRomanCharsB[] = "vld";
 static const char gUpperRomanCharsB[] = "VLD";
 
-static PRBool RomanToText(PRInt32 ordinal, nsString& result, const char* achars, const char* bchars)
+static bool RomanToText(PRInt32 ordinal, nsString& result, const char* achars, const char* bchars)
 {
   if (ordinal < 1 || ordinal > 3999) {
     DecimalToText(ordinal, result);
-    return PR_FALSE;
+    return false;
   }
   nsAutoString addOn, decStr;
   decStr.AppendInt(ordinal, 10);
@@ -528,7 +523,7 @@ static PRBool RomanToText(PRInt32 ordinal, nsString& result, const char* achars,
     }
     result.Append(addOn);
   }
-  return PR_TRUE;
+  return true;
 }
 
 #define ALPHA_SIZE 26
@@ -709,13 +704,13 @@ static const PRUnichar gEthiopicHalehameTiEtChars[ETHIOPIC_HALEHAME_TI_ET_CHARS_
 
 #define NUM_BUF_SIZE 34 
 
-static PRBool CharListToText(PRInt32 ordinal, nsString& result, const PRUnichar* chars, PRInt32 aBase)
+static bool CharListToText(PRInt32 ordinal, nsString& result, const PRUnichar* chars, PRInt32 aBase)
 {
   PRUnichar buf[NUM_BUF_SIZE];
   PRInt32 idx = NUM_BUF_SIZE;
   if (ordinal < 1) {
     DecimalToText(ordinal, result);
-    return PR_FALSE;
+    return false;
   }
   do {
     ordinal--; // a == 0
@@ -724,7 +719,7 @@ static PRBool CharListToText(PRInt32 ordinal, nsString& result, const PRUnichar*
     ordinal /= aBase ;
   } while ( ordinal > 0);
   result.Append(buf+idx,NUM_BUF_SIZE-idx);
-  return PR_TRUE;
+  return true;
 }
 
 
@@ -764,7 +759,7 @@ static const PRUnichar gCJKIdeographic10KUnit3[4] =
   0x000, 0x4E07, 0x5104, 0x5146
 };
 
-static const PRBool CJKIdeographicToText(PRInt32 ordinal, nsString& result, 
+static const bool CJKIdeographicToText(PRInt32 ordinal, nsString& result, 
                                    const PRUnichar* digits,
                                    const PRUnichar *unit, 
                                    const PRUnichar* unit10k)
@@ -781,7 +776,7 @@ static const PRBool CJKIdeographicToText(PRInt32 ordinal, nsString& result,
 // {
   if (ordinal < 0) {
     DecimalToText(ordinal, result);
-    return PR_FALSE;
+    return false;
   }
   PRUnichar c10kUnit = 0;
   PRUnichar cUnit = 0;
@@ -789,7 +784,7 @@ static const PRBool CJKIdeographicToText(PRInt32 ordinal, nsString& result,
   PRUint32 ud = 0;
   PRUnichar buf[NUM_BUF_SIZE];
   PRInt32 idx = NUM_BUF_SIZE;
-  PRBool bOutputZero = ( 0 == ordinal );
+  bool bOutputZero = ( 0 == ordinal );
   do {
     if(0 == (ud % 4)) {
       c10kUnit = unit10k[ud/4];
@@ -800,14 +795,14 @@ static const PRBool CJKIdeographicToText(PRInt32 ordinal, nsString& result,
     {
       cUnit = 0;
       if(bOutputZero) {
-        bOutputZero = PR_FALSE;
+        bOutputZero = false;
         if(0 != cDigit)
           buf[--idx] = cDigit;
       }
     }
     else
     {
-      bOutputZero = PR_TRUE;
+      bOutputZero = true;
       cUnit = unit[ud%4];
 
       if(0 != c10kUnit)
@@ -826,7 +821,7 @@ static const PRBool CJKIdeographicToText(PRInt32 ordinal, nsString& result,
   } while( ordinal > 0);
   result.Append(buf+idx,NUM_BUF_SIZE-idx);
 // }
-  return PR_TRUE;
+  return true;
 }
 
 #define HEBREW_GERESH       0x05F3
@@ -840,13 +835,13 @@ static const PRUnichar gHebrewDigit[22] =
 0x05E7, 0x05E8, 0x05E9, 0x05EA
 };
 
-static PRBool HebrewToText(PRInt32 ordinal, nsString& result)
+static bool HebrewToText(PRInt32 ordinal, nsString& result)
 {
   if (ordinal < 1 || ordinal > 999999) {
     DecimalToText(ordinal, result);
-    return PR_FALSE;
+    return false;
   }
-  PRBool outputSep = PR_FALSE;
+  bool outputSep = false;
   nsAutoString allText, thousandsGroup;
   do {
     thousandsGroup.Truncate();
@@ -891,19 +886,19 @@ static PRBool HebrewToText(PRInt32 ordinal, nsString& result)
     else
       allText = thousandsGroup + allText;
     ordinal /= 1000;
-    outputSep = PR_TRUE;
+    outputSep = true;
   } while (ordinal >= 1);
 
   result.Append(allText);
-  return PR_TRUE;
+  return true;
 }
 
 
-static PRBool ArmenianToText(PRInt32 ordinal, nsString& result)
+static bool ArmenianToText(PRInt32 ordinal, nsString& result)
 {
   if (ordinal < 1 || ordinal > 9999) { // zero or reach the limit of Armenian numbering system
     DecimalToText(ordinal, result);
-    return PR_FALSE;
+    return false;
   }
 
   PRUnichar buf[NUM_BUF_SIZE];
@@ -920,7 +915,7 @@ static PRBool ArmenianToText(PRInt32 ordinal, nsString& result)
     ordinal /= 10;
   } while (ordinal > 0);
   result.Append(buf + idx, NUM_BUF_SIZE - idx);
-  return PR_TRUE;
+  return true;
 }
 
 
@@ -936,11 +931,11 @@ static const PRUnichar gGeorgianValue [ 37 ] = { // 4 * 9 + 1 = 37
 //  10000
    0x10F5
 };
-static PRBool GeorgianToText(PRInt32 ordinal, nsString& result)
+static bool GeorgianToText(PRInt32 ordinal, nsString& result)
 {
   if (ordinal < 1 || ordinal > 19999) { // zero or reach the limit of Georgian numbering system
     DecimalToText(ordinal, result);
-    return PR_FALSE;
+    return false;
   }
 
   PRUnichar buf[NUM_BUF_SIZE];
@@ -957,7 +952,7 @@ static PRBool GeorgianToText(PRInt32 ordinal, nsString& result)
     ordinal /= 10;
   } while (ordinal > 0);
   result.Append(buf + idx, NUM_BUF_SIZE - idx);
-  return PR_TRUE;
+  return true;
 }
 
 // Convert ordinal to Ethiopic numeric representation.
@@ -970,13 +965,13 @@ static PRBool GeorgianToText(PRInt32 ordinal, nsString& result)
 #define ETHIOPIC_HUNDRED         0x137B
 #define ETHIOPIC_TEN_THOUSAND    0x137C
 
-static PRBool EthiopicToText(PRInt32 ordinal, nsString& result)
+static bool EthiopicToText(PRInt32 ordinal, nsString& result)
 {
   nsAutoString asciiNumberString;      // decimal string representation of ordinal
   DecimalToText(ordinal, asciiNumberString);
   if (ordinal < 1) {
     result.Append(asciiNumberString);
-    return PR_FALSE;
+    return false;
   }
   PRUint8 asciiStringLength = asciiNumberString.Length();
 
@@ -1001,7 +996,7 @@ static PRBool EthiopicToText(PRInt32 ordinal, nsString& result)
     PRUint8 unitsValue = asciiNumberString.CharAt(indexFromLeft + 1) & 0x0F;
     PRUint8 groupValue = tensValue * 10 + unitsValue;
 
-    PRBool oddGroup = (groupIndexFromRight & 1);
+    bool oddGroup = (groupIndexFromRight & 1);
 
     // we want to clear ETHIOPIC_ONE when it is superfluous
     if (ordinal > 1 &&
@@ -1031,16 +1026,16 @@ static PRBool EthiopicToText(PRInt32 ordinal, nsString& result)
       }
     }
   }
-  return PR_TRUE;
+  return true;
 }
 
 
-/* static */ PRBool
+/* static */ bool
 nsBulletFrame::AppendCounterText(PRInt32 aListStyleType,
                                  PRInt32 aOrdinal,
                                  nsString& result)
 {
-  PRBool success = PR_TRUE;
+  bool success = true;
   
   switch (aListStyleType) {
     case NS_STYLE_LIST_STYLE_NONE: // used by counters code only
@@ -1062,7 +1057,6 @@ nsBulletFrame::AppendCounterText(PRInt32 aListStyleType,
       break;
 
     case NS_STYLE_LIST_STYLE_DECIMAL:
-    case NS_STYLE_LIST_STYLE_OLD_DECIMAL:
     default: // CSS2 say "A users  agent that does not recognize a numbering system
       // should use 'decimal'
       success = DecimalToText(aOrdinal, result);
@@ -1073,23 +1067,19 @@ nsBulletFrame::AppendCounterText(PRInt32 aListStyleType,
       break;
 
     case NS_STYLE_LIST_STYLE_LOWER_ROMAN:
-    case NS_STYLE_LIST_STYLE_OLD_LOWER_ROMAN:
       success = RomanToText(aOrdinal, result,
                             gLowerRomanCharsA, gLowerRomanCharsB);
       break;
     case NS_STYLE_LIST_STYLE_UPPER_ROMAN:
-    case NS_STYLE_LIST_STYLE_OLD_UPPER_ROMAN:
       success = RomanToText(aOrdinal, result,
                             gUpperRomanCharsA, gUpperRomanCharsB);
       break;
 
     case NS_STYLE_LIST_STYLE_LOWER_ALPHA:
-    case NS_STYLE_LIST_STYLE_OLD_LOWER_ALPHA:
       success = CharListToText(aOrdinal, result, gLowerAlphaChars, ALPHA_SIZE);
       break;
 
     case NS_STYLE_LIST_STYLE_UPPER_ALPHA:
-    case NS_STYLE_LIST_STYLE_OLD_UPPER_ALPHA:
       success = CharListToText(aOrdinal, result, gUpperAlphaChars, ALPHA_SIZE);
       break;
 
@@ -1274,7 +1264,7 @@ nsBulletFrame::AppendCounterText(PRInt32 aListStyleType,
   return success;
 }
 
-PRBool
+bool
 nsBulletFrame::GetListItemText(const nsStyleList& aListStyle,
                                nsString& result)
 {
@@ -1285,10 +1275,10 @@ nsBulletFrame::GetListItemText(const nsStyleList& aListStyle,
                aListStyle.mListStyleType != NS_STYLE_LIST_STYLE_CIRCLE &&
                aListStyle.mListStyleType != NS_STYLE_LIST_STYLE_SQUARE,
                "we should be using specialized code for these types");
-  PRBool success =
+  bool success =
     AppendCounterText(aListStyle.mListStyleType, mOrdinal, result);
   if (success && aListStyle.mListStyleType == NS_STYLE_LIST_STYLE_HEBREW)
-    mTextIsRTL = PR_TRUE;
+    mTextIsRTL = true;
 
   // XXX For some of these systems, "." is wrong!  This should really be
   // pushed down into the individual cases!
@@ -1371,15 +1361,10 @@ nsBulletFrame::GetDesiredSize(nsPresContext*  aCX,
     default:
     case NS_STYLE_LIST_STYLE_DECIMAL_LEADING_ZERO:
     case NS_STYLE_LIST_STYLE_DECIMAL:
-    case NS_STYLE_LIST_STYLE_OLD_DECIMAL:
     case NS_STYLE_LIST_STYLE_LOWER_ROMAN:
     case NS_STYLE_LIST_STYLE_UPPER_ROMAN:
     case NS_STYLE_LIST_STYLE_LOWER_ALPHA:
     case NS_STYLE_LIST_STYLE_UPPER_ALPHA:
-    case NS_STYLE_LIST_STYLE_OLD_LOWER_ROMAN:
-    case NS_STYLE_LIST_STYLE_OLD_UPPER_ROMAN:
-    case NS_STYLE_LIST_STYLE_OLD_LOWER_ALPHA:
-    case NS_STYLE_LIST_STYLE_OLD_UPPER_ALPHA:
     case NS_STYLE_LIST_STYLE_KATAKANA:
     case NS_STYLE_LIST_STYLE_HIRAGANA:
     case NS_STYLE_LIST_STYLE_KATAKANA_IROHA:
@@ -1525,7 +1510,7 @@ NS_IMETHODIMP nsBulletFrame::OnStartContainer(imgIRequest *aRequest,
 }
 
 NS_IMETHODIMP nsBulletFrame::OnDataAvailable(imgIRequest *aRequest,
-                                             PRBool aCurrentFrame,
+                                             bool aCurrentFrame,
                                              const nsIntRect *aRect)
 {
   // The image has changed.
@@ -1547,7 +1532,7 @@ NS_IMETHODIMP nsBulletFrame::OnStopDecode(imgIRequest *aRequest,
   if (NS_FAILED(aStatus)) {
     // We failed to load the image. Notify the pres shell
     if (NS_FAILED(aStatus) && (mImageRequest == aRequest || !mImageRequest)) {
-      imageFailed = PR_TRUE;
+      imageFailed = true;
     }
   }
 #endif
@@ -1645,7 +1630,7 @@ NS_IMETHODIMP nsBulletListener::OnStartContainer(imgIRequest *aRequest,
 }
 
 NS_IMETHODIMP nsBulletListener::OnDataAvailable(imgIRequest *aRequest,
-                                                PRBool aCurrentFrame,
+                                                bool aCurrentFrame,
                                                 const nsIntRect *aRect)
 {
   if (!mFrame)

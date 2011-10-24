@@ -36,6 +36,7 @@ var gAutoHide = false;
 var gExpectedEventDetails = null;
 var gExpectedTriggerNode = null;
 var gWindowUtils;
+var gPopupWidth = -1, gPopupHeight = -1;
 
 function startPopupTests(tests)
 {
@@ -131,6 +132,16 @@ function eventOccurred(event)
       is(event.target.id, eventitem[1],
          test.testname + " event target ID " + event.target.id);
       matches = eventitem[0] == event.type && eventitem[1] == event.target.id;
+    }
+
+    var modifiersMask = eventitem[2];
+    if (modifiersMask) {
+      var m = "";
+      m += event.altKey ? '1' : '0';
+      m += event.ctrlKey ? '1' : '0';
+      m += event.shiftKey ? '1' : '0';
+      m += event.metaKey ? '1' : '0';
+      is(m, modifiersMask, test.testname + " modifiers mask matches");
     }
 
     var expectedState;
@@ -335,9 +346,15 @@ function compareEdge(anchor, popup, edge, offsetX, offsetY, testname)
   var popuprect = popup.getBoundingClientRect();
   var check1 = false, check2 = false;
 
-  ok((Math.round(popuprect.right) - Math.round(popuprect.left)) &&
-     (Math.round(popuprect.bottom) - Math.round(popuprect.top)),
-     testname + " size");
+  if (gPopupWidth == -1) {
+    ok((Math.round(popuprect.right) - Math.round(popuprect.left)) &&
+       (Math.round(popuprect.bottom) - Math.round(popuprect.top)),
+       testname + " size");
+  }
+  else {
+    is(Math.round(popuprect.width), gPopupWidth, testname + " width");
+    is(Math.round(popuprect.height), gPopupHeight, testname + " height");
+  }
 
   var spaceIdx = edge.indexOf(" ");
   if (spaceIdx > 0) {

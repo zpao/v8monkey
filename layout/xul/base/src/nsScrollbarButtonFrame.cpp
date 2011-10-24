@@ -49,11 +49,13 @@
 #include "nsINameSpaceManager.h"
 #include "nsGkAtoms.h"
 #include "nsSliderFrame.h"
-#include "nsIScrollbarFrame.h"
+#include "nsScrollbarFrame.h"
 #include "nsIScrollbarMediator.h"
 #include "nsRepeatService.h"
 #include "nsGUIEvent.h"
-#include "nsILookAndFeel.h"
+#include "mozilla/LookAndFeel.h"
+
+using namespace mozilla;
 
 //
 // NS_NewToolbarFrame
@@ -94,41 +96,41 @@ nsScrollbarButtonFrame::HandleEvent(nsPresContext* aPresContext,
 }
 
 
-PRBool
+bool
 nsScrollbarButtonFrame::HandleButtonPress(nsPresContext* aPresContext, 
                                           nsGUIEvent*     aEvent,
                                           nsEventStatus*  aEventStatus)
 {
   // Get the desired action for the scrollbar button.
-  nsILookAndFeel::nsMetricID tmpAction;
+  LookAndFeel::IntID tmpAction;
   if (aEvent->eventStructType == NS_MOUSE_EVENT &&
       aEvent->message == NS_MOUSE_BUTTON_DOWN) {
     PRUint16 button = static_cast<nsMouseEvent*>(aEvent)->button;
     if (button == nsMouseEvent::eLeftButton) {
-      tmpAction = nsILookAndFeel::eMetric_ScrollButtonLeftMouseButtonAction;
+      tmpAction = LookAndFeel::eIntID_ScrollButtonLeftMouseButtonAction;
     } else if (button == nsMouseEvent::eMiddleButton) {
-      tmpAction = nsILookAndFeel::eMetric_ScrollButtonMiddleMouseButtonAction;
+      tmpAction = LookAndFeel::eIntID_ScrollButtonMiddleMouseButtonAction;
     } else if (button == nsMouseEvent::eRightButton) {
-      tmpAction = nsILookAndFeel::eMetric_ScrollButtonRightMouseButtonAction;
+      tmpAction = LookAndFeel::eIntID_ScrollButtonRightMouseButtonAction;
     } else {
-      return PR_FALSE;
+      return false;
     }
   } else {
-    return PR_FALSE;
+    return false;
   }
 
   // Get the button action metric from the pres. shell.
   PRInt32 pressedButtonAction;
-  if (NS_FAILED(aPresContext->LookAndFeel()->GetMetric(tmpAction,
-                                                       pressedButtonAction)))
-    return PR_FALSE;
+  if (NS_FAILED(LookAndFeel::GetInt(tmpAction, &pressedButtonAction))) {
+    return false;
+  }
 
   // get the scrollbar control
   nsIFrame* scrollbar;
   GetParentWithTag(nsGkAtoms::scrollbar, this, scrollbar);
 
   if (scrollbar == nsnull)
-    return PR_FALSE;
+    return false;
 
   // get the scrollbars content node
   nsIContent* content = scrollbar->GetContent();
@@ -145,12 +147,12 @@ nsScrollbarButtonFrame::HandleButtonPress(nsPresContext* aPresContext,
   else if (index == 1)
     direction = -1;
   else
-    return PR_FALSE;
+    return false;
 
   // Whether or not to repeat the click action.
-  PRBool repeat = PR_TRUE;
+  bool repeat = true;
   // Use smooth scrolling by default.
-  PRBool smoothScroll = PR_TRUE;
+  bool smoothScroll = true;
   switch (pressedButtonAction) {
     case 0:
       mIncrement = direction * nsSliderFrame::GetIncrement(content);
@@ -166,24 +168,24 @@ nsScrollbarButtonFrame::HandleButtonPress(nsPresContext* aPresContext,
                      nsSliderFrame::GetCurrentPosition(content);
       // Don't repeat or use smooth scrolling if scrolling to beginning or end
       // of a page.
-      repeat = smoothScroll = PR_FALSE;
+      repeat = smoothScroll = false;
       break;
     case 3:
     default:
       // We were told to ignore this click, or someone assigned a non-standard
       // value to the button's action.
-      return PR_FALSE;
+      return false;
   }
   // set this attribute so we can style it later
   nsWeakFrame weakFrame(this);
-  mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::active, NS_LITERAL_STRING("true"), PR_TRUE);
+  mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::active, NS_LITERAL_STRING("true"), true);
 
   if (weakFrame.IsAlive()) {
     DoButtonAction(smoothScroll);
   }
   if (repeat)
     StartRepeat();
-  return PR_TRUE;
+  return true;
 }
 
 NS_IMETHODIMP 
@@ -192,7 +194,7 @@ nsScrollbarButtonFrame::HandleRelease(nsPresContext* aPresContext,
                                       nsEventStatus*  aEventStatus)
 {
   // we're not active anymore
-  mContent->UnsetAttr(kNameSpaceID_None, nsGkAtoms::active, PR_TRUE);
+  mContent->UnsetAttr(kNameSpaceID_None, nsGkAtoms::active, true);
   StopRepeat();
   return NS_OK;
 }
@@ -201,7 +203,7 @@ void nsScrollbarButtonFrame::Notify()
 {
   // Since this is only going to get called if we're scrolling a page length
   // or a line increment, we will always use smooth scrolling.
-  DoButtonAction(PR_TRUE);
+  DoButtonAction(true);
 }
 
 void
@@ -212,7 +214,7 @@ nsScrollbarButtonFrame::MouseClicked(nsPresContext* aPresContext, nsGUIEvent* aE
 }
 
 void
-nsScrollbarButtonFrame::DoButtonAction(PRBool aSmoothScroll) 
+nsScrollbarButtonFrame::DoButtonAction(bool aSmoothScroll) 
 {
   // get the scrollbar control
   nsIFrame* scrollbar;
@@ -241,7 +243,7 @@ nsScrollbarButtonFrame::DoButtonAction(PRBool aSmoothScroll)
   else if (curpos > maxpos)
     curpos = maxpos;
 
-  nsIScrollbarFrame* sb = do_QueryFrame(scrollbar);
+  nsScrollbarFrame* sb = do_QueryFrame(scrollbar);
   if (sb) {
     nsIScrollbarMediator* m = sb->GetScrollbarMediator();
     if (m) {
@@ -255,10 +257,10 @@ nsScrollbarButtonFrame::DoButtonAction(PRBool aSmoothScroll)
   curposStr.AppendInt(curpos);
 
   if (aSmoothScroll)
-    content->SetAttr(kNameSpaceID_None, nsGkAtoms::smooth, NS_LITERAL_STRING("true"), PR_FALSE);
-  content->SetAttr(kNameSpaceID_None, nsGkAtoms::curpos, curposStr, PR_TRUE);
+    content->SetAttr(kNameSpaceID_None, nsGkAtoms::smooth, NS_LITERAL_STRING("true"), false);
+  content->SetAttr(kNameSpaceID_None, nsGkAtoms::curpos, curposStr, true);
   if (aSmoothScroll)
-    content->UnsetAttr(kNameSpaceID_None, nsGkAtoms::smooth, PR_FALSE);
+    content->UnsetAttr(kNameSpaceID_None, nsGkAtoms::smooth, false);
 }
 
 nsresult
@@ -267,7 +269,7 @@ nsScrollbarButtonFrame::GetChildWithTag(nsPresContext* aPresContext,
                                         nsIFrame*& result)
 {
   // recursively search our children
-  nsIFrame* childFrame = start->GetFirstChild(nsnull);
+  nsIFrame* childFrame = start->GetFirstPrincipalChild();
   while (nsnull != childFrame) 
   {    
     // get the content node

@@ -48,16 +48,7 @@
 #include "jspubtd.h"
 #include "jsversion.h"
 
-/*
- * NB: these flag bits are encoded into the bytecode stream in the immediate
- * operand of JSOP_ITER, so don't change them without advancing jsxdrapi.h's
- * JSXDR_BYTECODE_VERSION.
- */
-#define JSITER_ENUMERATE  0x1   /* for-in compatible hidden default iterator */
-#define JSITER_FOREACH    0x2   /* return [key, value] pair rather than key */
-#define JSITER_KEYVALUE   0x4   /* destructuring for-in wants [key, value] */
-#define JSITER_OWNONLY    0x8   /* iterate over obj's own properties only */
-#define JSITER_HIDDEN     0x10  /* also enumerate non-enumerable properties */
+#include "vm/Stack.h"
 
 /*
  * For cacheable native iterators, whether the iterator is currently active.
@@ -112,9 +103,6 @@ struct NativeIterator {
 bool
 VectorToIdArray(JSContext *cx, js::AutoIdVector &props, JSIdArray **idap);
 
-JS_FRIEND_API(bool)
-GetPropertyNames(JSContext *cx, JSObject *obj, uintN flags, js::AutoIdVector *props);
-
 bool
 GetIterator(JSContext *cx, JSObject *obj, uintN flags, js::Value *vp);
 
@@ -149,7 +137,10 @@ bool
 js_SuppressDeletedProperty(JSContext *cx, JSObject *obj, jsid id);
 
 bool
-js_SuppressDeletedIndexProperties(JSContext *cx, JSObject *obj, jsint begin, jsint end);
+js_SuppressDeletedElement(JSContext *cx, JSObject *obj, uint32 index);
+
+bool
+js_SuppressDeletedElements(JSContext *cx, JSObject *obj, uint32 begin, uint32 end);
 
 /*
  * IteratorMore() indicates whether another value is available. It might
@@ -214,7 +205,6 @@ js_NewGenerator(JSContext *cx);
 inline js::StackFrame *
 js_FloatingFrameIfGenerator(JSContext *cx, js::StackFrame *fp)
 {
-    JS_ASSERT(cx->stack.contains(fp));
     if (JS_UNLIKELY(fp->isGeneratorFrame()))
         return cx->generatorFor(fp)->floatingFrame();
     return fp;
@@ -232,15 +222,15 @@ js_LiveFrameIfGenerator(js::StackFrame *fp)
 
 #endif
 
-extern js::Class js_GeneratorClass;
-extern js::Class js_IteratorClass;
-extern js::Class js_StopIterationClass;
+namespace js {
 
 static inline bool
-js_ValueIsStopIteration(const js::Value &v)
+IsStopIteration(const js::Value &v)
 {
-    return v.isObject() && v.toObject().getClass() == &js_StopIterationClass;
+    return v.isObject() && v.toObject().isStopIteration();
 }
+
+}  /* namespace js */
 
 extern JSObject *
 js_InitIteratorClasses(JSContext *cx, JSObject *obj);

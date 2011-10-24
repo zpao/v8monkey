@@ -47,7 +47,7 @@ class nsDOMPageTransitionEvent : public nsDOMEvent,
 {
 public:
   nsDOMPageTransitionEvent(nsPresContext* aPresContext, nsEvent* aEvent) :
-  nsDOMEvent(aPresContext, aEvent), mPersisted(PR_FALSE) {}
+  nsDOMEvent(aPresContext, aEvent), mPersisted(false) {}
 
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -56,7 +56,7 @@ public:
   // Forward to base class
   NS_FORWARD_TO_NSDOMEVENT
 protected:
-  PRBool mPersisted;
+  bool mPersisted;
 };
 
 #endif // nsDOMPageTransitionEvent_h__

@@ -19,6 +19,10 @@
 #include "base/string_tokenizer.h"
 #include "base/string_util.h"
 
+#ifdef MOZ_MEMORY_ANDROID
+#include "jemalloc.h"
+#endif
+
 namespace {
 
 enum ParsingState {
@@ -32,55 +36,52 @@ static mozilla::EnvironmentLog gProcessLog("MOZ_PROCESS_LOG");
 
 namespace base {
 
-#if defined(CHROMIUM_MOZILLA_BUILD)
 bool LaunchApp(const std::vector<std::string>& argv,
                const file_handle_mapping_vector& fds_to_remap,
                bool wait, ProcessHandle* process_handle) {
   return LaunchApp(argv, fds_to_remap, environment_map(),
                    wait, process_handle);
 }
-#endif
 
 bool LaunchApp(const std::vector<std::string>& argv,
                const file_handle_mapping_vector& fds_to_remap,
-#if defined(CHROMIUM_MOZILLA_BUILD)
                const environment_map& env_vars_to_set,
-#endif
                bool wait, ProcessHandle* process_handle,
                ProcessArchitecture arch) {
+  scoped_array<char*> argv_cstr(new char*[argv.size() + 1]);
+  // Illegal to allocate memory after fork and before execvp
+  InjectiveMultimap fd_shuffle1, fd_shuffle2;
+  fd_shuffle1.reserve(fds_to_remap.size());
+  fd_shuffle2.reserve(fds_to_remap.size());
+
   pid_t pid = fork();
   if (pid < 0)
     return false;
 
   if (pid == 0) {
-    InjectiveMultimap fd_shuffle;
     for (file_handle_mapping_vector::const_iterator
         it = fds_to_remap.begin(); it != fds_to_remap.end(); ++it) {
-      fd_shuffle.push_back(InjectionArc(it->first, it->second, false));
+      fd_shuffle1.push_back(InjectionArc(it->first, it->second, false));
+      fd_shuffle2.push_back(InjectionArc(it->first, it->second, false));
     }
 
-    if (!ShuffleFileDescriptors(fd_shuffle))
-      exit(127);
+    if (!ShuffleFileDescriptors(&fd_shuffle1))
+      _exit(127);
 
-    CloseSuperfluousFds(fd_shuffle);
+    CloseSuperfluousFds(fd_shuffle2);
 
-#if defined(CHROMIUM_MOZILLA_BUILD)
     for (environment_map::const_iterator it = env_vars_to_set.begin();
          it != env_vars_to_set.end(); ++it) {
       if (setenv(it->first.c_str(), it->second.c_str(), 1/*overwrite*/))
-        exit(127);
+        _exit(127);
     }
-#endif
 
-    scoped_array<char*> argv_cstr(new char*[argv.size() + 1]);
     for (size_t i = 0; i < argv.size(); i++)
       argv_cstr[i] = const_cast<char*>(argv[i].c_str());
     argv_cstr[argv.size()] = NULL;
     execvp(argv_cstr[0], argv_cstr.get());
-#if defined(CHROMIUM_MOZILLA_BUILD)
     // if we get here, we're in serious trouble and should complain loudly
     DLOG(ERROR) << "FAILED TO exec() CHILD PROCESS, path: " << argv_cstr[0];
-#endif
     exit(127);
   } else {
     gProcessLog.print("==> process %d launched child process %d\n",

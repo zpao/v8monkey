@@ -46,9 +46,7 @@ function test() {
       return ex.name == "NS_ERROR_ILLEGAL_VALUE";
     }
   }
-  
-  let ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
-  
+
   // all of the following calls with illegal arguments should throw NS_ERROR_ILLEGAL_VALUE
   ok(test(function() ss.getWindowState({})),
      "Invalid window for getWindowState throws");
@@ -72,14 +70,6 @@ function test() {
      "Invalid index for undoCloseTab throws");
   ok(test(function() ss.getWindowValue({}, "")),
      "Invalid window for getWindowValue throws");
-  ok(test(function() ss.getWindowValue({}, "")),
-     "Invalid window for getWindowValue throws");
-  ok(test(function() ss.getWindowValue({}, "", "")),
+  ok(test(function() ss.setWindowValue({}, "", "")),
      "Invalid window for setWindowValue throws");
-  ok(test(function() ss.deleteWindowValue({}, "")),
-     "Invalid window for deleteWindowValue throws");
-  ok(test(function() ss.deleteWindowValue(window, Date.now().toString())),
-     "Nonexistent value for deleteWindowValue throws");
-  ok(test(function() ss.deleteTabValue(gBrowser.selectedTab, Date.now().toString())),
-     "Nonexistent value for deleteTabValue throws");
 }

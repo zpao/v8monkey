@@ -84,8 +84,8 @@ public:                                                                       \
   nsresult Put(const KEY_TYPE aKey) {                                         \
     return AddEntry(aKey) ? NS_OK : NS_ERROR_OUT_OF_MEMORY;                   \
   }                                                                           \
-  PRBool Contains(const KEY_TYPE aKey) {                                      \
-    return GetEntry(aKey) ? PR_TRUE : PR_FALSE;                               \
+  bool Contains(const KEY_TYPE aKey) {                                      \
+    return GetEntry(aKey) ? true : false;                               \
   }                                                                           \
 };
 
@@ -93,7 +93,7 @@ public:                                                                       \
 DHASH_WRAPPER(CLASSNAME##Super,ENTRY_CLASS,KEY_TYPE)
 
 #undef DHASH_EXPORT
-#define DHASH_EXPORT NS_COM
+#define DHASH_EXPORT
 
 DECL_DHASH_SET(nsStringHashSet, PLDHashStringEntry, nsAString&)
 DECL_DHASH_SET(nsCStringHashSet,PLDHashCStringEntry,nsACString&)

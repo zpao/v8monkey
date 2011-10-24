@@ -94,8 +94,8 @@ public:
   nsScriptLoadRequest(nsIScriptElement* aElement,
                       PRUint32 aVersion)
     : mElement(aElement),
-      mLoading(PR_TRUE),
-      mIsInline(PR_TRUE),
+      mLoading(true),
+      mIsInline(true),
       mJSVersion(aVersion), mLineNo(1)
   {
   }
@@ -111,14 +111,14 @@ public:
     mElement->ScriptEvaluated(aResult, mElement, mIsInline);
   }
 
-  PRBool IsPreload()
+  bool IsPreload()
   {
     return mElement == nsnull;
   }
 
   nsCOMPtr<nsIScriptElement> mElement;
-  PRPackedBool mLoading;             // Are we still waiting for a load to complete?
-  PRPackedBool mIsInline;            // Is the script inline or loaded?
+  bool mLoading;             // Are we still waiting for a load to complete?
+  bool mIsInline;            // Is the script inline or loaded?
   nsString mScriptText;              // Holds script for loaded scripts
   PRUint32 mJSVersion;
   nsCOMPtr<nsIURI> mURI;
@@ -138,9 +138,9 @@ NS_IMPL_THREADSAFE_ISUPPORTS0(nsScriptLoadRequest)
 nsScriptLoader::nsScriptLoader(nsIDocument *aDocument)
   : mDocument(aDocument),
     mBlockerCount(0),
-    mEnabled(PR_TRUE),
-    mDeferEnabled(PR_FALSE),
-    mDocumentParsingDone(PR_FALSE)
+    mEnabled(true),
+    mDeferEnabled(false),
+    mDocumentParsingDone(false)
 {
   // enable logging for CSP
 #ifdef PR_LOGGING
@@ -190,7 +190,7 @@ NS_IMPL_ISUPPORTS1(nsScriptLoader, nsIStreamLoaderObserver)
 // This is how IE seems to filter out a window's onload handler from a
 // <script for=... event=...> element.
 
-static PRBool
+static bool
 IsScriptEventHandler(nsIScriptElement *aScriptElement)
 {
   nsCOMPtr<nsIContent> contElement = do_QueryInterface(aScriptElement);
@@ -199,23 +199,23 @@ IsScriptEventHandler(nsIScriptElement *aScriptElement)
   nsAutoString forAttr, eventAttr;
   if (!contElement->GetAttr(kNameSpaceID_None, nsGkAtoms::_for, forAttr) ||
       !contElement->GetAttr(kNameSpaceID_None, nsGkAtoms::event, eventAttr)) {
-    return PR_FALSE;
+    return false;
   }
 
   const nsAString& for_str =
     nsContentUtils::TrimWhitespace<nsCRT::IsAsciiSpace>(forAttr);
   if (!for_str.LowerCaseEqualsLiteral("window")) {
-    return PR_TRUE;
+    return true;
   }
 
   // We found for="window", now check for event="onload".
   const nsAString& event_str =
-    nsContentUtils::TrimWhitespace<nsCRT::IsAsciiSpace>(eventAttr, PR_FALSE);
+    nsContentUtils::TrimWhitespace<nsCRT::IsAsciiSpace>(eventAttr, false);
   if (!StringBeginsWith(event_str, NS_LITERAL_STRING("onload"),
                         nsCaseInsensitiveStringComparator())) {
     // It ain't "onload.*".
 
-    return PR_TRUE;
+    return true;
   }
 
   nsAutoString::const_iterator start, end;
@@ -228,10 +228,10 @@ IsScriptEventHandler(nsIScriptElement *aScriptElement)
     // We got onload followed by something other than space or
     // '('. Not good enough.
 
-    return PR_TRUE;
+    return true;
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 nsresult
@@ -329,7 +329,7 @@ nsScriptLoader::StartLoad(nsScriptLoadRequest *aRequest, const nsAString &aType)
     // HTTP content negotation has little value in this context.
     httpChannel->SetRequestHeader(NS_LITERAL_CSTRING("Accept"),
                                   NS_LITERAL_CSTRING("*/*"),
-                                  PR_FALSE);
+                                  false);
     httpChannel->SetReferrer(mDocument->GetDocumentURI());
   }
 
@@ -342,11 +342,11 @@ nsScriptLoader::StartLoad(nsScriptLoadRequest *aRequest, const nsAString &aType)
   return NS_OK;
 }
 
-PRBool
+bool
 nsScriptLoader::PreloadURIComparator::Equals(const PreloadInfo &aPi,
                                              nsIURI * const &aURI) const
 {
-  PRBool same;
+  bool same;
   return NS_SUCCEEDED(aPi.mRequest->mURI->Equals(aURI, &same)) &&
          same;
 }
@@ -441,10 +441,10 @@ nsScriptLoader::ProcessScriptElement(nsIScriptElement *aElement)
       nsnull
     };
 
-    PRBool isJavaScript = PR_FALSE;
+    bool isJavaScript = false;
     for (PRInt32 i = 0; jsTypes[i]; i++) {
       if (mimeType.LowerCaseEqualsASCII(jsTypes[i])) {
-        isJavaScript = PR_TRUE;
+        isJavaScript = true;
         break;
       }
     }
@@ -581,8 +581,8 @@ nsScriptLoader::ProcessScriptElement(nsIScriptElement *aElement)
       request = new nsScriptLoadRequest(aElement, version);
       NS_ENSURE_TRUE(request, NS_ERROR_OUT_OF_MEMORY);
       request->mURI = scriptURI;
-      request->mIsInline = PR_FALSE;
-      request->mLoading = PR_TRUE;
+      request->mIsInline = false;
+      request->mLoading = true;
       rv = StartLoad(request, type);
       NS_ENSURE_SUCCESS(rv, rv);
     }
@@ -673,7 +673,7 @@ nsScriptLoader::ProcessScriptElement(nsIScriptElement *aElement)
 
   if (csp) {
     PR_LOG(gCspPRLog, PR_LOG_DEBUG, ("New ScriptLoader i ****with CSP****"));
-    PRBool inlineOK;
+    bool inlineOK;
     rv = csp->GetAllowsInlineScript(&inlineOK);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -703,8 +703,8 @@ nsScriptLoader::ProcessScriptElement(nsIScriptElement *aElement)
   request = new nsScriptLoadRequest(aElement, version);
   NS_ENSURE_TRUE(request, NS_ERROR_OUT_OF_MEMORY);
   request->mJSVersion = version;
-  request->mLoading = PR_FALSE;
-  request->mIsInline = PR_TRUE;
+  request->mLoading = false;
+  request->mIsInline = true;
   request->mURI = mDocument->GetDocumentURI();
   request->mLineNo = aElement->GetScriptLineNumber();
 
@@ -772,7 +772,7 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest)
   else {
     script = &aRequest->mScriptText;
 
-    doc = scriptElem->GetOwnerDoc();
+    doc = scriptElem->OwnerDoc();
   }
 
   nsCOMPtr<nsIScriptElement> oldParserInsertedScript;
@@ -784,11 +784,11 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest)
 
   FireScriptAvailable(NS_OK, aRequest);
 
-  PRBool runScript = PR_TRUE;
-  nsContentUtils::DispatchTrustedEvent(scriptElem->GetOwnerDoc(),
+  bool runScript = true;
+  nsContentUtils::DispatchTrustedEvent(scriptElem->OwnerDoc(),
                                        scriptElem,
                                        NS_LITERAL_STRING("beforescriptexecute"),
-                                       PR_TRUE, PR_TRUE, &runScript);
+                                       true, true, &runScript);
 
   nsresult rv = NS_OK;
   if (runScript) {
@@ -802,10 +802,10 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest)
       doc->EndEvaluatingExternalScript();
     }
 
-    nsContentUtils::DispatchTrustedEvent(scriptElem->GetOwnerDoc(),
+    nsContentUtils::DispatchTrustedEvent(scriptElem->OwnerDoc(),
                                          scriptElem,
                                          NS_LITERAL_STRING("afterscriptexecute"),
-                                         PR_TRUE, PR_FALSE);
+                                         true, false);
   }
 
   FireScriptEvaluated(rv, aRequest);
@@ -856,7 +856,7 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
   }
 
   nsCOMPtr<nsIContent> scriptContent(do_QueryInterface(aRequest->mElement));
-  nsIDocument* ownerDoc = scriptContent->GetOwnerDoc();
+  nsIDocument* ownerDoc = scriptContent->OwnerDoc();
   if (ownerDoc != mDocument) {
     // Willful violation of HTML5 as of 2010-12-01
     return NS_ERROR_FAILURE;
@@ -888,8 +888,8 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
 
   nsIURI* uri = aRequest->mFinalURI ? aRequest->mFinalURI : aRequest->mURI;
 
-  PRBool oldProcessingScriptTag = context->GetProcessingScriptTag();
-  context->SetProcessingScriptTag(PR_TRUE);
+  bool oldProcessingScriptTag = context->GetProcessingScriptTag();
+  context->SetProcessingScriptTag(true);
 
   // Update our current script.
   nsCOMPtr<nsIScriptElement> oldCurrent = mCurrentScript;
@@ -898,7 +898,7 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
   nsCAutoString url;
   nsContentUtils::GetWrapperSafeScriptFilename(mDocument, uri, url);
 
-  PRBool isUndefined;
+  bool isUndefined;
   rv = context->EvaluateString(aScript,
                           globalObject->GetScriptGlobal(stid),
                           mDocument->NodePrincipal(), url.get(),
@@ -910,7 +910,7 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
 
   JSContext *cx = nsnull; // Initialize this to keep GCC happy.
   if (stid == nsIProgrammingLanguage::JAVASCRIPT) {
-    cx = (JSContext *)context->GetNativeContext();
+    cx = context->GetNativeContext();
     ::JS_BeginRequest(cx);
     NS_ASSERTION(!::JS_IsExceptionPending(cx),
                  "JS_ReportPendingException wasn't called in EvaluateString");
@@ -1000,18 +1000,18 @@ nsScriptLoader::ProcessPendingRequests()
     // No more pending scripts; time to unblock onload.
     // OK to unblock onload synchronously here, since callers must be
     // prepared for the world changing anyway.
-    mDocumentParsingDone = PR_FALSE;
-    mDocument->UnblockOnload(PR_TRUE);
+    mDocumentParsingDone = false;
+    mDocument->UnblockOnload(true);
   }
 }
 
-PRBool
+bool
 nsScriptLoader::ReadyToExecuteScripts()
 {
   // Make sure the SelfReadyToExecuteScripts check is first, so that
   // we don't block twice on an ancestor.
   if (!SelfReadyToExecuteScripts()) {
-    return PR_FALSE;
+    return false;
   }
   
   for (nsIDocument* doc = mDocument; doc; doc = doc->GetParentDocument()) {
@@ -1019,20 +1019,20 @@ nsScriptLoader::ReadyToExecuteScripts()
     if (!ancestor->SelfReadyToExecuteScripts() &&
         ancestor->AddPendingChildLoader(this)) {
       AddExecuteBlocker();
-      return PR_FALSE;
+      return false;
     }
   }
 
-  return PR_TRUE;
+  return true;
 }
 
 
 // This function was copied from nsParser.cpp. It was simplified a bit.
-static PRBool
+static bool
 DetectByteOrderMark(const unsigned char* aBytes, PRInt32 aLen, nsCString& oCharset)
 {
   if (aLen < 2)
-    return PR_FALSE;
+    return false;
 
   switch(aBytes[0]) {
   case 0xEF:
@@ -1210,7 +1210,7 @@ nsScriptLoader::PrepareLoadedRequest(nsScriptLoadRequest* aRequest,
 
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(req);
   if (httpChannel) {
-    PRBool requestSucceeded;
+    bool requestSucceeded;
     rv = httpChannel->GetRequestSucceeded(&requestSucceeded);
     if (NS_SUCCEEDED(rv) && !requestSucceeded) {
       return NS_ERROR_NOT_AVAILABLE;
@@ -1253,50 +1253,50 @@ nsScriptLoader::PrepareLoadedRequest(nsScriptLoadRequest* aRequest,
                "aRequest should be pending!");
 
   // Mark this as loaded
-  aRequest->mLoading = PR_FALSE;
+  aRequest->mLoading = false;
 
   return NS_OK;
 }
 
 /* static */
-PRBool
+bool
 nsScriptLoader::ShouldExecuteScript(nsIDocument* aDocument,
                                     nsIChannel* aChannel)
 {
   if (!aChannel) {
-    return PR_FALSE;
+    return false;
   }
 
-  PRBool hasCert;
+  bool hasCert;
   nsIPrincipal* docPrincipal = aDocument->NodePrincipal();
   docPrincipal->GetHasCertificate(&hasCert);
   if (!hasCert) {
-    return PR_TRUE;
+    return true;
   }
 
   nsCOMPtr<nsIPrincipal> channelPrincipal;
   nsresult rv = nsContentUtils::GetSecurityManager()->
     GetChannelPrincipal(aChannel, getter_AddRefs(channelPrincipal));
-  NS_ENSURE_SUCCESS(rv, PR_FALSE);
+  NS_ENSURE_SUCCESS(rv, false);
 
   NS_ASSERTION(channelPrincipal, "Gotta have a principal here!");
 
   // If the channel principal isn't at least as powerful as the
   // document principal, then we don't execute the script.
-  PRBool subsumes;
+  bool subsumes;
   rv = channelPrincipal->Subsumes(docPrincipal, &subsumes);
   return NS_SUCCEEDED(rv) && subsumes;
 }
 
 void
-nsScriptLoader::ParsingComplete(PRBool aTerminated)
+nsScriptLoader::ParsingComplete(bool aTerminated)
 {
   if (mDeferEnabled) {
     // Have to check because we apparently get ParsingComplete
     // without BeginDeferringScripts in some cases
-    mDocumentParsingDone = PR_TRUE;
+    mDocumentParsingDone = true;
   }
-  mDeferEnabled = PR_FALSE;
+  mDeferEnabled = false;
   if (aTerminated) {
     mDeferRequests.Clear();
     mAsyncRequests.Clear();
@@ -1314,14 +1314,15 @@ void
 nsScriptLoader::PreloadURI(nsIURI *aURI, const nsAString &aCharset,
                            const nsAString &aType)
 {
-  nsRefPtr<nsScriptLoadRequest> request = new nsScriptLoadRequest(nsnull, 0);
-  if (!request) {
+  // Check to see if scripts has been turned off.
+  if (!mEnabled || !mDocument->IsScriptEnabled()) {
     return;
   }
 
+  nsRefPtr<nsScriptLoadRequest> request = new nsScriptLoadRequest(nsnull, 0);
   request->mURI = aURI;
-  request->mIsInline = PR_FALSE;
-  request->mLoading = PR_TRUE;
+  request->mIsInline = false;
+  request->mLoading = true;
   nsresult rv = StartLoad(request, aType);
   if (NS_FAILED(rv)) {
     return;

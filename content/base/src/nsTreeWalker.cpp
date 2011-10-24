@@ -47,6 +47,8 @@
 #include "nsIDOMNode.h"
 #include "nsIDOMNodeFilter.h"
 #include "nsDOMError.h"
+#include "nsINode.h"
+#include "nsIContent.h"
 
 #include "nsContentUtils.h"
 
@@ -57,7 +59,7 @@
 nsTreeWalker::nsTreeWalker(nsINode *aRoot,
                            PRUint32 aWhatToShow,
                            nsIDOMNodeFilter *aFilter,
-                           PRBool aExpandEntityReferences) :
+                           bool aExpandEntityReferences) :
     nsTraversal(aRoot, aWhatToShow, aFilter, aExpandEntityReferences),
     mCurrentNode(aRoot)
 {
@@ -123,7 +125,7 @@ NS_IMETHODIMP nsTreeWalker::GetFilter(nsIDOMNodeFilter * *aFilter)
 
 /* readonly attribute boolean expandEntityReferences; */
 NS_IMETHODIMP
-nsTreeWalker::GetExpandEntityReferences(PRBool *aExpandEntityReferences)
+nsTreeWalker::GetExpandEntityReferences(bool *aExpandEntityReferences)
 {
     *aExpandEntityReferences = mExpandEntityReferences;
     return NS_OK;
@@ -187,25 +189,25 @@ NS_IMETHODIMP nsTreeWalker::ParentNode(nsIDOMNode **_retval)
 /* nsIDOMNode firstChild (); */
 NS_IMETHODIMP nsTreeWalker::FirstChild(nsIDOMNode **_retval)
 {
-    return FirstChildInternal(PR_FALSE, _retval);
+    return FirstChildInternal(false, _retval);
 }
 
 /* nsIDOMNode lastChild (); */
 NS_IMETHODIMP nsTreeWalker::LastChild(nsIDOMNode **_retval)
 {
-    return FirstChildInternal(PR_TRUE, _retval);
+    return FirstChildInternal(true, _retval);
 }
 
 /* nsIDOMNode previousSibling (); */
 NS_IMETHODIMP nsTreeWalker::PreviousSibling(nsIDOMNode **_retval)
 {
-    return NextSiblingInternal(PR_TRUE, _retval);
+    return NextSiblingInternal(true, _retval);
 }
 
 /* nsIDOMNode nextSibling (); */
 NS_IMETHODIMP nsTreeWalker::NextSibling(nsIDOMNode **_retval)
 {
-    return NextSiblingInternal(PR_FALSE, _retval);
+    return NextSiblingInternal(false, _retval);
 }
 
 /* nsIDOMNode previousNode (); */
@@ -328,7 +330,7 @@ NS_IMETHODIMP nsTreeWalker::NextNode(nsIDOMNode **_retval)
  * @param _retval   Returned node. Null if no child is found
  * @returns         Errorcode
  */
-nsresult nsTreeWalker::FirstChildInternal(PRBool aReversed, nsIDOMNode **_retval)
+nsresult nsTreeWalker::FirstChildInternal(bool aReversed, nsIDOMNode **_retval)
 {
     nsresult rv;
     PRInt16 filtered;
@@ -390,7 +392,7 @@ nsresult nsTreeWalker::FirstChildInternal(PRBool aReversed, nsIDOMNode **_retval
  * @param _retval   Returned node. Null if no child is found
  * @returns         Errorcode
  */
-nsresult nsTreeWalker::NextSiblingInternal(PRBool aReversed, nsIDOMNode **_retval)
+nsresult nsTreeWalker::NextSiblingInternal(bool aReversed, nsIDOMNode **_retval)
 {
     nsresult rv;
     PRInt16 filtered;

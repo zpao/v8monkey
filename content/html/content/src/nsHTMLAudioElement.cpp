@@ -58,14 +58,15 @@
 #include "nsIXPConnect.h"
 #include "jsapi.h"
 #include "jscntxt.h"
+#include "jsfriendapi.h"
 #include "jstypedarray.h"
 #include "nsJSUtils.h"
 
 #include "nsITimer.h"
 
 #include "nsEventDispatcher.h"
-#include "nsIDOMDocumentEvent.h"
 #include "nsIDOMProgressEvent.h"
+#include "nsContentUtils.h"
 
 using namespace mozilla::dom;
 
@@ -85,11 +86,12 @@ NS_NewHTMLAudioElement(already_AddRefed<nsINodeInfo> aNodeInfo,
     NS_ENSURE_TRUE(doc, nsnull);
 
     nodeInfo = doc->NodeInfoManager()->GetNodeInfo(nsGkAtoms::audio, nsnull,
-                                                   kNameSpaceID_XHTML);
+                                                   kNameSpaceID_XHTML,
+                                                   nsIDOMNode::ELEMENT_NODE);
     NS_ENSURE_TRUE(nodeInfo, nsnull);
   }
 
-  return new nsHTMLAudioElement(nodeInfo.forget(), aFromParser);
+  return new nsHTMLAudioElement(nodeInfo.forget());
 }
 
 NS_IMPL_ADDREF_INHERITED(nsHTMLAudioElement, nsHTMLMediaElement)
@@ -107,9 +109,8 @@ NS_HTML_CONTENT_INTERFACE_TABLE_TAIL_CLASSINFO(HTMLAudioElement)
 NS_IMPL_ELEMENT_CLONE(nsHTMLAudioElement)
 
 
-nsHTMLAudioElement::nsHTMLAudioElement(already_AddRefed<nsINodeInfo> aNodeInfo,
-                                       FromParser aFromParser)
-  : nsHTMLMediaElement(aNodeInfo, aFromParser)
+nsHTMLAudioElement::nsHTMLAudioElement(already_AddRefed<nsINodeInfo> aNodeInfo)
+  : nsHTMLMediaElement(aNodeInfo)
 {
 }
 
@@ -125,7 +126,7 @@ nsHTMLAudioElement::Initialize(nsISupports* aOwner, JSContext* aContext,
   // 'preload' set to 'auto' (since the script must intend to
   // play the audio)
   nsresult rv = SetAttr(kNameSpaceID_None, nsGkAtoms::preload,
-                        NS_LITERAL_STRING("auto"), PR_TRUE);
+                        NS_LITERAL_STRING("auto"), true);
   if (NS_FAILED(rv))
     return rv;
 
@@ -143,7 +144,7 @@ nsHTMLAudioElement::Initialize(nsISupports* aOwner, JSContext* aContext,
   if (!str.init(aContext, jsstr))
     return NS_ERROR_FAILURE;
 
-  rv = SetAttr(kNameSpaceID_None, nsGkAtoms::src, str, PR_TRUE);
+  rv = SetAttr(kNameSpaceID_None, nsGkAtoms::src, str, true);
   if (NS_FAILED(rv))
     return rv;
 
@@ -197,24 +198,24 @@ nsHTMLAudioElement::MozWriteAudio(const jsval &aData, JSContext *aCx, PRUint32 *
 
   JSObject *darray = JSVAL_TO_OBJECT(aData);
   js::AutoValueRooter tsrc_tvr(aCx);
-  js::TypedArray *tsrc = NULL;
+  JSObject *tsrc = NULL;
 
   // Allow either Float32Array or plain JS Array
-  if (darray->getClass() == &js::TypedArray::fastClasses[js::TypedArray::TYPE_FLOAT32])
+  if (js::GetObjectClass(darray) == &js::TypedArray::fastClasses[js::TypedArray::TYPE_FLOAT32])
   {
-    tsrc = js::TypedArray::fromJSObject(darray);
+    tsrc = js::TypedArray::getTypedArray(darray);
   } else if (JS_IsArrayObject(aCx, darray)) {
     JSObject *nobj = js_CreateTypedArrayWithArray(aCx, js::TypedArray::TYPE_FLOAT32, darray);
     if (!nobj) {
       return NS_ERROR_DOM_TYPE_MISMATCH_ERR;
     }
     *tsrc_tvr.jsval_addr() = OBJECT_TO_JSVAL(nobj);
-    tsrc = js::TypedArray::fromJSObject(nobj);
+    tsrc = js::TypedArray::getTypedArray(nobj);
   } else {
     return NS_ERROR_DOM_TYPE_MISMATCH_ERR;
   }
 
-  PRUint32 dataLength = tsrc->length;
+  PRUint32 dataLength = JS_GetTypedArrayLength(tsrc);
 
   // Make sure that we are going to write the correct amount of data based
   // on number of channels.
@@ -223,15 +224,15 @@ nsHTMLAudioElement::MozWriteAudio(const jsval &aData, JSContext *aCx, PRUint32 *
   }
 
   // Don't write more than can be written without blocking.
-  PRUint32 writeLen = NS_MIN(mAudioStream->Available(), dataLength);
+  PRUint32 writeLen = NS_MIN(mAudioStream->Available(), dataLength / mChannels);
 
-  nsresult rv = mAudioStream->Write(tsrc->data, writeLen, PR_TRUE);
+  nsresult rv = mAudioStream->Write(JS_GetTypedArrayData(tsrc), writeLen);
   if (NS_FAILED(rv)) {
     return rv;
   }
 
   // Return the actual amount written.
-  *aRetVal = writeLen;
+  *aRetVal = writeLen * mChannels;
   return rv;
 }
 
@@ -242,7 +243,7 @@ nsHTMLAudioElement::MozCurrentSampleOffset(PRUint64 *aRetVal)
     return NS_ERROR_DOM_INVALID_STATE_ERR;
   }
 
-  *aRetVal = mAudioStream->GetSampleOffset();
+  *aRetVal = mAudioStream->GetPositionInFrames() * mChannels;
   return NS_OK;
 }
 
@@ -267,5 +268,5 @@ nsresult nsHTMLAudioElement::SetAcceptHeader(nsIHttpChannel* aChannel)
 
     return aChannel->SetRequestHeader(NS_LITERAL_CSTRING("Accept"),
                                       value,
-                                      PR_FALSE);
+                                      false);
 }

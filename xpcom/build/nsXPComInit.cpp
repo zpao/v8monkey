@@ -56,6 +56,7 @@
 #include "nsBinaryStream.h"
 #include "nsStorageStream.h"
 #include "nsPipe.h"
+#include "nsScriptableBase64Encoder.h"
 
 #include "nsMemoryImpl.h"
 #include "nsDebugImpl.h"
@@ -106,12 +107,9 @@
 #include "nsStringStream.h"
 extern nsresult nsStringInputStreamConstructor(nsISupports *, REFNSIID, void **);
 
-#include "nsFastLoadService.h"
-
 #include "nsAtomService.h"
 #include "nsAtomTable.h"
 #include "nsTraceRefcnt.h"
-#include "nsTimelineService.h"
 
 #include "nsHashPropertyBag.h"
 
@@ -130,7 +128,7 @@ extern nsresult nsStringInputStreamConstructor(nsISupports *, REFNSIID, void **)
 #include "nsWindowsRegKey.h"
 #endif
 
-#ifdef XP_MACOSX
+#ifdef MOZ_WIDGET_COCOA
 #include "nsMacUtilsImpl.h"
 #endif
 
@@ -145,15 +143,14 @@ extern nsresult nsStringInputStreamConstructor(nsISupports *, REFNSIID, void **)
 #include "nsChromeRegistry.h"
 #include "nsChromeProtocolHandler.h"
 
-#ifdef MOZ_ENABLE_LIBXUL
 #include "mozilla/scache/StartupCache.h"
-#endif
 
 #include "base/at_exit.h"
 #include "base/command_line.h"
 #include "base/message_loop.h"
 
 #include "mozilla/ipc/BrowserProcessSubThread.h"
+#include "mozilla/MapsMemoryReporter.h"
 
 using base::AtExitManager;
 using mozilla::ipc::BrowserProcessSubThread;
@@ -207,14 +204,11 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsBinaryOutputStream)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsBinaryInputStream)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsStorageStream)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsVersionComparatorImpl)
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsScriptableBase64Encoder)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsVariant)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsRecyclingAllocatorImpl)
-
-#ifdef MOZ_TIMELINE
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsTimelineService)
-#endif
 
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsHashPropertyBag, Init)
 
@@ -222,7 +216,7 @@ NS_GENERIC_AGGREGATED_CONSTRUCTOR_INIT(nsProperties, Init)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsUUIDGenerator, Init)
 
-#ifdef XP_MACOSX
+#ifdef MOZ_WIDGET_COCOA
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsMacUtilsImpl)
 #endif
 
@@ -262,7 +256,7 @@ nsXPTIInterfaceInfoManagerGetSingleton(nsISupports* outer,
 }
 
 nsComponentManagerImpl* nsComponentManagerImpl::gComponentManager = NULL;
-PRBool gXPCOMShuttingDown = PR_FALSE;
+bool gXPCOMShuttingDown = false;
 
 static NS_DEFINE_CID(kComponentManagerCID, NS_COMPONENTMANAGER_CID);
 static NS_DEFINE_CID(kINIParserFactoryCID, NS_INIPARSERFACTORY_CID);
@@ -358,7 +352,7 @@ NS_InitXPCOM2(nsIServiceManager* *result,
     nsresult rv = NS_OK;
 
      // We are not shutting down
-    gXPCOMShuttingDown = PR_FALSE;
+    gXPCOMShuttingDown = false;
 
     NS_TIME_FUNCTION_MARK("Next: log init");
 
@@ -429,53 +423,38 @@ NS_InitXPCOM2(nsIServiceManager* *result,
     if (NS_FAILED(rv))
         return rv;
 
-    nsCOMPtr<nsIFile> xpcomLib;
-            
-    PRBool value;
+    bool value;
+
     if (binDirectory)
     {
         rv = binDirectory->IsDirectory(&value);
 
         if (NS_SUCCEEDED(rv) && value) {
             nsDirectoryService::gService->Set(NS_XPCOM_INIT_CURRENT_PROCESS_DIR, binDirectory);
-            binDirectory->Clone(getter_AddRefs(xpcomLib));
         }
     }
-    else {
-        nsDirectoryService::gService->Get(NS_XPCOM_CURRENT_PROCESS_DIR, 
-                                          NS_GET_IID(nsIFile), 
-                                          getter_AddRefs(xpcomLib));
+
+    if (appFileLocationProvider) {
+        rv = nsDirectoryService::gService->RegisterProvider(appFileLocationProvider);
+        if (NS_FAILED(rv)) return rv;
     }
+
+    nsCOMPtr<nsIFile> xpcomLib;
+
+    nsDirectoryService::gService->Get(NS_GRE_DIR,
+                                      NS_GET_IID(nsIFile),
+                                      getter_AddRefs(xpcomLib));
 
     if (xpcomLib) {
         xpcomLib->AppendNative(nsDependentCString(XPCOM_DLL));
         nsDirectoryService::gService->Set(NS_XPCOM_LIBRARY_FILE, xpcomLib);
     }
     
-    if (appFileLocationProvider) {
-        rv = nsDirectoryService::gService->RegisterProvider(appFileLocationProvider);
-        if (NS_FAILED(rv)) return rv;
-    }
-
-#ifdef MOZ_OMNIJAR
     NS_TIME_FUNCTION_MARK("Next: Omnijar init");
 
-    if (!mozilla::OmnijarPath()) {
-        nsCOMPtr<nsILocalFile> omnijar;
-        nsCOMPtr<nsIFile> file;
-
-        rv = NS_ERROR_FAILURE;
-        nsDirectoryService::gService->Get(NS_GRE_DIR,
-                                          NS_GET_IID(nsIFile),
-                                          getter_AddRefs(file));
-        if (file)
-            rv = file->Append(NS_LITERAL_STRING("omni.jar"));
-        if (NS_SUCCEEDED(rv))
-            omnijar = do_QueryInterface(file);
-        if (NS_SUCCEEDED(rv))
-            mozilla::SetOmnijar(omnijar);
+    if (!mozilla::Omnijar::IsInitialized()) {
+        mozilla::Omnijar::Init();
     }
-#endif
 
     if ((sCommandLineWasInitialized = !CommandLine::IsInitialized())) {
         NS_TIME_FUNCTION_MARK("Next: IPC command line init");
@@ -538,9 +517,7 @@ NS_InitXPCOM2(nsIServiceManager* *result,
     // to the directory service.
     nsDirectoryService::gService->RegisterCategoryProviders();
 
-#ifdef MOZ_ENABLE_LIBXUL
     mozilla::scache::StartupCache::GetSingleton();
-#endif
     NS_TIME_FUNCTION_MARK("Next: create services from category");
 
     // Notify observers of xpcom autoregistration start
@@ -550,6 +527,8 @@ NS_InitXPCOM2(nsIServiceManager* *result,
 #ifdef XP_WIN
     ScheduleMediaCacheRemover();
 #endif
+
+    mozilla::MapsMemoryReporter::Init();
 
     return NS_OK;
 }
@@ -621,9 +600,7 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
         }
 
         NS_ProcessPendingEvents(thread);
-#ifdef MOZ_ENABLE_LIBXUL
         mozilla::scache::StartupCache::DeleteSingleton();
-#endif
         if (observerService)
             (void) observerService->
                 NotifyObservers(nsnull, NS_XPCOM_SHUTDOWN_THREADS_OBSERVER_ID,
@@ -682,7 +659,7 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
     nsCycleCollector_shutdown();
 
     if (moduleLoaders) {
-        PRBool more;
+        bool more;
         nsCOMPtr<nsISupports> el;
         while (NS_SUCCEEDED(moduleLoaders->HasMoreElements(&more)) &&
                more) {
@@ -755,9 +732,7 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
         sExitManager = nsnull;
     }
 
-#ifdef MOZ_OMNIJAR
-    mozilla::SetOmnijar(nsnull);
-#endif
+    mozilla::Omnijar::CleanUp();
 
     NS_LogTerm();
 

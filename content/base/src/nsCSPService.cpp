@@ -44,7 +44,6 @@
 #include "nsIObserver.h"
 #include "nsIDocument.h"
 #include "nsIContent.h"
-#include "nsContentUtils.h"
 #include "nsCSPService.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIChannelPolicy.h"
@@ -55,9 +54,12 @@
 #include "nsChannelProperties.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
 #include "nsAsyncRedirectVerifyHelper.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 /* Keeps track of whether or not CSP is enabled */
-PRBool CSPService::sCSPEnabled = PR_TRUE;
+bool CSPService::sCSPEnabled = true;
 
 #ifdef PR_LOGGING
 static PRLogModuleInfo* gCspPRLog;
@@ -65,7 +67,7 @@ static PRLogModuleInfo* gCspPRLog;
 
 CSPService::CSPService()
 {
-  nsContentUtils::AddBoolPrefVarCache("security.csp.enable", &sCSPEnabled);
+  Preferences::AddBoolVarCache(&sCSPEnabled, "security.csp.enable");
 
 #ifdef PR_LOGGING
   if (!gCspPRLog)

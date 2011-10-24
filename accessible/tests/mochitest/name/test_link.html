@@ -7,8 +7,6 @@
         type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
   <script type="application/javascript"
-          src="chrome://mochikit/content/MochiKit/packed.js"></script>
-  <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
@@ -88,8 +86,7 @@
      title="title"><img alt="img title" /></a>
 
   <!-- no name from content, ARIA role overrides this rule -->
-  <a id="nonamefromcontent" href="mozilla.org"
-     role="presentation">1</a>
+  <a id="nonamefromcontent" href="mozilla.org" role="img">1</a>
   <br/>
 
   <!-- no content, name from @title -->

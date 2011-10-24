@@ -45,7 +45,7 @@ class nsPresContext;
 nsDOMMutationEvent::nsDOMMutationEvent(nsPresContext* aPresContext,
                                        nsMutationEvent* aEvent)
   : nsDOMEvent(aPresContext, aEvent ? aEvent :
-               new nsMutationEvent(PR_FALSE, 0))
+               new nsMutationEvent(false, 0))
 {
   mEventIsInternal = (aEvent == nsnull);
 }
@@ -117,7 +117,7 @@ nsDOMMutationEvent::GetAttrChange(PRUint16* aAttrChange)
 }
 
 NS_IMETHODIMP
-nsDOMMutationEvent::InitMutationEvent(const nsAString& aTypeArg, PRBool aCanBubbleArg, PRBool aCancelableArg, nsIDOMNode* aRelatedNodeArg, const nsAString& aPrevValueArg, const nsAString& aNewValueArg, const nsAString& aAttrNameArg, PRUint16 aAttrChangeArg)
+nsDOMMutationEvent::InitMutationEvent(const nsAString& aTypeArg, bool aCanBubbleArg, bool aCancelableArg, nsIDOMNode* aRelatedNodeArg, const nsAString& aPrevValueArg, const nsAString& aNewValueArg, const nsAString& aAttrNameArg, PRUint16 aAttrChangeArg)
 {
   nsresult rv = nsDOMEvent::InitEvent(aTypeArg, aCanBubbleArg, aCancelableArg);
   NS_ENSURE_SUCCESS(rv, rv);

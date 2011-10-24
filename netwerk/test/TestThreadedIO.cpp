@@ -108,7 +108,7 @@ public:
     static void IOThread( void *p );
 
 private:
-    PRBool mDone;
+    bool mDone;
     int    mThreadNo;
     FILE  *mFile;
     static int threadCount;
@@ -117,7 +117,7 @@ private:
 int TestListener::threadCount = 0;
 
 TestListener::TestListener()
-    : mDone( PR_FALSE ), mThreadNo( ++threadCount ) {
+    : mDone( false ), mThreadNo( ++threadCount ) {
     printf( "TestListener ctor called on thread %d\n", mThreadNo );
 }
 
@@ -152,7 +152,7 @@ TestListener::OnStopRequest( nsIChannel *aChannel,
     printf( "TestListener::OnStopRequest called on thread %d\n", mThreadNo );
 
     fclose( mFile );
-    mDone = PR_TRUE;
+    mDone = true;
 
     return rv;
 }
@@ -175,7 +175,7 @@ TestListener::OnDataAvailable( nsIChannel *aChannel,
         unsigned int bytesRead;
         // Read a buffer full or the number remaining (whichever is smaller).
         rv = aStream->Read( buffer,
-                            PR_MIN( sizeof( buffer ), bytesRemaining ),
+                            NS_MIN( sizeof( buffer ), bytesRemaining ),
                             &bytesRead );
         if ( NS_SUCCEEDED( rv ) ) {
             // Write the bytes just read to the output file.

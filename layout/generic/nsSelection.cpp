@@ -48,9 +48,6 @@
 #include "nsString.h"
 #include "nsReadableUtils.h"
 #include "nsFrameSelection.h"
-#include "nsISelection.h"
-#include "nsISelection2.h"
-#include "nsISelection3.h"
 #include "nsISelectionPrivate.h"
 #include "nsISelectionListener.h"
 #include "nsIComponentManager.h"
@@ -87,6 +84,7 @@ static NS_DEFINE_CID(kFrameTraversalCID, NS_FRAMETRAVERSAL_CID);
 
 #include "nsContentUtils.h"
 #include "nsThreadUtils.h"
+#include "mozilla/Preferences.h"
 
 //included for desired x position;
 #include "nsPresContext.h"
@@ -112,6 +110,9 @@ static NS_DEFINE_CID(kFrameTraversalCID, NS_FRAMETRAVERSAL_CID);
 #endif // IBMBIDI
 
 #include "nsDOMError.h"
+#include "mozilla/dom/Element.h"
+
+using namespace mozilla;
 
 //#define DEBUG_TABLE 1
 
@@ -123,7 +124,7 @@ class nsSelectionIterator;
 class nsFrameSelection;
 class nsAutoScrollTimer;
 
-static PRBool IsValidSelectionPoint(nsFrameSelection *aFrameSel, nsINode *aNode);
+static bool IsValidSelectionPoint(nsFrameSelection *aFrameSel, nsINode *aNode);
 
 static nsIAtom *GetTag(nsINode *aNode);
 // returns the parent
@@ -150,13 +151,13 @@ struct CachedOffsetForFrame {
   : mCachedFrameOffset(0, 0) // nsPoint ctor
   , mLastCaretFrame(nsnull)
   , mLastContentOffset(0)
-  , mCanCacheFrameOffset(PR_FALSE)
+  , mCanCacheFrameOffset(false)
   {}
 
   nsPoint      mCachedFrameOffset;      // cached frame offset
   nsIFrame*    mLastCaretFrame;         // store the frame the caret was last drawn in.
   PRInt32      mLastContentOffset;      // store last content offset
-  PRPackedBool mCanCacheFrameOffset;    // cached frame offset is valid?
+  bool mCanCacheFrameOffset;    // cached frame offset is valid?
 };
 
 struct RangeData
@@ -177,9 +178,7 @@ static RangeData sEmptyData(nsnull);
 // This ensures that nsFrameSelection is never deleted before its
 // nsTypedSelections.
 
-class nsTypedSelection : public nsISelection2,
-                         public nsISelection3,
-                         public nsISelectionPrivate,
+class nsTypedSelection : public nsISelectionPrivate,
                          public nsSupportsWeakReference
 {
 public:
@@ -188,10 +187,8 @@ public:
   virtual ~nsTypedSelection();
   
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsTypedSelection, nsISelection)
+  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsTypedSelection, nsISelectionPrivate)
   NS_DECL_NSISELECTION
-  NS_DECL_NSISELECTION2
-  NS_DECL_NSISELECTION3
   NS_DECL_NSISELECTIONPRIVATE
 
   // utility methods for scrolling the selection into view
@@ -208,7 +205,7 @@ public:
   // The 'position' is a zero-width rectangle.
   nsIFrame*     GetSelectionEndPointGeometry(SelectionRegion aRegion, nsRect *aRect);
 
-  nsresult      PostScrollSelectionIntoViewEvent(SelectionRegion aRegion, PRBool aFirstAncestorOnly);
+  nsresult      PostScrollSelectionIntoViewEvent(SelectionRegion aRegion, bool aFirstAncestorOnly);
   enum {
     SCROLL_SYNCHRONOUS = 1<<1,
     SCROLL_FIRST_ANCESTOR_ONLY = 1<<2,
@@ -254,11 +251,11 @@ public:
   nsresult     CopyRangeToAnchorFocus(nsIRange *aRange);
   void         ReplaceAnchorFocusRange(nsIRange *aRange);
 
-  //  NS_IMETHOD   GetPrimaryFrameForRangeEndpoint(nsIDOMNode *aNode, PRInt32 aOffset, PRBool aIsEndNode, nsIFrame **aResultFrame);
+  //  NS_IMETHOD   GetPrimaryFrameForRangeEndpoint(nsIDOMNode *aNode, PRInt32 aOffset, bool aIsEndNode, nsIFrame **aResultFrame);
   NS_IMETHOD   GetPrimaryFrameForAnchorNode(nsIFrame **aResultFrame);
-  NS_IMETHOD   GetPrimaryFrameForFocusNode(nsIFrame **aResultFrame, PRInt32 *aOffset, PRBool aVisual);
+  NS_IMETHOD   GetPrimaryFrameForFocusNode(nsIFrame **aResultFrame, PRInt32 *aOffset, bool aVisual);
   NS_IMETHOD   LookUpSelection(nsIContent *aContent, PRInt32 aContentOffset, PRInt32 aContentLength,
-                             SelectionDetails **aReturnDetails, SelectionType aType, PRBool aSlowCheck);
+                             SelectionDetails **aReturnDetails, SelectionType aType, bool aSlowCheck);
   NS_IMETHOD   Repaint(nsPresContext* aPresContext);
 
   // Note: StartAutoScrollTimer might destroy arbitrary frames etc.
@@ -292,7 +289,7 @@ private:
     NS_DECL_NSIRUNNABLE
     ScrollSelectionIntoViewEvent(nsTypedSelection *aTypedSelection,
                                  SelectionRegion aRegion,
-                                 PRBool aFirstAncestorOnly)
+                                 bool aFirstAncestorOnly)
       : mTypedSelection(aTypedSelection),
         mRegion(aRegion),
         mFirstAncestorOnly(aFirstAncestorOnly) {
@@ -302,7 +299,7 @@ private:
   private:
     nsTypedSelection *mTypedSelection;
     SelectionRegion   mRegion;
-    PRBool            mFirstAncestorOnly;
+    bool              mFirstAncestorOnly;
   };
 
   void setAnchorFocusRange(PRInt32 aIndex); // pass in index into mRanges;
@@ -310,26 +307,26 @@ private:
                                             // mAnchorFocusRange
   nsresult     SelectAllFramesForContent(nsIContentIterator *aInnerIter,
                                nsIContent *aContent,
-                               PRBool aSelected);
-  nsresult     selectFrames(nsPresContext* aPresContext, nsIRange *aRange, PRBool aSelect);
+                               bool aSelected);
+  nsresult     selectFrames(nsPresContext* aPresContext, nsIRange *aRange, bool aSelect);
   nsresult     getTableCellLocationFromRange(nsIRange *aRange, PRInt32 *aSelectionType, PRInt32 *aRow, PRInt32 *aCol);
-  nsresult     addTableCellRange(nsIRange *aRange, PRBool *aDidAddRange, PRInt32 *aOutIndex);
+  nsresult     addTableCellRange(nsIRange *aRange, bool *aDidAddRange, PRInt32 *aOutIndex);
 
   nsresult FindInsertionPoint(
       nsTArray<RangeData>* aElementArray,
       nsINode* aPointNode, PRInt32 aPointOffset,
       nsresult (*aComparator)(nsINode*,PRInt32,nsIRange*,PRInt32*),
       PRInt32* aPoint);
-  PRBool EqualsRangeAtPoint(nsINode* aBeginNode, PRInt32 aBeginOffset,
+  bool EqualsRangeAtPoint(nsINode* aBeginNode, PRInt32 aBeginOffset,
                             nsINode* aEndNode, PRInt32 aEndOffset,
                             PRInt32 aRangeIndex);
   nsresult GetRangesForIntervalCOMArray(nsINode* aBeginNode, PRInt32 aBeginOffset,
                                         nsINode* aEndNode, PRInt32 aEndOffset,
-                                        PRBool aAllowAdjacent,
+                                        bool aAllowAdjacent,
                                         nsCOMArray<nsIRange>* aRanges);
   void GetIndicesForInterval(nsINode* aBeginNode, PRInt32 aBeginOffset,
                              nsINode* aEndNode, PRInt32 aEndOffset,
-                             PRBool aAllowAdjacent,
+                             bool aAllowAdjacent,
                              PRInt32 *aStartIndex, PRInt32 *aEndIndex);
   RangeData* FindRangeData(nsIDOMRange* aRange);
 
@@ -503,21 +500,9 @@ private:
 
 NS_IMPL_ISUPPORTS1(nsAutoScrollTimer, nsITimerCallback)
 
-nsresult NS_NewSelection(nsFrameSelection **aFrameSelection)
-{
-  nsFrameSelection *rlist = new nsFrameSelection;
-  if (!rlist)
-    return NS_ERROR_OUT_OF_MEMORY;
-  *aFrameSelection = rlist;
-  NS_ADDREF(rlist);
-  return NS_OK;
-}
-
 nsresult NS_NewDomSelection(nsISelection **aDomSelection)
 {
   nsTypedSelection *rlist = new nsTypedSelection;
-  if (!rlist)
-    return NS_ERROR_OUT_OF_MEMORY;
   *aDomSelection = (nsISelection *)rlist;
   NS_ADDREF(rlist);
   return NS_OK;
@@ -578,16 +563,16 @@ If its parent it the limiter then the point is also valid.  In the case of
 NO limiter all points are valid since you are in a topmost iframe. (browser
 or composer)
 */
-PRBool       
+bool         
 IsValidSelectionPoint(nsFrameSelection *aFrameSel, nsINode *aNode)
 {
   if (!aFrameSel || !aNode)
-    return PR_FALSE;
+    return false;
 
   nsIContent *limiter = aFrameSel->GetLimiter();
   if (limiter && limiter != aNode && limiter != aNode->GetParent()) {
     //if newfocus == the limiter. that's ok. but if not there and not parent bad
-    return PR_FALSE; //not in the right content. tLimiter said so
+    return false; //not in the right content. tLimiter said so
   }
 
   limiter = aFrameSel->GetAncestorLimiter();
@@ -713,34 +698,32 @@ nsSelectionIterator::IsDone()
 ////////////BEGIN nsFrameSelection methods
 
 nsFrameSelection::nsFrameSelection()
-  : mDelayedMouseEvent(PR_FALSE, 0, nsnull, nsMouseEvent::eReal)
+  : mDelayedMouseEvent(false, 0, nsnull, nsMouseEvent::eReal)
 {
   PRInt32 i;
   for (i = 0;i<nsISelectionController::NUM_SELECTIONTYPES;i++){
     mDomSelections[i] = new nsTypedSelection(this);
-    if (!mDomSelections[i])
-      break;
     mDomSelections[i]->SetType(GetSelectionTypeFromIndex(i));
   }
   mBatching = 0;
-  mChangesDuringBatching = PR_FALSE;
-  mNotifyFrames = PR_TRUE;
+  mChangesDuringBatching = false;
+  mNotifyFrames = true;
   mLimiter = nsnull; //no default limiter.
   mAncestorLimiter = nsnull;
   
-  mMouseDoubleDownState = PR_FALSE;
+  mMouseDoubleDownState = false;
   
   mHint = HINTLEFT;
 #ifdef IBMBIDI
   mCaretBidiLevel = BIDI_LEVEL_UNDEFINED;
 #endif
-  mDragSelectingCells = PR_FALSE;
+  mDragSelectingCells = false;
   mSelectingTableCellMode = 0;
   mSelectedCellIndex = 0;
 
   // Check to see if the autocopy pref is enabled
   //   and add the autocopy listener if it is
-  if (nsContentUtils::GetBoolPref("clipboard.autocopy")) {
+  if (Preferences::GetBool("clipboard.autocopy")) {
     nsAutoCopyListener *autoCopy = nsAutoCopyListener::GetInstance();
 
     if (autoCopy) {
@@ -754,7 +737,7 @@ nsFrameSelection::nsFrameSelection()
 
   mDisplaySelection = nsISelectionController::SELECTION_OFF;
 
-  mDelayedMouseEventValid = PR_FALSE;
+  mDelayedMouseEventValid = false;
   mSelectionChangeReason = nsISelectionListener::NO_REASON;
 }
 
@@ -768,7 +751,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsFrameSelection)
 
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mCellParent)
   tmp->mSelectingTableCellMode = 0;
-  tmp->mDragSelectingCells = PR_FALSE;
+  tmp->mDragSelectingCells = false;
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mStartSelectedCell)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mEndSelectedCell)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mAppendStartSelectedCell)
@@ -793,7 +776,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsFrameSelection)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsFrameSelection)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFrameSelection)
-  NS_INTERFACE_MAP_ENTRY(nsFrameSelection)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
@@ -840,7 +822,7 @@ nsFrameSelection::FetchDesiredX(nscoord &aDesiredX) //the x position requested b
 void
 nsFrameSelection::InvalidateDesiredX() //do not listen to mDesiredX you must get another.
 {
-  mDesiredXSet = PR_FALSE;
+  mDesiredXSet = false;
 }
 
 
@@ -849,7 +831,7 @@ void
 nsFrameSelection::SetDesiredX(nscoord aX) //set the mDesiredX
 {
   mDesiredX = aX;
-  mDesiredXSet = PR_TRUE;
+  mDesiredXSet = true;
 }
 
 nsresult
@@ -993,7 +975,7 @@ nsFrameSelection::SetCaretBidiLevel(PRUint8 aLevel)
 {
   // If the current level is undefined, we have just inserted new text.
   // In this case, we don't want to reset the keyboard language
-  PRBool afterInsert = !!(mCaretBidiLevel & BIDI_LEVEL_UNDEFINED);
+  bool afterInsert = !!(mCaretBidiLevel & BIDI_LEVEL_UNDEFINED);
   mCaretBidiLevel = aLevel;
   
   nsIBidiKeyboard* bidiKeyboard = nsContentUtils::GetBidiKeyboard();
@@ -1089,23 +1071,24 @@ void
 nsFrameSelection::Init(nsIPresShell *aShell, nsIContent *aLimiter)
 {
   mShell = aShell;
-  mMouseDownState = PR_FALSE;
-  mDesiredXSet = PR_FALSE;
+  mMouseDownState = false;
+  mDesiredXSet = false;
   mLimiter = aLimiter;
-  mCaretMovementStyle = nsContentUtils::GetIntPref("bidi.edit.caret_movement_style", 2);
+  mCaretMovementStyle =
+    Preferences::GetInt("bidi.edit.caret_movement_style", 2);
 }
 
 nsresult
 nsFrameSelection::MoveCaret(PRUint32          aKeycode,
-                            PRBool            aContinueSelection,
+                            bool              aContinueSelection,
                             nsSelectionAmount aAmount)
 {
-  PRBool visualMovement =
+  bool visualMovement =
       (aKeycode == nsIDOMKeyEvent::DOM_VK_BACK_SPACE ||
        aKeycode == nsIDOMKeyEvent::DOM_VK_DELETE ||
        aKeycode == nsIDOMKeyEvent::DOM_VK_HOME ||
        aKeycode == nsIDOMKeyEvent::DOM_VK_END) ?
-      PR_FALSE : // Delete operations and home/end are always logical
+      false : // Delete operations and home/end are always logical
       mCaretMovementStyle == 1 ||
         (mCaretMovementStyle == 2 && !aContinueSelection);
 
@@ -1114,9 +1097,9 @@ nsFrameSelection::MoveCaret(PRUint32          aKeycode,
 
 nsresult
 nsFrameSelection::MoveCaret(PRUint32          aKeycode,
-                            PRBool            aContinueSelection,
+                            bool              aContinueSelection,
                             nsSelectionAmount aAmount,
-                            PRBool            aVisualMovement)
+                            bool              aVisualMovement)
 {
   NS_ENSURE_STATE(mShell);
   // Flush out layout, since we need it to be up to date to do caret
@@ -1131,7 +1114,7 @@ nsFrameSelection::MoveCaret(PRUint32          aKeycode,
   if (!context)
     return NS_ERROR_FAILURE;
 
-  PRBool isCollapsed;
+  bool isCollapsed;
   nscoord desiredX = 0; //we must keep this around and revalidate it when its just UP/DOWN
 
   PRInt8 index = GetIndexFromSelectionType(nsISelectionController::SELECTION_NORMAL);
@@ -1151,7 +1134,8 @@ nsFrameSelection::MoveCaret(PRUint32          aKeycode,
     SetDesiredX(desiredX);
   }
 
-  PRInt32 caretStyle = nsContentUtils::GetIntPref("layout.selection.caret_style", 0);
+  PRInt32 caretStyle =
+    Preferences::GetInt("layout.selection.caret_style", 0);
 #ifdef XP_MACOSX
   if (caretStyle == 0) {
     caretStyle = 2; // put caret at the selection edge in the |aKeycode| direction
@@ -1170,7 +1154,7 @@ nsFrameSelection::MoveCaret(PRUint32          aKeycode,
           }
           mHint = HINTRIGHT;
           sel->ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION,
-                              PR_FALSE, PR_FALSE);
+                              false, false);
           return NS_OK;
         }
 
@@ -1184,7 +1168,7 @@ nsFrameSelection::MoveCaret(PRUint32          aKeycode,
           }
           mHint = HINTLEFT;
           sel->ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION,
-                              PR_FALSE, PR_FALSE);
+                              false, false);
           return NS_OK;
         }
     }
@@ -1202,7 +1186,7 @@ nsFrameSelection::MoveCaret(PRUint32          aKeycode,
   //set data using mLimiter to stop on scroll views.  If we have a limiter then we stop peeking
   //when we hit scrollable views.  If no limiter then just let it go ahead
   pos.SetData(aAmount, eDirPrevious, offsetused, desiredX, 
-              PR_TRUE, mLimiter != nsnull, PR_TRUE, aVisualMovement);
+              true, mLimiter != nsnull, true, aVisualMovement);
 
   nsBidiLevel baseLevel = nsBidiPresUtils::GetFrameBaseLevel(frame);
   
@@ -1294,12 +1278,12 @@ nsFrameSelection::MoveCaret(PRUint32          aKeycode,
       }
     }
     result = TakeFocus(pos.mResultContent, pos.mContentOffset, pos.mContentOffset,
-                       tHint, aContinueSelection, PR_FALSE);
+                       tHint, aContinueSelection, false);
   } else if (aKeycode == nsIDOMKeyEvent::DOM_VK_RIGHT && !aContinueSelection) {
     // Collapse selection if PeekOffset failed, we either
     //  1. bumped into the BRFrame, bug 207623
     //  2. had select-all in a text input (DIV range), bug 352759.
-    PRBool isBRFrame = frame->GetType() == nsGkAtoms::brFrame;
+    bool isBRFrame = frame->GetType() == nsGkAtoms::brFrame;
     sel->Collapse(sel->GetFocusNode(), sel->GetFocusOffset());
     // Note: 'frame' might be dead here.
     if (!isBRFrame) {
@@ -1311,7 +1295,7 @@ nsFrameSelection::MoveCaret(PRUint32          aKeycode,
   {
     result = mDomSelections[index]->
       ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION,
-                     PR_FALSE, PR_FALSE);
+                     false, false);
   }
 
   return result;
@@ -1375,7 +1359,7 @@ nsTypedSelection::ToStringWithFormat(const char * aFormatType, PRUint32 aFlags,
 }
 
 NS_IMETHODIMP
-nsTypedSelection::SetInterlinePosition(PRBool aHintRight)
+nsTypedSelection::SetInterlinePosition(bool aHintRight)
 {
   if (!mFrameSelection)
     return NS_ERROR_NOT_INITIALIZED; // Can't do selection
@@ -1390,7 +1374,7 @@ nsTypedSelection::SetInterlinePosition(PRBool aHintRight)
 }
 
 NS_IMETHODIMP
-nsTypedSelection::GetInterlinePosition(PRBool *aHintRight)
+nsTypedSelection::GetInterlinePosition(bool *aHintRight)
 {
   if (!mFrameSelection)
     return NS_ERROR_NOT_INITIALIZED; // Can't do selection
@@ -1401,7 +1385,7 @@ nsTypedSelection::GetInterlinePosition(PRBool *aHintRight)
 nsPrevNextBidiLevels
 nsFrameSelection::GetPrevNextBidiLevels(nsIContent *aNode,
                                         PRUint32    aContentOffset,
-                                        PRBool      aJumpLines) const
+                                        bool        aJumpLines) const
 {
   return GetPrevNextBidiLevels(aNode, aContentOffset, mHint, aJumpLines);
 }
@@ -1410,7 +1394,7 @@ nsPrevNextBidiLevels
 nsFrameSelection::GetPrevNextBidiLevels(nsIContent *aNode,
                                         PRUint32    aContentOffset,
                                         HINT        aHint,
-                                        PRBool      aJumpLines) const
+                                        bool        aJumpLines) const
 {
   // Get the level of the frames on each side
   nsIFrame    *currentFrame;
@@ -1444,9 +1428,9 @@ nsFrameSelection::GetPrevNextBidiLevels(nsIContent *aNode,
 
   nsIFrame *newFrame;
   PRInt32 offset;
-  PRBool jumpedLine;
-  nsresult rv = currentFrame->GetFrameFromDirection(direction, PR_FALSE,
-                                                    aJumpLines, PR_TRUE,
+  bool jumpedLine;
+  nsresult rv = currentFrame->GetFrameFromDirection(direction, false,
+                                                    aJumpLines, true,
                                                     &newFrame, &offset, &jumpedLine);
   if (NS_FAILED(rv))
     newFrame = nsnull;
@@ -1495,9 +1479,9 @@ nsFrameSelection::GetFrameFromLevel(nsIFrame    *aFrameIn,
   result = trav->NewFrameTraversal(getter_AddRefs(frameTraversal),
                                    mShell->GetPresContext(), aFrameIn,
                                    eLeaf,
-                                   PR_FALSE, // aVisual
-                                   PR_FALSE, // aLockInScrollView
-                                   PR_FALSE  // aFollowOOFs
+                                   false, // aVisual
+                                   false, // aLockInScrollView
+                                   false     // aFollowOOFs
                                    );
   if (NS_FAILED(result))
     return result;
@@ -1569,7 +1553,7 @@ void nsFrameSelection::BidiLevelFromMove(nsIPresShell* aPresShell,
     case nsIDOMKeyEvent::DOM_VK_LEFT:
     {
       nsPrevNextBidiLevels levels = GetPrevNextBidiLevels(aNode, aContentOffset,
-                                                          aHint, PR_FALSE);
+                                                          aHint, false);
 
       if (HINTLEFT == aHint)
         SetCaretBidiLevel(levels.mLevelBefore);
@@ -1611,20 +1595,20 @@ void nsFrameSelection::BidiLevelFromClick(nsIContent *aNode,
 }
 
 
-PRBool
+bool
 nsFrameSelection::AdjustForMaintainedSelection(nsIContent *aContent,
                                                PRInt32     aOffset)
 {
   if (!mMaintainRange)
-    return PR_FALSE;
+    return false;
 
   if (!aContent) {
-    return PR_FALSE;
+    return false;
   }
 
   PRInt8 index = GetIndexFromSelectionType(nsISelectionController::SELECTION_NORMAL);
   if (!mDomSelections[index])
-    return PR_FALSE;
+    return false;
 
   nsINode* rangeStartNode = mMaintainRange->GetStartParent();
   nsINode* rangeEndNode = mMaintainRange->GetEndParent();
@@ -1649,13 +1633,13 @@ nsFrameSelection::AdjustForMaintainedSelection(nsIContent *aContent,
     mDomSelections[index]->ReplaceAnchorFocusRange(mMaintainRange);
     if (relToStart < 0 && relToEnd > 0) {
       // We're inside the maintained selection, just keep it selected.
-      return PR_TRUE;
+      return true;
     }
     // Reverse the direction of the selection so that the anchor will be on the 
     // far side of the maintained selection, relative to aContent/aOffset.
     mDomSelections[index]->SetDirection(relToStart > 0 ? eDirPrevious : eDirNext);
   }
-  return PR_FALSE;
+  return false;
 }
 
 
@@ -1663,9 +1647,9 @@ nsresult
 nsFrameSelection::HandleClick(nsIContent *aNewFocus,
                               PRUint32    aContentOffset,
                               PRUint32    aContentEndOffset,
-                              PRBool      aContinueSelection, 
-                              PRBool      aMultipleSelection,
-                              PRBool      aHint) 
+                              bool        aContinueSelection, 
+                              bool        aMultipleSelection,
+                              bool        aHint) 
 {
   if (!aNewFocus)
     return NS_ERROR_INVALID_ARG;
@@ -1743,7 +1727,7 @@ nsFrameSelection::HandleDrag(nsIFrame *aFrame, nsPoint aPoint)
       // first move one character forward.
       nsPeekOffsetStruct charPos;
       charPos.SetData(eSelectCharacter, eDirNext, offset, 0,
-                      PR_FALSE, mLimiter != nsnull, PR_FALSE, PR_FALSE);
+                      false, mLimiter != nsnull, false, false);
       if (NS_SUCCEEDED(frame->PeekOffset(&charPos))) {
         frame = charPos.mResultFrame;
         offset = charPos.mContentOffset;
@@ -1752,7 +1736,7 @@ nsFrameSelection::HandleDrag(nsIFrame *aFrame, nsPoint aPoint)
 
     nsPeekOffsetStruct pos;
     pos.SetData(amount, direction, offset, 0,
-                PR_FALSE, mLimiter != nsnull, PR_FALSE, PR_FALSE);
+                false, mLimiter != nsnull, false, false);
 
     if (frame && NS_SUCCEEDED(frame->PeekOffset(&pos)) && pos.mResultContent) {
       offsets.content = pos.mResultContent;
@@ -1761,7 +1745,7 @@ nsFrameSelection::HandleDrag(nsIFrame *aFrame, nsPoint aPoint)
   }
   
   HandleClick(offsets.content, offsets.offset, offsets.offset,
-              PR_TRUE, PR_FALSE, offsets.associateWithNext);
+              true, false, offsets.associateWithNext);
 }
 
 nsresult
@@ -1794,8 +1778,8 @@ nsFrameSelection::TakeFocus(nsIContent *aNewFocus,
                             PRUint32    aContentOffset,
                             PRUint32    aContentEndOffset,
                             HINT        aHint,
-                            PRBool      aContinueSelection,
-                            PRBool      aMultipleSelection)
+                            bool        aContinueSelection,
+                            bool        aMultipleSelection)
 {
   if (!aNewFocus)
     return NS_ERROR_NULL_POINTER;
@@ -1807,7 +1791,7 @@ nsFrameSelection::TakeFocus(nsIContent *aNewFocus,
 
   // Clear all table selection data
   mSelectingTableCellMode = 0;
-  mDragSelectingCells = PR_FALSE;
+  mDragSelectingCells = false;
   mStartSelectedCell = nsnull;
   mEndSelectedCell = nsnull;
   mAppendStartSelectedCell = nsnull;
@@ -1826,7 +1810,7 @@ nsFrameSelection::TakeFocus(nsIContent *aNewFocus,
   //traverse through document and unselect crap here
   if (!aContinueSelection) {//single click? setting cursor down
     PRUint32 batching = mBatching;//hack to use the collapse code.
-    PRBool changes = mChangesDuringBatching;
+    bool changes = mChangesDuringBatching;
     mBatching = 1;
 
     if (aMultipleSelection) {
@@ -1835,9 +1819,6 @@ nsFrameSelection::TakeFocus(nsIContent *aNewFocus,
       mDomSelections[index]->RemoveCollapsedRanges();
 
       nsCOMPtr<nsIRange> newRange = new nsRange();
-      if (!newRange) {
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
 
       newRange->SetStart(aNewFocus, aContentOffset);
       newRange->SetEnd(aNewFocus, aContentOffset);
@@ -1847,7 +1828,7 @@ nsFrameSelection::TakeFocus(nsIContent *aNewFocus,
     }
     else
     {
-      PRBool oldDesiredXSet = mDesiredXSet; //need to keep old desired X if it was set.
+      bool oldDesiredXSet = mDesiredXSet; //need to keep old desired X if it was set.
       mDomSelections[index]->Collapse(aNewFocus, aContentOffset);
       mDesiredXSet = oldDesiredXSet; //now reset desired X back.
       mBatching = batching;
@@ -1885,7 +1866,7 @@ nsFrameSelection::TakeFocus(nsIContent *aNewFocus,
 #ifdef DEBUG_TABLE_SELECTION
 printf(" * TakeFocus - moving into new cell\n");
 #endif
-        nsMouseEvent event(PR_FALSE, 0, nsnull, nsMouseEvent::eReal);
+        nsMouseEvent event(false, 0, nsnull, nsMouseEvent::eReal);
 
         // Start selecting in the cell we were in before
         nsINode* parent = ParentOffset(mCellParent, &offset);
@@ -1898,7 +1879,7 @@ printf(" * TakeFocus - moving into new cell\n");
 
         // XXXX We need to REALLY get the current key shift state
         //  (we'd need to add event listener -- let's not bother for now)
-        event.isShift = PR_FALSE; //aContinueSelection;
+        event.isShift = false; //aContinueSelection;
         if (parent)
         {
           mCellParent = cellparent;
@@ -1933,7 +1914,7 @@ SelectionDetails*
 nsFrameSelection::LookUpSelection(nsIContent *aContent,
                                   PRInt32 aContentOffset,
                                   PRInt32 aContentLength,
-                                  PRBool aSlowCheck) const
+                                  bool aSlowCheck) const
 {
   if (!aContent || !mShell)
     return nsnull;
@@ -1951,7 +1932,7 @@ nsFrameSelection::LookUpSelection(nsIContent *aContent,
 }
 
 void
-nsFrameSelection::SetMouseDownState(PRBool aState)
+nsFrameSelection::SetMouseDownState(bool aState)
 {
   if (mMouseDownState == aState)
     return;
@@ -1960,7 +1941,7 @@ nsFrameSelection::SetMouseDownState(PRBool aState)
     
   if (!mMouseDownState)
   {
-    mDragSelectingCells = PR_FALSE;
+    mDragSelectingCells = false;
     PostReason(nsISelectionListener::MOUSEUP_REASON);
     NotifySelectionListeners(nsISelectionController::SELECTION_NORMAL); //notify that reason is mouse up please.
   }
@@ -2132,8 +2113,8 @@ nsFrameSelection::GetFrameForNodeOffset(nsIContent *aNode,
 }
 
 void
-nsFrameSelection::CommonPageMove(PRBool aForward,
-                                 PRBool aExtend,
+nsFrameSelection::CommonPageMove(bool aForward,
+                                 bool aExtend,
                                  nsIScrollableFrame* aScrollableFrame)
 {
   // expected behavior for PageMove is to scroll AND move the caret
@@ -2185,11 +2166,11 @@ nsFrameSelection::CommonPageMove(PRBool aForward,
 
   // place the caret
   HandleClick(offsets.content, offsets.offset,
-              offsets.offset, aExtend, PR_FALSE, PR_TRUE);
+              offsets.offset, aExtend, false, true);
 }
 
 nsresult
-nsFrameSelection::CharacterMove(PRBool aForward, PRBool aExtend)
+nsFrameSelection::CharacterMove(bool aForward, bool aExtend)
 {
   if (aForward)
     return MoveCaret(nsIDOMKeyEvent::DOM_VK_RIGHT, aExtend, eSelectCluster);
@@ -2200,17 +2181,17 @@ nsFrameSelection::CharacterMove(PRBool aForward, PRBool aExtend)
 nsresult
 nsFrameSelection::CharacterExtendForDelete()
 {
-  return MoveCaret(nsIDOMKeyEvent::DOM_VK_DELETE, PR_TRUE, eSelectCluster);
+  return MoveCaret(nsIDOMKeyEvent::DOM_VK_DELETE, true, eSelectCluster);
 }
 
 nsresult
 nsFrameSelection::CharacterExtendForBackspace()
 {
-  return MoveCaret(nsIDOMKeyEvent::DOM_VK_BACK_SPACE, PR_TRUE, eSelectCharacter);
+  return MoveCaret(nsIDOMKeyEvent::DOM_VK_BACK_SPACE, true, eSelectCharacter);
 }
 
 nsresult
-nsFrameSelection::WordMove(PRBool aForward, PRBool aExtend)
+nsFrameSelection::WordMove(bool aForward, bool aExtend)
 {
   if (aForward)
     return MoveCaret(nsIDOMKeyEvent::DOM_VK_RIGHT,aExtend,eSelectWord);
@@ -2219,16 +2200,16 @@ nsFrameSelection::WordMove(PRBool aForward, PRBool aExtend)
 }
 
 nsresult
-nsFrameSelection::WordExtendForDelete(PRBool aForward)
+nsFrameSelection::WordExtendForDelete(bool aForward)
 {
   if (aForward)
-    return MoveCaret(nsIDOMKeyEvent::DOM_VK_DELETE, PR_TRUE, eSelectWord);
+    return MoveCaret(nsIDOMKeyEvent::DOM_VK_DELETE, true, eSelectWord);
   else
-    return MoveCaret(nsIDOMKeyEvent::DOM_VK_BACK_SPACE, PR_TRUE, eSelectWord);
+    return MoveCaret(nsIDOMKeyEvent::DOM_VK_BACK_SPACE, true, eSelectWord);
 }
 
 nsresult
-nsFrameSelection::LineMove(PRBool aForward, PRBool aExtend)
+nsFrameSelection::LineMove(bool aForward, bool aExtend)
 {
   if (aForward)
     return MoveCaret(nsIDOMKeyEvent::DOM_VK_DOWN,aExtend,eSelectLine);
@@ -2237,7 +2218,7 @@ nsFrameSelection::LineMove(PRBool aForward, PRBool aExtend)
 }
 
 nsresult
-nsFrameSelection::IntraLineMove(PRBool aForward, PRBool aExtend)
+nsFrameSelection::IntraLineMove(bool aForward, bool aExtend)
 {
   if (aForward)
     return MoveCaret(nsIDOMKeyEvent::DOM_VK_END,aExtend,eSelectLine);
@@ -2268,7 +2249,7 @@ nsFrameSelection::SelectAll()
   }
   PRInt32 numChildren = rootContent->GetChildCount();
   PostReason(nsISelectionListener::NO_REASON);
-  return TakeFocus(rootContent, 0, numChildren, HINTLEFT, PR_FALSE, PR_FALSE);
+  return TakeFocus(rootContent, 0, numChildren, HINTLEFT, false, false);
 }
 
 //////////END FRAMESELECTION
@@ -2285,7 +2266,7 @@ nsFrameSelection::EndBatchChanges()
   mBatching--;
   NS_ASSERTION(mBatching >=0,"Bad mBatching");
   if (mBatching == 0 && mChangesDuringBatching){
-    mChangesDuringBatching = PR_FALSE;
+    mChangesDuringBatching = false;
     NotifySelectionListeners(nsISelectionController::SELECTION_NORMAL);
   }
 }
@@ -2304,7 +2285,7 @@ nsFrameSelection::NotifySelectionListeners(SelectionType aType)
 
 // Start of Table Selection methods
 
-static PRBool IsCell(nsIContent *aContent)
+static bool IsCell(nsIContent *aContent)
 {
   return ((aContent->Tag() == nsGkAtoms::td ||
            aContent->Tag() == nsGkAtoms::th) &&
@@ -2483,7 +2464,7 @@ printf("HandleTableSelection: Mouse down event\n");
       
       if (aTarget == nsISelectionPrivate::TABLESELECTION_CELL)
       {
-        PRBool isSelected = PR_FALSE;
+        bool isSelected = false;
 
         // Check if we have other selected cells
         nsIContent* previousCellNode =
@@ -2503,7 +2484,7 @@ printf("HandleTableSelection: Mouse down event\n");
           // No cells selected -- remove non-cell selection
           mDomSelections[index]->RemoveAllRanges();
         }
-        mDragSelectingCells = PR_TRUE;    // Signal to start drag-cell-selection
+        mDragSelectingCells = true;    // Signal to start drag-cell-selection
         mSelectingTableCellMode = aTarget;
         // Set start for new drag-selection block (not appended)
         mStartSelectedCell = childContent;
@@ -2540,7 +2521,7 @@ printf("HandleTableSelection: Saving mUnselectCellOnMouseUp\n");
         //TODO: We currently select entire table when clicked between cells,
         //  should we restrict to only around border?
         //  *** How do we get location data for cell and click?
-        mDragSelectingCells = PR_FALSE;
+        mDragSelectingCells = false;
         mStartSelectedCell = nsnull;
         mEndSelectedCell = nsnull;
 
@@ -2557,7 +2538,7 @@ printf("aTarget == %d\n", aTarget);
         // Start drag-selecting mode so multiple rows/cols can be selected
         // Note: Currently, nsFrame::GetDataForTableSelection
         //       will never call us for row or column selection on mouse down
-        mDragSelectingCells = PR_TRUE;
+        mDragSelectingCells = true;
       
         // Force new selection block
         mStartSelectedCell = nsnull;
@@ -2582,20 +2563,20 @@ printf("HandleTableSelection: Mouse UP event. mDragSelectingCells=%d, mStartSele
           mAppendStartSelectedCell && mAppendStartSelectedCell != childContent)
       {
         // Shift key is down: append a block selection
-        mDragSelectingCells = PR_FALSE;
+        mDragSelectingCells = false;
         return SelectBlockOfCells(mAppendStartSelectedCell, childContent);
       }
 
       if (mDragSelectingCells)
         mAppendStartSelectedCell = mStartSelectedCell;
         
-      mDragSelectingCells = PR_FALSE;
+      mDragSelectingCells = false;
       mStartSelectedCell = nsnull;
       mEndSelectedCell = nsnull;
 
       // Any other mouseup actions require that Ctrl or Cmd key is pressed
       //  else stop table selection mode
-      PRBool doMouseUpAction = PR_FALSE;
+      bool doMouseUpAction = false;
 #ifdef XP_MACOSX
       doMouseUpAction = aMouseEvent->isMeta;
 #else
@@ -2702,7 +2683,7 @@ nsFrameSelection::SelectBlockOfCells(nsIContent *aStartCell, nsIContent *aEndCel
   {
     // Drag selecting: remove selected cells outside of new block limits
     UnselectCells(table, startRowIndex, startColIndex, endRowIndex, endColIndex,
-                  PR_TRUE);
+                  true);
   }
 
   // Note that we select block in the direction of user's mouse dragging,
@@ -2717,7 +2698,7 @@ nsFrameSelection::UnselectCells(nsIContent *aTableContent,
                                 PRInt32 aStartColumnIndex,
                                 PRInt32 aEndRowIndex,
                                 PRInt32 aEndColumnIndex,
-                                PRBool aRemoveOutsideOfCellRange)
+                                bool aRemoveOutsideOfCellRange)
 {
   PRInt8 index =
     GetIndexFromSelectionType(nsISelectionController::SELECTION_NORMAL);
@@ -2766,7 +2747,7 @@ nsFrameSelection::UnselectCells(nsIContent *aTableContent,
         nsCOMPtr<nsIDOMElement> cellElement;
         PRInt32 origRowIndex, origColIndex, rowSpan, colSpan,
           actualRowSpan, actualColSpan;
-        PRBool isSelected;
+        bool isSelected;
 
         result = tableLayout->GetCellDataAt(curRowIndex, curColIndex,
                                             *getter_AddRefs(cellElement),
@@ -2817,14 +2798,14 @@ nsFrameSelection::AddCellsToSelection(nsIContent *aTableContent,
   nsCOMPtr<nsIDOMElement> cellElement;
   PRInt32 rowSpan, colSpan, actualRowSpan, actualColSpan,
     curRowIndex, curColIndex;
-  PRBool isSelected;
+  bool isSelected;
   nsresult result = NS_OK;
 
   PRInt32 row = aStartRowIndex;
-  while(PR_TRUE)
+  while(true)
   {
     PRInt32 col = aStartColumnIndex;
-    while(PR_TRUE)
+    while(true)
     {
       result = tableLayoutObject->GetCellDataAt(row, col, *getter_AddRefs(cellElement),
                                                 curRowIndex, curColIndex, rowSpan, colSpan, 
@@ -2866,7 +2847,7 @@ nsFrameSelection::RemoveCellsFromSelection(nsIContent *aTable,
                                            PRInt32 aEndColumnIndex)
 {
   return UnselectCells(aTable, aStartRowIndex, aStartColumnIndex,
-                       aEndRowIndex, aEndColumnIndex, PR_FALSE);
+                       aEndRowIndex, aEndColumnIndex, false);
 }
 
 nsresult
@@ -2877,7 +2858,7 @@ nsFrameSelection::RestrictCellsToSelection(nsIContent *aTable,
                                            PRInt32 aEndColumnIndex)
 {
   return UnselectCells(aTable, aStartRowIndex, aStartColumnIndex,
-                       aEndRowIndex, aEndColumnIndex, PR_TRUE);
+                       aEndRowIndex, aEndColumnIndex, true);
 }
 
 nsresult
@@ -2912,7 +2893,7 @@ nsFrameSelection::SelectRowOrColumn(nsIContent *aCellContent, PRUint32 aTarget)
   nsCOMPtr<nsIContent> firstCell;
   nsCOMPtr<nsIDOMElement> lastCell;
   PRInt32 rowSpan, colSpan, actualRowSpan, actualColSpan;
-  PRBool isSelected;
+  bool isSelected;
 
   do {
     // Loop through all cells in column or row to find first and last
@@ -3074,7 +3055,7 @@ nsIContent*
 nsFrameSelection::IsInSameTable(nsIContent  *aContent1,
                                 nsIContent  *aContent2) const
 {
-  if (!aContent1 || !aContent2) return PR_FALSE;
+  if (!aContent1 || !aContent2) return false;
   
   nsIContent* tableNode1 = GetParentTable(aContent1);
   nsIContent* tableNode2 = GetParentTable(aContent2);
@@ -3156,13 +3137,13 @@ nsTypedSelection::getTableCellLocationFromRange(nsIRange *aRange, PRInt32 *aSele
 }
 
 nsresult
-nsTypedSelection::addTableCellRange(nsIRange *aRange, PRBool *aDidAddRange,
+nsTypedSelection::addTableCellRange(nsIRange *aRange, bool *aDidAddRange,
                                     PRInt32 *aOutIndex)
 {  
   if (!aDidAddRange || !aOutIndex)
     return NS_ERROR_NULL_POINTER;
 
-  *aDidAddRange = PR_FALSE;
+  *aDidAddRange = false;
   *aOutIndex = -1;
 
   if (!mFrameSelection)
@@ -3191,7 +3172,7 @@ nsTypedSelection::addTableCellRange(nsIRange *aRange, PRBool *aDidAddRange,
   if (mFrameSelection->mSelectingTableCellMode == TABLESELECTION_NONE)
     mFrameSelection->mSelectingTableCellMode = tableMode;
 
-  *aDidAddRange = PR_TRUE;
+  *aDidAddRange = true;
   return AddItem(aRange, aOutIndex);
 }
 
@@ -3268,7 +3249,6 @@ nsFrameSelection::CreateAndAddRange(nsINode *aParentNode, PRInt32 aOffset)
   if (!aParentNode) return NS_ERROR_NULL_POINTER;
 
   nsCOMPtr<nsIRange> range = new nsRange();
-  if (!range) return NS_ERROR_OUT_OF_MEMORY;
 
   // Set range around child at given offset
   nsresult result = range->SetStart(aParentNode, aOffset);
@@ -3299,7 +3279,7 @@ nsFrameSelection::SetAncestorLimiter(nsIContent *aLimiter)
       ClearNormalSelection();
       if (mAncestorLimiter) {
         PostReason(nsISelectionListener::NO_REASON);
-        TakeFocus(mAncestorLimiter, 0, 0, HINTLEFT, PR_FALSE, PR_FALSE);
+        TakeFocus(mAncestorLimiter, 0, 0, HINTLEFT, false, false);
       }
     }
   }
@@ -3320,7 +3300,7 @@ nsFrameSelection::DeleteFromDocument()
   // If we're already collapsed, then set ourselves to include the
   // last item BEFORE the current range, rather than the range itself,
   // before we do the delete.
-  PRBool isCollapsed;
+  bool isCollapsed;
   PRInt8 index = GetIndexFromSelectionType(nsISelectionController::SELECTION_NORMAL);
   if (!mDomSelections[index])
     return NS_ERROR_NULL_POINTER;
@@ -3376,14 +3356,14 @@ nsFrameSelection::SetDelayedCaretData(nsMouseEvent *aMouseEvent)
 {
   if (aMouseEvent)
   {
-    mDelayedMouseEventValid = PR_TRUE;
+    mDelayedMouseEventValid = true;
     mDelayedMouseEvent      = *aMouseEvent;
 
     // Don't cache the widget.  We don't need it and it could go away.
     mDelayedMouseEvent.widget = nsnull;
   }
   else
-    mDelayedMouseEventValid = PR_FALSE;
+    mDelayedMouseEventValid = false;
 }
 
 nsMouseEvent*
@@ -3464,8 +3444,6 @@ DOMCI_DATA(Selection, nsTypedSelection)
 // QueryInterface implementation for nsTypedSelection
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsTypedSelection)
   NS_INTERFACE_MAP_ENTRY(nsISelection)
-  NS_INTERFACE_MAP_ENTRY(nsISelection2)
-  NS_INTERFACE_MAP_ENTRY(nsISelection3)
   NS_INTERFACE_MAP_ENTRY(nsISelectionPrivate)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsISelection)
@@ -3700,9 +3678,7 @@ nsTypedSelection::SubtractRange(RangeData* aRange, nsIRange* aSubtract,
     // We need to add a new RangeData to the output, running from
     // the end of aSubtract to the end of range
     nsIRange* postOverlap = new nsRange();
-    if (!postOverlap)
-      return NS_ERROR_OUT_OF_MEMORY;
-    
+
     rv =
       postOverlap->SetStart(aSubtract->GetEndParent(), aSubtract->EndOffset());
     NS_ENSURE_SUCCESS(rv, rv);
@@ -3720,8 +3696,6 @@ nsTypedSelection::SubtractRange(RangeData* aRange, nsIRange* aSubtract,
     // We need to add a new RangeData to the output, running from
     // the start of the range to the start of aSubtract
     nsIRange* preOverlap = new nsRange();
-    if (!preOverlap)
-      return NS_ERROR_OUT_OF_MEMORY;
 
     nsresult rv =
      preOverlap->SetStart(range->GetStartParent(), range->StartOffset());
@@ -3762,7 +3736,7 @@ nsTypedSelection::AddItem(nsIRange *aItem, PRInt32 *aOutIndex)
   PRInt32 startIndex, endIndex;
   GetIndicesForInterval(aItem->GetStartParent(), aItem->StartOffset(),
                         aItem->GetEndParent(), aItem->EndOffset(),
-                        PR_FALSE, &startIndex, &endIndex);
+                        false, &startIndex, &endIndex);
 
   if (endIndex == -1) {
     // All ranges start after the given range. We can insert our range at
@@ -3777,7 +3751,7 @@ nsTypedSelection::AddItem(nsIRange *aItem, PRInt32 *aOutIndex)
   }
 
   // If the range is already contained in mRanges, silently succeed
-  PRBool sameRange = EqualsRangeAtPoint(aItem->GetStartParent(),
+  bool sameRange = EqualsRangeAtPoint(aItem->GetStartParent(),
                                         aItem->StartOffset(),
                                         aItem->GetEndParent(),
                                         aItem->EndOffset(), startIndex);
@@ -3916,13 +3890,13 @@ nsTypedSelection::GetType(PRInt16 *aType)
 //    Compares the range beginning or ending point, and returns true if it
 //    exactly matches the given DOM point.
 
-static inline PRBool
+static inline bool
 RangeMatchesBeginPoint(nsIRange* aRange, nsINode* aNode, PRInt32 aOffset)
 {
   return aRange->GetStartParent() == aNode && aRange->StartOffset() == aOffset;
 }
 
-static inline PRBool
+static inline bool
 RangeMatchesEndPoint(nsIRange* aRange, nsINode* aNode, PRInt32 aOffset)
 {
   return aRange->GetEndParent() == aNode && aRange->EndOffset() == aOffset;
@@ -3932,7 +3906,7 @@ RangeMatchesEndPoint(nsIRange* aRange, nsINode* aNode, PRInt32 aOffset)
 //
 //    Utility method for checking equivalence of two ranges.
 
-PRBool
+bool
 nsTypedSelection::EqualsRangeAtPoint(
     nsINode* aBeginNode, PRInt32 aBeginOffset,
     nsINode* aEndNode, PRInt32 aEndOffset,
@@ -3942,9 +3916,9 @@ nsTypedSelection::EqualsRangeAtPoint(
     nsIRange* range = mRanges[aRangeIndex].mRange;
     if (RangeMatchesBeginPoint(range, aBeginNode, aBeginOffset) &&
         RangeMatchesEndPoint(range, aEndNode, aEndOffset))
-      return PR_TRUE;
+      return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 // nsTypedSelection::GetRangesForInterval
@@ -3954,7 +3928,7 @@ nsTypedSelection::EqualsRangeAtPoint(
 NS_IMETHODIMP
 nsTypedSelection::GetRangesForInterval(nsIDOMNode* aBeginNode, PRInt32 aBeginOffset,
                                        nsIDOMNode* aEndNode, PRInt32 aEndOffset,
-                                       PRBool aAllowAdjacent,
+                                       bool aAllowAdjacent,
                                        PRUint32 *aResultCount,
                                        nsIDOMRange ***aResults)
 {
@@ -3992,7 +3966,7 @@ nsTypedSelection::GetRangesForInterval(nsIDOMNode* aBeginNode, PRInt32 aBeginOff
 NS_IMETHODIMP
 nsTypedSelection::GetRangesForIntervalCOMArray(nsIDOMNode* aBeginNode, PRInt32 aBeginOffset,
                                                nsIDOMNode* aEndNode, PRInt32 aEndOffset,
-                                               PRBool aAllowAdjacent,
+                                               bool aAllowAdjacent,
                                                nsCOMArray<nsIDOMRange>* aRanges)
 {
   nsCOMPtr<nsINode> begin = do_QueryInterface(aBeginNode);
@@ -4035,7 +4009,7 @@ nsTypedSelection::GetRangesForIntervalCOMArray(nsIDOMNode* aBeginNode, PRInt32 a
 nsresult
 nsTypedSelection::GetRangesForIntervalCOMArray(nsINode* aBeginNode, PRInt32 aBeginOffset,
                                                nsINode* aEndNode, PRInt32 aEndOffset,
-                                               PRBool aAllowAdjacent,
+                                               bool aAllowAdjacent,
                                                nsCOMArray<nsIRange>* aRanges)
 {
   aRanges->Clear();
@@ -4063,7 +4037,7 @@ void
 nsTypedSelection::GetIndicesForInterval(nsINode* aBeginNode,
                                         PRInt32 aBeginOffset,
                                         nsINode* aEndNode, PRInt32 aEndOffset,
-                                        PRBool aAllowAdjacent,
+                                        bool aAllowAdjacent,
                                         PRInt32 *aStartIndex,
                                         PRInt32 *aEndIndex)
 {
@@ -4081,7 +4055,7 @@ nsTypedSelection::GetIndicesForInterval(nsINode* aBeginNode,
   if (mRanges.Length() == 0)
     return;
 
-  PRBool intervalIsCollapsed = aBeginNode == aEndNode &&
+  bool intervalIsCollapsed = aBeginNode == aEndNode &&
     aBeginOffset == aEndOffset;
 
   // Ranges that end before the given interval and begin after the given
@@ -4187,7 +4161,7 @@ nsTypedSelection::GetIndicesForInterval(nsINode* aBeginNode,
 
 #if 0
 NS_IMETHODIMP
-nsTypedSelection::GetPrimaryFrameForRangeEndpoint(nsIDOMNode *aNode, PRInt32 aOffset, PRBool aIsEndNode, nsIFrame **aReturnFrame)
+nsTypedSelection::GetPrimaryFrameForRangeEndpoint(nsIDOMNode *aNode, PRInt32 aOffset, bool aIsEndNode, nsIFrame **aReturnFrame)
 {
   if (!aNode || !aReturnFrame || !mFrameSelection)
     return NS_ERROR_NULL_POINTER;
@@ -4254,7 +4228,7 @@ nsTypedSelection::GetPrimaryFrameForAnchorNode(nsIFrame **aReturnFrame)
 
 NS_IMETHODIMP
 nsTypedSelection::GetPrimaryFrameForFocusNode(nsIFrame **aReturnFrame, PRInt32 *aOffsetUsed,
-                                              PRBool aVisual)
+                                              bool aVisual)
 {
   if (!aReturnFrame)
     return NS_ERROR_NULL_POINTER;
@@ -4296,7 +4270,7 @@ nsTypedSelection::GetPrimaryFrameForFocusNode(nsIFrame **aReturnFrame, PRInt32 *
 nsresult
 nsTypedSelection::SelectAllFramesForContent(nsIContentIterator *aInnerIter,
                                   nsIContent *aContent,
-                                  PRBool aSelected)
+                                  bool aSelected)
 {
   if (!mFrameSelection)
     return NS_OK; // nothing to do
@@ -4349,7 +4323,7 @@ nsTypedSelection::SelectAllFramesForContent(nsIContentIterator *aInnerIter,
 
 //the idea of this helper method is to select, deselect "top to bottom" traversing through the frames
 nsresult
-nsTypedSelection::selectFrames(nsPresContext* aPresContext, nsIRange *aRange, PRBool aFlags)
+nsTypedSelection::selectFrames(nsPresContext* aPresContext, nsIRange *aRange, bool aFlags)
 {
   if (!mFrameSelection || !aPresContext)
     return NS_OK; // nothing to do
@@ -4465,7 +4439,7 @@ NS_IMETHODIMP
 nsTypedSelection::LookUpSelection(nsIContent *aContent, PRInt32 aContentOffset,
                                   PRInt32 aContentLength,
                                   SelectionDetails **aReturnDetails,
-                                  SelectionType aType, PRBool aSlowCheck)
+                                  SelectionType aType, bool aSlowCheck)
 {
   nsresult rv;
   if (!aContent || ! aReturnDetails)
@@ -4478,7 +4452,7 @@ nsTypedSelection::LookUpSelection(nsIContent *aContent, PRInt32 aContentOffset,
   nsCOMArray<nsIRange> overlappingRanges;
   rv = GetRangesForIntervalCOMArray(aContent, aContentOffset,
                                     aContent, aContentOffset + aContentLength,
-                                    PR_FALSE,
+                                    false,
                                     &overlappingRanges);
   NS_ENSURE_SUCCESS(rv, rv);
   if (overlappingRanges.Count() == 0)
@@ -4527,8 +4501,6 @@ nsTypedSelection::LookUpSelection(nsIContent *aContent, PRInt32 aContentOffset,
       continue; // the ranges do not overlap the input range
 
     SelectionDetails* details = new SelectionDetails;
-    if (!details)
-      return NS_ERROR_OUT_OF_MEMORY;
 
     details->mNext = *aReturnDetails;
     details->mStart = start;
@@ -4555,7 +4527,7 @@ nsTypedSelection::Repaint(nsPresContext* aPresContext)
   
   for (i = 0; i < arrCount; i++)
   {
-    nsresult rv = selectFrames(aPresContext, mRanges[i].mRange, PR_TRUE);
+    nsresult rv = selectFrames(aPresContext, mRanges[i].mRange, true);
 
     if (NS_FAILED(rv)) {
       return rv;
@@ -4566,20 +4538,20 @@ nsTypedSelection::Repaint(nsPresContext* aPresContext)
 }
 
 NS_IMETHODIMP
-nsTypedSelection::GetCanCacheFrameOffset(PRBool *aCanCacheFrameOffset)
+nsTypedSelection::GetCanCacheFrameOffset(bool *aCanCacheFrameOffset)
 { 
   NS_ENSURE_ARG_POINTER(aCanCacheFrameOffset);
 
   if (mCachedOffsetForFrame)
     *aCanCacheFrameOffset = mCachedOffsetForFrame->mCanCacheFrameOffset;
   else
-    *aCanCacheFrameOffset = PR_FALSE;
+    *aCanCacheFrameOffset = false;
 
   return NS_OK;
 }
 
 NS_IMETHODIMP    
-nsTypedSelection::SetCanCacheFrameOffset(PRBool aCanCacheFrameOffset)
+nsTypedSelection::SetCanCacheFrameOffset(bool aCanCacheFrameOffset)
 {
   if (!mCachedOffsetForFrame) {
     mCachedOffsetForFrame = new CachedOffsetForFrame;
@@ -4681,9 +4653,6 @@ nsTypedSelection::StartAutoScrollTimer(nsIFrame *aFrame,
   {
     mAutoScrollTimer = new nsAutoScrollTimer();
 
-    if (!mAutoScrollTimer)
-      return NS_ERROR_OUT_OF_MEMORY;
-
     result = mAutoScrollTimer->Init(mFrameSelection, this);
 
     if (NS_FAILED(result))
@@ -4726,7 +4695,7 @@ nsTypedSelection::DoAutoScroll(nsIFrame *aFrame, nsPoint& aPoint)
   // about to do will change the coordinates of aFrame.
   nsPoint globalPoint = aPoint + aFrame->GetOffsetToCrossDoc(rootmostFrame);
 
-  PRBool didScroll = presContext->PresShell()->
+  bool didScroll = presContext->PresShell()->
     ScrollFrameRectIntoView(aFrame, nsRect(aPoint, nsSize(1,1)),
                             NS_PRESSHELL_SCROLL_ANYWHERE,
                             NS_PRESSHELL_SCROLL_ANYWHERE, 0);
@@ -4748,11 +4717,8 @@ nsTypedSelection::DoAutoScroll(nsIFrame *aFrame, nsPoint& aPoint)
 NS_IMETHODIMP
 nsTypedSelection::GetEnumerator(nsIEnumerator **aIterator)
 {
-  nsresult status = NS_ERROR_OUT_OF_MEMORY;
-  nsSelectionIterator *iterator =  new nsSelectionIterator(this);
-  if (iterator && NS_FAILED(status = CallQueryInterface(iterator, aIterator)) )
-    delete iterator;
-  return status;
+  NS_ADDREF(*aIterator = new nsSelectionIterator(this));
+  return NS_OK;
 }
 
 
@@ -4797,7 +4763,7 @@ nsTypedSelection::AddRange(nsIRange* aRange)
 
   // This inserts a table cell range in proper document order
   // and returns NS_OK if range doesn't contain just one table cell
-  PRBool didAddRange;
+  bool didAddRange;
   PRInt32 rangeIndex;
   nsresult result = addTableCellRange(aRange, &didAddRange, &rangeIndex);
   if (NS_FAILED(result)) return result;
@@ -4813,7 +4779,7 @@ nsTypedSelection::AddRange(nsIRange* aRange)
   
   // Make sure the caret appears on the next line, if at a newline
   if (mType == nsISelectionController::SELECTION_NORMAL)
-    SetInterlinePosition(PR_TRUE);
+    SetInterlinePosition(true);
 
   nsRefPtr<nsPresContext>  presContext;
   GetPresContext(getter_AddRefs(presContext));
@@ -4823,7 +4789,7 @@ nsTypedSelection::AddRange(nsIRange* aRange)
   if (presShell) {
     presShell->FlushPendingNotifications(Flush_Frames);
   }
-  selectFrames(presContext, aRange, PR_TRUE);        
+  selectFrames(presContext, aRange, true);        
 
   if (!mFrameSelection)
     return NS_OK;//nothing to do
@@ -4884,16 +4850,16 @@ nsTypedSelection::RemoveRange(nsIRange* aRange)
   // clear the selected bit from the removed range's frames
   nsRefPtr<nsPresContext>  presContext;
   GetPresContext(getter_AddRefs(presContext));
-  selectFrames(presContext, aRange, PR_FALSE);
+  selectFrames(presContext, aRange, false);
 
   // add back the selected bit for each range touching our nodes
   nsCOMArray<nsIRange> affectedRanges;
   rv = GetRangesForIntervalCOMArray(beginNode, beginOffset,
                                     endNode, endOffset,
-                                    PR_TRUE, &affectedRanges);
+                                    true, &affectedRanges);
   NS_ENSURE_SUCCESS(rv, rv);
   for (PRInt32 i = 0; i < affectedRanges.Count(); i ++) {
-    selectFrames(presContext, affectedRanges[i], PR_TRUE);
+    selectFrames(presContext, affectedRanges[i], true);
   }
 
   PRInt32 cnt = mRanges.Length();
@@ -4906,8 +4872,8 @@ nsTypedSelection::RemoveRange(nsIRange* aRange)
     // in the background. We don't want to scroll in this case or the view
     // might appear to be moving randomly (bug 337871).
     if (mType != nsISelectionController::SELECTION_SPELLCHECK && cnt > 0)
-      ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION, PR_FALSE,
-                     PR_FALSE);
+      ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION, false,
+                     false);
   }
 
   if (!mFrameSelection)
@@ -4950,10 +4916,6 @@ nsTypedSelection::Collapse(nsINode* aParentNode, PRInt32 aOffset)
   mFrameSelection->ClearTableCellSelection();
 
   nsCOMPtr<nsIRange> range = new nsRange();
-  if (!range) {
-    NS_ASSERTION(PR_FALSE,"Couldn't make a range - nsFrameSelection::Collapse");
-    return NS_ERROR_UNEXPECTED;
-  }
   result = range->SetEnd(aParentNode, aOffset);
   if (NS_FAILED(result))
     return result;
@@ -4980,7 +4942,7 @@ nsTypedSelection::Collapse(nsINode* aParentNode, PRInt32 aOffset)
 
   result = AddItem(range);
   setAnchorFocusRange(0);
-  selectFrames(presContext, range, PR_TRUE);
+  selectFrames(presContext, range, true);
   if (NS_FAILED(result))
     return result;
   return mFrameSelection->NotifySelectionListeners(GetType());
@@ -5030,7 +4992,7 @@ nsTypedSelection::CollapseToEnd()
  * IsCollapsed -- is the whole selection just one point, or unset?
  */
 NS_IMETHODIMP
-nsTypedSelection::GetIsCollapsed(PRBool* aIsCollapsed)
+nsTypedSelection::GetIsCollapsed(bool* aIsCollapsed)
 {
   if (!aIsCollapsed)
     return NS_ERROR_NULL_POINTER;
@@ -5038,13 +5000,13 @@ nsTypedSelection::GetIsCollapsed(PRBool* aIsCollapsed)
   PRInt32 cnt = (PRInt32)mRanges.Length();;
   if (cnt == 0)
   {
-    *aIsCollapsed = PR_TRUE;
+    *aIsCollapsed = true;
     return NS_OK;
   }
 
   if (cnt != 1)
   {
-    *aIsCollapsed = PR_FALSE;
+    *aIsCollapsed = false;
     return NS_OK;
   }
 
@@ -5112,9 +5074,9 @@ nsTypedSelection::ReplaceAnchorFocusRange(nsIRange *aRange)
   nsRefPtr<nsPresContext> presContext;
   GetPresContext(getter_AddRefs(presContext));
   if (presContext) {
-    selectFrames(presContext, mAnchorFocusRange, PR_FALSE);
+    selectFrames(presContext, mAnchorFocusRange, false);
     CopyRangeToAnchorFocus(aRange);
-    selectFrames(presContext, mAnchorFocusRange, PR_TRUE);
+    selectFrames(presContext, mAnchorFocusRange, true);
   }
 }
 
@@ -5202,7 +5164,7 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
   // We pass |disconnected| to the following ComparePoints calls in order
   // to avoid assertions, and there is no special handling required, since
   // ComparePoints returns 1 in the disconnected case.
-  PRBool disconnected = PR_FALSE;
+  bool disconnected = false;
   PRInt32 result1 = nsContentUtils::ComparePoints(anchorNode, anchorOffset,
                                                   focusNode, focusOffset,
                                                   &disconnected);
@@ -5230,7 +5192,7 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
     res |= difRange->SetStart(focusNode, focusOffset);
     if (NS_FAILED(res))
       return res;
-    selectFrames(presContext, difRange , PR_TRUE);
+    selectFrames(presContext, difRange , true);
     res = CopyRangeToAnchorFocus(range);
     if (NS_FAILED(res))
       return res;
@@ -5241,7 +5203,7 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
     res = range->SetStart(aParentNode, aOffset);
     if (NS_FAILED(res))
       return res;
-    selectFrames(presContext, range, PR_TRUE);
+    selectFrames(presContext, range, true);
     res = CopyRangeToAnchorFocus(range);
     if (NS_FAILED(res))
       return res;
@@ -5259,9 +5221,9 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
     res = CopyRangeToAnchorFocus(range);
     if (NS_FAILED(res))
       return res;
-    selectFrames(presContext, difRange, PR_FALSE); // deselect now
+    selectFrames(presContext, difRange, false); // deselect now
     difRange->SetEnd(range->GetEndParent(), range->EndOffset());
-    selectFrames(presContext, difRange, PR_TRUE); // must reselect last node maybe more
+    selectFrames(presContext, difRange, true); // must reselect last node maybe more
   }
   else if (result1 >= 0 && result3 <= 0) {//1,a,2 or 1a,2 or 1,a2 or 1a2
     if (GetDirection() == eDirPrevious){
@@ -5282,7 +5244,7 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
       if (NS_FAILED(res))
         return res;
       //deselect from 1 to a
-      selectFrames(presContext, difRange , PR_FALSE);
+      selectFrames(presContext, difRange , false);
     }
     else
     {
@@ -5291,7 +5253,7 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
         return res;
     }
     //select from a to 2
-    selectFrames(presContext, range , PR_TRUE);
+    selectFrames(presContext, range , true);
   }
   else if (result2 <= 0 && result3 >= 0) {//1,2,a or 12,a or 1,2a or 12a
     //deselect from 1 to 2
@@ -5307,9 +5269,9 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
     res = CopyRangeToAnchorFocus(range);
     if (NS_FAILED(res))
       return res;
-    selectFrames(presContext, difRange , PR_FALSE);
+    selectFrames(presContext, difRange , false);
     difRange->SetStart(range->GetStartParent(), range->StartOffset());
-    selectFrames(presContext, difRange, PR_TRUE);//must reselect last node
+    selectFrames(presContext, difRange, true);//must reselect last node
   }
   else if (result3 >= 0 && result1 <= 0) {//2,a,1 or 2a,1 or 2,a1 or 2a1
     if (GetDirection() == eDirNext){
@@ -5326,7 +5288,7 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
       res |= CopyRangeToAnchorFocus(range);
       if (NS_FAILED(res))
         return res;
-      selectFrames(presContext, difRange, PR_FALSE);
+      selectFrames(presContext, difRange, false);
     }
     else
     {
@@ -5335,7 +5297,7 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
         return res;
     }
     //select from 2 to a
-    selectFrames(presContext, range , PR_TRUE);
+    selectFrames(presContext, range , true);
   }
   else if (result2 >= 0 && result1 >= 0) {//2,1,a or 21,a or 2,1a or 21a
     //select from 2 to 1
@@ -5348,7 +5310,7 @@ nsTypedSelection::Extend(nsINode* aParentNode, PRInt32 aOffset)
     if (NS_FAILED(res))
       return res;
 
-    selectFrames(presContext, difRange, PR_TRUE);
+    selectFrames(presContext, difRange, true);
     res = CopyRangeToAnchorFocus(range);
     if (NS_FAILED(res))
       return res;
@@ -5422,13 +5384,13 @@ nsTypedSelection::SelectAllChildren(nsIDOMNode* aParentNode)
 }
 
 NS_IMETHODIMP
-nsTypedSelection::ContainsNode(nsIDOMNode* aNode, PRBool aAllowPartial,
-                               PRBool* aYes)
+nsTypedSelection::ContainsNode(nsIDOMNode* aNode, bool aAllowPartial,
+                               bool* aYes)
 {
   nsresult rv;
   if (!aYes)
     return NS_ERROR_NULL_POINTER;
-  *aYes = PR_FALSE;
+  *aYes = false;
 
   nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
   if (mRanges.Length() == 0 || !node)
@@ -5436,7 +5398,7 @@ nsTypedSelection::ContainsNode(nsIDOMNode* aNode, PRBool aAllowPartial,
 
   // XXXbz this duplicates the GetNodeLength code in nsRange.cpp
   PRUint32 nodeLength;
-  PRBool isData = node->IsNodeOfType(nsINode::eDATA_NODE);
+  bool isData = node->IsNodeOfType(nsINode::eDATA_NODE);
   if (isData) {
     nodeLength = static_cast<nsIContent*>(node.get())->TextLength();
   } else {
@@ -5445,32 +5407,32 @@ nsTypedSelection::ContainsNode(nsIDOMNode* aNode, PRBool aAllowPartial,
 
   nsCOMArray<nsIRange> overlappingRanges;
   rv = GetRangesForIntervalCOMArray(node, 0, node, nodeLength,
-                                    PR_FALSE, &overlappingRanges);
+                                    false, &overlappingRanges);
   NS_ENSURE_SUCCESS(rv, rv);
   if (overlappingRanges.Count() == 0)
     return NS_OK; // no ranges overlap
   
   // if the caller said partial intersections are OK, we're done
   if (aAllowPartial) {
-    *aYes = PR_TRUE;
+    *aYes = true;
     return NS_OK;
   }
 
   // text nodes always count as inside
   if (isData) {
-    *aYes = PR_TRUE;
+    *aYes = true;
     return NS_OK;
   }
 
   // The caller wants to know if the node is entirely within the given range,
   // so we have to check all intersecting ranges.
   for (PRInt32 i = 0; i < overlappingRanges.Count(); i ++) {
-    PRBool nodeStartsBeforeRange, nodeEndsAfterRange;
+    bool nodeStartsBeforeRange, nodeEndsAfterRange;
     if (NS_SUCCEEDED(nsRange::CompareNodeToRange(node, overlappingRanges[i],
                                                  &nodeStartsBeforeRange,
                                                  &nodeEndsAfterRange))) {
       if (!nodeStartsBeforeRange && !nodeEndsAfterRange) {
-        *aYes = PR_TRUE;
+        *aYes = true;
         return NS_OK;
       }
     }
@@ -5603,7 +5565,7 @@ nsTypedSelection::GetSelectionEndPointGeometry(SelectionRegion aRegion,
 
   // Figure out what node type we have, then get the
   // appropriate rect for it's nodeOffset.
-  PRBool isText = node->IsNodeOfType(nsINode::eTEXT);
+  bool isText = node->IsNodeOfType(nsINode::eTEXT);
 
   nsPoint pt(0, 0);
   if (isText) {
@@ -5659,7 +5621,7 @@ nsTypedSelection::ScrollSelectionIntoViewEvent::Run()
 }
 
 nsresult
-nsTypedSelection::PostScrollSelectionIntoViewEvent(SelectionRegion aRegion, PRBool aFirstAncestorOnly)
+nsTypedSelection::PostScrollSelectionIntoViewEvent(SelectionRegion aRegion, bool aFirstAncestorOnly)
 {
   // If we've already posted an event, revoke it and place a new one at the
   // end of the queue to make sure that any new pending reflow events are
@@ -5677,7 +5639,7 @@ nsTypedSelection::PostScrollSelectionIntoViewEvent(SelectionRegion aRegion, PRBo
 }
 
 NS_IMETHODIMP
-nsTypedSelection::ScrollIntoView(SelectionRegion aRegion, PRBool aIsSynchronous,
+nsTypedSelection::ScrollIntoView(SelectionRegion aRegion, bool aIsSynchronous,
                                  PRInt16 aVPercent, PRInt16 aHPercent)
 {
   return ScrollIntoView(aRegion, aVPercent, aHPercent,
@@ -5844,14 +5806,14 @@ nsTypedSelection::Modify(const nsAString& aAlter, const nsAString& aDirection,
   }
 
   // Line moves are always visual.
-  PRBool visual  = aDirection.LowerCaseEqualsLiteral("left") ||
+  bool visual  = aDirection.LowerCaseEqualsLiteral("left") ||
                    aDirection.LowerCaseEqualsLiteral("right") ||
                    aGranularity.LowerCaseEqualsLiteral("line");
 
-  PRBool forward = aDirection.LowerCaseEqualsLiteral("forward") ||
+  bool forward = aDirection.LowerCaseEqualsLiteral("forward") ||
                    aDirection.LowerCaseEqualsLiteral("right");
 
-  PRBool extend  = aAlter.LowerCaseEqualsLiteral("extend");
+  bool extend  = aAlter.LowerCaseEqualsLiteral("extend");
 
   // The PRUint32 casts below prevent an enum mismatch warning.
   nsSelectionAmount amount;
@@ -5940,17 +5902,17 @@ nsTypedSelection::Modify(const nsAString& aAlter, const nsAString& aDirection,
 }
 
 /** SelectionLanguageChange modifies the cursor Bidi level after a change in keyboard direction
- *  @param aLangRTL is PR_TRUE if the new language is right-to-left or PR_FALSE if the new language is left-to-right
+ *  @param aLangRTL is true if the new language is right-to-left or false if the new language is left-to-right
  */
 NS_IMETHODIMP
-nsTypedSelection::SelectionLanguageChange(PRBool aLangRTL)
+nsTypedSelection::SelectionLanguageChange(bool aLangRTL)
 {
   if (!mFrameSelection)
     return NS_ERROR_NOT_INITIALIZED; // Can't do selection
   nsresult result;
   nsIFrame *focusFrame = 0;
 
-  result = GetPrimaryFrameForFocusNode(&focusFrame, nsnull, PR_FALSE);
+  result = GetPrimaryFrameForFocusNode(&focusFrame, nsnull, false);
   if (NS_FAILED(result)) {
     return result;
   }
@@ -5989,7 +5951,7 @@ nsTypedSelection::SelectionLanguageChange(PRBool aLangRTL)
     mFrameSelection->SetHint(hint);
     */
     nsPrevNextBidiLevels levels = mFrameSelection->
-      GetPrevNextBidiLevels(focusContent, focusOffset, PR_FALSE);
+      GetPrevNextBidiLevels(focusContent, focusOffset, false);
       
     levelBefore = levels.mLevelBefore;
     levelAfter = levels.mLevelAfter;
@@ -6021,6 +5983,16 @@ nsTypedSelection::SelectionLanguageChange(PRBool aLangRTL)
   mFrameSelection->InvalidateDesiredX();
   
   return NS_OK;
+}
+
+NS_IMETHODIMP_(nsDirection)
+nsTypedSelection::GetSelectionDirection() {
+  return mDirection;
+}
+
+NS_IMETHODIMP_(void)
+nsTypedSelection::SetSelectionDirection(nsDirection aDirection) {
+  mDirection = aDirection;
 }
 
 
@@ -6066,7 +6038,7 @@ nsAutoCopyListener::NotifySelectionChanged(nsIDOMDocument *aDoc,
         aReason & nsISelectionListener::KEYPRESS_REASON))
     return NS_OK; //dont care if we are still dragging
 
-  PRBool collapsed;
+  bool collapsed;
   if (!aDoc || !aSel ||
       NS_FAILED(aSel->GetIsCollapsed(&collapsed)) || collapsed) {
 #ifdef DEBUG_CLIPBOARD

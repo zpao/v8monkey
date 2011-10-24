@@ -46,8 +46,8 @@
 nsTemplateCondition::nsTemplateCondition(nsIAtom* aSourceVariable,
                                          const nsAString& aRelation,
                                          nsIAtom* aTargetVariable,
-                                         PRBool aIgnoreCase,
-                                         PRBool aNegate)
+                                         bool aIgnoreCase,
+                                         bool aNegate)
     : mSourceVariable(aSourceVariable),
       mTargetVariable(aTargetVariable),
       mIgnoreCase(aIgnoreCase),
@@ -62,9 +62,9 @@ nsTemplateCondition::nsTemplateCondition(nsIAtom* aSourceVariable,
 nsTemplateCondition::nsTemplateCondition(nsIAtom* aSourceVariable,
                                          const nsAString& aRelation,
                                          const nsAString& aTargets,
-                                         PRBool aIgnoreCase,
-                                         PRBool aNegate,
-                                         PRBool aIsMultiple)
+                                         bool aIgnoreCase,
+                                         bool aNegate,
+                                         bool aIsMultiple)
     : mSourceVariable(aSourceVariable),
       mIgnoreCase(aIgnoreCase),
       mNegate(aNegate),
@@ -94,8 +94,8 @@ nsTemplateCondition::nsTemplateCondition(nsIAtom* aSourceVariable,
 nsTemplateCondition::nsTemplateCondition(const nsAString& aSource,
                                          const nsAString& aRelation,
                                          nsIAtom* aTargetVariable,
-                                         PRBool aIgnoreCase,
-                                         PRBool aNegate)
+                                         bool aIgnoreCase,
+                                         bool aNegate)
     : mSource(aSource),
       mTargetVariable(aTargetVariable),
       mIgnoreCase(aIgnoreCase),
@@ -130,10 +130,10 @@ nsTemplateCondition::SetRelation(const nsAString& aRelation)
         mRelation = eUnknown;
 }
 
-PRBool
+bool
 nsTemplateCondition::CheckMatch(nsIXULTemplateResult* aResult)
 {
-    PRBool match = PR_FALSE;
+    bool match = false;
 
     nsAutoString leftString;
     if (mSourceVariable)
@@ -164,15 +164,15 @@ nsTemplateCondition::CheckMatch(nsIXULTemplateResult* aResult)
 }
 
 
-PRBool
+bool
 nsTemplateCondition::CheckMatchStrings(const nsAString& aLeftString,
                                        const nsAString& aRightString)
 {
-    PRBool match = PR_FALSE;
+    bool match = false;
 
     if (aRightString.IsEmpty()) {
         if ((mRelation == eEquals) && aLeftString.IsEmpty())
-            match = PR_TRUE;
+            match = true;
     }
     else {
         switch (mRelation) {
@@ -343,14 +343,14 @@ void nsTemplateRule::SetCondition(nsTemplateCondition* aCondition)
     mConditions = aCondition;
 }
 
-PRBool
+bool
 nsTemplateRule::CheckMatch(nsIXULTemplateResult* aResult) const
 {
     // check the conditions in the rule first
     nsTemplateCondition* condition = mConditions;
     while (condition) {
         if (!condition->CheckMatch(aResult))
-            return PR_FALSE;
+            return false;
 
         condition = condition->GetNext();
     }
@@ -358,15 +358,15 @@ nsTemplateRule::CheckMatch(nsIXULTemplateResult* aResult) const
     if (mRuleFilter) {
         // if a rule filter was set, check it for a match. If an error occurs,
         // assume that the match was acceptable
-        PRBool match;
+        bool match;
         nsresult rv = mRuleFilter->Match(aResult, mRuleNode, &match);
         return NS_FAILED(rv) || match;
     }
 
-    return PR_TRUE;
+    return true;
 }
 
-PRBool
+bool
 nsTemplateRule::HasBinding(nsIAtom* aSourceVariable,
                            nsAString& aExpr,
                            nsIAtom* aTargetVariable) const
@@ -375,10 +375,10 @@ nsTemplateRule::HasBinding(nsIAtom* aSourceVariable,
         if ((binding->mSourceVariable == aSourceVariable) &&
             (binding->mExpr.Equals(aExpr)) &&
             (binding->mTargetVariable == aTargetVariable))
-            return PR_TRUE;
+            return true;
     }
 
-    return PR_FALSE;
+    return false;
 }
 
 nsresult

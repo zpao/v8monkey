@@ -36,14 +36,14 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsIDOMCDATASection.h"
-#include "nsIDOM3Text.h"
 #include "nsGenericDOMDataNode.h"
 #include "nsGkAtoms.h"
 #include "nsIDocument.h"
 #include "nsContentUtils.h"
+#include "nsDOMMemoryReporter.h"
 
 
-class nsXMLCDATASection : public nsGenericTextNode,
+class nsXMLCDATASection : public nsGenericDOMDataNode,
                           public nsIDOMCDATASection
 {
 public:
@@ -54,7 +54,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIDOMNode
-  NS_IMPL_NSIDOMNODE_USING_GENERIC_DOM_DATA
+  NS_FORWARD_NSIDOMNODE(nsGenericDOMDataNode::)
 
   // nsIDOMCharacterData
   NS_FORWARD_NSIDOMCHARACTERDATA(nsGenericDOMDataNode::)
@@ -62,16 +62,23 @@ public:
   // nsIDOMText
   NS_FORWARD_NSIDOMTEXT(nsGenericDOMDataNode::)
 
+  // DOM Memory Reporter participant.
+  NS_DECL_AND_IMPL_DOM_MEMORY_REPORTER_SIZEOF(nsXMLCDATASection,
+                                              nsGenericDOMDataNode)
+
   // nsIDOMCDATASection
   // Empty interface
 
-  // nsIContent
-  virtual PRBool IsNodeOfType(PRUint32 aFlags) const;
+  // nsINode
+  virtual bool IsNodeOfType(PRUint32 aFlags) const;
+
+  virtual nsGenericDOMDataNode* CloneDataNode(nsINodeInfo *aNodeInfo,
+                                              bool aCloneText) const;
 
   virtual nsXPCClassInfo* GetClassInfo();
 #ifdef DEBUG
   virtual void List(FILE* out, PRInt32 aIndent) const;
-  virtual void DumpContent(FILE* out, PRInt32 aIndent,PRBool aDumpAll) const;
+  virtual void DumpContent(FILE* out, PRInt32 aIndent,bool aDumpAll) const;
 #endif
 };
 
@@ -85,7 +92,8 @@ NS_NewXMLCDATASection(nsIContent** aInstancePtrResult,
 
   nsCOMPtr<nsINodeInfo> ni;
   ni = aNodeInfoManager->GetNodeInfo(nsGkAtoms::cdataTagName,
-                                     nsnull, kNameSpaceID_None);
+                                     nsnull, kNameSpaceID_None,
+                                     nsIDOMNode::CDATA_SECTION_NODE);
   NS_ENSURE_TRUE(ni, NS_ERROR_OUT_OF_MEMORY);
 
   nsXMLCDATASection *instance = new nsXMLCDATASection(ni.forget());
@@ -99,8 +107,10 @@ NS_NewXMLCDATASection(nsIContent** aInstancePtrResult,
 }
 
 nsXMLCDATASection::nsXMLCDATASection(already_AddRefed<nsINodeInfo> aNodeInfo)
-  : nsGenericTextNode(aNodeInfo)
+  : nsGenericDOMDataNode(aNodeInfo)
 {
+  NS_ABORT_IF_FALSE(mNodeInfo->NodeType() == nsIDOMNode::CDATA_SECTION_NODE,
+                    "Bad NodeType in aNodeInfo");
 }
 
 nsXMLCDATASection::~nsXMLCDATASection()
@@ -114,7 +124,6 @@ DOMCI_NODE_DATA(CDATASection, nsXMLCDATASection)
 NS_INTERFACE_TABLE_HEAD(nsXMLCDATASection)
   NS_NODE_INTERFACE_TABLE4(nsXMLCDATASection, nsIDOMNode, nsIDOMCharacterData,
                            nsIDOMText, nsIDOMCDATASection)
-  NS_INTERFACE_MAP_ENTRY_TEAROFF(nsIDOM3Text, new nsText3Tearoff(this))
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(CDATASection)
 NS_INTERFACE_MAP_END_INHERITING(nsGenericDOMDataNode)
 
@@ -122,40 +131,14 @@ NS_IMPL_ADDREF_INHERITED(nsXMLCDATASection, nsGenericDOMDataNode)
 NS_IMPL_RELEASE_INHERITED(nsXMLCDATASection, nsGenericDOMDataNode)
 
 
-PRBool
+bool
 nsXMLCDATASection::IsNodeOfType(PRUint32 aFlags) const
 {
   return !(aFlags & ~(eCONTENT | eTEXT | eDATA_NODE));
 }
 
-NS_IMETHODIMP
-nsXMLCDATASection::GetNodeName(nsAString& aNodeName)
-{
-  aNodeName.AssignLiteral("#cdata-section");
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsXMLCDATASection::GetNodeValue(nsAString& aNodeValue)
-{
-  return nsGenericDOMDataNode::GetNodeValue(aNodeValue);
-}
-
-NS_IMETHODIMP
-nsXMLCDATASection::SetNodeValue(const nsAString& aNodeValue)
-{
-  return nsGenericDOMDataNode::SetNodeValue(aNodeValue);
-}
-
-NS_IMETHODIMP
-nsXMLCDATASection::GetNodeType(PRUint16* aNodeType)
-{
-  *aNodeType = (PRUint16)nsIDOMNode::CDATA_SECTION_NODE;
-  return NS_OK;
-}
-
 nsGenericDOMDataNode*
-nsXMLCDATASection::CloneDataNode(nsINodeInfo *aNodeInfo, PRBool aCloneText) const
+nsXMLCDATASection::CloneDataNode(nsINodeInfo *aNodeInfo, bool aCloneText) const
 {
   nsCOMPtr<nsINodeInfo> ni = aNodeInfo;
   nsXMLCDATASection *it = new nsXMLCDATASection(ni.forget());
@@ -184,6 +167,6 @@ nsXMLCDATASection::List(FILE* out, PRInt32 aIndent) const
 
 void
 nsXMLCDATASection::DumpContent(FILE* out, PRInt32 aIndent,
-                               PRBool aDumpAll) const {
+                               bool aDumpAll) const {
 }
 #endif

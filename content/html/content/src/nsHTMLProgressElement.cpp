@@ -72,7 +72,7 @@ public:
 
   nsresult Clone(nsINodeInfo* aNodeInfo, nsINode** aResult) const;
 
-  PRBool ParseAttribute(PRInt32 aNamespaceID, nsIAtom* aAttribute,
+  bool ParseAttribute(PRInt32 aNamespaceID, nsIAtom* aAttribute,
                         const nsAString& aValue, nsAttrValue& aResult);
 
   virtual nsXPCClassInfo* GetClassInfo();
@@ -102,6 +102,8 @@ NS_IMPL_NS_NEW_HTML_ELEMENT(Progress)
 nsHTMLProgressElement::nsHTMLProgressElement(already_AddRefed<nsINodeInfo> aNodeInfo)
   : nsGenericHTMLFormElement(aNodeInfo)
 {
+  // We start out indeterminate
+  AddStatesSilently(NS_EVENT_STATE_INDETERMINATE);
 }
 
 nsHTMLProgressElement::~nsHTMLProgressElement()
@@ -149,7 +151,7 @@ nsHTMLProgressElement::IntrinsicState() const
   return state;
 }
 
-PRBool
+bool
 nsHTMLProgressElement::ParseAttribute(PRInt32 aNamespaceID, nsIAtom* aAttribute,
                                       const nsAString& aValue, nsAttrValue& aResult)
 {
@@ -184,7 +186,7 @@ nsHTMLProgressElement::GetValue(double* aValue)
   double max;
   GetMax(&max);
 
-  *aValue = PR_MIN(*aValue, max);
+  *aValue = NS_MIN(*aValue, max);
 
   return NS_OK;
 }

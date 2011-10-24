@@ -83,7 +83,7 @@
 #endif
 
 // Size to use for PLArena block allocations.
-static const size_t ARENA_PAGE_SIZE = 4096;
+static const size_t ARENA_PAGE_SIZE = 8192;
 
 // Freed memory is filled with a poison value, which we arrange to
 // form a pointer either to an always-unmapped region of the address
@@ -262,7 +262,7 @@ ARENA_POISON_init()
 #ifdef MOZ_CRASHREPORTER
   nsCOMPtr<nsICrashReporter> cr =
     do_GetService("@mozilla.org/toolkit/crash-reporter;1");
-  PRBool enabled;
+  bool enabled;
   if (cr && NS_SUCCEEDED(cr->GetEnabled(&enabled)) && enabled) {
     cr->AnnotateCrashReport(NS_LITERAL_CSTRING("FramePoisonBase"),
                             nsPrintfCString(17, "%.16llx", PRUint64(rgnbase)));
@@ -294,7 +294,7 @@ protected:
   FreeList(KeyTypePointer aKey) : mEntrySize(0), mKey(aKey) {}
   // Default copy constructor and destructor are ok.
 
-  PRBool KeyEquals(KeyTypePointer const aKey) const
+  bool KeyEquals(KeyTypePointer const aKey) const
   { return mKey == aKey; }
 
   static KeyTypePointer KeyToPointer(KeyType aKey)
@@ -303,7 +303,7 @@ protected:
   static PLDHashNumber HashKey(KeyTypePointer aKey)
   { return NS_PTR_TO_INT32(aKey); }
 
-  enum { ALLOW_MEMMOVE = PR_FALSE };
+  enum { ALLOW_MEMMOVE = false };
   friend class nsTHashtable<FreeList>;
 };
 

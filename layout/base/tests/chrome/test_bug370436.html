@@ -5,7 +5,6 @@
 -->
 <head>
 	<title>Test for Bug 370436</title>
-	<script type="application/javascript" src="chrome://mochikit/content/MochiKit/packed.js"></script>
 	<script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>        
 	<script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>        
 	<link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css" />
@@ -40,6 +39,7 @@ function startTest()
 {
 	ta = document.getElementById('blah');
 	ta.focus();
+	ta.selectionStart = ta.selectionEnd = ta.value.length;
 
 	/* Put cursor at start and middle of "sheep" */
 	synthesizeKey("VK_UP", {})

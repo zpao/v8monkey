@@ -59,12 +59,18 @@ CPP_UNIT_TESTS = \
 XPCSHELL_TESTS = \
                unit \
                $(NULL)
+# FIXME/bug 575918: out-of-process xpcshell is broken on OS X
+ifneq ($(OS_ARCH),Darwin)
+XPCSHELL_TESTS += unit_ipc
+endif
 
 include $(topsrcdir)/config/rules.mk
 
 # Split files arbitrarily in two groups to not run into too-long command lines
 # which break on Windows (see bug 563151)
-_TEST_FILES1 = 	test_bug5141.html \
+_TEST_FILES1 = \
+		responseIdentical.sjs \
+		test_bug5141.html \
 		test_bug51034.html \
 		test_bug166235.html \
 		test_bug199959.html \
@@ -80,6 +86,7 @@ _TEST_FILES1 = 	test_bug5141.html \
 		bug298064-subframe.html \
 		test_xhr_forbidden_headers.html \
 		test_bug311681.xml \
+		test_bug320799.html \
 		test_bug322317.html \
 		test_bug330925.xhtml \
 		test_bug331959.html \
@@ -89,7 +96,6 @@ _TEST_FILES1 = 	test_bug5141.html \
 		test_bug338679.html \
 		test_bug339494.html \
 		test_bug339494.xhtml \
-		test_bug339494.xul \
 		test_bug340571.html \
 		test_bug343596.html \
 		test_bug345339.html \
@@ -101,7 +107,6 @@ _TEST_FILES1 = 	test_bug5141.html \
 		test_bug357450.js \
 		test_bug357450.html \
 		test_bug357450.xhtml \
-		test_bug357450.xul \
 		test_bug357450_svg.xhtml \
 		test_bug357509.html \
 		test_bug358660.html \
@@ -158,7 +163,6 @@ _TEST_FILES1 = 	test_bug5141.html \
 		test_bug413974.html \
 		test_bug415860.html \
 		test_bug414190.html \
-		test_bug414796.html \
 		test_bug527896.html \
 		test_bug416317-1.html \
 		test_bug416317-2.html \
@@ -216,6 +220,7 @@ _TEST_FILES1 = 	test_bug5141.html \
 		file_XHR_fail1.txt^headers^ \
 		file_XHR_binary1.bin \
 		file_XHR_binary1.bin^headers^ \
+		file_XHR_binary2.bin \
 		test_bug428847.html \
 		file_bug428847-1.xhtml \
 		file_bug428847-2.xhtml \
@@ -227,7 +232,6 @@ _TEST_FILES1 = 	test_bug5141.html \
 		test_bug438519.html \
 		test_bug444722.html \
 		test_bug451376.html \
-		test_text_replaceWholeText.html \
 		test_text_wholeText.html \
 		test_bug433533.html \
 		wholeTexty-helper.xml \
@@ -244,10 +248,7 @@ _TEST_FILES1 = 	test_bug5141.html \
 		file_bug445225_multipart.txt^headers^ \
 		test_title.html \
 		test_bug453521.html \
-		test_bug391728.html \
-		file_bug391728.html \
 		test_bug454325.html \
-		file_bug391728_2.html \
 		test_bug456262.html \
 		test_bug482935.html \
 		     bug482935.sjs \
@@ -266,6 +267,7 @@ _TEST_FILES1 = 	test_bug5141.html \
 		test_bug587931.html \
 		test_bug592829.html \
 		test_bug518104.html \
+		test_bug682463.html \
 		bug457746.sjs \
 		test_CrossSiteXHR.html \
 		test_CrossSiteXHR_origin.html \
@@ -413,12 +415,11 @@ _TEST_FILES2 = \
 		file_bug548193.sjs \
 		test_html_colors_quirks.html \
 		test_html_colors_standards.html \
-		test_bug571390.xul \
 		test_bug300992.html \
 		test_websocket_hello.html \
 		file_websocket_hello_wsh.py \
-		test_ws_basic_tests.html \
-		file_ws_basic_tests_wsh.py \
+		test_websocket_basic.html \
+		file_websocket_basic_wsh.py \
 		test_websocket.html \
 		file_websocket_wsh.py \
 		file_websocket_http_resource.txt \
@@ -431,7 +432,6 @@ _TEST_FILES2 = \
 		file_bug622088.sjs \
 		test_bug564047.html \
 		test_bug567350.html \
-		test_bug574596.html \
 		test_bug578096.html \
 		test_bug585978.html \
 		test_bug592366.html \
@@ -477,6 +477,54 @@ _TEST_FILES2 = \
 		test_bug628938.html \
 		test_bug626262.html \
 		test_plugin_freezing.html \
+		test_bug638112.html \
+		bug638112-response.txt \
+		bug638112.sjs \
+		test_bug656283.html \
+		test_blobbuilder.html \
+		fileutils.js \
+		test_bug338583.html \
+		eventsource.resource \
+		eventsource.resource^headers^ \
+		badContentType.eventsource \
+		badContentType.eventsource^headers^ \
+		badEventFieldName.eventsource \
+		badEventFieldName.eventsource^headers^ \
+		badHTTPResponseCode.eventsource \
+		badHTTPResponseCode.eventsource^headers^ \
+		badMessageEvent.eventsource \
+		badMessageEvent.eventsource^headers^ \
+		forRemoval.resource \
+		forRemoval.resource^headers^ \
+		accesscontrol.resource \
+		accesscontrol.resource^headers^ \
+		invalid_accesscontrol.resource \
+		invalid_accesscontrol.resource^headers^ \
+		test_xhr_progressevents.html \
+		progressserver.sjs \
+		somedatas.resource \
+		somedatas.resource^headers^ \
+		delayedServerEvents.sjs \
+		test_bug664916.html \
+		test_bug666604.html \
+		test_bug675121.html \
+		file_bug675121.sjs \
+		test_bug675166.html \
+		test_bug682554.html \
+		test_bug682592.html \
+		bug682592-subframe.html \
+		bug682592-subframe-ref.html \
+		test_bug684671.html \
+		test_bug685798.html \
+		test_bug686449.xhtml \
+		test_bug690056.html \
+		test_bug692434.html \
+		file_bug692434.xml \
+		test_bug693875.html \
+		$(NULL)
+
+_CHROME_FILES =	\
+		test_bug357450.js \
 		$(NULL)
 
 # This test fails on the Mac for some reason
@@ -505,3 +553,7 @@ libs:: $(_TEST_FILES2)
 
 libs:: $(_BROWSER_TEST_FILES)
 	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/browser/$(relativesrcdir)
+
+libs:: $(_CHROME_FILES)
+	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/chrome/$(relativesrcdir)
+

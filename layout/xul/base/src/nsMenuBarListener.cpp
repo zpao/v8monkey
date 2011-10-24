@@ -41,10 +41,6 @@
 #include "nsMenuBarListener.h"
 #include "nsMenuBarFrame.h"
 #include "nsMenuPopupFrame.h"
-#include "nsIDOMKeyListener.h"
-#include "nsIDOMEventTarget.h"
-#include "nsIDOMEventListener.h"
-#include "nsIDOMNSUIEvent.h"
 #include "nsIDOMNSEvent.h"
 #include "nsGUIEvent.h"
 
@@ -58,19 +54,15 @@
 #include "nsIDOMElement.h"
 
 #include "nsContentUtils.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 /*
  * nsMenuBarListener implementation
  */
 
-NS_IMPL_ADDREF(nsMenuBarListener)
-NS_IMPL_RELEASE(nsMenuBarListener)
-NS_INTERFACE_MAP_BEGIN(nsMenuBarListener)
-                     NS_INTERFACE_MAP_ENTRY(nsIDOMKeyListener)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMFocusListener)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsIDOMEventListener,nsIDOMMouseListener)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMMouseListener)
-NS_INTERFACE_MAP_END
+NS_IMPL_ISUPPORTS1(nsMenuBarListener, nsIDOMEventListener)
 
 #define MODIFIER_SHIFT    1
 #define MODIFIER_CONTROL  2
@@ -81,10 +73,10 @@ NS_INTERFACE_MAP_END
 
 PRInt32 nsMenuBarListener::mAccessKey = -1;
 PRUint32 nsMenuBarListener::mAccessKeyMask = 0;
-PRBool nsMenuBarListener::mAccessKeyFocuses = PR_FALSE;
+bool nsMenuBarListener::mAccessKeyFocuses = false;
 
 nsMenuBarListener::nsMenuBarListener(nsMenuBarFrame* aMenuBar) 
-  :mAccessKeyDown(PR_FALSE), mAccessKeyDownCanceled(PR_FALSE)
+  :mAccessKeyDown(false), mAccessKeyDownCanceled(false)
 {
   mMenuBarFrame = aMenuBar;
 }
@@ -120,7 +112,7 @@ void nsMenuBarListener::InitAccessKey()
 #endif
 
   // Get the menu access key value from prefs, overriding the default:
-  mAccessKey = nsContentUtils::GetIntPref("ui.key.menuAccessKey", mAccessKey);
+  mAccessKey = Preferences::GetInt("ui.key.menuAccessKey", mAccessKey);
   if (mAccessKey == nsIDOMKeyEvent::DOM_VK_SHIFT)
     mAccessKeyMask = MODIFIER_SHIFT;
   else if (mAccessKey == nsIDOMKeyEvent::DOM_VK_CONTROL)
@@ -130,8 +122,7 @@ void nsMenuBarListener::InitAccessKey()
   else if (mAccessKey == nsIDOMKeyEvent::DOM_VK_META)
     mAccessKeyMask = MODIFIER_META;
 
-  mAccessKeyFocuses =
-    nsContentUtils::GetBoolPref("ui.key.menuAccessKeyFocuses");
+  mAccessKeyFocuses = Preferences::GetBool("ui.key.menuAccessKeyFocuses");
 }
 
 void
@@ -142,7 +133,7 @@ nsMenuBarListener::ToggleMenuActiveState()
   if (pm && closemenu) {
     nsMenuPopupFrame* popupFrame = closemenu->GetPopup();
     if (popupFrame)
-      pm->HidePopup(popupFrame->GetContent(), PR_FALSE, PR_FALSE, PR_TRUE);
+      pm->HidePopup(popupFrame->GetContent(), false, false, true);
   }
 }
 
@@ -150,11 +141,16 @@ nsMenuBarListener::ToggleMenuActiveState()
 nsresult
 nsMenuBarListener::KeyUp(nsIDOMEvent* aKeyEvent)
 {  
+  nsCOMPtr<nsIDOMKeyEvent> keyEvent = do_QueryInterface(aKeyEvent);
+  if (!keyEvent) {
+    return NS_OK;
+  }
+
   InitAccessKey();
 
   //handlers shouldn't be triggered by non-trusted events.
   nsCOMPtr<nsIDOMNSEvent> domNSEvent = do_QueryInterface(aKeyEvent);
-  PRBool trustedEvent = PR_FALSE;
+  bool trustedEvent = false;
 
   if (domNSEvent) {
     domNSEvent->GetIsTrusted(&trustedEvent);
@@ -168,7 +164,6 @@ nsMenuBarListener::KeyUp(nsIDOMEvent* aKeyEvent)
     // On a press of the ALT key by itself, we toggle the menu's 
     // active/inactive state.
     // Get the ascii key code.
-    nsCOMPtr<nsIDOMKeyEvent> keyEvent = do_QueryInterface(aKeyEvent);
     PRUint32 theChar;
     keyEvent->GetKeyCode(&theChar);
 
@@ -182,10 +177,10 @@ nsMenuBarListener::KeyUp(nsIDOMEvent* aKeyEvent)
       }
       ToggleMenuActiveState();
     }
-    mAccessKeyDown = PR_FALSE;
-    mAccessKeyDownCanceled = PR_FALSE;
+    mAccessKeyDown = false;
+    mAccessKeyDownCanceled = false;
 
-    PRBool active = mMenuBarFrame->IsActive();
+    bool active = mMenuBarFrame->IsActive();
     if (active) {
       aKeyEvent->StopPropagation();
       aKeyEvent->PreventDefault();
@@ -201,17 +196,17 @@ nsresult
 nsMenuBarListener::KeyPress(nsIDOMEvent* aKeyEvent)
 {
   // if event has already been handled, bail
-  nsCOMPtr<nsIDOMNSUIEvent> uiEvent ( do_QueryInterface(aKeyEvent) );
-  if ( uiEvent ) {
-    PRBool eventHandled = PR_FALSE;
-    uiEvent->GetPreventDefault ( &eventHandled );
-    if ( eventHandled )
+  nsCOMPtr<nsIDOMNSEvent> domNSEvent = do_QueryInterface(aKeyEvent);
+  if (domNSEvent) {
+    bool eventHandled = false;
+    domNSEvent->GetPreventDefault(&eventHandled);
+    if (eventHandled) {
       return NS_OK;       // don't consume event
+    }
   }
 
   //handlers shouldn't be triggered by non-trusted events.
-  nsCOMPtr<nsIDOMNSEvent> domNSEvent = do_QueryInterface(aKeyEvent);
-  PRBool trustedEvent = PR_FALSE;
+  bool trustedEvent = false;
   if (domNSEvent) {
     domNSEvent->GetIsTrusted(&trustedEvent);
   }
@@ -225,18 +220,15 @@ nsMenuBarListener::KeyPress(nsIDOMEvent* aKeyEvent)
 
   if (mAccessKey)
   {
-    nsCOMPtr<nsIDOMNSUIEvent> nsUIEvent = do_QueryInterface(aKeyEvent);
-
-    PRBool preventDefault;
-
-    nsUIEvent->GetPreventDefault(&preventDefault);
+    bool preventDefault;
+    domNSEvent->GetPreventDefault(&preventDefault);
     if (!preventDefault) {
       nsCOMPtr<nsIDOMKeyEvent> keyEvent = do_QueryInterface(aKeyEvent);
       PRUint32 keyCode, charCode;
       keyEvent->GetKeyCode(&keyCode);
       keyEvent->GetCharCode(&charCode);
 
-      PRBool hasAccessKeyCandidates = charCode != 0;
+      bool hasAccessKeyCandidates = charCode != 0;
       if (!hasAccessKeyCandidates) {
         nsEvent* nativeEvent = nsContentUtils::GetNativeEvent(aKeyEvent);
         nsKeyEvent* nativeKeyEvent = static_cast<nsKeyEvent*>(nativeEvent);
@@ -249,7 +241,7 @@ nsMenuBarListener::KeyPress(nsIDOMEvent* aKeyEvent)
 
       // Cancel the access key flag unless we are pressing the access key.
       if (keyCode != (PRUint32)mAccessKey) {
-        mAccessKeyDownCanceled = PR_TRUE;
+        mAccessKeyDownCanceled = true;
       }
 
       if (IsAccessKeyPressed(keyEvent) && hasAccessKeyCandidates) {
@@ -259,12 +251,12 @@ nsMenuBarListener::KeyPress(nsIDOMEvent* aKeyEvent)
         nsMenuFrame* result = mMenuBarFrame->FindMenuWithShortcut(keyEvent);
         if (result) {
           mMenuBarFrame->SetActiveByKeyboard();
-          mMenuBarFrame->SetActive(PR_TRUE);
-          result->OpenMenu(PR_TRUE);
+          mMenuBarFrame->SetActive(true);
+          result->OpenMenu(true);
 
           // The opened menu will listen next keyup event.
           // Therefore, we should clear the keydown flags here.
-          mAccessKeyDown = mAccessKeyDownCanceled = PR_FALSE;
+          mAccessKeyDown = mAccessKeyDownCanceled = false;
 
           aKeyEvent->StopPropagation();
           aKeyEvent->PreventDefault();
@@ -292,7 +284,7 @@ nsMenuBarListener::KeyPress(nsIDOMEvent* aKeyEvent)
   return retVal;
 }
 
-PRBool
+bool
 nsMenuBarListener::IsAccessKeyPressed(nsIDOMKeyEvent* aKeyEvent)
 {
   InitAccessKey();
@@ -308,7 +300,7 @@ PRUint32
 nsMenuBarListener::GetModifiers(nsIDOMKeyEvent* aKeyEvent)
 {
   PRUint32 modifiers = 0;
-  PRBool modifier;
+  bool modifier;
 
   aKeyEvent->GetShiftKey(&modifier);
   if (modifier)
@@ -337,7 +329,7 @@ nsMenuBarListener::KeyDown(nsIDOMEvent* aKeyEvent)
 
   //handlers shouldn't be triggered by non-trusted events.
   nsCOMPtr<nsIDOMNSEvent> domNSEvent = do_QueryInterface(aKeyEvent);
-  PRBool trustedEvent = PR_FALSE;
+  bool trustedEvent = false;
 
   if (domNSEvent) {
     domNSEvent->GetIsTrusted(&trustedEvent);
@@ -358,14 +350,14 @@ nsMenuBarListener::KeyDown(nsIDOMEvent* aKeyEvent)
       // Especially CTRL.  CTRL+ALT == AltGR, and
       // we'll fuck up on non-US enhanced 102-key
       // keyboards if we don't check this.
-      mAccessKeyDown = PR_TRUE;
+      mAccessKeyDown = true;
     }
     else {
       // Some key other than the access key just went down,
       // so we won't activate the menu bar when the access
       // key is released.
 
-      mAccessKeyDownCanceled = PR_TRUE;
+      mAccessKeyDownCanceled = true;
     }
   }
 
@@ -375,19 +367,12 @@ nsMenuBarListener::KeyDown(nsIDOMEvent* aKeyEvent)
 ////////////////////////////////////////////////////////////////////////
 
 nsresult
-nsMenuBarListener::Focus(nsIDOMEvent* aEvent)
-{
-  return NS_OK; // means I am NOT consuming event
-}
-
-////////////////////////////////////////////////////////////////////////
-nsresult
 nsMenuBarListener::Blur(nsIDOMEvent* aEvent)
 {
   if (!mMenuBarFrame->IsMenuOpen() && mMenuBarFrame->IsActive()) {
     ToggleMenuActiveState();
-    mAccessKeyDown = PR_FALSE;
-    mAccessKeyDownCanceled = PR_FALSE;
+    mAccessKeyDown = false;
+    mAccessKeyDownCanceled = false;
   }
   return NS_OK; // means I am NOT consuming event
 }
@@ -402,7 +387,7 @@ nsMenuBarListener::MouseDown(nsIDOMEvent* aMouseEvent)
   // to activate the menu.  Therefore, we need to record it at capturing (or
   // target) phase.
   if (mAccessKeyDown) {
-    mAccessKeyDownCanceled = PR_TRUE;
+    mAccessKeyDownCanceled = true;
   }
 
   PRUint16 phase = 0;
@@ -420,42 +405,29 @@ nsMenuBarListener::MouseDown(nsIDOMEvent* aMouseEvent)
 }
 
 ////////////////////////////////////////////////////////////////////////
-nsresult 
-nsMenuBarListener::MouseUp(nsIDOMEvent* aMouseEvent)
-{
-  return NS_OK; // means I am NOT consuming event
-}
-
-nsresult 
-nsMenuBarListener::MouseClick(nsIDOMEvent* aMouseEvent)
-{
-  return NS_OK; // means I am NOT consuming event
-}
-
-////////////////////////////////////////////////////////////////////////
-nsresult 
-nsMenuBarListener::MouseDblClick(nsIDOMEvent* aMouseEvent)
-{
-  return NS_OK; // means I am NOT consuming event
-}
-
-////////////////////////////////////////////////////////////////////////
-nsresult 
-nsMenuBarListener::MouseOver(nsIDOMEvent* aMouseEvent)
-{
-  return NS_OK; // means I am NOT consuming event
-}
-
-////////////////////////////////////////////////////////////////////////
-nsresult 
-nsMenuBarListener::MouseOut(nsIDOMEvent* aMouseEvent)
-{
-  return NS_OK; // means I am NOT consuming event
-}
-
-////////////////////////////////////////////////////////////////////////
 nsresult
 nsMenuBarListener::HandleEvent(nsIDOMEvent* aEvent)
 {
+  nsAutoString eventType;
+  aEvent->GetType(eventType);
+  
+  if (eventType.EqualsLiteral("keyup")) {
+    return KeyUp(aEvent);
+  }
+  if (eventType.EqualsLiteral("keydown")) {
+    return KeyDown(aEvent);
+  }
+  if (eventType.EqualsLiteral("keypress")) {
+    return KeyPress(aEvent);
+  }
+  if (eventType.EqualsLiteral("blur")) {
+    return Blur(aEvent);
+  }
+  if (eventType.EqualsLiteral("mousedown")) {
+    return MouseDown(aEvent);
+  }
+
+  NS_ABORT();
+
   return NS_OK;
 }

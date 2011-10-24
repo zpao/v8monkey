@@ -27,8 +27,8 @@
 
 #define XPI_PERMISSION      "install"
 
-#define XPI_WHITELIST       PR_TRUE
-#define XPI_GLOBAL          PR_FALSE
+#define XPI_WHITELIST       true
+#define XPI_GLOBAL          false
 
 #define XPINSTALL_ENABLE_PREF            "xpinstall.enabled"
 #define XPINSTALL_WHITELIST_ADD          "xpinstall.whitelist.add"
@@ -51,13 +51,13 @@ class nsInstallTrigger: public nsIScriptObjectOwner,
         NS_IMETHOD    SetScriptObject(void* aScriptObject);
 
         NS_IMETHOD    GetOriginatingURI(nsIScriptGlobalObject* aGlobalObject, nsIURI * *aUri);
-        NS_IMETHOD    UpdateEnabled(nsIScriptGlobalObject* aGlobalObject, PRBool aUseWhitelist, PRBool* aReturn);
-        NS_IMETHOD    UpdateEnabled(nsIURI* aURI, PRBool aUseWhitelist, PRBool* aReturn);
-        NS_IMETHOD    StartInstall(nsIXPIInstallInfo* aInstallInfo, PRBool* aReturn);
+        NS_IMETHOD    UpdateEnabled(nsIScriptGlobalObject* aGlobalObject, bool aUseWhitelist, bool* aReturn);
+        NS_IMETHOD    UpdateEnabled(nsIURI* aURI, bool aUseWhitelist, bool* aReturn);
+        NS_IMETHOD    StartInstall(nsIXPIInstallInfo* aInstallInfo, bool* aReturn);
 
 
     private:
-        PRBool  AllowInstall(nsIURI* aLaunchURI);
+        bool    AllowInstall(nsIURI* aLaunchURI);
         void *mScriptObject;
 };
 

@@ -92,8 +92,8 @@ private:
     
     nsCOMPtr<nsIInputStream> mData;
     nsCOMPtr<nsIMultiplexInputStream> mStream;
-    PRPackedBool mAddContentLength;
-    PRPackedBool mStartedReading;
+    bool mAddContentLength;
+    bool mStartedReading;
 };
 
 NS_IMPL_THREADSAFE_ADDREF(nsMIMEInputStream)
@@ -113,8 +113,8 @@ NS_IMPL_CI_INTERFACE_GETTER4(nsMIMEInputStream,
                              nsISeekableStream,
                              nsIIPCSerializable)
 
-nsMIMEInputStream::nsMIMEInputStream() : mAddContentLength(PR_FALSE),
-                                         mStartedReading(PR_FALSE)
+nsMIMEInputStream::nsMIMEInputStream() : mAddContentLength(false),
+                                         mStartedReading(false)
 {
 }
 
@@ -147,13 +147,13 @@ NS_METHOD nsMIMEInputStream::Init()
 
 /* attribute boolean addContentLength; */
 NS_IMETHODIMP
-nsMIMEInputStream::GetAddContentLength(PRBool *aAddContentLength)
+nsMIMEInputStream::GetAddContentLength(bool *aAddContentLength)
 {
     *aAddContentLength = mAddContentLength;
     return NS_OK;
 }
 NS_IMETHODIMP
-nsMIMEInputStream::SetAddContentLength(PRBool aAddContentLength)
+nsMIMEInputStream::SetAddContentLength(bool aAddContentLength)
 {
     NS_ENSURE_FALSE(mStartedReading, NS_ERROR_FAILURE);
     mAddContentLength = aAddContentLength;
@@ -199,7 +199,7 @@ void nsMIMEInputStream::InitStreams()
     NS_ASSERTION(!mStartedReading,
                  "Don't call initStreams twice without rewinding");
 
-    mStartedReading = PR_TRUE;
+    mStartedReading = true;
 
     // We'll use the content-length stream to add the final \r\n
     if (mAddContentLength) {
@@ -234,7 +234,7 @@ nsMIMEInputStream::Seek(PRInt32 whence, PRInt64 offset)
     if (whence == NS_SEEK_SET && LL_EQ(offset, LL_Zero())) {
         rv = stream->Seek(whence, offset);
         if (NS_SUCCEEDED(rv))
-            mStartedReading = PR_FALSE;
+            mStartedReading = false;
     }
     else {
         INITSTREAMS;
@@ -280,7 +280,7 @@ nsMIMEInputStream::ReadSegCb(nsIInputStream* aIn, void* aClosure,
 NS_IMETHODIMP nsMIMEInputStream::Close(void) { INITSTREAMS; return mStream->Close(); }
 NS_IMETHODIMP nsMIMEInputStream::Available(PRUint32 *_retval) { INITSTREAMS; return mStream->Available(_retval); }
 NS_IMETHODIMP nsMIMEInputStream::Read(char * buf, PRUint32 count, PRUint32 *_retval) { INITSTREAMS; return mStream->Read(buf, count, _retval); }
-NS_IMETHODIMP nsMIMEInputStream::IsNonBlocking(PRBool *aNonBlocking) { INITSTREAMS; return mStream->IsNonBlocking(aNonBlocking); }
+NS_IMETHODIMP nsMIMEInputStream::IsNonBlocking(bool *aNonBlocking) { INITSTREAMS; return mStream->IsNonBlocking(aNonBlocking); }
 
 // nsISeekableStream
 NS_IMETHODIMP nsMIMEInputStream::Tell(PRInt64 *_retval)
@@ -326,7 +326,7 @@ nsMIMEInputStreamConstructor(nsISupports *outer, REFNSIID iid, void **result)
     return rv;
 }
 
-PRBool
+bool
 nsMIMEInputStream::Read(const IPC::Message *aMsg, void **aIter)
 {
     using IPC::ReadParam;
@@ -334,7 +334,7 @@ nsMIMEInputStream::Read(const IPC::Message *aMsg, void **aIter)
     if (!ReadParam(aMsg, aIter, &mHeaders) ||
         !ReadParam(aMsg, aIter, &mContentLength) ||
         !ReadParam(aMsg, aIter, &mStartedReading))
-        return PR_FALSE;
+        return false;
 
     // nsMIMEInputStream::Init() already appended mHeaderStream & mCLStream
     mHeaderStream->ShareData(mHeaders.get(),
@@ -344,20 +344,20 @@ nsMIMEInputStream::Read(const IPC::Message *aMsg, void **aIter)
 
     IPC::InputStream inputStream;
     if (!ReadParam(aMsg, aIter, &inputStream))
-        return PR_FALSE;
+        return false;
 
     nsCOMPtr<nsIInputStream> stream(inputStream);
     mData = stream;
     if (stream) {
         nsresult rv = mStream->AppendStream(mData);
         if (NS_FAILED(rv))
-            return PR_FALSE;
+            return false;
     }
 
     if (!ReadParam(aMsg, aIter, &mAddContentLength))
-        return PR_FALSE;
+        return false;
 
-    return PR_TRUE;
+    return true;
 }
 
 void

@@ -45,11 +45,7 @@ include $(DEPTH)/config/autoconf.mk
 
 MODULE		= xpcom
 
-ifndef MOZ_ENABLE_LIBXUL
-MOZILLA_INTERNAL_API = 1
-endif
-
-DIRS		= external component
+DIRS		= external component bug656331_component
 
 ifeq ($(OS_ARCH),WINNT)
 DIRS		+= windows
@@ -76,6 +72,10 @@ CPPSRCS = \
   $(STDCPPFLAGS) \
   $(NULL)
 
+ifeq ($(OS_TARGET),WINNT)
+CPPSRCS += TestBase64.cpp
+endif
+
 ifdef WRAP_STL_INCLUDES
 CPPSRCS += TestSTLWrappers.cpp
 endif
@@ -98,32 +98,32 @@ CPP_UNIT_TESTS = \
                  TestRefPtr.cpp \
                  TestTextFormatter.cpp \
                  TestCheckedInt.cpp \
+                 TestTArray.cpp \
                  $(NULL)
 
-ifndef MOZ_ENABLE_LIBXUL
-CPP_UNIT_TESTS += \
-                  TestArray.cpp \
-                  TestCRT.cpp \
-                  TestDeque.cpp \
-                  TestEncoding.cpp \
-                  TestExpirationTracker.cpp \
-                  TestPipes.cpp \
-                  TestPriorityQueue.cpp \
-                  TestProxies.cpp \
-                  TestStorageStream.cpp \
-                  TestStrings.cpp \
-                  TestSynchronization.cpp \
-                  TestTArray.cpp \
-                  TestThreadPool.cpp \
-                  TestThreads.cpp \
-                  TestTimeStamp.cpp \
-                  TestXPIDLString.cpp \
-                  TestUTF.cpp \
-                  TestAtoms.cpp \
-                  $(NULL)
-# FIXME: bug 577500 TestStaticAtoms fails when run in dist/bin
-# TestStaticAtoms.cpp
-endif
+# XXX Make this tests work in libxul builds.
+#CPP_UNIT_TESTS += \
+#                  TestArray.cpp \
+#                  TestCRT.cpp \
+#                  TestDeque.cpp \
+#                  TestEncoding.cpp \
+#                  TestExpirationTracker.cpp \
+#                  TestPipes.cpp \
+#                  TestPriorityQueue.cpp \
+#                  TestProxies.cpp \
+#                  TestStorageStream.cpp \
+#                  TestStrings.cpp \
+#                  TestSynchronization.cpp \
+#                  TestTArray.cpp \
+#                  TestThreadPool.cpp \
+#                  TestThreads.cpp \
+#                  TestTimeStamp.cpp \
+#                  TestXPIDLString.cpp \
+#                  TestUTF.cpp \
+#                  TestAtoms.cpp \
+#                  $(NULL)
+## FIXME: bug 577500 TestStaticAtoms fails when run in dist/bin
+## TestStaticAtoms.cpp
 
 ifdef MOZ_DEBUG
 # FIXME bug 523392: TestDeadlockDetector doesn't like Windows
@@ -193,18 +193,6 @@ regOrderDir="$(call getnativepath,$(abs_srcdir)/regorder)";
 DOCOPY=
 
 check::
-	@echo "Running XPIDL tests"
-	$(XPIDL_COMPILE) -m header $(srcdir)/TestScriptable.idl
-	@if grep Notscriptable TestScriptable.h | grep NS_SCRIPTABLE >/dev/null 2>&1 ; then \
-		echo "Nonscriptable object marked scriptable by xpidl"; \
-		exit 1; \
-	fi
-	@if test `grep 'NS_IMETHOD[^I].*Scriptable' TestScriptable.h | grep -v -c NS_SCRIPTABLE` -ne 0 ; then \
-		echo "Scriptable object marked nonscriptable by xpidl"; \
-		exit 1; \
-	fi
-	$(RM_DIST) $(DIST_PATH)components/compreg.dat; \
-	$(DOCOPY) \
 	XPCOM_DEBUG_BREAK=stack-and-abort $(RUN_TEST_PROGRAM) \
 	  $(DIST)/bin/TestRegistrationOrder$(BIN_SUFFIX) $(regOrderDir)
 

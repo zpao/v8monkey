@@ -36,8 +36,6 @@
  * 
  * ***** END LICENSE BLOCK ***** */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-
 gBrowser.selectedTab = gBrowser.addTab();
 
 function test() {
@@ -57,9 +55,9 @@ function test() {
   // Create and add history observer.
   var historyObserver = {
     visitCount: Array(),
-    onBeginUpdateBatch: function() {},
-    onEndUpdateBatch: function() {},
-    onVisit: function(aURI, aVisitID, aTime, aSessionID, aReferringID,
+    onBeginUpdateBatch: function () {},
+    onEndUpdateBatch: function () {},
+    onVisit: function (aURI, aVisitID, aTime, aSessionID, aReferringID,
                       aTransitionType) {
       info("Received onVisit: " + aURI.spec);
       if (aURI.spec in this.visitCount)
@@ -67,31 +65,15 @@ function test() {
       else
         this.visitCount[aURI.spec] = 1;
     },
-    onTitleChanged: function(aURI, aPageTitle) {},
-    onBeforeDeleteURI: function(aURI) {},
-    onDeleteURI: function(aURI) {},
-    onClearHistory: function() {},
-    onPageChanged: function(aURI, aWhat, aValue) {},
-    onDeleteVisits: function() {},
+    onTitleChanged: function () {},
+    onBeforeDeleteURI: function () {},
+    onDeleteURI: function () {},
+    onClearHistory: function () {},
+    onPageChanged: function () {},
+    onDeleteVisits: function () {},
     QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryObserver])
   };
   hs.addObserver(historyObserver, false);
-
-  /**
-   * Clears history invoking callback when done.
-   */
-  function waitForClearHistory(aCallback)
-  {
-    let observer = {
-      observe: function(aSubject, aTopic, aData)
-      {
-        Services.obs.removeObserver(this, PlacesUtils.TOPIC_EXPIRATION_FINISHED);
-        aCallback(aSubject, aTopic, aData);
-      }
-    };
-    Services.obs.addObserver(observer, PlacesUtils.TOPIC_EXPIRATION_FINISHED, false);
-    PlacesUtils.bhistory.removeAllPages();
-  }
 
   function confirm_results() {
     gBrowser.removeCurrentTab();

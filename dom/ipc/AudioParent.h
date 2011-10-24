@@ -54,12 +54,13 @@ class AudioParent : public PAudioParent, public nsITimerCallback
     NS_DECL_NSITIMERCALLBACK
 
     virtual bool
-    RecvWrite(
-            const nsCString& data,
-            const PRUint32& count);
+    RecvWrite(const nsCString& data, const PRUint32& count);
 
     virtual bool
     RecvSetVolume(const float& aVolume);
+
+    virtual bool
+    RecvMinWriteSize();
 
     virtual bool
     RecvDrain();
@@ -74,6 +75,9 @@ class AudioParent : public PAudioParent, public nsITimerCallback
     RecvShutdown();
 
     virtual bool
+    SendMinWriteSizeDone(PRInt32 minFrames);
+
+    virtual bool
     SendDrainDone();
 
     AudioParent(PRInt32 aNumChannels, PRInt32 aRate, PRInt32 aFormat);
@@ -86,7 +90,7 @@ class AudioParent : public PAudioParent, public nsITimerCallback
 private:
     void Shutdown();
 
-    PRPackedBool mIPCOpen;
+    bool mIPCOpen;
 };
 } // namespace dom
 } // namespace mozilla

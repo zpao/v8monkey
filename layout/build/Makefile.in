@@ -42,11 +42,8 @@ VPATH		= @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
-# Solaris and Tru64 UNIX sh blows
+# Solaris sh blows
 ifeq ($(OS_ARCH),SunOS)
-SHELL := ksh
-endif
-ifeq ($(OS_ARCH),OSF1)
 SHELL := ksh
 endif
 
@@ -57,13 +54,6 @@ IS_COMPONENT	= 1
 MODULE_NAME	= nsLayoutModule
 GRE_MODULE	= 1
 LIBXUL_LIBRARY	= 1
-
-ifndef MOZ_ENABLE_LIBXUL
-EXTRA_DSO_LIBS	= gkgfx
-EXTRA_DSO_LIBS += angle
-endif
-
-EXTRA_DSO_LIBS	+= thebes ycbcr
 
 
 CPPSRCS		= \
@@ -86,6 +76,7 @@ SHARED_LIBRARY_LIBS = \
 	../style/$(LIB_PREFIX)gkstyle_s.$(LIB_SUFFIX) \
 	../tables/$(LIB_PREFIX)gktable_s.$(LIB_SUFFIX) \
 	../xul/base/src/$(LIB_PREFIX)gkxulbase_s.$(LIB_SUFFIX) \
+	../mathml/$(LIB_PREFIX)gkmathml_s.$(LIB_SUFFIX) \
 	$(DEPTH)/content/base/src/$(LIB_PREFIX)gkconbase_s.$(LIB_SUFFIX) \
 	$(DEPTH)/content/canvas/src/$(LIB_PREFIX)gkconcvs_s.$(LIB_SUFFIX) \
 	$(DEPTH)/content/events/src/$(LIB_PREFIX)gkconevents_s.$(LIB_SUFFIX) \
@@ -109,7 +100,7 @@ SHARED_LIBRARY_LIBS = \
 	$(DEPTH)/dom/src/geolocation/$(LIB_PREFIX)jsdomgeolocation_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/src/notification/$(LIB_PREFIX)jsdomnotification_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/system/$(LIB_PREFIX)domsystem_s.$(LIB_SUFFIX) \
-	$(DEPTH)/dom/src/threads/$(LIB_PREFIX)domthreads_s.$(LIB_SUFFIX) \
+	$(DEPTH)/dom/workers/$(LIB_PREFIX)domworkers_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/indexedDB/$(LIB_PREFIX)dom_indexeddb_s.$(LIB_SUFFIX) \
 	$(DEPTH)/editor/libeditor/text/$(LIB_PREFIX)texteditor_s.$(LIB_SUFFIX) \
 	$(DEPTH)/editor/libeditor/base/$(LIB_PREFIX)editorbase_s.$(LIB_SUFFIX) \
@@ -117,6 +108,7 @@ SHARED_LIBRARY_LIBS = \
 	$(DEPTH)/caps/src/$(LIB_PREFIX)caps_s.$(LIB_SUFFIX) \
 	$(DEPTH)/editor/libeditor/html/$(LIB_PREFIX)htmleditor_s.$(LIB_SUFFIX) \
 	$(DEPTH)/editor/txtsvc/src/$(LIB_PREFIX)txtsvc_s.$(LIB_SUFFIX) \
+	$(DEPTH)/content/mathml/content/src/$(LIB_PREFIX)gkcontentmathml_s.$(LIB_SUFFIX) \
 	$(NULL)
 
 ifneq (,$(filter qt gtk2,$(MOZ_WIDGET_TOOLKIT)))
@@ -143,6 +135,7 @@ LOCAL_INCLUDES	+= \
 else ifneq (,$(filter android,$(MOZ_WIDGET_TOOLKIT)))
 SHARED_LIBRARY_LIBS += \
 	$(DEPTH)/dom/system/android/$(LIB_PREFIX)domsystemandroid_s.$(LIB_SUFFIX) \
+	$(DEPTH)/dom/plugins/base/android/$(LIB_PREFIX)gkpluginandroid_s.$(LIB_SUFFIX) \
 	$(NULL)
 LOCAL_INCLUDES	+= \
 	-I$(topsrcdir)/dom/system/android \
@@ -225,28 +218,16 @@ LOCAL_INCLUDES  += \
       $(NULL)
 SHARED_LIBRARY_LIBS += ../inspector/src/$(LIB_PREFIX)inspector_s.$(LIB_SUFFIX)
 
-ifdef MOZ_MATHML
-SHARED_LIBRARY_LIBS += \
-		../mathml/$(LIB_PREFIX)gkmathml_s.$(LIB_SUFFIX) \
-		$(DEPTH)/content/mathml/content/src/$(LIB_PREFIX)gkcontentmathml_s.$(LIB_SUFFIX) \
-		$(NULL)
-endif
-
 ifdef MOZ_XTF
 SHARED_LIBRARY_LIBS += \
 		$(DEPTH)/content/xtf/src/$(LIB_PREFIX)gkcontentxtf_s.$(LIB_SUFFIX) \
 		$(NULL)
 endif
 
-ifdef MOZ_SVG
 SHARED_LIBRARY_LIBS += \
 		../svg/base/src/$(LIB_PREFIX)gksvgbase_s.$(LIB_SUFFIX) \
 		$(DEPTH)/content/svg/document/src/$(LIB_PREFIX)gkconsvgdoc_s.$(LIB_SUFFIX) \
 		$(DEPTH)/content/svg/content/src/$(LIB_PREFIX)gkcontentsvg_s.$(LIB_SUFFIX) \
-		$(NULL)
-endif
-
-SHARED_LIBRARY_LIBS += \
 		$(DEPTH)/content/smil/$(LIB_PREFIX)gkconsmil_s.$(LIB_SUFFIX) \
 		$(NULL)
 
@@ -255,48 +236,7 @@ DEFINES += -DENABLE_EDITOR_API_LOG
 endif
 
 SHARED_LIBRARY_LIBS += \
-	$(DEPTH)/js/src/xpconnect/src/$(LIB_PREFIX)xpconnect_s.$(LIB_SUFFIX)
-
-EXTRA_DSO_LDOPTS = \
-		$(LIBS_DIR) \
-		$(EXTRA_DSO_LIBS) \
-		$(MOZ_UNICHARUTIL_LIBS) \
-		$(MOZ_COMPONENT_LIBS) \
-		$(MOZ_JS_LIBS) \
-		$(NULL)
-
-EXTRA_DSO_LDOPTS += $(TK_LIBS)
-
-ifdef MOZ_ENABLE_GTK2
-EXTRA_DSO_LDOPTS += -lXrender
-endif
-
-ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
-EXTRA_DSO_LDOPTS += $(TK_LIBS)
-OS_LIBS += -framework OpenGL
-endif
-
-# Add explicit X11 dependency when building against X11 toolkits
-ifneq (,$(filter gtk2,$(MOZ_WIDGET_TOOLKIT)))
-EXTRA_DSO_LDOPTS += $(XLDFLAGS) $(XLIBS)
-endif
-
-ifdef MOZ_SYDNEYAUDIO
-ifneq (,$(filter DragonFly FreeBSD GNU GNU_% NetBSD OpenBSD,$(OS_ARCH)))
-EXTRA_DSO_LDOPTS += -lossaudio
-endif
-
-ifeq ($(OS_ARCH),Linux)
-EXTRA_DSO_LDOPTS += $(MOZ_ALSA_LIBS)
-endif
-ifeq ($(OS_ARCH),Darwin)
-OS_LIBS += -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework Carbon -framework IOKit
-endif
-endif
-
-ifdef MOZ_NATIVE_LIBVPX
-EXTRA_DSO_LDOPTS += $(MOZ_LIBVPX_LIBS)
-endif
+	$(DEPTH)/js/xpconnect/src/$(LIB_PREFIX)xpconnect_s.$(LIB_SUFFIX)
 
 include $(topsrcdir)/config/config.mk
 include $(topsrcdir)/ipc/chromium/chromium-config.mk
@@ -310,6 +250,7 @@ LOCAL_INCLUDES	+= -I$(srcdir)/../base \
 		   -I$(srcdir)/../style \
 		   -I$(srcdir)/../xul/content/src \
 		   -I$(srcdir)/../xul/base/src \
+		   -I$(srcdir)/../mathml \
 		   -I$(topsrcdir)/content/base/src \
  		   -I$(topsrcdir)/content/canvas/src \
 		   -I$(topsrcdir)/content/html/content/src \
@@ -331,30 +272,17 @@ LOCAL_INCLUDES	+= -I$(srcdir)/../base \
 		   -I$(topsrcdir)/dom/src/storage \
 		   -I$(topsrcdir)/dom/src/offline \
 		   -I$(topsrcdir)/dom/src/geolocation \
-		   -I$(topsrcdir)/dom/src/threads \
 		   -I. \
 		   -I$(topsrcdir)/editor/libeditor/base \
 		   -I$(topsrcdir)/editor/libeditor/text \
 		   -I$(topsrcdir)/editor/libeditor/html \
 		   -I$(topsrcdir)/editor/txtsvc/src \
 		   -I$(topsrcdir)/editor/composer/src \
-		   -I$(topsrcdir)/js/src/xpconnect/src \
-		   -I$(topsrcdir)/js/src/xpconnect/loader \
+		   -I$(topsrcdir)/js/xpconnect/src \
+		   -I$(topsrcdir)/js/xpconnect/loader \
 		   -I$(topsrcdir)/caps/include \
+		   -I$(topsrcdir)/netwerk/base/src \
+		   -I$(topsrcdir)/content/svg/content/src \
 		   $(NULL)
 
-ifdef MOZ_MATHML
-LOCAL_INCLUDES	+= -I$(srcdir)/../mathml
-endif
-
-ifdef MOZ_SVG
-LOCAL_INCLUDES	+= -I$(topsrcdir)/content/svg/content/src
-endif
-
 DEFINES += -D_IMPL_NS_LAYOUT
-
-ifeq ($(OS_ARCH),IRIX)
-ifeq ($(GNU_CXX),1)
-LDFLAGS += -Wl,-LD_LAYOUT:lgot_buffer=50
-endif
-endif

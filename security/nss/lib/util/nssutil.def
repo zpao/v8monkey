@@ -254,3 +254,10 @@ PORT_RegExpSearch;
 ;+    local:
 ;+       *;
 ;+};
+;+NSSUTIL_3.13 {         # NSS Utilities 3.13 release
+;+    global:
+NSSUTIL_GetVersion;
+NSS_InitializePRErrorTable;
+;+    local:
+;+       *;
+;+};

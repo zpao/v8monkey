@@ -90,6 +90,8 @@ function test() {
   gCurrentTab = Browser.addTab(testURL, true);
   ok(gCurrentTab, "Tab Opened");
 
+  SelectionHelper.enabled = false;
+
   window.addEventListener("TapSingle", dumpEvents, true);
   window.addEventListener("TapDouble", dumpEvents, true);
   window.addEventListener("TapLong", dumpEvents, true);
@@ -125,6 +127,7 @@ function runNextTest() {
     window.removeEventListener("TapDouble", dumpEvents, true);
     window.removeEventListener("TapLong", dumpEvents, true);
 
+    SelectionHelper.enabled = true;
     Browser.closeTab(gCurrentTab);
 
     finish();
@@ -167,7 +170,12 @@ gTests.push({
     EventUtils.synthesizeMouse(document.documentElement, width / 2, height / 2, {});
 
     setTimeout(function() {
-      ok(checkEvents(["TapDouble"]), "Fired a good double tap");
+      let sysInfo = Cc["@mozilla.org/system-info;1"].getService(Ci.nsIPropertyBag2);
+      if (sysInfo.get("device"))
+        todo(checkEvents(["TapDouble"]), "Fired a good double tap");
+      else
+        ok(checkEvents(["TapDouble"]), "Fired a good double tap");
+
       clearEvents();
 
       gCurrentTest.doubleTapFailTest();
@@ -224,6 +232,7 @@ gTests.push({
       clearEvents();
 
       window.addEventListener("PanFinished", function() {
+        window.removeEventListener("PanFinished", arguments.callee, true);
         setTimeout(gCurrentTest.longTapPassTest, 0);
       }, true);
     }, 500);
@@ -255,7 +264,7 @@ gTests.push({
   contextPlainLinkTest: function() {
     waitForContextMenu(function(aJSON) {
       is(aJSON.linkTitle, "A blank page - nothing interesting", "Text content should be the content of the second link");
-      ok(checkContextTypes(["link", "link-saveable","link-openable"]), "Plain link context types");
+      ok(checkContextTypes(["link", "link-openable"]), "Plain link context types");
     }, gCurrentTest.contextPlainImageTest);
 
     let browser = gCurrentTab.browser;
@@ -272,7 +281,7 @@ gTests.push({
 
   contextPlainImageTest: function() {
     waitForContextMenu(function() {
-      ok(checkContextTypes(["image","image-shareable","image-loaded"]), "Plain image context types");
+      ok(checkContextTypes(["image","image-shareable","image-loaded", "content-text"]), "Plain image context types");
     }, gCurrentTest.contextNestedImageTest);
 
     let browser = gCurrentTab.browser;
@@ -284,7 +293,7 @@ gTests.push({
 
   contextNestedImageTest: function() {
     waitForContextMenu(function() {
-      ok(checkContextTypes(["link", "link-saveable","image","image-shareable","image-loaded","link-openable"]), "Nested image context types");
+      ok(checkContextTypes(["link","image","image-shareable","image-loaded","link-openable"]), "Nested image context types");
     }, runNextTest);
 
     let browser = gCurrentTab.browser;

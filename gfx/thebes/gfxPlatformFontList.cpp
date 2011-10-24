@@ -72,12 +72,14 @@
 #include "gfxPlatformFontList.h"
 #include "gfxTextRunWordCache.h"
 
-#include "nsIPrefService.h"
-#include "nsIPrefBranch2.h"  // for pref changes callback notification
-#include "nsServiceManagerUtils.h"
 #include "nsUnicharUtils.h"
 #include "nsUnicodeRange.h"
 #include "gfxUnicodeProperties.h"
+
+#include "mozilla/Preferences.h"
+#include "mozilla/Telemetry.h"
+
+using namespace mozilla;
 
 // font info loader constants
 static const PRUint32 kDelayBeforeLoadingCmaps = 8 * 1000; // 8secs
@@ -97,11 +99,20 @@ static const PRUint32 kNumFontsPerSlice = 10; // read in info 10 fonts at a time
 gfxPlatformFontList *gfxPlatformFontList::sPlatformFontList = nsnull;
 
 
+static const char* kObservedPrefs[] = {
+    "font.",
+    "font.name-list.",
+    "intl.accept_languages",  // hmmmm...
+    nsnull
+};
+
 class gfxFontListPrefObserver : public nsIObserver {
 public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIOBSERVER
 };
+
+static gfxFontListPrefObserver* gFontListPrefObserver = nsnull;
 
 NS_IMPL_ISUPPORTS1(gfxFontListPrefObserver, nsIObserver)
 
@@ -119,19 +130,19 @@ gfxFontListPrefObserver::Observe(nsISupports     *aSubject,
 }
 
 
-gfxPlatformFontList::gfxPlatformFontList(PRBool aNeedFullnamePostscriptNames)
+gfxPlatformFontList::gfxPlatformFontList(bool aNeedFullnamePostscriptNames)
     : mNeedFullnamePostscriptNames(aNeedFullnamePostscriptNames),
       mStartIndex(0), mIncrement(kNumFontsPerSlice), mNumFamilies(0)
 {
     mFontFamilies.Init(100);
     mOtherFamilyNames.Init(30);
-    mOtherFamilyNamesInitialized = PR_FALSE;
+    mOtherFamilyNamesInitialized = false;
 
     if (mNeedFullnamePostscriptNames) {
         mFullnames.Init(100);
         mPostscriptNames.Init(100);
     }
-    mFaceNamesInitialized = PR_FALSE;
+    mFaceNamesInitialized = false;
 
     mPrefFonts.Init(10);
 
@@ -139,17 +150,18 @@ gfxPlatformFontList::gfxPlatformFontList(PRBool aNeedFullnamePostscriptNames)
     LoadBadUnderlineList();
 
     // pref changes notification setup
-    gfxFontListPrefObserver *observer = new gfxFontListPrefObserver();
-    if (observer) {
-        nsCOMPtr<nsIPrefBranch2> pref = do_GetService(NS_PREFSERVICE_CONTRACTID);
-        if (pref) {
-            pref->AddObserver("font.", observer, PR_FALSE);
-            pref->AddObserver("font.name-list.", observer, PR_FALSE);
-            pref->AddObserver("intl.accept_languages", observer, PR_FALSE);  // hmmmm...
-        } else {
-            delete observer;
-        }
-    }
+    NS_ASSERTION(!gFontListPrefObserver,
+                 "There has been font list pref observer already");
+    gFontListPrefObserver = new gfxFontListPrefObserver();
+    NS_ADDREF(gFontListPrefObserver);
+    Preferences::AddStrongObservers(gFontListPrefObserver, kObservedPrefs);
+}
+
+gfxPlatformFontList::~gfxPlatformFontList()
+{
+    NS_ASSERTION(gFontListPrefObserver, "There is no font list pref observer");
+    Preferences::RemoveObservers(gFontListPrefObserver, kObservedPrefs);
+    NS_RELEASE(gFontListPrefObserver);
 }
 
 nsresult
@@ -157,12 +169,12 @@ gfxPlatformFontList::InitFontList()
 {
     mFontFamilies.Clear();
     mOtherFamilyNames.Clear();
-    mOtherFamilyNamesInitialized = PR_FALSE;
+    mOtherFamilyNamesInitialized = false;
     if (mNeedFullnamePostscriptNames) {
         mFullnames.Clear();
         mPostscriptNames.Clear();
     }
-    mFaceNamesInitialized = PR_FALSE;
+    mFaceNamesInitialized = false;
     mPrefFonts.Clear();
     CancelLoader();
 
@@ -186,8 +198,9 @@ gfxPlatformFontList::GenerateFontListKey(const nsAString& aKeyName, nsAString& a
 void 
 gfxPlatformFontList::InitOtherFamilyNames()
 {
-    mOtherFamilyNamesInitialized = PR_TRUE;
+    mOtherFamilyNamesInitialized = true;
 
+    Telemetry::AutoTimer<Telemetry::FONTLIST_INITOTHERFAMILYNAMES> timer;
     // iterate over all font families and read in other family names
     mFontFamilies.Enumerate(gfxPlatformFontList::InitOtherFamilyNamesProc, this);
 }
@@ -205,9 +218,10 @@ gfxPlatformFontList::InitOtherFamilyNamesProc(nsStringHashKey::KeyType aKey,
 void
 gfxPlatformFontList::InitFaceNameLists()
 {
-    mFaceNamesInitialized = PR_TRUE;
+    mFaceNamesInitialized = true;
 
     // iterate over all font families and read in other family names
+    Telemetry::AutoTimer<Telemetry::FONTLIST_INITFACENAMELISTS> timer;
     mFontFamilies.Enumerate(gfxPlatformFontList::InitFaceNameListsProc, this);
 }
 
@@ -229,7 +243,7 @@ gfxPlatformFontList::PreloadNamesList()
 
     PRUint32 numFonts = preloadFonts.Length();
     for (PRUint32 i = 0; i < numFonts; i++) {
-        PRBool found;
+        bool found;
         nsAutoString key;
         GenerateFontListKey(preloadFonts[i], key);
         
@@ -271,15 +285,15 @@ gfxPlatformFontList::LoadBadUnderlineList()
     }
 }
 
-PRBool 
+bool 
 gfxPlatformFontList::ResolveFontName(const nsAString& aFontName, nsAString& aResolvedFontName)
 {
     gfxFontFamily *family = FindFamily(aFontName);
     if (family) {
         aResolvedFontName = family->Name();
-        return PR_TRUE;
+        return true;
     }
-    return PR_FALSE;
+    return false;
 }
 
 struct FontListData {
@@ -305,7 +319,7 @@ gfxPlatformFontList::HashEnumFuncForFamilies(nsStringHashKey::KeyType aKey,
     // the Family
     gfxFontStyle style;
     style.language = data->mLangGroup;
-    PRBool needsBold;
+    bool needsBold;
     nsRefPtr<gfxFontEntry> aFontEntry = aFamilyEntry->FindFontForStyle(style, needsBold);
     NS_ASSERTION(aFontEntry, "couldn't find any font entry in family");
     if (!aFontEntry)
@@ -379,7 +393,7 @@ gfxPlatformFontList::FindFontForChar(const PRUint32 aCh, gfxFont *aPrevFont)
     // this helps speed up pages with lots of encoding errors, binary-as-text, etc.
     if (aCh == 0xFFFD && mReplacementCharFallbackFamily.Length() > 0) {
         gfxFontEntry* fontEntry = nsnull;
-        PRBool needsBold;  // ignored in the system fallback case
+        bool needsBold;  // ignored in the system fallback case
 
         if (aPrevFont) {
             fontEntry = FindFontForFamily(mReplacementCharFallbackFamily, aPrevFont->GetStyle(), needsBold);
@@ -460,7 +474,7 @@ gfxPlatformFontList::FindFamily(const nsAString& aFamily)
 {
     nsAutoString key;
     gfxFontFamily *familyEntry;
-    PRBool found;
+    bool found;
     GenerateFontListKey(aFamily, key);
 
     NS_ASSERTION(mFontFamilies.Count() != 0, "system font list was not initialized correctly");
@@ -491,11 +505,11 @@ gfxPlatformFontList::FindFamily(const nsAString& aFamily)
 }
 
 gfxFontEntry*
-gfxPlatformFontList::FindFontForFamily(const nsAString& aFamily, const gfxFontStyle* aStyle, PRBool& aNeedsBold)
+gfxPlatformFontList::FindFontForFamily(const nsAString& aFamily, const gfxFontStyle* aStyle, bool& aNeedsBold)
 {
     gfxFontFamily *familyEntry = FindFamily(aFamily);
 
-    aNeedsBold = PR_FALSE;
+    aNeedsBold = false;
 
     if (familyEntry)
         return familyEntry->FindFontForStyle(*aStyle, aNeedsBold);
@@ -503,7 +517,7 @@ gfxPlatformFontList::FindFontForFamily(const nsAString& aFamily, const gfxFontSt
     return nsnull;
 }
 
-PRBool
+bool
 gfxPlatformFontList::GetPrefFontFamilyEntries(eFontPrefLang aLangGroup, nsTArray<nsRefPtr<gfxFontFamily> > *array)
 {
     return mPrefFonts.Get(PRUint32(aLangGroup), array);
@@ -519,7 +533,7 @@ void
 gfxPlatformFontList::AddOtherFamilyName(gfxFontFamily *aFamilyEntry, nsAString& aOtherFamilyName)
 {
     nsAutoString key;
-    PRBool found;
+    bool found;
     GenerateFontListKey(aOtherFamilyName, key);
 
     if (!mOtherFamilyNames.GetWeak(key, &found)) {
@@ -538,7 +552,7 @@ gfxPlatformFontList::AddOtherFamilyName(gfxFontFamily *aFamilyEntry, nsAString& 
 void
 gfxPlatformFontList::AddFullname(gfxFontEntry *aFontEntry, nsAString& aFullname)
 {
-    PRBool found;
+    bool found;
 
     if (!mFullnames.GetWeak(aFullname, &found)) {
         mFullnames.Put(aFullname, aFontEntry);
@@ -553,7 +567,7 @@ gfxPlatformFontList::AddFullname(gfxFontEntry *aFontEntry, nsAString& aFullname)
 void
 gfxPlatformFontList::AddPostscriptName(gfxFontEntry *aFontEntry, nsAString& aPostscriptName)
 {
-    PRBool found;
+    bool found;
 
     if (!mPostscriptNames.GetWeak(aPostscriptName, &found)) {
         mPostscriptNames.Put(aPostscriptName, aFontEntry);
@@ -565,7 +579,7 @@ gfxPlatformFontList::AddPostscriptName(gfxFontEntry *aFontEntry, nsAString& aPos
     }
 }
 
-PRBool
+bool
 gfxPlatformFontList::GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName)
 {
     aFamilyName.Truncate();
@@ -581,7 +595,7 @@ gfxPlatformFontList::InitLoader()
     mNumFamilies = mFontFamiliesToLoad.Length();
 }
 
-PRBool 
+bool 
 gfxPlatformFontList::RunLoader()
 {
     PRUint32 i, endIndex = (mStartIndex + mIncrement < mNumFamilies ? mStartIndex + mIncrement : mNumFamilies);

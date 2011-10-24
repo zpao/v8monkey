@@ -128,8 +128,7 @@ var MigrationWizard = {
           return;
         }
 
-        if (migrator.sourceExists &&
-            !(suffix == "phoenix" && !this._autoMigrate)) {
+        if (migrator.sourceExists) {
           // Save this as the first selectable item, if we don't already have
           // one, or if it is the migrator that was passed to us.
           if (!selectedMigrator || this._source == suffix)
@@ -333,20 +332,13 @@ var MigrationWizard = {
     var source = null;
     switch (this._source) {
       case "ie":
-      case "macie":
         source = "sourceNameIE";
         break;
       case "opera":
         source = "sourceNameOpera";
         break;
-      case "dogbert":
-        source = "sourceNameDogbert";
-        break;
       case "safari":
         source = "sourceNameSafari";
-        break;
-      case "seamonkey":
-        source = "sourceNameSeamonkey";
         break;
     }
 

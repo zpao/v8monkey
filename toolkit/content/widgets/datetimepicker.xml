@@ -246,12 +246,12 @@
            extends="chrome://global/content/bindings/datetimepicker.xml#datetimepicker-base">
 
     <implementation>
-      <field name="is24HourClock" readonly="true">false</field>
-      <field name="hourLeadingZero" readonly="true">false</field>
-      <field name="minuteLeadingZero" readonly="true">true</field>
-      <field name="secondLeadingZero" readonly="true">true</field>
-      <field name="amIndicator" readonly="true">"AM"</field>
-      <field name="pmIndicator" readonly="true">"PM"</field>
+      <field name="is24HourClock">false</field>
+      <field name="hourLeadingZero">false</field>
+      <field name="minuteLeadingZero">true</field>
+      <field name="secondLeadingZero">true</field>
+      <field name="amIndicator">"AM"</field>
+      <field name="pmIndicator">"PM"</field>
 
       <field name="hourField">null</field>
       <field name="minuteField">null</field>
@@ -791,6 +791,15 @@
       <method name="_init">
         <body>
           <![CDATA[
+            // We'll default to YYYY/MM/DD to start.
+            var yfield = "input-one";
+            var mfield = "input-two";
+            var dfield = "input-three";
+            var twoDigitYear = false;
+            this.yearLeadingZero = true;
+            this.monthLeadingZero = true;
+            this.dateLeadingZero = true;
+
             var numberOrder = /^(\D*)\s*(\d+)(\D*)(\d+)(\D*)(\d+)\s*(\D*)$/;
 
             var dt = new Date(2002,9,4).toLocaleFormat("%x");
@@ -799,11 +808,8 @@
               this._separatorFirst.value = numberFields[3];
               this._separatorSecond.value = numberFields[5];
 
-              var twoDigitYear = false;
-              var yfield = "input-one";
-              var mfield = "input-two";
-              var dfield = "input-three";
               var yi = 2, mi = 4, di = 6;
+
               for (var i = 1; i < numberFields.length; i++) {
                 switch (Number(numberFields[i])) {
                   case 2:
@@ -825,6 +831,10 @@
                     break;
                 }
               }
+
+              this.yearLeadingZero = (numberFields[yi].length > 1);
+              this.monthLeadingZero = (numberFields[mi].length > 1);
+              this.dateLeadingZero = (numberFields[di].length > 1);
             }
 
             this.yearField = document.getAnonymousElementByAttribute(this, "anonid", yfield);
@@ -833,10 +843,6 @@
                 "datetimepicker-input-subbox datetimepicker-year";
             this.monthField = document.getAnonymousElementByAttribute(this, "anonid", mfield);
             this.dateField = document.getAnonymousElementByAttribute(this, "anonid", dfield);
-
-            this.yearLeadingZero = (numberFields[yi].length > 1);
-            this.monthLeadingZero = (numberFields[mi].length > 1);
-            this.dateLeadingZero = (numberFields[di].length > 1);
 
             this._fieldAMPM.parentNode.collapsed = true;
             this.yearField.size = twoDigitYear ? 2 : 4;
@@ -1217,7 +1223,8 @@
           }
         ]]>
       </handler>
-      <handler event="DOMMouseScroll">
+      <handler event="MozMousePixelScroll" preventdefault="true"/>
+      <handler event="DOMMouseScroll" preventdefault="true">
         <![CDATA[
           this._increaseOrDecreaseMonth(event.detail < 0 ? -1 : 1);
         ]]>
@@ -1230,9 +1237,9 @@
                action="this._increaseOrDecreaseDateFromEvent(event, -7);"/>
       <handler event="keypress" keycode="VK_DOWN"
                action="this._increaseOrDecreaseDateFromEvent(event, 7);"/>
-      <handler event="keypress" keycode="VK_PAGE_UP"
+      <handler event="keypress" keycode="VK_PAGE_UP" preventdefault="true"
                action="this._increaseOrDecreaseMonth(-1);"/>
-      <handler event="keypress" keycode="VK_PAGE_DOWN"
+      <handler event="keypress" keycode="VK_PAGE_DOWN" preventdefault="true"
                action="this._increaseOrDecreaseMonth(1);"/>
     </handlers>
   </binding>

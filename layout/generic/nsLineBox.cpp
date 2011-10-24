@@ -55,7 +55,7 @@ static PRInt32 ctorCount;
 PRInt32 nsLineBox::GetCtorCount() { return ctorCount; }
 #endif
 
-nsLineBox::nsLineBox(nsIFrame* aFrame, PRInt32 aCount, PRBool aIsBlock)
+nsLineBox::nsLineBox(nsIFrame* aFrame, PRInt32 aCount, bool aIsBlock)
   : mFirstChild(aFrame),
     mBounds(0, 0, 0, 0),
     mAscent(0),
@@ -89,7 +89,7 @@ nsLineBox::~nsLineBox()
 
 nsLineBox*
 NS_NewLineBox(nsIPresShell* aPresShell, nsIFrame* aFrame,
-              PRInt32 aCount, PRBool aIsBlock)
+              PRInt32 aCount, bool aIsBlock)
 {
   return new (aPresShell)nsLineBox(aFrame, aCount, aIsBlock);
 }
@@ -246,7 +246,7 @@ nsLineBox::LastChild() const
   return frame;
 }
 
-PRBool
+bool
 nsLineBox::IsLastChild(nsIFrame* aFrame) const
 {
   nsIFrame* lastFrame = LastChild();
@@ -267,7 +267,7 @@ nsLineBox::IndexOf(nsIFrame* aFrame) const
   return -1;
 }
 
-PRBool
+bool
 nsLineBox::IsEmpty() const
 {
   if (IsBlock())
@@ -280,16 +280,16 @@ nsLineBox::IsEmpty() const
        --n, kid = kid->GetNextSibling())
   {
     if (!kid->IsEmpty())
-      return PR_FALSE;
+      return false;
   }
   if (HasBullet()) {
-    return PR_FALSE;
+    return false;
   }
-  return PR_TRUE;
+  return true;
 }
 
-PRBool
-nsLineBox::CachedIsEmpty()
+bool
+nsLineBox::CachedIsEmpty() const
 {
   if (mFlags.mDirty) {
     return IsEmpty();
@@ -299,28 +299,28 @@ nsLineBox::CachedIsEmpty()
     return mFlags.mEmptyCacheState;
   }
 
-  PRBool result;
+  bool result;
   if (IsBlock()) {
     result = mFirstChild->CachedIsEmpty();
   } else {
     PRInt32 n;
     nsIFrame *kid;
-    result = PR_TRUE;
+    result = true;
     for (n = GetChildCount(), kid = mFirstChild;
          n > 0;
          --n, kid = kid->GetNextSibling())
       {
         if (!kid->CachedIsEmpty()) {
-          result = PR_FALSE;
+          result = false;
           break;
         }
       }
     if (HasBullet()) {
-      result = PR_FALSE;
+      result = false;
     }
   }
 
-  mFlags.mEmptyCacheValid = PR_TRUE;
+  mFlags.mEmptyCacheValid = true;
   mFlags.mEmptyCacheState = result;
   return result;
 }
@@ -362,7 +362,7 @@ nsLineBox::DeleteLineList(nsPresContext* aPresContext, nsLineList& aLines,
   }
 }
 
-PRBool
+bool
 nsLineBox::RFindLineContaining(nsIFrame* aFrame,
                                const nsLineList::iterator& aBegin,
                                nsLineList::iterator& aEnd,
@@ -379,14 +379,14 @@ nsLineBox::RFindLineContaining(nsIFrame* aFrame,
     while (i >= 0) {
       if (curFrame == aFrame) {
         *aFrameIndexInLine = i;
-        return PR_TRUE;
+        return true;
       }
       --i;
       curFrame = curFrame->GetPrevSibling();
     }
   }
   *aFrameIndexInLine = -1;
-  return PR_FALSE;
+  return false;
 }
 
 nsCollapsingMargin
@@ -399,19 +399,17 @@ nsLineBox::GetCarriedOutBottomMargin() const
     : nsCollapsingMargin();
 }
 
-PRBool
+bool
 nsLineBox::SetCarriedOutBottomMargin(nsCollapsingMargin aValue)
 {
-  PRBool changed = PR_FALSE;
+  bool changed = false;
   if (IsBlock()) {
     if (!aValue.IsZero()) {
       if (!mBlockData) {
         mBlockData = new ExtraBlockData(mBounds);
       }
-      if (mBlockData) {
-        changed = aValue != mBlockData->mCarriedOutBottomMargin;
-        mBlockData->mCarriedOutBottomMargin = aValue;
-      }
+      changed = aValue != mBlockData->mCarriedOutBottomMargin;
+      mBlockData->mCarriedOutBottomMargin = aValue;
     }
     else if (mBlockData) {
       changed = aValue != mBlockData->mCarriedOutBottomMargin;
@@ -469,14 +467,12 @@ nsLineBox::AppendFloats(nsFloatCacheFreeList& aFreeList)
       if (!mInlineData) {
         mInlineData = new ExtraInlineData(mBounds);
       }
-      if (mInlineData) {
-        mInlineData->mFloats.Append(aFreeList);
-      }
+      mInlineData->mFloats.Append(aFreeList);
     }
   }
 }
 
-PRBool
+bool
 nsLineBox::RemoveFloat(nsIFrame* aFrame)
 {
   NS_ABORT_IF_FALSE(IsInline(), "block line can't have floats");
@@ -488,10 +484,10 @@ nsLineBox::RemoveFloat(nsIFrame* aFrame)
       mInlineData->mFloats.Remove(fc);
       delete fc;
       MaybeFreeData();
-      return PR_TRUE;
+      return true;
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
 void
@@ -533,7 +529,7 @@ nsLineIterator::nsLineIterator()
   mLines = gDummyLines;
   mNumLines = 0;
   mIndex = 0;
-  mRightToLeft = PR_FALSE;
+  mRightToLeft = false;
 }
 
 nsLineIterator::~nsLineIterator()
@@ -550,7 +546,7 @@ nsLineIterator::DisposeLineIterator()
 }
 
 nsresult
-nsLineIterator::Init(nsLineList& aLines, PRBool aRightToLeft)
+nsLineIterator::Init(nsLineList& aLines, bool aRightToLeft)
 {
   mRightToLeft = aRightToLeft;
 
@@ -588,7 +584,7 @@ nsLineIterator::GetNumLines()
   return mNumLines;
 }
 
-PRBool
+bool
 nsLineIterator::GetDirection()
 {
   return mRightToLeft;
@@ -630,15 +626,16 @@ nsLineIterator::GetLine(PRInt32 aLineNumber,
 }
 
 PRInt32
-nsLineIterator::FindLineContaining(nsIFrame* aFrame)
+nsLineIterator::FindLineContaining(nsIFrame* aFrame, PRInt32 aStartLine)
 {
-  nsLineBox* line = mLines[0];
-  PRInt32 lineNumber = 0;
+  NS_PRECONDITION(aStartLine <= mNumLines, "Bogus line numbers");
+  PRInt32 lineNumber = aStartLine;
   while (lineNumber != mNumLines) {
+    nsLineBox* line = mLines[lineNumber];
     if (line->Contains(aFrame)) {
       return lineNumber;
     }
-    line = mLines[++lineNumber];
+    ++lineNumber;
   }
   return -1;
 }
@@ -646,7 +643,7 @@ nsLineIterator::FindLineContaining(nsIFrame* aFrame)
 #ifdef IBMBIDI
 NS_IMETHODIMP
 nsLineIterator::CheckLineOrder(PRInt32                  aLine,
-                               PRBool                   *aIsReordered,
+                               bool                     *aIsReordered,
                                nsIFrame                 **aFirstVisual,
                                nsIFrame                 **aLastVisual)
 {
@@ -654,17 +651,15 @@ nsLineIterator::CheckLineOrder(PRInt32                  aLine,
   nsLineBox* line = mLines[aLine];
 
   if (!line->mFirstChild) { // empty line
-    *aIsReordered = PR_FALSE;
+    *aIsReordered = false;
     *aFirstVisual = nsnull;
     *aLastVisual = nsnull;
     return NS_OK;
   }
 
-  nsBidiPresUtils* bidiUtils = line->mFirstChild->PresContext()->GetBidiUtils();
-
   nsIFrame* leftmostFrame;
   nsIFrame* rightmostFrame;
-  *aIsReordered = bidiUtils->CheckLineOrder(line->mFirstChild, line->GetChildCount(), &leftmostFrame, &rightmostFrame);
+  *aIsReordered = nsBidiPresUtils::CheckLineOrder(line->mFirstChild, line->GetChildCount(), &leftmostFrame, &rightmostFrame);
 
   // map leftmost/rightmost to first/last according to paragraph direction
   *aFirstVisual = mRightToLeft ? rightmostFrame : leftmostFrame;
@@ -678,8 +673,8 @@ NS_IMETHODIMP
 nsLineIterator::FindFrameAt(PRInt32 aLineNumber,
                             nscoord aX,
                             nsIFrame** aFrameFound,
-                            PRBool* aXIsBeforeFirstFrame,
-                            PRBool* aXIsAfterLastFrame)
+                            bool* aXIsBeforeFirstFrame,
+                            bool* aXIsAfterLastFrame)
 {
   NS_PRECONDITION(aFrameFound && aXIsBeforeFirstFrame && aXIsAfterLastFrame,
                   "null OUT ptr");
@@ -693,8 +688,8 @@ nsLineIterator::FindFrameAt(PRInt32 aLineNumber,
   nsLineBox* line = mLines[aLineNumber];
   if (!line) {
     *aFrameFound = nsnull;
-    *aXIsBeforeFirstFrame = PR_TRUE;
-    *aXIsAfterLastFrame = PR_FALSE;
+    *aXIsBeforeFirstFrame = true;
+    *aXIsAfterLastFrame = false;
     return NS_OK;
   }
 

@@ -60,9 +60,9 @@ PRLogModuleInfo *MCD;
 
 extern nsresult EvaluateAdminConfigScript(const char *js_buffer, size_t length,
                                           const char *filename, 
-                                          PRBool bGlobalContext, 
-                                          PRBool bCallbacks, 
-                                          PRBool skipFirstLine);
+                                          bool bGlobalContext, 
+                                          bool bCallbacks, 
+                                          bool skipFirstLine);
 
 // nsISupports Implementation
 
@@ -77,7 +77,7 @@ nsresult nsAutoConfig::Init()
     // member initializers and constructor code
 
     nsresult rv;
-    mLoaded = PR_FALSE;
+    mLoaded = false;
     
     // Registering the object as an observer to the profile-after-change topic
     nsCOMPtr<nsIObserverService> observerService =
@@ -85,7 +85,7 @@ nsresult nsAutoConfig::Init()
     if (NS_FAILED(rv)) 
         return rv;
 
-    rv = observerService->AddObserver(this,"profile-after-change", PR_TRUE);
+    rv = observerService->AddObserver(this,"profile-after-change", true);
     
     return rv;
 }
@@ -137,7 +137,7 @@ nsAutoConfig::OnDataAvailable(nsIRequest *request,
     char buf[1024];
     
     while (aLength) {
-        size = PR_MIN(aLength, sizeof(buf));
+        size = NS_MIN<size_t>(aLength, sizeof(buf));
         rv = aIStream->Read(buf, size, &amt);
         if (NS_FAILED(rv))
             return rv;
@@ -175,7 +175,7 @@ nsAutoConfig::OnStopRequest(nsIRequest *request, nsISupports *context,
     // Send the autoconfig.jsc to javascript engine.
     
     rv = EvaluateAdminConfigScript(mBuf.get(), mBuf.Length(),
-                              nsnull, PR_FALSE,PR_TRUE, PR_FALSE);
+                              nsnull, false,true, false);
     if (NS_SUCCEEDED(rv)) {
 
         // Write the autoconfig.jsc to failover.jsc (cached copy) 
@@ -185,7 +185,7 @@ nsAutoConfig::OnStopRequest(nsIRequest *request, nsISupports *context,
             NS_WARNING("Error writing failover.jsc file");
 
         // Releasing the lock to allow the main thread to start execution
-        mLoaded = PR_TRUE;  
+        mLoaded = true;  
 
         return NS_OK;
     }
@@ -244,7 +244,7 @@ nsresult nsAutoConfig::downloadAutoConfig()
     nsresult rv;
     nsCAutoString emailAddr;
     nsXPIDLCString urlName;
-    static PRBool firstTime = PR_TRUE;
+    static bool firstTime = true;
     
     if (mConfigURL.IsEmpty()) {
         PR_LOG(MCD, PR_LOG_DEBUG, ("global config url is empty - did you set autoadmin.global_config_url?\n"));
@@ -281,13 +281,13 @@ nsresult nsAutoConfig::downloadAutoConfig()
     if (NS_FAILED(rv)) 
         return rv;
     
-    PRBool offline;
+    bool offline;
     rv = ios->GetOffline(&offline);
     if (NS_FAILED(rv)) 
         return rv;
     
     if (offline) {
-        PRBool offlineFailover;
+        bool offlineFailover;
         rv = mPrefBranch->GetBoolPref("autoadmin.offline_failover", 
                                       &offlineFailover);
         // Read the failover.jsc if the network is offline and the pref says so
@@ -300,7 +300,7 @@ nsresult nsAutoConfig::downloadAutoConfig()
        available in the case where the client is used without messenger, user's
        profile name will be used as an unique identifier
     */
-    PRBool appendMail;
+    bool appendMail;
     rv = mPrefBranch->GetBoolPref("autoadmin.append_emailaddr", &appendMail);
     if (NS_SUCCEEDED(rv) && appendMail) {
         rv = getEmailAddr(emailAddr);
@@ -342,7 +342,7 @@ nsresult nsAutoConfig::downloadAutoConfig()
     // Also We are having the event queue processing only for the startup
     // It is not needed with the repeating timer.
     if (firstTime) {
-        firstTime = PR_FALSE;
+        firstTime = false;
     
         // Getting the current thread. If we start an AsyncOpen, the thread
         // needs to wait before the reading of autoconfig is done
@@ -390,9 +390,9 @@ nsresult nsAutoConfig::readOfflineFile()
        execution. At this point we do not need to stall 
        the thread since all network activities are done.
     */
-    mLoaded = PR_TRUE; 
+    mLoaded = true; 
 
-    PRBool failCache;
+    bool failCache;
     rv = mPrefBranch->GetBoolPref("autoadmin.failover_to_cached", &failCache);
     if (NS_SUCCEEDED(rv) && !failCache) {
         // disable network connections and return.
@@ -402,20 +402,20 @@ nsresult nsAutoConfig::readOfflineFile()
         if (NS_FAILED(rv)) 
             return rv;
         
-        PRBool offline;
+        bool offline;
         rv = ios->GetOffline(&offline);
         if (NS_FAILED(rv)) 
             return rv;
 
         if (!offline) {
-            rv = ios->SetOffline(PR_TRUE);
+            rv = ios->SetOffline(true);
             if (NS_FAILED(rv)) 
                 return rv;
         }
         
         // lock the "network.online" prference so user cannot toggle back to
         // online mode.
-        rv = mPrefBranch->SetBoolPref("network.online", PR_FALSE);
+        rv = mPrefBranch->SetBoolPref("network.online", false);
         if (NS_FAILED(rv)) 
             return rv;
 
@@ -460,8 +460,8 @@ nsresult nsAutoConfig::evaluateLocalFile(nsIFile *file)
     
     rv = inStr->Read(buf, fs, &amt);
     if (NS_SUCCEEDED(rv)) {
-      EvaluateAdminConfigScript(buf, fs, nsnull, PR_FALSE, 
-                                PR_TRUE, PR_FALSE);
+      EvaluateAdminConfigScript(buf, fs, nsnull, false, 
+                                true, false);
     }
     inStr->Close();
     PR_Free(buf);
@@ -556,9 +556,9 @@ nsresult nsAutoConfig::PromptForEMailAddress(nsACString &emailAddress)
     nsXPIDLString err;
     rv = bundle->GetStringFromName(NS_LITERAL_STRING("emailPromptMsg").get(), getter_Copies(err));
     NS_ENSURE_SUCCESS(rv, rv);
-    PRBool check = PR_FALSE;
+    bool check = false;
     nsXPIDLString emailResult;
-    PRBool success;
+    bool success;
     rv = promptService->Prompt(nsnull, title.get(), err.get(), getter_Copies(emailResult), nsnull, &check, &success);
     if (!success)
       return NS_ERROR_FAILURE;

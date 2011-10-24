@@ -95,7 +95,7 @@ class nsHtml5AttributeName
     PRInt32 getUri(PRInt32 mode);
     nsIAtom* getLocal(PRInt32 mode);
     nsIAtom* getPrefix(PRInt32 mode);
-    PRBool equalsAnother(nsHtml5AttributeName* another);
+    bool equalsAnother(nsHtml5AttributeName* another);
     static nsHtml5AttributeName* ATTR_D;
     static nsHtml5AttributeName* ATTR_K;
     static nsHtml5AttributeName* ATTR_R;
@@ -473,6 +473,7 @@ class nsHtml5AttributeName
     static nsHtml5AttributeName* ATTR_CELLPADDING;
     static nsHtml5AttributeName* ATTR_CELLSPACING;
     static nsHtml5AttributeName* ATTR_COLUMNWIDTH;
+    static nsHtml5AttributeName* ATTR_CROSSORIGIN;
     static nsHtml5AttributeName* ATTR_COLUMNALIGN;
     static nsHtml5AttributeName* ATTR_COLUMNLINES;
     static nsHtml5AttributeName* ATTR_CONTEXTMENU;

@@ -57,6 +57,7 @@
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsPIDOMWindow.h"
 
 #include "nsDOMJSUtils.h" // for GetScriptContextFromJSContext
 
@@ -100,14 +101,13 @@ nsJSUtils::GetStaticScriptGlobal(JSContext* aContext, JSObject* aObj)
 {
   nsISupports* supports;
   JSClass* clazz;
-  JSObject* parent;
   JSObject* glob = aObj; // starting point for search
 
   if (!glob)
     return nsnull;
 
-  while ((parent = ::JS_GetParent(aContext, glob)))
-    glob = parent;
+  glob = JS_GetGlobalForObject(aContext, glob);
+  NS_ABORT_IF_FALSE(glob, "Infallible returns null");
 
   clazz = JS_GET_CLASS(aContext, glob);
 
@@ -162,12 +162,12 @@ nsJSUtils::GetDynamicScriptContext(JSContext *aContext)
 }
 
 PRUint64
-nsJSUtils::GetCurrentlyRunningCodeWindowID(JSContext *aContext)
+nsJSUtils::GetCurrentlyRunningCodeInnerWindowID(JSContext *aContext)
 {
   if (!aContext)
     return 0;
 
-  PRUint64 windowID = 0;
+  PRUint64 innerWindowID = 0;
 
   JSObject *jsGlobal = JS_GetGlobalForScopeChain(aContext);
   if (jsGlobal) {
@@ -176,10 +176,10 @@ nsJSUtils::GetCurrentlyRunningCodeWindowID(JSContext *aContext)
     if (scriptGlobal) {
       nsCOMPtr<nsPIDOMWindow> win = do_QueryInterface(scriptGlobal);
       if (win)
-        windowID = win->GetOuterWindow()->WindowID();
+        innerWindowID = win->WindowID();
     }
   }
 
-  return windowID;
+  return innerWindowID;
 }
 

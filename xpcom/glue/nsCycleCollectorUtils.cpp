@@ -52,7 +52,7 @@
 bool
 NS_IsCycleCollectorThread()
 {
-  PRBool result = PR_FALSE;
+  bool result = false;
   nsCOMPtr<nsIThreadManager> mgr =
     do_GetService(NS_THREADMANAGER_CONTRACTID);
   if (mgr)
@@ -81,14 +81,6 @@ bool
 NS_IsCycleCollectorThread()
 {
   return PR_GetCurrentThread() == gCycleCollectorThread;
-}
-
-#elif !defined(MOZ_ENABLE_LIBXUL)
-
-bool
-NS_IsCycleCollectorThread()
-{
-  return gTLSThreadID == mozilla::threads::CycleCollector;
 }
 
 #endif

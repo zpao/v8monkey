@@ -61,10 +61,10 @@ struct AttributeRuleProcessorData;
 class nsPresContext;
 
 // IID for the nsIStyleRuleProcessor interface
-// {b8e44bbe-aaac-4125-8ab2-0f42802e14ad}
+// {32612c0e-3d34-4a6f-89d9-464f6811ac13}
 #define NS_ISTYLE_RULE_PROCESSOR_IID     \
-{ 0xb8e44bbe, 0xaaac, 0x4125, \
- { 0x8a, 0xb2, 0x0f, 0x42, 0x80, 0x2e, 0x14, 0xad } }
+{ 0x32612c0e, 0x3d34, 0x4a6f, \
+  {0x89, 0xd9, 0x46, 0x4f, 0x68, 0x11, 0xac, 0x13} }
 
 
 /* The style rule processor interface is a mechanism to separate the matching
@@ -81,7 +81,7 @@ public:
 
   // Shorthand for:
   //  nsCOMArray<nsIStyleRuleProcessor>::nsCOMArrayEnumFunc
-  typedef PRBool (* EnumFunc)(nsIStyleRuleProcessor*, void*);
+  typedef bool (* EnumFunc)(nsIStyleRuleProcessor*, void*);
 
   /**
    * Find the |nsIStyleRule|s matching the given content node and
@@ -115,7 +115,7 @@ public:
    *
    * Document states are defined in nsIDocument.h.
    */
-  virtual PRBool
+  virtual bool
     HasDocumentStateDependentStyle(StateRuleProcessorData* aData) = 0;
 
   /**
@@ -153,7 +153,13 @@ public:
    * the characteristics of the medium, and return whether this rule
    * processor's rules have changed (e.g., because of media queries).
    */
-  virtual PRBool MediumFeaturesChanged(nsPresContext* aPresContext) = 0;
+  virtual bool MediumFeaturesChanged(nsPresContext* aPresContext) = 0;
+
+  /**
+   * Report the size of this style rule processor to about:memory.  A
+   * processor may return 0.
+   */
+  virtual PRInt64 SizeOf() const = 0;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIStyleRuleProcessor,

@@ -119,12 +119,12 @@ class nsPropertiesParser
 {
 public:
   nsPropertiesParser(nsIPersistentProperties* aProps) :
-    mHaveMultiLine(PR_FALSE), mState(eParserState_AwaitingKey),
+    mHaveMultiLine(false), mState(eParserState_AwaitingKey),
     mProps(aProps) {}
 
   void FinishValueState(nsAString& aOldValue) {
     static const char trimThese[] = " \t";
-    mKey.Trim(trimThese, PR_FALSE, PR_TRUE);
+    mKey.Trim(trimThese, false, true);
 
     // This is really ugly hack but it should be fast
     PRUnichar backup_char;
@@ -134,7 +134,7 @@ public:
       backup_char = mValue[minLength-1];
       mValue.SetCharAt('x', minLength-1);
     }
-    mValue.Trim(trimThese, PR_FALSE, PR_TRUE);
+    mValue.Trim(trimThese, false, true);
     if (minLength)
       mValue.SetCharAt(backup_char, minLength-1);
 
@@ -155,7 +155,7 @@ public:
   nsresult ParseBuffer(const PRUnichar* aBuffer, PRUint32 aBufferLength);
 
 private:
-  PRBool ParseValueCharacter(
+  bool ParseValueCharacter(
     PRUnichar c,                  // character that is just being parsed
     const PRUnichar* cur,         // pointer to character c in the buffer
     const PRUnichar* &tokenStart, // string copying is done in blocks as big as
@@ -194,14 +194,14 @@ private:
 
   PRUint32  mUnicodeValuesRead; // should be 4!
   PRUnichar mUnicodeValue;      // currently parsed unicode value
-  PRBool    mHaveMultiLine;     // is TRUE when last processed characters form
+  bool      mHaveMultiLine;     // is TRUE when last processed characters form
                                 // any of following sequences:
                                 //  - "\\\r"
                                 //  - "\\\n"
                                 //  - "\\\r\n"
                                 //  - any sequence above followed by any
                                 //    combination of ' ' and '\t'
-  PRBool    mMultiLineCanSkipN; // TRUE if "\\\r" was detected
+  bool      mMultiLineCanSkipN; // TRUE if "\\\r" was detected
   PRUint32  mMinLength;         // limit right trimming at the end to not trim
                                 // escaped whitespaces
   EParserState mState;
@@ -210,19 +210,19 @@ private:
   nsIPersistentProperties* mProps;
 };
 
-inline PRBool IsWhiteSpace(PRUnichar aChar)
+inline bool IsWhiteSpace(PRUnichar aChar)
 {
   return (aChar == ' ') || (aChar == '\t') ||
          (aChar == '\r') || (aChar == '\n');
 }
 
-inline PRBool IsEOL(PRUnichar aChar)
+inline bool IsEOL(PRUnichar aChar)
 {
   return (aChar == '\r') || (aChar == '\n');
 }
 
 
-PRBool nsPropertiesParser::ParseValueCharacter(
+bool nsPropertiesParser::ParseValueCharacter(
     PRUnichar c, const PRUnichar* cur, const PRUnichar* &tokenStart,
     nsAString& oldValue)
 {
@@ -234,7 +234,7 @@ PRBool nsPropertiesParser::ParseValueCharacter(
     case '\\':
       if (mHaveMultiLine)
         // there is nothing to append to mValue yet
-        mHaveMultiLine = PR_FALSE;
+        mHaveMultiLine = false;
       else
         mValue += Substring(tokenStart, cur);
 
@@ -245,7 +245,7 @@ PRBool nsPropertiesParser::ParseValueCharacter(
       // if we detected multiline and got only "\\\r" ignore next "\n" if any
       if (mHaveMultiLine && mMultiLineCanSkipN) {
         // but don't allow another '\n' to be skipped
-        mMultiLineCanSkipN = PR_FALSE;
+        mMultiLineCanSkipN = false;
         // Now there is nothing to append to the mValue since we are skipping
         // whitespaces at the beginning of the new line of the multiline
         // property. Set tokenStart properly to ensure that nothing is appended
@@ -259,7 +259,7 @@ PRBool nsPropertiesParser::ParseValueCharacter(
       // we're done! We have a key and value
       mValue += Substring(tokenStart, cur);
       FinishValueState(oldValue);
-      mHaveMultiLine = PR_FALSE;
+      mHaveMultiLine = false;
       break;
 
     default:
@@ -268,7 +268,7 @@ PRBool nsPropertiesParser::ParseValueCharacter(
       if (mHaveMultiLine) {
         if (c == ' ' || c == '\t') {
           // don't allow another '\n' to be skipped
-          mMultiLineCanSkipN = PR_FALSE;
+          mMultiLineCanSkipN = false;
           // Now there is nothing to append to the mValue since we are skipping
           // whitespaces at the beginning of the new line of the multiline
           // property. Set tokenStart properly to ensure that nothing is appended
@@ -276,7 +276,7 @@ PRBool nsPropertiesParser::ParseValueCharacter(
           tokenStart = cur+1;
           break;
         }
-        mHaveMultiLine = PR_FALSE;
+        mHaveMultiLine = false;
         tokenStart = cur;
       }
       break; // from switch on (c)
@@ -320,7 +320,7 @@ PRBool nsPropertiesParser::ParseValueCharacter(
       // a \ immediately followed by a newline means we're going multiline
     case '\r':
     case '\n':
-      mHaveMultiLine = PR_TRUE;
+      mHaveMultiLine = true;
       mMultiLineCanSkipN = (c == '\r');
       mSpecialState = eParserSpecial_None;
       break;
@@ -355,7 +355,7 @@ PRBool nsPropertiesParser::ParseValueCharacter(
       tokenStart = cur;
 
       // ensure parsing this non-hex character again
-      return PR_FALSE;
+      return false;
     }
 
     if (++mUnicodeValuesRead >= 4) {
@@ -368,7 +368,7 @@ PRBool nsPropertiesParser::ParseValueCharacter(
     break;
   }
 
-  return PR_TRUE;
+  return true;
 }
 
 NS_METHOD nsPropertiesParser::SegmentWriter(nsIUnicharInputStream* aStream,
@@ -682,7 +682,7 @@ nsPersistentProperties::Undefine(const char* prop)
 }
 
 NS_IMETHODIMP
-nsPersistentProperties::Has(const char* prop, PRBool *result)
+nsPersistentProperties::Has(const char* prop, bool *result)
 {
   PropertyTableEntry *entry =
     static_cast<PropertyTableEntry*>

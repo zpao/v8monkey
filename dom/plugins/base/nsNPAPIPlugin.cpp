@@ -42,13 +42,18 @@
 
 #include "base/basictypes.h"
 
+/* This must occur *after* layers/PLayers.h to avoid typedefs conflicts. */
+#include "mozilla/Util.h"
+
 #include "prtypes.h"
 #include "prmem.h"
 #include "prenv.h"
 #include "prclist.h"
 
 #include "jscntxt.h"
+#include "jsfriendapi.h"
 
+#include "nsPluginHost.h"
 #include "nsNPAPIPlugin.h"
 #include "nsNPAPIPluginInstance.h"
 #include "nsNPAPIPluginStreamListener.h"
@@ -69,18 +74,21 @@
 #include "nsIDOMDocument.h"
 #include "nsPIDOMWindow.h"
 #include "nsIDocument.h"
+#include "nsIContent.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIScriptContext.h"
+#include "nsIUnicodeNormalizer.h"
 #include "nsDOMJSUtils.h"
 #include "nsIPrincipal.h"
 #include "nsWildCard.h"
+#include "nsContentUtils.h"
 
 #include "nsIXPConnect.h"
 
 #include "nsIObserverService.h"
 #include <prinrval.h>
 
-#ifdef XP_MACOSX
+#ifdef MOZ_WIDGET_COCOA
 #include <Carbon/Carbon.h>
 #include <ApplicationServices/ApplicationServices.h>
 #include <OpenGL/OpenGL.h>
@@ -121,6 +129,13 @@ using mozilla::plugins::PluginModuleParent;
 
 #ifdef XP_WIN
 #include <windows.h>
+#endif
+
+#ifdef ANDROID
+#include "ANPBase.h"
+#include "AndroidBridge.h"
+#include <android/log.h>
+#define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "GeckoPlugins" , ## args)
 #endif
 
 using namespace mozilla;
@@ -220,7 +235,7 @@ void NS_NotifyPluginCall(PRIntervalTime startTime)
 
 static void CheckClassInitialized()
 {
-  static PRBool initialized = PR_FALSE;
+  static bool initialized = false;
 
   if (initialized)
     return;
@@ -228,12 +243,12 @@ static void CheckClassInitialized()
   if (!sPluginThreadAsyncCallLock)
     sPluginThreadAsyncCallLock = new Mutex("nsNPAPIPlugin.sPluginThreadAsyncCallLock");
 
-  initialized = PR_TRUE;
+  initialized = true;
 
   NPN_PLUGIN_LOG(PLUGIN_LOG_NORMAL,("NPN callbacks initialized\n"));
 }
 
-NS_IMPL_ISUPPORTS1(nsNPAPIPlugin, nsIPlugin)
+NS_IMPL_ISUPPORTS0(nsNPAPIPlugin)
 
 nsNPAPIPlugin::nsNPAPIPlugin()
 {
@@ -277,9 +292,9 @@ static PRInt32 OSXVersion()
 // kCGLRendererIDMatchingMask and kCGLRendererIntel900ID are only defined in the 10.6 SDK.
 #define CGLRendererIDMatchingMask 0x00FE7F00
 #define CGLRendererIntel900ID 0x00024000
-static PRBool GMA9XXGraphics()
+static bool GMA9XXGraphics()
 {
-  bool hasIntelGMA9XX = PR_FALSE;
+  bool hasIntelGMA9XX = false;
   CGLRendererInfoObj renderer = 0;
   GLint rendererCount = 0;
   if (::CGLQueryRendererInfo(0xffffffff, &renderer, &rendererCount) == kCGLNoError) {
@@ -287,7 +302,7 @@ static PRBool GMA9XXGraphics()
       GLint rendProp = 0;
       if (::CGLDescribeRenderer(renderer, c, kCGLRPRendererID, &rendProp) == kCGLNoError) {
         if ((rendProp & CGLRendererIDMatchingMask) == CGLRendererIntel900ID) {
-          hasIntelGMA9XX = PR_TRUE;
+          hasIntelGMA9XX = true;
           break;
         }
       }
@@ -298,21 +313,21 @@ static PRBool GMA9XXGraphics()
 }
 #endif
 
-PRBool
+bool
 nsNPAPIPlugin::RunPluginOOP(const nsPluginTag *aPluginTag)
 {
   if (PR_GetEnv("MOZ_DISABLE_OOP_PLUGINS")) {
-    return PR_FALSE;
+    return false;
   }
 
   if (!aPluginTag) {
-    return PR_FALSE;
+    return false;
   }
 
 #if defined(XP_MACOSX) && defined(__i386__)
   // Only allow on Mac OS X 10.6 or higher.
   if (OSXVersion() < 0x00001060) {
-    return PR_FALSE;
+    return false;
   }
   // Blacklist Flash 10.0 or lower since it may try to negotiate Carbon/Quickdraw
   // which are not supported out of process. Also blacklist Flash 10.1 if this
@@ -322,16 +337,16 @@ nsNPAPIPlugin::RunPluginOOP(const nsPluginTag *aPluginTag)
     // If the first '.' is before position 2 or the version 
     // starts with 10.0 then we are dealing with Flash 10 or less.
     if (aPluginTag->mVersion.FindChar('.') < 2) {
-      return PR_FALSE;
+      return false;
     }
     if (aPluginTag->mVersion.Length() >= 4) {
       nsCString versionPrefix;
       aPluginTag->mVersion.Left(versionPrefix, 4);
       if (versionPrefix.EqualsASCII("10.0")) {
-        return PR_FALSE;
+        return false;
       }
       if (versionPrefix.EqualsASCII("10.1") && GMA9XXGraphics()) {
-        return PR_FALSE;
+        return false;
       }
     }
   }
@@ -344,12 +359,12 @@ nsNPAPIPlugin::RunPluginOOP(const nsPluginTag *aPluginTag)
   // Always disabled on 2K or less. (bug 536303)
   if (osVerInfo.dwMajorVersion < 5 ||
       (osVerInfo.dwMajorVersion == 5 && osVerInfo.dwMinorVersion == 0))
-    return PR_FALSE;
+    return false;
 #endif
 
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
   if (!prefs) {
-    return PR_FALSE;
+    return false;
   }
 
   // Get per-library whitelist/blacklist pref string
@@ -360,7 +375,7 @@ nsNPAPIPlugin::RunPluginOOP(const nsPluginTag *aPluginTag)
   nsCAutoString prefFile(aPluginTag->mFullPath.get());
   PRInt32 slashPos = prefFile.RFindCharInSet("/\\");
   if (kNotFound == slashPos)
-    return PR_FALSE;
+    return false;
   prefFile.Cut(0, slashPos + 1);
   ToLowerCase(prefFile);
 
@@ -378,11 +393,11 @@ nsNPAPIPlugin::RunPluginOOP(const nsPluginTag *aPluginTag)
 
   // Java plugins include a number of different file names,
   // so use the mime type (mIsJavaPlugin) and a special pref.
-  PRBool javaIsEnabled;
+  bool javaIsEnabled;
   if (aPluginTag->mIsJavaPlugin &&
       NS_SUCCEEDED(prefs->GetBoolPref("dom.ipc.plugins.java.enabled", &javaIsEnabled)) &&
       !javaIsEnabled) {
-    return PR_FALSE;
+    return false;
   }
 
   PRUint32 prefCount;
@@ -390,15 +405,15 @@ nsNPAPIPlugin::RunPluginOOP(const nsPluginTag *aPluginTag)
   nsresult rv = prefs->GetChildList(prefGroupKey.get(),
                                     &prefCount, &prefNames);
 
-  PRBool oopPluginsEnabled = PR_FALSE;
-  PRBool prefSet = PR_FALSE;
+  bool oopPluginsEnabled = false;
+  bool prefSet = false;
 
   if (NS_SUCCEEDED(rv) && prefCount > 0) {
     PRUint32 prefixLength = prefGroupKey.Length();
     for (PRUint32 currentPref = 0; currentPref < prefCount; currentPref++) {
       // Get the mask
       const char* maskStart = prefNames[currentPref] + prefixLength;
-      PRBool match = PR_FALSE;
+      bool match = false;
 
       int valid = NS_WildCardValid(maskStart);
       if (valid == INVALID_SXP) {
@@ -414,7 +429,7 @@ nsNPAPIPlugin::RunPluginOOP(const nsPluginTag *aPluginTag)
 
       if (match && NS_SUCCEEDED(prefs->GetBoolPref(prefNames[currentPref],
                                                    &oopPluginsEnabled))) {
-        prefSet = PR_TRUE;
+        prefSet = true;
         break;
       }
     }
@@ -422,7 +437,7 @@ nsNPAPIPlugin::RunPluginOOP(const nsPluginTag *aPluginTag)
   }
 
   if (!prefSet) {
-    oopPluginsEnabled = PR_FALSE;
+    oopPluginsEnabled = false;
 #ifdef XP_MACOSX
 #if defined(__i386__)
     prefs->GetBoolPref("dom.ipc.plugins.enabled.i386", &oopPluginsEnabled);
@@ -473,7 +488,7 @@ nsNPAPIPlugin::CreatePlugin(nsPluginTag *aPluginTag, nsNPAPIPlugin** aResult)
     return NS_ERROR_FAILURE;
   }
 
-#ifdef XP_MACOSX
+#if defined(XP_MACOSX) || defined(ANDROID)
   if (!pluginLib->HasRequiredFunctions()) {
     NS_WARNING("Not all necessary functions exposed by plugin, it will not load.");
     return NS_ERROR_FAILURE;
@@ -534,8 +549,8 @@ nsNPAPIPlugin::PluginFuncs()
   return &mPluginFuncs;
 }
 
-NS_IMETHODIMP
-nsNPAPIPlugin::CreatePluginInstance(nsIPluginInstance **aResult)
+nsresult
+nsNPAPIPlugin::CreatePluginInstance(nsNPAPIPluginInstance **aResult)
 {
   if (!aResult)
     return NS_ERROR_NULL_POINTER;
@@ -546,8 +561,8 @@ nsNPAPIPlugin::CreatePluginInstance(nsIPluginInstance **aResult)
   if (!inst)
     return NS_ERROR_OUT_OF_MEMORY;
 
-  NS_ADDREF(inst);
-  *aResult = static_cast<nsIPluginInstance*>(inst);
+  *aResult = inst;
+  NS_ADDREF(*aResult);
   return NS_OK;
 }
 
@@ -563,14 +578,37 @@ nsNPAPIPlugin::Shutdown()
   return NS_OK;
 }
 
+nsresult
+nsNPAPIPlugin::RetainStream(NPStream *pstream, nsISupports **aRetainedPeer)
+{
+  if (!aRetainedPeer)
+    return NS_ERROR_NULL_POINTER;
+
+  *aRetainedPeer = NULL;
+
+  if (!pstream || !pstream->ndata)
+    return NPERR_INVALID_PARAM;
+
+  nsNPAPIPluginStreamListener* listener =
+    static_cast<nsNPAPIPluginStreamListener*>(pstream->ndata);
+  nsPluginStreamListenerPeer* peer = listener->GetStreamListenerPeer();
+
+  if (!peer)
+    return NPERR_GENERIC_ERROR;
+
+  *aRetainedPeer = (nsISupports*) peer;
+  NS_ADDREF(*aRetainedPeer);
+  return NS_OK;
+}
+
 // Create a new NPP GET or POST (given in the type argument) url
 // stream that may have a notify callback
 NPError
 MakeNewNPAPIStreamInternal(NPP npp, const char *relativeURL, const char *target,
                           eNPPStreamTypeInternal type,
-                          PRBool bDoNotify = PR_FALSE,
+                          bool bDoNotify = false,
                           void *notifyData = nsnull, uint32_t len = 0,
-                          const char *buf = nsnull, NPBool file = PR_FALSE)
+                          const char *buf = nsnull, NPBool file = false)
 {
   if (!npp)
     return NPERR_INVALID_INSTANCE_ERROR;
@@ -581,9 +619,11 @@ MakeNewNPAPIStreamInternal(NPP npp, const char *relativeURL, const char *target,
   if (!inst || !inst->IsRunning())
     return NPERR_INVALID_INSTANCE_ERROR;
 
-  nsCOMPtr<nsIPluginHost> pluginHost = do_GetService(MOZ_PLUGIN_HOST_CONTRACTID);
-  NS_ASSERTION(pluginHost, "failed to get plugin host");
-  if (!pluginHost) return NPERR_GENERIC_ERROR;
+  nsCOMPtr<nsIPluginHost> pluginHostCOM = do_GetService(MOZ_PLUGIN_HOST_CONTRACTID);
+  nsPluginHost *pluginHost = static_cast<nsPluginHost*>(pluginHostCOM.get());
+  if (!pluginHost) {
+    return NPERR_GENERIC_ERROR;
+  }
 
   nsCOMPtr<nsIPluginStreamListener> listener;
   // Set aCallNotify here to false.  If pluginHost->GetURL or PostURL fail,
@@ -595,7 +635,7 @@ MakeNewNPAPIStreamInternal(NPP npp, const char *relativeURL, const char *target,
     inst->NewStreamListener(relativeURL, notifyData,
                             getter_AddRefs(listener));
     if (listener) {
-      static_cast<nsNPAPIPluginStreamListener*>(listener.get())->SetCallNotify(PR_FALSE);
+      static_cast<nsNPAPIPluginStreamListener*>(listener.get())->SetCallNotify(false);
     }
   }
 
@@ -625,7 +665,7 @@ MakeNewNPAPIStreamInternal(NPP npp, const char *relativeURL, const char *target,
   return NPERR_NO_ERROR;
 }
 
-#if defined(MOZ_MEMORY_WINDOWS) && !defined(MOZ_MEMORY_WINCE)
+#if defined(MOZ_MEMORY_WINDOWS)
 extern "C" size_t malloc_usable_size(const void *ptr);
 #endif
 
@@ -662,7 +702,7 @@ public:
 
   NS_IMETHOD Run();
 
-  PRBool IsForInstance(NPP instance)
+  bool IsForInstance(NPP instance)
   {
     return (mInstance == instance);
   }
@@ -672,7 +712,7 @@ public:
     mFunc = nsnull;
   }
 
-  PRBool IsValid()
+  bool IsValid()
   {
     return (mFunc != nsnull);
   }
@@ -712,7 +752,7 @@ GetJSContextFromDoc(nsIDocument *doc)
   nsIScriptContext *scx = sgo->GetContext();
   NS_ENSURE_TRUE(scx, nsnull);
 
-  return (JSContext *)scx->GetNativeContext();
+  return scx->GetNativeContext();
 }
 
 static JSContext *
@@ -735,10 +775,10 @@ doGetIdentifier(JSContext *cx, const NPUTF8* name)
   if (!str)
     return NULL;
 
-  return StringToNPIdentifier(str);
+  return StringToNPIdentifier(cx, str);
 }
 
-#if defined(MOZ_MEMORY_WINDOWS) && !defined(MOZ_MEMORY_WINCE)
+#if defined(MOZ_MEMORY_WINDOWS)
 BOOL
 InHeap(HANDLE hHeap, LPVOID lpMem)
 {
@@ -987,7 +1027,7 @@ _geturlnotify(NPP npp, const char* relativeURL, const char* target,
   PluginDestructionGuard guard(npp);
 
   return MakeNewNPAPIStreamInternal(npp, relativeURL, target,
-                                    eNPPStreamTypeInternal_Get, PR_TRUE,
+                                    eNPPStreamTypeInternal_Get, true,
                                     notifyData);
 }
 
@@ -1011,7 +1051,7 @@ _posturlnotify(NPP npp, const char *relativeURL, const char *target,
   PluginDestructionGuard guard(npp);
 
   return MakeNewNPAPIStreamInternal(npp, relativeURL, target,
-                                    eNPPStreamTypeInternal_Post, PR_TRUE,
+                                    eNPPStreamTypeInternal_Post, true,
                                     notifyData, len, buf, file);
 }
 
@@ -1031,7 +1071,7 @@ _posturl(NPP npp, const char *relativeURL, const char *target,
   PluginDestructionGuard guard(npp);
 
   return MakeNewNPAPIStreamInternal(npp, relativeURL, target,
-                                    eNPPStreamTypeInternal_Post, PR_FALSE, nsnull,
+                                    eNPPStreamTypeInternal_Post, false, nsnull,
                                     len, buf, file);
 }
 
@@ -1048,7 +1088,7 @@ _newstream(NPP npp, NPMIMEType type, const char* target, NPStream* *result)
 
   NPError err = NPERR_INVALID_INSTANCE_ERROR;
   if (npp && npp->ndata) {
-    nsIPluginInstance *inst = (nsIPluginInstance *) npp->ndata;
+    nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance*)npp->ndata;
 
     PluginDestructionGuard guard(inst);
 
@@ -1168,7 +1208,7 @@ _status(NPP npp, const char *message)
     return;
   }
 
-  nsIPluginInstance *inst = (nsIPluginInstance *) npp->ndata;
+  nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance*)npp->ndata;
 
   PluginDestructionGuard guard(inst);
 
@@ -1195,7 +1235,7 @@ _memflush(uint32_t size)
   }
   NPN_PLUGIN_LOG(PLUGIN_LOG_NOISY, ("NPN_MemFlush: size=%d\n", size));
 
-  nsMemory::HeapMinimize(PR_TRUE);
+  nsMemory::HeapMinimize(true);
   return 0;
 }
 
@@ -1233,7 +1273,7 @@ _invalidaterect(NPP npp, NPRect *invalidRect)
     return;
   }
 
-  nsIPluginInstance *inst = (nsIPluginInstance *) npp->ndata;
+  nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance*)npp->ndata;
 
   PluginDestructionGuard guard(inst);
 
@@ -1256,7 +1296,7 @@ _invalidateregion(NPP npp, NPRegion invalidRegion)
     return;
   }
 
-  nsIPluginInstance *inst = (nsIPluginInstance *)npp->ndata;
+  nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance*)npp->ndata;
 
   PluginDestructionGuard guard(inst);
 
@@ -1277,7 +1317,7 @@ _forceredraw(NPP npp)
     return;
   }
 
-  nsIPluginInstance *inst = (nsIPluginInstance *) npp->ndata;
+  nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance*)npp->ndata;
 
   PluginDestructionGuard guard(inst);
 
@@ -1604,11 +1644,11 @@ _evaluate(NPP npp, NPObject* npobj, NPString *script, NPVariant *result)
     return false;
   }
 
-  OBJ_TO_INNER_OBJECT(cx, obj);
+  obj = JS_ObjectToInnerObject(cx, obj);
 
   // Root obj and the rval (below).
   jsval vec[] = { OBJECT_TO_JSVAL(obj), JSVAL_NULL };
-  js::AutoArrayRooter tvr(cx, NS_ARRAY_LENGTH(vec), vec);
+  js::AutoArrayRooter tvr(cx, ArrayLength(vec), vec);
   jsval *rval = &vec[1];
 
   if (result) {
@@ -1646,7 +1686,7 @@ _evaluate(NPP npp, NPObject* npobj, NPString *script, NPVariant *result)
     // chrome code anyways.
 
     uri = doc->GetDocumentURI();
-    PRBool isChrome = PR_FALSE;
+    bool isChrome = false;
 
     if (uri && NS_SUCCEEDED(uri->SchemeIs("chrome", &isChrome)) && isChrome) {
       uri->GetSpec(specStr);
@@ -1746,9 +1786,9 @@ _getproperty(NPP npp, NPObject* npobj, NPIdentifier property,
   nsXPIDLCString url;
   url.Assign(urlnp.UTF8Characters, urlnp.UTF8Length);
 
-  PRBool javaCompatible = PR_FALSE;
+  bool javaCompatible = false;
   if (NS_FAILED(NS_CheckIsJavaCompatibleURLString(url, &javaCompatible)))
-    javaCompatible = PR_FALSE;
+    javaCompatible = false;
   if (javaCompatible)
     return true;
 
@@ -1919,7 +1959,7 @@ _releasevariantvalue(NPVariant* variant)
       const NPString *s = &NPVARIANT_TO_STRING(*variant);
 
       if (s->UTF8Characters) {
-#if defined(MOZ_MEMORY_WINDOWS) && !defined(MOZ_MEMORY_WINCE)
+#if defined(MOZ_MEMORY_WINDOWS)
         if (malloc_usable_size((void *)s->UTF8Characters) != 0) {
           PR_Free((void *)s->UTF8Characters);
         } else {
@@ -2007,17 +2047,17 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
   switch(variable) {
 #if defined(XP_UNIX) && !defined(XP_MACOSX)
   case NPNVxDisplay : {
-#if defined(MOZ_WIDGET_GTK2) || defined(MOZ_WIDGET_QT)
+#if defined(MOZ_X11)
     if (npp) {
       nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance *) npp->ndata;
-      PRBool windowless = PR_FALSE;
+      bool windowless = false;
       inst->IsWindowless(&windowless);
-      NPBool needXEmbed = PR_FALSE;
+      NPBool needXEmbed = false;
       if (!windowless) {
         res = inst->GetValueFromPlugin(NPPVpluginNeedsXEmbed, &needXEmbed);
         // If the call returned an error code make sure we still use our default value.
         if (NS_FAILED(res)) {
-          needXEmbed = PR_FALSE;
+          needXEmbed = false;
         }
       }
       if (windowless || needXEmbed) {
@@ -2066,10 +2106,10 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
 #endif
 
   case NPNVjavascriptEnabledBool: {
-    *(NPBool*)result = PR_FALSE;
+    *(NPBool*)result = false;
     nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
     if (prefs) {
-      PRBool js = PR_FALSE;;
+      bool js = false;;
       res = prefs->GetBoolPref("javascript.enabled", &js);
       if (NS_SUCCEEDED(res))
         *(NPBool*)result = js;
@@ -2078,11 +2118,11 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
   }
 
   case NPNVasdEnabledBool:
-    *(NPBool*)result = PR_FALSE;
+    *(NPBool*)result = false;
     return NPERR_NO_ERROR;
 
   case NPNVisOfflineBool: {
-    PRBool offline = PR_FALSE;
+    bool offline = false;
     nsCOMPtr<nsIIOService> ioservice =
       do_GetService(NS_IOSERVICE_CONTRACTID, &res);
     if (NS_SUCCEEDED(res))
@@ -2111,14 +2151,14 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
 
   case NPNVSupportsXEmbedBool: {
 #ifdef MOZ_WIDGET_GTK2
-    *(NPBool*)result = PR_TRUE;
+    *(NPBool*)result = true;
 #elif defined(MOZ_WIDGET_QT)
     // Desktop Flash fail to initialize if browser does not support NPNVSupportsXEmbedBool
     // even when wmode!=windowed, lets return fake support
     fprintf(stderr, "Fake support for XEmbed plugins in Qt port\n");
-    *(NPBool*)result = PR_TRUE;
+    *(NPBool*)result = true;
 #else
-    *(NPBool*)result = PR_FALSE;
+    *(NPBool*)result = false;
 #endif
     return NPERR_NO_ERROR;
   }
@@ -2138,9 +2178,9 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
   case NPNVSupportsWindowless: {
 #if defined(XP_WIN) || defined(XP_MACOSX) || \
     (defined(MOZ_X11) && (defined(MOZ_WIDGET_GTK2) || defined(MOZ_WIDGET_QT)))
-    *(NPBool*)result = PR_TRUE;
+    *(NPBool*)result = true;
 #else
-    *(NPBool*)result = PR_FALSE;
+    *(NPBool*)result = false;
 #endif
     return NPERR_NO_ERROR;
   }
@@ -2148,7 +2188,7 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
   case NPNVprivateModeBool: {
     nsCOMPtr<nsIPrivateBrowsingService> pbs = do_GetService(NS_PRIVATE_BROWSING_SERVICE_CONTRACTID);
     if (pbs) {
-      PRBool enabled;
+      bool enabled;
       pbs->GetPrivateBrowsingEnabled(&enabled);
       *(NPBool*)result = (NPBool)enabled;
       return NPERR_NO_ERROR;
@@ -2156,12 +2196,45 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
     return NPERR_GENERIC_ERROR;
   }
 
-#if (MOZ_PLATFORM_MAEMO == 5)
-  case NPNVSupportsWindowlessLocal: {
-    *(NPBool*)result = PR_TRUE;
-    return NPERR_NO_ERROR;
+  case NPNVdocumentOrigin: {
+    nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance *)npp->ndata;
+    if (!inst) {
+      return NPERR_GENERIC_ERROR;
+    }
+
+    nsCOMPtr<nsIDOMElement> element;
+    inst->GetDOMElement(getter_AddRefs(element));
+    if (!element) {
+      return NPERR_GENERIC_ERROR;
+    }
+
+    nsCOMPtr<nsIContent> content(do_QueryInterface(element));
+    if (!content) {
+      return NPERR_GENERIC_ERROR;
+    }
+
+    nsIPrincipal* principal = content->NodePrincipal();
+
+    nsAutoString utf16Origin;
+    res = nsContentUtils::GetUTFOrigin(principal, utf16Origin);
+    if (NS_FAILED(res)) {
+      return NPERR_GENERIC_ERROR;
+    }
+
+    nsCOMPtr<nsIUnicodeNormalizer> normalizer = do_GetService(NS_UNICODE_NORMALIZER_CONTRACTID);
+    if (!normalizer) {
+      return NPERR_GENERIC_ERROR;
+    }
+
+    nsAutoString normalizedUTF16Origin;
+    res = normalizer->NormalizeUnicodeNFKC(utf16Origin, normalizedUTF16Origin);
+    if (NS_FAILED(res)) {
+      return NPERR_GENERIC_ERROR;
+    }
+
+    *(char**)result = ToNewUTF8String(normalizedUTF16Origin);
+    return *(char**)result ? NPERR_NO_ERROR : NPERR_GENERIC_ERROR;
   }
-#endif
 
 #ifdef XP_MACOSX
   case NPNVpluginDrawingModel: {
@@ -2181,26 +2254,26 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
 
 #ifndef NP_NO_QUICKDRAW
   case NPNVsupportsQuickDrawBool: {
-    *(NPBool*)result = PR_TRUE;
+    *(NPBool*)result = true;
     
     return NPERR_NO_ERROR;
   }
 #endif
 
   case NPNVsupportsCoreGraphicsBool: {
-    *(NPBool*)result = PR_TRUE;
+    *(NPBool*)result = true;
     
     return NPERR_NO_ERROR;
   }
 
    case NPNVsupportsCoreAnimationBool: {
-     *(NPBool*)result = PR_TRUE;
+     *(NPBool*)result = true;
 
      return NPERR_NO_ERROR;
    }
 
    case NPNVsupportsInvalidatingCoreAnimationBool: {
-     *(NPBool*)result = PR_TRUE;
+     *(NPBool*)result = true;
 
      return NPERR_NO_ERROR;
    }
@@ -2208,13 +2281,13 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
 
 #ifndef NP_NO_CARBON
   case NPNVsupportsCarbonBool: {
-    *(NPBool*)result = PR_TRUE;
+    *(NPBool*)result = true;
 
     return NPERR_NO_ERROR;
   }
 #endif
   case NPNVsupportsCocoaBool: {
-    *(NPBool*)result = PR_TRUE;
+    *(NPBool*)result = true;
 
     return NPERR_NO_ERROR;
   }
@@ -2225,50 +2298,124 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
   }
 #endif
 
-  // we no longer hand out any XPCOM objects, except on WINCE,
-  // where it's needed for the ActiveX shunt that makes Flash
-  // work until we get an NPAPI plugin there.
-#ifdef WINCE
-  case NPNVDOMWindow: {
-    nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance *)npp->ndata;
-    NS_ENSURE_TRUE(inst, NPERR_GENERIC_ERROR);
-
-    nsIDOMWindow *domWindow = inst->GetDOMWindow().get();
-
-    if (domWindow) {
-      // Pass over ownership of domWindow to the caller.
-      (*(nsIDOMWindow**)result) = domWindow;
+#ifdef ANDROID
+    case kLogInterfaceV0_ANPGetValue: {
+      LOG("get log interface");
+      ANPLogInterfaceV0 *i = (ANPLogInterfaceV0 *) result;
+      InitLogInterface(i);
       return NPERR_NO_ERROR;
     }
 
-    return NPERR_GENERIC_ERROR;
-  }
-
-  case NPNVDOMElement: {
-    nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance *) npp->ndata;
-    NS_ENSURE_TRUE(inst, NPERR_GENERIC_ERROR);
-
-    nsCOMPtr<nsIDOMElement> e;
-    inst->GetDOMElement(getter_AddRefs(e));
-    if (e) {
-      NS_ADDREF(*(nsIDOMElement**)result = e.get());
+    case kBitmapInterfaceV0_ANPGetValue: {
+      LOG("get bitmap interface");
+      ANPBitmapInterfaceV0 *i = (ANPBitmapInterfaceV0 *) result;
+      InitBitmapInterface(i);
       return NPERR_NO_ERROR;
     }
 
-    return NPERR_GENERIC_ERROR;
-  }
-#else
+    case kMatrixInterfaceV0_ANPGetValue: {
+      LOG("get matrix interface");
+      ANPMatrixInterfaceV0 *i = (ANPMatrixInterfaceV0 *) result;
+      InitMatrixInterface(i);
+      return NPERR_NO_ERROR;
+    }
+      
+    case kPathInterfaceV0_ANPGetValue: {
+      LOG("get path interface");
+      ANPPathInterfaceV0 *i = (ANPPathInterfaceV0 *) result;
+      InitPathInterface(i);
+      return NPERR_NO_ERROR;
+    }
+      
+    case kTypefaceInterfaceV0_ANPGetValue: {
+      LOG("get typeface interface");
+      ANPTypefaceInterfaceV0 *i = (ANPTypefaceInterfaceV0 *) result;
+      InitTypeFaceInterface(i);
+      return NPERR_NO_ERROR;
+    }
+
+    case kPaintInterfaceV0_ANPGetValue: {
+      LOG("get paint interface");
+      ANPPaintInterfaceV0 *i = (ANPPaintInterfaceV0 *) result;
+      InitPaintInterface(i);
+      return NPERR_NO_ERROR;
+    }
+
+    case kCanvasInterfaceV0_ANPGetValue: {
+      LOG("get canvas interface");
+      ANPCanvasInterfaceV0 *i = (ANPCanvasInterfaceV0 *) result;
+      InitCanvasInterface(i);
+      return NPERR_NO_ERROR;
+    }
+
+    case kWindowInterfaceV0_ANPGetValue: {
+      LOG("get window interface");
+      ANPWindowInterfaceV0 *i = (ANPWindowInterfaceV0 *) result;
+      InitWindowInterface(i);
+      return NPERR_NO_ERROR;
+    }
+
+    case kAudioTrackInterfaceV0_ANPGetValue: {
+      LOG("get audio interface");
+      ANPAudioTrackInterfaceV0 *i = (ANPAudioTrackInterfaceV0 *) result;
+      InitAudioTrackInterface(i);
+      return NPERR_NO_ERROR;
+    }
+
+    case kEventInterfaceV0_ANPGetValue: {
+      LOG("get event interface");
+      ANPEventInterfaceV0 *i = (ANPEventInterfaceV0 *) result;
+      InitEventInterface(i);
+      return NPERR_NO_ERROR;
+    }
+
+    case kSystemInterfaceV0_ANPGetValue: {
+      LOG("get system interface");
+      ANPSystemInterfaceV0* i = reinterpret_cast<ANPSystemInterfaceV0*>(result);
+      InitSystemInterface(i);
+      LOG("done system interface");
+      return NPERR_NO_ERROR;
+    }
+
+    case kSurfaceInterfaceV0_ANPGetValue: {
+      LOG("get surface interface");
+      ANPSurfaceInterfaceV0 *i = (ANPSurfaceInterfaceV0 *) result;
+      InitSurfaceInterface(i);
+      return NPERR_NO_ERROR;
+    }
+      
+    case kSupportedDrawingModel_ANPGetValue: {
+      LOG("get supported drawing model");
+      uint32_t* bits = reinterpret_cast<uint32_t*>(result);
+      *bits = kBitmap_ANPDrawingModel && kSurface_ANPDrawingModel;
+      return NPERR_NO_ERROR;
+    }  
+
+    case kJavaContext_ANPGetValue: {
+      LOG("get context");
+      JNIEnv* env    = GetJNIForThread();
+      jclass cls     = env->FindClass("org/mozilla/gecko/GeckoApp");
+      jfieldID field = env->GetStaticFieldID(cls, "mAppContext",
+                                             "Lorg/mozilla/gecko/GeckoApp;");
+      jobject ret = env->GetStaticObjectField(cls, field);
+      int32_t* i  = reinterpret_cast<int32_t*>(result);
+      *i = reinterpret_cast<int32_t>(ret);
+      return NPERR_NO_ERROR;
+    }
+#endif
+
+  // we no longer hand out any XPCOM objects
   case NPNVDOMElement:
     // fall through
   case NPNVDOMWindow:
     // fall through
-#endif /* WINCE */
   case NPNVserviceManager:
     // old XPCOM objects, no longer supported, but null out the out
     // param to avoid crashing plugins that still try to use this.
     *(nsISupports**)result = nsnull;
     // fall through
   default:
+    NPN_PLUGIN_LOG(PLUGIN_LOG_NORMAL, ("NPN_getvalue unhandled get value: %d\n", variable));
     return NPERR_GENERIC_ERROR;
   }
 }
@@ -2312,12 +2459,6 @@ _setvalue(NPP npp, NPPVariable variable, void *result)
       return inst->SetWindowless(bWindowless);
 #endif
     }
-#if (MOZ_PLATFORM_MAEMO == 5)
-    case NPPVpluginWindowlessLocalBool: {
-      NPBool bWindowlessLocal = (result != nsnull);
-      return inst->SetWindowlessLocal(bWindowlessLocal);
-    }
-#endif
     case NPPVpluginTransparentBool: {
       NPBool bTransparent = (result != nsnull);
       return inst->SetTransparent(bTransparent);
@@ -2343,17 +2484,13 @@ _setvalue(NPP npp, NPPVariable variable, void *result)
       }
 
     case NPPVpluginKeepLibraryInMemory: {
-      NPBool bCached = (result != nsnull);
-      return inst->SetCached(bCached);
-    }
-
-    case NPPVpluginWantsAllNetworkStreams: {
-      PRBool bWantsAllNetworkStreams = (result != nsnull);
-      return inst->SetWantsAllNetworkStreams(bWantsAllNetworkStreams);
+      // This variable is not supported any more but we'll pretend it is
+      // so that plugins don't fail on an error return.
+      return NS_OK;
     }
 
     case NPPVpluginUsesDOMForCursorBool: {
-      PRBool useDOMForCursor = (result != nsnull);
+      bool useDOMForCursor = (result != nsnull);
       return inst->SetUsesDOMForCursor(useDOMForCursor);
     }
 
@@ -2378,7 +2515,14 @@ _setvalue(NPP npp, NPPVariable variable, void *result)
       }
     }
 #endif
-
+#ifdef ANDROID
+  case kRequestDrawingModel_ANPSetValue:
+    if (inst)
+      inst->SetDrawingModel(NS_PTR_TO_INT32(result));
+    return NPERR_NO_ERROR;
+  case kAcceptEvents_ANPSetValue:
+    return NPERR_NO_ERROR;
+#endif
     default:
       return NPERR_GENERIC_ERROR;
   }
@@ -2443,9 +2587,11 @@ _useragent(NPP npp)
   }
   NPN_PLUGIN_LOG(PLUGIN_LOG_NORMAL, ("NPN_UserAgent: npp=%p\n", (void*)npp));
 
-  nsCOMPtr<nsIPluginHost> pluginHost(do_GetService(MOZ_PLUGIN_HOST_CONTRACTID));
-  if (!pluginHost)
+  nsCOMPtr<nsIPluginHost> pluginHostCOM(do_GetService(MOZ_PLUGIN_HOST_CONTRACTID));
+  nsPluginHost *pluginHost = static_cast<nsPluginHost*>(pluginHostCOM.get());
+  if (!pluginHost) {
     return nsnull;
+  }
 
   const char *retstr;
   nsresult rv = pluginHost->UserAgent(&retstr);
@@ -2534,8 +2680,8 @@ _getvalueforurl(NPP instance, NPNURLVariable variable, const char *url,
   switch (variable) {
   case NPNURLVProxy:
     {
-      nsCOMPtr<nsIPluginHost> pluginHost(do_GetService(MOZ_PLUGIN_HOST_CONTRACTID));
-
+      nsCOMPtr<nsIPluginHost> pluginHostCOM(do_GetService(MOZ_PLUGIN_HOST_CONTRACTID));
+      nsPluginHost *pluginHost = static_cast<nsPluginHost*>(pluginHostCOM.get());
       if (pluginHost && NS_SUCCEEDED(pluginHost->FindProxyForURL(url, value))) {
         *len = *value ? PL_strlen(*value) : 0;
         return NPERR_NO_ERROR;
@@ -2711,7 +2857,7 @@ _convertpoint(NPP instance, double sourceX, double sourceY, NPCoordinateSpace so
 {
   nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance *)instance->ndata;
   if (!inst)
-    return PR_FALSE;
+    return false;
 
   return inst->ConvertPoint(sourceX, sourceY, sourceSpace, destX, destY, destSpace);
 }

@@ -45,6 +45,7 @@
 #include "nsContentUtils.h"
 #include "nsStyleUtil.h"
 #include "CSSCalc.h"
+#include "nsNetUtil.h"
 
 namespace css = mozilla::css;
 
@@ -162,6 +163,10 @@ nsCSSValue::nsCSSValue(const nsCSSValue& aCopy)
     mValue.mPair = aCopy.mValue.mPair;
     mValue.mPair->AddRef();
   }
+  else if (eCSSUnit_Triplet == mUnit) {
+    mValue.mTriplet = aCopy.mValue.mTriplet;
+    mValue.mTriplet->AddRef();
+  }
   else if (eCSSUnit_Rect == mUnit) {
     mValue.mRect = aCopy.mValue.mRect;
     mValue.mRect->AddRef();
@@ -194,7 +199,7 @@ nsCSSValue& nsCSSValue::operator=(const nsCSSValue& aCopy)
   return *this;
 }
 
-PRBool nsCSSValue::operator==(const nsCSSValue& aOther) const
+bool nsCSSValue::operator==(const nsCSSValue& aOther) const
 {
   NS_ABORT_IF_FALSE(mUnit != eCSSUnit_ListDep &&
                     aOther.mUnit != eCSSUnit_ListDep &&
@@ -204,7 +209,7 @@ PRBool nsCSSValue::operator==(const nsCSSValue& aOther) const
 
   if (mUnit == aOther.mUnit) {
     if (mUnit <= eCSSUnit_DummyInherit) {
-      return PR_TRUE;
+      return true;
     }
     else if (UnitHasStringValue()) {
       return (NS_strcmp(GetBufferValue(mValue.mString),
@@ -231,6 +236,9 @@ PRBool nsCSSValue::operator==(const nsCSSValue& aOther) const
     else if (eCSSUnit_Pair == mUnit) {
       return *mValue.mPair == *aOther.mValue.mPair;
     }
+    else if (eCSSUnit_Triplet == mUnit) {
+      return *mValue.mTriplet == *aOther.mValue.mTriplet;
+    }
     else if (eCSSUnit_Rect == mUnit) {
       return *mValue.mRect == *aOther.mValue.mRect;
     }
@@ -244,7 +252,7 @@ PRBool nsCSSValue::operator==(const nsCSSValue& aOther) const
       return mValue.mFloat == aOther.mValue.mFloat;
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
 double nsCSSValue::GetAngleValueInRadians() const
@@ -274,7 +282,8 @@ nscoord nsCSSValue::GetFixedLength(nsPresContext* aPresContext) const
                     "not a fixed length unit");
 
   float inches = mValue.mFloat / MM_PER_INCH_FLOAT;
-  return inches * aPresContext->DeviceContext()->AppUnitsPerPhysicalInch();
+  return NSToCoordFloorClamped(inches *
+    float(aPresContext->DeviceContext()->AppUnitsPerPhysicalInch()));
 }
 
 nscoord nsCSSValue::GetPixelLength() const
@@ -310,6 +319,8 @@ void nsCSSValue::DoReset()
     mValue.mGradient->Release();
   } else if (eCSSUnit_Pair == mUnit) {
     mValue.mPair->Release();
+  } else if (eCSSUnit_Triplet == mUnit) {
+    mValue.mTriplet->Release();
   } else if (eCSSUnit_Rect == mUnit) {
     mValue.mRect->Release();
   } else if (eCSSUnit_List == mUnit) {
@@ -439,6 +450,46 @@ void nsCSSValue::SetPairValue(const nsCSSValue& xValue,
   mValue.mPair->AddRef();
 }
 
+void nsCSSValue::SetTripletValue(const nsCSSValueTriplet* aValue)
+{
+    // triplet should not be used for null/inherit/initial values
+    // Only allow Null for the z component
+    NS_ABORT_IF_FALSE(aValue &&
+                      aValue->mXValue.GetUnit() != eCSSUnit_Null &&
+                      aValue->mYValue.GetUnit() != eCSSUnit_Null &&
+                      aValue->mXValue.GetUnit() != eCSSUnit_Inherit &&
+                      aValue->mYValue.GetUnit() != eCSSUnit_Inherit &&
+                      aValue->mZValue.GetUnit() != eCSSUnit_Inherit &&
+                      aValue->mXValue.GetUnit() != eCSSUnit_Initial &&
+                      aValue->mYValue.GetUnit() != eCSSUnit_Initial &&
+                      aValue->mZValue.GetUnit() != eCSSUnit_Initial,
+                      "missing or inappropriate triplet value");
+    Reset();
+    mUnit = eCSSUnit_Triplet;
+    mValue.mTriplet = new nsCSSValueTriplet_heap(aValue->mXValue, aValue->mYValue, aValue->mZValue);
+    mValue.mTriplet->AddRef();
+}
+
+void nsCSSValue::SetTripletValue(const nsCSSValue& xValue,
+                                 const nsCSSValue& yValue,
+                                 const nsCSSValue& zValue)
+{
+    // Only allow Null for the z component
+    NS_ABORT_IF_FALSE(xValue.GetUnit() != eCSSUnit_Null &&
+                      yValue.GetUnit() != eCSSUnit_Null &&
+                      xValue.GetUnit() != eCSSUnit_Inherit &&
+                      yValue.GetUnit() != eCSSUnit_Inherit &&
+                      zValue.GetUnit() != eCSSUnit_Inherit &&
+                      xValue.GetUnit() != eCSSUnit_Initial &&
+                      yValue.GetUnit() != eCSSUnit_Initial &&
+                      zValue.GetUnit() != eCSSUnit_Initial,
+                      "inappropriate triplet value");
+    Reset();
+    mUnit = eCSSUnit_Triplet;
+    mValue.mTriplet = new nsCSSValueTriplet_heap(xValue, yValue, zValue);
+    mValue.mTriplet->AddRef();
+}
+
 nsCSSRect& nsCSSValue::SetRectValue()
 {
   Reset();
@@ -542,7 +593,7 @@ void nsCSSValue::StartImageLoad(nsIDocument* aDocument) const
 {
   NS_ABORT_IF_FALSE(eCSSUnit_URL == mUnit, "Not a URL value!");
   nsCSSValue::Image* image =
-    new nsCSSValue::Image(mValue.mURL->mURI,
+    new nsCSSValue::Image(mValue.mURL->GetURI(),
                           mValue.mURL->mString,
                           mValue.mURL->mReferrer,
                           mValue.mURL->mOriginPrincipal,
@@ -553,7 +604,7 @@ void nsCSSValue::StartImageLoad(nsIDocument* aDocument) const
   }
 }
 
-PRBool nsCSSValue::IsNonTransparentColor() const
+bool nsCSSValue::IsNonTransparentColor() const
 {
   // We have the value in the form it was specified in at this point, so we
   // have to look for both the keyword 'transparent' and its equivalent in
@@ -570,21 +621,16 @@ nsCSSValue::Array*
 nsCSSValue::InitFunction(nsCSSKeyword aFunctionId, PRUint32 aNumArgs)
 {
   nsRefPtr<nsCSSValue::Array> func = Array::Create(aNumArgs + 1);
-  if (!func) {
-    return nsnull;
-  }
-
   func->Item(0).SetIntValue(aFunctionId, eCSSUnit_Enumerated);
   SetArrayValue(func, eCSSUnit_Function);
-
   return func;
 }
 
-PRBool
+bool
 nsCSSValue::EqualsFunction(nsCSSKeyword aFunctionId) const
 {
   if (mUnit != eCSSUnit_Function) {
-    return PR_FALSE;
+    return false;
   }
 
   nsCSSValue::Array* func = mValue.mArray;
@@ -606,18 +652,20 @@ nsCSSValue::BufferFromString(const nsString& aValue)
     buffer->AddRef();
     return buffer;
   }
-  
+
   PRUnichar length = aValue.Length();
 
   // NOTE: Alloc prouduces a new, already-addref'd (refcnt = 1) buffer.
+  // NOTE: String buffer allocation is currently fallible.
   buffer = nsStringBuffer::Alloc((length + 1) * sizeof(PRUnichar));
-  if (NS_LIKELY(buffer != 0)) {
-    PRUnichar* data = static_cast<PRUnichar*>(buffer->Data());
-    nsCharTraits<PRUnichar>::copy(data, aValue.get(), length);
-    // Null-terminate.
-    data[length] = 0;
+  if (NS_UNLIKELY(!buffer)) {
+    NS_RUNTIMEABORT("out of memory");
   }
 
+  PRUnichar* data = static_cast<PRUnichar*>(buffer->Data());
+  nsCharTraits<PRUnichar>::copy(data, aValue.get(), length);
+  // Null-terminate.
+  data[length] = 0;
   return buffer;
 }
 
@@ -701,7 +749,7 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
     }
 
     nsCSSValue::Array *array = GetArrayValue();
-    PRBool mark = PR_FALSE;
+    bool mark = false;
     for (size_t i = 0, i_end = array->Count(); i < i_end; ++i) {
       if (aProperty == eCSSProperty_border_image && i >= 5) {
         if (array->Item(i).GetUnit() == eCSSUnit_Null) {
@@ -739,7 +787,7 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
         ? eCSSProperty_list_style_type : aProperty;
       if (array->Item(i).GetUnit() != eCSSUnit_Null) {
         array->Item(i).AppendToString(prop, aResult);
-        mark = PR_TRUE;
+        mark = true;
       }
     }
     if (eCSSUnit_Array == unit &&
@@ -818,6 +866,20 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
                                            aResult);
       }
     }
+    else if (eCSSProperty_unicode_bidi == aProperty) {
+      PR_STATIC_ASSERT(NS_STYLE_UNICODE_BIDI_NORMAL == 0);
+      PRInt32 intValue = GetIntValue();
+      if (NS_STYLE_UNICODE_BIDI_NORMAL == intValue) {
+        AppendASCIItoUTF16(nsCSSProps::LookupPropertyValue(aProperty, intValue),
+                           aResult);
+      } else {
+        nsStyleUtil::AppendBitmaskCSSValue(
+          aProperty, intValue,
+          NS_STYLE_UNICODE_BIDI_EMBED,
+          NS_STYLE_UNICODE_BIDI_PLAINTEXT,
+          aResult);
+      }
+    }
     else {
       const nsAFlatCString& name = nsCSSProps::LookupPropertyValue(aProperty, GetIntValue());
       AppendASCIItoUTF16(name, aResult);
@@ -871,8 +933,7 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
     aResult.Append(NS_LITERAL_STRING("-moz-element(#"));
     nsAutoString tmpStr;
     GetStringValue(tmpStr);
-    nsStyleUtil::AppendEscapedCSSIdent(
-      nsDependentString(tmpStr), aResult);
+    nsStyleUtil::AppendEscapedCSSIdent(tmpStr, aResult);
     aResult.Append(NS_LITERAL_STRING(")"));
   }
   else if (eCSSUnit_Percent == unit) {
@@ -958,6 +1019,8 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
     aResult.AppendLiteral(")");
   } else if (eCSSUnit_Pair == unit) {
     GetPairValue().AppendToString(aProperty, aResult);
+  } else if (eCSSUnit_Triplet == unit) {
+    GetTripletValue().AppendToString(aProperty, aResult);
   } else if (eCSSUnit_Rect == unit) {
     GetRectValue().AppendToString(aProperty, aResult);
   } else if (eCSSUnit_List == unit || eCSSUnit_ListDep == unit) {
@@ -1009,6 +1072,7 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
     case eCSSUnit_Number:       break;
     case eCSSUnit_Gradient:     break;
     case eCSSUnit_Pair:         break;
+    case eCSSUnit_Triplet:      break;
     case eCSSUnit_Rect:         break;
     case eCSSUnit_List:         break;
     case eCSSUnit_ListDep:      break;
@@ -1061,6 +1125,14 @@ nsCSSValueList::Clone() const
     src = src->mNext;
   }
   return result;
+}
+
+void
+nsCSSValueList::CloneInto(nsCSSValueList* aList) const
+{
+    NS_ASSERTION(!aList->mNext, "Must be an empty list!");
+    aList->mValue = mValue;
+    aList->mNext = mNext ? mNext->Clone() : nsnull;
 }
 
 void
@@ -1167,6 +1239,23 @@ nsCSSValuePair::AppendToString(nsCSSProperty aProperty,
   }
 }
 
+// --- nsCSSValueTriple -----------------
+
+void
+nsCSSValueTriplet::AppendToString(nsCSSProperty aProperty,
+                               nsAString& aResult) const
+{
+    mXValue.AppendToString(aProperty, aResult);
+    if (mYValue.GetUnit() != eCSSUnit_Null) {
+        aResult.Append(PRUnichar(' '));
+        mYValue.AppendToString(aProperty, aResult);
+        if (mZValue.GetUnit() != eCSSUnit_Null) {
+            aResult.Append(PRUnichar(' '));
+            mZValue.AppendToString(aProperty, aResult);
+        }
+    }
+}
+
 // --- nsCSSValuePairList -----------------
 
 nsCSSValuePairList::~nsCSSValuePairList()
@@ -1230,12 +1319,25 @@ nsCSSValuePairList::operator==(const nsCSSValuePairList& aOther) const
   return !p1 && !p2; // true if same length, false otherwise
 }
 
-nsCSSValue::URL::URL(nsIURI* aURI, nsStringBuffer* aString, nsIURI* aReferrer,
-                     nsIPrincipal* aOriginPrincipal)
+nsCSSValue::URL::URL(nsIURI* aURI, nsStringBuffer* aString,
+                     nsIURI* aReferrer, nsIPrincipal* aOriginPrincipal)
   : mURI(aURI),
     mString(aString),
     mReferrer(aReferrer),
-    mOriginPrincipal(aOriginPrincipal)
+    mOriginPrincipal(aOriginPrincipal),
+    mURIResolved(true)
+{
+  NS_ABORT_IF_FALSE(aOriginPrincipal, "Must have an origin principal");
+  mString->AddRef();
+}
+
+nsCSSValue::URL::URL(nsStringBuffer* aString, nsIURI* aBaseURI,
+                     nsIURI* aReferrer, nsIPrincipal* aOriginPrincipal)
+  : mURI(aBaseURI),
+    mString(aString),
+    mReferrer(aReferrer),
+    mOriginPrincipal(aOriginPrincipal),
+    mURIResolved(false)
 {
   NS_ABORT_IF_FALSE(aOriginPrincipal, "Must have an origin principal");
   mString->AddRef();
@@ -1246,13 +1348,13 @@ nsCSSValue::URL::~URL()
   mString->Release();
 }
 
-PRBool
+bool
 nsCSSValue::URL::operator==(const URL& aOther) const
 {
-  PRBool eq;
+  bool eq;
   return NS_strcmp(GetBufferValue(mString),
                    GetBufferValue(aOther.mString)) == 0 &&
-          (mURI == aOther.mURI || // handles null == null
+          (GetURI() == aOther.GetURI() || // handles null == null
            (mURI && aOther.mURI &&
             NS_SUCCEEDED(mURI->Equals(aOther.mURI, &eq)) &&
             eq)) &&
@@ -1261,11 +1363,13 @@ nsCSSValue::URL::operator==(const URL& aOther) const
                                                   &eq)) && eq));
 }
 
-PRBool
+bool
 nsCSSValue::URL::URIEquals(const URL& aOther) const
 {
-  PRBool eq;
-  // Worth comparing mURI to aOther.mURI and mOriginPrincipal to
+  NS_ABORT_IF_FALSE(mURIResolved && aOther.mURIResolved,
+                    "How do you know the URIs aren't null?");
+  bool eq;
+  // Worth comparing GetURI() to aOther.GetURI() and mOriginPrincipal to
   // aOther.mOriginPrincipal, because in the (probably common) case when this
   // value was one of the ones that in fact did not change this will be our
   // fast path to equality
@@ -1276,6 +1380,21 @@ nsCSSValue::URL::URIEquals(const URL& aOther) const
                                                  &eq)) && eq));
 }
 
+nsIURI*
+nsCSSValue::URL::GetURI() const
+{
+  if (!mURIResolved) {
+    mURIResolved = true;
+    // Be careful to not null out mURI before we've passed it as the base URI
+    nsCOMPtr<nsIURI> newURI;
+    NS_NewURI(getter_AddRefs(newURI),
+              NS_ConvertUTF16toUTF8(GetBufferValue(mString)), nsnull, mURI);
+    newURI.swap(mURI);
+  }
+
+  return mURI;
+}
+
 nsCSSValue::Image::Image(nsIURI* aURI, nsStringBuffer* aString,
                          nsIURI* aReferrer, nsIPrincipal* aOriginPrincipal,
                          nsIDocument* aDocument)
@@ -1284,10 +1403,10 @@ nsCSSValue::Image::Image(nsIURI* aURI, nsStringBuffer* aString,
   if (aDocument->GetOriginalDocument()) {
     aDocument = aDocument->GetOriginalDocument();
   }
-  if (mURI &&
-      nsContentUtils::CanLoadImage(mURI, aDocument, aDocument,
+  if (aURI &&
+      nsContentUtils::CanLoadImage(aURI, aDocument, aDocument,
                                    aOriginPrincipal)) {
-    nsContentUtils::LoadImage(mURI, aDocument, aOriginPrincipal, aReferrer,
+    nsContentUtils::LoadImage(aURI, aDocument, aOriginPrincipal, aReferrer,
                               nsnull, nsIRequest::LOAD_NORMAL,
                               getter_AddRefs(mRequest));
   }
@@ -1316,8 +1435,8 @@ nsCSSValueGradientStop::~nsCSSValueGradientStop()
   MOZ_COUNT_DTOR(nsCSSValueGradientStop);
 }
 
-nsCSSValueGradient::nsCSSValueGradient(PRBool aIsRadial,
-                                       PRBool aIsRepeating)
+nsCSSValueGradient::nsCSSValueGradient(bool aIsRadial,
+                                       bool aIsRepeating)
   : mIsRadial(aIsRadial),
     mIsRepeating(aIsRepeating),
     mBgPos(eCSSUnit_None),

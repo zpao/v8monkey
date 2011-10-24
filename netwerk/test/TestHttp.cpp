@@ -16,7 +16,7 @@
 
 static NS_DEFINE_CID(kEventQueueServiceCID, NS_EVENTQUEUESERVICE_CID);
 static nsIEventQueue* gEventQ = nsnull;
-static PRBool gKeepRunning = PR_TRUE;
+static bool gKeepRunning = true;
 
 //-----------------------------------------------------------------------------
 // nsIStreamListener implementation
@@ -48,7 +48,7 @@ NS_IMETHODIMP
 MyListener::OnStopRequest(nsIRequest *req, nsISupports *ctxt, nsresult status)
 {
     printf(">>> OnStopRequest status=%x\n", status);
-    gKeepRunning = PR_FALSE;
+    gKeepRunning = false;
     return NS_OK;
 }
 
@@ -64,7 +64,7 @@ MyListener::OnDataAvailable(nsIRequest *req, nsISupports *ctxt,
     PRUint32 bytesRead=0;
 
     while (count) {
-        PRUint32 amount = PR_MIN(count, sizeof(buf));
+        PRUint32 amount = NS_MIN<PRUint32>(count, sizeof(buf));
 
         rv = stream->Read(buf, amount, &bytesRead);
         if (NS_FAILED(rv)) {

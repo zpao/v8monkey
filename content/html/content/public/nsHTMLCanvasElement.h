@@ -68,6 +68,13 @@ public:
   nsHTMLCanvasElement(already_AddRefed<nsINodeInfo> aNodeInfo);
   virtual ~nsHTMLCanvasElement();
 
+  static nsHTMLCanvasElement* FromContent(nsIContent* aPossibleCanvas)
+  {
+    if (!aPossibleCanvas || !aPossibleCanvas->IsHTML(nsGkAtoms::canvas)) {
+      return nsnull;
+    }
+    return static_cast<nsHTMLCanvasElement*>(aPossibleCanvas);
+  }
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -84,8 +91,8 @@ public:
   NS_DECL_NSIDOMHTMLCANVASELEMENT
 
   // CC
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED_NO_UNLINK(nsHTMLCanvasElement,
-                                                     nsGenericHTMLElement)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsHTMLCanvasElement,
+                                           nsGenericHTMLElement)
 
   /**
    * Ask the canvas Element to return the primary frame, if any
@@ -100,7 +107,7 @@ public:
   /**
    * Determine whether the canvas is write-only.
    */
-  PRBool IsWriteOnly();
+  bool IsWriteOnly();
 
   /**
    * Force the canvas to be write-only.
@@ -129,7 +136,7 @@ public:
    * Returns true if the canvas context content is guaranteed to be opaque
    * across its entire area.
    */
-  PRBool GetIsOpaque();
+  bool GetIsOpaque();
 
   /*
    * nsICanvasElementExternal -- for use outside of content/layout
@@ -137,7 +144,7 @@ public:
   NS_IMETHOD_(nsIntSize) GetSizeExternal();
   NS_IMETHOD RenderContextsExternal(gfxContext *aContext, gfxPattern::GraphicsFilter aFilter);
 
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
+  virtual bool ParseAttribute(PRInt32 aNamespaceID,
                                 nsIAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
@@ -146,13 +153,13 @@ public:
   // SetAttr override.  C++ is stupid, so have to override both
   // overloaded methods.
   nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                   const nsAString& aValue, PRBool aNotify)
+                   const nsAString& aValue, bool aNotify)
   {
     return SetAttr(aNameSpaceID, aName, nsnull, aValue, aNotify);
   }
   virtual nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                            nsIAtom* aPrefix, const nsAString& aValue,
-                           PRBool aNotify);
+                           bool aNotify);
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
   nsresult CopyInnerTo(nsGenericElement* aDest) const;
 
@@ -163,6 +170,10 @@ public:
   already_AddRefed<CanvasLayer> GetCanvasLayer(nsDisplayListBuilder* aBuilder,
                                                CanvasLayer *aOldLayer,
                                                LayerManager *aManager);
+  // Should return true if the canvas layer should always be marked inactive.
+  // We should return true here if we can't do accelerated compositing with
+  // a non-BasicCanvasLayer.
+  bool ShouldForceInactiveLayer(LayerManager *aManager);
 
   // Call this whenever we need future changes to the canvas
   // to trigger fresh invalidation requests. This needs to be called
@@ -177,16 +188,16 @@ protected:
   nsresult UpdateContext(nsIPropertyBag *aNewContextOptions = nsnull);
   nsresult ExtractData(const nsAString& aType,
                        const nsAString& aOptions,
-                       char*& aData,
-                       PRUint32& aSize,
+                       nsIInputStream** aStream,
                        bool& aFellBackToPNG);
   nsresult ToDataURLImpl(const nsAString& aMimeType,
-                         const nsAString& aEncoderOptions,
+                         nsIVariant* aEncoderOptions,
                          nsAString& aDataURL);
   nsresult MozGetAsFileImpl(const nsAString& aName,
                             const nsAString& aType,
                             nsIDOMFile** aResult);
   nsresult GetContextHelper(const nsAString& aContextId,
+                            bool aForceThebes,
                             nsICanvasRenderingContextInternal **aContext);
 
   nsString mCurrentContextId;
@@ -197,7 +208,7 @@ public:
   // We set this when script paints an image from a different origin.
   // We also transitively set it when script paints a canvas which
   // is itself write-only.
-  PRPackedBool             mWriteOnly;
+  bool                     mWriteOnly;
 };
 
 #endif /* nsHTMLCanvasElement_h__ */

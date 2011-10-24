@@ -70,11 +70,11 @@ ScaleRoundDesignUnits(FT_Short aDesignMetric, FT_Fixed aScale)
 static void
 SnapLineToPixels(gfxFloat& aOffset, gfxFloat& aSize)
 {
-    gfxFloat snappedSize = PR_MAX(NS_floor(aSize + 0.5), 1.0);
+    gfxFloat snappedSize = NS_MAX(floor(aSize + 0.5), 1.0);
     // Correct offset for change in size
     gfxFloat offset = aOffset - 0.5 * (aSize - snappedSize);
     // Snap offset
-    aOffset = NS_floor(offset + 0.5);
+    aOffset = floor(offset + 0.5);
     aSize = snappedSize;
 }
 
@@ -201,10 +201,10 @@ gfxFT2LockedFace::GetMetrics(gfxFont::Metrics* aMetrics,
         gfxFloat avgCharWidth =
             ScaleRoundDesignUnits(os2->xAvgCharWidth, ftMetrics.x_scale);
         aMetrics->aveCharWidth =
-            PR_MAX(aMetrics->aveCharWidth, avgCharWidth);
+            NS_MAX(aMetrics->aveCharWidth, avgCharWidth);
     }
     aMetrics->aveCharWidth =
-        PR_MAX(aMetrics->aveCharWidth, aMetrics->zeroOrAveCharWidth);
+        NS_MAX(aMetrics->aveCharWidth, aMetrics->zeroOrAveCharWidth);
     if (aMetrics->aveCharWidth == 0.0) {
         aMetrics->aveCharWidth = aMetrics->spaceWidth;
     }
@@ -213,7 +213,7 @@ gfxFT2LockedFace::GetMetrics(gfxFont::Metrics* aMetrics,
     }
     // Apparently hinting can mean that max_advance is not always accurate.
     aMetrics->maxAdvance =
-        PR_MAX(aMetrics->maxAdvance, aMetrics->aveCharWidth);
+        NS_MAX(aMetrics->maxAdvance, aMetrics->aveCharWidth);
 
     // gfxFont::Metrics::underlineOffset is the position of the top of the
     // underline.
@@ -258,7 +258,7 @@ gfxFT2LockedFace::GetMetrics(gfxFont::Metrics* aMetrics,
     if (os2 && os2->ySuperscriptYOffset) {
         gfxFloat val = ScaleRoundDesignUnits(os2->ySuperscriptYOffset,
                                              ftMetrics.y_scale);
-        aMetrics->superscriptOffset = PR_MAX(1.0, val);
+        aMetrics->superscriptOffset = NS_MAX(1.0, val);
     } else {
         aMetrics->superscriptOffset = aMetrics->xHeight;
     }
@@ -268,7 +268,7 @@ gfxFT2LockedFace::GetMetrics(gfxFont::Metrics* aMetrics,
                                              ftMetrics.y_scale);
         // some fonts have the incorrect sign. 
         val = fabs(val);
-        aMetrics->subscriptOffset = PR_MAX(1.0, val);
+        aMetrics->subscriptOffset = NS_MAX(1.0, val);
     } else {
         aMetrics->subscriptOffset = aMetrics->xHeight;
     }
@@ -281,16 +281,16 @@ gfxFT2LockedFace::GetMetrics(gfxFont::Metrics* aMetrics,
     // internalLeading + externalLeading, but first each of these is rounded
     // to layout units.  To ensure that the result is an integer number of
     // pixels, round each of the components to pixels.
-    aMetrics->emHeight = NS_floor(emHeight + 0.5);
+    aMetrics->emHeight = floor(emHeight + 0.5);
 
     // maxHeight will normally be an integer, but round anyway in case
     // FreeType is configured differently.
     aMetrics->internalLeading =
-        NS_floor(aMetrics->maxHeight - aMetrics->emHeight + 0.5);
+        floor(aMetrics->maxHeight - aMetrics->emHeight + 0.5);
 
     // Text input boxes currently don't work well with lineHeight
     // significantly less than maxHeight (with Verdana, for example).
-    lineHeight = NS_floor(PR_MAX(lineHeight, aMetrics->maxHeight) + 0.5);
+    lineHeight = floor(NS_MAX(lineHeight, aMetrics->maxHeight) + 0.5);
     aMetrics->externalLeading =
         lineHeight - aMetrics->internalLeading - aMetrics->emHeight;
 
@@ -353,29 +353,29 @@ gfxFT2LockedFace::GetUVSGlyph(PRUint32 aCharCode, PRUint32 aVariantSelector)
     return (*sGetCharVariantPtr)(mFace, aCharCode, aVariantSelector);
 }
 
-PRBool
+bool
 gfxFT2LockedFace::GetFontTable(PRUint32 aTag, FallibleTArray<PRUint8>& aBuffer)
 {
     if (!mFace || !FT_IS_SFNT(mFace))
-        return PR_FALSE;
+        return false;
 
     FT_ULong length = 0;
     // TRUETYPE_TAG is defined equivalent to FT_MAKE_TAG
     FT_Error error = FT_Load_Sfnt_Table(mFace, aTag, 0, NULL, &length);
     if (error != 0)
-        return PR_FALSE;
+        return false;
 
     if (NS_UNLIKELY(length > static_cast<FallibleTArray<PRUint8>::size_type>(-1))
         || NS_UNLIKELY(!aBuffer.SetLength(length)))
-        return PR_FALSE;
+        return false;
         
     error = FT_Load_Sfnt_Table(mFace, aTag, 0, aBuffer.Elements(), &length);
     if (NS_UNLIKELY(error != 0)) {
         aBuffer.Clear();
-        return PR_FALSE;
+        return false;
     }
 
-    return PR_TRUE;
+    return true;
 }
 
 PRUint32

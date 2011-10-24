@@ -72,8 +72,8 @@ public:
 
   nsGridRowLeafFrame(nsIPresShell* aPresShell,
                      nsStyleContext* aContext,
-                     PRBool aIsRoot,
-                     nsIBoxLayout* aLayoutManager):
+                     bool aIsRoot,
+                     nsBoxLayout* aLayoutManager):
     nsBoxFrame(aPresShell, aContext, aIsRoot, aLayoutManager) {}
 
   NS_IMETHOD GetBorderAndPadding(nsMargin& aBorderAndPadding);

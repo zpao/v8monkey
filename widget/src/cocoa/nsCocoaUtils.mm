@@ -40,6 +40,7 @@
 
 #include "gfxImageSurface.h"
 #include "nsCocoaUtils.h"
+#include "nsChildView.h"
 #include "nsMenuBarX.h"
 #include "nsCocoaWindow.h"
 #include "nsCOMPtr.h"
@@ -50,6 +51,7 @@
 #include "nsIServiceManager.h"
 #include "nsMenuUtilsX.h"
 #include "nsToolkit.h"
+#include "nsGUIEvent.h"
 
 float nsCocoaUtils::MenuBarScreenHeight()
 {
@@ -104,6 +106,11 @@ NSPoint nsCocoaUtils::ScreenLocationForEvent(NSEvent* anEvent)
   if (!anEvent || [anEvent type] == NSMouseMoved)
     return [NSEvent mouseLocation];
 
+  // Pin momentum scroll events to the location of the last user-controlled
+  // scroll event.
+  if (IsMomentumScrollEvent(anEvent))
+    return ChildViewMouseTracker::sLastScrollEventScreenLocation;
+
   return [[anEvent window] convertBaseToScreen:[anEvent locationInWindow]];
 
   NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(NSMakePoint(0.0, 0.0));
@@ -127,7 +134,14 @@ NSPoint nsCocoaUtils::EventLocationForWindow(NSEvent* anEvent, NSWindow* aWindow
   NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(NSMakePoint(0.0, 0.0));
 }
 
-void nsCocoaUtils::HideOSChromeOnScreen(PRBool aShouldHide, NSScreen* aScreen)
+BOOL nsCocoaUtils::IsMomentumScrollEvent(NSEvent* aEvent)
+{
+  return [aEvent type] == NSScrollWheel &&
+         [aEvent respondsToSelector:@selector(_scrollPhase)] &&
+         [aEvent _scrollPhase] != 0;
+}
+
+void nsCocoaUtils::HideOSChromeOnScreen(bool aShouldHide, NSScreen* aScreen)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
 
@@ -327,3 +341,77 @@ nsresult nsCocoaUtils::CreateNSImageFromImageContainer(imgIContainer *aImage, PR
   return NS_OK;
 }
 
+// static
+void
+nsCocoaUtils::GetStringForNSString(const NSString *aSrc, nsAString& aDist)
+{
+  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
+
+  if (!aSrc) {
+    aDist.Truncate();
+    return;
+  }
+
+  aDist.SetLength([aSrc length]);
+  [aSrc getCharacters: aDist.BeginWriting()];
+
+  NS_OBJC_END_TRY_ABORT_BLOCK;
+}
+
+// static
+NSString*
+nsCocoaUtils::ToNSString(const nsAString& aString)
+{
+  return [NSString stringWithCharacters:aString.BeginReading()
+                                 length:aString.Length()];
+}
+
+// static
+void
+nsCocoaUtils::GeckoRectToNSRect(const nsIntRect& aGeckoRect,
+                                NSRect& aOutCocoaRect)
+{
+  aOutCocoaRect.origin.x = aGeckoRect.x;
+  aOutCocoaRect.origin.y = aGeckoRect.y;
+  aOutCocoaRect.size.width = aGeckoRect.width;
+  aOutCocoaRect.size.height = aGeckoRect.height;
+}
+
+// static
+NSEvent*
+nsCocoaUtils::MakeNewCocoaEventWithType(NSEventType aEventType, NSEvent *aEvent)
+{
+  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
+
+  NSEvent* newEvent =
+    [NSEvent     keyEventWithType:aEventType
+                         location:[aEvent locationInWindow] 
+                    modifierFlags:[aEvent modifierFlags]
+                        timestamp:[aEvent timestamp]
+                     windowNumber:[aEvent windowNumber]
+                          context:[aEvent context]
+                       characters:[aEvent characters]
+      charactersIgnoringModifiers:[aEvent charactersIgnoringModifiers]
+                        isARepeat:[aEvent isARepeat]
+                          keyCode:[aEvent keyCode]];
+  return newEvent;
+
+  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+}
+
+// static
+void
+nsCocoaUtils::InitNPCocoaEvent(NPCocoaEvent* aNPCocoaEvent)
+{
+  memset(aNPCocoaEvent, 0, sizeof(NPCocoaEvent));
+}
+
+// static
+void
+nsCocoaUtils::InitPluginEvent(nsPluginEvent &aPluginEvent,
+                              NPCocoaEvent &aCocoaEvent)
+{
+  aPluginEvent.time = PR_IntervalNow();
+  aPluginEvent.pluginEvent = (void*)&aCocoaEvent;
+  aPluginEvent.retargetToFocusedDocument = false;
+}

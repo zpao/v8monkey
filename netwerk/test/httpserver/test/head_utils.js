@@ -359,8 +359,13 @@ function runHttpTests(testArray, done)
       },
       onDataAvailable: function(request, cx, inputStream, offset, count)
       {
-        Array.prototype.push.apply(this._data,
-                                   makeBIS(inputStream).readByteArray(count));
+        var quantum = 262144; // just above half the argument-count limit
+        var bis = makeBIS(inputStream);
+        for (var start = 0; start < count; start += quantum)
+        {
+          var newData = bis.readByteArray(Math.min(quantum, count - start));
+          Array.prototype.push.apply(this._data, newData);
+        }
       },
       onStopRequest: function(request, cx, status)
       {
@@ -433,7 +438,7 @@ function RawTest(host, port, data, responseCheck)
     data = [data];
   if (data.length <= 0)
     throw "bad data length";
-  if (!data.every(function(v) { return /^[\x00-\xff]*$/.test(data); }))
+  if (!data.every(function(v) { return /^[\x00-\xff]*$/.test(v); }))
     throw "bad data contained non-byte-valued character";
 
   this.host = host;
@@ -547,7 +552,12 @@ function runRawTests(testArray, done)
 
           if (av > 0)
           {
-            received += String.fromCharCode.apply(null, bis.readByteArray(av));
+            var quantum = 262144;
+            for (var start = 0; start < av; start += quantum)
+            {
+              var bytes = bis.readByteArray(Math.min(quantum, av - start));
+              received += String.fromCharCode.apply(null, bytes);
+            }
             waitForMoreInput(stream);
             return;
           }

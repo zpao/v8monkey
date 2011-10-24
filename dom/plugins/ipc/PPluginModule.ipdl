@@ -39,14 +39,19 @@
 
 include protocol PPluginIdentifier;
 include protocol PPluginInstance;
+include protocol PPluginScriptableObject;
+include protocol PCrashReporter;
 
 include "npapi.h";
 include "mozilla/plugins/PluginMessageUtils.h";
+include "mozilla/dom/TabMessageUtils.h";
 
 using NPError;
 using NPNVariable;
 using base::FileDescriptor;
-using mozilla::plugins::NativeThreadId;
+using mozilla::dom::NativeThreadId;
+using mac_plugin_interposing::NSCursorInfo;
+using nsID;
 
 namespace mozilla {
 namespace plugins {
@@ -55,6 +60,7 @@ rpc protocol PPluginModule
 {
   manages PPluginInstance;
   manages PPluginIdentifier;
+  manages PCrashReporter;
 
 both:
   /**
@@ -64,18 +70,25 @@ both:
    * constructor with the same string or int argument then we create two actors
    * and detect the second instance in the child. We prevent the parent's actor
    * from leaking out to plugin code and only allow the child's to be used.
+   *
+   * When calling into the plugin, the parent may create a "temporary"
+   * identifier which is only valid for the lifetime of the current RPC frame.
    */
   async PPluginIdentifier(nsCString aString,
-                          int32_t aInt);
+                          int32_t aInt,
+                          bool temporary);
+
+  // Window-specific message which instructs the RPC mechanism to enter
+  // a nested event loop for the current RPC call.
+  async ProcessNativeEventsInRPCCall();
 
 child:
   // Forces the child process to update its plugin function table.
   rpc NP_GetEntryPoints()
     returns (NPError rv);
 
-  // Return the plugin's thread ID, if it can be found.
   rpc NP_Initialize()
-    returns (NativeThreadId tid, NPError rv);
+    returns (NPError rv);
 
   rpc PPluginInstance(nsCString aMimeType,
                       uint16_t aMode,
@@ -95,6 +108,16 @@ child:
 
   rpc NPP_GetSitesWithData()
     returns (nsCString[] sites);
+
+  // Windows specific message to set up an audio session in the plugin process
+  async SetAudioSessionData(nsID aID,
+                            nsString aDisplayName,
+                            nsString aIconPath);
+
+  async SetParentHangTimeout(uint32_t seconds);
+
+  rpc PCrashReporter()
+    returns (NativeThreadId tid, PRUint32 processType);
 
 parent:
   /**
@@ -123,18 +146,22 @@ parent:
   // native events, then "livelock" and some other glitches can occur.
   rpc ProcessSomeEvents();
 
-  // Window-specific message which instructs the RPC mechanism to enter
-  // a nested event loop for the current RPC call.
-  async ProcessNativeEventsInRPCCall();
-
-  sync AppendNotesToCrashReport(nsCString aNotes);
-
   // OS X Specific calls to manage the plugin's window
   // when interposing system calls.
   async PluginShowWindow(uint32_t aWindowId, bool aModal,
                          int32_t aX, int32_t aY,
                          size_t aWidth, size_t aHeight);
   async PluginHideWindow(uint32_t aWindowId);
+
+  // OS X Specific calls to allow the plugin to manage the cursor.
+  async SetCursor(NSCursorInfo cursorInfo);
+  async ShowCursor(bool show);
+  async PushCursor(NSCursorInfo cursorInfo);
+  async PopCursor();
+  sync GetNativeCursorsSupported() returns (bool supported);
+
+  sync NPN_SetException(nullable PPluginScriptableObject actor,
+                        nsCString message);
 };
 
 } // namespace plugins

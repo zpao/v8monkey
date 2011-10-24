@@ -97,14 +97,14 @@ nsXBLProtoImplField::InstallField(nsIScriptContext* aContext,
                                   JSObject* aBoundNode,
                                   nsIPrincipal* aPrincipal,
                                   nsIURI* aBindingDocURI,
-                                  PRBool* aDidInstall) const
+                                  bool* aDidInstall) const
 {
   NS_TIME_FUNCTION_MIN(5);
   NS_PRECONDITION(aBoundNode,
                   "uh-oh, bound node should NOT be null or bad things will "
                   "happen");
 
-  *aDidInstall = PR_FALSE;
+  *aDidInstall = false;
 
   if (mFieldTextLength == 0) {
     return NS_OK;
@@ -117,12 +117,12 @@ nsXBLProtoImplField::InstallField(nsIScriptContext* aContext,
   nsCAutoString uriSpec;
   aBindingDocURI->GetSpec(uriSpec);
   
-  JSContext* cx = (JSContext*) aContext->GetNativeContext();
+  JSContext* cx = aContext->GetNativeContext();
   NS_ASSERTION(!::JS_IsExceptionPending(cx),
                "Shouldn't get here when an exception is pending!");
   
   // compile the literal string
-  PRBool undefined;
+  bool undefined;
   nsCOMPtr<nsIScriptContext> context = aContext;
 
   JSAutoRequest ar(cx);
@@ -149,6 +149,6 @@ nsXBLProtoImplField::InstallField(nsIScriptContext* aContext,
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  *aDidInstall = PR_TRUE;
+  *aDidInstall = true;
   return NS_OK;
 }

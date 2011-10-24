@@ -63,7 +63,7 @@ function end_test() {
 // call the nsIDOMEventListener's handleEvent method for onload.
 function callHandleEvent() {
   var e = { target: gXHR };
-  gXHR.onload.handleEvent(e);
+  gXHR.onload(e);
 }
 
 // Helper function for parsing the result from the contructed url
@@ -141,6 +141,11 @@ function check_test_pt4() {
 
     if (macutils.isUniversalBinary)
       abi += "-u-" + macutils.architecturesInBinary;
+    if (IS_SHARK) {
+      // Disambiguate optimised and shark nightlies
+      abi += "-shark"
+    }
+
   }
 
   do_check_eq(getResult(gRequestURL), gAppInfo.OS + "_" + abi);

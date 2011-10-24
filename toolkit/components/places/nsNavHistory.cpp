@@ -28,6 +28,8 @@
  *   Michael Ventnor <m.ventnor@gmail.com>
  *   Ehsan Akhgari <ehsan.akhgari@gmail.com>
  *   Drew Willcoxon <adw@mozilla.com>
+ *   Philipp von Weitershausen <philipp@weitershausen.de>
+ *   Paolo Amadini <http://www.amadzone.org/>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -44,6 +46,8 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include <stdio.h>
+
+#include "mozilla/Util.h"
 
 #include "nsNavHistory.h"
 
@@ -82,12 +86,14 @@
 #include "History.h"
 
 #include "mozilla/FunctionTimer.h"
+#include "mozilla/Util.h"
 
 #ifdef MOZ_XUL
 #include "nsIAutoCompleteInput.h"
 #include "nsIAutoCompletePopup.h"
 #endif
 
+using namespace mozilla;
 using namespace mozilla::places;
 
 // The maximum number of things that we will store in the recent events list
@@ -124,14 +130,31 @@ using namespace mozilla::places;
 #define PREF_FRECENCY_UNVISITED_BOOKMARK_BONUS  "frecency.unvisitedBookmarkBonus"
 #define PREF_FRECENCY_UNVISITED_TYPED_BONUS     "frecency.unvisitedTypedBonus"
 
-#define PREF_CACHE_TO_MEMORY_PERCENTAGE         "database.cache_to_memory_percentage"
-
 #define PREF_FORCE_DATABASE_REPLACEMENT         "database.replaceOnStartup"
 
-// Default integer value for PREF_CACHE_TO_MEMORY_PERCENTAGE.
-// This is 6% of machine memory, giving 15MB for a user with 256MB of memory.
-// Out of this cache, SQLite will use at most the size of the database file.
-#define DATABASE_DEFAULT_CACHE_TO_MEMORY_PERCENTAGE 6
+// To calculate the cache size we take into account the available physical
+// memory and the current database size.  This is the percentage of memory
+// we reserve for the former case.
+#define DATABASE_CACHE_TO_MEMORY_PERC 2
+// The minimum size of the cache.  We should never work without a cache, since
+// that would badly hurt WAL journaling mode.
+#define DATABASE_CACHE_MIN_BYTES (PRUint64)5242880 // 5MiB
+
+// We calculate an optimal database size, based on hardware specs.  This
+// pertains more to expiration, but the code is pretty much the same used for
+// cache_size, so it's here to reduce code duplication.
+// This percentage of disk size is used to protect against calculating a too
+// large size on disks with tiny quota or available space.
+#define DATABASE_TO_DISK_PERC 2
+// Maximum size of the optimal database.  High-end hardware has plenty of
+// memory and disk space, but performances don't grow linearly.
+#define DATABASE_MAX_SIZE (PRInt64)167772160 // 160MiB
+// Used to share the calculated optimal database size with other components.
+#define PREF_OPTIMAL_DATABASE_SIZE "history.expiration.transient_optimal_database_size"
+
+// If the physical memory size is not available, use MEMSIZE_FALLBACK_BYTES
+// instead.  Must stay in sync with the code in nsPlacesExpiration.js.
+#define MEMSIZE_FALLBACK_BYTES 268435456 // 256 M
 
 // Maximum size for the WAL file.  It should be small enough since in case of
 // crashes we could lose all the transactions in the file.  But a too small
@@ -142,7 +165,7 @@ using namespace mozilla::places;
 
 // This is the schema version, update it at any schema change and add a
 // corresponding migrateVxx method below.
-#define DATABASE_SCHEMA_VERSION 11
+#define DATABASE_SCHEMA_VERSION 12
 
 // Filename of the database.
 #define DATABASE_FILENAME NS_LITERAL_STRING("places.sqlite")
@@ -163,6 +186,14 @@ static const PRInt64 USECS_PER_DAY = LL_INIT(20, 500654080);
 // Sync guid annotation
 #define SYNCGUID_ANNO NS_LITERAL_CSTRING("sync/guid")
 
+// Download destination file URI annotation
+#define DESTINATIONFILEURI_ANNO \
+  NS_LITERAL_CSTRING("downloads/destinationFileURI")
+
+// Download destination file name annotation
+#define DESTINATIONFILENAME_ANNO \
+  NS_LITERAL_CSTRING("downloads/destinationFileName")
+
 // These macros are used when splitting history by date.
 // These are the day containers and catch-all final container.
 #define HISTORY_ADDITIONAL_DATE_CONT_NUM 3
@@ -170,7 +201,7 @@ static const PRInt64 USECS_PER_DAY = LL_INIT(20, 500654080);
 // long, but we split only the last 6 months.
 #define HISTORY_DATE_CONT_NUM(_daysFromOldestVisit) \
   (HISTORY_ADDITIONAL_DATE_CONT_NUM + \
-   NS_MIN(6, (PRInt32)NS_ceilf((float)_daysFromOldestVisit/30)))
+   NS_MIN(6, (PRInt32)ceilf((float)_daysFromOldestVisit/30)))
 // Max number of containers, used to initialize the params hash.
 #define HISTORY_DATE_CONT_MAX 10
 
@@ -196,8 +227,7 @@ NS_IMPL_CLASSINFO(nsNavHistory, NULL, nsIClassInfo::SINGLETON,
                   NS_NAVHISTORYSERVICE_CID)
 NS_INTERFACE_MAP_BEGIN(nsNavHistory)
   NS_INTERFACE_MAP_ENTRY(nsINavHistoryService)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsIGlobalHistory2, nsIGlobalHistory3)
-  NS_INTERFACE_MAP_ENTRY(nsIGlobalHistory3)
+  NS_INTERFACE_MAP_ENTRY(nsIGlobalHistory2)
   NS_INTERFACE_MAP_ENTRY(nsIDownloadHistory)
   NS_INTERFACE_MAP_ENTRY(nsIBrowserHistory)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
@@ -211,10 +241,9 @@ NS_INTERFACE_MAP_BEGIN(nsNavHistory)
 NS_INTERFACE_MAP_END
 
 // We don't care about flattening everything
-NS_IMPL_CI_INTERFACE_GETTER5(
+NS_IMPL_CI_INTERFACE_GETTER4(
   nsNavHistory
 , nsINavHistoryService
-, nsIGlobalHistory3
 , nsIGlobalHistory2
 , nsIDownloadHistory
 , nsIBrowserHistory
@@ -242,7 +271,7 @@ namespace mozilla {
       nsCOMPtr<nsISimpleEnumerator> entries;
       rv = profDir->GetDirectoryEntries(getter_AddRefs(entries));
       NS_ENSURE_SUCCESS(rv, false);
-      PRBool hasMore;
+      bool hasMore;
       while (NS_SUCCEEDED(entries->HasMoreElements(&hasMore)) && hasMore) {
         nsCOMPtr<nsISupports> next;
         rv = entries->GetNext(getter_AddRefs(next));
@@ -267,7 +296,7 @@ namespace mozilla {
 
     void GetTagsSqlFragment(PRInt64 aTagsFolder,
                             const nsACString& aRelation,
-                            PRBool aHasSearchTerms,
+                            bool aHasSearchTerms,
                             nsACString& _sqlFragment) {
       if (!aHasSearchTerms)
         _sqlFragment.AssignLiteral("null");
@@ -284,6 +313,49 @@ namespace mozilla {
       }
 
       _sqlFragment.AppendLiteral(" AS tags ");
+    }
+
+    /**
+     * Updates sqlite_stat1 table through ANALYZE.
+     * Since also nsPlacesExpiration.js executes ANALYZE, the analyzed tables
+     * must be the same in both components.  So ensure they are in sync.
+     */
+    nsresult updateSQLiteStatistics(mozIStorageConnection* aDBConn)
+    {
+      nsCOMPtr<mozIStorageAsyncStatement> analyzePlacesStmt;
+      nsresult rv = aDBConn->CreateAsyncStatement(NS_LITERAL_CSTRING(
+        "ANALYZE moz_places"
+      ), getter_AddRefs(analyzePlacesStmt));
+      NS_ENSURE_SUCCESS(rv, rv);
+      nsCOMPtr<mozIStorageAsyncStatement> analyzeBookmarksStmt;
+      rv = aDBConn->CreateAsyncStatement(NS_LITERAL_CSTRING(
+        "ANALYZE moz_bookmarks"
+      ), getter_AddRefs(analyzeBookmarksStmt));
+      NS_ENSURE_SUCCESS(rv, rv);
+      nsCOMPtr<mozIStorageAsyncStatement> analyzeVisitsStmt;
+      rv = aDBConn->CreateAsyncStatement(NS_LITERAL_CSTRING(
+        "ANALYZE moz_historyvisits"
+      ), getter_AddRefs(analyzeVisitsStmt));
+      NS_ENSURE_SUCCESS(rv, rv);
+      nsCOMPtr<mozIStorageAsyncStatement> analyzeInputStmt;
+      rv = aDBConn->CreateAsyncStatement(NS_LITERAL_CSTRING(
+        "ANALYZE moz_inputhistory"
+      ), getter_AddRefs(analyzeInputStmt));
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      mozIStorageBaseStatement *stmts[] = {
+        analyzePlacesStmt,
+        analyzeBookmarksStmt,
+        analyzeVisitsStmt,
+        analyzeInputStmt
+      };
+
+      nsCOMPtr<mozIStoragePendingStatement> ps;
+      rv = aDBConn->ExecuteAsync(stmts, ArrayLength(stmts), nsnull,
+                                 getter_AddRefs(ps));
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      return NS_OK;
     }
 
   } // namespace places
@@ -333,7 +405,7 @@ AsyncStatementCallbackNotifier::HandleCompletion(PRUint16 aReason)
   if (aReason != mozIStorageStatementCallback::REASON_FINISHED)
     return NS_ERROR_UNEXPECTED;
 
-  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
   if (obs) {
     (void)obs->NotifyObservers(nsnull, mTopic, nsnull);
   }
@@ -367,12 +439,14 @@ PLACES_FACTORY_SINGLETON_IMPLEMENTATION(nsNavHistory, gHistoryService)
 nsNavHistory::nsNavHistory()
 : mBatchLevel(0)
 , mBatchDBTransaction(nsnull)
+, mAsyncThreadStatements(mDBConn)
+, mStatements(mDBConn)
 , mDBPageSize(0)
 , mCurrentJournalMode(JOURNAL_DELETE)
 , mCachedNow(0)
 , mExpireNowTimer(nsnull)
 , mLastSessionID(0)
-, mHistoryEnabled(PR_TRUE)
+, mHistoryEnabled(true)
 , mNumVisitsForFrecency(10)
 , mTagsFolder(-1)
 , mInPrivateBrowsing(PRIVATEBROWSING_NOTINITED)
@@ -415,7 +489,7 @@ nsNavHistory::Init()
 
   // Init the database file.  If we won't be able to connect to the database it
   // is most likely corrupt, so we will backup it and create a new one.
-  rv = InitDBFile(PR_FALSE);
+  rv = InitDBFile(false);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Init the database schema.  If this will fail there's an high possibility
@@ -424,7 +498,7 @@ nsNavHistory::Init()
   rv = InitDB();
   if (NS_FAILED(rv)) {
     // Forced InitDBFile will backup the old db and create a new one.
-    rv = InitDBFile(PR_TRUE);
+    rv = InitDBFile(true);
     NS_ENSURE_SUCCESS(rv, rv);
     // Try to initialize the schema again on the new database.
     rv = InitDB();
@@ -453,8 +527,6 @@ nsNavHistory::Init()
                  NS_ERROR_OUT_OF_MEMORY);
   NS_ENSURE_TRUE(mRecentBookmark.Init(RECENT_EVENTS_INITIAL_CACHE_SIZE),
                  NS_ERROR_OUT_OF_MEMORY);
-  NS_ENSURE_TRUE(mRecentRedirects.Init(RECENT_EVENTS_INITIAL_CACHE_SIZE),
-                 NS_ERROR_OUT_OF_MEMORY);
 
   // Embed visits hash table.
   NS_ENSURE_TRUE(mEmbedVisits.Init(EMBED_VISITS_INITIAL_CACHE_SIZE),
@@ -470,40 +542,18 @@ nsNavHistory::Init()
 
   // Observe preferences branch for changes.
   if (mPrefBranch)
-    mPrefBranch->AddObserver("", this, PR_FALSE);
+    mPrefBranch->AddObserver("", this, false);
 
   nsCOMPtr<nsIObserverService> obsSvc =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
   if (obsSvc) {
-    (void)obsSvc->AddObserver(this, TOPIC_PROFILE_TEARDOWN, PR_FALSE);
-    (void)obsSvc->AddObserver(this, TOPIC_PROFILE_CHANGE, PR_FALSE);
-    (void)obsSvc->AddObserver(this, TOPIC_IDLE_DAILY, PR_FALSE);
-    (void)obsSvc->AddObserver(this, NS_PRIVATE_BROWSING_SWITCH_TOPIC, PR_FALSE);
+    (void)obsSvc->AddObserver(this, TOPIC_PROFILE_TEARDOWN, false);
+    (void)obsSvc->AddObserver(this, TOPIC_PROFILE_CHANGE, false);
+    (void)obsSvc->AddObserver(this, TOPIC_IDLE_DAILY, false);
+    (void)obsSvc->AddObserver(this, NS_PRIVATE_BROWSING_SWITCH_TOPIC, false);
 #ifdef MOZ_XUL
-    (void)obsSvc->AddObserver(this, TOPIC_AUTOCOMPLETE_FEEDBACK_INCOMING, PR_FALSE);
+    (void)obsSvc->AddObserver(this, TOPIC_AUTOCOMPLETE_FEEDBACK_INCOMING, false);
 #endif
-  }
-
-  // In case we've either imported or done a migration from a pre-frecency
-  // build, we will calculate the first cutoff period's frecencies once the rest
-  // of the places infrastructure has been initialized.
-  if (mDatabaseStatus == DATABASE_STATUS_CREATE ||
-      mDatabaseStatus == DATABASE_STATUS_UPGRADED) {
-    if (mDatabaseStatus == DATABASE_STATUS_CREATE) {
-      // Check if we should import old history from history.dat
-      nsCOMPtr<nsIFile> historyFile;
-      rv = NS_GetSpecialDirectory(NS_APP_HISTORY_50_FILE,
-                                  getter_AddRefs(historyFile));
-      if (NS_SUCCEEDED(rv) && historyFile) {
-        (void)ImportHistory(historyFile);
-      }
-    }
-
-    // In case we've either imported or done a migration from a pre-frecency
-    // build, we will calculate the first cutoff period's frecencies once the
-    // rest of the places infrastructure has been initialized.
-    if (obsSvc)
-      (void)obsSvc->AddObserver(this, TOPIC_PLACES_INIT_COMPLETE, PR_FALSE);
   }
 
   // Don't add code that can fail here! Do it up above, before we add our
@@ -514,7 +564,7 @@ nsNavHistory::Init()
 
 
 nsresult
-nsNavHistory::InitDBFile(PRBool aForceInit)
+nsNavHistory::InitDBFile(bool aForceInit)
 {
   if (!mDBService) {
     mDBService = do_GetService(MOZ_STORAGE_SERVICE_CONTRACTID);
@@ -554,7 +604,7 @@ nsNavHistory::InitDBFile(PRBool aForceInit)
     }
 
     // Remove the broken database.
-    rv = mDBFile->Remove(PR_FALSE);
+    rv = mDBFile->Remove(false);
     if (NS_FAILED(rv)) {
       // If the file is still in use this will fail and we won't be able to
       // start with a clean database.  The process of backing up a corrupt
@@ -574,7 +624,7 @@ nsNavHistory::InitDBFile(PRBool aForceInit)
   }
   else {
     // Check if database file exists.
-    PRBool dbExists = PR_TRUE;
+    bool dbExists = true;
     rv = mDBFile->Exists(&dbExists);
     NS_ENSURE_SUCCESS(rv, rv);
     // If the database didn't previously exist, we create it.
@@ -583,7 +633,7 @@ nsNavHistory::InitDBFile(PRBool aForceInit)
     }
     else {
       // Check if maintenance required a database replacement.
-      PRBool forceDatabaseReplacement;
+      bool forceDatabaseReplacement;
       if (NS_SUCCEEDED(mPrefBranch->GetBoolPref(PREF_FORCE_DATABASE_REPLACEMENT,
                                                 &forceDatabaseReplacement)) &&
           forceDatabaseReplacement) {
@@ -591,7 +641,7 @@ nsNavHistory::InitDBFile(PRBool aForceInit)
         rv = mPrefBranch->ClearUserPref(PREF_FORCE_DATABASE_REPLACEMENT);
         NS_ENSURE_SUCCESS(rv, rv);
         // Re-enter this same method, forcing the replacement.
-        rv = InitDBFile(PR_TRUE);
+        rv = InitDBFile(true);
         NS_ENSURE_SUCCESS(rv, rv);
         return NS_OK;
       }
@@ -610,7 +660,7 @@ nsNavHistory::InitDBFile(PRBool aForceInit)
     rv = mDBService->BackupDatabaseFile(mDBFile, DATABASE_CORRUPT_FILENAME,
                                         profDir, getter_AddRefs(backup));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = mDBFile->Remove(PR_FALSE);
+    rv = mDBFile->Remove(false);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Try again to initialize the database file.
@@ -664,7 +714,7 @@ nsNavHistory::SetJournalMode(enum JournalMode aJournalMode)
   NS_ENSURE_SUCCESS(rv, rv);
 
   mozStorageStatementScoper scoper(statement);
-  PRBool hasResult;
+  bool hasResult;
   rv = statement->ExecuteStep(&hasResult);
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ENSURE_TRUE(hasResult, NS_ERROR_FAILURE);
@@ -678,7 +728,7 @@ nsNavHistory::SetJournalMode(enum JournalMode aJournalMode)
   }
   else {
     NS_WARNING(nsPrintfCString(128, "Setting journal mode failed: %s",
-                               PromiseFlatCString(journalMode).get()).get());
+                               journalMode.get()).get());
     return NS_ERROR_FAILURE;
   }
 
@@ -689,16 +739,19 @@ nsNavHistory::SetJournalMode(enum JournalMode aJournalMode)
 nsresult
 nsNavHistory::InitDB()
 {
+  // WARNING: any statement executed before setting the journal mode must be
+  // finalized, since SQLite doesn't allow changing the journal mode if there
+  // is any outstanding statement.
+
   {
     // Get the page size.  This may be different than the default if the
     // database file already existed with a different page size.
     nsCOMPtr<mozIStorageStatement> statement;
-    nsresult rv = mDBConn->CreateStatement(NS_LITERAL_CSTRING("PRAGMA page_size"),
-                                  getter_AddRefs(statement));
+    nsresult rv = mDBConn->CreateStatement(NS_LITERAL_CSTRING(
+      "PRAGMA page_size"
+    ), getter_AddRefs(statement));
     NS_ENSURE_SUCCESS(rv, rv);
-
-    PRBool hasResult;
-    mozStorageStatementScoper scoper(statement);
+    bool hasResult = false;
     rv = statement->ExecuteStep(&hasResult);
     NS_ENSURE_TRUE(NS_SUCCEEDED(rv) && hasResult, NS_ERROR_FAILURE);
     rv = statement->GetInt32(0, &mDBPageSize);
@@ -711,26 +764,67 @@ nsNavHistory::InitDB()
       "PRAGMA temp_store = MEMORY"));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Compute the size of the database cache using the device's memory size.
+  // We want to work with a cache that is at a maximum half of the database
+  // size.  We also want it to respect the available memory size.
+
+  // Calculate memory size, fallback to a meaningful value if it fails.
+  PRUint64 memSizeBytes = PR_GetPhysicalMemorySize();
+  if (memSizeBytes == 0) {
+    memSizeBytes = MEMSIZE_FALLBACK_BYTES;
+  }
+
+  PRUint64 cacheSize = memSizeBytes * DATABASE_CACHE_TO_MEMORY_PERC / 100;
+
+  // Calculate an optimal database size for expiration purposes.
+  // We usually want to work with a cache that is half the database size.
+  // Limit the size to avoid extreme values on high-end hardware.
+  PRInt64 optimalDatabaseSize = NS_MIN(static_cast<PRInt64>(cacheSize) * 2,
+                                       DATABASE_MAX_SIZE);
+
+  // Protect against a full disk or tiny quota.
+  PRInt64 diskAvailableBytes = 0;
+  nsCOMPtr<nsILocalFile> localDB = do_QueryInterface(mDBFile);
+  if (localDB &&
+      NS_SUCCEEDED(localDB->GetDiskSpaceAvailable(&diskAvailableBytes)) &&
+      diskAvailableBytes > 0) {
+    optimalDatabaseSize = NS_MIN(optimalDatabaseSize,
+                                 diskAvailableBytes * DATABASE_TO_DISK_PERC / 100);
+  }
+
+  // Share the calculated size if it's meaningful.
+  if (optimalDatabaseSize < PR_INT32_MAX) {
+    (void)mPrefBranch->SetIntPref(PREF_OPTIMAL_DATABASE_SIZE,
+                                  static_cast<PRInt32>(optimalDatabaseSize));
+  }
+
+  // Get the current database size. Due to chunked growth we have to use
+  // page_count to evaluate it.
+  PRUint64 databaseSizeBytes = 0;
+  {
+    nsCOMPtr<mozIStorageStatement> statement;
+    nsresult rv = mDBConn->CreateStatement(NS_LITERAL_CSTRING(
+      "PRAGMA page_count"
+    ), getter_AddRefs(statement));
+    NS_ENSURE_SUCCESS(rv, rv);
+    bool hasResult = false;
+    rv = statement->ExecuteStep(&hasResult);
+    NS_ENSURE_TRUE(NS_SUCCEEDED(rv) && hasResult, NS_ERROR_FAILURE);
+    PRInt32 pageCount = 0;
+    rv = statement->GetInt32(0, &pageCount);
+    NS_ENSURE_SUCCESS(rv, rv);
+    databaseSizeBytes = pageCount * mDBPageSize;
+  }
+
+  // Set cache to a maximum of half the database size.
+  cacheSize = NS_MIN(cacheSize, databaseSizeBytes / 2);
+  // Ensure we never work without a minimum cache.
+  cacheSize = NS_MAX(cacheSize, DATABASE_CACHE_MIN_BYTES);
+
+  // Set the number of cached pages.
   // We don't use PRAGMA default_cache_size, since the database could be moved
   // among different devices and the value would adapt accordingly.
-  PRInt32 cachePercentage;
-  if (NS_FAILED(mPrefBranch->GetIntPref(PREF_CACHE_TO_MEMORY_PERCENTAGE,
-                                        &cachePercentage)))
-    cachePercentage = DATABASE_DEFAULT_CACHE_TO_MEMORY_PERCENTAGE;
-  // Sanity checks, we allow values between 0 (disable cache) and 50%.
-  if (cachePercentage > 50)
-    cachePercentage = 50;
-  if (cachePercentage < 0)
-    cachePercentage = 0;
-
-  static PRInt64 physMem = PR_GetPhysicalMemorySize();
-  PRInt64 cacheSize = physMem * cachePercentage / 100;
-
-  // Compute number of cached pages, this will be our cache size.
-  PRInt64 cachePages = cacheSize / mDBPageSize;
   nsCAutoString cacheSizePragma("PRAGMA cache_size = ");
-  cacheSizePragma.AppendInt(cachePages);
+  cacheSizePragma.AppendInt(cacheSize / mDBPageSize);
   rv = mDBConn->ExecuteSimpleSQL(cacheSizePragma);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -781,7 +875,7 @@ nsNavHistory::InitDB()
 
   // We are going to update the database, so everything from now on should be in
   // a transaction for performances.
-  mozStorageTransaction transaction(mDBConn, PR_FALSE);
+  mozStorageTransaction transaction(mDBConn, false);
 
   if (databaseInitialized) {
     // Migration How-to:
@@ -879,6 +973,9 @@ nsNavHistory::InitDB()
   rv = UpdateSchemaVersion();
   NS_ENSURE_SUCCESS(rv, rv);
 
+  rv = updateSQLiteStatistics(mDBConn);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   rv = transaction.Commit();
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -898,16 +995,6 @@ nsNavHistory::InitAdditionalDBItems()
 {
   nsresult rv = InitTriggers();
   NS_ENSURE_SUCCESS(rv, rv);
-
-  // These statements are used by frecency calculation.  Since frecency runs in
-  // the storage async thread, it needs to access them through a const history
-  // object, for thread-safety.  Due to const correctness it's not possible for
-  // the statements getter to lazily initialize them on first use, thus they
-  // are initialized here.
-  (void*)GetStatement(mDBPageInfoForFrecency);
-  (void*)GetStatement(mDBAsyncThreadPageInfoForFrecency);
-  (void*)GetStatement(mDBVisitsForFrecency);
-  (void*)GetStatement(mDBAsyncThreadVisitsForFrecency);
 
   return NS_OK;
 }
@@ -937,7 +1024,7 @@ nsNavHistory::CheckAndUpdateGUIDs()
                                   SYNCGUID_ANNO);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasResult;
+  bool hasResult;
   while (NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult) {
     PRInt64 itemId;
     rv = stmt->GetInt64(0, &itemId);
@@ -1192,8 +1279,10 @@ nsNavHistory::GetStatement(const nsCOMPtr<mozIStorageStatement>& aStmt)
   if (!mCanNotify)
     return nsnull;
 
+  // Note that this query violates the kGetInfoIndex_* convention in
+  // the last column.
   RETURN_IF_STMT(mDBGetURLPageInfo, NS_LITERAL_CSTRING(
-    "SELECT id, url, title, rev_host, visit_count "
+    "SELECT id, url, title, rev_host, visit_count, guid "
     "FROM moz_places "
     "WHERE url = :page_url "
   ));
@@ -1225,7 +1314,7 @@ nsNavHistory::GetStatement(const nsCOMPtr<mozIStorageStatement>& aStmt)
   ));
 
   RETURN_IF_STMT(mDBGetPageVisitStats, NS_LITERAL_CSTRING(
-    "SELECT id, visit_count, typed, hidden "
+    "SELECT id, visit_count, typed, hidden, guid "
     "FROM moz_places "
     "WHERE url = :page_url "
   ));
@@ -1280,34 +1369,6 @@ nsNavHistory::GetStatement(const nsCOMPtr<mozIStorageStatement>& aStmt)
     "WHERE url = :page_url "
   ));
 
-  // NOTE: This is not limited to visits with "visit_type NOT IN (0,4,7,8)"
-  // because otherwise mDBVisitsForFrecency would return no visits
-  // for places with only embed (or undefined) visits.  That would
-  // cause an incorrect frecency, see CalculateFrecencyInternal().
-  // In such a case a place with only EMBED visits would result in a non-zero
-  // frecency.
-  // In case of a temporary or permanent redirect, calculate the frecency as if
-  // the original page was visited.
-  nsCAutoString visitsForFrecencySQL(NS_LITERAL_CSTRING(
-    "SELECT "
-      "ROUND((strftime('%s','now','localtime','utc') - v.visit_date/1000000)/86400), "
-      "COALESCE( "
-        "(SELECT r.visit_type FROM moz_historyvisits r WHERE v.visit_type IN ") +
-          nsPrintfCString("(%d,%d) ", TRANSITION_REDIRECT_PERMANENT,
-                                      TRANSITION_REDIRECT_TEMPORARY) +
-          NS_LITERAL_CSTRING(" AND r.id = v.from_visit), "
-        "visit_type), "
-      "visit_date "
-    "FROM moz_historyvisits v "
-    "WHERE v.place_id = :page_id "
-    "ORDER BY visit_date DESC LIMIT ") +
-      nsPrintfCString("%d", mNumVisitsForFrecency)
-  );
-
-  RETURN_IF_STMT(mDBVisitsForFrecency, visitsForFrecencySQL);
-
-  RETURN_IF_STMT(mDBAsyncThreadVisitsForFrecency, visitsForFrecencySQL);
-
   RETURN_IF_STMT(mDBUpdateFrecency, NS_LITERAL_CSTRING(
       "UPDATE moz_places "
       "SET frecency = CALCULATE_FRECENCY(:page_id) "
@@ -1319,34 +1380,6 @@ nsNavHistory::GetStatement(const nsCOMPtr<mozIStorageStatement>& aStmt)
       "SET hidden = 0 "
       "WHERE id = :page_id AND frecency <> 0"
   ));
-
-  RETURN_IF_STMT(mDBGetPlaceVisitStats, NS_LITERAL_CSTRING(
-    "SELECT typed, hidden, frecency "
-    "FROM moz_places "
-    "WHERE id = :page_id "
-  ));
-
-  // When calculating frecency, we need special information for the page.
-  nsCAutoString pageInfoForFrecencySQL(NS_LITERAL_CSTRING(
-    "SELECT typed, hidden, visit_count, "
-           "(SELECT count(*) FROM moz_historyvisits WHERE place_id = :page_id), "
-           "(SELECT id FROM moz_bookmarks "
-            "WHERE fk = :page_id "
-              "AND parent NOT IN ("
-                "SELECT a.item_id "
-                "FROM moz_items_annos a "
-                "JOIN moz_anno_attributes n ON a.anno_attribute_id = n.id "
-                "WHERE n.name = :anno_name"
-              ") "
-            "LIMIT 1), "
-           "(url > 'place:' AND url < 'place;') "
-    "FROM moz_places "
-    "WHERE id = :page_id "
-  ));
-
-  RETURN_IF_STMT(mDBPageInfoForFrecency, pageInfoForFrecencySQL);
-
-  RETURN_IF_STMT(mDBAsyncThreadPageInfoForFrecency, pageInfoForFrecencySQL);
 
 #ifdef MOZ_XUL
   RETURN_IF_STMT(mDBFeedbackIncrease, NS_LITERAL_CSTRING(
@@ -1361,7 +1394,7 @@ nsNavHistory::GetStatement(const nsCOMPtr<mozIStorageStatement>& aStmt)
 
   nsCAutoString tagsFragment;
   GetTagsSqlFragment(GetTagsFolder(), NS_LITERAL_CSTRING("h.id"),
-                     PR_TRUE, tagsFragment);
+                     true, tagsFragment);
 
   // Should match kGetInfoIndex_* (see GetQueryResults)
   RETURN_IF_STMT(mDBVisitToVisitResult, NS_LITERAL_CSTRING(
@@ -1414,11 +1447,11 @@ nsNavHistory::GetStatement(const nsCOMPtr<mozIStorageStatement>& aStmt)
 nsresult
 nsNavHistory::MigrateV7Up(mozIStorageConnection* aDBConn) 
 {
-  mozStorageTransaction transaction(aDBConn, PR_FALSE);
+  mozStorageTransaction transaction(aDBConn, false);
 
   // We need an index on lastModified to catch quickly last modified bookmark
   // title for tag container's children. This will be useful for sync too.
-  PRBool lastModIndexExists = PR_FALSE;
+  bool lastModIndexExists = false;
   nsresult rv = aDBConn->IndexExists(
     NS_LITERAL_CSTRING("moz_bookmarks_itemlastmodifiedindex"),
     &lastModIndexExists);
@@ -1432,7 +1465,7 @@ nsNavHistory::MigrateV7Up(mozIStorageConnection* aDBConn)
   // We need to do a one-time change of the moz_historyvisits.pageindex
   // to speed up finding last visit date when joinin with moz_places.
   // See bug 392399 for more details.
-  PRBool pageIndexExists = PR_FALSE;
+  bool pageIndexExists = false;
   rv = aDBConn->IndexExists(
     NS_LITERAL_CSTRING("moz_historyvisits_pageindex"), &pageIndexExists);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1466,9 +1499,8 @@ nsNavHistory::MigrateV7Up(mozIStorageConnection* aDBConn)
     rv = aDBConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_PLACES_FRECENCY);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    // for place: items and unvisited livemark items, we need to set
-    // the frecency to 0 so that they don't show up in url bar autocomplete
-    rv = FixInvalidFrecenciesForExcludedPlaces();
+    // Invalidate all frecencies, since they need recalculation.
+    rv = invalidateFrecencies(EmptyCString());
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -1514,7 +1546,7 @@ nsNavHistory::MigrateV7Up(mozIStorageConnection* aDBConn)
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Check for existence
-  PRBool triggerExists;
+  bool triggerExists;
   rv = triggerDetection->BindUTF8StringByName(
     NS_LITERAL_CSTRING("trigger_name"),
     NS_LITERAL_CSTRING("moz_historyvisits_afterinsert_v1_trigger")
@@ -1586,7 +1618,7 @@ nsNavHistory::MigrateV7Up(mozIStorageConnection* aDBConn)
 nsresult
 nsNavHistory::MigrateV8Up(mozIStorageConnection *aDBConn)
 {
-  mozStorageTransaction transaction(aDBConn, PR_FALSE);
+  mozStorageTransaction transaction(aDBConn, false);
 
   nsresult rv = aDBConn->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "DROP TRIGGER IF EXISTS moz_historyvisits_afterinsert_v1_trigger"));
@@ -1607,7 +1639,7 @@ nsNavHistory::MigrateV8Up(mozIStorageConnection *aDBConn)
 
 
   // Do a one-time re-creation of the moz_annos indexes (bug 415201)
-  PRBool oldIndexExists = PR_FALSE;
+  bool oldIndexExists = false;
   rv = mDBConn->IndexExists(NS_LITERAL_CSTRING("moz_annos_attributesindex"), &oldIndexExists);
   NS_ENSURE_SUCCESS(rv, rv);
   if (oldIndexExists) {
@@ -1637,13 +1669,13 @@ nsNavHistory::MigrateV8Up(mozIStorageConnection *aDBConn)
 nsresult
 nsNavHistory::MigrateV9Up(mozIStorageConnection *aDBConn)
 {
-  mozStorageTransaction transaction(aDBConn, PR_FALSE);
+  mozStorageTransaction transaction(aDBConn, false);
   // Added in Bug 488966.  The last_visit_date column caches the last
   // visit date, this enhances SELECT performances when we
   // need to sort visits by visit date.
   // The cached value is synced by triggers on every added or removed visit.
   // See nsPlacesTriggers.h for details on the triggers.
-  PRBool oldIndexExists = PR_FALSE;
+  bool oldIndexExists = false;
   nsresult rv = mDBConn->IndexExists(
     NS_LITERAL_CSTRING("moz_places_lastvisitdateindex"), &oldIndexExists);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1743,47 +1775,50 @@ nsNavHistory::MigrateV11Up(mozIStorageConnection *aDBConn)
   return NS_OK;
 }
 
-
-// nsNavHistory::GetUrlIdFor
-//
-//    Called by the bookmarks and annotation services, this function returns the
-//    ID of the row for the given URL, optionally creating one if it doesn't
-//    exist. A newly created entry will have no visits.
-//
-//    If aAutoCreate is false and the item doesn't exist, the entry ID will be
-//    zero.
-//
-//    This DOES NOT check for bad URLs other than that they're nonempty.
-
 nsresult
-nsNavHistory::GetUrlIdFor(nsIURI* aURI, PRInt64* aEntryID,
-                          PRBool aAutoCreate)
+nsNavHistory::GetIdForPage(nsIURI* aURI,
+                           PRInt64* _pageId,
+                           nsCString& _GUID)
 {
-  *aEntryID = 0;
-  {
-    DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(stmt, mDBGetURLPageInfo);
-    nsresult rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
-    NS_ENSURE_SUCCESS(rv, rv);
+  *_pageId = 0;
 
-    PRBool hasEntry = PR_FALSE;
-    rv = stmt->ExecuteStep(&hasEntry);
-    NS_ENSURE_SUCCESS(rv, rv);
+  DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(stmt, mDBGetURLPageInfo);
+  nsresult rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-    if (hasEntry)
-      return stmt->GetInt64(kGetInfoIndex_PageID, aEntryID);
+  bool hasEntry = false;
+  rv = stmt->ExecuteStep(&hasEntry);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (hasEntry) {
+    rv = stmt->GetInt64(kGetInfoIndex_PageID, _pageId);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = stmt->GetUTF8String(5, _GUID);
+    NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  if (aAutoCreate) {
-    // create a new hidden, untyped, unvisited entry
-    nsAutoString voidString;
-    voidString.SetIsVoid(PR_TRUE);
-    return InternalAddNewPage(aURI, voidString, PR_TRUE, PR_FALSE, 0, PR_TRUE, aEntryID);
-  }
-
-  // Doesn't exist: don't do anything, entry ID was already set to 0 above
   return NS_OK;
 }
+  
+nsresult
+nsNavHistory::GetOrCreateIdForPage(nsIURI* aURI,
+                                   PRInt64* _pageId,
+                                   nsCString& _GUID)
+{
+  nsresult rv = GetIdForPage(aURI, _pageId, _GUID);
+  NS_ENSURE_SUCCESS(rv, rv);
 
+  if (*_pageId == 0) {
+    // Create a new hidden, untyped and unvisited entry.
+    nsAutoString voidString;
+    voidString.SetIsVoid(true);
+    rv = InternalAddNewPage(aURI, voidString, true, false, 0, true,
+                            _pageId, _GUID);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  return NS_OK;
+}
 
 // nsNavHistory::InternalAddNewPage
 //
@@ -1799,11 +1834,12 @@ nsNavHistory::GetUrlIdFor(nsIURI* aURI, PRInt64* aEntryID,
 nsresult
 nsNavHistory::InternalAddNewPage(nsIURI* aURI,
                                  const nsAString& aTitle,
-                                 PRBool aHidden,
-                                 PRBool aTyped,
+                                 bool aHidden,
+                                 bool aTyped,
                                  PRInt32 aVisitCount,
-                                 PRBool aCalculateFrecency,
-                                 PRInt64* aPageID)
+                                 bool aCalculateFrecency,
+                                 PRInt64* aPageID,
+                                 nsACString& guid)
 {
   DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(stmt, mDBAddNewPage);
   nsresult rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
@@ -1850,11 +1886,13 @@ nsNavHistory::InternalAddNewPage(nsIURI* aURI,
     rv = URIBinder::Bind(getIdStmt, NS_LITERAL_CSTRING("page_url"), aURI);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    PRBool hasResult = PR_FALSE;
+    bool hasResult = false;
     rv = getIdStmt->ExecuteStep(&hasResult);
     NS_ENSURE_SUCCESS(rv, rv);
     NS_ASSERTION(hasResult, "hasResult is false but the call succeeded?");
     pageId = getIdStmt->AsInt64(0);
+    rv = getIdStmt->GetUTF8String(5, guid);
+    NS_ENSURE_SUCCESS(rv, rv);
   }
 
   if (aCalculateFrecency) {
@@ -1909,7 +1947,7 @@ nsNavHistory::InternalAddVisit(PRInt64 aPageID, PRInt64 aReferringVisit,
     rv = stmt->BindInt64ByName(NS_LITERAL_CSTRING("session"), aSessionID);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    PRBool hasResult;
+    bool hasResult;
     rv = stmt->ExecuteStep(&hasResult);
     NS_ENSURE_SUCCESS(rv, rv);
     NS_ASSERTION(hasResult, "hasResult is false but the call succeeded?");
@@ -1933,29 +1971,29 @@ nsNavHistory::InternalAddVisit(PRInt64 aPageID, PRInt64 aReferringVisit,
 //
 //    This is used to compute the referring visit.
 
-PRBool
+bool
 nsNavHistory::FindLastVisit(nsIURI* aURI,
                             PRInt64* aVisitID,
                             PRTime* aTime,
                             PRInt64* aSessionID)
 {
-  DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(stmt, mDBRecentVisitOfURL);
+  DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT_RET(stmt, mDBRecentVisitOfURL, false);
   nsresult rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
-  NS_ENSURE_SUCCESS(rv, PR_FALSE);
+  NS_ENSURE_SUCCESS(rv, false);
 
-  PRBool hasMore;
+  bool hasMore;
   rv = stmt->ExecuteStep(&hasMore);
-  NS_ENSURE_SUCCESS(rv, PR_FALSE);
+  NS_ENSURE_SUCCESS(rv, false);
   if (hasMore) {
     rv = stmt->GetInt64(0, aVisitID);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
+    NS_ENSURE_SUCCESS(rv, false);
     rv = stmt->GetInt64(1, aSessionID);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
+    NS_ENSURE_SUCCESS(rv, false);
     rv = stmt->GetInt64(2, aTime);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-    return PR_TRUE;
+    NS_ENSURE_SUCCESS(rv, false);
+    return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 
@@ -1965,15 +2003,15 @@ nsNavHistory::FindLastVisit(nsIURI* aURI,
 //
 //    Be careful to always reset the statement since it will be reused.
 
-PRBool nsNavHistory::IsURIStringVisited(const nsACString& aURIString)
+bool nsNavHistory::IsURIStringVisited(const nsACString& aURIString)
 {
-  DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(stmt, mDBIsPageVisited);
+  DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT_RET(stmt, mDBIsPageVisited, false);
   nsresult rv = URIBinder::Bind(stmt, 0, aURIString);
-  NS_ENSURE_SUCCESS(rv, PR_FALSE);
+  NS_ENSURE_SUCCESS(rv, false);
 
-  PRBool hasMore = PR_FALSE;
+  bool hasMore = false;
   rv = stmt->ExecuteStep(&hasMore);
-  NS_ENSURE_SUCCESS(rv, PR_FALSE);
+  NS_ENSURE_SUCCESS(rv, false);
   return hasMore;
 }
 
@@ -1993,8 +2031,8 @@ nsNavHistory::LoadPrefs()
                                        &oldDaysPref))) {
     if (!oldDaysPref) {
       // Preserve history disabled state, for privacy reasons.
-      mPrefBranch->SetBoolPref(PREF_HISTORY_ENABLED, PR_FALSE);
-      mHistoryEnabled = PR_FALSE;
+      mPrefBranch->SetBoolPref(PREF_HISTORY_ENABLED, false);
+      mHistoryEnabled = false;
     }
     // Clear the old pref, otherwise we will keep using it.
     prefSvc->ClearUserPref("browser.history_expire_days");
@@ -2063,7 +2101,7 @@ nsNavHistory::GetNewSessionID()
     "ORDER BY visit_date DESC "
   ), getter_AddRefs(selectSession));
   NS_ENSURE_SUCCESS(rv, rv);
-  PRBool hasSession;
+  bool hasSession;
   if (NS_SUCCEEDED(selectSession->ExecuteStep(&hasSession)) && hasSession)
     mLastSessionID = selectSession->AsInt64(0) + 1;
   else
@@ -2079,20 +2117,25 @@ nsNavHistory::NotifyOnVisit(nsIURI* aURI,
                           PRTime aTime,
                           PRInt64 aSessionID,
                           PRInt64 referringVisitID,
-                          PRInt32 aTransitionType)
+                          PRInt32 aTransitionType,
+                          const nsACString& aGUID)
 {
   PRUint32 added = 0;
+  MOZ_ASSERT(!aGUID.IsEmpty());
   NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
                    nsINavHistoryObserver,
                    OnVisit(aURI, aVisitID, aTime, aSessionID,
-                           referringVisitID, aTransitionType, &added));
+                           referringVisitID, aTransitionType, aGUID, &added));
 }
 
 void
-nsNavHistory::NotifyTitleChange(nsIURI* aURI, const nsString& aTitle)
+nsNavHistory::NotifyTitleChange(nsIURI* aURI,
+                                const nsString& aTitle,
+                                const nsACString& aGUID)
 {
+  MOZ_ASSERT(!aGUID.IsEmpty());
   NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
-                   nsINavHistoryObserver, OnTitleChanged(aURI, aTitle));
+                   nsINavHistoryObserver, OnTitleChanged(aURI, aTitle, aGUID));
 }
 
 PRInt32
@@ -2110,7 +2153,7 @@ nsNavHistory::GetDaysOfHistory() {
     getter_AddRefs(statement));
   NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "Unable to create statement.");
   NS_ENSURE_SUCCESS(rv, 0);
-  PRBool hasResult;
+  bool hasResult;
   if (NS_SUCCEEDED(statement->ExecuteStep(&hasResult)) && hasResult)
     statement->GetInt32(0, &daysOfHistory);
 
@@ -2221,12 +2264,12 @@ nsNavHistory::NormalizeTime(PRUint32 aRelative, PRTime aOffset)
 PRUint32
 nsNavHistory::GetUpdateRequirements(const nsCOMArray<nsNavHistoryQuery>& aQueries,
                                     nsNavHistoryQueryOptions* aOptions,
-                                    PRBool* aHasSearchTerms)
+                                    bool* aHasSearchTerms)
 {
   NS_ASSERTION(aQueries.Count() > 0, "Must have at least one query");
 
   // first check if there are search terms
-  *aHasSearchTerms = PR_FALSE;
+  *aHasSearchTerms = false;
   PRInt32 i;
   for (i = 0; i < aQueries.Count(); i ++) {
     aQueries[i]->GetHasSearchTerms(aHasSearchTerms);
@@ -2234,9 +2277,9 @@ nsNavHistory::GetUpdateRequirements(const nsCOMArray<nsNavHistoryQuery>& aQuerie
       break;
   }
 
-  PRBool nonTimeBasedItems = PR_FALSE;
-  PRBool domainBasedItems = PR_FALSE;
-  PRBool queryContainsTransitions = PR_FALSE;
+  bool nonTimeBasedItems = false;
+  bool domainBasedItems = false;
+  bool queryContainsTransitions = false;
 
   for (i = 0; i < aQueries.Count(); i ++) {
     nsNavHistoryQuery* query = aQueries[i];
@@ -2248,17 +2291,17 @@ nsNavHistory::GetUpdateRequirements(const nsCOMArray<nsNavHistoryQuery>& aQuerie
     }
 
     if (query->Transitions().Length() > 0)
-      queryContainsTransitions = PR_TRUE;
+      queryContainsTransitions = true;
 
     // Note: we don't currently have any complex non-bookmarked items, but these
     // are expected to be added. Put detection of these items here.
     if (!query->SearchTerms().IsEmpty() ||
         !query->Domain().IsVoid() ||
         query->Uri() != nsnull)
-      nonTimeBasedItems = PR_TRUE;
+      nonTimeBasedItems = true;
 
     if (! query->Domain().IsVoid())
-      domainBasedItems = PR_TRUE;
+      domainBasedItems = true;
   }
 
   if (aOptions->ResultType() ==
@@ -2297,7 +2340,7 @@ nsNavHistory::GetUpdateRequirements(const nsCOMArray<nsNavHistoryQuery>& aQuerie
 //
 //    Returns true if node matches the query, false if not.
 
-PRBool
+bool
 nsNavHistory::EvaluateQueryForNode(const nsCOMArray<nsNavHistoryQuery>& aQueries,
                                    nsNavHistoryQueryOptions* aOptions,
                                    nsNavHistoryResultNode* aNode)
@@ -2306,7 +2349,7 @@ nsNavHistory::EvaluateQueryForNode(const nsCOMArray<nsNavHistoryQuery>& aQueries
   nsCOMPtr<nsIURI> nodeUri;
 
   for (PRInt32 i = 0; i < aQueries.Count(); i ++) {
-    PRBool hasIt;
+    bool hasIt;
     nsCOMPtr<nsNavHistoryQuery> query = aQueries[i];
 
     // --- begin time ---
@@ -2378,9 +2421,9 @@ nsNavHistory::EvaluateQueryForNode(const nsCOMArray<nsNavHistoryQuery>& aQueries
       }
       if (! query->UriIsPrefix()) {
         // easy case: the URI is an exact match
-        PRBool equals;
+        bool equals;
         nsresult rv = query->Uri()->Equals(nodeUri, &equals);
-        NS_ENSURE_SUCCESS(rv, PR_FALSE);
+        NS_ENSURE_SUCCESS(rv, false);
         if (! equals)
           continue;
       } else {
@@ -2402,11 +2445,11 @@ nsNavHistory::EvaluateQueryForNode(const nsCOMArray<nsNavHistoryQuery>& aQueries
     // If we ever make it to the bottom of this loop, that means it passed all
     // tests for the given query. Since queries are ORed together, that means
     // it passed everything and we are done.
-    return PR_TRUE;
+    return true;
   }
 
   // didn't match any query
-  return PR_FALSE;
+  return false;
 }
 
 
@@ -2466,7 +2509,7 @@ nsNavHistory::DomainNameFromURI(nsIURI *aURI,
 // nsNavHistory::GetHasHistoryEntries
 
 NS_IMETHODIMP
-nsNavHistory::GetHasHistoryEntries(PRBool* aHasEntries)
+nsNavHistory::GetHasHistoryEntries(bool* aHasEntries)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG_POINTER(aHasEntries);
@@ -2491,37 +2534,41 @@ nsNavHistory::GetHasHistoryEntries(PRBool* aHasEntries)
 
 
 nsresult
-nsNavHistory::FixInvalidFrecenciesForExcludedPlaces()
+nsNavHistory::invalidateFrecencies(const nsCString& aPlaceIdsQueryString)
 {
-  // for every moz_place that has an invalid frecency (< 0) and
-  // is an unvisited child of a livemark feed, or begins with "place:",
-  // set frecency to 0 so that it is excluded from url bar autocomplete.
-  nsCOMPtr<mozIStorageStatement> dbUpdateStatement;
-  nsresult rv = mDBConn->CreateStatement(NS_LITERAL_CSTRING(
-      "UPDATE moz_places "
-      "SET frecency = 0 WHERE id IN ("
-        "SELECT h.id FROM moz_places h "
-        "WHERE h.url >= 'place:' AND h.url < 'place;' "
-        "UNION "
-        // Unvisited child of a livemark
-        "SELECT b.fk FROM moz_bookmarks b "
-        "JOIN moz_bookmarks bp ON bp.id = b.parent "
-        "JOIN moz_items_annos a ON a.item_id = bp.id "
-        "JOIN moz_anno_attributes n ON n.id = a.anno_attribute_id "
-        "WHERE n.name = :anno_name "
-        "AND b.fk IN( "
-          "SELECT id FROM moz_places WHERE visit_count = 0 AND frecency < 0 "
-        ") "
-      ")"),
-    getter_AddRefs(dbUpdateStatement));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = dbUpdateStatement->BindUTF8StringByName(
-    NS_LITERAL_CSTRING("anno_name"), NS_LITERAL_CSTRING(LMANNO_FEEDURI)
+  // Exclude place: queries and unvisited livemark children from autocomplete,
+  // by setting their frecency to zero.
+  nsCAutoString invalideFrecenciesSQLFragment(
+    "UPDATE moz_places SET frecency = (CASE "
+      "WHEN url BETWEEN 'place:' AND 'place;' "
+      "THEN 0 "
+      "WHEN id IN (SELECT b.fk FROM moz_bookmarks b "
+                  "JOIN moz_bookmarks bp ON bp.id = b.parent "
+                  "JOIN moz_items_annos a ON a.item_id = bp.id "
+                  "JOIN moz_anno_attributes n ON n.id = a.anno_attribute_id "
+                  "WHERE b.fk = moz_places.id AND visit_count = 0 "
+                    "AND n.name = :anno_name) "
+      "THEN 0 "
+      "ELSE -1 "
+      "END) "
   );
-  NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = dbUpdateStatement->Execute();
+  if (!aPlaceIdsQueryString.IsEmpty()) {
+    invalideFrecenciesSQLFragment.AppendLiteral("WHERE id IN(");
+    invalideFrecenciesSQLFragment.Append(aPlaceIdsQueryString);
+    invalideFrecenciesSQLFragment.AppendLiteral(")");
+  }
+
+  nsCOMPtr<mozIStorageStatement> stmt =
+    GetStatementByStoragePool(invalideFrecenciesSQLFragment);
+  NS_ENSURE_STATE(stmt);
+  nsresult rv = stmt->BindUTF8StringByName(
+     NS_LITERAL_CSTRING("anno_name"), NS_LITERAL_CSTRING(LMANNO_FEEDURI)
+   );
+   NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<mozIStoragePendingStatement> ps;
+  rv = stmt->ExecuteAsync(nsnull, getter_AddRefs(ps));
   NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
@@ -2571,7 +2618,7 @@ nsNavHistory::MarkPageAsFollowedBookmark(nsIURI* aURI)
 //    we don't bail go on and allow it in.
 
 NS_IMETHODIMP
-nsNavHistory::CanAddURI(nsIURI* aURI, PRBool* canAdd)
+nsNavHistory::CanAddURI(nsIURI* aURI, bool* canAdd)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG(aURI);
@@ -2579,7 +2626,7 @@ nsNavHistory::CanAddURI(nsIURI* aURI, PRBool* canAdd)
 
   // If history is disabled (included privatebrowsing), don't add any entry.
   if (IsHistoryDisabled()) {
-    *canAdd = PR_FALSE;
+    *canAdd = false;
     return NS_OK;
   }
 
@@ -2590,11 +2637,11 @@ nsNavHistory::CanAddURI(nsIURI* aURI, PRBool* canAdd)
   // first check the most common cases (HTTP, HTTPS) to allow in to avoid most
   // of the work
   if (scheme.EqualsLiteral("http")) {
-    *canAdd = PR_TRUE;
+    *canAdd = true;
     return NS_OK;
   }
   if (scheme.EqualsLiteral("https")) {
-    *canAdd = PR_TRUE;
+    *canAdd = true;
     return NS_OK;
   }
 
@@ -2610,10 +2657,10 @@ nsNavHistory::CanAddURI(nsIURI* aURI, PRBool* canAdd)
       scheme.EqualsLiteral("data") ||
       scheme.EqualsLiteral("wyciwyg") ||
       scheme.EqualsLiteral("javascript")) {
-    *canAdd = PR_FALSE;
+    *canAdd = false;
     return NS_OK;
   }
-  *canAdd = PR_TRUE;
+  *canAdd = true;
   return NS_OK;
 }
 
@@ -2627,7 +2674,7 @@ nsNavHistory::CanAddURI(nsIURI* aURI, PRBool* canAdd)
 
 NS_IMETHODIMP
 nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
-                       PRInt32 aTransitionType, PRBool aIsRedirect,
+                       PRInt32 aTransitionType, bool aIsRedirect,
                        PRInt64 aSessionID, PRInt64* aVisitID)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
@@ -2635,7 +2682,7 @@ nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
   NS_ENSURE_ARG_POINTER(aVisitID);
 
   // Filter out unwanted URIs, silently failing
-  PRBool canAdd = PR_FALSE;
+  bool canAdd = false;
   nsresult rv = CanAddURI(aURI, &canAdd);
   NS_ENSURE_SUCCESS(rv, rv);
   if (!canAdd) {
@@ -2653,20 +2700,21 @@ nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
 
   // This will prevent corruption since we have to do a two-phase add.
   // Generally this won't do anything because AddURI has its own transaction.
-  mozStorageTransaction transaction(mDBConn, PR_FALSE);
+  mozStorageTransaction transaction(mDBConn, false);
 
   // see if this is an update (revisit) or a new page
   DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(stmt, mDBGetPageVisitStats);
   rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
   NS_ENSURE_SUCCESS(rv, rv);
-  PRBool alreadyVisited = PR_FALSE;
+  bool alreadyVisited = false;
   rv = stmt->ExecuteStep(&alreadyVisited);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  nsCAutoString guid;
   PRInt64 pageID = 0;
   PRInt32 hidden;
   PRInt32 typed;
-  PRBool newItem = PR_FALSE; // used to send out notifications at the end
+  bool newItem = false; // used to send out notifications at the end
   if (alreadyVisited) {
     // Update the existing entry...
     rv = stmt->GetInt64(0, &pageID);
@@ -2680,8 +2728,11 @@ nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
     rv = stmt->GetInt32(2, &oldTypedState);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    PRBool oldHiddenState = 0;
+    PRInt32 oldHiddenState = 0;
     rv = stmt->GetInt32(3, &oldHiddenState);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = stmt->GetUTF8String(4, guid);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // free the previous statement before we make a new one
@@ -2704,7 +2755,7 @@ nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
     // some items may have a visit count of 0 which will not count for link
     // visiting, so be sure to note this transition
     if (oldVisitCount == 0)
-      newItem = PR_TRUE;
+      newItem = true;
 
     // update with new stats
     DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(updateStmt, mDBUpdatePageVisitStats);
@@ -2720,7 +2771,7 @@ nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
     NS_ENSURE_SUCCESS(rv, rv);
   } else {
     // New page
-    newItem = PR_TRUE;
+    newItem = true;
 
     // free the previous statement before we make a new one
     stmt->Reset();
@@ -2736,9 +2787,9 @@ nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
 
     // set as visited once, no title
     nsString voidString;
-    voidString.SetIsVoid(PR_TRUE);
+    voidString.SetIsVoid(true);
     rv = InternalAddNewPage(aURI, voidString, hidden == 1, typed == 1, 1,
-                            PR_TRUE, &pageID);
+                            true, &pageID, guid);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -2746,14 +2797,14 @@ nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
   PRInt64 referringVisitID = 0;
   PRInt64 referringSessionID;
   PRTime referringTime;
-  PRBool referrerIsSame;
+  bool referrerIsSame;
   if (aReferringURI &&
       NS_SUCCEEDED(aReferringURI->Equals(aURI, &referrerIsSame)) &&
       !referrerIsSame &&
       !FindLastVisit(aReferringURI, &referringVisitID, &referringTime, &referringSessionID)) {
     // The referrer is not in the database and is not the same as aURI, so it
     // must be added.
-    rv = AddVisit(aReferringURI, aTime - 1, nsnull, TRANSITION_LINK, PR_FALSE,
+    rv = AddVisit(aReferringURI, aTime - 1, nsnull, TRANSITION_LINK, false,
                   aSessionID, &referringVisitID);
     if (NS_FAILED(rv))
       referringVisitID = 0;
@@ -2773,14 +2824,13 @@ nsNavHistory::AddVisit(nsIURI* aURI, PRTime aTime, nsIURI* aReferringURI,
   // FIXME bug 325241: make a way to observe hidden URLs
   if (!hidden) {
     NotifyOnVisit(aURI, *aVisitID, aTime, aSessionID, referringVisitID,
-                  aTransitionType);
+                  aTransitionType, guid);
   }
 
   // Normally docshell sends the link visited observer notification for us (this
   // will tell all the documents to update their visited link coloring).
-  // However, for redirects (since we implement nsIGlobalHistory3) and downloads
-  // (since we implement nsIDownloadHistory) this will not happen and we need to
-  // send it ourselves.
+  // However, for redirects and downloads (since we implement nsIDownloadHistory)
+  // this will not happen and we need to send it ourselves.
   if (newItem && (aIsRedirect || aTransitionType == TRANSITION_DOWNLOAD)) {
     nsCOMPtr<nsIObserverService> obsService =
       do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
@@ -2893,7 +2943,7 @@ nsNavHistory::ExecuteQueries(nsINavHistoryQuery** aQueries, PRUint32 aQueryCount
     else {
       NS_WARNING("Generating a generic empty node for a broken query!");
       // This is a perf hack to generate an empty query that skips filtering.
-      options->SetExcludeItems(PR_TRUE);
+      options->SetExcludeItems(true);
     }
   }
 
@@ -2924,71 +2974,71 @@ nsNavHistory::ExecuteQueries(nsINavHistoryQuery** aQueries, PRUint32 aQueryCount
 // place:redirectsMode=2&sort=8&maxResults=10
 // note, any maxResult > 0 will still be considered a Most Visited menu query
 static
-PRBool IsOptimizableHistoryQuery(const nsCOMArray<nsNavHistoryQuery>& aQueries,
+bool IsOptimizableHistoryQuery(const nsCOMArray<nsNavHistoryQuery>& aQueries,
                                  nsNavHistoryQueryOptions *aOptions,
                                  PRUint16 aSortMode)
 {
   if (aQueries.Count() != 1)
-    return PR_FALSE;
+    return false;
 
   nsNavHistoryQuery *aQuery = aQueries[0];
  
   if (aOptions->QueryType() != nsINavHistoryQueryOptions::QUERY_TYPE_HISTORY)
-    return PR_FALSE;
+    return false;
 
   if (aOptions->ResultType() != nsINavHistoryQueryOptions::RESULTS_AS_URI)
-    return PR_FALSE;
+    return false;
 
   if (aOptions->SortingMode() != aSortMode)
-    return PR_FALSE;
+    return false;
 
   if (aOptions->MaxResults() <= 0)
-    return PR_FALSE;
+    return false;
 
   if (aOptions->ExcludeItems())
-    return PR_FALSE;
+    return false;
 
   if (aOptions->IncludeHidden())
-    return PR_FALSE;
+    return false;
 
   if (aQuery->MinVisits() != -1 || aQuery->MaxVisits() != -1)
-    return PR_FALSE;
+    return false;
 
   if (aQuery->BeginTime() || aQuery->BeginTimeReference()) 
-    return PR_FALSE;
+    return false;
 
   if (aQuery->EndTime() || aQuery->EndTimeReference()) 
-    return PR_FALSE;
+    return false;
 
   if (!aQuery->SearchTerms().IsEmpty()) 
-    return PR_FALSE;
+    return false;
 
   if (aQuery->OnlyBookmarked()) 
-    return PR_FALSE;
+    return false;
 
   if (aQuery->DomainIsHost() || !aQuery->Domain().IsEmpty())
-    return PR_FALSE;
+    return false;
 
   if (aQuery->AnnotationIsNot() || !aQuery->Annotation().IsEmpty()) 
-    return PR_FALSE;
+    return false;
 
   if (aQuery->UriIsPrefix() || aQuery->Uri()) 
-    return PR_FALSE;
+    return false;
 
   if (aQuery->Folders().Length() > 0)
-    return PR_FALSE;
+    return false;
 
   if (aQuery->Tags().Length() > 0)
-    return PR_FALSE;
+    return false;
 
   if (aQuery->Transitions().Length() > 0)
-    return PR_FALSE;
+    return false;
 
-  return PR_TRUE;
+  return true;
 }
 
 static
-PRBool NeedToFilterResultSet(const nsCOMArray<nsNavHistoryQuery>& aQueries, 
+bool NeedToFilterResultSet(const nsCOMArray<nsNavHistoryQuery>& aQueries, 
                              nsNavHistoryQueryOptions *aOptions)
 {
   // Never filter queries returning queries
@@ -2997,26 +3047,26 @@ PRBool NeedToFilterResultSet(const nsCOMArray<nsNavHistoryQuery>& aQueries,
       resultType == nsINavHistoryQueryOptions::RESULTS_AS_DATE_SITE_QUERY ||
       resultType == nsINavHistoryQueryOptions::RESULTS_AS_TAG_QUERY ||
       resultType == nsINavHistoryQueryOptions::RESULTS_AS_SITE_QUERY)
-    return PR_FALSE;
+    return false;
 
   // Always filter bookmarks queries to avoid the inclusion of query nodes,
   // but RESULTS AS TAG QUERY never needs to be filtered.
   if (aOptions->QueryType() == nsINavHistoryQueryOptions::QUERY_TYPE_BOOKMARKS)
-    return PR_TRUE;
+    return true;
 
   nsCString parentAnnotationToExclude;
   nsresult rv = aOptions->GetExcludeItemIfParentHasAnnotation(parentAnnotationToExclude);
-  NS_ENSURE_SUCCESS(rv, PR_TRUE);
+  NS_ENSURE_SUCCESS(rv, true);
   if (!parentAnnotationToExclude.IsEmpty())
-    return PR_TRUE;
+    return true;
 
   // Need to filter on parent if any folder is set.
   for (PRInt32 i = 0; i < aQueries.Count(); ++i) {
     if (aQueries[i]->Folders().Length() != 0) {
-      return PR_TRUE;
+      return true;
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
 // ** Helper class for ConstructQueryString **/
@@ -3026,9 +3076,9 @@ class PlacesSQLQueryBuilder
 public:
   PlacesSQLQueryBuilder(const nsCString& aConditions,
                         nsNavHistoryQueryOptions* aOptions,
-                        PRBool aUseLimit,
+                        bool aUseLimit,
                         nsNavHistory::StringHash& aAddParams,
-                        PRBool aHasSearchTerms);
+                        bool aHasSearchTerms);
 
   nsresult GetQueryString(nsCString& aQueryString);
 
@@ -3053,29 +3103,29 @@ private:
   void OrderByTextColumnIndexDesc(PRInt32 aIndex);
 
   const nsCString& mConditions;
-  PRBool mUseLimit;
-  PRBool mHasSearchTerms;
+  bool mUseLimit;
+  bool mHasSearchTerms;
 
   PRUint16 mResultType;
   PRUint16 mQueryType;
-  PRBool mIncludeHidden;
+  bool mIncludeHidden;
   PRUint16 mRedirectsMode;
   PRUint16 mSortingMode;
   PRUint32 mMaxResults;
 
   nsCString mQueryString;
   nsCString mGroupBy;
-  PRBool mHasDateColumns;
-  PRBool mSkipOrderBy;
+  bool mHasDateColumns;
+  bool mSkipOrderBy;
   nsNavHistory::StringHash& mAddParams;
 };
 
 PlacesSQLQueryBuilder::PlacesSQLQueryBuilder(
     const nsCString& aConditions, 
     nsNavHistoryQueryOptions* aOptions, 
-    PRBool aUseLimit,
+    bool aUseLimit,
     nsNavHistory::StringHash& aAddParams,
-    PRBool aHasSearchTerms)
+    bool aHasSearchTerms)
 : mConditions(aConditions)
 , mUseLimit(aUseLimit)
 , mHasSearchTerms(aHasSearchTerms)
@@ -3085,7 +3135,7 @@ PlacesSQLQueryBuilder::PlacesSQLQueryBuilder(
 , mRedirectsMode(aOptions->RedirectsMode())
 , mSortingMode(aOptions->SortingMode())
 , mMaxResults(aOptions->MaxResults())
-, mSkipOrderBy(PR_FALSE)
+, mSkipOrderBy(false)
 , mAddParams(aAddParams)
 {
   mHasDateColumns = (mQueryType == nsINavHistoryQueryOptions::QUERY_TYPE_BOOKMARKS);
@@ -3182,7 +3232,7 @@ PlacesSQLQueryBuilder::SelectAsURI()
         // in FilterResultSet. We will retain only the last modified item,
         // so we are ordering by place id and last modified to do a faster
         // filtering.
-        mSkipOrderBy = PR_TRUE;
+        mSkipOrderBy = true;
 
         GetTagsSqlFragment(history->GetTagsFolder(),
                            NS_LITERAL_CSTRING("b2.fk"),
@@ -3264,7 +3314,7 @@ PlacesSQLQueryBuilder::SelectAsVisit()
 nsresult
 PlacesSQLQueryBuilder::SelectAsDay()
 {
-  mSkipOrderBy = PR_TRUE;
+  mSkipOrderBy = true;
 
   // Sort child queries based on sorting mode if it's provided, otherwise
   // fallback to default sort by title ascending.
@@ -3514,14 +3564,14 @@ PlacesSQLQueryBuilder::SelectAsSite()
     ") ",
     nsINavHistoryQueryOptions::RESULTS_AS_URI,
     mSortingMode,
-    PromiseFlatCString(timeConstraints).get(),
-    PromiseFlatCString(visitsJoin).get(),
-    PromiseFlatCString(additionalConditions).get(),
+    timeConstraints.get(),
+    visitsJoin.get(),
+    additionalConditions.get(),
     nsINavHistoryQueryOptions::RESULTS_AS_URI,
     mSortingMode,
-    PromiseFlatCString(timeConstraints).get(),
-    PromiseFlatCString(visitsJoin).get(),
-    PromiseFlatCString(additionalConditions).get()
+    timeConstraints.get(),
+    visitsJoin.get(),
+    additionalConditions.get()
   );
 
   return NS_OK;
@@ -3535,7 +3585,7 @@ PlacesSQLQueryBuilder::SelectAsTag()
 
   // This allows sorting by date fields what is not possible with
   // other history queries.
-  mHasDateColumns = PR_TRUE; 
+  mHasDateColumns = true; 
 
   mQueryString = nsPrintfCString(2048,
     "SELECT null, 'place:folder=' || id || '&queryType=%d&type=%ld', "
@@ -3560,21 +3610,24 @@ PlacesSQLQueryBuilder::Where()
   nsCAutoString additionalPlacesConditions;
 
   if (mRedirectsMode == nsINavHistoryQueryOptions::REDIRECTS_MODE_SOURCE) {
+    // At least one visit that is not a redirect target should exist.
     additionalVisitsConditions += NS_LITERAL_CSTRING(
       "AND visit_type NOT IN ") +
       nsPrintfCString("(%d,%d) ", nsINavHistoryService::TRANSITION_REDIRECT_PERMANENT,
                                   nsINavHistoryService::TRANSITION_REDIRECT_TEMPORARY);
   }
   else if (mRedirectsMode == nsINavHistoryQueryOptions::REDIRECTS_MODE_TARGET) {
-    additionalPlacesConditions += NS_LITERAL_CSTRING(
-      "AND NOT EXISTS ( "
-        "SELECT 1 FROM moz_historyvisits v1 "
-        "JOIN moz_historyvisits v2 ON v2.from_visit = v1.id "
-        "WHERE v1.place_id = h.id "
-        "AND v2.visit_type IN ") +
-        nsPrintfCString("(%d,%d) ", nsINavHistoryService::TRANSITION_REDIRECT_PERMANENT,
-                                    nsINavHistoryService::TRANSITION_REDIRECT_TEMPORARY) +
-      NS_LITERAL_CSTRING(") ");
+    // At least one visit that is not a redirect source should exist.
+    additionalPlacesConditions += nsPrintfCString(1024,
+      "AND EXISTS ( "
+        "SELECT id "
+        "FROM moz_historyvisits v "
+        "WHERE place_id = h.id "
+          "AND NOT EXISTS(SELECT id FROM moz_historyvisits "
+                         "WHERE from_visit = v.id AND visit_type IN (%d,%d)) "
+      ") ",
+      nsINavHistoryService::TRANSITION_REDIRECT_PERMANENT,
+      nsINavHistoryService::TRANSITION_REDIRECT_TEMPORARY);
   }
 
   if (!mIncludeHidden) {
@@ -3756,7 +3809,7 @@ nsNavHistory::ConstructQueryString(
     const nsCOMArray<nsNavHistoryQuery>& aQueries,
     nsNavHistoryQueryOptions* aOptions, 
     nsCString& queryString, 
-    PRBool& aParamsPresent,
+    bool& aParamsPresent,
     nsNavHistory::StringHash& aAddParams)
 {
   // For information about visit_type see nsINavHistoryService.idl.
@@ -3765,14 +3818,14 @@ nsNavHistory::ConstructQueryString(
   // display them, resulting in a lot of these entries. This is the reason 
   // why such visits are filtered out.
   nsresult rv;
-  aParamsPresent = PR_FALSE;
+  aParamsPresent = false;
 
   PRInt32 sortingMode = aOptions->SortingMode();
   NS_ASSERTION(sortingMode >= nsINavHistoryQueryOptions::SORT_BY_NONE &&
                sortingMode <= nsINavHistoryQueryOptions::SORT_BY_FRECENCY_DESCENDING,
                "Invalid sortingMode found while building query!");
 
-  PRBool hasSearchTerms = PR_FALSE;
+  bool hasSearchTerms = false;
   for (PRInt32 i = 0; i < aQueries.Count() && !hasSearchTerms; i++) {
     aQueries[i]->GetHasSearchTerms(&hasSearchTerms);
   }
@@ -3817,22 +3870,26 @@ nsNavHistory::ConstructQueryString(
     nsCAutoString additionalQueryOptions;
     if (aOptions->RedirectsMode() ==
           nsINavHistoryQueryOptions::REDIRECTS_MODE_SOURCE) {
+      // At least one visit that is not a redirect target should exist.
       additionalQueryOptions +=  nsPrintfCString(256,
-        "AND NOT EXISTS ( "
-          "SELECT id FROM moz_historyvisits WHERE place_id = h.id "
-                                             "AND visit_type IN (%d,%d)"
+        "AND EXISTS ( "
+          "SELECT id "
+          "FROM moz_historyvisits "
+          "WHERE place_id = h.id "
+            "AND visit_type NOT IN (%d,%d)"
         ") ",
         TRANSITION_REDIRECT_PERMANENT,
         TRANSITION_REDIRECT_TEMPORARY);
     }
     else if (aOptions->RedirectsMode() ==
               nsINavHistoryQueryOptions::REDIRECTS_MODE_TARGET) {
+      // At least one visit that is not a redirect source should exist.
       additionalQueryOptions += nsPrintfCString(1024,
-        "AND NOT EXISTS ( "
+        "AND EXISTS ( "
           "SELECT id "
           "FROM moz_historyvisits v "
           "WHERE place_id = h.id "
-            "AND EXISTS(SELECT id FROM moz_historyvisits "
+            "AND NOT EXISTS(SELECT id FROM moz_historyvisits "
                            "WHERE from_visit = v.id AND visit_type IN (%d,%d)) "
         ") ",
         TRANSITION_REDIRECT_PERMANENT,
@@ -3849,7 +3906,7 @@ nsNavHistory::ConstructQueryString(
     rv = QueryToSelectClause(aQueries[i], aOptions, i, &queryClause);
     NS_ENSURE_SUCCESS(rv, rv);
     if (! queryClause.IsEmpty()) {
-      aParamsPresent = PR_TRUE;
+      aParamsPresent = true;
       if (! conditions.IsEmpty()) // exists previous clause: multiple ones are ORed
         conditions += NS_LITERAL_CSTRING(" OR ");
       conditions += NS_LITERAL_CSTRING("(") + queryClause +
@@ -3860,7 +3917,7 @@ nsNavHistory::ConstructQueryString(
   // Determine whether we can push maxResults constraints into the queries
   // as LIMIT, or if we need to do result count clamping later
   // using FilterResultSet()
-  PRBool useLimitClause = !NeedToFilterResultSet(aQueries, aOptions);
+  bool useLimitClause = !NeedToFilterResultSet(aQueries, aOptions);
 
   PlacesSQLQueryBuilder queryStringBuilder(conditions, aOptions,
                                            useLimitClause, aAddParams,
@@ -3910,7 +3967,7 @@ nsNavHistory::GetQueryResults(nsNavHistoryQueryResultNode *aResultNode,
     return NS_ERROR_INVALID_ARG;
 
   nsCString queryString;
-  PRBool paramsPresent = PR_FALSE;
+  bool paramsPresent = false;
   nsNavHistory::StringHash addParams;
   addParams.Init(HISTORY_DATE_CONT_MAX);
   nsresult rv = ConstructQueryString(aQueries, aOptions, queryString, 
@@ -3927,9 +3984,7 @@ nsNavHistory::GetQueryResults(nsNavHistoryQueryResultNode *aResultNode,
     PRInt32 lastError = 0;
     (void)mDBConn->GetLastError(&lastError);
     printf("Places failed to create a statement from this query:\n%s\nStorage error (%d): %s\n",
-           PromiseFlatCString(queryString).get(),
-           lastError,
-           PromiseFlatCString(lastErrorString).get());
+           queryString.get(), lastError, lastErrorString.get());
   }
 #endif
   NS_ENSURE_SUCCESS(rv, rv);
@@ -3965,7 +4020,7 @@ nsNavHistory::GetQueryResults(nsNavHistoryQueryResultNode *aResultNode,
 // nsNavHistory::AddObserver
 
 NS_IMETHODIMP
-nsNavHistory::AddObserver(nsINavHistoryObserver* aObserver, PRBool aOwnsWeak)
+nsNavHistory::AddObserver(nsINavHistoryObserver* aObserver, bool aOwnsWeak)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG(aObserver);
@@ -3991,7 +4046,7 @@ nsresult
 nsNavHistory::BeginUpdateBatch()
 {
   if (mBatchLevel++ == 0) {
-    mBatchDBTransaction = new mozStorageTransaction(mDBConn, PR_FALSE);
+    mBatchDBTransaction = new mozStorageTransaction(mDBConn, false);
 
     NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
                      nsINavHistoryObserver, OnBeginUpdateBatch());
@@ -4005,7 +4060,7 @@ nsNavHistory::EndUpdateBatch()
 {
   if (--mBatchLevel == 0) {
     if (mBatchDBTransaction) {
-      nsresult rv = mBatchDBTransaction->Commit();
+      DebugOnly<nsresult> rv = mBatchDBTransaction->Commit();
       NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "Batch failed to commit transaction");
       delete mBatchDBTransaction;
       mBatchDBTransaction = nsnull;
@@ -4029,7 +4084,7 @@ nsNavHistory::RunInBatchMode(nsINavHistoryBatchCallback* aCallback,
 }
 
 NS_IMETHODIMP
-nsNavHistory::GetHistoryDisabled(PRBool *_retval)
+nsNavHistory::GetHistoryDisabled(bool *_retval)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG_POINTER(_retval);
@@ -4060,40 +4115,11 @@ nsNavHistory::AddPageWithDetails(nsIURI *aURI, const PRUnichar *aTitle,
     return NS_OK;
 
   PRInt64 visitID;
-  nsresult rv = AddVisit(aURI, aLastVisited, 0, TRANSITION_LINK, PR_FALSE,
+  nsresult rv = AddVisit(aURI, aLastVisited, 0, TRANSITION_LINK, false,
                          0, &visitID);
   NS_ENSURE_SUCCESS(rv, rv);
 
   return SetPageTitleInternal(aURI, nsString(aTitle));
-}
-
-
-/**
- * This was once used when the new window was set to "previous page".
- * Currently it is still referenced by browser.startup.page == 2, but that value
- * is not selectable from the UI.
- * TODO: Should be deprecated? There is no fast alternative to get this info.
- */
-NS_IMETHODIMP
-nsNavHistory::GetLastPageVisited(nsACString & aLastPageVisited)
-{
-  NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
-
-  nsCOMPtr<mozIStorageStatement> statement;
-  nsresult rv = mDBConn->CreateStatement(NS_LITERAL_CSTRING(
-      "SELECT url FROM moz_places "
-      "WHERE hidden = 0 "
-        "AND last_visit_date NOTNULL "
-      "ORDER BY last_visit_date DESC "),
-    getter_AddRefs(statement));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  PRBool hasMatch = PR_FALSE;
-  if (NS_SUCCEEDED(statement->ExecuteStep(&hasMatch)) && hasMatch)
-    return statement->GetUTF8String(0, aLastPageVisited);
-
-  aLastPageVisited.Truncate(0);
-  return NS_OK;
 }
 
 
@@ -4110,7 +4136,7 @@ nsNavHistory::GetCount(PRUint32 *aCount)
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG_POINTER(aCount);
 
-  PRBool hasEntries = PR_FALSE;
+  bool hasEntries = false;
   nsresult rv = GetHasHistoryEntries(&hasEntries);
   if (hasEntries)
     *aCount = 1;
@@ -4135,13 +4161,10 @@ nsNavHistory::RemovePagesInternal(const nsCString& aPlaceIdsQueryString)
   if (aPlaceIdsQueryString.IsEmpty())
     return NS_OK;
 
-  mozStorageTransaction transaction(mDBConn, PR_FALSE);
-
-  nsresult rv = PreparePlacesForVisitsDelete(aPlaceIdsQueryString);
-  NS_ENSURE_SUCCESS(rv, rv);
+  mozStorageTransaction transaction(mDBConn, false);
 
   // Delete all visits for the specified place ids.
-  rv = mDBConn->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
+  nsresult rv = mDBConn->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "DELETE FROM moz_historyvisits WHERE place_id IN (") +
         aPlaceIdsQueryString +
         NS_LITERAL_CSTRING(")"));
@@ -4154,47 +4177,6 @@ nsNavHistory::RemovePagesInternal(const nsCString& aPlaceIdsQueryString)
   mHasHistoryEntries = -1;
 
   return transaction.Commit();
-}
-
-
-/**
- * Prepares for deletion places that are about to have all their visits removed.
- * This is an internal method used by RemovePagesInternal and
- * RemoveVisitsByTimeframe.  This method does not execute in a transaction, so
- * callers should make sure they begin one if needed.
- *
- * @param aPlaceIdsQueryString
- *        A comma-separated list of place IDs, each of which is about to have
- *        all its visits removed
- */
-nsresult
-nsNavHistory::PreparePlacesForVisitsDelete(const nsCString& aPlaceIdsQueryString)
-{
-  // Return early if there is nothing to delete.
-  if (aPlaceIdsQueryString.IsEmpty())
-    return NS_OK;
-
-  // if a moz_place is annotated or was a bookmark,
-  // we won't delete it, but we will delete the moz_visits
-  // so we need to reset the frecency.  Note, we set frecency to
-  // -visit_count, as we use that value in our "on idle" query
-  // to figure out which places to recalculate frecency first.
-  // Pay attention to not set frecency = 0 if visit_count = 0
-  nsresult rv = mDBConn->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
-      "UPDATE moz_places "
-      "SET frecency = -MAX(visit_count, 1) "
-      "WHERE id IN ( "
-        "SELECT h.id " 
-        "FROM moz_places h "
-        "WHERE h.id IN ( ") + aPlaceIdsQueryString + NS_LITERAL_CSTRING(") "
-          "AND ( "
-            "EXISTS (SELECT b.id FROM moz_bookmarks b WHERE b.fk =h.id) "
-            "OR EXISTS (SELECT a.id FROM moz_annos a WHERE a.place_id = h.id) "
-          ") "        
-      ")"));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  return NS_OK;
 }
 
 
@@ -4219,25 +4201,28 @@ nsNavHistory::CleanupPlacesOnVisitsDelete(const nsCString& aPlaceIdsQueryString)
   // Collect about-to-be-deleted URIs to notify onDeleteURI.
   nsCOMPtr<mozIStorageStatement> stmt;
   mDBConn->CreateStatement(NS_LITERAL_CSTRING(
-    "SELECT h.id, h.url, (SUBSTR(h.url, 1, 6) <> 'place:' "
-                         "AND NOT EXISTS (SELECT b.id FROM moz_bookmarks b "
-                                         "WHERE b.fk = h.id LIMIT 1)"
-                         ") as whole_entry "
+    "SELECT h.id, h.url, h.guid, "
+           "(SUBSTR(h.url, 1, 6) <> 'place:' "
+           " AND NOT EXISTS (SELECT b.id FROM moz_bookmarks b "
+                            "WHERE b.fk = h.id LIMIT 1)) as whole_entry "
     "FROM moz_places h "
     "WHERE h.id IN ( ") + aPlaceIdsQueryString + NS_LITERAL_CSTRING(") "
   ), getter_AddRefs(stmt));
   NS_ENSURE_STATE(stmt);
   nsCString filteredPlaceIds;
   nsCOMArray<nsIURI> URIs;
-  PRBool hasMore;
+  nsTArray<nsCString> GUIDs;
+  bool hasMore;
   while (NS_SUCCEEDED(stmt->ExecuteStep(&hasMore)) && hasMore) {
     PRInt64 placeId;
     nsresult rv = stmt->GetInt64(0, &placeId);
     NS_ENSURE_SUCCESS(rv, rv);
     nsCAutoString URLString;
     rv = stmt->GetUTF8String(1, URLString);
+    nsCString guid;
+    rv = stmt->GetUTF8String(2, guid);
     PRInt32 wholeEntry;
-    rv = stmt->GetInt32(2, &wholeEntry);
+    rv = stmt->GetInt32(3, &wholeEntry);
     nsCOMPtr<nsIURI> uri;
     rv = NS_NewURI(getter_AddRefs(uri), URLString);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -4247,15 +4232,18 @@ nsNavHistory::CleanupPlacesOnVisitsDelete(const nsCString& aPlaceIdsQueryString)
       }
       filteredPlaceIds.AppendInt(placeId);
       URIs.AppendObject(uri);
+      GUIDs.AppendElement(guid);
       // Notify we are about to remove this uri.
       NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
-                       nsINavHistoryObserver, OnBeforeDeleteURI(uri));
+                       nsINavHistoryObserver,
+                       OnBeforeDeleteURI(uri, guid, nsINavHistoryObserver::REASON_DELETED));
     }
     else {
       // Notify that we will delete all visits for this page, but not the page
       // itself, since it's bookmarked or a place: query.
       NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
-                       nsINavHistoryObserver, OnDeleteVisits(uri, 0));
+                       nsINavHistoryObserver,
+                       OnDeleteVisits(uri, 0, guid, nsINavHistoryObserver::REASON_DELETED));
     }
   }
 
@@ -4269,16 +4257,15 @@ nsNavHistory::CleanupPlacesOnVisitsDelete(const nsCString& aPlaceIdsQueryString)
       ") "));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // If we have removed all visits to a livemark's child, we need to fix its
-  // frecency, or it would appear in the url bar autocomplete.
-  // XXX this might be dog slow, further degrading delete perf.
-  rv = FixInvalidFrecenciesForExcludedPlaces();
+  // Invalidate frecencies of touched places, since they need recalculation.
+  rv = invalidateFrecencies(aPlaceIdsQueryString);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Finally notify about the removed URIs.
   for (PRInt32 i = 0; i < URIs.Count(); ++i) {
     NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
-                     nsINavHistoryObserver, OnDeleteURI(URIs[i]));
+                     nsINavHistoryObserver,
+                     OnDeleteURI(URIs[i], GUIDs[i], nsINavHistoryObserver::REASON_DELETED));
   }
 
   return NS_OK;
@@ -4289,12 +4276,10 @@ nsNavHistory::CleanupPlacesOnVisitsDelete(const nsCString& aPlaceIdsQueryString)
 //
 //    Removes a bunch of uris from history.
 //    Has better performance than RemovePage when deleting a lot of history.
-//    Notice that this function does not call the onDeleteURI observers,
-//    instead, if aDoBatchNotify is true, we call OnBegin/EndUpdateBatch.
 //    We don't do duplicates removal, URIs array should be cleaned-up before.
 
 NS_IMETHODIMP
-nsNavHistory::RemovePages(nsIURI **aURIs, PRUint32 aLength, PRBool aDoBatchNotify)
+nsNavHistory::RemovePages(nsIURI **aURIs, PRUint32 aLength)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG(aURIs);
@@ -4304,7 +4289,8 @@ nsNavHistory::RemovePages(nsIURI **aURIs, PRUint32 aLength, PRBool aDoBatchNotif
   nsCString deletePlaceIdsQueryString;
   for (PRUint32 i = 0; i < aLength; i++) {
     PRInt64 placeId;
-    rv = GetUrlIdFor(aURIs[i], &placeId, PR_FALSE);
+    nsCAutoString guid;
+    rv = GetIdForPage(aURIs[i], &placeId, guid);
     NS_ENSURE_SUCCESS(rv, rv);
     if (placeId != 0) {
       if (!deletePlaceIdsQueryString.IsEmpty())
@@ -4313,9 +4299,7 @@ nsNavHistory::RemovePages(nsIURI **aURIs, PRUint32 aLength, PRBool aDoBatchNotif
     }
   }
 
-  // force a full refresh calling onEndUpdateBatch (will call Refresh())
-  if (aDoBatchNotify)
-    UpdateBatchScoper batch(*this); // sends Begin/EndUpdateBatch to observers
+  UpdateBatchScoper batch(*this); // sends Begin/EndUpdateBatch to observers
 
   rv = RemovePagesInternal(deletePlaceIdsQueryString);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -4338,9 +4322,22 @@ nsNavHistory::RemovePage(nsIURI *aURI)
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG(aURI);
 
-  nsIURI** URIs = &aURI;
-  nsresult rv = RemovePages(URIs, 1, PR_FALSE);
+  // Build a list of place ids to delete.
+  PRInt64 placeId;
+  nsCAutoString guid;
+  nsresult rv = GetIdForPage(aURI, &placeId, guid);
   NS_ENSURE_SUCCESS(rv, rv);
+  if (placeId == 0) {
+    return NS_OK;
+  }
+  nsCAutoString deletePlaceIdQueryString;
+  deletePlaceIdQueryString.AppendInt(placeId);
+
+  rv = RemovePagesInternal(deletePlaceIdQueryString);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Clear the registered embed visits.
+  clearEmbedVisits();
 
   return NS_OK;
 }
@@ -4360,7 +4357,7 @@ nsNavHistory::RemovePage(nsIURI *aURI)
 //    This sends onBeginUpdateBatch/onEndUpdateBatch to observers
 
 NS_IMETHODIMP
-nsNavHistory::RemovePagesFromHost(const nsACString& aHost, PRBool aEntireDomain)
+nsNavHistory::RemovePagesFromHost(const nsACString& aHost, bool aEntireDomain)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
 
@@ -4368,7 +4365,7 @@ nsNavHistory::RemovePagesFromHost(const nsACString& aHost, PRBool aEntireDomain)
   // Local files don't have any host name. We don't want to delete all files in
   // history when we get passed an empty string, so force to exact match
   if (aHost.IsEmpty())
-    aEntireDomain = PR_FALSE;
+    aEntireDomain = false;
 
   // translate "(local files)" to an empty host name
   // be sure to use the TitleForDomain to get the localized name
@@ -4415,7 +4412,7 @@ nsNavHistory::RemovePagesFromHost(const nsACString& aHost, PRBool aEntireDomain)
   }
 
   nsCString hostPlaceIds;
-  PRBool hasMore = PR_FALSE;
+  bool hasMore = false;
   while (NS_SUCCEEDED(statement->ExecuteStep(&hasMore)) && hasMore) {
     if (!hostPlaceIds.IsEmpty())
       hostPlaceIds.AppendLiteral(",");
@@ -4470,7 +4467,7 @@ nsNavHistory::RemovePagesByTimeframe(PRTime aBeginTime, PRTime aEndTime)
   rv = selectByTime->BindInt64ByName(NS_LITERAL_CSTRING("to_date"), aEndTime);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasMore = PR_FALSE;
+  bool hasMore = false;
   while (NS_SUCCEEDED(selectByTime->ExecuteStep(&hasMore)) && hasMore) {
     PRInt64 placeId;
     rv = selectByTime->GetInt64(0, &placeId);
@@ -4538,7 +4535,7 @@ nsNavHistory::RemoveVisitsByTimeframe(PRTime aBeginTime, PRTime aEndTime)
     rv = selectByTime->BindInt64ByName(NS_LITERAL_CSTRING("to_date"), aEndTime);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    PRBool hasMore = PR_FALSE;
+    bool hasMore = false;
     while (NS_SUCCEEDED(selectByTime->ExecuteStep(&hasMore)) && hasMore) {
       PRInt64 placeId;
       rv = selectByTime->GetInt64(0, &placeId);
@@ -4555,10 +4552,7 @@ nsNavHistory::RemoveVisitsByTimeframe(PRTime aBeginTime, PRTime aEndTime)
   // force a full refresh calling onEndUpdateBatch (will call Refresh())
   UpdateBatchScoper batch(*this); // sends Begin/EndUpdateBatch to observers
 
-  mozStorageTransaction transaction(mDBConn, PR_FALSE);
-
-  rv = PreparePlacesForVisitsDelete(deletePlaceIdsQueryString);
-  NS_ENSURE_SUCCESS(rv, rv);
+  mozStorageTransaction transaction(mDBConn, false);
 
   // Delete all visits within the timeframe.
   nsCOMPtr<mozIStorageStatement> deleteVisitsStmt;
@@ -4599,31 +4593,8 @@ nsNavHistory::RemoveAllPages()
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
 
-  mozStorageTransaction transaction(mDBConn, PR_FALSE);
-
-  // reset frecency for all items that will _not_ be deleted
-  // Note, we set frecency to -visit_count since we use that value in our
-  // idle query to figure out which places to recalcuate frecency first.
-  // We must do this before deleting visits.
   nsresult rv = mDBConn->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
-    "UPDATE moz_places SET frecency = -MAX(visit_count, 1) "
-    "WHERE id IN(SELECT b.fk FROM moz_bookmarks b WHERE b.fk NOTNULL)"));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // Expire visits, then let the paranoid functions do the cleanup for us.
-  rv = mDBConn->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
       "DELETE FROM moz_historyvisits"));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // Some of the remaining places could be place: urls or
-  // unvisited livemark items, so setting the frecency to -1
-  // will cause them to show up in the url bar autocomplete
-  // call FixInvalidFrecenciesForExcludedPlaces to handle that scenario.
-  rv = FixInvalidFrecenciesForExcludedPlaces();
-  if (NS_FAILED(rv))
-    NS_WARNING("failed to fix invalid frecencies");
-
-  rv = transaction.Commit();
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Clear the registered embed visits.
@@ -4636,17 +4607,10 @@ nsNavHistory::RemoveAllPages()
   NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
                    nsINavHistoryObserver, OnClearHistory());
 
-  // privacy cleanup, if there's an old history.dat around, just delete it
-  nsCOMPtr<nsIFile> oldHistoryFile;
-  rv = NS_GetSpecialDirectory(NS_APP_HISTORY_50_FILE,
-                              getter_AddRefs(oldHistoryFile));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  PRBool fileExists;
-  if (NS_SUCCEEDED(oldHistoryFile->Exists(&fileExists)) && fileExists) {
-    rv = oldHistoryFile->Remove(PR_FALSE);
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
+  // Invalidate frecencies for the remaining places.  This must happen
+  // after the notification to ensure it runs enqueued to expiration.
+  rv = invalidateFrecencies(EmptyCString());
+  NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "failed to fix invalid frecencies");
 
   return NS_OK;
 }
@@ -4735,40 +4699,6 @@ nsNavHistory::MarkPageAsFollowedLink(nsIURI *aURI)
 }
 
 
-NS_IMETHODIMP
-nsNavHistory::RegisterOpenPage(nsIURI* aURI)
-{
-  NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
-  NS_ENSURE_ARG(aURI);
-
-  nsCOMPtr<mozIPlacesAutoComplete> ac =
-    do_GetService("@mozilla.org/autocomplete/search;1?name=history");
-  NS_ENSURE_STATE(ac);
-
-  nsresult rv = ac->RegisterOpenPage(aURI);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  return NS_OK;
-}
-
-
-NS_IMETHODIMP
-nsNavHistory::UnregisterOpenPage(nsIURI* aURI)
-{
-  NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
-  NS_ENSURE_ARG(aURI);
-
-  nsCOMPtr<mozIPlacesAutoComplete> ac =
-    do_GetService("@mozilla.org/autocomplete/search;1?name=history");
-  NS_ENSURE_STATE(ac);
-
-  nsresult rv = ac->UnregisterOpenPage(aURI);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  return NS_OK;
-}
-
-
 // nsNavHistory::SetCharsetForURI
 //
 // Sets the character-set for a URI.
@@ -4838,14 +4768,14 @@ nsNavHistory::GetCharsetForURI(nsIURI* aURI,
 //    This is the main method of adding history entries.
 
 NS_IMETHODIMP
-nsNavHistory::AddURI(nsIURI *aURI, PRBool aRedirect,
-                     PRBool aToplevel, nsIURI *aReferrer)
+nsNavHistory::AddURI(nsIURI *aURI, bool aRedirect,
+                     bool aToplevel, nsIURI *aReferrer)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG(aURI);
 
   // filter out any unwanted URIs
-  PRBool canAdd = PR_FALSE;
+  bool canAdd = false;
   nsresult rv = CanAddURI(aURI, &canAdd);
   NS_ENSURE_SUCCESS(rv, rv);
   if (!canAdd)
@@ -4865,10 +4795,10 @@ nsNavHistory::AddURI(nsIURI *aURI, PRBool aRedirect,
 //    This does the work of AddURI so it can be done lazily.
 
 nsresult
-nsNavHistory::AddURIInternal(nsIURI* aURI, PRTime aTime, PRBool aRedirect,
-                             PRBool aToplevel, nsIURI* aReferrer)
+nsNavHistory::AddURIInternal(nsIURI* aURI, PRTime aTime, bool aRedirect,
+                             bool aToplevel, nsIURI* aReferrer)
 {
-  mozStorageTransaction transaction(mDBConn, PR_FALSE);
+  mozStorageTransaction transaction(mDBConn, false);
 
   PRInt64 visitID = 0;
   PRInt64 sessionID = 0;
@@ -4888,17 +4818,13 @@ nsNavHistory::AddURIInternal(nsIURI* aURI, PRTime aTime, PRBool aRedirect,
 //    (like referring visit ID and typed/bookmarked state).
 //
 //    This function walks up the referring chain and recursively calls itself,
-//    each time calling InternalAdd to create a new history entry. (When we
-//    get notified of redirects, we don't actually add any history entries, just
-//    save them in mRecentRedirects. This function will add all of them for a
-//    given destination page when that page is actually visited.)
-//    See GetRedirectFor for more information about how redirects work.
+//    each time calling InternalAdd to create a new history entry.
 
 nsresult
 nsNavHistory::AddVisitChain(nsIURI* aURI,
                             PRTime aTime,
-                            PRBool aToplevel,
-                            PRBool aIsRedirect,
+                            bool aToplevel,
+                            bool aIsRedirect,
                             nsIURI* aReferrerURI,
                             PRInt64* aVisitID,
                             PRInt64* aSessionID)
@@ -4915,67 +4841,25 @@ nsNavHistory::AddVisitChain(nsIURI* aURI,
   // come from a user's action (like clicking a link), otherwise is FRAMED_LINK.
   // An embed visit should not appear in history views.
   // See bug 381453 for details.
-  PRBool isEmbedVisit = !aToplevel &&
+  bool isEmbedVisit = !aToplevel &&
                         !CheckIsRecentEvent(&mRecentLink, spec);
 
-  // Check if this visit came from a redirect.
   PRUint32 transitionType = 0;
-  PRTime redirectTime = 0;
-  nsCAutoString redirectSourceUrl;
-  if (GetRedirectFor(spec, redirectSourceUrl, &redirectTime, &transitionType)) {
-    // redirectSourceUrl redirected to aURL, at redirectTime, with
-    // a transitionType redirect.
-    nsCOMPtr<nsIURI> redirectSourceURI;
-    rv = NS_NewURI(getter_AddRefs(redirectSourceURI), redirectSourceUrl);
-    NS_ENSURE_SUCCESS(rv, rv);
 
-    // Don't add a new visit if a page redirects to itself.
-    PRBool redirectIsSame;
-    if (NS_SUCCEEDED(aURI->Equals(redirectSourceURI, &redirectIsSame)) &&
-        redirectIsSame)
-      return NS_OK;
-
-    // Recusively call addVisitChain to walk up the chain till the first
-    // not-redirected URI.
-    // Ensure that the sources have a visit time smaller than aTime, otherwise
-    // visits would end up incorrectly ordered.
-    PRTime sourceTime = NS_MIN(redirectTime, aTime - 1);
-    PRInt64 sourceVisitId = 0;
-    rv = AddVisitChain(redirectSourceURI, sourceTime, aToplevel,
-                       PR_TRUE, // Is a redirect.
-                       aReferrerURI, // This one is the originating source.
-                       &sourceVisitId, // Get back the visit id of the source.
-                       aSessionID);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    // All the visits for preceding pages in the redirects chain have been
-    // added, now add the visit to aURI.
-    if (isEmbedVisit)
-      transitionType = nsINavHistoryService::TRANSITION_EMBED;
-    else if (!aToplevel)
-      transitionType = nsINavHistoryService::TRANSITION_FRAMED_LINK;
-
-    // This page is result of a redirect, save the source page in from_visit,
-    // to be able to walk up the chain.
-    // See bug 411966 and bug 428690 for details.
-    // TODO: Add a closure table with a chain id to easily reconstruct chains
-    // without having to recurse through the table.  See bug 468710.
-    fromVisitURI = redirectSourceURI;
-  }
-  else if (aReferrerURI) {
-    // This page does not come from a redirect and had a referrer.
+  if (aReferrerURI) {
+  // This page had a referrer.
 
     // Check if the referrer has a previous visit.
     PRTime lastVisitTime;
     PRInt64 referringVisitId;
-    PRBool referrerHasPreviousVisit =
+    bool referrerHasPreviousVisit =
       FindLastVisit(aReferrerURI, &referringVisitId, &lastVisitTime, aSessionID);
 
     // Don't add a new visit if the referring site is the same as
     // the new site.  This happens when a page refreshes itself.
     // Otherwise, if the page has never been added, the visit should be
     // registered regardless.
-    PRBool referrerIsSame;
+    bool referrerIsSame;
     if (NS_SUCCEEDED(aURI->Equals(aReferrerURI, &referrerIsSame)) &&
         referrerIsSame && referrerHasPreviousVisit) {
       // Ensure a valid session id to the chain.
@@ -5042,7 +4926,7 @@ nsNavHistory::AddVisitChain(nsIURI* aURI,
 //    the history list view and autocomplete.
 
 NS_IMETHODIMP
-nsNavHistory::IsVisited(nsIURI *aURI, PRBool *_retval)
+nsNavHistory::IsVisited(nsIURI *aURI, bool *_retval)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG(aURI);
@@ -5050,7 +4934,7 @@ nsNavHistory::IsVisited(nsIURI *aURI, PRBool *_retval)
 
   // if history is disabled, we can optimize
   if (IsHistoryDisabled()) {
-    *_retval = PR_FALSE;
+    *_retval = false;
     return NS_OK;
   }
 
@@ -5058,7 +4942,7 @@ nsNavHistory::IsVisited(nsIURI *aURI, PRBool *_retval)
   nsresult rv = aURI->GetSpec(utf8URISpec);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  *_retval = hasEmbedVisit(aURI) ? PR_TRUE : IsURIStringVisited(utf8URISpec);
+  *_retval = hasEmbedVisit(aURI) ? true : IsURIStringVisited(utf8URISpec);
   return NS_OK;
 }
 
@@ -5093,7 +4977,7 @@ nsNavHistory::SetPageTitle(nsIURI* aURI,
   if (aTitle.IsEmpty()) {
     // Using a void string to bind a NULL in the database.
     nsString voidString;
-    voidString.SetIsVoid(PR_TRUE);
+    voidString.SetIsVoid(true);
     rv = SetPageTitleInternal(aURI, voidString);
   }
   else {
@@ -5116,118 +5000,17 @@ nsNavHistory::GetPageTitle(nsIURI* aURI, nsAString& aTitle)
   nsresult rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasResults = PR_FALSE;
+  bool hasResults = false;
   rv = stmt->ExecuteStep(&hasResults);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (!hasResults) {
-    aTitle.SetIsVoid(PR_TRUE);
+    aTitle.SetIsVoid(true);
     return NS_OK; // Not found, return a void string.
   }
 
   rv = stmt->GetString(nsNavHistory::kGetInfoIndex_Title, aTitle);
   NS_ENSURE_SUCCESS(rv, rv);
-
-  return NS_OK;
-}
-
-// nsNavHistory::GetURIGeckoFlags
-//
-//    FIXME: should we try to use annotations for this stuff?
-
-NS_IMETHODIMP
-nsNavHistory::GetURIGeckoFlags(nsIURI* aURI, PRUint32* aResult)
-{
-  NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
-  NS_ENSURE_ARG(aURI);
-  NS_ENSURE_ARG_POINTER(aResult);
-
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-
-// nsNavHistory::SetURIGeckoFlags
-//
-//    FIXME: should we try to use annotations for this stuff?
-
-NS_IMETHODIMP
-nsNavHistory::SetURIGeckoFlags(nsIURI* aURI, PRUint32 aFlags)
-{
-  NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
-  NS_ENSURE_ARG(aURI);
-
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-// nsIGlobalHistory3 ***********************************************************
-
-// nsNavHistory::AddDocumentRedirect
-//
-//    This adds a redirect mapping from the destination of the redirect to the
-//    source, time, and type. This mapping is used by GetRedirectFor when we
-//    get a page added to reconstruct the redirects that happened when a page
-//    is visited. See GetRedirectFor for more information
-
-// this is the expiration callback function that deletes stale entries
-PLDHashOperator nsNavHistory::ExpireNonrecentRedirects(
-    nsCStringHashKey::KeyType aKey, RedirectInfo& aData, void* aUserArg)
-{
-  PRInt64* threshold = reinterpret_cast<PRInt64*>(aUserArg);
-  if (aData.mTimeCreated < *threshold)
-    return PL_DHASH_REMOVE;
-  return PL_DHASH_NEXT;
-}
-
-NS_IMETHODIMP
-nsNavHistory::AddDocumentRedirect(nsIChannel *aOldChannel,
-                                  nsIChannel *aNewChannel,
-                                  PRInt32 aFlags,
-                                  PRBool aToplevel)
-{
-  NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
-  NS_ENSURE_ARG(aOldChannel);
-  NS_ENSURE_ARG(aNewChannel);
-
-  // Ignore internal redirects.
-  // These redirects are not initiated by the remote server, but specific to the
-  // channel implementation, so they are ignored.
-  if (aFlags & nsIChannelEventSink::REDIRECT_INTERNAL)
-    return NS_OK;
-
-  nsresult rv;
-  nsCOMPtr<nsIURI> oldURI, newURI;
-  rv = aOldChannel->GetURI(getter_AddRefs(oldURI));
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = aNewChannel->GetURI(getter_AddRefs(newURI));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCString oldSpec, newSpec;
-  rv = oldURI->GetSpec(oldSpec);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = newURI->GetSpec(newSpec);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (mRecentRedirects.Count() > RECENT_EVENT_QUEUE_MAX_LENGTH) {
-    // Expire outdated cached redirects.
-    PRInt64 threshold = PR_Now() - RECENT_EVENT_THRESHOLD;
-    mRecentRedirects.Enumerate(ExpireNonrecentRedirects,
-                               reinterpret_cast<void*>(&threshold));
-  }
-
-  RedirectInfo info;
-
-  // Remove any old entries for this redirect destination, since they are going
-  // to be replaced.
-  if (mRecentRedirects.Get(newSpec, &info))
-    mRecentRedirects.Remove(newSpec);
-  // Save the new redirect info.
-  info.mSourceURI = oldSpec;
-  info.mTimeCreated = PR_Now();
-  if (aFlags & nsIChannelEventSink::REDIRECT_TEMPORARY)
-    info.mType = TRANSITION_REDIRECT_TEMPORARY;
-  else
-    info.mType = TRANSITION_REDIRECT_PERMANENT;
-  mRecentRedirects.Put(newSpec, info);
 
   return NS_OK;
 }
@@ -5252,17 +5035,17 @@ nsNavHistory::GetExpectedDatabasePageSize(PRInt32* _expectedPageSize)
 
 
 NS_IMETHODIMP
-nsNavHistory::OnBeginVacuum(PRBool* _vacuumGranted)
+nsNavHistory::OnBeginVacuum(bool* _vacuumGranted)
 {
   // TODO: Check if we have to deny the vacuum in some heavy-load case.
   // We could maybe want to do that during batches?
-  *_vacuumGranted = PR_TRUE;
+  *_vacuumGranted = true;
   return NS_OK;
 }
 
 
 NS_IMETHODIMP
-nsNavHistory::OnEndVacuum(PRBool aSucceeded)
+nsNavHistory::OnEndVacuum(bool aSucceeded)
 {
   NS_WARN_IF_FALSE(aSucceeded, "Places.sqlite vacuum failed.");
   return NS_OK;
@@ -5274,7 +5057,7 @@ nsNavHistory::OnEndVacuum(PRBool aSucceeded)
 
 NS_IMETHODIMP
 nsNavHistory::AddDownload(nsIURI* aSource, nsIURI* aReferrer,
-                          PRTime aStartTime)
+                          PRTime aStartTime, nsIURI* aDestination)
 {
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
   NS_ENSURE_ARG(aSource);
@@ -5284,8 +5067,62 @@ nsNavHistory::AddDownload(nsIURI* aSource, nsIURI* aReferrer,
     return NS_OK;
 
   PRInt64 visitID;
-  return AddVisit(aSource, aStartTime, aReferrer, TRANSITION_DOWNLOAD, PR_FALSE,
-                  0, &visitID);
+  nsresult rv = AddVisit(aSource, aStartTime, aReferrer, TRANSITION_DOWNLOAD,
+                         false, 0, &visitID);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (!aDestination) {
+    return NS_OK;
+  }
+
+  // Exit silently if the download destination is not a local file.
+  nsCOMPtr<nsIFileURL> destinationFileURL = do_QueryInterface(aDestination);
+  if (!destinationFileURL) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIFile> destinationFile;
+  rv = destinationFileURL->GetFile(getter_AddRefs(destinationFile));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsAutoString destinationFileName;
+  rv = destinationFile->GetLeafName(destinationFileName);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCAutoString destinationURISpec;
+  rv = destinationFileURL->GetSpec(destinationURISpec);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Use annotations for storing the additional download metadata.
+  nsAnnotationService* annosvc = nsAnnotationService::GetAnnotationService();
+  NS_ENSURE_TRUE(annosvc, NS_ERROR_OUT_OF_MEMORY);
+
+  (void)annosvc->SetPageAnnotationString(
+    aSource,
+    DESTINATIONFILEURI_ANNO,
+    NS_ConvertUTF8toUTF16(destinationURISpec),
+    0,
+    nsIAnnotationService::EXPIRE_WITH_HISTORY
+  );
+
+  (void)annosvc->SetPageAnnotationString(
+    aSource,
+    DESTINATIONFILENAME_ANNO,
+    destinationFileName,
+    0,
+    nsIAnnotationService::EXPIRE_WITH_HISTORY
+  );
+
+  // In case we are downloading a file that does not correspond to a web
+  // page for which the title is present, we populate the otherwise empty
+  // history title with the name of the destination file, to allow it to be
+  // visible and searchable in history results.
+  nsAutoString title;
+  if (NS_SUCCEEDED(GetPageTitle(aSource, title)) && title.IsEmpty()) {
+    (void)SetPageTitle(aSource, destinationFileName);
+  }
+
+  return NS_OK;
 }
 
 
@@ -5310,23 +5147,23 @@ nsNavHistory::FinalizeInternalStatements()
   nsresult rv = FinalizeStatements();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // nsNavBookmarks
-  nsNavBookmarks *bookmarks = nsNavBookmarks::GetBookmarksService();
-  NS_ENSURE_TRUE(bookmarks, NS_ERROR_OUT_OF_MEMORY);
-  rv = bookmarks->FinalizeStatements();
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsNavBookmarks* bookmarks = nsNavBookmarks::GetBookmarksServiceIfAvailable();
+  if (bookmarks) {
+    rv = bookmarks->FinalizeStatements();
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
 
-  // nsAnnotationService
-  nsAnnotationService* annosvc = nsAnnotationService::GetAnnotationService();
-  NS_ENSURE_TRUE(annosvc, NS_ERROR_OUT_OF_MEMORY);
-  rv = annosvc->FinalizeStatements();
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsAnnotationService* annosvc = nsAnnotationService::GetAnnotationServiceIfAvailable();
+  if (annosvc) {
+    rv = annosvc->FinalizeStatements();
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
 
-  // nsFaviconService
-  nsFaviconService* iconsvc = nsFaviconService::GetFaviconService();
-  NS_ENSURE_TRUE(iconsvc, NS_ERROR_OUT_OF_MEMORY);
-  rv = iconsvc->FinalizeStatements();
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsFaviconService* iconsvc = nsFaviconService::GetFaviconServiceIfAvailable();
+  if (iconsvc) {
+    rv = iconsvc->FinalizeStatements();
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
 
   return NS_OK;
 }
@@ -5357,15 +5194,15 @@ nsNavHistory::AsyncExecuteLegacyQueries(nsINavHistoryQuery** aQueries,
   NS_ENSURE_ARG(options);
 
   nsCString queryString;
-  PRBool paramsPresent = PR_FALSE;
+  bool paramsPresent = false;
   nsNavHistory::StringHash addParams;
   addParams.Init(HISTORY_DATE_CONT_MAX);
   nsresult rv = ConstructQueryString(queries, options, queryString,
                                      paramsPresent, addParams);
   NS_ENSURE_SUCCESS(rv,rv);
 
-  nsCOMPtr<mozIStorageStatement> statement;
-  rv = mDBConn->CreateStatement(queryString, getter_AddRefs(statement));
+  nsCOMPtr<mozIStorageAsyncStatement> statement;
+  rv = mDBConn->CreateAsyncStatement(queryString, getter_AddRefs(statement));
 #ifdef DEBUG
   if (NS_FAILED(rv)) {
     nsCAutoString lastErrorString;
@@ -5373,9 +5210,7 @@ nsNavHistory::AsyncExecuteLegacyQueries(nsINavHistoryQuery** aQueries,
     PRInt32 lastError = 0;
     (void)mDBConn->GetLastError(&lastError);
     printf("Places failed to create a statement from this query:\n%s\nStorage error (%d): %s\n",
-           PromiseFlatCString(queryString).get(),
-           lastError,
-           PromiseFlatCString(lastErrorString).get());
+           queryString.get(), lastError, lastErrorString.get());
   }
 #endif
   NS_ENSURE_SUCCESS(rv, rv);
@@ -5401,20 +5236,23 @@ nsNavHistory::AsyncExecuteLegacyQueries(nsINavHistoryQuery** aQueries,
 
 NS_IMETHODIMP
 nsNavHistory::NotifyOnPageExpired(nsIURI *aURI, PRTime aVisitTime,
-                                  PRBool aWholeEntry)
+                                  bool aWholeEntry, const nsACString& aGUID,
+                                  PRUint16 aReason)
 {
   // Invalidate the cached value for whether there's history or not.
   mHasHistoryEntries = -1;
 
+  MOZ_ASSERT(!aGUID.IsEmpty());
   if (aWholeEntry) {
     // Notify our observers that the page has been removed.
     NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
-                     nsINavHistoryObserver, OnDeleteURI(aURI));
+                     nsINavHistoryObserver, OnDeleteURI(aURI, aGUID, aReason));
   }
   else {
     // Notify our observers that some visits for the page have been removed.
     NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
-                     nsINavHistoryObserver, OnDeleteVisits(aURI, aVisitTime));
+                     nsINavHistoryObserver,
+                     OnDeleteVisits(aURI, aVisitTime, aGUID, aReason));
   }
 
   return NS_OK;
@@ -5429,7 +5267,7 @@ nsNavHistory::Observe(nsISupports *aSubject, const char *aTopic,
   NS_ASSERTION(NS_IsMainThread(), "This can only be called on the main thread");
 
   if (strcmp(aTopic, TOPIC_PROFILE_TEARDOWN) == 0) {
-    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+    nsCOMPtr<nsIObserverService> os = services::GetObserverService();
     if (!os) {
       NS_WARNING("Unable to shutdown Places: Observer Service unavailable.");
       return NS_OK;
@@ -5451,7 +5289,7 @@ nsNavHistory::Observe(nsISupports *aSubject, const char *aTopic,
                                          getter_AddRefs(e));
     if (NS_SUCCEEDED(rv) && e) {
       nsCOMPtr<nsIObserver> observer;
-      PRBool loop = PR_TRUE;
+      bool loop = true;
       while(NS_SUCCEEDED(e->HasMoreElements(&loop)) && loop) {
         e->GetNext(getter_AddRefs(observer));
         (void)observer->Observe(observer, TOPIC_PLACES_INIT_COMPLETE, nsnull);
@@ -5464,15 +5302,10 @@ nsNavHistory::Observe(nsISupports *aSubject, const char *aTopic,
 
   else if (strcmp(aTopic, TOPIC_PROFILE_CHANGE) == 0) {
     // Fire internal shutdown notifications.
-    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+    nsCOMPtr<nsIObserverService> os = services::GetObserverService();
     if (os) {
       (void)os->RemoveObserver(this, TOPIC_PROFILE_CHANGE);
-      // Double notification allows to correctly enqueue tasks without the need
-      // to enqueue notification events to the main-thread.  There is no
-      // guarantee that the event loop will spin before xpcom-shutdown indeed,
-      // see bug 580892.
       (void)os->NotifyObservers(nsnull, TOPIC_PLACES_WILL_CLOSE_CONNECTION, nsnull);
-      (void)os->NotifyObservers(nsnull, TOPIC_PLACES_CONNECTION_CLOSING, nsnull);
     }
 
     // Operations that are unlikely to create issues to implementers should go
@@ -5501,7 +5334,7 @@ nsNavHistory::Observe(nsISupports *aSubject, const char *aTopic,
       ), getter_AddRefs(stmt));
       NS_ENSURE_SUCCESS(rv, rv);
 
-      PRBool haveNullGuids;
+      bool haveNullGuids;
       rv = stmt->ExecuteStep(&haveNullGuids);
       NS_ENSURE_SUCCESS(rv, rv);
       NS_ASSERTION(!haveNullGuids,
@@ -5532,7 +5365,7 @@ nsNavHistory::Observe(nsISupports *aSubject, const char *aTopic,
       return NS_OK;
 
     // Don't bother if the popup is closed
-    PRBool open;
+    bool open;
     nsresult rv = popup->GetPopupOpen(&open);
     NS_ENSURE_SUCCESS(rv, rv);
     if (!open)
@@ -5565,22 +5398,11 @@ nsNavHistory::Observe(nsISupports *aSubject, const char *aTopic,
 
   else if (strcmp(aTopic, NS_PRIVATE_BROWSING_SWITCH_TOPIC) == 0) {
     if (NS_LITERAL_STRING(NS_PRIVATE_BROWSING_ENTER).Equals(aData)) {
-      mInPrivateBrowsing = PR_TRUE;
+      mInPrivateBrowsing = true;
     }
     else if (NS_LITERAL_STRING(NS_PRIVATE_BROWSING_LEAVE).Equals(aData)) {
-      mInPrivateBrowsing = PR_FALSE;
+      mInPrivateBrowsing = false;
     }
-  }
-
-  else if (strcmp(aTopic, TOPIC_PLACES_INIT_COMPLETE) == 0) {
-    nsCOMPtr<nsIObserverService> os =
-      do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
-    NS_ENSURE_TRUE(os, NS_ERROR_FAILURE);
-    (void)os->RemoveObserver(this, TOPIC_PLACES_INIT_COMPLETE);
-
-    // This code is only called if we've either imported or done a migration
-    // from a pre-frecency build, so we will calculate all their frecencies.
-    (void)FixInvalidFrecencies();
   }
 
   return NS_OK;
@@ -5625,7 +5447,7 @@ nsNavHistory::DecayFrecency()
     deleteAdaptive
   };
   nsCOMPtr<mozIStoragePendingStatement> ps;
-  rv = mDBConn->ExecuteAsync(stmts, NS_ARRAY_LENGTH(stmts), nsnull,
+  rv = mDBConn->ExecuteAsync(stmts, ArrayLength(stmts), nsnull,
                              getter_AddRefs(ps));
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -5702,7 +5524,7 @@ nsNavHistory::QueryToSelectClause(nsNavHistoryQuery* aQuery, // const
                                   PRInt32 aQueryIndex,
                                   nsCString* aClause)
 {
-  PRBool hasIt;
+  bool hasIt;
 
   ConditionBuilder clause(aQueryIndex);
 
@@ -5720,14 +5542,14 @@ nsNavHistory::QueryToSelectClause(nsNavHistoryQuery* aQuery, // const
   }
 
   // search terms
-  PRBool hasSearchTerms;
+  bool hasSearchTerms;
   if (NS_SUCCEEDED(aQuery->GetHasSearchTerms(&hasSearchTerms)) && hasSearchTerms) {
     // Re-use the autocomplete_match function.  Setting the behavior to 0
     // it can match everything and work as a nice case insensitive comparator.
     clause.Condition("AUTOCOMPLETE_MATCH(").Param(":search_string")
           .Str(", h.url, page_title, tags, ")
           .Str(nsPrintfCString(17, "0, 0, 0, 0, %d, 0)",
-                               mozIPlacesAutoComplete::MATCH_ANYWHERE).get());
+                               mozIPlacesAutoComplete::MATCH_ANYWHERE_UNMODIFIED).get());
   }
 
   // min and max visit count
@@ -5746,7 +5568,7 @@ nsNavHistory::QueryToSelectClause(nsNavHistoryQuery* aQuery, // const
 
   // domain
   if (NS_SUCCEEDED(aQuery->GetHasDomain(&hasIt)) && hasIt) {
-    PRBool domainIsHost = PR_FALSE;
+    bool domainIsHost = false;
     aQuery->GetDomainIsHost(&domainIsHost);
     if (domainIsHost)
       clause.Condition("h.rev_host =").Param(":domain_lower");
@@ -5836,14 +5658,14 @@ nsNavHistory::QueryToSelectClause(nsNavHistoryQuery* aQuery, // const
 //    THE BEHAVIOR SHOULD BE IN SYNC WITH QueryToSelectClause
 
 nsresult
-nsNavHistory::BindQueryClauseParameters(mozIStorageStatement* statement,
+nsNavHistory::BindQueryClauseParameters(mozIStorageBaseStatement* statement,
                                         PRInt32 aQueryIndex,
                                         nsNavHistoryQuery* aQuery, // const
                                         nsNavHistoryQueryOptions* aOptions)
 {
   nsresult rv;
 
-  PRBool hasIt;
+  bool hasIt;
   // Append numbered index to param names, to replace them correctly in
   // case of multiple queries.  If we have just one query we don't change the
   // param name though.
@@ -6006,7 +5828,7 @@ nsNavHistory::ResultsAsList(mozIStorageStatement* statement,
   nsCOMPtr<mozIStorageValueArray> row = do_QueryInterface(statement, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasMore = PR_FALSE;
+  bool hasMore = false;
   while (NS_SUCCEEDED(statement->ExecuteStep(&hasMore)) && hasMore) {
     nsRefPtr<nsNavHistoryResultNode> result;
     rv = RowToResult(row, aOptions, getter_AddRefs(result));
@@ -6039,7 +5861,7 @@ CreatePlacesPersistURN(nsNavHistoryQueryResultNode *aResultNode,
   aURN.Append(NS_LITERAL_CSTRING(","));
   if (!aTitle.IsEmpty()) {
     nsCAutoString escapedTitle;
-    PRBool success = NS_Escape(aTitle, escapedTitle, url_XAlphas);
+    bool success = NS_Escape(aTitle, escapedTitle, url_XAlphas);
     NS_ENSURE_TRUE(success, NS_ERROR_OUT_OF_MEMORY);
     aURN.Append(escapedTitle);
   }
@@ -6106,7 +5928,7 @@ nsNavHistory::FilterResultSet(nsNavHistoryQueryResultNode* aQueryNode,
   // Filter against query options.
   // XXX Only excludeQueries and excludeItemIfParentHasAnnotation are supported
   // at the moment.
-  PRBool excludeQueries = PR_FALSE;
+  bool excludeQueries = false;
   if (aQueryNode) {
     rv = aQueryNode->mOptions->GetExcludeQueries(&excludeQueries);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -6129,7 +5951,7 @@ nsNavHistory::FilterResultSet(nsNavHistoryQueryResultNode* aQueryNode,
     );
     NS_ENSURE_SUCCESS(rv, rv);
 
-    PRBool hasMore = PR_FALSE;
+    bool hasMore = false;
     while (NS_SUCCEEDED(stmt->ExecuteStep(&hasMore)) && hasMore) {
       PRInt64 folderId = 0;
       rv = stmt->GetInt64(0, &folderId);
@@ -6166,7 +5988,7 @@ nsNavHistory::FilterResultSet(nsNavHistoryQueryResultNode* aQueryNode,
       continue;
 
     // Append the node only if it matches one of the queries.
-    PRBool appendNode = PR_FALSE;
+    bool appendNode = false;
     for (PRInt32 queryIndex = 0;
          queryIndex < aQueries.Count() && !appendNode; queryIndex++) {
 
@@ -6180,7 +6002,7 @@ nsNavHistory::FilterResultSet(nsNavHistoryQueryResultNode* aQueryNode,
 
         // Determine if every search term matches anywhere in the title, url or
         // tag.
-        PRBool matchAll = PR_TRUE;
+        bool matchAll = true;
         for (PRInt32 termIndex = terms[queryIndex]->Length() - 1;
              termIndex >= 0 && matchAll;
              termIndex--) {
@@ -6212,7 +6034,7 @@ nsNavHistory::FilterResultSet(nsNavHistoryQueryResultNode* aQueryNode,
           // If parent is not found in current includeFolders cache, we check
           // its ancestors.
           PRInt64 ancestor = parentId;
-          PRBool belongs = PR_FALSE;
+          bool belongs = false;
           nsTArray<PRInt64> ancestorFolders;
 
           while (!belongs) {
@@ -6225,7 +6047,7 @@ nsNavHistory::FilterResultSet(nsNavHistoryQueryResultNode* aQueryNode,
             } else if (excludeFolders[queryIndex]->Contains(ancestor)) {
               break;
             } else if (includeFolders[queryIndex]->Contains(ancestor)) {
-              belongs = PR_TRUE;
+              belongs = true;
             }
           }
           // if the parentId or any of its ancestors "belong",
@@ -6240,7 +6062,7 @@ nsNavHistory::FilterResultSet(nsNavHistoryQueryResultNode* aQueryNode,
       }
 
       // We passed all filters, so we can append the node to filtered results.
-      appendNode = PR_TRUE;
+      appendNode = true;
     }
 
     if (appendNode)
@@ -6298,7 +6120,7 @@ nsNavHistory::clearEmbedVisits() {
 //    as "recent" if the event happened more recently than our event
 //    threshold ago.
 
-PRBool
+bool
 nsNavHistory::CheckIsRecentEvent(RecentEventHash* hashTable,
                                  const nsACString& url)
 {
@@ -6306,10 +6128,10 @@ nsNavHistory::CheckIsRecentEvent(RecentEventHash* hashTable,
   if (hashTable->Get(url, &eventTime)) {
     hashTable->Remove(url);
     if (eventTime > GetNow() - RECENT_EVENT_THRESHOLD)
-      return PR_TRUE;
-    return PR_FALSE;
+      return true;
+    return false;
   }
-  return PR_FALSE;
+  return false;
 }
 
 
@@ -6333,77 +6155,6 @@ nsNavHistory::ExpireNonrecentEvents(RecentEventHash* hashTable)
   PRInt64 threshold = GetNow() - RECENT_EVENT_THRESHOLD;
   hashTable->Enumerate(ExpireNonrecentEventsCallback,
                        reinterpret_cast<void*>(&threshold));
-}
-
-
-// nsNavHistory::GetRedirectFor
-//
-//    Given a destination URI, this finds a recent redirect that resulted in
-//    this URI. If it finds one, it will put the redirect source info into
-//    the out params and return true. If there is no matching redirect, it will
-//    return false.
-//
-//    @param aDestination The destination URI spec of the redirect to look for.
-//    @param aSource      Will be filled with the redirect source URI when a
-//                        redirect is found.
-//    @param aTime        Will be filled with the time the redirect happened
-//                         when a redirect is found.
-//    @param aRedirectType Will be filled with the redirect type when a redirect
-//                         is found. Will be either
-//                         TRANSITION_REDIRECT_PERMANENT or
-//                         TRANSITION_REDIRECT_TEMPORARY
-//    @returns True if the redirect is found.
-//
-//    HOW REDIRECT TRACKING WORKS
-//    ---------------------------
-//    When we get an AddDocumentRedirect message, we store the redirect in
-//    our mRecentRedirects which maps the destination URI to a source,time pair.
-//    When we get a new URI, we see if there were any redirects to this page
-//    in the hash table. If found, we know that the page came through the given
-//    redirect and add it.
-//
-//    Example: Page S redirects throught R1, then R2, to give page D. Page S
-//    will have been already added to history.
-//    - AddDocumentRedirect(R1, R2)
-//    - AddDocumentRedirect(R2, D)
-//    - AddURI(uri=D, referrer=S)
-//
-//    When we get the AddURI(D), we see the hash table has a value for D from R2.
-//    We have to recursively check that source since there could be more than
-//    one redirect, as in this case. Here we see there was a redirect to R2 from
-//    R1. The referrer for D is S, so we know S->R1->R2->D.
-//
-//    Alternatively, the user could have typed or followed a bookmark from S.
-//    In this case, with two redirects we'll get:
-//    - MarkPageAsTyped(S)
-//    - AddDocumentRedirect(S, R)
-//    - AddDocumentRedirect(R, D)
-//    - AddURI(uri=D, referrer=null)
-//    We need to be careful to add a visit to S in this case with an incoming
-//    transition of typed and an outgoing transition of redirect.
-//
-//    Note that this can get confused in some cases where you have a page
-//    open in more than one window loading at the same time. This should be rare,
-//    however, and should not affect much.
-
-PRBool
-nsNavHistory::GetRedirectFor(const nsACString& aDestination,
-                             nsACString& aSource,
-                             PRTime* aTime,
-                             PRUint32* aRedirectType)
-{
-  RedirectInfo info;
-  if (mRecentRedirects.Get(aDestination, &info)) {
-    // Consume the redirect entry, it's no longer useful.
-    mRecentRedirects.Remove(aDestination);
-    if (info.mTimeCreated < GetNow() - RECENT_EVENT_THRESHOLD)
-      return PR_FALSE; // too long ago, probably invalid
-    aSource = info.mSourceURI;
-    *aTime = info.mTimeCreated;
-    *aRedirectType = info.mType;
-    return PR_TRUE;
-  }
-  return PR_FALSE;
 }
 
 
@@ -6591,7 +6342,7 @@ nsNavHistory::QueryRowToResult(PRInt64 itemId, const nsACString& aURI,
     *aNode = new nsNavHistoryQueryResultNode(aTitle, aFavicon, aURI);
     (*aNode)->mItemId = itemId;
     // This is a perf hack to generate an empty query that skips filtering.
-    (*aNode)->GetAsQuery()->Options()->SetExcludeItems(PR_TRUE);
+    (*aNode)->GetAsQuery()->Options()->SetExcludeItems(true);
     NS_ADDREF(*aNode);
   }
 
@@ -6636,7 +6387,7 @@ nsNavHistory::VisitIdToResultNode(PRInt64 visitId,
                                            visitId);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasMore = PR_FALSE;
+  bool hasMore = false;
   rv = statement->ExecuteStep(&hasMore);
   NS_ENSURE_SUCCESS(rv, rv);
   if (! hasMore) {
@@ -6659,7 +6410,7 @@ nsNavHistory::BookmarkIdToResultNode(PRInt64 aBookmarkId, nsNavHistoryQueryOptio
                                       aBookmarkId);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasMore = PR_FALSE;
+  bool hasMore = false;
   rv = stmt->ExecuteStep(&hasMore);
   NS_ENSURE_SUCCESS(rv, rv);
   if (!hasMore) {
@@ -6682,7 +6433,7 @@ nsNavHistory::URIToResultNode(nsIURI* aURI,
   nsresult rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  PRBool hasMore = PR_FALSE;
+  bool hasMore = false;
   rv = stmt->ExecuteStep(&hasMore);
   NS_ENSURE_SUCCESS(rv, rv);
   if (!hasMore) {
@@ -6697,11 +6448,15 @@ nsNavHistory::URIToResultNode(nsIURI* aURI,
 }
 
 void
-nsNavHistory::SendPageChangedNotification(nsIURI* aURI, PRUint32 aWhat,
-                                          const nsAString& aValue)
+nsNavHistory::SendPageChangedNotification(nsIURI* aURI,
+                                          PRUint32 aChangedAttribute,
+                                          const nsAString& aNewValue,
+                                          const nsACString& aGUID)
 {
+  MOZ_ASSERT(!aGUID.IsEmpty());
   NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
-                   nsINavHistoryObserver, OnPageChanged(aURI, aWhat, aValue));
+                   nsINavHistoryObserver,
+                   OnPageChanged(aURI, aChangedAttribute, aNewValue, aGUID));
 }
 
 // nsNavHistory::TitleForDomain
@@ -6813,14 +6568,14 @@ nsNavHistory::SetPageTitleInternal(nsIURI* aURI, const nsAString& aTitle)
 {
   nsresult rv;
 
-  // first, make sure the page exists, and fetch the old title (we need the one
-  // that isn't changing to send notifications)
+  // Make sure the page exists by fetching its GUID and the old title.
   nsAutoString title;
+  nsCAutoString guid;
   {
     DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(stmt, mDBGetURLPageInfo);
     rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
     NS_ENSURE_SUCCESS(rv, rv);
-    PRBool hasURL = PR_FALSE;
+    bool hasURL = false;
     rv = stmt->ExecuteStep(&hasURL);
     NS_ENSURE_SUCCESS(rv, rv);
     if (!hasURL) {
@@ -6833,6 +6588,8 @@ nsNavHistory::SetPageTitleInternal(nsIURI* aURI, const nsAString& aTitle)
     }
 
     rv = stmt->GetString(kGetInfoIndex_Title, title);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = stmt->GetUTF8String(5, guid);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -6857,91 +6614,9 @@ nsNavHistory::SetPageTitleInternal(nsIURI* aURI, const nsAString& aTitle)
   rv = stmt->Execute();
   NS_ENSURE_SUCCESS(rv, rv);
 
+  MOZ_ASSERT(!guid.IsEmpty());
   NOTIFY_OBSERVERS(mCanNotify, mCacheObservers, mObservers,
-                   nsINavHistoryObserver, OnTitleChanged(aURI, aTitle));
-
-  return NS_OK;
-}
-
-nsresult
-nsNavHistory::AddPageWithVisits(nsIURI *aURI,
-                                const nsString &aTitle,
-                                PRInt32 aVisitCount,
-                                PRInt32 aTransitionType,
-                                PRTime aFirstVisitDate,
-                                PRTime aLastVisitDate)
-{
-  PRBool canAdd = PR_FALSE;
-  nsresult rv = CanAddURI(aURI, &canAdd);
-  NS_ENSURE_SUCCESS(rv, rv);
-  if (!canAdd) {
-    return NS_OK;
-  }
-
-  // see if this is an update (revisit) or a new page
-  DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(stmt, mDBGetPageVisitStats);
-  rv = URIBinder::Bind(stmt, NS_LITERAL_CSTRING("page_url"), aURI);
-  NS_ENSURE_SUCCESS(rv, rv);
-  PRBool alreadyVisited = PR_FALSE;
-  rv = stmt->ExecuteStep(&alreadyVisited);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  PRInt64 placeId = 0;
-  PRInt32 typed = 0;
-  PRInt32 hidden = 0;
-
-  if (alreadyVisited) {
-    // Update the existing entry
-    rv = stmt->GetInt64(0, &placeId);
-    NS_ENSURE_SUCCESS(rv, rv);
-    // We don't mind visit_count
-    rv = stmt->GetInt32(2, &typed);
-    NS_ENSURE_SUCCESS(rv, rv);
-    rv = stmt->GetInt32(3, &hidden);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    if (typed == 0 && aTransitionType == TRANSITION_TYPED) {
-      typed = 1;
-      // Update with new stats
-      DECLARE_AND_ASSIGN_SCOPED_LAZY_STMT(updateStmt, mDBUpdatePageVisitStats);
-      rv = updateStmt->BindInt64ByName(NS_LITERAL_CSTRING("page_id"), placeId);
-      NS_ENSURE_SUCCESS(rv, rv);
-      rv = updateStmt->BindInt32ByName(NS_LITERAL_CSTRING("hidden"), hidden);
-      NS_ENSURE_SUCCESS(rv, rv);
-      rv = updateStmt->BindInt32ByName(NS_LITERAL_CSTRING("typed"), typed);
-      NS_ENSURE_SUCCESS(rv, rv);
-
-      rv = updateStmt->Execute();
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
-  } else {
-    // Insert the new place entry
-    rv = InternalAddNewPage(aURI, aTitle, hidden == 1,
-                            aTransitionType == TRANSITION_TYPED, 0,
-                            PR_FALSE, &placeId);
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-
-  NS_ASSERTION(placeId != 0, "Cannot add a visit to a nonexistent page");
-
-  if (aFirstVisitDate != -1) {
-    // Add the first visit
-    PRInt64 visitId;
-    rv = InternalAddVisit(placeId, 0, 0,
-                          aFirstVisitDate, aTransitionType, &visitId);
-    aVisitCount--;
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-
-  if (aLastVisitDate != -1) {
-   // Add remaining visits starting from the last one
-   for (PRInt64 i = 0; i < aVisitCount; i++) {
-      PRInt64 visitId;
-      rv = InternalAddVisit(placeId, 0, 0,
-                            aLastVisitDate - i, aTransitionType, &visitId);
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
-  }
+                   nsINavHistoryObserver, OnTitleChanged(aURI, aTitle, guid));
 
   return NS_OK;
 }
@@ -6970,7 +6645,7 @@ GetSimpleBookmarksQueryFolder(const nsCOMArray<nsNavHistoryQuery>& aQueries,
   if (query->Folders().Length() != 1)
     return 0;
 
-  PRBool hasIt;
+  bool hasIt;
   query->GetHasBeginTime(&hasIt);
   if (hasIt)
     return 0;
@@ -7014,7 +6689,7 @@ GetSimpleBookmarksQueryFolder(const nsCOMArray<nsNavHistoryQuery>& aQueries,
 //    try to input quotes expecting them to do something and get no results
 //    back.
 
-inline PRBool isQueryWhitespace(PRUnichar ch)
+inline bool isQueryWhitespace(PRUnichar ch)
 {
   return ch == ' ';
 }
@@ -7025,7 +6700,7 @@ void ParseSearchTermsFromQueries(const nsCOMArray<nsNavHistoryQuery>& aQueries,
   PRInt32 lastBegin = -1;
   for (PRInt32 i = 0; i < aQueries.Count(); i++) {
     nsTArray<nsString> *queryTerms = new nsTArray<nsString>();
-    PRBool hasSearchTerms;
+    bool hasSearchTerms;
     if (NS_SUCCEEDED(aQueries[i]->GetHasSearchTerms(&hasSearchTerms)) &&
         hasSearchTerms) {
       const nsString& searchTerms = aQueries[i]->SearchTerms();
@@ -7093,7 +6768,7 @@ nsNavHistory::UpdateFrecency(PRInt64 aPlaceId)
   nsCOMPtr<AsyncStatementCallbackNotifier> callback =
     new AsyncStatementCallbackNotifier(TOPIC_FRECENCY_UPDATED);
   nsCOMPtr<mozIStoragePendingStatement> ps;
-  nsresult rv = mDBConn->ExecuteAsync(stmts, NS_ARRAY_LENGTH(stmts), callback,
+  nsresult rv = mDBConn->ExecuteAsync(stmts, ArrayLength(stmts), callback,
                                       getter_AddRefs(ps));
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -7118,8 +6793,8 @@ nsNavHistory::FixInvalidFrecencies()
   // Note, we are not limiting ourselves to places with visits because we may
   // not have any if the place is a bookmark and we expired or deleted all the
   // visits.
-  nsCOMPtr<mozIStorageStatement> fixInvalidFrecenciesStmt;
-  nsresult rv = mDBConn->CreateStatement(NS_LITERAL_CSTRING(
+  nsCOMPtr<mozIStorageAsyncStatement> fixInvalidFrecenciesStmt;
+  nsresult rv = mDBConn->CreateAsyncStatement(NS_LITERAL_CSTRING(
       "UPDATE moz_places "
       "SET frecency = CALCULATE_FRECENCY(id) "
       "WHERE frecency < 0"),
@@ -7202,7 +6877,7 @@ nsNavHistory::GetBundle()
 {
   if (!mBundle) {
     nsCOMPtr<nsIStringBundleService> bundleService =
-      mozilla::services::GetStringBundleService();
+      services::GetStringBundleService();
     NS_ENSURE_TRUE(bundleService, nsnull);
     nsresult rv = bundleService->CreateBundle(
         "chrome://places/locale/places.properties",
@@ -7217,7 +6892,7 @@ nsNavHistory::GetDateFormatBundle()
 {
   if (!mDateFormatBundle) {
     nsCOMPtr<nsIStringBundleService> bundleService =
-      mozilla::services::GetStringBundleService();
+      services::GetStringBundleService();
     NS_ENSURE_TRUE(bundleService, nsnull);
     nsresult rv = bundleService->CreateBundle(
         "chrome://global/locale/dateFormat.properties",
@@ -7250,19 +6925,25 @@ nsNavHistory::FinalizeStatements() {
     mDBVisitToVisitResult,
     mDBBookmarkToUrlResult,
     mDBUrlToUrlResult,
-    mDBVisitsForFrecency,
     mDBUpdateFrecency,
     mDBUpdateHiddenOnFrecency,
-    mDBGetPlaceVisitStats,
-    mDBPageInfoForFrecency,
-    mDBAsyncThreadPageInfoForFrecency,
-    mDBAsyncThreadVisitsForFrecency,
   };
 
-  for (PRUint32 i = 0; i < NS_ARRAY_LENGTH(stmts); i++) {
+  for (PRUint32 i = 0; i < ArrayLength(stmts); i++) {
     nsresult rv = nsNavHistory::FinalizeStatement(stmts[i]);
     NS_ENSURE_SUCCESS(rv, rv);
   }
+
+  // Finalize the statementCaches on the correct threads.
+  mStatements.FinalizeStatements();
+
+  nsRefPtr<FinalizeStatementCacheProxy<mozIStorageStatement> > event =
+    new FinalizeStatementCacheProxy<mozIStorageStatement>(
+        mAsyncThreadStatements, NS_ISUPPORTS_CAST(nsINavHistoryService*, this));
+  nsCOMPtr<nsIEventTarget> target = do_GetInterface(mDBConn);
+  NS_ENSURE_TRUE(target, NS_ERROR_OUT_OF_MEMORY);
+  nsresult rv = target->Dispatch(event, NS_DISPATCH_NORMAL);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
 }
@@ -7272,7 +6953,7 @@ nsNavHistory::FinalizeStatements() {
 NS_IMETHODIMP
 nsNavHistory::RequestCharset(nsIWebNavigation* aWebNavigation,
                              nsIChannel* aChannel,
-                             PRBool* aWantCharset,
+                             bool* aWantCharset,
                              nsISupports** aClosure,
                              nsACString& aResult)
 {
@@ -7281,7 +6962,7 @@ nsNavHistory::RequestCharset(nsIWebNavigation* aWebNavigation,
   NS_ENSURE_ARG_POINTER(aWantCharset);
   NS_ENSURE_ARG_POINTER(aClosure);
 
-  *aWantCharset = PR_FALSE;
+  *aWantCharset = false;
   *aClosure = nsnull;
 
   nsCOMPtr<nsIURI> uri;

@@ -48,11 +48,12 @@ public:
     nsLookAndFeel();
     virtual ~nsLookAndFeel();
 
-    nsresult NativeGetColor(const nsColorID aID, nscolor &aColor);
-    NS_IMETHOD GetMetric(const nsMetricID aID, PRInt32 & aMetric);
-    NS_IMETHOD GetMetric(const nsMetricFloatID aID, float & aMetric);
-    NS_IMETHOD LookAndFeelChanged();
-    virtual PRUnichar GetPasswordCharacter();
+    virtual nsresult NativeGetColor(ColorID aID, nscolor &aResult);
+    virtual nsresult GetIntImpl(IntID aID, PRInt32 &aResult);
+    virtual nsresult GetFloatImpl(FloatID aID, float &aResult);
+    virtual void RefreshImpl();
+    virtual PRUnichar GetPasswordCharacterImpl();
+    virtual bool GetEchoPasswordImpl();
 
 protected:
     GtkStyle *mStyle;
@@ -78,7 +79,7 @@ protected:
     static nscolor sComboBoxBackground;
     static PRUnichar sInvisibleCharacter;
     static float   sCaretRatio;
-    static PRBool  sMenuSupportsDrag;
+    static bool    sMenuSupportsDrag;
 
     static void InitLookAndFeel();
     void InitWidget() {

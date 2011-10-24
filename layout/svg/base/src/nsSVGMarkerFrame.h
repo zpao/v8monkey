@@ -56,8 +56,8 @@ protected:
   nsSVGMarkerFrame(nsStyleContext* aContext) :
     nsSVGMarkerFrameBase(aContext),
     mMarkedFrame(nsnull),
-    mInUse(PR_FALSE),
-    mInUse2(PR_FALSE) {}
+    mInUse(false),
+    mInUse2(false) {}
 
 public:
   NS_DECL_FRAMEARENA_HELPERS
@@ -95,6 +95,12 @@ public:
   nsRect RegionMark(nsSVGPathGeometryFrame *aMarkedFrame,
                     const nsSVGMark *aMark, float aStrokeWidth);
 
+  gfxRect GetMarkBBoxContribution(const gfxMatrix &aToBBoxUserspace,
+                                  PRUint32 aFlags,
+                                  nsSVGPathGeometryFrame *aMarkedFrame,
+                                  const nsSVGMark *aMark,
+                                  float aStrokeWidth);
+
 private:
   // stuff needed for callback
   nsSVGPathGeometryFrame *mMarkedFrame;
@@ -122,10 +128,10 @@ private:
   void SetParentCoordCtxProvider(nsSVGSVGElement *aContext);
 
   // recursion prevention flag
-  PRPackedBool mInUse;
+  bool mInUse;
 
   // second recursion prevention flag, for GetCanvasTM()
-  PRPackedBool mInUse2;
+  bool mInUse2;
 };
 
 #endif

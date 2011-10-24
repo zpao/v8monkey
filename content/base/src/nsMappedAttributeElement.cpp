@@ -44,7 +44,7 @@
 nsresult
 nsMappedAttributeElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                      nsIContent* aBindingParent,
-                                     PRBool aCompileEventHandlers)
+                                     bool aCompileEventHandlers)
 {
   nsresult rv = nsMappedAttributeElementBase::BindToTree(aDocument, aParent,
                                                          aBindingParent,
@@ -70,7 +70,7 @@ nsMappedAttributeElement::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
   return NS_OK;
 }
 
-PRBool
+bool
 nsMappedAttributeElement::SetMappedAttribute(nsIDocument* aDocument,
                                              nsIAtom* aName,
                                              nsAttrValue& aValue,
@@ -82,7 +82,7 @@ nsMappedAttributeElement::SetMappedAttribute(nsIDocument* aDocument,
 
   *aRetval = mAttrsAndChildren.SetAndTakeMappedAttr(aName, aValue,
                                                     this, sheet);
-  return PR_TRUE;
+  return true;
 }
 
 nsMapRuleToAttributesFunc

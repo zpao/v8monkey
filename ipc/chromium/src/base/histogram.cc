@@ -21,13 +21,11 @@
 
 namespace base {
 
-#if defined(CHROMIUM_MOZILLA_BUILD)
 #define DVLOG(x) LOG(ERROR)
 #define CHECK_GT DCHECK_GT
 #define CHECK_LT DCHECK_LT
 typedef ::Lock Lock;
 typedef ::AutoLock AutoLock;
-#endif
 
 // Static table of checksums for all possible 8 bit bytes.
 const uint32 Histogram::kCrcTable[256] = {0x0, 0x77073096L, 0xee0e612cL,
@@ -130,6 +128,17 @@ void Histogram::Add(int value) {
   DCHECK_GE(value, ranges(index));
   DCHECK_LT(value, ranges(index + 1));
   Accumulate(value, 1, index);
+}
+
+void Histogram::Subtract(int value) {
+  if (value > kSampleType_MAX - 1)
+    value = kSampleType_MAX - 1;
+  if (value < 0)
+    value = 0;
+  size_t index = BucketIndex(value);
+  DCHECK_GE(value, ranges(index));
+  DCHECK_LT(value, ranges(index + 1));
+  Accumulate(value, -1, index);
 }
 
 void Histogram::AddBoolean(bool value) {

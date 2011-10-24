@@ -34,8 +34,8 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
-#ifndef nsJSEnvironment_h___
-#define nsJSEnvironment_h___
+#ifndef nsJSEnvironment_h
+#define nsJSEnvironment_h
 
 #include "nsIScriptContext.h"
 #include "nsIScriptRuntime.h"
@@ -45,10 +45,10 @@
 #include "nsIXPCScriptNotify.h"
 #include "prtime.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsScriptNameSpaceManager.h"
 
 class nsIXPConnectJSObjectHolder;
-class nsAutoPoolRelease;
+class nsRootedJSValueArray;
+class nsScriptNameSpaceManager;
 namespace js {
 class AutoArrayRooter;
 }
@@ -79,7 +79,7 @@ public:
                                   PRUint32 aLineNo,
                                   PRUint32 aVersion,
                                   nsAString *aRetValue,
-                                  PRBool* aIsUndefined);
+                                  bool* aIsUndefined);
   virtual nsresult EvaluateStringWithValue(const nsAString& aScript,
                                      void *aScopeObject,
                                      nsIPrincipal *aPrincipal,
@@ -87,7 +87,7 @@ public:
                                      PRUint32 aLineNo,
                                      PRUint32 aVersion,
                                      void* aRetValue,
-                                     PRBool* aIsUndefined);
+                                     bool* aIsUndefined);
 
   virtual nsresult CompileScript(const PRUnichar* aText,
                                  PRInt32 aTextLength,
@@ -100,7 +100,7 @@ public:
   virtual nsresult ExecuteScript(void* aScriptObject,
                                  void *aScopeObject,
                                  nsAString* aRetValue,
-                                 PRBool* aIsUndefined);
+                                 bool* aIsUndefined);
 
   virtual nsresult CompileEventHandler(nsIAtom *aName,
                                        PRUint32 aArgCount,
@@ -114,11 +114,8 @@ public:
                                     nsIArray *argv, nsIVariant **rv);
   virtual nsresult BindCompiledEventHandler(nsISupports *aTarget,
                                             void *aScope,
-                                            nsIAtom *aName,
-                                            void *aHandler);
-  virtual nsresult GetBoundEventHandler(nsISupports* aTarget, void *aScope,
-                                        nsIAtom* aName,
-                                        nsScriptObjectHolder &aHandler);
+                                            void *aHandler,
+                                            nsScriptObjectHolder& aBoundHandler);
   virtual nsresult CompileFunction(void* aTarget,
                                    const nsACString& aName,
                                    PRUint32 aArgCount,
@@ -127,16 +124,16 @@ public:
                                    const char* aURL,
                                    PRUint32 aLineNo,
                                    PRUint32 aVersion,
-                                   PRBool aShared,
+                                   bool aShared,
                                    void** aFunctionObject);
 
   virtual void SetDefaultLanguageVersion(PRUint32 aVersion);
   virtual nsIScriptGlobalObject *GetGlobalObject();
-  virtual void *GetNativeContext();
+  virtual JSContext* GetNativeContext();
   virtual void *GetNativeGlobal();
   virtual nsresult CreateNativeGlobalForInner(
                                       nsIScriptGlobalObject *aGlobal,
-                                      PRBool aIsChrome,
+                                      bool aIsChrome,
                                       nsIPrincipal *aPrincipal,
                                       void **aNativeGlobal,
                                       nsISupports **aHolder);
@@ -147,26 +144,26 @@ public:
                                      nsIScriptGlobalObject *aCurrentInner);
   virtual nsresult SetOuterObject(void *aOuterObject);
   virtual nsresult InitOuterWindow();
-  virtual PRBool IsContextInitialized();
+  virtual bool IsContextInitialized();
   virtual void FinalizeContext();
 
-  virtual void ScriptEvaluated(PRBool aTerminated);
+  virtual void ScriptEvaluated(bool aTerminated);
   virtual nsresult SetTerminationFunction(nsScriptTerminationFunc aFunc,
                                           nsISupports* aRef);
-  virtual PRBool GetScriptsEnabled();
-  virtual void SetScriptsEnabled(PRBool aEnabled, PRBool aFireTimeouts);
+  virtual bool GetScriptsEnabled();
+  virtual void SetScriptsEnabled(bool aEnabled, bool aFireTimeouts);
 
   virtual nsresult SetProperty(void *aTarget, const char *aPropName, nsISupports *aVal);
 
-  virtual PRBool GetProcessingScriptTag();
-  virtual void SetProcessingScriptTag(PRBool aResult);
+  virtual bool GetProcessingScriptTag();
+  virtual void SetProcessingScriptTag(bool aResult);
 
-  virtual PRBool GetExecutingScript();
+  virtual bool GetExecutingScript();
 
-  virtual void SetGCOnDestruction(PRBool aGCOnDestruction);
+  virtual void SetGCOnDestruction(bool aGCOnDestruction);
 
   virtual nsresult InitClasses(void *aGlobalObj);
-  virtual void ClearScope(void* aGlobalObj, PRBool bClearPolluters);
+  virtual void ClearScope(void* aGlobalObj, bool bClearPolluters);
 
   virtual void WillInitializeContext();
   virtual void DidInitializeContext();
@@ -207,8 +204,7 @@ protected:
                                    void *aScope,
                                    PRUint32 *aArgc,
                                    jsval **aArgv,
-                                   mozilla::Maybe<nsAutoPoolRelease> &aPoolRelease,
-                                   mozilla::Maybe<js::AutoArrayRooter> &aRooter);
+                                   mozilla::Maybe<nsRootedJSValueArray> &aPoolRelease);
 
   nsresult AddSupportsPrimitiveTojsvals(nsISupports *aArg, jsval *aArgv);
 
@@ -284,10 +280,10 @@ protected:
   TerminationFuncClosure* mTerminations;
 
 private:
-  PRPackedBool mIsInitialized;
-  PRPackedBool mScriptsEnabled;
-  PRPackedBool mGCOnDestruction;
-  PRPackedBool mProcessingScriptTag;
+  bool mIsInitialized;
+  bool mScriptsEnabled;
+  bool mGCOnDestruction;
+  bool mProcessingScriptTag;
 
   PRUint32 mExecuteDepth;
   PRUint32 mDefaultJSOptions;
@@ -298,7 +294,7 @@ private:
 
   // mGlobalObjectRef ensures that the outer window stays alive as long as the
   // context does. It is eventually collected by the cycle collector.
-  nsCOMPtr<nsISupports> mGlobalObjectRef;
+  nsCOMPtr<nsIScriptGlobalObject> mGlobalObjectRef;
 
   static int JSOptionChangedCallback(const char *pref, void *data);
 
@@ -363,4 +359,14 @@ nsresult NS_CreateJSRuntime(nsIScriptRuntime **aRuntime);
 /* prototypes */
 void NS_ScriptErrorReporter(JSContext *cx, const char *message, JSErrorReport *report);
 
-#endif /* nsJSEnvironment_h___ */
+JSObject* NS_DOMReadStructuredClone(JSContext* cx,
+                                    JSStructuredCloneReader* reader, uint32 tag,
+                                    uint32 data, void* closure);
+
+JSBool NS_DOMWriteStructuredClone(JSContext* cx,
+                                  JSStructuredCloneWriter* writer,
+                                  JSObject* obj, void *closure);
+
+void NS_DOMStructuredCloneError(JSContext* cx, uint32 errorid);
+
+#endif /* nsJSEnvironment_h */

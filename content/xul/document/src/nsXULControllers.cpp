@@ -71,8 +71,7 @@ nsXULControllers::DeleteControllers()
   for (PRUint32 i = 0; i < count; i++)
   {
     nsXULControllerData* controllerData = mControllers.ElementAt(i);
-    if (controllerData)
-      delete controllerData;    // releases the nsIController
+    delete controllerData;    // releases the nsIController
   }
   
   mControllers.Clear();
@@ -141,7 +140,7 @@ nsXULControllers::GetControllerForCommand(const char *aCommand, nsIController** 
       controllerData->GetController(getter_AddRefs(controller));
       if (controller)
       {
-        PRBool supportsCommand;
+        bool supportsCommand;
         controller->SupportsCommand(aCommand, &supportsCommand);
         if (supportsCommand) {
           *_retval = controller;

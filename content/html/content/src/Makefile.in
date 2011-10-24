@@ -48,7 +48,6 @@ LIBXUL_LIBRARY	= 1
 
 
 EXPORTS		= \
-		nsImageMapUtils.h \
 		nsClientRect.h \
 		nsHTMLDNSPrefetch.h \
 		$(NULL)
@@ -58,7 +57,6 @@ CPPSRCS		= \
 		nsHTMLDNSPrefetch.cpp \
 		nsGenericHTMLElement.cpp \
 		nsFormSubmission.cpp \
-		nsImageMapUtils.cpp \
 		nsTextEditorState.cpp \
 		nsHTMLElement.cpp \
 		nsHTMLAnchorElement.cpp \
@@ -68,7 +66,6 @@ CPPSRCS		= \
 		nsHTMLButtonElement.cpp \
 		nsHTMLCanvasElement.cpp \
 		nsHTMLDataListElement.cpp \
-		nsHTMLDelElement.cpp \
 		nsHTMLDivElement.cpp \
 		nsHTMLFieldSetElement.cpp \
 		nsHTMLFontElement.cpp \
@@ -85,7 +82,10 @@ CPPSRCS		= \
 		nsHTMLLegendElement.cpp \
 		nsHTMLLinkElement.cpp \
 		nsHTMLMapElement.cpp \
+		nsHTMLMenuElement.cpp \
+		nsHTMLMenuItemElement.cpp \
 		nsHTMLMetaElement.cpp \
+		nsHTMLModElement.cpp \
 		nsHTMLObjectElement.cpp \
 		nsHTMLOListElement.cpp \
 		nsHTMLSharedObjectElement.cpp \
@@ -112,6 +112,7 @@ CPPSRCS		= \
 		nsDOMValidityState.cpp \
 		nsIConstraintValidation.cpp \
 		nsRadioVisitor.cpp \
+		nsDOMStringMap.cpp \
 		$(NULL)
 
 ifdef MOZ_MEDIA
@@ -119,6 +120,7 @@ CPPSRCS		+= \
 		nsHTMLAudioElement.cpp \
 		nsHTMLMediaElement.cpp \
 		nsMediaError.cpp \
+		nsMediaFragmentURIParser.cpp \
 		nsHTMLSourceElement.cpp \
 		nsTimeRanges.cpp \
 		nsHTMLVideoElement.cpp \
@@ -135,6 +137,7 @@ INCLUDES	+= \
 		-I$(srcdir)/../../../base/src \
 		-I$(srcdir)/../../../events/src \
 		-I$(srcdir)/../../../xbl/src \
+		-I$(srcdir)/../../../xul/content/src \
 		-I$(srcdir)/../../../../layout/forms \
 		-I$(srcdir)/../../../../layout/style \
 		-I$(srcdir)/../../../../layout/tables \
@@ -144,6 +147,8 @@ INCLUDES	+= \
 		-I$(srcdir)/../../../../editor/libeditor/base \
 		-I$(srcdir)/../../../../editor/libeditor/text \
 		-I$(srcdir) \
+		-I$(topsrcdir)/xpcom/ds \
+		-I$(srcdir)/../../../../js/xpconnect/src \
 		$(NULL)
 
 DEFINES += -D_IMPL_NS_LAYOUT

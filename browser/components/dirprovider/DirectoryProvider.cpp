@@ -65,7 +65,7 @@ NS_IMPL_ISUPPORTS2(DirectoryProvider,
                    nsIDirectoryServiceProvider2)
 
 NS_IMETHODIMP
-DirectoryProvider::GetFile(const char *aKey, PRBool *aPersist, nsIFile* *aResult)
+DirectoryProvider::GetFile(const char *aKey, bool *aPersist, nsIFile* *aResult)
 {
   nsresult rv;
 
@@ -86,7 +86,7 @@ DirectoryProvider::GetFile(const char *aKey, PRBool *aPersist, nsIFile* *aResult
       nsCString path;
       rv = prefs->GetCharPref("browser.bookmarks.file", getter_Copies(path));
       if (NS_SUCCEEDED(rv)) {
-        NS_NewNativeLocalFile(path, PR_TRUE, (nsILocalFile**)(nsIFile**) getter_AddRefs(file));
+        NS_NewNativeLocalFile(path, true, (nsILocalFile**)(nsIFile**) getter_AddRefs(file));
       }
     }
   }
@@ -123,7 +123,7 @@ DirectoryProvider::GetFile(const char *aKey, PRBool *aPersist, nsIFile* *aResult
     file->AppendNative(leafstr);
   }
 
-  *aPersist = PR_TRUE;
+  *aPersist = true;
   NS_ADDREF(*aResult = file);
 
   return NS_OK;
@@ -138,7 +138,7 @@ AppendFileKey(const char *key, nsIProperties* aDirSvc,
   if (NS_FAILED(rv))
     return;
 
-  PRBool exists;
+  bool exists;
   rv = file->Exists(&exists);
   if (NS_FAILED(rv) || !exists)
     return;
@@ -175,7 +175,7 @@ AppendDistroSearchDirs(nsIProperties* aDirSvc, nsCOMArray<nsIFile> &array)
   searchPlugins->AppendNative(NS_LITERAL_CSTRING("distribution"));
   searchPlugins->AppendNative(NS_LITERAL_CSTRING("searchplugins"));
 
-  PRBool exists;
+  bool exists;
   rv = searchPlugins->Exists(&exists);
   if (NS_FAILED(rv) || !exists)
     return;
@@ -288,9 +288,9 @@ DirectoryProvider::GetFiles(const char *aKey, nsISimpleEnumerator* *aResult)
 NS_IMPL_ISUPPORTS1(DirectoryProvider::AppendingEnumerator, nsISimpleEnumerator)
 
 NS_IMETHODIMP
-DirectoryProvider::AppendingEnumerator::HasMoreElements(PRBool *aResult)
+DirectoryProvider::AppendingEnumerator::HasMoreElements(bool *aResult)
 {
-  *aResult = mNext ? PR_TRUE : PR_FALSE;
+  *aResult = mNext ? true : false;
   return NS_OK;
 }
 
@@ -306,7 +306,7 @@ DirectoryProvider::AppendingEnumerator::GetNext(nsISupports* *aResult)
 
   // Ignore all errors
 
-  PRBool more;
+  bool more;
   while (NS_SUCCEEDED(mBase->HasMoreElements(&more)) && more) {
     nsCOMPtr<nsISupports> nextbasesupp;
     mBase->GetNext(getter_AddRefs(nextbasesupp));
@@ -325,7 +325,7 @@ DirectoryProvider::AppendingEnumerator::GetNext(nsISupports* *aResult)
       ++i;
     }
 
-    PRBool exists;
+    bool exists;
     rv = mNext->Exists(&exists);
     if (NS_SUCCEEDED(rv) && exists)
       break;

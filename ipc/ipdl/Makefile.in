@@ -59,6 +59,7 @@ IPDLDIRS =  \
   dom/ipc  \
   dom/src/storage \
   gfx/layers/ipc \
+  hal/sandbox \
   ipc/testshell  \
   js/ipc  \
   js/jetpack \
@@ -67,6 +68,7 @@ IPDLDIRS =  \
   netwerk/protocol/ftp \
   netwerk/protocol/http  \
   netwerk/protocol/wyciwyg \
+  netwerk/protocol/websocket \
   netwerk/cookie  \
   uriloader/prefetch  \
   $(NULL)
@@ -97,6 +99,7 @@ $(foreach IPDLDIR,$(IPDLDIRS),$(eval $(ADD_IPDLDIR)))
 CPPSRCS =					\
   $(PROTOCOLS:%.ipdl=%Parent.cpp)		\
   $(PROTOCOLS:%.ipdl=%Child.cpp)		\
+  $(PROTOCOLS:%.ipdl=%.cpp)			\
   $(NULL)
 
 GARBAGE += $(CPPSRCS)

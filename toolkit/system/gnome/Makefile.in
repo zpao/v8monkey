@@ -65,6 +65,7 @@ endif
 ifdef MOZ_ENABLE_GIO
 CPPSRCS += \
 	nsGIOService.cpp \
+	nsGSettingsService.cpp \
 	$(NULL)
 endif
 
@@ -93,6 +94,7 @@ include $(topsrcdir)/config/rules.mk
 CXXFLAGS += \
 	$(MOZ_GCONF_CFLAGS) \
 	$(MOZ_GNOMEVFS_CFLAGS) \
+	$(MOZ_GIO_CFLAGS) \
 	$(GLIB_CFLAGS) \
 	$(MOZ_LIBNOTIFY_CFLAGS) \
 	$(MOZ_GTK2_CFLAGS) \

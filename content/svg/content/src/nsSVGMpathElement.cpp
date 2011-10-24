@@ -35,17 +35,20 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGMpathElement.h"
 #include "nsAutoPtr.h"
 #include "nsDebug.h"
 #include "nsSVGPathElement.h"
 #include "nsSVGAnimateMotionElement.h"
 
+using namespace mozilla;
 using namespace mozilla::dom;
 
 nsSVGElement::StringInfo nsSVGMpathElement::sStringInfo[1] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_XLink, PR_FALSE }
+  { &nsGkAtoms::href, kNameSpaceID_XLink, false }
 };
 
 NS_IMPL_NS_NEW_SVG_ELEMENT(Mpath)
@@ -54,7 +57,7 @@ NS_IMPL_NS_NEW_SVG_ELEMENT(Mpath)
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsSVGMpathElement)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsSVGMpathElement,
                                                 nsSVGMpathElementBase)
-  tmp->UnlinkHrefTarget(PR_FALSE);
+  tmp->UnlinkHrefTarget(false);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsSVGMpathElement,
@@ -96,7 +99,7 @@ nsSVGMpathElement::nsSVGMpathElement(already_AddRefed<nsINodeInfo> aNodeInfo)
 
 nsSVGMpathElement::~nsSVGMpathElement()
 {
-  UnlinkHrefTarget(PR_FALSE);
+  UnlinkHrefTarget(false);
 }
 
 //----------------------------------------------------------------------
@@ -121,7 +124,7 @@ nsresult
 nsSVGMpathElement::BindToTree(nsIDocument* aDocument,
                               nsIContent* aParent,
                               nsIContent* aBindingParent,
-                              PRBool aCompileEventHandlers)
+                              bool aCompileEventHandlers)
 {
   NS_ABORT_IF_FALSE(!mHrefTarget.get(),
                     "Shouldn't have href-target yet "
@@ -143,19 +146,19 @@ nsSVGMpathElement::BindToTree(nsIDocument* aDocument,
 }
 
 void
-nsSVGMpathElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+nsSVGMpathElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
-  UnlinkHrefTarget(PR_TRUE);
+  UnlinkHrefTarget(true);
   nsSVGMpathElementBase::UnbindFromTree(aDeep, aNullParent);
 }
 
-PRBool
+bool
 nsSVGMpathElement::ParseAttribute(PRInt32 aNamespaceID,
                                   nsIAtom* aAttribute,
                                   const nsAString& aValue,
                                   nsAttrValue& aResult)
 {
-  PRBool returnVal =
+  bool returnVal =
     nsSVGMpathElementBase::ParseAttribute(aNamespaceID, aAttribute,
                                           aValue, aResult);
   if (aNamespaceID == kNameSpaceID_XLink &&
@@ -170,7 +173,7 @@ nsSVGMpathElement::ParseAttribute(PRInt32 aNamespaceID,
 
 nsresult
 nsSVGMpathElement::UnsetAttr(PRInt32 aNamespaceID,
-                             nsIAtom* aAttribute, PRBool aNotify)
+                             nsIAtom* aAttribute, bool aNotify)
 {
   nsresult rv = nsSVGMpathElementBase::UnsetAttr(aNamespaceID, aAttribute,
                                                  aNotify);
@@ -178,7 +181,7 @@ nsSVGMpathElement::UnsetAttr(PRInt32 aNamespaceID,
 
   if (aNamespaceID == kNameSpaceID_XLink &&
       aAttribute == nsGkAtoms::href) {
-    UnlinkHrefTarget(PR_TRUE);
+    UnlinkHrefTarget(true);
   }
 
   return NS_OK;
@@ -191,7 +194,7 @@ nsSVGElement::StringAttributesInfo
 nsSVGMpathElement::GetStringInfo()
 {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              NS_ARRAY_LENGTH(sStringInfo));
+                              ArrayLength(sStringInfo));
 }
 
 //----------------------------------------------------------------------
@@ -242,7 +245,7 @@ nsSVGMpathElement::UpdateHrefTarget(nsIContent* aParent,
   nsCOMPtr<nsIURI> targetURI;
   nsCOMPtr<nsIURI> baseURI = GetBaseURI();
   nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(targetURI),
-                                            aHrefStr, GetOwnerDoc(), baseURI);
+                                            aHrefStr, OwnerDoc(), baseURI);
 
   // Stop observing old target (if any)
   if (mHrefTarget.get()) {
@@ -269,7 +272,7 @@ nsSVGMpathElement::UpdateHrefTarget(nsIContent* aParent,
 }
 
 void
-nsSVGMpathElement::UnlinkHrefTarget(PRBool aNotifyParent)
+nsSVGMpathElement::UnlinkHrefTarget(bool aNotifyParent)
 {
   // Stop observing old target (if any)
   if (mHrefTarget.get()) {

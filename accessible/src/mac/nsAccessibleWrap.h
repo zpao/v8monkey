@@ -43,6 +43,8 @@
 #ifndef _nsAccessibleWrap_H_
 #define _nsAccessibleWrap_H_
 
+#include <objc/objc.h>
+
 #include "nsAccessible.h"
 #include "nsAccUtils.h"
 #include "States.h"
@@ -54,7 +56,6 @@
 #include "nsAutoPtr.h"
 
 struct AccessibleWrapper;
-struct objc_class;
 
 class nsAccessibleWrap : public nsAccessible
 {
@@ -63,7 +64,7 @@ class nsAccessibleWrap : public nsAccessible
     virtual ~nsAccessibleWrap();
     
     // creates the native accessible connected to this one.
-    virtual PRBool Init ();
+    virtual bool Init ();
     
     // get the native obj-c object (mozAccessible)
     NS_IMETHOD GetNativeInterface (void **aOutAccessible);
@@ -71,7 +72,7 @@ class nsAccessibleWrap : public nsAccessible
     // the objective-c |Class| type that this accessible's native object
     // should be instantied with.   used on runtime to determine the
     // right type for this accessible's associated native object.
-    virtual objc_class* GetNativeType ();
+    virtual Class GetNativeType ();
 
     virtual void Shutdown ();
     virtual void InvalidateChildren();
@@ -80,12 +81,12 @@ class nsAccessibleWrap : public nsAccessible
 
     // ignored means that the accessible might still have children, but is not displayed
     // to the user. it also has no native accessible object represented for it.
-    PRBool IsIgnored();
+    bool IsIgnored();
     
-    PRInt32 GetUnignoredChildCount(PRBool aDeepCount);
+    PRInt32 GetUnignoredChildCount(bool aDeepCount);
     
-    PRBool HasPopup () {
-      return (NativeState() & states::HASPOPUP);
+    bool HasPopup () {
+      return (NativeState() & mozilla::a11y::states::HASPOPUP);
     }
     
     // return this accessible's all children, adhering to "flat" accessibles by not returning their children.
@@ -99,7 +100,7 @@ class nsAccessibleWrap : public nsAccessible
   /**
    * Return true if the parent doesn't have children to expose to AT.
    */
-  PRBool AncestorIsFlat();
+  bool AncestorIsFlat();
 
     // Wrapper around our native object.
     AccessibleWrapper *mNativeWrapper;

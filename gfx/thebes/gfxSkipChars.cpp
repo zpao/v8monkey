@@ -42,7 +42,7 @@
 #define SHORTCUT_FREQUENCY 256
 
 // Even numbered list entries are "keep" entries
-static PRBool
+static bool
 IsKeepEntry(PRUint32 aEntry)
 {
     return !(aEntry & 1);
@@ -86,7 +86,7 @@ gfxSkipChars::BuildShortcuts()
 }
 
 void
-gfxSkipCharsIterator::SetOffsets(PRUint32 aOffset, PRBool aInOriginalString)
+gfxSkipCharsIterator::SetOffsets(PRUint32 aOffset, bool aInOriginalString)
 {
     NS_ASSERTION(aOffset <= mSkipChars->mCharCount,
                  "Invalid offset");
@@ -111,7 +111,7 @@ gfxSkipCharsIterator::SetOffsets(PRUint32 aOffset, PRBool aInOriginalString)
   
     if (aInOriginalString && mSkipChars->mShortcuts &&
         abs(PRInt32(aOffset) - PRInt32(mListPrefixCharCount)) > SHORTCUT_FREQUENCY) {
-        // Take a shortcut. This makes SetOffsets(..., PR_TRUE) O(1) by bounding
+        // Take a shortcut. This makes SetOffsets(..., true) O(1) by bounding
         // the iterations in the loop below to at most SHORTCUT_FREQUENCY iterations
         PRUint32 shortcutIndex = aOffset/SHORTCUT_FREQUENCY;
         if (shortcutIndex == 0) {
@@ -178,7 +178,7 @@ gfxSkipCharsIterator::SetOffsets(PRUint32 aOffset, PRBool aInOriginalString)
     }
 }
 
-PRBool
+bool
 gfxSkipCharsIterator::IsOriginalCharSkipped(PRInt32* aRunLength) const
 {
     if (mSkipChars->mListLength == 0) {
@@ -213,10 +213,10 @@ gfxSkipCharsIterator::IsOriginalCharSkipped(PRInt32* aRunLength) const
         if (aRunLength) {
             *aRunLength = 0;
         }
-        return PR_TRUE;
+        return true;
     }
   
-    PRBool isSkipped = !IsKeepEntry(listPrefixLength);
+    bool isSkipped = !IsKeepEntry(listPrefixLength);
     if (aRunLength) {
         // Long runs of all-skipped or all-kept characters will be encoded as
         // sequences of 255, 0, 255, 0 etc. Compute the maximum run length by skipping
@@ -240,16 +240,16 @@ gfxSkipCharsBuilder::FlushRun()
     // Fill in buffer entries starting at mBufferLength, as many as necessary
     PRUint32 charCount = mRunCharCount;
     for (;;) {
-        PRUint32 chars = PR_MIN(255, charCount);
+        PRUint32 chars = NS_MIN<PRUint32>(255, charCount);
         if (!mBuffer.AppendElement(chars)) {
-            mInErrorState = PR_TRUE;
+            mInErrorState = true;
             return;
         }
         charCount -= chars;
         if (charCount == 0)
             break;
         if (!mBuffer.AppendElement(0)) {
-            mInErrorState = PR_TRUE;
+            mInErrorState = true;
             return;
         }
     }

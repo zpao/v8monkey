@@ -40,6 +40,7 @@
 
 #include <math.h>
 
+#include "nsString.h"
 #include "nsIMemoryReporter.h"
 #include "mozilla/ipc/SharedMemory.h"
 
@@ -48,21 +49,22 @@ namespace ipc {
 
 static PRInt64 gShmemAllocated;
 static PRInt64 gShmemMapped;
-static PRInt64 GetShmemAllocated(void*) { return gShmemAllocated; }
-static PRInt64 GetShmemMapped(void*) { return gShmemMapped; }
+static PRInt64 GetShmemAllocated() { return gShmemAllocated; }
+static PRInt64 GetShmemMapped() { return gShmemMapped; }
 
 NS_MEMORY_REPORTER_IMPLEMENT(ShmemAllocated,
-                             "shmem-allocated",
-                             "Memory shared with other processes that is "
-                             "accessible (but not necessarily mapped).",
-                             GetShmemAllocated,
-                             nsnull)
+    "shmem-allocated",
+    KIND_OTHER,
+    UNITS_BYTES,
+    GetShmemAllocated,
+    "Memory shared with other processes that is accessible (but not "
+    "necessarily mapped).")
 NS_MEMORY_REPORTER_IMPLEMENT(ShmemMapped,
-                             "shmem-mapped",
-                             "Memory shared with other processes that is "
-                             "mapped into the address space.",
-                             GetShmemMapped,
-                             nsnull)
+    "shmem-mapped",
+    KIND_OTHER,
+    UNITS_BYTES,
+    GetShmemMapped,
+    "Memory shared with other processes that is mapped into the address space.")
 
 SharedMemory::SharedMemory()
   : mAllocSize(0)

@@ -47,10 +47,9 @@
 #include "nsIDOMDocument.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIPrincipal.h"
-#include "nsIDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsReadableUtils.h"
 #include "nsCRT.h"
-#include "nsLoadListenerProxy.h"
 #include "nsStreamUtils.h"
 #include "nsThreadUtils.h"
 #include "nsNetCID.h"
@@ -63,60 +62,13 @@
 
 using namespace mozilla;
 
-// nsIDOMEventListener
-nsresult
-nsDOMParser::HandleEvent(nsIDOMEvent* aEvent)
-{
-  return NS_OK;
-}
-
-// nsIDOMLoadListener
-nsresult
-nsDOMParser::Load(nsIDOMEvent* aEvent)
-{
-  mLoopingForSyncLoad = PR_FALSE;
-
-  return NS_OK;
-}
-
-nsresult
-nsDOMParser::BeforeUnload(nsIDOMEvent* aEvent)
-{
-  return NS_OK;
-}
-
-nsresult
-nsDOMParser::Unload(nsIDOMEvent* aEvent)
-{
-  return NS_OK;
-}
-
-nsresult
-nsDOMParser::Abort(nsIDOMEvent* aEvent)
-{
-  mLoopingForSyncLoad = PR_FALSE;
-
-  return NS_OK;
-}
-
-nsresult
-nsDOMParser::Error(nsIDOMEvent* aEvent)
-{
-  mLoopingForSyncLoad = PR_FALSE;
-
-  return NS_OK;
-}
-
 nsDOMParser::nsDOMParser()
-  : mLoopingForSyncLoad(PR_FALSE),
-    mAttemptedInit(PR_FALSE)
+  : mAttemptedInit(false)
 {
 }
 
 nsDOMParser::~nsDOMParser()
 {
-  NS_ABORT_IF_FALSE(!mLoopingForSyncLoad, "we rather crash than hang");
-  mLoopingForSyncLoad = PR_FALSE;
 }
 
 DOMCI_DATA(DOMParser, nsDOMParser)
@@ -126,8 +78,6 @@ NS_INTERFACE_MAP_BEGIN(nsDOMParser)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMParser)
   NS_INTERFACE_MAP_ENTRY(nsIDOMParser)
   NS_INTERFACE_MAP_ENTRY(nsIDOMParserJS)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMLoadListener)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
   NS_INTERFACE_MAP_ENTRY(nsIJSNativeInitializer)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(DOMParser)
@@ -191,10 +141,15 @@ nsDOMParser::ParseFromStream(nsIInputStream *stream,
   NS_ENSURE_ARG_POINTER(aResult);
   *aResult = nsnull;
 
+  bool svg = nsCRT::strcmp(contentType, "image/svg+xml") == 0;
+
   // For now, we can only create XML documents.
+  //XXXsmaug Should we create an HTMLDocument (in XHTML mode)
+  //         for "application/xhtml+xml"?
   if ((nsCRT::strcmp(contentType, "text/xml") != 0) &&
       (nsCRT::strcmp(contentType, "application/xml") != 0) &&
-      (nsCRT::strcmp(contentType, "application/xhtml+xml") != 0))
+      (nsCRT::strcmp(contentType, "application/xhtml+xml") != 0) &&
+      !svg)
     return NS_ERROR_NOT_IMPLEMENTED;
 
   nsCOMPtr<nsIScriptGlobalObject> scriptHandlingObject =
@@ -233,22 +188,9 @@ nsDOMParser::ParseFromStream(nsIInputStream *stream,
   rv = nsContentUtils::CreateDocument(EmptyString(), EmptyString(), nsnull,
                                       mDocumentURI, mBaseURI,
                                       mOriginalPrincipal,
-                                      scriptHandlingObject,
+                                      scriptHandlingObject, svg,
                                       getter_AddRefs(domDocument));
   NS_ENSURE_SUCCESS(rv, rv);
-
-  // Register as a load listener on the document
-  nsCOMPtr<nsPIDOMEventTarget> target(do_QueryInterface(domDocument));
-  if (target) {
-    nsWeakPtr requestWeak(do_GetWeakReference(static_cast<nsIDOMParser*>(this)));
-    nsLoadListenerProxy* proxy = new nsLoadListenerProxy(requestWeak);
-    if (!proxy) return NS_ERROR_OUT_OF_MEMORY;
-
-    // This will addref the proxy
-    rv = target->AddEventListenerByIID(static_cast<nsIDOMEventListener*>(proxy), 
-                                       NS_GET_IID(nsIDOMLoadListener));
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
 
   // Create a fake channel 
   nsCOMPtr<nsIChannel> parserChannel;
@@ -266,10 +208,7 @@ nsDOMParser::ParseFromStream(nsIInputStream *stream,
   // Tell the document to start loading
   nsCOMPtr<nsIStreamListener> listener;
 
-  AutoRestore<PRPackedBool> restoreSyncLoop(mLoopingForSyncLoad);
-  mLoopingForSyncLoad = PR_TRUE;
-
-  // Have to pass PR_FALSE for reset here, else the reset will remove
+  // Have to pass false for reset here, else the reset will remove
   // our event listener.  Should that listener addition move to later
   // than this call?  Then we wouldn't need to mess around with
   // SetPrincipal, etc, probably!
@@ -283,7 +222,7 @@ nsDOMParser::ParseFromStream(nsIInputStream *stream,
   rv = document->StartDocumentLoad(kLoadAsData, parserChannel, 
                                    nsnull, nsnull, 
                                    getter_AddRefs(listener),
-                                   PR_FALSE);
+                                   false);
 
   // Make sure to give this document the right base URI
   document->SetBaseURI(mBaseURI);
@@ -319,15 +258,6 @@ nsDOMParser::ParseFromStream(nsIInputStream *stream,
     return NS_ERROR_FAILURE;
   }
 
-  // Process events until we receive a load, abort, or error event for the
-  // document object.  That event may have already fired.
-
-  nsIThread *thread = NS_GetCurrentThread();
-  while (mLoopingForSyncLoad) {
-    if (!NS_ProcessNextEvent(thread))
-      break;
-  }
-
   domDocument.swap(*aResult);
 
   return NS_OK;
@@ -338,7 +268,7 @@ nsDOMParser::Init(nsIPrincipal* principal, nsIURI* documentURI,
                   nsIURI* baseURI, nsIScriptGlobalObject* aScriptObject)
 {
   NS_ENSURE_STATE(!mAttemptedInit);
-  mAttemptedInit = PR_TRUE;
+  mAttemptedInit = true;
   
   NS_ENSURE_ARG(principal || documentURI);
 
@@ -390,14 +320,14 @@ nsDOMParser::Init(nsIPrincipal* principal, nsIURI* documentURI,
 }
   
 static nsQueryInterface
-JSvalToInterface(JSContext* cx, jsval val, nsIXPConnect* xpc, PRBool* wasNull)
+JSvalToInterface(JSContext* cx, jsval val, nsIXPConnect* xpc, bool* wasNull)
 {
   if (val == JSVAL_NULL) {
-    *wasNull = PR_TRUE;
+    *wasNull = true;
     return nsQueryInterface(nsnull);
   }
   
-  *wasNull = PR_FALSE;
+  *wasNull = false;
   if (JSVAL_IS_OBJECT(val)) {
     JSObject* arg = JSVAL_TO_OBJECT(val);
 
@@ -419,7 +349,7 @@ GetInitArgs(JSContext *cx, PRUint32 argc, jsval *argv,
             nsIURI** aBaseURI)
 {
   // Only proceed if the caller has UniversalXPConnect.
-  PRBool haveUniversalXPConnect;
+  bool haveUniversalXPConnect;
   nsresult rv = nsContentUtils::GetSecurityManager()->
     IsCapabilityEnabled("UniversalXPConnect", &haveUniversalXPConnect);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -432,7 +362,7 @@ GetInitArgs(JSContext *cx, PRUint32 argc, jsval *argv,
   
   // First arg is our principal.  If someone passes something that's
   // not a principal and not null, die to prevent privilege escalation.
-  PRBool wasNull;
+  bool wasNull;
   nsCOMPtr<nsIPrincipal> prin = JSvalToInterface(cx, argv[0], xpc, &wasNull);
   if (!prin && !wasNull) {
     return NS_ERROR_INVALID_ARG;
@@ -481,7 +411,8 @@ nsDOMParser::Initialize(nsISupports* aOwner, JSContext* cx, JSObject* obj,
     nsIScriptSecurityManager* secMan = nsContentUtils::GetSecurityManager();
     NS_ENSURE_TRUE(secMan, NS_ERROR_UNEXPECTED);
 
-    secMan->GetSubjectPrincipal(getter_AddRefs(prin));
+    nsresult rv = secMan->GetSubjectPrincipal(getter_AddRefs(prin));
+    NS_ENSURE_SUCCESS(rv, rv);
 
     // We're called from JS; there better be a subject principal, really.
     NS_ENSURE_TRUE(prin, NS_ERROR_UNEXPECTED);
@@ -538,7 +469,8 @@ nsDOMParser::Init(nsIPrincipal *aPrincipal, nsIURI *aDocumentURI,
     nsIScriptSecurityManager* secMan = nsContentUtils::GetSecurityManager();
     NS_ENSURE_TRUE(secMan, NS_ERROR_UNEXPECTED);
 
-    secMan->GetSubjectPrincipal(getter_AddRefs(principal));
+    nsresult rv = secMan->GetSubjectPrincipal(getter_AddRefs(principal));
+    NS_ENSURE_SUCCESS(rv, rv);
 
     // We're called from JS; there better be a subject principal, really.
     NS_ENSURE_TRUE(principal, NS_ERROR_UNEXPECTED);

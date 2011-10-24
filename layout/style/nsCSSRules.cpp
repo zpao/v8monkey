@@ -72,7 +72,7 @@ namespace css = mozilla::css;
   { return this; }
 #define IMPL_STYLE_RULE_INHERIT_MAP_RULE_INFO_INTO(class_, super_) \
 /* virtual */ void class_::MapRuleInfoInto(nsRuleData* aRuleData) \
-  { NS_ABORT_IF_FALSE(PR_FALSE, "should not be called"); }
+  { NS_ABORT_IF_FALSE(false, "should not be called"); }
 
 #define IMPL_STYLE_RULE_INHERIT(class_, super_) \
 IMPL_STYLE_RULE_INHERIT_GET_DOM_RULE_WEAK(class_, super_) \
@@ -494,12 +494,12 @@ ImportRule::GetStyleSheet(nsIDOMCSSStyleSheet * *aStyleSheet)
 // must be outside the namespace
 DOMCI_DATA(CSSImportRule, css::ImportRule)
 
-static PRBool
+static bool
 CloneRuleInto(css::Rule* aRule, void* aArray)
 {
   nsRefPtr<css::Rule> clone = aRule->Clone();
   static_cast<nsCOMArray<css::Rule>*>(aArray)->AppendObject(clone);
-  return PR_TRUE;
+  return true;
 }
 
 namespace mozilla {
@@ -510,12 +510,12 @@ GroupRule::GroupRule()
 {
 }
 
-static PRBool
+static bool
 SetParentRuleReference(Rule* aRule, void* aParentRule)
 {
   GroupRule* parentRule = static_cast<GroupRule*>(aParentRule);
   aRule->SetParentRule(parentRule);
-  return PR_TRUE;
+  return true;
 }
 
 GroupRule::GroupRule(const GroupRule& aCopy)
@@ -536,12 +536,12 @@ GroupRule::~GroupRule()
 
 IMPL_STYLE_RULE_INHERIT_MAP_RULE_INFO_INTO(GroupRule, Rule)
 
-static PRBool
+static bool
 SetStyleSheetReference(Rule* aRule, void* aSheet)
 {
   nsCSSStyleSheet* sheet = (nsCSSStyleSheet*)aSheet;
   aRule->SetStyleSheet(sheet);
-  return PR_TRUE;
+  return true;
 }
 
 /* virtual */ void
@@ -581,7 +581,7 @@ GroupRule::GetStyleRuleAt(PRInt32 aIndex) const
   return mRules.SafeObjectAt(aIndex);
 }
 
-PRBool
+bool
 GroupRule::EnumerateRulesForwards(RuleEnumFunc aFunc, void * aData) const
 {
   return
@@ -854,14 +854,14 @@ MediaRule::DeleteRule(PRUint32 aIndex)
 }
 
 // GroupRule interface
-/* virtual */ PRBool
+/* virtual */ bool
 MediaRule::UseForPresentation(nsPresContext* aPresContext,
                                    nsMediaQueryResultCacheKey& aKey)
 {
   if (mMedia) {
     return mMedia->Matches(aPresContext, &aKey);
   }
-  return PR_TRUE;
+  return true;
 }
 
 } // namespace css
@@ -917,6 +917,7 @@ DocumentRule::List(FILE* out, PRInt32 aIndent) const
         break;
       case eDomain:
         str.AppendLiteral("domain(\"");
+        break;
       case eRegExp:
         str.AppendLiteral("regexp(\"");
         break;
@@ -1020,7 +1021,7 @@ DocumentRule::DeleteRule(PRUint32 aIndex)
 }
 
 // GroupRule interface
-/* virtual */ PRBool
+/* virtual */ bool
 DocumentRule::UseForPresentation(nsPresContext* aPresContext,
                                  nsMediaQueryResultCacheKey& aKey)
 {
@@ -1034,11 +1035,11 @@ DocumentRule::UseForPresentation(nsPresContext* aPresContext,
     switch (url->func) {
       case eURL: {
         if (docURISpec == url->url)
-          return PR_TRUE;
+          return true;
       } break;
       case eURLPrefix: {
         if (StringBeginsWith(docURISpec, url->url))
-          return PR_TRUE;
+          return true;
       } break;
       case eDomain: {
         nsCAutoString host;
@@ -1047,24 +1048,24 @@ DocumentRule::UseForPresentation(nsPresContext* aPresContext,
         PRInt32 lenDiff = host.Length() - url->url.Length();
         if (lenDiff == 0) {
           if (host == url->url)
-            return PR_TRUE;
+            return true;
         } else {
           if (StringEndsWith(host, url->url) &&
               host.CharAt(lenDiff - 1) == '.')
-            return PR_TRUE;
+            return true;
         }
       } break;
       case eRegExp: {
         NS_ConvertUTF8toUTF16 spec(docURISpec);
         NS_ConvertUTF8toUTF16 regex(url->url);
         if (nsContentUtils::IsPatternMatching(spec, regex, doc)) {
-          return PR_TRUE;
+          return true;
         }
       } break;
     }
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 DocumentRule::URL::~URL()
@@ -1663,7 +1664,6 @@ nsCSSFontFaceRule::GetDesc(nsCSSFontDesc aDescID, nsCSSValue & aValue)
   aValue = mDecl.*nsCSSFontFaceStyleDecl::Fields[aDescID];
 }
 
-#ifdef MOZ_CSS_ANIMATIONS
 // -------------------------------------------
 // nsCSSKeyframeStyleDeclaration
 //
@@ -1682,7 +1682,7 @@ NS_IMPL_ADDREF(nsCSSKeyframeStyleDeclaration)
 NS_IMPL_RELEASE(nsCSSKeyframeStyleDeclaration)
 
 css::Declaration*
-nsCSSKeyframeStyleDeclaration::GetCSSDeclaration(PRBool aAllocate)
+nsCSSKeyframeStyleDeclaration::GetCSSDeclaration(bool aAllocate)
 {
   if (mRule) {
     return mRule->Declaration();
@@ -1851,7 +1851,7 @@ nsCSSKeyframeRule::SetKeyText(const nsAString& aKeyText)
 {
   nsCSSParser parser;
 
-  nsTArray<float> newSelectors;
+  InfallibleTArray<float> newSelectors;
   // FIXME: pass filename and line number
   if (parser.ParseKeyframeSelectorString(aKeyText, nsnull, 0, newSelectors)) {
     newSelectors.SwapElements(mKeys);
@@ -2033,7 +2033,7 @@ nsCSSKeyframesRule::FindRuleIndexForKey(const nsAString& aKey)
 {
   nsCSSParser parser;
 
-  nsTArray<float> keys;
+  InfallibleTArray<float> keys;
   // FIXME: pass filename and line number
   if (parser.ParseKeyframeSelectorString(aKey, nsnull, 0, keys)) {
     // The spec isn't clear, but we'll match on the key list, which
@@ -2078,12 +2078,11 @@ nsCSSKeyframesRule::FindRule(const nsAString& aKey,
 }
 
 // GroupRule interface
-/* virtual */ PRBool
+/* virtual */ bool
 nsCSSKeyframesRule::UseForPresentation(nsPresContext* aPresContext,
                                        nsMediaQueryResultCacheKey& aKey)
 {
-  NS_ABORT_IF_FALSE(PR_FALSE, "should not be called");
-  return PR_FALSE;
+  NS_ABORT_IF_FALSE(false, "should not be called");
+  return false;
 }
 
-#endif

@@ -44,15 +44,7 @@
 #ifndef jsdate_h___
 #define jsdate_h___
 
-#include "jsobj.h"
-
-extern js::Class js_DateClass;
-
-inline bool
-JSObject::isDate() const
-{
-    return getClass() == &js_DateClass;
-}
+#include "jscntxt.h"
 
 #define HalfTimeDomain  8.64e15
 

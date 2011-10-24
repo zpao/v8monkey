@@ -58,7 +58,7 @@ nsDecodeAppleFile::nsDecodeAppleFile()
   m_rfRefNum = -1;
   m_totalDataForkWritten = 0;
   m_totalResourceForkWritten = 0;
-  m_headerOk = PR_FALSE;
+  m_headerOk = false;
   
   m_comment[0] = 0;
   memset(&m_dates, 0, sizeof(m_dates));
@@ -100,22 +100,22 @@ NS_IMETHODIMP nsDecodeAppleFile::Close(void)
   /* Check if the file is complete and if it's the case, write file attributes */
   if (m_headerOk)
   {
-    PRBool dataOk = PR_TRUE; /* It's ok if the file doesn't have a datafork, therefore set it to true by default. */
+    bool dataOk = true; /* It's ok if the file doesn't have a datafork, therefore set it to true by default. */
     if (m_headers.magic == APPLESINGLE_MAGIC)
     {
       for (i = 0; i < m_headers.entriesCount; i ++)
         if (ENT_DFORK == m_entries[i].id)
         {
-          dataOk = (PRBool)(m_totalDataForkWritten == m_entries[i].length);
+          dataOk = (bool)(m_totalDataForkWritten == m_entries[i].length);
           break;
         }
     }
 
-    PRBool resourceOk = FALSE;
+    bool resourceOk = FALSE;
     for (i = 0; i < m_headers.entriesCount; i ++)
       if (ENT_RFORK == m_entries[i].id)
       {
-        resourceOk = (PRBool)(m_totalResourceForkWritten == m_entries[i].length);
+        resourceOk = (bool)(m_totalResourceForkWritten == m_entries[i].length);
         break;
       }
       
@@ -189,7 +189,7 @@ NS_IMETHODIMP nsDecodeAppleFile::WriteSegments(nsReadSegmentFun reader, void * c
   return m_output->WriteSegments(reader, closure, count, _retval);
 }
 
-NS_IMETHODIMP nsDecodeAppleFile::IsNonBlocking(PRBool *aNonBlocking)
+NS_IMETHODIMP nsDecodeAppleFile::IsNonBlocking(bool *aNonBlocking)
 {
   return m_output->IsNonBlocking(aNonBlocking);
 }
@@ -267,7 +267,7 @@ NS_IMETHODIMP nsDecodeAppleFile::Write(const char *buffer, PRUint32 bufferSize, 
                 m_dataForkOffset = offset;
             }
           }
-          m_headerOk = PR_TRUE;          
+          m_headerOk = true;          
           m_state = parseLookupPart;
         }
         break;

@@ -69,6 +69,7 @@
 #include "nsPresContext.h"
 #include "nsIDocument.h"
 #include "nsISelection.h"
+#include "nsIFrame.h"
 
 // This sets how opaque the drag image is
 #define DRAG_IMAGE_ALPHA_LEVEL 0.5
@@ -102,6 +103,11 @@ static const char gTextUriListType[] = "text/uri-list";
 static const char gTextPlainUTF8Type[] = "text/plain;charset=utf-8";
 
 static void
+invisibleSourceDragBegin(GtkWidget        *aWidget,
+                         GdkDragContext   *aContext,
+                         gpointer          aData);
+
+static void
 invisibleSourceDragEnd(GtkWidget        *aWidget,
                        GdkDragContext   *aContext,
                        gpointer          aData);
@@ -126,7 +132,7 @@ nsDragService::nsDragService()
     // running.
     nsCOMPtr<nsIObserverService> obsServ =
         mozilla::services::GetObserverService();
-    obsServ->AddObserver(this, "quit-application", PR_FALSE);
+    obsServ->AddObserver(this, "quit-application", false);
 
     // our hidden source widget
     mHiddenWidget = gtk_invisible_new();
@@ -135,9 +141,11 @@ nsDragService::nsDragService()
     gtk_widget_realize(mHiddenWidget);
     // hook up our internal signals so that we can get some feedback
     // from our drag source
-    g_signal_connect(GTK_OBJECT(mHiddenWidget), "drag_data_get",
+    g_signal_connect(mHiddenWidget, "drag_begin",
+                     G_CALLBACK(invisibleSourceDragBegin), this);
+    g_signal_connect(mHiddenWidget, "drag_data_get",
                      G_CALLBACK(invisibleSourceDragDataGet), this);
-    g_signal_connect(GTK_OBJECT(mHiddenWidget), "drag_end",
+    g_signal_connect(mHiddenWidget, "drag_end",
                      G_CALLBACK(invisibleSourceDragEnd), this);
     // drag-failed is available from GTK+ version 2.12
     guint dragFailedID = g_signal_lookup("drag-failed",
@@ -157,8 +165,8 @@ nsDragService::nsDragService()
     mTargetWidget = 0;
     mTargetDragContext = 0;
     mTargetTime = 0;
-    mCanDrop = PR_FALSE;
-    mTargetDragDataReceived = PR_FALSE;
+    mCanDrop = false;
+    mTargetDragDataReceived = false;
     mTargetDragData = 0;
     mTargetDragDataLen = 0;
 }
@@ -302,6 +310,9 @@ nsDragService::InvokeDragSession(nsIDOMNode *aDOMNode,
     if (!sourceList)
         return NS_OK;
 
+    // stored temporarily until the drag-begin signal has been received
+    mSourceRegion = aRegion;
+
     // save our action type
     GdkDragAction action = GDK_ACTION_DEFAULT;
 
@@ -331,41 +342,9 @@ nsDragService::InvokeDragSession(nsIDOMNode *aDOMNode,
                                              1,
                                              &event);
 
-    if (!context) {
-        rv = NS_ERROR_FAILURE;
-    } else {
-        PRBool needsFallbackIcon = PR_FALSE;
-        nsIntRect dragRect;
-        nsPresContext* pc;
-        nsRefPtr<gfxASurface> surface;
-        if (mHasImage || mSelection) {
-          DrawDrag(aDOMNode, aRegion, mScreenX, mScreenY,
-                   &dragRect, getter_AddRefs(surface), &pc);
-        }
+    mSourceRegion = nsnull;
 
-        if (surface) {
-          PRInt32 sx = mScreenX, sy = mScreenY;
-          ConvertToUnscaledDevPixels(pc, &sx, &sy);
-
-          PRInt32 offsetX = sx - dragRect.x;
-          PRInt32 offsetY = sy - dragRect.y;
-          if (!SetAlphaPixmap(surface, context, offsetX, offsetY, dragRect)) {
-            GdkPixbuf* dragPixbuf =
-              nsImageToPixbuf::SurfaceToPixbuf(surface, dragRect.width, dragRect.height);
-            if (dragPixbuf) {
-              gtk_drag_set_icon_pixbuf(context, dragPixbuf, offsetX, offsetY);
-              g_object_unref(dragPixbuf);
-            } else {
-              needsFallbackIcon = PR_TRUE;
-            }
-          }
-        } else {
-          needsFallbackIcon = PR_TRUE;
-        }
-
-        if (needsFallbackIcon)
-          gtk_drag_set_icon_default(context);
-
+    if (context) {
         // GTK uses another hidden window for receiving mouse events.
         mGrabWidget = gtk_grab_get_current();
         if (mGrabWidget) {
@@ -376,6 +355,9 @@ nsDragService::InvokeDragSession(nsIDOMNode *aDOMNode,
                              G_CALLBACK(OnSourceGrabEventAfter), NULL);
         }
     }
+    else {
+        rv = NS_ERROR_FAILURE;
+    }
 
     gtk_target_list_unref(sourceList);
 
@@ -384,7 +366,7 @@ nsDragService::InvokeDragSession(nsIDOMNode *aDOMNode,
     return rv;
 }
 
-PRBool
+bool
 nsDragService::SetAlphaPixmap(gfxASurface *aSurface,
                                  GdkDragContext *aContext,
                                  PRInt32 aXOffset,
@@ -396,16 +378,16 @@ nsDragService::SetAlphaPixmap(gfxASurface *aSurface,
     // Transparent drag icons need, like a lot of transparency-related things,
     // a compositing X window manager
     if (!gdk_screen_is_composited(screen))
-      return PR_FALSE;
+      return false;
 
     GdkColormap* alphaColormap = gdk_screen_get_rgba_colormap(screen);
     if (!alphaColormap)
-      return PR_FALSE;
+      return false;
 
     GdkPixmap* pixmap = gdk_pixmap_new(NULL, dragRect.width, dragRect.height,
                                        gdk_colormap_get_visual(alphaColormap)->depth);
     if (!pixmap)
-      return PR_FALSE;
+      return false;
 
     gdk_drawable_set_colormap(GDK_DRAWABLE(pixmap), alphaColormap);
 
@@ -414,7 +396,7 @@ nsDragService::SetAlphaPixmap(gfxASurface *aSurface,
          nsWindow::GetSurfaceForGdkDrawable(GDK_DRAWABLE(pixmap),
                                             dragRect.Size());
     if (!xPixmapSurface)
-      return PR_FALSE;
+      return false;
 
     nsRefPtr<gfxContext> xPixmapCtx = new gfxContext(xPixmapSurface);
 
@@ -431,7 +413,7 @@ nsDragService::SetAlphaPixmap(gfxASurface *aSurface,
     gtk_drag_set_icon_pixmap(aContext, alphaColormap, pixmap, NULL,
                              aXOffset, aYOffset);
     g_object_unref(pixmap);
-    return PR_TRUE;
+    return true;
 }
 
 NS_IMETHODIMP
@@ -442,7 +424,7 @@ nsDragService::StartDragSession()
 }
  
 NS_IMETHODIMP
-nsDragService::EndDragSession(PRBool aDoneDrag)
+nsDragService::EndDragSession(bool aDoneDrag)
 {
     PR_LOG(sDragLm, PR_LOG_DEBUG, ("nsDragService::EndDragSession %d",
                                    aDoneDrag));
@@ -466,7 +448,7 @@ nsDragService::EndDragSession(PRBool aDoneDrag)
 
 // nsIDragSession
 NS_IMETHODIMP
-nsDragService::SetCanDrop(PRBool aCanDrop)
+nsDragService::SetCanDrop(bool aCanDrop)
 {
     PR_LOG(sDragLm, PR_LOG_DEBUG, ("nsDragService::SetCanDrop %d",
                                    aCanDrop));
@@ -475,7 +457,7 @@ nsDragService::SetCanDrop(PRBool aCanDrop)
 }
 
 NS_IMETHODIMP
-nsDragService::GetCanDrop(PRBool *aCanDrop)
+nsDragService::GetCanDrop(bool *aCanDrop)
 {
     PR_LOG(sDragLm, PR_LOG_DEBUG, ("nsDragService::GetCanDrop"));
     *aCanDrop = mCanDrop;
@@ -553,7 +535,7 @@ NS_IMETHODIMP
 nsDragService::GetNumDropItems(PRUint32 * aNumItems)
 {
     PR_LOG(sDragLm, PR_LOG_DEBUG, ("nsDragService::GetNumDropItems"));
-    PRBool isList = IsTargetContextList();
+    bool isList = IsTargetContextList();
     if (isList)
         mSourceDataItems->Count(aNumItems);
     else {
@@ -596,7 +578,7 @@ nsDragService::GetData(nsITransferable * aTransferable,
     unsigned int i;
 
     // check to see if this is an internal list
-    PRBool isList = IsTargetContextList();
+    bool isList = IsTargetContextList();
 
     if (isList) {
         PR_LOG(sDragLm, PR_LOG_DEBUG, ("it's a list..."));
@@ -665,16 +647,16 @@ nsDragService::GetData(nsITransferable * aTransferable,
             PR_LOG(sDragLm, PR_LOG_DEBUG,
                    ("looking for data in type %s, gdk flavor %ld\n",
                    static_cast<const char*>(flavorStr), gdkFlavor));
-            PRBool dataFound = PR_FALSE;
+            bool dataFound = false;
             if (gdkFlavor) {
                 GetTargetDragData(gdkFlavor);
             }
             if (mTargetDragData) {
-                PR_LOG(sDragLm, PR_LOG_DEBUG, ("dataFound = PR_TRUE\n"));
-                dataFound = PR_TRUE;
+                PR_LOG(sDragLm, PR_LOG_DEBUG, ("dataFound = true\n"));
+                dataFound = true;
             }
             else {
-                PR_LOG(sDragLm, PR_LOG_DEBUG, ("dataFound = PR_FALSE\n"));
+                PR_LOG(sDragLm, PR_LOG_DEBUG, ("dataFound = false\n"));
 
                 // Dragging and dropping from the file manager would cause us 
                 // to parse the source text as a nsILocalFile URL.
@@ -743,7 +725,7 @@ nsDragService::GetData(nsITransferable * aTransferable,
                             g_free(mTargetDragData);
                             mTargetDragData = convertedText;
                             mTargetDragDataLen = ucs2string.Length() * 2;
-                            dataFound = PR_TRUE;
+                            dataFound = true;
                         } // if plain text data on clipboard
                     } else {
                         PR_LOG(sDragLm, PR_LOG_DEBUG,
@@ -768,7 +750,7 @@ nsDragService::GetData(nsITransferable * aTransferable,
                                 g_free(mTargetDragData);
                                 mTargetDragData = convertedText;
                                 mTargetDragDataLen = convertedTextLen * 2;
-                                dataFound = PR_TRUE;
+                                dataFound = true;
                             } // if plain text data on clipboard
                         } // if plain text flavor present
                     } // if plain text charset=utf-8 flavor present
@@ -802,7 +784,7 @@ nsDragService::GetData(nsITransferable * aTransferable,
                             g_free(mTargetDragData);
                             mTargetDragData = convertedText;
                             mTargetDragDataLen = convertedTextLen * 2;
-                            dataFound = PR_TRUE;
+                            dataFound = true;
                         }
                     }
                     else {
@@ -832,7 +814,7 @@ nsDragService::GetData(nsITransferable * aTransferable,
                                 g_free(mTargetDragData);
                                 mTargetDragData = convertedText;
                                 mTargetDragDataLen = convertedTextLen * 2;
-                                dataFound = PR_TRUE;
+                                dataFound = true;
                             }
                         }
                         else {
@@ -873,7 +855,7 @@ nsDragService::GetData(nsITransferable * aTransferable,
 
 NS_IMETHODIMP
 nsDragService::IsDataFlavorSupported(const char *aDataFlavor,
-                                     PRBool *_retval)
+                                     bool *_retval)
 {
     PR_LOG(sDragLm, PR_LOG_DEBUG, ("nsDragService::IsDataFlavorSupported %s",
                                    aDataFlavor));
@@ -881,7 +863,7 @@ nsDragService::IsDataFlavorSupported(const char *aDataFlavor,
         return NS_ERROR_INVALID_ARG;
 
     // set this to no by default
-    *_retval = PR_FALSE;
+    *_retval = false;
 
     // check to make sure that we have a drag object set, here
     if (!mTargetDragContext) {
@@ -892,7 +874,7 @@ nsDragService::IsDataFlavorSupported(const char *aDataFlavor,
     }
 
     // check to see if the target context is a list.
-    PRBool isList = IsTargetContextList();
+    bool isList = IsTargetContextList();
     // if it is, just look in the internal data since we are the source
     // for it.
     if (isList) {
@@ -932,7 +914,7 @@ nsDragService::IsDataFlavorSupported(const char *aDataFlavor,
                             if (strcmp(flavorStr, aDataFlavor) == 0) {
                                 PR_LOG(sDragLm, PR_LOG_DEBUG,
                                        ("boioioioiooioioioing!\n"));
-                                *_retval = PR_TRUE;
+                                *_retval = true;
                             }
                         }
                     }
@@ -953,7 +935,7 @@ nsDragService::IsDataFlavorSupported(const char *aDataFlavor,
                ("checking %s against %s\n", name, aDataFlavor));
         if (name && (strcmp(name, aDataFlavor) == 0)) {
             PR_LOG(sDragLm, PR_LOG_DEBUG, ("good!\n"));
-            *_retval = PR_TRUE;
+            *_retval = true;
         }
         // check for automatic text/uri-list -> text/x-moz-url mapping
         if (!*_retval && 
@@ -963,7 +945,7 @@ nsDragService::IsDataFlavorSupported(const char *aDataFlavor,
             PR_LOG(sDragLm, PR_LOG_DEBUG,
                    ("good! ( it's text/uri-list and \
                    we're checking against text/x-moz-url )\n"));
-            *_retval = PR_TRUE;
+            *_retval = true;
         }
         // check for automatic _NETSCAPE_URL -> text/x-moz-url mapping
         if (!*_retval && 
@@ -973,7 +955,7 @@ nsDragService::IsDataFlavorSupported(const char *aDataFlavor,
             PR_LOG(sDragLm, PR_LOG_DEBUG,
                    ("good! ( it's _NETSCAPE_URL and \
                    we're checking against text/x-moz-url )\n"));
-            *_retval = PR_TRUE;
+            *_retval = true;
         }
         // check for auto text/plain -> text/unicode mapping
         if (!*_retval && 
@@ -984,7 +966,7 @@ nsDragService::IsDataFlavorSupported(const char *aDataFlavor,
             PR_LOG(sDragLm, PR_LOG_DEBUG,
                    ("good! ( it's text plain and we're checking \
                    against text/unicode or application/x-moz-file)\n"));
-            *_retval = PR_TRUE;
+            *_retval = true;
         }
         g_free(name);
     }
@@ -1009,7 +991,7 @@ NS_IMETHODIMP
 nsDragService::TargetStartDragMotion(void)
 {
     PR_LOG(sDragLm, PR_LOG_DEBUG, ("nsDragService::TargetStartDragMotion"));
-    mCanDrop = PR_FALSE;
+    mCanDrop = false;
     return NS_OK;
 }
 
@@ -1055,7 +1037,7 @@ nsDragService::TargetDataReceived(GtkWidget         *aWidget,
 {
     PR_LOG(sDragLm, PR_LOG_DEBUG, ("nsDragService::TargetDataReceived"));
     TargetResetData();
-    mTargetDragDataReceived = PR_TRUE;
+    mTargetDragDataReceived = true;
     if (aSelectionData->length > 0) {
         mTargetDragDataLen = aSelectionData->length;
         mTargetDragData = g_malloc(mTargetDragDataLen);
@@ -1077,10 +1059,10 @@ nsDragService::TargetSetTimeCallback(nsIDragSessionGTKTimeCB aCallback)
 }
 
 
-PRBool
+bool
 nsDragService::IsTargetContextList(void)
 {
-    PRBool retval = PR_FALSE;
+    bool retval = false;
 
     if (!mTargetDragContext)
         return retval;
@@ -1102,7 +1084,7 @@ nsDragService::IsTargetContextList(void)
         gchar *name = NULL;
         name = gdk_atom_name(atom);
         if (name && strcmp(name, gMimeListType) == 0)
-            retval = PR_TRUE;
+            retval = true;
         g_free(name);
         if (retval)
             break;
@@ -1138,10 +1120,9 @@ nsDragService::GetTargetDragData(GdkAtom aFlavor)
 void
 nsDragService::TargetResetData(void)
 {
-    mTargetDragDataReceived = PR_FALSE;
+    mTargetDragDataReceived = false;
     // make sure to free old data if we have to
-    if (mTargetDragData)
-      g_free(mTargetDragData);
+    g_free(mTargetDragData);
     mTargetDragData = 0;
     mTargetDragDataLen = 0;
 }
@@ -1389,7 +1370,7 @@ nsDragService::SourceEndDragSession(GdkDragContext *aContext,
         dropEffect = DRAGDROP_ACTION_NONE;
 
         if (aResult != MOZ_GTK_DRAG_RESULT_NO_TARGET) {
-            mUserCancelled = PR_TRUE;
+            mUserCancelled = true;
         }
     }
 
@@ -1401,7 +1382,7 @@ nsDragService::SourceEndDragSession(GdkDragContext *aContext,
     }
 
     // Inform the drag session that we're ending the drag.
-    EndDragSession(PR_TRUE);
+    EndDragSession(true);
 }
 
 static void
@@ -1503,24 +1484,24 @@ nsDragService::SourceDataGet(GtkWidget        *aWidget,
     if (item) {
         // if someone was asking for text/plain, lookup unicode instead so
         // we can convert it.
-        PRBool needToDoConversionToPlainText = PR_FALSE;
+        bool needToDoConversionToPlainText = false;
         const char* actualFlavor = mimeFlavor;
         if (strcmp(mimeFlavor, kTextMime) == 0 ||
             strcmp(mimeFlavor, gTextPlainUTF8Type) == 0) {
             actualFlavor = kUnicodeMime;
-            needToDoConversionToPlainText = PR_TRUE;
+            needToDoConversionToPlainText = true;
         }
         // if someone was asking for _NETSCAPE_URL we need to convert to
         // plain text but we also need to look for x-moz-url
         else if (strcmp(mimeFlavor, gMozUrlType) == 0) {
             actualFlavor = kURLMime;
-            needToDoConversionToPlainText = PR_TRUE;
+            needToDoConversionToPlainText = true;
         }
         // if someone was asking for text/uri-list we need to convert to
         // plain text.
         else if (strcmp(mimeFlavor, gTextUriListType) == 0) {
             actualFlavor = gTextUriListType;
-            needToDoConversionToPlainText = PR_TRUE;
+            needToDoConversionToPlainText = true;
         }
         else
             actualFlavor = mimeFlavor;
@@ -1586,8 +1567,66 @@ nsDragService::SourceDataGet(GtkWidget        *aWidget,
     }
 }
 
-/* static */
-void
+void nsDragService::SetDragIcon(GdkDragContext* aContext)
+{
+    if (!mHasImage && !mSelection)
+        return;
+
+    nsIntRect dragRect;
+    nsPresContext* pc;
+    nsRefPtr<gfxASurface> surface;
+    DrawDrag(mSourceNode, mSourceRegion, mScreenX, mScreenY,
+             &dragRect, getter_AddRefs(surface), &pc);
+    if (!pc)
+        return;
+
+    PRInt32 sx = mScreenX, sy = mScreenY;
+    ConvertToUnscaledDevPixels(pc, &sx, &sy);
+
+    PRInt32 offsetX = sx - dragRect.x;
+    PRInt32 offsetY = sy - dragRect.y;
+
+    // If a popup is set as the drag image, use its widget. Otherwise, use
+    // the surface that DrawDrag created.
+    if (mDragPopup) {
+        GtkWidget* gtkWidget = nsnull;
+        nsIFrame* frame = mDragPopup->GetPrimaryFrame();
+        if (frame) {
+            // DrawDrag ensured that this is a popup frame.
+            nsCOMPtr<nsIWidget> widget = frame->GetNearestWidget();
+            if (widget) {
+                gtkWidget = (GtkWidget *)widget->GetNativeData(NS_NATIVE_SHELLWIDGET);
+                if (gtkWidget) {
+                    OpenDragPopup();
+                    gtk_drag_set_icon_widget(aContext, gtkWidget, offsetX, offsetY);
+                }
+            }
+        }
+    }
+    else if (surface) {
+        if (!SetAlphaPixmap(surface, aContext, offsetX, offsetY, dragRect)) {
+            GdkPixbuf* dragPixbuf =
+              nsImageToPixbuf::SurfaceToPixbuf(surface, dragRect.width, dragRect.height);
+            if (dragPixbuf) {
+                gtk_drag_set_icon_pixbuf(aContext, dragPixbuf, offsetX, offsetY);
+                g_object_unref(dragPixbuf);
+            }
+        }
+    }
+}
+
+static void
+invisibleSourceDragBegin(GtkWidget        *aWidget,
+                         GdkDragContext   *aContext,
+                         gpointer          aData)
+{
+    PR_LOG(sDragLm, PR_LOG_DEBUG, ("invisibleSourceDragBegin"));
+    nsDragService *dragService = (nsDragService *)aData;
+
+    dragService->SetDragIcon(aContext);
+}
+
+static void
 invisibleSourceDragDataGet(GtkWidget        *aWidget,
                            GdkDragContext   *aContext,
                            GtkSelectionData *aSelectionData,
@@ -1601,8 +1640,7 @@ invisibleSourceDragDataGet(GtkWidget        *aWidget,
                                aSelectionData, aInfo, aTime);
 }
 
-/* static */
-gboolean
+static gboolean
 invisibleSourceDragFailed(GtkWidget        *aWidget,
                           GdkDragContext   *aContext,
                           gint              aResult,
@@ -1621,8 +1659,7 @@ invisibleSourceDragFailed(GtkWidget        *aWidget,
     return FALSE;
 }
 
-/* static */
-void
+static void
 invisibleSourceDragEnd(GtkWidget        *aWidget,
                        GdkDragContext   *aContext,
                        gpointer          aData)

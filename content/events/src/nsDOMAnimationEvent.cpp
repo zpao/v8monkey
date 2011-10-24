@@ -44,15 +44,15 @@
 nsDOMAnimationEvent::nsDOMAnimationEvent(nsPresContext *aPresContext,
                                          nsAnimationEvent *aEvent)
   : nsDOMEvent(aPresContext, aEvent ? aEvent
-                                    : new nsAnimationEvent(PR_FALSE, 0,
+                                    : new nsAnimationEvent(false, 0,
                                                            EmptyString(),
                                                            0.0))
 {
   if (aEvent) {
-    mEventIsInternal = PR_FALSE;
+    mEventIsInternal = false;
   }
   else {
-    mEventIsInternal = PR_TRUE;
+    mEventIsInternal = true;
     mEvent->time = PR_Now();
   }
 }
@@ -91,8 +91,8 @@ nsDOMAnimationEvent::GetElapsedTime(float *aElapsedTime)
 
 NS_IMETHODIMP
 nsDOMAnimationEvent::InitAnimationEvent(const nsAString & typeArg,
-                                        PRBool canBubbleArg,
-                                        PRBool cancelableArg,
+                                        bool canBubbleArg,
+                                        bool cancelableArg,
                                         const nsAString & animationNameArg,
                                         float elapsedTimeArg)
 {

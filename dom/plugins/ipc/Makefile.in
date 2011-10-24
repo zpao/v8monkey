@@ -59,7 +59,7 @@ EXPORTS_mozilla/plugins = \
   ChildTimer.h \
   NPEventOSX.h \
   NPEventWindows.h \
-  NPEventX11.h \
+  NPEventUnix.h \
   NPEventAndroid.h \
   PluginIdentifierChild.h \
   PluginIdentifierParent.h \
@@ -75,6 +75,7 @@ EXPORTS_mozilla/plugins = \
   PluginScriptableObjectUtils-inl.h \
   PluginInstanceChild.h \
   PluginInstanceParent.h \
+  PluginUtilsOSX.h \
   AStream.h \
   BrowserStreamChild.h \
   BrowserStreamParent.h \
@@ -109,6 +110,8 @@ CPPSRCS = \
   ChildAsyncCall.cpp \
   ChildTimer.cpp \
   PluginMessageUtils.cpp \
+  PluginIdentifierChild.cpp \
+  PluginIdentifierParent.cpp \
   PluginInstanceChild.cpp \
   PluginInstanceParent.cpp \
   PluginModuleChild.cpp \
@@ -135,9 +138,17 @@ EXPORTS_mozilla/plugins += \
 endif
 
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
+DIRS += \
+    interpose \
+    $(NULL)
+
 CMMSRCS   += \
     PluginUtilsOSX.mm \
     PluginInterposeOSX.mm \
+    $(NULL)
+
+EXPORTS_mozilla/plugins += \
+    PluginInterposeOSX.h \
     $(NULL)
 endif
 

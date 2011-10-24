@@ -45,9 +45,10 @@
 #include "nsIPluginHost.h"
 #include "nsIDocShell.h"
 #include "nsIWebNavigation.h"
-#include "nsDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsPluginError.h"
 #include "nsContentUtils.h"
+#include "nsPluginHost.h"
 
 nsPluginArray::nsPluginArray(nsNavigator* navigator,
                              nsIDocShell *aDocShell)
@@ -85,20 +86,21 @@ NS_IMPL_RELEASE(nsPluginArray)
 NS_IMETHODIMP
 nsPluginArray::GetLength(PRUint32* aLength)
 {
-  if (AllowPlugins() && mPluginHost)
-    return mPluginHost->GetPluginCount(aLength);
+  nsPluginHost *pluginHost = static_cast<nsPluginHost*>(mPluginHost.get());
+  if (AllowPlugins() && pluginHost)
+    return pluginHost->GetPluginCount(aLength);
   
   *aLength = 0;
   return NS_OK;
 }
 
-PRBool
+bool
 nsPluginArray::AllowPlugins()
 {
-  PRBool allowPlugins = PR_FALSE;
+  bool allowPlugins = false;
   if (mDocShell)
     if (NS_FAILED(mDocShell->GetAllowPlugins(&allowPlugins)))
-      allowPlugins = PR_FALSE;
+      allowPlugins = false;
 
   return allowPlugins;
 }
@@ -202,7 +204,7 @@ nsPluginArray::Invalidate()
 }
 
 NS_IMETHODIMP
-nsPluginArray::Refresh(PRBool aReloadDocuments)
+nsPluginArray::Refresh(bool aReloadDocuments)
 {
   nsresult res = NS_OK;
   if (!AllowPlugins())
@@ -218,7 +220,7 @@ nsPluginArray::Refresh(PRBool aReloadDocuments)
 
   // NS_ERROR_PLUGINS_PLUGINSNOTCHANGED on reloading plugins indicates
   // that plugins did not change and was not reloaded
-  PRBool pluginsNotChanged = PR_FALSE;
+  bool pluginsNotChanged = false;
   if(mPluginHost)
     pluginsNotChanged = (NS_ERROR_PLUGINS_PLUGINSNOTCHANGED == mPluginHost->ReloadPlugins(aReloadDocuments));
 
@@ -260,7 +262,8 @@ nsPluginArray::GetPlugins()
     if (!mPluginCount)
       return NS_OK;
 
-    rv = mPluginHost->GetPlugins(mPluginCount, mPluginArray);
+    nsPluginHost *pluginHost = static_cast<nsPluginHost*>(mPluginHost.get());
+    rv = pluginHost->GetPlugins(mPluginCount, mPluginArray);
     if (NS_SUCCEEDED(rv)) {
       // need to wrap each of these with a nsPluginElement, which
       // is scriptable.

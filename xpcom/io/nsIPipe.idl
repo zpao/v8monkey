@@ -161,11 +161,11 @@ interface nsISearchableInputStream : nsISupports
  *        pass reference to nsIMemory to have all pipe allocations use this
  *        allocator (pass null to use the default allocator)
  */
-extern NS_COM nsresult
+extern nsresult
 NS_NewPipe2(nsIAsyncInputStream **pipeIn,
             nsIAsyncOutputStream **pipeOut,
-            PRBool nonBlockingInput = PR_FALSE,
-            PRBool nonBlockingOutput = PR_FALSE,
+            bool nonBlockingInput = PR_FALSE,
+            bool nonBlockingOutput = PR_FALSE,
             PRUint32 segmentSize = 0,
             PRUint32 segmentCount = 0,
             nsIMemory *segmentAlloc = nsnull);
@@ -198,13 +198,13 @@ NS_NewPipe2(nsIAsyncInputStream **pipeIn,
  *        pass reference to nsIMemory to have all pipe allocations use this
  *        allocator (pass null to use the default allocator)
  */
-extern NS_COM nsresult
+extern nsresult
 NS_NewPipe(nsIInputStream **pipeIn,
            nsIOutputStream **pipeOut,
            PRUint32 segmentSize = 0,
            PRUint32 maxSize = 0,
-           PRBool nonBlockingInput = PR_FALSE,
-           PRBool nonBlockingOutput = PR_FALSE,
+           bool nonBlockingInput = PR_FALSE,
+           bool nonBlockingOutput = PR_FALSE,
            nsIMemory *segmentAlloc = nsnull);
 
 %}

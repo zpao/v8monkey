@@ -40,7 +40,6 @@
 #include "SVGMotionSMILType.h"
 #include "nsSMILValue.h"
 #include "nsDebug.h"
-#include "nsSVGTransform.h"
 #include "nsSVGAngle.h"
 #include "nsIDOMSVGAngle.h"
 #include "nsSVGPathElement.h"
@@ -138,14 +137,14 @@ struct MotionSegment
   }
 
   // Comparison operators
-  PRBool operator==(const MotionSegment& aOther) const
+  bool operator==(const MotionSegment& aOther) const
   {
     // Compare basic params
     if (mSegmentType != aOther.mSegmentType ||
         mRotateType  != aOther.mRotateType ||
         (mRotateType == eRotateType_Explicit &&  // Technically, angle mismatch
          mRotateAngle != aOther.mRotateAngle)) { // only matters for Explicit.
-      return PR_FALSE;
+      return false;
     }
 
     // Compare translation params, if we're a translation.
@@ -160,7 +159,7 @@ struct MotionSegment
        aOther.mU.mPathPointParams.mDistToPoint);
   }
 
-  PRBool operator!=(const MotionSegment& aOther) const
+  bool operator!=(const MotionSegment& aOther) const
   {
     return !(*this == aOther);
   }
@@ -235,7 +234,7 @@ SVGMotionSMILType::Assign(nsSMILValue& aDest, const nsSMILValue& aSrc) const
   return NS_OK;
 }
 
-PRBool
+bool
 SVGMotionSMILType::IsEqual(const nsSMILValue& aLeft,
                            const nsSMILValue& aRight) const
 {
@@ -247,18 +246,18 @@ SVGMotionSMILType::IsEqual(const nsSMILValue& aLeft,
 
   // If array-lengths don't match, we're trivially non-equal.
   if (leftArr.Length() != rightArr.Length()) {
-    return PR_FALSE;
+    return false;
   }
 
   // Array-lengths match -- check each array-entry for equality.
   PRUint32 length = leftArr.Length(); // == rightArr->Length(), if we get here
   for (PRUint32 i = 0; i < length; ++i) {
     if (leftArr[i] != rightArr[i]) {
-      return PR_FALSE;
+      return false;
     }
   }
 
-  return PR_TRUE; // If we get here, we found no differences.
+  return true; // If we get here, we found no differences.
 }
 
 // Helper method for Add & CreateMatrix

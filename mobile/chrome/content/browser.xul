@@ -69,11 +69,14 @@
 #ifdef MOZ_PLATFORM_MAEMO
         sizemode="fullscreen"
 #else
+#ifndef ANDROID
         width="480"
         height="800"
 #endif
+#endif
         onkeypress="onDebugKeyPress(event);"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:svg="http://www.w3.org/2000/svg"
         xmlns:html="http://www.w3.org/1999/xhtml">
 
   <script type="application/javascript" src="chrome://browser/content/browser.js"/>
@@ -84,7 +87,7 @@
 
   <broadcasterset id="broadcasterset">
     <broadcaster id="bcast_contentShowing" disabled="false"/>
-    <broadcaster id="bcast_urlbarState" mode="view"/>
+    <broadcaster id="bcast_urlbarState" mode="view" tablet_sidebar="true" persist="tablet_sidebar"/>
     <broadcaster id="bcast_uidiscovery"/>
   </broadcasterset>
 
@@ -95,7 +98,7 @@
   <commandset id="mainCommandSet">
     <!-- basic navigation -->
     <command id="cmd_back" label="&back.label;" disabled="true" oncommand="CommandUpdater.doCommand(this.id);"/>
-    <command id="cmd_forward" label="&forward.label;" disabled="true" oncommand="CommandUpdater.doCommand(this.id);"/>
+    <command id="cmd_forward" label="&forward.label;" disabled="true" oncommand="CommandUpdater.doCommand(this.id);" observes="bcast_urlbarState"/>
     <command id="cmd_reload" label="&reload.label;" oncommand="CommandUpdater.doCommand(this.id);"/>
     <command id="cmd_forceReload" oncommand="CommandUpdater.doCommand(this.id);"/>
     <command id="cmd_stop" label="&stop.label;" oncommand="CommandUpdater.doCommand(this.id);"/>
@@ -103,6 +106,7 @@
     <command id="cmd_openLocation" oncommand="CommandUpdater.doCommand(this.id);"/>
 
     <!-- tabs -->
+    <command id="cmd_showTabs" oncommand="CommandUpdater.doCommand(this.id);"/>
     <command id="cmd_newTab" label="&newtab.label;" oncommand="CommandUpdater.doCommand(this.id);"/>
     <command id="cmd_closeTab" label="&closetab.label;" oncommand="CommandUpdater.doCommand(this.id);"/>
 #ifdef MOZ_SERVICES_SYNC
@@ -196,30 +200,34 @@
   </keyset>
 
   <stack flex="1" id="stack">
-    <scrollbox id="controls-scrollbox" style="overflow: hidden; -moz-box-orient: horizontal; position: relative;" flex="1">
+    <scrollbox id="controls-scrollbox" style="overflow: hidden; -moz-box-orient: horizontal; position: relative;" flex="1" observes="bcast_urlbarState">
       <vbox id="tabs-sidebar" class="sidebar" observes="bcast_uidiscovery">
-        <spacer class="toolbar-height"/>
+        <spacer class="toolbar-height" id="tabs-spacer" observes="bcast_urlbarState"/>
         <!-- Left toolbar -->
-        <vbox id="tabs-container" class="panel-dark" flex="1">
-          <vbox id="tabs" flex="1"
+        <vbox id="tabs-container" class="panel-dark" flex="1" observes="bcast_urlbarState">
+          <vbox id="tabs" flex="1" observes="bcast_urlbarState"
+                ondoubletap="BrowserUI.newTab();"
                 onselect="BrowserUI.selectTab(this);"
                 onreloadtab="BrowserUI.undoCloseTab()"
                 onclosetab="BrowserUI.closeTab(this)"
                 onclosereloadtab="this._container.removeTab(this)"/>
           <hbox id="tabs-controls">
-            <toolbarbutton id="newtab-button" class="button-control" command="cmd_newTab"/>
+            <toolbarbutton id="newtab-button" class="button-control" command="cmd_newTab" label="&newtab.label;" observes="bcast_urlbarState" crop="end"/>
           </hbox>
         </vbox>
       </vbox>
 
       <!-- Page Area -->
-      <stack class="window-width window-height">
-        <scrollbox id="page-scrollbox" class="window-width window-height">
+      <stack id="page-stack" observes="bcast_urlbarState">
+        <scrollbox id="page-scrollbox">
           <vbox>
             <!-- Main Toolbar -->
             <box id="toolbar-container" class="panel-dark toolbar-height">
               <box id="toolbar-moveable-container" observes="bcast_uidiscovery">
-                <toolbar id="toolbar-main" class="panel-dark window-width">
+                <toolbar id="toolbar-main" class="panel-dark viewable-width" observes="bcast_urlbarState">
+                  <toolbarbutton id="tool-tabs" class="button-actionbar" command="cmd_showTabs" anchorPosX="0.3"/>
+                  <toolbarbutton id="tool-back2" class="tool-back button-actionbar" command="cmd_back"/>
+                  <toolbarbutton id="tool-forward2" class="tool-forward button-actionbar" command="cmd_forward"/>
 #ifdef MOZ_PLATFORM_MAEMO
 #if MOZ_PLATFORM_MAEMO != 6
                   <toolbarbutton id="tool-app-switch" oncommand="BrowserUI.switchTask();"/>
@@ -245,7 +253,7 @@
                              autocompletepopup="popup_autocomplete"
                              completeselectedindex="true"
                              minresultsforpopup="0"
-                             onsearchbegin="BrowserUI.updateAwesomeHeader(this.controller.searchString);"
+                             onsearchbegin="AwesomeScreen.updateHeader(this.controller.searchString);"
                              placeholder="&urlbar.emptytext;"
                              collapsed="true"
                              flex="1"
@@ -258,6 +266,8 @@
                       <toolbarbutton id="tool-search" command="cmd_opensearch"/>
                     </hbox>
                   </hbox>
+                  <toolbarbutton id="tool-star2" class="tool-star button-actionbar" command="cmd_star"/>
+                  <toolbarbutton id="tool-menu" class="button-actionbar" command="cmd_menu"/>
 #ifndef ANDROID
                   <toolbarbutton id="tool-app-close" class="urlbar-button" command="cmd_close"/>
 #endif
@@ -266,7 +276,7 @@
             </box>
 
             <!-- Content viewport -->
-            <vbox id="content-viewport" class="window-width window-height">
+            <vbox id="content-viewport" class="viewable-width viewable-height">
               <!-- Content viewport -->
               <stack>
                 <deck id="browsers" flex="1" observes="bcast_uidiscovery"/>
@@ -278,7 +288,7 @@
         </scrollbox>
 
         <!-- popup for content navigator helper -->
-        <vbox id="content-navigator" class="window-width" top="0">
+        <vbox id="content-navigator" top="0">
           <textbox id="find-helper-textbox" class="search-bar content-navigator-item" oncommand="FindHelperUI.search(this.value)" oninput="FindHelperUI.updateCommands(this.value);" type="search"/>
         </vbox>
 
@@ -295,9 +305,9 @@
         <spacer class="toolbar-height" mousethrough="always"/>
 
         <vbox id="browser-controls" style="overflow: -moz-hidden-unscrollable;" class="panel-dark" flex="1">
-          <toolbarbutton id="tool-star" class="button-control" command="cmd_star"/>
-          <toolbarbutton id="tool-back" class="button-control" command="cmd_back"/>
-          <toolbarbutton id="tool-forward" class="button-control" command="cmd_forward"/>
+          <toolbarbutton id="tool-star" class="tool-star button-control" command="cmd_star"/>
+          <toolbarbutton id="tool-back" class="tool-back button-control" command="cmd_back"/>
+          <toolbarbutton id="tool-forward" class="tool-forward button-control" command="cmd_forward"/>
           <toolbarspring/>
           <toolbarbutton id="tool-panel-open" class="button-control" command="cmd_panel"/>
         </vbox>
@@ -309,30 +319,42 @@
       <arrowscrollbox id="form-helper-suggestions" align="center" flex="1" orient="horizontal" onclick="FormHelperUI.doAutoComplete(event.target);"/>
     </arrowbox>
 
+    <!-- Tabs sidebar helper popup -->
+    <arrowbox id="tabs-popup-container" hidden="true" offset="18" type="dialog">
+      <vbox id="tabs-popup-inner-container" flex="1">
+         <richlistbox id="tabs-popup-list" flex="1"
+                onselect="BrowserUI.selectTab(this); TabsPopup.hide();"
+                onreloadtab="BrowserUI.undoCloseTab(); TabsPopup.hide();"
+                onclosetab="BrowserUI.closeTab(this); TabsPopup.closeTab(this);"/>
+         <button id="tabs-popup-newtab-button" class="show-text" command="cmd_newTab"/>
+      </vbox>
+    </arrowbox>
+
     <!-- popup for site identity information -->
-    <arrowbox id="identity-container" hidden="true" class="window-width" mode="unknownIdentity" offset="18" flex="1">
-      <hbox id="identity-popup-container" flex="1" align="top">
+    <arrowbox id="identity-container" hidden="true" mode="unknownIdentity" offset="18" flex="1" type="dialog" observes="bcast_urlbarState">
+      <box id="identity-popup-container" flex="1" align="top">
         <image id="identity-popup-icon"/>
         <vbox id="identity-popup-content-box" flex="1">
-          <hbox flex="1">
+          <box id="identity-popup-connected-box" flex="1">
             <label id="identity-popup-connectedToLabel" value="&identity.connectedTo2;"/>
             <label id="identity-popup-connectedToLabel2" flex="1">&identity.unverifiedsite2;</label>
             <description id="identity-popup-content-host" flex="1"/>
-          </hbox>
-          <hbox id="identity-popup-runBy-box">
+          </box>
+          <box id="identity-popup-runBy-box">
             <label id="identity-popup-runByLabel" value="&identity.runBy2;"/>
             <description id="identity-popup-content-owner"/>
             <description id="identity-popup-content-supplemental"/>
-          </hbox>
+          </box>
           <description id="identity-popup-content-verifier"/>
         </vbox>
-        <vbox align="center" pack="start">
+        <box id="identity-popup-encryption-box">
           <image id="identity-popup-encryption-icon"/>
           <description id="identity-popup-encryption-label"/>
-        </vbox>
-      </hbox>
+        </box>
+      </box>
 
-      <hbox id="pageactions-container" class="window-width" hidden="true">
+      <hbox id="pageactions-container" hidden="true">
+#ifndef ANDROID
         <pageaction id="pageaction-findinpage" title="&pageactions.findInPage;"
           onclick="FindHelperUI.show();"/>
 #ifdef NS_PRINTING
@@ -341,6 +363,7 @@
 #endif
         <pageaction id="pageaction-share" title="&pageactions.share.page;"
           onclick="SharingUI.show(getBrowser().currentURI.spec, getBrowser().contentTitle);"/>
+#endif
         <pageaction id="pageaction-password" title="&pageactions.password.forget;"
           onclick="PageActions.forgetPassword(event);"/>
         <pageaction id="pageaction-reset" title="&pageactions.reset;"
@@ -350,17 +373,26 @@
       </hbox>
     </arrowbox>
 
-    <arrowbox id="bookmark-popup" class="arrowbox-dark" hidden="true" align="center" offset="12">
-      <label value="&bookmarkPopup.label;"/>
-      <separator class="thin"/>
-      <vbox>
-        <button id="bookmark-popup-edit" label="&bookmarkEdit.label;" oncommand="BookmarkHelper.edit();"/>
-        <spacer/>
-        <button id="bookmark-popup-remove" label="&bookmarkRemove.label;" oncommand="BookmarkPopup.hide(); BookmarkHelper.removeBookmarksForURI(getBrowser().currentURI);"/>
-      </vbox>
+    <arrowbox id="bookmark-popup" hidden="true" align="stretch" offset="12" type="dialog">
+      <hbox id="bookmark-popup-title">
+        <label value="&bookmarkPopup.label;"/>
+      </hbox>
+      <richlistbox id="bookmark-popup-commands" class="action-buttons" onclick="BookmarkPopup.hide();" flex="1">
+        <richlistitem class="action-button" id="bookmark-popup-edit" onclick="BookmarkHelper.edit();">
+          <label value="&bookmarkEdit.label;"/>
+        </richlistitem>
+        <richlistitem class="action-button" id="bookmark-popup-remove" onclick="BookmarkPopup.hide(); BookmarkHelper.removeBookmarksForURI(getBrowser().currentURI);">
+          <label value="&bookmarkRemove.label;"/>
+        </richlistitem>
+#ifdef ANDROID
+        <richlistitem class="action-button" id="bookmark-popup-shortcut" onclick="BookmarkPopup.addToHome();">
+          <label value="&bookmarkShortcut.label;"/>
+        </richlistitem>
+#endif
+      </richlistbox>
     </arrowbox>
 
-    <box id="bookmark-container" class="perm-modal-block window-width window-height" hidden="true">
+    <box id="bookmark-container" class="perm-modal-block" hidden="true">
       <dialog id="bookmark-dialog" class="content-dialog" flex="1">
         <hbox id="bookmark-form-title" class="prompt-title">
           <description>&editBookmarkDialog.title;</description>
@@ -372,6 +404,12 @@
         </hbox>
       </dialog>
     </box>
+
+    <!-- use an offset to remove the space taken by the invisible callout arrow -->
+    <arrowbox id="appmenu-popup" hidden="true" type="dialog" offset="18">
+      <box id="appmenu-popup-sitecommands"/>
+      <vbox id="appmenu-popup-appcommands"/>
+    </arrowbox>
 
     <box id="panel-container" hidden="true" class="window-width window-height panel-dark"
          style="-moz-stack-sizing: ignore" left="10000">
@@ -434,7 +472,7 @@
                       </menupopup>
                     </menulist>
                   </setting>
-                  <setting id="prefs-homepage" title="&homepage.title;" type="control">
+                  <setting id="prefs-homepage" title="&homepage.title;" type="menulist">
                     <menulist id="prefs-homepage-options" oncommand="PreferencesView.updateHomePage();">
                       <menupopup onpopupshowing="PreferencesView.updateHomePageList();">
                         <menuitem id="prefs-homepage-default" label="&homepage.default;" value="default"/>
@@ -445,9 +483,8 @@
                   </setting>
 #ifdef MOZ_SERVICES_SYNC
                   <settings id="prefs-sync" label="&sync.title;">
-                    <setting id="sync-autosync" pref="browser.sync.enabled" type="bool" title="&sync.synchronize;" oninputchanged="WeaveGlue.toggleSyncEnabled();"/>
-                    <setting id="sync-connect" title="&sync.notconnected;" type="control" collapsed="true">
-                      <button label="&sync.connect;" oncommand="WeaveGlue.open();" />
+                    <setting id="sync-connect" title="&sync.notconnected;" type="control">
+                      <button label="&sync.connect;" oncommand="WeaveGlue.tryConnect();" />
                     </setting>
                     <setting id="sync-connected" class="setting-group" title="&sync.connected;" type="control" collapsed="true">
                       <button id="sync-details" label="&sync.details;" type="checkbox" autocheck="false" checked="false" oncommand="WeaveGlue.showDetails();" />
@@ -465,6 +502,7 @@
                     <setting pref="network.cookie.cookieBehavior" title="&allowCookies.title;" type="boolint" on="0" off="2"/>
                     <setting pref="signon.rememberSignons" title="&rememberPasswords.title;" type="bool"/>
                     <setting pref="privacy.donottrackheader.enabled" title="&doNotTrack.title;" type="bool"/>
+                    <setting id="prefs-master-password" title="&masterPassword.title;" type="bool" oncommand="MasterPasswordUI.show(this.value);"/>
                     <setting title="&clearPrivateData2.title;" type="control">
                       <button id="prefs-clear-data" label="&clearPrivateData.button;" command="cmd_sanitize"/>
                     </setting>
@@ -473,7 +511,7 @@
                     <setting pref="browser.ui.zoom.reflow" title="&reflowZoom.title;" type="bool"/>
                     <setting pref="permissions.default.image" title="&showImages.title;" type="boolint" on="1" off="2"/>
                     <setting pref="javascript.enabled" type="bool" title="&enableJavaScript.title;"/>
-                    <setting pref="browser.menu.showCharacterEncoding" type="bool" localized="true" title="&showCharset.title;"/>
+                    <setting pref="browser.menu.showCharacterEncoding" type="bool" localized="true" title="&showCharsetEncoding.title;"/>
                   </settings>
                 </richlistbox>
               </notificationbox>
@@ -516,25 +554,30 @@
       </hbox>
 
       <!-- titlebar autocomplete results -->
-      <vbox id="popup_autocomplete" class="panel-dark" flex="1" onshow="BrowserUI._edit.showHistoryPopup();" hidden="true"/>
-      <placelist id="bookmarks-items" type="bookmarks" onopen="BookmarkList.openLink(event);" onhide="BrowserUI.updateStar();" flex="1" hidden="true"/>
-      <historylist id="history-items" onopen="HistoryList.openLink(event);" flex="1" hidden="true"/>
+      <vbox id="popup_autocomplete" class="panel-dark place-list" flex="1" onshow="BrowserUI._edit.showHistoryPopup();" hidden="true"/>
+      <placelist id="bookmarks-items" class="place-list" type="bookmarks" onopen="BookmarkList.openLink(event);" onhide="BrowserUI.updateStar();" flex="1" hidden="true"/>
+      <historylist id="history-items" class="place-list" onopen="HistoryList.openLink(event);" flex="1" hidden="true"/>
 #ifdef MOZ_SERVICES_SYNC
-      <remotetabslist id="remotetabs-items" onopen="RemoteTabsList.openLink(event)" flex="1" hidden="true"/>
+      <remotetabslist id="remotetabs-items" class="place-list" onopen="RemoteTabsList.openLink(event)" flex="1" hidden="true"/>
 #endif
     </vbox>
 
+    <!-- Form Helper form validation helper popup -->
+    <arrowbox id="form-helper-validation-container" class="arrowbox-dark" flex="1" hidden="true" offset="0" top="0" left="0">
+      <label/>
+    </arrowbox>
+
 #ifdef MOZ_SERVICES_SYNC
-    <box id="syncsetup-container" class="perm-modal-block window-width window-height" hidden="true">
+    <box id="syncsetup-container" class="perm-modal-block" hidden="true">
       <dialog id="syncsetup-dialog" class="content-dialog" flex="1">
         <hbox class="prompt-title">
           <description>&sync.setup.title;</description>
         </hbox>
         <separator class="prompt-line"/>
         <vbox id="syncsetup-simple" class="syncsetup-page" flex="1">
-          <scrollbox class="prompt-message" orient="vertical" flex="1">
-            <description class="syncsetup-desc syncsetup-center" flex="1">&sync.setup.jpake;</description>
-            <description class="syncsetup-center syncsetup-link" flex="1" onclick="WeaveGlue.openTutorial();">&sync.setup.tutorial;</description>
+          <scrollbox id="sync-message" class="prompt-message" orient="vertical" flex="1">
+            <description class="syncsetup-desc syncsetup-center" flex="1">&sync.setup.pair;</description>
+            <description class="syncsetup-center link" flex="1" onclick="WeaveGlue.openTutorial();">&sync.setup.tutorial;</description>
             <separator/>
             <vbox align="center" flex="1">
               <description id="syncsetup-code1" class="syncsetup-code">....</description>
@@ -542,12 +585,15 @@
               <description id="syncsetup-code3" class="syncsetup-code">....</description>
             </vbox>
             <separator/>
-            <description class="syncsetup-center syncsetup-link" flex="1" onclick="WeaveGlue.openManual();">&sync.fallback;</description>
+            <description class="syncsetup-center link" flex="1" onclick="WeaveGlue.openManual();">&sync.fallback;</description>
             <separator flex="1"/>
           </scrollbox>
           <hbox class="prompt-buttons" pack="center">
-            <button oncommand="WeaveGlue.close();">&sync.setup.cancel;</button>
+            <button class="prompt-button" oncommand="WeaveGlue.close();">&sync.setup.cancel;</button>
           </hbox>
+        </vbox>
+        <vbox id="syncsetup-waiting" class="syncsetup-page" flex="1" hidden="true">
+          <description class="syncsetup-desc syncsetup-center" flex="1">&sync.setup.waiting;</description>
         </vbox>
         <vbox id="syncsetup-fallback" class="syncsetup-page" flex="1" hidden="true">
           <scrollbox class="prompt-message" orient="vertical" flex="1">
@@ -555,7 +601,7 @@
             <separator/>
             <textbox id="syncsetup-account" class="prompt-edit" placeholder="&sync.account;" oninput="WeaveGlue.canConnect();"/>
             <textbox id="syncsetup-password" class="prompt-edit" placeholder="&sync.password;" type="password" oninput="WeaveGlue.canConnect();"/>
-            <textbox id="syncsetup-synckey" class="prompt-edit" placeholder="&sync.syncKey;" oninput="WeaveGlue.canConnect();"/>
+            <textbox id="syncsetup-synckey" class="prompt-edit" placeholder="&sync.recoveryKey;" oninput="WeaveGlue.canConnect();"/>
             <separator class="thin"/>
             <button id="syncsetup-usecustomserver" type="checkbox" class="button-checkbox" pack="start" oncommand="WeaveGlue.toggleCustomServer();">
               <image class="button-image-icon"/>
@@ -565,16 +611,16 @@
             <separator flex="1"/>
           </scrollbox>
           <hbox class="prompt-buttons" pack="center">
-            <button oncommand="WeaveGlue.close();">&sync.setup.cancel;</button>
+            <button class="prompt-button" oncommand="WeaveGlue.close();">&sync.setup.cancel;</button>
             <separator/>
-            <button id="syncsetup-button-connect" oncommand="WeaveGlue.close(); WeaveGlue.connect();">&sync.setup.connect;</button>
+            <button id="syncsetup-button-connect" class="prompt-button" oncommand="WeaveGlue.close(); WeaveGlue.connect();">&sync.setup.connect;</button>
           </hbox>
         </vbox>
       </dialog>
     </box>
 #endif
 
-    <arrowbox id="search-engines-popup" hidden="true" offset="18" flex="1">
+    <arrowbox id="search-engines-popup" hidden="true" offset="18" flex="1" type="dialog">
       <hbox id="search-engines-list" class="action-buttons" flex="1"/>
     </arrowbox>
 
@@ -583,7 +629,7 @@
     </arrowbox>
 
     <!-- options dialog for select form field -->
-    <vbox id="select-container" class="window-width window-height context-block" top="0" left="0" hidden="true" flex="1">
+    <vbox id="select-container" class="context-block" hidden="true">
       <vbox id="select-popup" class="dialog-dark">
         <hbox pack="center">
           <label id="select-title" class="options-title" align="center" crop="center" flex="1"/>
@@ -595,7 +641,7 @@
       </vbox>
     </vbox>
 
-    <hbox id="context-container" class="window-width window-height context-block" top="0" left="0" hidden="true">
+    <hbox id="context-container" class="context-block" hidden="true">
       <vbox id="context-popup" class="dialog-dark">
         <hbox id="context-header">
           <label id="context-hint" crop="center" flex="1"/>
@@ -610,6 +656,9 @@
           <richlistitem class="context-command" id="context-paste" type="paste" onclick="ContextCommands.paste();">
             <label value="&paste.label;"/>
           </richlistitem>
+          <richlistitem class="context-command" id="context-paste-n-go" type="paste-url" onclick="ContextCommands.pasteAndGo();">
+            <label value="&pasteAndGo.label;"/>
+          </richlistitem>
           <richlistitem class="context-command" id="context-select-all" type="select-all" onclick="ContextCommands.selectAll();">
             <label value="&selectAll.label;"/>
           </richlistitem>
@@ -619,11 +668,20 @@
           <richlistitem class="context-command" id="context-bookmark-link" type="link" onclick="ContextCommands.bookmarkLink();">
             <label value="&contextBookmarkLink.label;"/>
           </richlistitem>
-          <richlistitem class="context-command" id="context-savelink" type="link-saveable" onclick="ContextCommands.saveLink();">
-            <label value="&contextSaveLink.label;"/>
-          </richlistitem>
           <richlistitem class="context-command" id="context-saveimage" type="image-loaded" onclick="ContextCommands.saveImage();">
             <label value="&contextSaveImage.label;"/>
+          </richlistitem>
+          <richlistitem class="context-command" id="context-copy-link" type="link" onclick="ContextCommands.copyLink();">
+            <label value="&contextCopyLink.label;"/>
+          </richlistitem>
+          <richlistitem class="context-command" id="context-copy-email" type="mailto" onclick="ContextCommands.copyEmail();">
+            <label value="&contextCopyEmail.label;"/>
+          </richlistitem>
+          <richlistitem class="context-command" id="context-copy-phone" type="callto" onclick="ContextCommands.copyPhone();">
+            <label value="&contextCopyPhone.label;"/>
+          </richlistitem>
+          <richlistitem class="context-command" id="context-copy-image-location" type="image" onclick="ContextCommands.copyImageLocation();">
+            <label value="&contextCopyImageLocation.label;"/>
           </richlistitem>
           <richlistitem class="context-command" id="context-share-link" type="link-shareable" onclick="ContextCommands.shareLink();">
             <label value="&contextShareLink.label;"/>
@@ -653,6 +711,9 @@
             <label value="&contextRemoveBookmark.label;"/>
           </richlistitem>
 #ifdef ANDROID
+          <richlistitem class="context-command" id="context-shortcutbookmark" type="edit-bookmark" onclick="ContextCommands.shortcutBookmark();">
+            <label value="&contextShortcutBookmark.label;"/>
+          </richlistitem>
           <richlistitem class="context-command" id="context-select-input" type="input-text" onclick="ContextCommands.selectInput();">
             <label value="&inputMethod.label;"/>
           </richlistitem>
@@ -661,7 +722,10 @@
       </vbox>
     </hbox>
 
-    <hbox id="menulist-container" class="window-width window-height context-block" top="0" left="0" hidden="true" flex="1">
+    <toolbarbutton id="selectionhandle-start" label="^" left="0" top="0" hidden="true"/>
+    <toolbarbutton id="selectionhandle-end" label="^" left="0" top="0" hidden="true"/>
+
+    <hbox id="menulist-container" class="context-block" hidden="true">
       <vbox id="menulist-popup" class="dialog-dark">
         <label id="menulist-title" class="options-title" crop="center" flex="1"/>
         <richlistbox id="menulist-commands" class="action-buttons" onclick="if (event.target != this) MenuListHelperUI.selectByIndex(this.selectedIndex);" flex="1"/>
@@ -677,8 +741,12 @@
       </vbox>
     </hbox>
 
+    <hbox id="appmenu-overflow" bottom="0" hidden="true" oncommand="AppMenu.hideOverflow();">
+      <richlistbox id="appmenu-overflow-commands" flex="1"/>
+    </hbox>
+
     <hbox id="appmenu" bottom="0" hidden="true" align="stretch" oncommand="AppMenu.hide();">
-      <toolbarbutton class="appmenu-site-button appmenu-button"
+      <toolbarbutton class="appmenu-site-button appmenu-button appmenu-pageaction"
         label="&appMenu.siteOptions;"
         oncommand="getIdentityHandler().show(); event.stopPropagation();"/>
       <toolbarbutton class="appmenu-preferences-button appmenu-button"
@@ -687,10 +755,31 @@
       <toolbarbutton class="appmenu-addons-button appmenu-button"
         label="&addonsHeader.label;"
         oncommand="BrowserUI.showPanel('addons-container');"/>
+      <toolbarbutton class="appmenu-share-button appmenu-button appmenu-pageaction"
+        label="&pageactions.share.page;"
+        oncommand="SharingUI.show(getBrowser().currentURI.spec, getBrowser().contentTitle);"/>
+      <toolbarbutton class="appmenu-findinpage-button appmenu-button appmenu-pageaction"
+        label="&pageactions.findInPage;"
+        oncommand="FindHelperUI.show();"/>
       <toolbarbutton class="appmenu-downloads-button appmenu-button"
         label="&downloadsHeader.label;"
         oncommand="BrowserUI.showPanel('downloads-container');"/>
+#ifdef NS_PRINTING
+      <toolbarbutton class="appmenu-saveas-button appmenu-button appmenu-pageaction"
+        label="&pageactions.saveas.pdf;"
+        oncommand="PageActions.savePageAsPDF();"/>
+#endif
+      <toolbarbutton class="appmenu-quit-button appmenu-button"
+        label="&pageactions.quit;"
+        oncommand="Browser.quit();"/>
     </hbox>
   </stack>
+
+  <svg:svg height="0">
+    <svg:mask id="back-button-mask" maskContentUnits="objectBoundingBox">
+      <svg:rect x="0" y="0" width="1" height="1" fill="white"/>
+      <svg:circle cx="-0.85" cy="0.5" r="0.96"/>
+    </svg:mask>
+  </svg:svg>
 
 </window>

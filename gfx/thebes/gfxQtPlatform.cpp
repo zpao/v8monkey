@@ -76,12 +76,13 @@
 #include FT_FREETYPE_H
 #endif
 
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 #define DEFAULT_RENDER_MODE RENDER_DIRECT
 
-static QPaintEngine::Type sDefaultQtPaintEngineType = QPaintEngine::X11;
+static QPaintEngine::Type sDefaultQtPaintEngineType = QPaintEngine::Raster;
 gfxFontconfigUtils *gfxQtPlatform::sFontconfigUtils = nsnull;
 static cairo_user_data_key_t cairo_qt_pixmap_key;
 static void do_qt_pixmap_unref (void *data)
@@ -123,15 +124,9 @@ gfxQtPlatform::gfxQtPlatform()
 #endif
 
     nsresult rv;
-    PRInt32 ival;
     // 0 - default gfxQPainterSurface
     // 1 - gfxImageSurface
-    nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
-    if (prefs) {
-      rv = prefs->GetIntPref("mozilla.widget-qt.render-mode", &ival);
-      if (NS_FAILED(rv))
-          ival = DEFAULT_RENDER_MODE;
-    }
+    PRInt32 ival = Preferences::GetInt("mozilla.widget-qt.render-mode", DEFAULT_RENDER_MODE);
 
     const char *envTypeOverride = getenv("MOZ_QT_RENDER_TYPE");
     if (envTypeOverride)
@@ -154,7 +149,10 @@ gfxQtPlatform::gfxQtPlatform()
     // Qt doesn't provide a public API to detect the graphicssystem type. We hack
     // around this by checking what type of graphicssystem a test QPixmap uses.
     QPixmap pixmap(1, 1);
-    sDefaultQtPaintEngineType = pixmap.paintEngine()->type();
+#if (QT_VERSION < QT_VERSION_CHECK(4,8,0))
+    if (pixmap.paintEngine())
+        sDefaultQtPaintEngineType = pixmap.paintEngine()->type();
+#endif
 }
 
 gfxQtPlatform::~gfxQtPlatform()
@@ -320,12 +318,12 @@ gfxQtPlatform::UpdateFontList()
             }
         }
 
-        fe->mItalic = PR_FALSE;
+        fe->mItalic = false;
         if (FcPatternGetInteger(fs->fonts[i], FC_SLANT, 0, &x) == FcResultMatch) {
             switch (x) {
             case FC_SLANT_ITALIC:
             case FC_SLANT_OBLIQUE:
-                fe->mItalic = PR_TRUE;
+                fe->mItalic = true;
             }
         }
 
@@ -347,7 +345,7 @@ nsresult
 gfxQtPlatform::ResolveFontName(const nsAString& aFontName,
                                 FontResolverCallback aCallback,
                                 void *aClosure,
-                                PRBool& aAborted)
+                                bool& aAborted)
 {
 #ifdef MOZ_PANGO
     return sFontconfigUtils->ResolveFontName(aFontName, aCallback,
@@ -439,7 +437,7 @@ gfxQtPlatform::CreateFontGroup(const nsAString &aFamilies,
 #ifdef MOZ_PANGO
     return new gfxPangoFontGroup(aFamilies, aStyle, aUserFontSet);
 #else
-    return new gfxFT2FontGroup(aFamilies, aStyle);
+    return new gfxFT2FontGroup(aFamilies, aStyle, aUserFontSet);
 #endif
 }
 
@@ -460,7 +458,7 @@ gfxQtPlatform::MakePlatformFont(const gfxProxyFontEntry *aProxyEntry,
                                            aFontData, aLength);
 }
 
-PRBool
+bool
 gfxQtPlatform::IsFontFormatSupported(nsIURI *aFontURI, PRUint32 aFormatFlags)
 {
     // check for strange format flags
@@ -474,16 +472,16 @@ gfxQtPlatform::IsFontFormatSupported(nsIURI *aFontURI, PRUint32 aFormatFlags)
     if (aFormatFlags & (gfxUserFontSet::FLAG_FORMAT_WOFF     |
                         gfxUserFontSet::FLAG_FORMAT_OPENTYPE |
                         gfxUserFontSet::FLAG_FORMAT_TRUETYPE)) {
-        return PR_TRUE;
+        return true;
     }
 
     // reject all other formats, known and unknown
     if (aFormatFlags != 0) {
-        return PR_FALSE;
+        return false;
     }
 
     // no format hint set, need to look at data
-    return PR_TRUE;
+    return true;
 }
 #endif
 
@@ -563,7 +561,7 @@ gfxQtPlatform::FindFontForChar(PRUint32 aCh, gfxFont *aFont)
     return nsnull;
 }
 
-PRBool
+bool
 gfxQtPlatform::GetPrefFontEntries(const nsCString& aKey, nsTArray<nsRefPtr<gfxFontEntry> > *array)
 {
     return mPrefFonts.Get(aKey, array);
@@ -588,7 +586,7 @@ gfxQtPlatform::GetDPI()
 gfxImageFormat
 gfxQtPlatform::GetOffscreenFormat()
 {
-    if (QX11Info::appDepth() == 16) {
+    if (qApp->desktop()->depth() == 16) {
         return gfxASurface::ImageFormatRGB16_565;
     }
 

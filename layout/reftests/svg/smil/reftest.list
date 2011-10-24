@@ -55,6 +55,8 @@ include event/reftest.list
 
 # General tests
 == anim-discrete-values-1.svg      anim-standard-ref.svg
+== anim-discrete-values-2.svg      anim-standard-ref.svg
+== anim-discrete-values-3.svg      anim-standard-ref.svg
 == anim-discrete-replace-sum-1.svg anim-standard-ref.svg
 == anim-discrete-sum-none-1.svg    anim-standard-ref.svg
 == anim-discrete-sum-sum-1.svg     anim-standard-ref.svg
@@ -88,6 +90,7 @@ fails == anim-fillcolor-1.svg      anim-standard-ref.svg # bug 436296
 == anim-filter-size-01.svg lime.svg
 == anim-length-reset-01.svg lime.svg
 == anim-nonpixel-length-reset-01.svg lime.svg
+== anim-use-length-01.svg lime.svg
 
 # animate some <number> attributes:
 == anim-feComponentTransfer-01.svg lime.svg
@@ -97,8 +100,14 @@ fails == anim-fillcolor-1.svg      anim-standard-ref.svg # bug 436296
 == anim-offset-01.svg lime.svg
 == anim-pathLength-01.svg anim-pathLength-01-ref.svg
 
+# animate some <number-optional-number> attributes:
+== anim-feGaussianBlur-01.svg lime.svg
+
 # animate some <integer> attributes:
 == anim-feTurbulence-numOctaves-01.svg anim-feTurbulence-numOctaves-01-ref.svg
+
+# animate some <integer-optional-integer> attributes:
+== anim-filter-filterRes-01.svg lime.svg
 
 # animate some <angle> attributes:
 == anim-marker-orient-01.svg lime.svg

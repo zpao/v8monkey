@@ -43,6 +43,7 @@
 #include "nsISupports.h"
 #include "nsCOMPtr.h"
 #include "nsIProgrammingLanguage.h"
+#include "jspubtd.h"
 
 class nsIScriptGlobalObject;
 class nsIScriptSecurityManager;
@@ -72,10 +73,9 @@ public:
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIScriptContextPrincipal,
                               NS_ISCRIPTCONTEXTPRINCIPAL_IID)
 
-// a7139c0e-962c-44b6-bec3-e4166bfe84eb
 #define NS_ISCRIPTCONTEXT_IID \
-{ 0xa7139c0e, 0x962c, 0x44b6, \
-  { 0xbe, 0xc3, 0xe4, 0x16, 0x6b, 0xfe, 0x84, 0xeb } }
+{ 0x827d1e82, 0x5aab, 0x4e3a, \
+  { 0x88, 0x76, 0x53, 0xf7, 0xed, 0x1e, 0x3f, 0xbe } }
 
 /* This MUST match JSVERSION_DEFAULT.  This version stuff if we don't
    know what language we have is a little silly... */
@@ -84,9 +84,6 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsIScriptContextPrincipal,
 /**
  * It is used by the application to initialize a runtime and run scripts.
  * A script runtime would implement this interface.
- * <P><I>It does have a bit too much java script information now, that
- * should be removed in a short time. Ideally this interface will be
- * language neutral</I>
  */
 class nsIScriptContext : public nsIScriptContextPrincipal
 {
@@ -122,7 +119,7 @@ public:
                                   PRUint32 aLineNo,
                                   PRUint32 aVersion,
                                   nsAString *aRetValue,
-                                  PRBool* aIsUndefined) = 0;
+                                  bool* aIsUndefined) = 0;
 
   // Note JS bigotry remains here - 'void *aRetValue' is assumed to be a
   // jsval.  This must move to JSObject before it can be made agnostic.
@@ -133,7 +130,7 @@ public:
                                            PRUint32 aLineNo,
                                            PRUint32 aVersion,
                                            void* aRetValue,
-                                           PRBool* aIsUndefined) = 0;
+                                           bool* aIsUndefined) = 0;
 
   /**
    * Compile a script.
@@ -178,7 +175,7 @@ public:
   virtual nsresult ExecuteScript(void* aScriptObject,
                                  void* aScopeObject,
                                  nsAString* aRetValue,
-                                 PRBool* aIsUndefined) = 0;
+                                 bool* aIsUndefined) = 0;
 
   /**
    * Compile the event handler named by atom aName, with function body aBody
@@ -233,41 +230,30 @@ public:
                                     nsIArray *argv, nsIVariant **rval) = 0;
 
   /**
-   * Bind an already-compiled event handler function to a name in the given
-   * scope object.  The same restrictions on aName (lowercase ASCII, not too
-   * long) applies here as for CompileEventHandler.  Scripting languages with
-   * static scoping must re-bind the scope chain for aHandler to begin (after
-   * the activation scope for aHandler itself, typically) with aTarget's scope.
+   * Bind an already-compiled event handler function to the given
+   * target.  Scripting languages with static scoping must re-bind the
+   * scope chain for aHandler to begin (after the activation scope for
+   * aHandler itself, typically) with aTarget's scope.
    *
-   * Logically, this 'bind' operation is more of a 'copy' - it simply
-   * stashes/associates the event handler function with the event target, so
-   * it can be fetched later with GetBoundEventHandler().
+   * The result of the bind operation is a new handler object, with
+   * principals now set and scope set as above.  This is returned in
+   * aBoundHandler.  When this function is called, aBoundHandler is
+   * expected to not be holding an object.
    *
    * @param aTarget an object telling the scope in which to bind the compiled
    *        event handler function.  The context will presumably associate
    *        this nsISupports with a native script object.
-   * @param aName an nsIAtom pointer naming the function; it must be lowercase
-   *        and ASCII, and should not be longer than 63 chars.  This bound on
-   *        length is enforced only by assertions, so caveat caller!
-   * @param aHandler the function object to name, created by an earlier call to
+   * @param aScope the scope in which the script object for aTarget should be
+   *        looked for.
+   * @param aHandler the function object to bind, created by an earlier call to
    *        CompileEventHandler
-   * @return NS_OK if the function was successfully bound to the name
-   *
-   * XXXmarkh - fold this in with SetProperty?  Exactly the same concept!
+   * @param aBoundHandler [out] the result of the bind operation.
+   * @return NS_OK if the function was successfully bound
    */
-  virtual nsresult BindCompiledEventHandler(nsISupports* aTarget, void *aScope,
-                                            nsIAtom* aName,
-                                            void* aHandler) = 0;
-
-  /**
-   * Lookup a previously bound event handler for the specified target.  This
-   * will return an object equivilent to the one passed to
-   * BindCompiledEventHandler (although the pointer may not be the same).
-   *
-   */
-  virtual nsresult GetBoundEventHandler(nsISupports* aTarget, void *aScope,
-                                        nsIAtom* aName,
-                                        nsScriptObjectHolder &aHandler) = 0;
+  virtual nsresult BindCompiledEventHandler(nsISupports* aTarget,
+                                            void *aScope,
+                                            void* aHandler,
+                                            nsScriptObjectHolder& aBoundHandler) = 0;
 
   /**
    * Compile a function that isn't used as an event handler.
@@ -284,7 +270,7 @@ public:
                                    const char* aURL,
                                    PRUint32 aLineNo,
                                    PRUint32 aVersion,
-                                   PRBool aShared,
+                                   bool aShared,
                                    void **aFunctionObject) = 0;
 
   /**
@@ -304,7 +290,7 @@ public:
    * Return the native script context
    *
    **/
-  virtual void *GetNativeContext() = 0;
+  virtual JSContext* GetNativeContext() = 0;
 
   /**
    * Return the native global object for this context.
@@ -319,7 +305,7 @@ public:
    */
   virtual nsresult CreateNativeGlobalForInner(
                                       nsIScriptGlobalObject *aNewInner,
-                                      PRBool aIsChrome,
+                                      bool aIsChrome,
                                       nsIPrincipal *aPrincipal,
                                       void **aNativeGlobal,
                                       nsISupports **aHolder) = 0;
@@ -361,10 +347,10 @@ public:
    * Check to see if context is as yet intialized. Used to prevent
    * reentrancy issues during the initialization process.
    *
-   * @return PR_TRUE if initialized, PR_FALSE if not
+   * @return true if initialized, false if not
    *
    */
-  virtual PRBool IsContextInitialized() = 0;
+  virtual bool IsContextInitialized() = 0;
 
   /**
    * Called as the global object discards its reference to the context.
@@ -391,7 +377,7 @@ public:
    *    calls to the termination function.
    * @return NS_OK if the method is successful
    */
-  virtual void ScriptEvaluated(PRBool aTerminated) = 0;
+  virtual void ScriptEvaluated(bool aTerminated) = 0;
 
   virtual nsresult Serialize(nsIObjectOutputStream* aStream,
                              void *aScriptObject) = 0;
@@ -417,8 +403,8 @@ public:
   /**
    * Called to disable/enable script execution in this context.
    */
-  virtual PRBool GetScriptsEnabled() = 0;
-  virtual void SetScriptsEnabled(PRBool aEnabled, PRBool aFireTimeouts) = 0;
+  virtual bool GetScriptsEnabled() = 0;
+  virtual void SetScriptsEnabled(bool aEnabled, bool aFireTimeouts) = 0;
 
   // SetProperty is suspect and jst believes should not be needed.  Currenly
   // used only for "arguments".
@@ -427,19 +413,19 @@ public:
    * Called to set/get information if the script context is
    * currently processing a script tag
    */
-  virtual PRBool GetProcessingScriptTag() = 0;
-  virtual void SetProcessingScriptTag(PRBool aResult) = 0;
+  virtual bool GetProcessingScriptTag() = 0;
+  virtual void SetProcessingScriptTag(bool aResult) = 0;
 
   /**
    * Called to find out if this script context might be executing script.
    */
-  virtual PRBool GetExecutingScript() = 0;
+  virtual bool GetExecutingScript() = 0;
 
   /**
    * Tell the context whether or not to GC when destroyed.  An optimization
    * used when the window is a [i]frame, so GC will happen anyway.
    */
-  virtual void SetGCOnDestruction(PRBool aGCOnDestruction) = 0;
+  virtual void SetGCOnDestruction(bool aGCOnDestruction) = 0;
 
   /**
    * Initialize DOM classes on aGlobalObj, always call
@@ -461,7 +447,7 @@ public:
    * windows, and needs to stay with inner windows that we're keeping
    * around.
    */
-  virtual void ClearScope(void* aGlobalObj, PRBool aClearFromProtoChain) = 0;
+  virtual void ClearScope(void* aGlobalObj, bool aClearFromProtoChain) = 0;
 
   /**
    * Tell the context we're about to be reinitialize it.

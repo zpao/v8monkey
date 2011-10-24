@@ -38,11 +38,15 @@
 
 /* atom list for CSS anonymous boxes */
 
+#include "mozilla/Util.h"
+
 #include "nsCSSAnonBoxes.h"
 #include "nsAtomListUtils.h"
 #include "nsStaticAtom.h"
 #include "nsMemory.h"
 #include "nsCRT.h"
+
+using namespace mozilla;
 
 // define storage for all atoms
 #define CSS_ANON_BOX(_name, _value) \
@@ -65,17 +69,17 @@ static const nsStaticAtom CSSAnonBoxes_info[] = {
 void nsCSSAnonBoxes::AddRefAtoms()
 {
   NS_RegisterStaticAtoms(CSSAnonBoxes_info,
-                         NS_ARRAY_LENGTH(CSSAnonBoxes_info));
+                         ArrayLength(CSSAnonBoxes_info));
 }
 
-PRBool nsCSSAnonBoxes::IsAnonBox(nsIAtom *aAtom)
+bool nsCSSAnonBoxes::IsAnonBox(nsIAtom *aAtom)
 {
   return nsAtomListUtils::IsMember(aAtom, CSSAnonBoxes_info,
-                                   NS_ARRAY_LENGTH(CSSAnonBoxes_info));
+                                   ArrayLength(CSSAnonBoxes_info));
 }
 
 #ifdef MOZ_XUL
-/* static */ PRBool
+/* static */ bool
 nsCSSAnonBoxes::IsTreePseudoElement(nsIAtom* aPseudo)
 {
   return StringBeginsWith(nsDependentAtomString(aPseudo),

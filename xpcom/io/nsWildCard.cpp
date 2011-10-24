@@ -170,13 +170,13 @@ NS_WildCardValid_(const T *expr)
     return (x < 0 ? x : VALID_SXP);
 }
 
-NS_COM int
+int
 NS_WildCardValid(const char *expr)
 {
     return NS_WildCardValid_(expr);
 }
 
-NS_COM int
+int
 NS_WildCardValid(const PRUnichar *expr)
 {
     return NS_WildCardValid_(expr);
@@ -191,7 +191,7 @@ NS_WildCardValid(const PRUnichar *expr)
 
 template<class T>
 static int
-_shexp_match(const T *str, const T *expr, PRBool case_insensitive, unsigned int level);
+_shexp_match(const T *str, const T *expr, bool case_insensitive, unsigned int level);
 
 /**
  * Count characters until we reach a NUL character or either of the
@@ -241,7 +241,7 @@ _scan_and_copy(const T *expr, T stop1, T stop2, T *dest)
  */
 template<class T>
 static int
-_handle_union(const T *str, const T *expr, PRBool case_insensitive,
+_handle_union(const T *str, const T *expr, bool case_insensitive,
               unsigned int level)
 {
     register int sx;     /* source index */
@@ -292,7 +292,7 @@ _is_char_in_range(unsigned char start, unsigned char end, unsigned char val)
 
 template<class T>
 static int
-_shexp_match(const T *str, const T *expr, PRBool case_insensitive,
+_shexp_match(const T *str, const T *expr, bool case_insensitive,
              unsigned int level)
 {
     register int x;   /* input string index */
@@ -413,7 +413,7 @@ _shexp_match(const T *str, const T *expr, PRBool case_insensitive,
 
 template<class T>
 static int
-ns_WildCardMatch(const T *str, const T *xp, PRBool case_insensitive)
+ns_WildCardMatch(const T *str, const T *xp, bool case_insensitive)
 {
     T *expr = NULL;
     int x, ret = MATCH;
@@ -444,8 +444,8 @@ ns_WildCardMatch(const T *str, const T *xp, PRBool case_insensitive)
 }
 
 template<class T>
-NS_COM int
-NS_WildCardMatch_(const T *str, const T *expr, PRBool case_insensitive)
+int
+NS_WildCardMatch_(const T *str, const T *expr, bool case_insensitive)
 {
     int is_valid = NS_WildCardValid(expr);
     switch(is_valid) {
@@ -456,16 +456,16 @@ NS_WildCardMatch_(const T *str, const T *expr, PRBool case_insensitive)
     }
 }
 
-NS_COM int
+int
 NS_WildCardMatch(const char *str, const char *xp,
-                 PRBool case_insensitive)
+                 bool case_insensitive)
 {
     return NS_WildCardMatch_(str, xp, case_insensitive);
 }
 
-NS_COM int
+int
 NS_WildCardMatch(const PRUnichar *str, const PRUnichar *xp,
-                 PRBool case_insensitive)
+                 bool case_insensitive)
 {
     return NS_WildCardMatch_(str, xp, case_insensitive);
 }

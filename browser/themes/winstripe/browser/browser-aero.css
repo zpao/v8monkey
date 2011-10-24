@@ -11,16 +11,18 @@
     margin-top: 1px;
   }
 
+  .tab-drag-preview::before,
   #appmenu-button {
     border-width: 2px;
-    -moz-border-left-colors: rgba(255,255,255,.5) rgba(83,42,6,.9);
-    -moz-border-bottom-colors: rgba(255,255,255,.5) rgba(83,42,6,.9);
-    -moz-border-right-colors: rgba(255,255,255,.5) rgba(83,42,6,.9);
+    -moz-border-left-colors: @appMenuButtonBorderColor@;
+    -moz-border-bottom-colors: @appMenuButtonBorderColor@;
+    -moz-border-right-colors: @appMenuButtonBorderColor@;
     margin-bottom: 1px; /* compensate white outer border */
     box-shadow: 0 1px 0 rgba(255,255,255,.25) inset,
                 0 0 2px 1px rgba(255,255,255,.25) inset;
   }
 
+  #main-window[privatebrowsingmode=temporary] .tab-drag-preview::before,
   #main-window[privatebrowsingmode=temporary] #appmenu-button {
     -moz-border-left-colors: rgba(255,255,255,.5) rgba(43,8,65,.9);
     -moz-border-bottom-colors: rgba(255,255,255,.5) rgba(43,8,65,.9);
@@ -31,11 +33,15 @@
     margin-top: -1px;
     -moz-margin-start: 1px;
   }
+
+  .panel-promo-message {
+    font-style: italic;
+  }
 }
 
 @media all and (-moz-windows-default-theme) {
   #navigator-toolbox > toolbar:not(:-moz-lwtheme),
-  #addon-bar:not(:-moz-lwtheme) {
+  #browser-bottombox:not(:-moz-lwtheme) {
     background-color: @customToolbarColor@;
   }
 
@@ -51,6 +57,7 @@
                       -moz-linear-gradient(@customToolbarColor@, @customToolbarColor@);
   }
 
+  .tab-drag-label,
   .tabbrowser-tab[selected="true"]:not(:-moz-lwtheme) {
     background-image: -moz-linear-gradient(white, @toolbarHighlight@ 50%),
                       -moz-linear-gradient(@customToolbarColor@, @customToolbarColor@);
@@ -86,6 +93,10 @@
   #main-window {
     -moz-appearance: -moz-win-borderless-glass;
     background: transparent;
+  }
+
+  #appcontent {
+    -moz-appearance: -moz-win-exclude-glass;
   }
 
   #main-window[chromemargin^="0,"][sizemode=normal] #navigator-toolbox {
@@ -130,6 +141,13 @@
     border-right-style: none !important;
   }
 
+  #toolbar-menubar :-moz-any(@primaryToolbarButtons@):not(:-moz-any(#alltabs-button,#tabview-button,#new-tab-button,#sync-button[status])) > .toolbarbutton-icon:not(:-moz-lwtheme),
+  #TabsToolbar[tabsontop=true] :-moz-any(@primaryToolbarButtons@):not(:-moz-any(#alltabs-button,#tabview-button,#new-tab-button,#sync-button[status])) > .toolbarbutton-icon:not(:-moz-lwtheme),
+  #navigator-toolbox[tabsontop=false] > #nav-bar :-moz-any(@primaryToolbarButtons@):not(:-moz-any(#alltabs-button,#tabview-button,#new-tab-button,#sync-button[status])) > .toolbarbutton-icon:not(:-moz-lwtheme),
+  #nav-bar + #customToolbars + #PersonalToolbar[collapsed=true] + #TabsToolbar[tabsontop=false]:last-child :-moz-any(@primaryToolbarButtons@):not(:-moz-any(#alltabs-button,#tabview-button,#new-tab-button,#sync-button[status])) > .toolbarbutton-icon:not(:-moz-lwtheme) {
+    list-style-image: url("chrome://browser/skin/Toolbar-inverted.png");
+  }
+
   /* Vertical toolbar border */
   #main-window[sizemode=normal] #navigator-toolbox::after,
   #main-window[sizemode=normal] #navigator-toolbox[tabsontop=true] > toolbar:not(#toolbar-menubar):not(#TabsToolbar),
@@ -150,6 +168,7 @@
   #main-window[sizemode=normal] #browser-bottombox {
     border: 1px solid @toolbarShadowColor@;
     border-top-style: none;
+    background-clip: padding-box;
   }
 
   #main-window[sizemode=normal][tabsontop=false] #PersonalToolbar:not(:-moz-lwtheme) {
@@ -162,17 +181,18 @@
      because of the border radius on the toolbar below the tab bar. */
   #main-window[sizemode=normal][tabsontop=true] #nav-bar:not(:-moz-lwtheme),
   #main-window[sizemode=normal][tabsontop=true] > #nav-bar[collapsed=true]:not([customizing]) + toolbar:not(:-moz-lwtheme),
-  #main-window[sizemode=normal][tabsontop=true] > #nav-bar[collapsed=true]:not([customizing]) + #customToolbars + #PersonalToolbar:not(:-moz-lwtheme) {
+  #main-window[sizemode=normal][tabsontop=true] > #nav-bar[collapsed=true]:not([customizing]) + #customToolbars + #PersonalToolbar:not(:-moz-lwtheme),
+  #main-window[sizemode=normal][tabsontop=true][disablechrome] #navigator-toolbox:not(:-moz-lwtheme)::after {
     border-top: 1px solid @toolbarShadowColor@;
     border-top-left-radius: 3.5px;
     border-top-right-radius: 3.5px;
     background-clip: padding-box;
   }
-  #main-window[sizemode=normal]:not([disablechrome]) #TabsToolbar[tabsontop=true]:not(:-moz-lwtheme) {
+  #main-window[sizemode=normal] #TabsToolbar[tabsontop=true]:not(:-moz-lwtheme) {
     margin-bottom: -1px;
     background-image: none !important;
   }
-  #main-window[sizemode=normal]:not([disablechrome]) #tabbrowser-tabs[tabsontop=true] > .tabbrowser-arrowscrollbox > .arrowscrollbox-scrollbox > .scrollbox-innerbox:not(:-moz-lwtheme) {
+  #main-window[sizemode=normal] #tabbrowser-tabs[tabsontop=true] > .tabbrowser-arrowscrollbox > .arrowscrollbox-scrollbox > .scrollbox-innerbox:not(:-moz-lwtheme) {
     position: relative;
   }
 
@@ -195,6 +215,14 @@
     padding-right: 2px;
   }
 
+  /* Rounded corners for when chrome is disabled */
+  #main-window[sizemode=normal][tabsontop=true][disablechrome] #navigator-toolbox:not(:-moz-lwtheme)::after {
+    visibility: visible;
+    background-color: @customToolbarColor@;
+    background-image: -moz-linear-gradient(@toolbarHighlight@, @toolbarHighlight@);
+    height: 4px;
+  }
+
   /* Make the window draggable by glassed toolbars (bug 555081) */
   #toolbar-menubar:not([autohide="true"]),
   #TabsToolbar[tabsontop="true"],
@@ -208,47 +236,30 @@
     background-color: -moz-dialog;
   }
 
-  #browser-bottombox:not(:-moz-lwtheme) {
-    background-color: -moz-dialog;
-    background-clip: padding-box;
-  }
-
-  #main-window[sizemode=normal] #browser-bottombox:not(:-moz-lwtheme),
-  #main-window[sizemode=normal] #addon-bar:not(:-moz-lwtheme) {
-    border-bottom-left-radius: 4px;
-    border-bottom-right-radius: 4px;
-  }
-
-  #addon-bar:not(:-moz-lwtheme) {
-    -moz-appearance: none;
-    border-bottom-style: none;
-    background-image: -moz-linear-gradient(@toolbarHighlight@, rgba(255,255,255,0));
-  }
-
   #main-menubar:not(:-moz-lwtheme):not(:-moz-window-inactive) {
     background-color: rgba(255,255,255,.5);
     border-radius: 4px;
   }
 
-  #urlbar,
-  .searchbar-textbox {
+  #navigator-toolbox[tabsontop=false] #urlbar:not(:-moz-lwtheme),
+  #navigator-toolbox[tabsontop=false] .searchbar-textbox:not(:-moz-lwtheme) {
     background-color: rgba(255,255,255,.725);
     @navbarTextboxCustomBorder@
     color: black;
   }
 
-  html|*.urlbar-input:-moz-placeholder,
-  .searchbar-textbox > .autocomplete-textbox-container > .textbox-input-box > html|*.textbox-input:-moz-placeholder {
+  #navigator-toolbox[tabsontop=false] html|*.urlbar-input:not(:-moz-lwtheme):-moz-placeholder,
+  #navigator-toolbox[tabsontop=false] .searchbar-textbox > .autocomplete-textbox-container > .textbox-input-box > html|*.textbox-input:not(:-moz-lwtheme):-moz-placeholder {
     color: #777;
   }
 
-  #urlbar:hover,
-  .searchbar-textbox:hover {
+  #navigator-toolbox[tabsontop=false] #urlbar:not(:-moz-lwtheme):hover,
+  #navigator-toolbox[tabsontop=false] .searchbar-textbox:not(:-moz-lwtheme):hover {
     background-color: rgba(255,255,255,.898);
   }
 
-  #urlbar[focused="true"],
-  .searchbar-textbox[focused="true"] {
+  #navigator-toolbox[tabsontop=false] #urlbar:not(:-moz-lwtheme)[focused],
+  #navigator-toolbox[tabsontop=false] .searchbar-textbox:not(:-moz-lwtheme)[focused] {
     background-color: white;
   }
 
@@ -277,6 +288,31 @@
     background-image: url("chrome://browser/skin/tabview/grain.png"),
                       -moz-linear-gradient(rgba(255,255,255,0), #CCD9EA 200px, #C7D5E7);
     background-attachment: fixed;
+  }
+
+  .tab-drag-panel {
+    -moz-appearance: -moz-win-borderless-glass;
+  }
+  .tab-drag-label {
+    padding: 4px;
+    background-color: -moz-dialog;
+    border-radius: 3px;
+  }
+  .tab-drag-preview {
+    margin: 15px 7px 7px;
+  }
+  .tab-drag-panel:not([target]) > .tab-drag-preview {
+    display: block;
+  }
+  .tab-drag-preview::before { /* miniature appmenu button */
+    content: "";
+    display: block;
+    margin-top: -15px;
+    -moz-margin-start: -2px;
+    padding: 0;
+    width: 32px;
+    height: 7px;
+    border-radius: 0 0 3px 3px;
   }
 }
 

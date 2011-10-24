@@ -49,7 +49,17 @@ _TEST_FILES = \
 		test_bug384147.html \
 		test_bug389350.html \
 		test_bug519928.html \
+		bug678842_subframe.html \
+		$(NULL)
+
+_CHROME_TEST_FILES = \
+		test_bug434998.xul \
+		test_bug338427.html \
+		test_bug678842.html \
 		$(NULL)
 
 libs:: $(_TEST_FILES)
 	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
+
+libs:: $(_CHROME_TEST_FILES)
+	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/chrome/$(relativesrcdir)

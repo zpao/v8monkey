@@ -37,7 +37,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "txExecutionState.h"
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txSingleNodeContext.h"
 #include "txXSLTFunctions.h"
 #include "nsReadableUtils.h"
@@ -80,7 +80,7 @@ txKeyFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
     NS_ENSURE_SUCCESS(rv, rv);
 
     txExpandedName keyName;
-    rv = keyName.init(keyQName, mMappings, PR_FALSE);
+    rv = keyName.init(keyQName, mMappings, false);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsRefPtr<txAExprResult> exprResult;
@@ -116,7 +116,7 @@ txKeyFunctionCall::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
         nsAutoString val;
         exprResult->stringValue(val);
         rv = es->getKeyNodes(keyName, walker.getCurrentPosition(), val,
-                             PR_TRUE, getter_AddRefs(res));
+                             true, getter_AddRefs(res));
         NS_ENSURE_SUCCESS(rv, rv);
     }
 
@@ -132,7 +132,7 @@ txKeyFunctionCall::getReturnType()
     return NODESET_RESULT;
 }
 
-PRBool
+bool
 txKeyFunctionCall::isSensitiveTo(ContextSensitivity aContext)
 {
     return (aContext & NODE_CONTEXT) || argsSensitiveTo(aContext);
@@ -142,7 +142,7 @@ txKeyFunctionCall::isSensitiveTo(ContextSensitivity aContext)
 nsresult
 txKeyFunctionCall::getNameAtom(nsIAtom** aAtom)
 {
-    *aAtom = txXSLTAtoms::key;
+    *aAtom = nsGkAtoms::key;
     NS_ADDREF(*aAtom);
     return NS_OK;
 }
@@ -155,7 +155,7 @@ txKeyFunctionCall::getNameAtom(nsIAtom** aAtom)
 DHASH_WRAPPER(txKeyValueHash, txKeyValueHashEntry, txKeyValueHashKey&)
 DHASH_WRAPPER(txIndexedKeyHash, txIndexedKeyHashEntry, txIndexedKeyHashKey&)
 
-PRBool
+bool
 txKeyValueHashEntry::MatchEntry(const void* aKey) const
 {
     const txKeyValueHashKey* key =
@@ -178,7 +178,7 @@ txKeyValueHashEntry::HashKey(const void* aKey)
            HashString(key->mKeyValue);
 }
 
-PRBool
+bool
 txIndexedKeyHashEntry::MatchEntry(const void* aKey) const
 {
     const txIndexedKeyHashKey* key =
@@ -207,7 +207,7 @@ nsresult
 txKeyHash::getKeyNodes(const txExpandedName& aKeyName,
                        const txXPathNode& aRoot,
                        const nsAString& aKeyValue,
-                       PRBool aIndexIfNotFound,
+                       bool aIndexIfNotFound,
                        txExecutionState& aEs,
                        txNodeSet** aResult)
 {
@@ -263,7 +263,7 @@ txKeyHash::getKeyNodes(const txExpandedName& aKeyName,
     nsresult rv = xslKey->indexSubtreeRoot(aRoot, mKeyValues, aEs);
     NS_ENSURE_SUCCESS(rv, rv);
     
-    indexEntry->mIndexed = PR_TRUE;
+    indexEntry->mIndexed = true;
 
     // Now that the key is indexed we can get its value.
     valueEntry = mKeyValues.GetEntry(valueKey);
@@ -299,21 +299,21 @@ txKeyHash::init()
  * Adds a match/use pair.
  * @param aMatch  match-pattern
  * @param aUse    use-expression
- * @return PR_FALSE if an error occurred, PR_TRUE otherwise
+ * @return false if an error occurred, true otherwise
  */
-PRBool txXSLKey::addKey(nsAutoPtr<txPattern> aMatch, nsAutoPtr<Expr> aUse)
+bool txXSLKey::addKey(nsAutoPtr<txPattern> aMatch, nsAutoPtr<Expr> aUse)
 {
     if (!aMatch || !aUse)
-        return PR_FALSE;
+        return false;
 
     Key* key = mKeys.AppendElement();
     if (!key)
-        return PR_FALSE;
+        return false;
 
     key->matchPattern = aMatch;
     key->useExpr = aUse;
 
-    return PR_TRUE;
+    return true;
 }
 
 /**

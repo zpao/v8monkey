@@ -1,0 +1,89 @@
+#highlighter-container {
+  pointer-events: none;
+}
+
+#highlighter-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+#highlighter-veil-container {
+  overflow: hidden;
+}
+
+#highlighter-veil-container:not([locked]) > .highlighter-veil,
+#highlighter-veil-container:not([locked]) > #highlighter-veil-middlebox,
+#highlighter-veil-container:not([locked]) > #highlighter-veil-middlebox > .highlighter-veil,
+#highlighter-veil-container:not([locked]) > #highlighter-veil-middlebox > #highlighter-veil-transparentbox {
+  -moz-transition-property: width, height;
+  -moz-transition-duration: 0.1s;
+  -moz-transition-timing-function: linear;
+}
+
+#highlighter-veil-bottombox,
+#highlighter-veil-rightbox {
+  -moz-box-flex: 1;
+}
+
+#highlighter-veil-middlebox:-moz-locale-dir(rtl) {
+  -moz-box-direction: reverse;
+}
+
+#highlighter-close-button {
+  position: absolute;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+/*
+ * Node Infobar
+ */
+
+#highlighter-nodeinfobar-container {
+  position: absolute;
+}
+
+#highlighter-nodeinfobar-container:not([locked]) {
+  -moz-transition-property: top, left;
+  -moz-transition-duration: 0.1s;
+  -moz-transition-timing-function: linear;
+}
+
+#highlighter-nodeinfobar {
+  display: block;
+  white-space: nowrap;
+  direction: ltr;
+}
+
+.highlighter-nodeinfobar-arrow {
+  display: none;
+}
+
+#highlighter-nodeinfobar-container[position="top"]:not([hide-arrow]) > #highlighter-nodeinfobar-arrow-bottom {
+  display: block;
+}
+
+#highlighter-nodeinfobar-container[position="bottom"]:not([hide-arrow]) > #highlighter-nodeinfobar-arrow-top {
+  display: block;
+}
+
+#highlighter-nodeinfobar-container[disabled] {
+  visibility: hidden;
+}
+
+#highlighter-nodeinfobar-id:empty {
+  display: none;
+}
+
+#highlighter-nodeinfobar-id::before {
+  content: "#";
+}
+
+.highlighter-nodeinfobar-class::before {
+  content: ".";
+}
+
+#highlighter-nodeinfobar-tagname {
+  text-transform: lowercase;
+}

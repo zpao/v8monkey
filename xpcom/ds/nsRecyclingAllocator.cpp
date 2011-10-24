@@ -67,7 +67,7 @@ nsRecyclingAllocator::nsRecycleTimerCallback(nsITimer *aTimer, void *aClosure)
     {
         // Clear touched so the next time the timer fires we can test whether
         // the allocator was used or not.
-        obj->mTouched = PR_FALSE;
+        obj->mTouched = false;
     }
 }
 
@@ -75,7 +75,7 @@ nsRecyclingAllocator::nsRecycleTimerCallback(nsITimer *aTimer, void *aClosure)
 nsRecyclingAllocator::nsRecyclingAllocator(PRUint32 nbucket, PRUint32 recycleAfter, const char *id) :
     mMaxBlocks(nbucket), mFreeListCount(0), mFreeList(nsnull),
     mLock("nsRecyclingAllocator.mLock"),
-    mRecycleTimer(nsnull), mRecycleAfter(recycleAfter), mTouched(PR_FALSE)
+    mRecycleTimer(nsnull), mRecycleAfter(recycleAfter), mTouched(false)
 #ifdef DEBUG
     , mId(id), mNAllocated(0)
 #endif
@@ -106,7 +106,7 @@ nsRecyclingAllocator::~nsRecyclingAllocator()
 
 // Allocation and free routines
 void*
-nsRecyclingAllocator::Malloc(PRSize bytes, PRBool zeroit)
+nsRecyclingAllocator::Malloc(PRSize bytes, bool zeroit)
 {
     // We don't enter lock for this check. This is intentional.
     // Here is my logic: we are checking if (mFreeList). Doing this check
@@ -128,7 +128,7 @@ nsRecyclingAllocator::Malloc(PRSize bytes, PRBool zeroit)
 
         // Mark that we are using. This will prevent any
         // Timer based release of unused memory.
-        mTouched = PR_TRUE;
+        mTouched = true;
 
         Block* freeNode = mFreeList;
         Block** prevp = &mFreeList;
@@ -185,7 +185,7 @@ nsRecyclingAllocator::Free(void *ptr)
 
     // Mark that we are using the allocator. This will prevent any
     // timer based release of unused memory.
-    mTouched = PR_TRUE;
+    mTouched = true;
 
     // Check on maximum number of blocks to keep in the freelist
     if (mFreeListCount < mMaxBlocks) {
@@ -292,7 +292,7 @@ NS_IMPL_THREADSAFE_ISUPPORTS2(nsRecyclingAllocatorImpl, nsIMemory, nsIRecyclingA
 NS_IMETHODIMP_(void *)
 nsRecyclingAllocatorImpl::Alloc(PRSize size)
 {
-    return nsRecyclingAllocatorImpl::Malloc(size, PR_FALSE);
+    return nsRecyclingAllocatorImpl::Malloc(size, false);
 }
 
 NS_IMETHODIMP_(void *)
@@ -315,14 +315,14 @@ nsRecyclingAllocatorImpl::Init(size_t nbuckets, size_t recycleAfter, const char 
 }
 
 NS_IMETHODIMP
-nsRecyclingAllocatorImpl::HeapMinimize(PRBool immediate)
+nsRecyclingAllocatorImpl::HeapMinimize(bool immediate)
 {
     // XXX Not yet implemented
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
-nsRecyclingAllocatorImpl::IsLowMemory(PRBool *lowmemoryb_ptr)
+nsRecyclingAllocatorImpl::IsLowMemory(bool *lowmemoryb_ptr)
 {
     // XXX Not yet implemented
     return NS_ERROR_NOT_IMPLEMENTED;

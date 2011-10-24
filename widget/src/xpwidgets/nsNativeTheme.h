@@ -40,12 +40,12 @@
 // code duplication.
 
 #include "prtypes.h"
+#include "nsAlgorithm.h"
 #include "nsIAtom.h"
 #include "nsCOMPtr.h"
 #include "nsString.h"
 #include "nsMargin.h"
-#include "nsILookAndFeel.h"
-#include "nsWidgetAtoms.h"
+#include "nsGkAtoms.h"
 #include "nsEventStates.h"
 #include "nsTArray.h"
 #include "nsITimer.h"
@@ -82,7 +82,7 @@ class nsNativeTheme : public nsITimerCallback
   // Returns whether the widget is already styled by content
   // Normally called from ThemeSupportsWidget to turn off native theming
   // for elements that are already styled.
-  PRBool IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
+  bool IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
                         PRUint8 aWidgetType);                                              
 
   // Accessors to widget-specific state information
@@ -90,95 +90,110 @@ class nsNativeTheme : public nsITimerCallback
   bool IsDisabled(nsIFrame* aFrame, nsEventStates aEventStates);
 
   // RTL chrome direction
-  PRBool IsFrameRTL(nsIFrame* aFrame);
+  bool IsFrameRTL(nsIFrame* aFrame);
 
   // button:
-  PRBool IsDefaultButton(nsIFrame* aFrame) {
-    return CheckBooleanAttr(aFrame, nsWidgetAtoms::_default);
+  bool IsDefaultButton(nsIFrame* aFrame) {
+    return CheckBooleanAttr(aFrame, nsGkAtoms::_default);
   }
 
-  PRBool IsButtonTypeMenu(nsIFrame* aFrame);
+  bool IsButtonTypeMenu(nsIFrame* aFrame);
 
   // checkbox:
-  PRBool IsChecked(nsIFrame* aFrame) {
-    return GetCheckedOrSelected(aFrame, PR_FALSE);
+  bool IsChecked(nsIFrame* aFrame) {
+    return GetCheckedOrSelected(aFrame, false);
   }
 
   // radiobutton:
-  PRBool IsSelected(nsIFrame* aFrame) {
-    return GetCheckedOrSelected(aFrame, PR_TRUE);
+  bool IsSelected(nsIFrame* aFrame) {
+    return GetCheckedOrSelected(aFrame, true);
   }
   
-  PRBool IsFocused(nsIFrame* aFrame) {
-    return CheckBooleanAttr(aFrame, nsWidgetAtoms::focused);
+  bool IsFocused(nsIFrame* aFrame) {
+    return CheckBooleanAttr(aFrame, nsGkAtoms::focused);
   }
   
   // scrollbar button:
   PRInt32 GetScrollbarButtonType(nsIFrame* aFrame);
 
   // tab:
-  PRBool IsSelectedTab(nsIFrame* aFrame) {
-    return CheckBooleanAttr(aFrame, nsWidgetAtoms::selected);
+  bool IsSelectedTab(nsIFrame* aFrame) {
+    return CheckBooleanAttr(aFrame, nsGkAtoms::selected);
   }
   
-  PRBool IsNextToSelectedTab(nsIFrame* aFrame, PRInt32 aOffset);
+  bool IsNextToSelectedTab(nsIFrame* aFrame, PRInt32 aOffset);
   
-  PRBool IsBeforeSelectedTab(nsIFrame* aFrame) {
+  bool IsBeforeSelectedTab(nsIFrame* aFrame) {
     return IsNextToSelectedTab(aFrame, -1);
   }
   
-  PRBool IsAfterSelectedTab(nsIFrame* aFrame) {
+  bool IsAfterSelectedTab(nsIFrame* aFrame) {
     return IsNextToSelectedTab(aFrame, 1);
   }
 
-  PRBool IsLeftToSelectedTab(nsIFrame* aFrame) {
+  bool IsLeftToSelectedTab(nsIFrame* aFrame) {
     return IsFrameRTL(aFrame) ? IsAfterSelectedTab(aFrame) : IsBeforeSelectedTab(aFrame);
   }
 
-  PRBool IsRightToSelectedTab(nsIFrame* aFrame) {
+  bool IsRightToSelectedTab(nsIFrame* aFrame) {
     return IsFrameRTL(aFrame) ? IsBeforeSelectedTab(aFrame) : IsAfterSelectedTab(aFrame);
   }
 
   // button / toolbarbutton:
-  PRBool IsCheckedButton(nsIFrame* aFrame) {
-    return CheckBooleanAttr(aFrame, nsWidgetAtoms::checked);
+  bool IsCheckedButton(nsIFrame* aFrame) {
+    return CheckBooleanAttr(aFrame, nsGkAtoms::checked);
   }
 
-  PRBool IsOpenButton(nsIFrame* aFrame) {
-    return CheckBooleanAttr(aFrame, nsWidgetAtoms::open);
+  bool IsSelectedButton(nsIFrame* aFrame) {
+    return CheckBooleanAttr(aFrame, nsGkAtoms::checked) ||
+           CheckBooleanAttr(aFrame, nsGkAtoms::selected);
   }
+
+  bool IsOpenButton(nsIFrame* aFrame) {
+    return CheckBooleanAttr(aFrame, nsGkAtoms::open);
+  }
+
+  bool IsPressedButton(nsIFrame* aFrame);
 
   // treeheadercell:
   TreeSortDirection GetTreeSortDirection(nsIFrame* aFrame);
-  PRBool IsLastTreeHeaderCell(nsIFrame* aFrame);
+  bool IsLastTreeHeaderCell(nsIFrame* aFrame);
 
   // tab:
-  PRBool IsBottomTab(nsIFrame* aFrame);
-  PRBool IsFirstTab(nsIFrame* aFrame);
-  PRBool IsLastTab(nsIFrame* aFrame);
+  bool IsBottomTab(nsIFrame* aFrame);
+  bool IsFirstTab(nsIFrame* aFrame);
   
-  PRBool IsHorizontal(nsIFrame* aFrame);
+  bool IsHorizontal(nsIFrame* aFrame);
 
   // progressbar:
-  PRBool IsIndeterminateProgress(nsIFrame* aFrame, nsEventStates aEventStates);
+  bool IsIndeterminateProgress(nsIFrame* aFrame, nsEventStates aEventStates);
+  bool IsVerticalProgress(nsIFrame* aFrame);
 
   // textfield:
-  PRBool IsReadOnly(nsIFrame* aFrame) {
-      return CheckBooleanAttr(aFrame, nsWidgetAtoms::readonly);
+  bool IsReadOnly(nsIFrame* aFrame) {
+      return CheckBooleanAttr(aFrame, nsGkAtoms::readonly);
   }
 
   // menupopup:
-  PRBool IsSubmenu(nsIFrame* aFrame, PRBool* aLeftOfParent);
+  bool IsSubmenu(nsIFrame* aFrame, bool* aLeftOfParent);
+
+  // True if it's not a menubar item or menulist item
+  bool IsRegularMenuItem(nsIFrame *aFrame);
+
+  bool IsMenuListEditable(nsIFrame *aFrame);
 
   nsIPresShell *GetPresShell(nsIFrame* aFrame);
   PRInt32 CheckIntAttr(nsIFrame* aFrame, nsIAtom* aAtom, PRInt32 defaultValue);
-  PRBool CheckBooleanAttr(nsIFrame* aFrame, nsIAtom* aAtom);
+  bool CheckBooleanAttr(nsIFrame* aFrame, nsIAtom* aAtom);
 
-  PRBool GetCheckedOrSelected(nsIFrame* aFrame, PRBool aCheckSelected);
-  PRBool GetIndeterminate(nsIFrame* aFrame);
+  bool GetCheckedOrSelected(nsIFrame* aFrame, bool aCheckSelected);
+  bool GetIndeterminate(nsIFrame* aFrame);
 
-  PRBool QueueAnimatedContentForRefresh(nsIContent* aContent,
+  bool QueueAnimatedContentForRefresh(nsIContent* aContent,
                                         PRUint32 aMinimumFrameRate);
+
+  nsIFrame* GetAdjacentSiblingFrameWithSameAppearance(nsIFrame* aFrame,
+                                                      bool aNextSibling);
 
  private:
   PRUint32 mAnimatedContentTimeout;

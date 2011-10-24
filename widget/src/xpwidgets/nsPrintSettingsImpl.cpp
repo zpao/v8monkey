@@ -53,31 +53,31 @@ nsPrintSettings::nsPrintSettings() :
   mStartPageNum(1),
   mEndPageNum(1),
   mScaling(1.0),
-  mPrintBGColors(PR_FALSE),
-  mPrintBGImages(PR_FALSE),
+  mPrintBGColors(false),
+  mPrintBGImages(false),
   mPrintFrameTypeUsage(kUseInternalDefault),
   mPrintFrameType(kFramesAsIs),
   mHowToEnableFrameUI(kFrameEnableNone),
-  mIsCancelled(PR_FALSE),
-  mPrintSilent(PR_FALSE),
-  mPrintPreview(PR_FALSE),
-  mShrinkToFit(PR_TRUE),
-  mShowPrintProgress(PR_TRUE),
+  mIsCancelled(false),
+  mPrintSilent(false),
+  mPrintPreview(false),
+  mShrinkToFit(true),
+  mShowPrintProgress(true),
   mPrintPageDelay(50),
   mPaperData(0),
   mPaperSizeType(kPaperSizeDefined),
   mPaperWidth(8.5),
   mPaperHeight(11.0),
   mPaperSizeUnit(kPaperSizeInches),
-  mPrintReversed(PR_FALSE),
-  mPrintInColor(PR_TRUE),
+  mPrintReversed(false),
+  mPrintInColor(true),
   mOrientation(kPortraitOrientation),
-  mDownloadFonts(PR_FALSE),
+  mDownloadFonts(false),
   mNumCopies(1),
-  mPrintToFile(PR_FALSE),
+  mPrintToFile(false),
   mOutputFormat(kOutputFormatNative),
-  mIsInitedFromPrinter(PR_FALSE),
-  mIsInitedFromPrefs(PR_FALSE)
+  mIsInitedFromPrinter(false),
+  mIsInitedFromPrefs(false)
 {
 
   /* member initializers and constructor code */
@@ -169,26 +169,26 @@ NS_IMETHODIMP nsPrintSettings::SetEndPageRange(PRInt32 aEndPageRange)
 }
 
 /* attribute boolean printReversed; */
-NS_IMETHODIMP nsPrintSettings::GetPrintReversed(PRBool *aPrintReversed)
+NS_IMETHODIMP nsPrintSettings::GetPrintReversed(bool *aPrintReversed)
 {
   //NS_ENSURE_ARG_POINTER(aPrintReversed);
   *aPrintReversed = mPrintReversed;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetPrintReversed(PRBool aPrintReversed)
+NS_IMETHODIMP nsPrintSettings::SetPrintReversed(bool aPrintReversed)
 {
   mPrintReversed = aPrintReversed;
   return NS_OK;
 }
 
 /* attribute boolean printInColor; */
-NS_IMETHODIMP nsPrintSettings::GetPrintInColor(PRBool *aPrintInColor)
+NS_IMETHODIMP nsPrintSettings::GetPrintInColor(bool *aPrintInColor)
 {
   //NS_ENSURE_ARG_POINTER(aPrintInColor);
   *aPrintInColor = mPrintInColor;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetPrintInColor(PRBool aPrintInColor)
+NS_IMETHODIMP nsPrintSettings::SetPrintInColor(bool aPrintInColor)
 {
   mPrintInColor = aPrintInColor;
   return NS_OK;
@@ -250,13 +250,13 @@ NS_IMETHODIMP nsPrintSettings::SetResolutionName(const PRUnichar * aResolutionNa
 }
 
 /* attribute boolean downloadFonts; */
-NS_IMETHODIMP nsPrintSettings::GetDownloadFonts(PRBool *aDownloadFonts)
+NS_IMETHODIMP nsPrintSettings::GetDownloadFonts(bool *aDownloadFonts)
 {
   //NS_ENSURE_ARG_POINTER(aDownloadFonts);
   *aDownloadFonts = mDownloadFonts;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetDownloadFonts(PRBool aDownloadFonts)
+NS_IMETHODIMP nsPrintSettings::SetDownloadFonts(bool aDownloadFonts)
 {
   mDownloadFonts = aDownloadFonts;
   return NS_OK;
@@ -276,8 +276,8 @@ NS_IMETHODIMP nsPrintSettings::GetPrinterName(PRUnichar * *aPrinter)
 NS_IMETHODIMP nsPrintSettings::SetPrinterName(const PRUnichar * aPrinter)
 {
   if (!aPrinter || !mPrinter.Equals(aPrinter)) {
-    mIsInitedFromPrinter = PR_FALSE;
-    mIsInitedFromPrefs   = PR_FALSE;
+    mIsInitedFromPrinter = false;
+    mIsInitedFromPrefs   = false;
   }
 
   mPrinter.Assign(aPrinter);
@@ -315,13 +315,13 @@ NS_IMETHODIMP nsPrintSettings::SetPrintCommand(const PRUnichar * aPrintCommand)
 }
 
 /* attribute boolean printToFile; */
-NS_IMETHODIMP nsPrintSettings::GetPrintToFile(PRBool *aPrintToFile)
+NS_IMETHODIMP nsPrintSettings::GetPrintToFile(bool *aPrintToFile)
 {
   //NS_ENSURE_ARG_POINTER(aPrintToFile);
   *aPrintToFile = mPrintToFile;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetPrintToFile(PRBool aPrintToFile)
+NS_IMETHODIMP nsPrintSettings::SetPrintToFile(bool aPrintToFile)
 {
   mPrintToFile = aPrintToFile;
   return NS_OK;
@@ -370,28 +370,28 @@ NS_IMETHODIMP nsPrintSettings::SetPrintPageDelay(PRInt32 aPrintPageDelay)
 }
 
 /* attribute boolean isInitializedFromPrinter; */
-NS_IMETHODIMP nsPrintSettings::GetIsInitializedFromPrinter(PRBool *aIsInitializedFromPrinter)
+NS_IMETHODIMP nsPrintSettings::GetIsInitializedFromPrinter(bool *aIsInitializedFromPrinter)
 {
   NS_ENSURE_ARG_POINTER(aIsInitializedFromPrinter);
-  *aIsInitializedFromPrinter = (PRBool)mIsInitedFromPrinter;
+  *aIsInitializedFromPrinter = (bool)mIsInitedFromPrinter;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetIsInitializedFromPrinter(PRBool aIsInitializedFromPrinter)
+NS_IMETHODIMP nsPrintSettings::SetIsInitializedFromPrinter(bool aIsInitializedFromPrinter)
 {
-  mIsInitedFromPrinter = (PRPackedBool)aIsInitializedFromPrinter;
+  mIsInitedFromPrinter = (bool)aIsInitializedFromPrinter;
   return NS_OK;
 }
 
 /* attribute boolean isInitializedFromPrefs; */
-NS_IMETHODIMP nsPrintSettings::GetIsInitializedFromPrefs(PRBool *aInitializedFromPrefs)
+NS_IMETHODIMP nsPrintSettings::GetIsInitializedFromPrefs(bool *aInitializedFromPrefs)
 {
   NS_ENSURE_ARG_POINTER(aInitializedFromPrefs);
-  *aInitializedFromPrefs = (PRBool)mIsInitedFromPrefs;
+  *aInitializedFromPrefs = (bool)mIsInitedFromPrefs;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetIsInitializedFromPrefs(PRBool aInitializedFromPrefs)
+NS_IMETHODIMP nsPrintSettings::SetIsInitializedFromPrefs(bool aInitializedFromPrefs)
 {
-  mIsInitedFromPrefs = (PRPackedBool)aInitializedFromPrefs;
+  mIsInitedFromPrefs = (bool)aInitializedFromPrefs;
   return NS_OK;
 }
 
@@ -574,26 +574,26 @@ NS_IMETHODIMP nsPrintSettings::SetScaling(double aScaling)
 }
 
 /* attribute boolean printBGColors; */
-NS_IMETHODIMP nsPrintSettings::GetPrintBGColors(PRBool *aPrintBGColors)
+NS_IMETHODIMP nsPrintSettings::GetPrintBGColors(bool *aPrintBGColors)
 {
   NS_ENSURE_ARG_POINTER(aPrintBGColors);
   *aPrintBGColors = mPrintBGColors;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetPrintBGColors(PRBool aPrintBGColors)
+NS_IMETHODIMP nsPrintSettings::SetPrintBGColors(bool aPrintBGColors)
 {
   mPrintBGColors = aPrintBGColors;
   return NS_OK;
 }
 
 /* attribute boolean printBGImages; */
-NS_IMETHODIMP nsPrintSettings::GetPrintBGImages(PRBool *aPrintBGImages)
+NS_IMETHODIMP nsPrintSettings::GetPrintBGImages(bool *aPrintBGImages)
 {
   NS_ENSURE_ARG_POINTER(aPrintBGImages);
   *aPrintBGImages = mPrintBGImages;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetPrintBGImages(PRBool aPrintBGImages)
+NS_IMETHODIMP nsPrintSettings::SetPrintBGImages(bool aPrintBGImages)
 {
   mPrintBGImages = aPrintBGImages;
   return NS_OK;
@@ -659,10 +659,10 @@ NS_IMETHODIMP nsPrintSettings::SetDocURL(const PRUnichar * aDocURL)
  *	@update 1/12/01 rods
  */
 NS_IMETHODIMP 
-nsPrintSettings::GetPrintOptions(PRInt32 aType, PRBool *aTurnOnOff)
+nsPrintSettings::GetPrintOptions(PRInt32 aType, bool *aTurnOnOff)
 {
   NS_ENSURE_ARG_POINTER(aTurnOnOff);
-  *aTurnOnOff = mPrintOptions & aType ? PR_TRUE : PR_FALSE;
+  *aTurnOnOff = mPrintOptions & aType ? true : false;
   return NS_OK;
 }
 /** ---------------------------------------------------
@@ -670,7 +670,7 @@ nsPrintSettings::GetPrintOptions(PRInt32 aType, PRBool *aTurnOnOff)
  *	@update 1/12/01 rods
  */
 NS_IMETHODIMP 
-nsPrintSettings::SetPrintOptions(PRInt32 aType, PRBool aTurnOnOff)
+nsPrintSettings::SetPrintOptions(PRInt32 aType, bool aTurnOnOff)
 {
   if (aTurnOnOff) {
     mPrintOptions |=  aType;
@@ -826,39 +826,39 @@ NS_IMETHODIMP nsPrintSettings::SetPrintFrameType(PRInt16 aPrintFrameType)
 }
 
 /* attribute boolean printSilent; */
-NS_IMETHODIMP nsPrintSettings::GetPrintSilent(PRBool *aPrintSilent)
+NS_IMETHODIMP nsPrintSettings::GetPrintSilent(bool *aPrintSilent)
 {
   NS_ENSURE_ARG_POINTER(aPrintSilent);
   *aPrintSilent = mPrintSilent;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetPrintSilent(PRBool aPrintSilent)
+NS_IMETHODIMP nsPrintSettings::SetPrintSilent(bool aPrintSilent)
 {
   mPrintSilent = aPrintSilent;
   return NS_OK;
 }
 
 /* attribute boolean shrinkToFit; */
-NS_IMETHODIMP nsPrintSettings::GetShrinkToFit(PRBool *aShrinkToFit)
+NS_IMETHODIMP nsPrintSettings::GetShrinkToFit(bool *aShrinkToFit)
 {
   NS_ENSURE_ARG_POINTER(aShrinkToFit);
   *aShrinkToFit = mShrinkToFit;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetShrinkToFit(PRBool aShrinkToFit)
+NS_IMETHODIMP nsPrintSettings::SetShrinkToFit(bool aShrinkToFit)
 {
   mShrinkToFit = aShrinkToFit;
   return NS_OK;
 }
 
 /* attribute boolean showPrintProgress; */
-NS_IMETHODIMP nsPrintSettings::GetShowPrintProgress(PRBool *aShowPrintProgress)
+NS_IMETHODIMP nsPrintSettings::GetShowPrintProgress(bool *aShowPrintProgress)
 {
   NS_ENSURE_ARG_POINTER(aShowPrintProgress);
   *aShowPrintProgress = mShowPrintProgress;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetShowPrintProgress(PRBool aShowPrintProgress)
+NS_IMETHODIMP nsPrintSettings::SetShowPrintProgress(bool aShowPrintProgress)
 {
   mShowPrintProgress = aShowPrintProgress;
   return NS_OK;
@@ -910,7 +910,7 @@ NS_IMETHODIMP nsPrintSettings::SetPlexName(const PRUnichar * aPlexName)
 NS_IMETHODIMP nsPrintSettings::GetHowToEnableFrameUI(PRInt16 *aHowToEnableFrameUI)
 {
   NS_ENSURE_ARG_POINTER(aHowToEnableFrameUI);
-  *aHowToEnableFrameUI = (PRInt32)mHowToEnableFrameUI;
+  *aHowToEnableFrameUI = mHowToEnableFrameUI;
   return NS_OK;
 }
 NS_IMETHODIMP nsPrintSettings::SetHowToEnableFrameUI(PRInt16 aHowToEnableFrameUI)
@@ -920,13 +920,13 @@ NS_IMETHODIMP nsPrintSettings::SetHowToEnableFrameUI(PRInt16 aHowToEnableFrameUI
 }
 
 /* attribute long isCancelled; */
-NS_IMETHODIMP nsPrintSettings::GetIsCancelled(PRBool *aIsCancelled)
+NS_IMETHODIMP nsPrintSettings::GetIsCancelled(bool *aIsCancelled)
 {
   NS_ENSURE_ARG_POINTER(aIsCancelled);
   *aIsCancelled = mIsCancelled;
   return NS_OK;
 }
-NS_IMETHODIMP nsPrintSettings::SetIsCancelled(PRBool aIsCancelled)
+NS_IMETHODIMP nsPrintSettings::SetIsCancelled(bool aIsCancelled)
 {
   mIsCancelled = aIsCancelled;
   return NS_OK;

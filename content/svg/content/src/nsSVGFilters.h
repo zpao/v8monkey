@@ -46,6 +46,7 @@
 
 class nsSVGFilterResource;
 class nsSVGString;
+class nsSVGNumberPair;
 class nsSVGFilterInstance;
 
 struct nsSVGStringInfo {
@@ -78,7 +79,7 @@ public:
       mColorSpace(aColorSpace), mAlphaChannel(aAlphaChannel) {}
     ColorModel() :
       mColorSpace(SRGB), mAlphaChannel(PREMULTIPLIED) {}
-    PRBool operator==(const ColorModel& aOther) const {
+    bool operator==(const ColorModel& aOther) const {
       return mColorSpace == aOther.mColorSpace &&
              mAlphaChannel == aOther.mAlphaChannel;
     }
@@ -93,9 +94,9 @@ public:
     gfxRect                   mFilterPrimitiveSubregion;
     ColorModel                mColorModel;
     // When true, the RGB values are the same for all pixels in mImage
-    PRPackedBool              mConstantColorChannels;
+    bool                      mConstantColorChannels;
     
-    Image() : mConstantColorChannels(PR_FALSE) {}
+    Image() : mConstantColorChannels(false) {}
   };
 
 protected:
@@ -106,14 +107,14 @@ protected:
     nsRefPtr<gfxImageSurface> mSource;
     nsRefPtr<gfxImageSurface> mTarget;
     nsIntRect mDataRect; // rect in mSource and mTarget to operate on
-    PRPackedBool mRescaling;
+    bool mRescaling;
   };
 
   ScaleInfo SetupScalingFilter(nsSVGFilterInstance *aInstance,
                                const Image *aSource,
                                const Image *aTarget,
                                const nsIntRect& aDataRect,
-                               nsSVGNumber2 *aUnitX, nsSVGNumber2 *aUnitY);
+                               nsSVGNumberPair *aUnit);
 
   void FinishScalingFilter(ScaleInfo *aScaleInfo);
 
@@ -138,13 +139,16 @@ public:
   }
 
   // See http://www.w3.org/TR/SVG/filters.html#FilterPrimitiveSubRegion
-  virtual PRBool SubregionIsUnionOfRegions() { return PR_TRUE; }
+  virtual bool SubregionIsUnionOfRegions() { return true; }
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_SVG_FE_CID)
   
   // interfaces:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMSVGFILTERPRIMITIVESTANDARDATTRIBUTES
+
+  // nsIContent interface
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
 
   virtual nsSVGString& GetResultImageName() = 0;
   // Return a list of all image names used as sources. Default is to
@@ -199,15 +203,15 @@ public:
   operator nsISupports*() { return static_cast<nsIContent*>(this); }
   
 protected:
-  virtual PRBool OperatesOnPremultipledAlpha(PRInt32) { return PR_TRUE; }
+  virtual bool OperatesOnPremultipledAlpha(PRInt32) { return true; }
 
   // Called either with aInputIndex >=0 in which case this is
   // testing whether the input 'aInputIndex' should be SRGB, or
   // if aInputIndex is -1 returns true if the output will be SRGB
-  virtual PRBool OperatesOnSRGB(nsSVGFilterInstance* aInstance,
+  virtual bool OperatesOnSRGB(nsSVGFilterInstance* aInstance,
                                 PRInt32 aInputIndex, Image* aImage) {
     nsIFrame* frame = GetPrimaryFrame();
-    if (!frame) return PR_FALSE;
+    if (!frame) return false;
 
     nsStyleContext* style = frame->GetStyleContext();
     return style->GetStyleSVG()->mColorInterpolationFilters ==
@@ -218,8 +222,10 @@ protected:
   virtual LengthAttributesInfo GetLengthInfo();
   virtual void DidAnimateLength(PRUint8 aAttrEnum);
   virtual void DidAnimateNumber(PRUint8 aAttrEnum);
+  virtual void DidAnimateNumberPair(PRUint8 aAttrEnum);
   virtual void DidAnimateNumberList(PRUint8 aAttrEnum);
   virtual void DidAnimateInteger(PRUint8 aAttrEnum);
+  virtual void DidAnimateIntegerPair(PRUint8 aAttrEnum);
   virtual void DidAnimateEnum(PRUint8 aAttrEnum);
   virtual void DidAnimateBoolean(PRUint8 aAttrEnum);
   virtual void DidAnimatePreserveAspectRatio();

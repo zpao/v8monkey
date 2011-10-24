@@ -47,7 +47,7 @@
 
 //-----------------------------------------------------------------------------
 
-static PRBool
+static bool
 ServerIsNES3x(nsIHttpChannel *httpChannel)
 {
     nsCAutoString server;
@@ -71,8 +71,8 @@ NS_IMPL_ISUPPORTS6(nsURIChecker,
 
 nsURIChecker::nsURIChecker()
     : mStatus(NS_OK)
-    , mIsPending(PR_FALSE)
-    , mAllowHead(PR_TRUE)
+    , mIsPending(false)
+    , mAllowHead(true)
 {
 }
 
@@ -80,7 +80,7 @@ void
 nsURIChecker::SetStatusAndCallBack(nsresult aStatus)
 {
     mStatus = aStatus;
-    mIsPending = PR_FALSE;
+    mIsPending = false;
 
     if (mObserver) {
         mObserver->OnStartRequest(this, mObserverContext);
@@ -122,7 +122,7 @@ nsURIChecker::CheckStatus()
     // retried without the head.
     if (responseStatus == 404) {
         if (mAllowHead && ServerIsNES3x(httpChannel)) {
-            mAllowHead = PR_FALSE;
+            mAllowHead = false;
 
             // save the current value of mChannel in case we can't issue
             // the new request for some reason.
@@ -175,14 +175,14 @@ nsURIChecker::Init(nsIURI *aURI)
     if (NS_FAILED(rv)) return rv;
 
     if (mAllowHead) {
-        mAllowHead = PR_FALSE;
+        mAllowHead = false;
         // See if it's an http channel, which needs special treatment:
         nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(mChannel);
         if (httpChannel) {
             // We can have an HTTP channel that has a non-HTTP URL if
             // we're doing FTP via an HTTP proxy, for example.  See for
             // example bug 148813
-            PRBool isReallyHTTP = PR_FALSE;
+            bool isReallyHTTP = false;
             aURI->SchemeIs("http", &isReallyHTTP);
             if (!isReallyHTTP)
                 aURI->SchemeIs("https", &isReallyHTTP);
@@ -192,7 +192,7 @@ nsURIChecker::Init(nsIURI *aURI)
                 // a HEAD request.  this is used down in OnStartRequest to
                 // handle cases where we need to repeat the request as a normal
                 // GET to deal with server borkage.
-                mAllowHead = PR_TRUE;
+                mAllowHead = true;
             }
         }
     }
@@ -215,7 +215,7 @@ nsURIChecker::AsyncCheck(nsIRequestObserver *aObserver,
         mChannel = nsnull;
     else {
         // ok, wait for OnStartRequest to fire.
-        mIsPending = PR_TRUE;
+        mIsPending = true;
         mObserver = aObserver;
         mObserverContext = aObserverContext;
     }
@@ -242,7 +242,7 @@ nsURIChecker::GetName(nsACString &aName)
 }
 
 NS_IMETHODIMP
-nsURIChecker::IsPending(PRBool *aPendingRet)
+nsURIChecker::IsPending(bool *aPendingRet)
 {
     *aPendingRet = mIsPending;
     return NS_OK;

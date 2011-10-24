@@ -49,6 +49,10 @@
 #include "nsGUIEvent.h"
 #include "keysym2ucs.h"
 
+#include "mozilla/Util.h"
+
+using namespace mozilla;
+
 #define MAX_UNICODE 0x10FFFF
 
 struct nsKeyConverter {
@@ -178,19 +182,16 @@ struct nsKeyConverter nsKeycodes[] = {
     { NS_VK_EQUALS, GDK_plus }
 };
 
-#ifdef SOLARIS
 // map Sun Keyboard special keysyms on to NS_VK keys
 struct nsKeyConverter nsSunKeycodes[] = {
-    {NS_VK_F1, GDK_Help }, //Mapping Help key to F1
     {NS_VK_F11, 0x1005ff10 }, //Sun F11 key generates SunF36(0x1005ff10) keysym
     {NS_VK_F12, 0x1005ff11 }  //Sun F12 key generates SunF37(0x1005ff11) keysym
 };
-#endif
 
 int
 GdkKeyCodeToDOMKeyCode(int aKeysym)
 {
-    int i, length = 0;
+    unsigned int i;
 
     // First, try to handle alphanumeric input, not listed in nsKeycodes:
     // most likely, more letters will be getting typed in than things in
@@ -211,18 +212,14 @@ GdkKeyCodeToDOMKeyCode(int aKeysym)
     if (aKeysym >= GDK_KP_0 && aKeysym <= GDK_KP_9)
         return aKeysym - GDK_KP_0 + NS_VK_NUMPAD0;
 
-#ifdef SOLARIS
     // map Sun Keyboard special keysyms
-    length = sizeof(nsSunKeycodes) / sizeof(struct nsKeyConverter);
-    for (i = 0; i < length; i++) {
+    for (i = 0; i < ArrayLength(nsSunKeycodes); i++) {
         if (nsSunKeycodes[i].keysym == aKeysym)
             return(nsSunKeycodes[i].vkCode);
     }
-#endif /* SOLARIS */
 
     // misc other things
-    length = sizeof(nsKeycodes) / sizeof(struct nsKeyConverter);
-    for (i = 0; i < length; i++) {
+    for (i = 0; i < ArrayLength(nsKeycodes); i++) {
         if (nsKeycodes[i].keysym == aKeysym)
             return(nsKeycodes[i].vkCode);
     }
@@ -237,7 +234,7 @@ GdkKeyCodeToDOMKeyCode(int aKeysym)
 int
 DOMKeyCodeToGdkKeyCode(int aKeysym)
 {
-    int i, length = 0;
+    unsigned int i;
 
     // First, try to handle alphanumeric input, not listed in nsKeycodes:
     // most likely, more letters will be getting typed in than things in
@@ -257,8 +254,7 @@ DOMKeyCodeToGdkKeyCode(int aKeysym)
       return aKeysym - NS_VK_NUMPAD0 + GDK_KP_0;
 
     // misc other things
-    length = NS_ARRAY_LENGTH(nsKeycodes);
-    for (i = 0; i < length; ++i) {
+    for (i = 0; i < ArrayLength(nsKeycodes); ++i) {
       if (nsKeycodes[i].vkCode == aKeysym) {
         return nsKeycodes[i].keysym;
       }

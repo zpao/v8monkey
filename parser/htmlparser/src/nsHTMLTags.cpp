@@ -35,12 +35,16 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsHTMLTags.h"
 #include "nsCRT.h"
 #include "nsReadableUtils.h"
 #include "nsString.h"
 #include "nsStaticAtom.h"
 #include "nsUnicharUtils.h"
+
+using namespace mozilla;
 
 // C++ sucks! There's no way to do this with a macro, at least not
 // that I know, if you know how to do this with a macro then please do
@@ -173,8 +177,6 @@ static const PRUnichar sHTMLTagUnicodeName_input[] =
   {'i', 'n', 'p', 'u', 't', '\0'};
 static const PRUnichar sHTMLTagUnicodeName_ins[] =
   {'i', 'n', 's', '\0'};
-static const PRUnichar sHTMLTagUnicodeName_isindex[] =
-  {'i', 's', 'i', 'n', 'd', 'e', 'x', '\0'};
 static const PRUnichar sHTMLTagUnicodeName_kbd[] =
   {'k', 'b', 'd', '\0'};
 static const PRUnichar sHTMLTagUnicodeName_keygen[] =
@@ -197,6 +199,8 @@ static const PRUnichar sHTMLTagUnicodeName_marquee[] =
   {'m', 'a', 'r', 'q', 'u', 'e', 'e', '\0'};
 static const PRUnichar sHTMLTagUnicodeName_menu[] =
   {'m', 'e', 'n', 'u', '\0'};
+static const PRUnichar sHTMLTagUnicodeName_menuitem[] =
+  {'m', 'e', 'n', 'u', 'i', 't', 'e', 'm', '\0'};
 static const PRUnichar sHTMLTagUnicodeName_meta[] =
   {'m', 'e', 't', 'a', '\0'};
 static const PRUnichar sHTMLTagUnicodeName_multicol[] =
@@ -370,7 +374,7 @@ nsHTMLTags::AddRefTable(void)
 
   if (gTableRefCount++ == 0) {
     // Fill in our static atom pointers
-    NS_RegisterStaticAtoms(sTagAtoms_info, NS_ARRAY_LENGTH(sTagAtoms_info));
+    NS_RegisterStaticAtoms(sTagAtoms_info, ArrayLength(sTagAtoms_info));
 
 
     NS_ASSERTION(!gTagTable && !gTagAtomTable, "pre existing hash!");

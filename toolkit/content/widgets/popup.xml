@@ -160,6 +160,14 @@
         ]]>
         </body>
       </method>
+
+      <method name="getOuterScreenRect">
+        <body>
+        <![CDATA[
+          return this.popupBoxObject.getOuterScreenRect();
+        ]]>
+        </body>
+      </method>
     </implementation>     
 
   </binding>
@@ -221,6 +229,20 @@
         ]]></getter>
       </property>
       <field name="_prevFocus">0</field>
+      <field name="_dragBindingAlive">true</field>
+      <constructor>
+      <![CDATA[
+        if (this.getAttribute("backdrag") == "true" && !this._draggableStarted) {
+          this._draggableStarted = true;
+          try {
+            let tmp = {};
+            Components.utils.import("resource://gre/modules/WindowDraggingUtils.jsm", tmp);
+            let draghandle = new tmp.WindowDraggingElement(this, window);
+            draghandle.mouseDownCheck = function () this._dragBindingAlive;
+          } catch (e) {}
+        }
+      ]]>
+      </constructor>
     </implementation>
     
     <handlers>
@@ -280,19 +302,20 @@
 
   <binding id="arrowpanel" extends="chrome://global/content/bindings/popup.xml#panel">
     <content flip="both" side="top" position="bottomcenter topleft">
-      <xul:box anonid="container" class="panel-arrowcontainer">
+      <xul:box anonid="container" class="panel-arrowcontainer" flex="1">
         <xul:box anonid="arrowbox" class="panel-arrowbox">
           <xul:image anonid="arrow" class="panel-arrow"/>
         </xul:box>
-        <xul:box class="panel-arrowcontent">
-          <xul:box class="panel-inner-arrowcontent" xbl:inherits="align,dir,orient,pack">
+        <xul:box class="panel-arrowcontent" flex="1">
+          <xul:box class="panel-inner-arrowcontent" xbl:inherits="align,dir,orient,pack" flex="1">
             <children/>
+            <xul:box class="panel-inner-arrowcontentfooter" xbl:inherits="footertype" hidden="true"/>
           </xul:box>
         </xul:box>
       </xul:box>
     </content>
     <implementation>
-      <field name="_fadeTimer"/>
+      <field name="_fadeTimer">null</field>
     </implementation>
     <handlers>
       <handler event="popupshowing">
@@ -326,7 +349,20 @@
         let anchorRight = anchorLeft + anchorRect.width;
         let anchorBottom = anchorTop + anchorRect.height;
 
-        const epsilon = 0.1;
+        try {
+          let anchorWindow = anchor.ownerDocument.defaultView;
+          if (anchorWindow != window) {
+            let utils = anchorWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor).
+                                     getInterface(Components.interfaces.nsIDOMWindowUtils);
+            let spp = utils.screenPixelsPerCSSPixel;
+            anchorLeft *= spp;
+            anchorRight *= spp;
+            anchorTop *= spp;
+            anchorBottom *= spp;
+          }
+        } catch(ex) { }
+
+        const epsilon = 0.2;
 
         var horizPos = smallerTo(popupRight, anchorLeft, epsilon) ? -1 : smallerTo(anchorRight, popupLeft, epsilon) ? 1 : 0;
         var vertPos = smallerTo(popupBottom, anchorTop, epsilon) ? -1 : smallerTo(anchorBottom, popupTop, epsilon) ? 1 : 0;
@@ -347,10 +383,10 @@
 
             // If the popup is on the left of the anchor.
             if (smallerTo(popupLeft, anchorLeft, epsilon) && smallerTo(popupRight, anchorRight, epsilon)) {
-              pack = (popupLeft + popupRect.width / 2 < anchorLeft) ? "end" : "start";
+              pack = "end";
             // If the popup is on the right of the anchor.
             } else if (smallerTo(anchorLeft, popupLeft, epsilon) && smallerTo(anchorRight, popupRight, epsilon)) {
-              pack = (popupLeft + popupRect.width / 2 > anchorRight) ? "start" : "end";
+              pack = "start"; //(popupLeft + popupRect.width / 2 > anchorRight) ? "start" : "end";
             // If the popup is not on the right nor on the left.
             // Basically, that means one is above the other and one is bigger
             // than the other.

@@ -55,7 +55,7 @@
 
 static PRDescIdentity	nsSOCKSIOLayerIdentity;
 static PRIOMethods	nsSOCKSIOLayerMethods;
-static PRBool firstTime = PR_TRUE;
+static bool firstTime = true;
 
 #if defined(PR_LOGGING)
 static PRLogModuleInfo *gSOCKSLog;
@@ -276,7 +276,11 @@ nsSOCKSSocketInfo::ConnectToProxy(PRFileDesc *fd)
         }
     }
 
+    PRInt32 addresses = 0;
     do {
+        if (addresses++)
+            mDnsRec->ReportUnusable(mProxyPort);
+        
         rv = mDnsRec->GetNextAddr(mProxyPort, &mInternalProxyAddr);
         // No more addresses to try? If so, we'll need to bail
         if (NS_FAILED(rv)) {
@@ -1130,7 +1134,7 @@ nsSOCKSIOLayerAddToSocket(PRInt32 family,
         nsSOCKSIOLayerMethods.listen	= nsSOCKSIOLayerListen;
         nsSOCKSIOLayerMethods.close	= nsSOCKSIOLayerClose;
 
-        firstTime			= PR_FALSE;
+        firstTime			= false;
 
 #if defined(PR_LOGGING)
         gSOCKSLog = PR_NewLogModule("SOCKS");

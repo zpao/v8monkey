@@ -38,6 +38,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsGkAtoms.h"
 #include "DOMSVGNumber.h"
 #include "DOMSVGLength.h"
@@ -47,21 +49,19 @@
 #include "nsContentUtils.h"
 #include "nsIDocument.h"
 #include "nsPresContext.h"
-#include "nsSVGMatrix.h"
+#include "DOMSVGMatrix.h"
 #include "DOMSVGPoint.h"
-#include "nsSVGTransform.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIFrame.h"
 #include "nsISVGSVGFrame.h" //XXX
 #include "nsSVGRect.h"
-#include "nsISVGValueUtils.h"
 #include "nsDOMError.h"
 #include "nsISVGChildFrame.h"
 #include "nsGUIEvent.h"
 #include "nsSVGUtils.h"
 #include "nsSVGSVGElement.h"
-#include "nsSVGEffects.h" // For nsSVGEffects::RemoveAllRenderingObservers
 #include "nsContentErrors.h" // For NS_PROPTABLE_PROP_OVERWRITTEN
+#include "nsContentUtils.h"
 
 #ifdef MOZ_SMIL
 #include "nsEventDispatcher.h"
@@ -213,8 +213,8 @@ nsSVGSVGElement::nsSVGSVGElement(already_AddRefed<nsINodeInfo> aNodeInfo,
 #ifdef MOZ_SMIL
   , mStartAnimationOnBindToTree(!aFromParser)
 #endif // MOZ_SMIL
-  , mImageNeedsTransformInvalidation(PR_FALSE)
-  , mIsPaintingSVGImageElement(PR_FALSE)
+  , mImageNeedsTransformInvalidation(false)
+  , mIsPaintingSVGImageElement(false)
 {
 }
 
@@ -339,13 +339,13 @@ nsSVGSVGElement::GetScreenPixelToMillimeterY(float *aScreenPixelToMillimeterY)
 
 /* attribute boolean useCurrentView; */
 NS_IMETHODIMP
-nsSVGSVGElement::GetUseCurrentView(PRBool *aUseCurrentView)
+nsSVGSVGElement::GetUseCurrentView(bool *aUseCurrentView)
 {
   NS_NOTYETIMPLEMENTED("nsSVGSVGElement::GetUseCurrentView");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 NS_IMETHODIMP
-nsSVGSVGElement::SetUseCurrentView(PRBool aUseCurrentView)
+nsSVGSVGElement::SetUseCurrentView(bool aUseCurrentView)
 {
   NS_NOTYETIMPLEMENTED("nsSVGSVGElement::SetUseCurrentView");
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -394,18 +394,9 @@ nsSVGSVGElement::SuspendRedraw(PRUint32 max_wait_milliseconds, PRUint32 *_retval
     return NS_OK;
 
   nsIFrame* frame = GetPrimaryFrame();
-#ifdef DEBUG
-  // XXX We sometimes hit this assertion when the svg:svg element is
-  // in a binding and svg children are inserted underneath it using
-  // <children/>. If the svg children then call suspendRedraw, the
-  // above function call fails although the svg:svg's frame has been
-  // build. Strange...
-  
-  NS_ASSERTION(frame, "suspending redraw w/o frame");
-#endif
   if (frame) {
     nsISVGSVGFrame* svgframe = do_QueryFrame(frame);
-    NS_ASSERTION(svgframe, "wrong frame type");
+    // might fail this check if we've failed conditional processing
     if (svgframe) {
       svgframe->SuspendRedraw();
     }
@@ -419,7 +410,6 @@ NS_IMETHODIMP
 nsSVGSVGElement::UnsuspendRedraw(PRUint32 suspend_handle_id)
 {
   if (mRedrawSuspendCount == 0) {
-    NS_ASSERTION(1==0, "unbalanced suspend/unsuspend calls");
     return NS_ERROR_FAILURE;
   }
                  
@@ -438,12 +428,9 @@ nsSVGSVGElement::UnsuspendRedrawAll()
   mRedrawSuspendCount = 0;
 
   nsIFrame* frame = GetPrimaryFrame();
-#ifdef DEBUG
-  NS_ASSERTION(frame, "unsuspending redraw w/o frame");
-#endif
   if (frame) {
     nsISVGSVGFrame* svgframe = do_QueryFrame(frame);
-    NS_ASSERTION(svgframe, "wrong frame type");
+    // might fail this check if we've failed conditional processing
     if (svgframe) {
       svgframe->UnsuspendRedraw();
     }
@@ -499,7 +486,7 @@ nsSVGSVGElement::UnpauseAnimations()
 
 /* boolean animationsPaused (); */
 NS_IMETHODIMP
-nsSVGSVGElement::AnimationsPaused(PRBool *_retval)
+nsSVGSVGElement::AnimationsPaused(bool *_retval)
 {
 #ifdef MOZ_SMIL
   if (NS_SMILEnabled()) {
@@ -595,7 +582,7 @@ nsSVGSVGElement::GetEnclosureList(nsIDOMSVGRect *rect,
 NS_IMETHODIMP
 nsSVGSVGElement::CheckIntersection(nsIDOMSVGElement *element,
                                    nsIDOMSVGRect *rect,
-                                   PRBool *_retval)
+                                   bool *_retval)
 {
   // null check when implementing - this method can be used by scripts!
   // if (!element || !rect)
@@ -609,7 +596,7 @@ nsSVGSVGElement::CheckIntersection(nsIDOMSVGElement *element,
 NS_IMETHODIMP
 nsSVGSVGElement::CheckEnclosure(nsIDOMSVGElement *element,
                                 nsIDOMSVGRect *rect,
-                                PRBool *_retval)
+                                bool *_retval)
 {
   // null check when implementing - this method can be used by scripts!
   // if (!element || !rect)
@@ -662,7 +649,8 @@ nsSVGSVGElement::CreateSVGPoint(nsIDOMSVGPoint **_retval)
 NS_IMETHODIMP
 nsSVGSVGElement::CreateSVGMatrix(nsIDOMSVGMatrix **_retval)
 {
-  return NS_NewSVGMatrix(_retval);
+  NS_ADDREF(*_retval = new DOMSVGMatrix());
+  return NS_OK;
 }
 
 /* nsIDOMSVGRect createSVGRect (); */
@@ -676,7 +664,8 @@ nsSVGSVGElement::CreateSVGRect(nsIDOMSVGRect **_retval)
 NS_IMETHODIMP
 nsSVGSVGElement::CreateSVGTransform(nsIDOMSVGTransform **_retval)
 {
-  return NS_NewSVGTransform(_retval);
+  NS_ADDREF(*_retval = new DOMSVGTransform());
+  return NS_OK;
 }
 
 /* nsIDOMSVGTransform createSVGTransformFromMatrix (in nsIDOMSVGMatrix matrix); */
@@ -684,13 +673,12 @@ NS_IMETHODIMP
 nsSVGSVGElement::CreateSVGTransformFromMatrix(nsIDOMSVGMatrix *matrix, 
                                               nsIDOMSVGTransform **_retval)
 {
-  NS_ENSURE_NATIVE_MATRIX(matrix, _retval);
+  nsCOMPtr<DOMSVGMatrix> domItem = do_QueryInterface(matrix);
+  if (!domItem) {
+    return NS_ERROR_DOM_SVG_WRONG_TYPE_ERR;
+  }
 
-  nsresult rv = NS_NewSVGTransform(_retval);
-  if (NS_FAILED(rv))
-    return rv;
-
-  (*_retval)->SetMatrix(matrix);
+  NS_ADDREF(*_retval = new DOMSVGTransform(domItem->Matrix()));
   return NS_OK;
 }
 
@@ -760,8 +748,9 @@ nsSVGSVGElement::GetBBox(nsIDOMSVGRect **_retval)
 NS_IMETHODIMP
 nsSVGSVGElement::GetCTM(nsIDOMSVGMatrix * *aCTM)
 {
-  gfxMatrix m = nsSVGUtils::GetCTM(this, PR_FALSE);
-  *aCTM = m.IsSingular() ? nsnull : NS_NewSVGMatrix(m).get();
+  gfxMatrix m = nsSVGUtils::GetCTM(this, false);
+  *aCTM = m.IsSingular() ? nsnull : new DOMSVGMatrix(m);
+  NS_IF_ADDREF(*aCTM);
   return NS_OK;
 }
 
@@ -769,8 +758,9 @@ nsSVGSVGElement::GetCTM(nsIDOMSVGMatrix * *aCTM)
 NS_IMETHODIMP
 nsSVGSVGElement::GetScreenCTM(nsIDOMSVGMatrix **aCTM)
 {
-  gfxMatrix m = nsSVGUtils::GetCTM(this, PR_TRUE);
-  *aCTM = m.IsSingular() ? nsnull : NS_NewSVGMatrix(m).get();
+  gfxMatrix m = nsSVGUtils::GetCTM(this, true);
+  *aCTM = m.IsSingular() ? nsnull : new DOMSVGMatrix(m);
+  NS_IF_ADDREF(*aCTM);
   return NS_OK;
 }
 
@@ -816,7 +806,7 @@ nsSVGSVGElement::SetZoomAndPan(PRUint16 aZoomAndPan)
 {
   if (aZoomAndPan == nsIDOMSVGZoomAndPan::SVG_ZOOMANDPAN_DISABLE ||
       aZoomAndPan == nsIDOMSVGZoomAndPan::SVG_ZOOMANDPAN_MAGNIFY) {
-    mEnumAttributes[ZOOMANDPAN].SetBaseValue(aZoomAndPan, this, PR_TRUE);
+    mEnumAttributes[ZOOMANDPAN].SetBaseValue(aZoomAndPan, this);
     return NS_OK;
   }
 
@@ -861,9 +851,9 @@ nsSVGSVGElement::SetCurrentScaleTranslate(float s, float x, float y)
   if (doc) {
     nsCOMPtr<nsIPresShell> presShell = doc->GetShell();
     if (presShell && IsRoot()) {
-      PRBool scaling = (mPreviousScale != mCurrentScale);
+      bool scaling = (mPreviousScale != mCurrentScale);
       nsEventStatus status = nsEventStatus_eIgnore;
-      nsGUIEvent event(PR_TRUE, scaling ? NS_SVG_ZOOM : NS_SVG_SCROLL, 0);
+      nsGUIEvent event(true, scaling ? NS_SVG_ZOOM : NS_SVG_SCROLL, 0);
       event.eventStructType = scaling ? NS_SVGZOOM_EVENT : NS_SVG_EVENT;
       presShell->HandleDOMEventWithTarget(this, &event, &status);
       InvalidateTransformNotifyFrame();
@@ -901,7 +891,7 @@ nsSVGSVGElement::GetTimedDocumentRoot()
 //----------------------------------------------------------------------
 // nsIContent methods
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGSVGElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -918,7 +908,7 @@ nsSVGSVGElement::IsAttributeMapped(const nsIAtom* name) const
     sViewportsMap
   };
 
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGSVGElementBase::IsAttributeMapped(name);
 }
 
@@ -945,7 +935,7 @@ nsSVGSVGElement::PreHandleEvent(nsEventChainPreVisitor& aVisitor)
 //----------------------------------------------------------------------
 // nsSVGElement overrides
 
-PRBool
+bool
 nsSVGSVGElement::IsEventName(nsIAtom* aName)
 {
   /* The events in EventNameType_SVGSVG are for events that are only
@@ -966,22 +956,22 @@ nsSVGSVGElement::IsEventName(nsIAtom* aName)
 // resolve percentage lengths. (It can only be used to resolve
 // 'em'/'ex'-valued units).
 inline float
-ComputeSynthesizedViewBoxDimension(nsSVGLength2& aLength,
+ComputeSynthesizedViewBoxDimension(const nsSVGLength2& aLength,
                                    float aViewportLength,
-                                   nsSVGSVGElement* aSelf)
+                                   const nsSVGSVGElement* aSelf)
 {
   if (aLength.IsPercentage()) {
     return aViewportLength * aLength.GetAnimValInSpecifiedUnits() / 100.0f;
   }
 
-  return aLength.GetAnimValue(aSelf);
+  return aLength.GetAnimValue(const_cast<nsSVGSVGElement*>(aSelf));
 }
 
 //----------------------------------------------------------------------
 // public helpers:
 
 gfxMatrix
-nsSVGSVGElement::GetViewBoxTransform()
+nsSVGSVGElement::GetViewBoxTransform() const
 {
   // Do we have an override preserveAspectRatio value?
   const SVGPreserveAspectRatio* overridePARPtr =
@@ -1022,7 +1012,7 @@ nsSVGSVGElement::GetViewBoxTransform()
       tmpPAR.SetAlign(nsIDOMSVGPreserveAspectRatio::SVG_PRESERVEASPECTRATIO_NONE);
 
       // (set the other pAR attributes too, just so they're initialized):
-      tmpPAR.SetDefer(PR_FALSE);
+      tmpPAR.SetDefer(false);
       tmpPAR.SetMeetOrSlice(nsIDOMSVGPreserveAspectRatio::SVG_MEETORSLICE_SLICE);
 
       overridePARPtr = &tmpPAR;
@@ -1051,7 +1041,7 @@ nsresult
 nsSVGSVGElement::BindToTree(nsIDocument* aDocument,
                             nsIContent* aParent,
                             nsIContent* aBindingParent,
-                            PRBool aCompileEventHandlers)
+                            bool aCompileEventHandlers)
 {
   nsSMILAnimationController* smilController = nsnull;
 
@@ -1070,7 +1060,7 @@ nsSVGSVGElement::BindToTree(nsIDocument* aDocument,
         // time container. However, we need to make sure that we'll get a
         // kick-start if we get promoted to be outermost later on.
         mTimedDocumentRoot = nsnull;
-        mStartAnimationOnBindToTree = PR_TRUE;
+        mStartAnimationOnBindToTree = true;
       }
     }
   }
@@ -1084,7 +1074,7 @@ nsSVGSVGElement::BindToTree(nsIDocument* aDocument,
     rv = mTimedDocumentRoot->SetParent(smilController);
     if (mStartAnimationOnBindToTree) {
       mTimedDocumentRoot->Begin();
-      mStartAnimationOnBindToTree = PR_FALSE;
+      mStartAnimationOnBindToTree = false;
     }
   }
 
@@ -1092,7 +1082,7 @@ nsSVGSVGElement::BindToTree(nsIDocument* aDocument,
 }
 
 void
-nsSVGSVGElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+nsSVGSVGElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
   if (mTimedDocumentRoot) {
     mTimedDocumentRoot->SetParent(nsnull);
@@ -1106,7 +1096,7 @@ nsSVGSVGElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
 // implementation helpers
 
 #ifdef MOZ_SMIL
-PRBool
+bool
 nsSVGSVGElement::WillBeOutermostSVG(nsIContent* aParent,
                                     nsIContent* aBindingParent) const
 {
@@ -1116,15 +1106,15 @@ nsSVGSVGElement::WillBeOutermostSVG(nsIContent* aParent,
     nsIAtom* tag = parent->Tag();
     if (tag == nsGkAtoms::foreignObject) {
       // SVG in a foreignObject must have its own <svg> (nsSVGOuterSVGFrame).
-      return PR_FALSE;
+      return false;
     }
     if (tag == nsGkAtoms::svg) {
-      return PR_FALSE;
+      return false;
     }
     parent = parent->GetParent();
   }
 
-  return PR_TRUE;
+  return true;
 }
 #endif // MOZ_SMIL
 
@@ -1132,20 +1122,16 @@ void
 nsSVGSVGElement::InvalidateTransformNotifyFrame()
 {
   nsIFrame* frame = GetPrimaryFrame();
-  nsISVGSVGFrame* svgframe = do_QueryFrame(frame);
-  if (svgframe) {
-    svgframe->NotifyViewportChange();
+  if (frame) {
+    nsISVGSVGFrame* svgframe = do_QueryFrame(frame);
+    // might fail this check if we've failed conditional processing
+    if (svgframe) {
+      svgframe->NotifyViewportChange();
+    }
   }
-#ifdef DEBUG
-  else if (frame) {
-    // Uh oh -- we have a primary frame, but it failed the do_QueryFrame to the
-    // expected type!
-    NS_WARNING("wrong frame type");
-  }
-#endif
 }
 
-PRBool
+bool
 nsSVGSVGElement::HasPreserveAspectRatio()
 {
   return HasAttr(kNameSpaceID_None, nsGkAtoms::preserveAspectRatio) ||
@@ -1196,11 +1182,11 @@ nsSVGSVGElement::GetLength(PRUint8 aCtxType)
 // nsSVGElement methods
 
 /* virtual */ gfxMatrix
-nsSVGSVGElement::PrependLocalTransformTo(const gfxMatrix &aMatrix)
+nsSVGSVGElement::PrependLocalTransformTo(const gfxMatrix &aMatrix) const
 {
   if (IsInner()) {
     float x, y;
-    GetAnimatedLengthValues(&x, &y, nsnull);
+    const_cast<nsSVGSVGElement*>(this)->GetAnimatedLengthValues(&x, &y, nsnull);
     return GetViewBoxTransform() * gfxMatrix().Translate(gfxPoint(x, y)) * aMatrix;
   }
 
@@ -1215,50 +1201,18 @@ nsSVGSVGElement::PrependLocalTransformTo(const gfxMatrix &aMatrix)
   return GetViewBoxTransform() * aMatrix;
 }
 
-void
-nsSVGSVGElement::DidChangeLength(PRUint8 aAttrEnum, PRBool aDoSetAttr)
-{
-  nsSVGSVGElementBase::DidChangeLength(aAttrEnum, aDoSetAttr);
-
-  InvalidateTransformNotifyFrame();
-}
-
 nsSVGElement::LengthAttributesInfo
 nsSVGSVGElement::GetLengthInfo()
 {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              NS_ARRAY_LENGTH(sLengthInfo));
-}
-
-void
-nsSVGSVGElement::DidChangeEnum(PRUint8 aAttrEnum, PRBool aDoSetAttr)
-{
-  nsSVGSVGElementBase::DidChangeEnum(aAttrEnum, aDoSetAttr);
-
-  InvalidateTransformNotifyFrame();
+                              ArrayLength(sLengthInfo));
 }
 
 nsSVGElement::EnumAttributesInfo
 nsSVGSVGElement::GetEnumInfo()
 {
   return EnumAttributesInfo(mEnumAttributes, sEnumInfo,
-                            NS_ARRAY_LENGTH(sEnumInfo));
-}
-
-void
-nsSVGSVGElement::DidChangeViewBox(PRBool aDoSetAttr)
-{
-  nsSVGSVGElementBase::DidChangeViewBox(aDoSetAttr);
-
-  InvalidateTransformNotifyFrame();
-}
-
-void
-nsSVGSVGElement::DidAnimateViewBox()
-{
-  nsSVGSVGElementBase::DidAnimateViewBox();
-  
-  InvalidateTransformNotifyFrame();
+                            ArrayLength(sEnumInfo));
 }
 
 nsSVGViewBox *
@@ -1267,39 +1221,14 @@ nsSVGSVGElement::GetViewBox()
   return &mViewBox;
 }
 
-void
-nsSVGSVGElement::DidChangePreserveAspectRatio(PRBool aDoSetAttr)
-{
-  nsSVGSVGElementBase::DidChangePreserveAspectRatio(aDoSetAttr);
-
-  InvalidateTransformNotifyFrame();
-}
-
-void
-nsSVGSVGElement::DidAnimatePreserveAspectRatio()
-{
-  nsSVGSVGElementBase::DidAnimatePreserveAspectRatio();
-
-  InvalidateTransformNotifyFrame();
-}
-
 SVGAnimatedPreserveAspectRatio *
 nsSVGSVGElement::GetPreserveAspectRatio()
 {
   return &mPreserveAspectRatio;
 }
 
-#ifndef MOZ_ENABLE_LIBXUL
-// XXXdholbert HACK -- see comment w/ this method's declaration in header file.
-void
-nsSVGSVGElement::RemoveAllRenderingObservers()
-{
-  nsSVGEffects::RemoveAllRenderingObservers(this);
-}
-#endif // !MOZ_LIBXUL
-
-PRBool
-nsSVGSVGElement::ShouldSynthesizeViewBox()
+bool
+nsSVGSVGElement::ShouldSynthesizeViewBox() const
 {
   NS_ABORT_IF_FALSE(!HasValidViewbox(),
                     "Should only be called if we lack a viewBox");
@@ -1337,9 +1266,9 @@ nsSVGSVGElement::
     // My non-<svg:image> clients will have been painting me with a synthesized
     // viewBox, but my <svg:image> client that's about to paint me now does NOT
     // want that.  Need to tell ourselves to flush our transform.
-    mImageNeedsTransformInvalidation = PR_TRUE;
+    mImageNeedsTransformInvalidation = true;
   }
-  mIsPaintingSVGImageElement = PR_TRUE;
+  mIsPaintingSVGImageElement = true;
 
   if (!mViewBox.IsValid()) {
     return; // preserveAspectRatio irrelevant (only matters if we have viewBox)
@@ -1357,7 +1286,7 @@ nsSVGSVGElement::
                     "Setting override value when it's already set...?"); 
 
   if (NS_LIKELY(NS_SUCCEEDED(rv))) {
-    mImageNeedsTransformInvalidation = PR_TRUE;
+    mImageNeedsTransformInvalidation = true;
   } else {
     // property-insertion failed (e.g. OOM in property-table code)
     delete pAROverridePtr;
@@ -1372,23 +1301,23 @@ nsSVGSVGElement::ClearImageOverridePreserveAspectRatio()
                     "should only override preserveAspectRatio in images");
 #endif
 
-  mIsPaintingSVGImageElement = PR_FALSE;
+  mIsPaintingSVGImageElement = false;
   if (!HasValidViewbox() && ShouldSynthesizeViewBox()) {
     // My non-<svg:image> clients will want to paint me with a synthesized
     // viewBox, but my <svg:image> client that just painted me did NOT
     // use that.  Need to tell ourselves to flush our transform.
-    mImageNeedsTransformInvalidation = PR_TRUE;
+    mImageNeedsTransformInvalidation = true;
   }
 
   void* valPtr = UnsetProperty(nsGkAtoms::overridePreserveAspectRatio);
   if (valPtr) {
-    mImageNeedsTransformInvalidation = PR_TRUE;
+    mImageNeedsTransformInvalidation = true;
     delete static_cast<SVGPreserveAspectRatio*>(valPtr);
   }
 }
 
 const SVGPreserveAspectRatio*
-nsSVGSVGElement::GetImageOverridePreserveAspectRatio()
+nsSVGSVGElement::GetImageOverridePreserveAspectRatio() const
 {
   void* valPtr = GetProperty(nsGkAtoms::overridePreserveAspectRatio);
 #ifdef DEBUG
@@ -1410,6 +1339,6 @@ nsSVGSVGElement::FlushImageTransformInvalidation()
 
   if (mImageNeedsTransformInvalidation) {
     InvalidateTransformNotifyFrame();
-    mImageNeedsTransformInvalidation = PR_FALSE;
+    mImageNeedsTransformInvalidation = false;
   }
 }

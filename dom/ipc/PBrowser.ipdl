@@ -58,7 +58,11 @@ using nsQueryContentEvent;
 using nsRect;
 using nsSelectionEvent;
 using nsTextEvent;
+using nsMouseEvent;
+using nsMouseScrollEvent;
+using nsKeyEvent;
 using RemoteDOMEvent;
+using mozilla::WindowsHandle;
 
 namespace mozilla {
 namespace dom {
@@ -119,7 +123,7 @@ parent:
      *  preference   Native widget preference for IME updates
      *  seqno        Current seqno value on the chrome side
      */
-    sync NotifyIMEFocus(PRBool focus)
+    sync NotifyIMEFocus(bool focus)
       returns (nsIMEUpdatePreference preference, PRUint32 seqno);
 
     /**
@@ -165,20 +169,27 @@ parent:
      *  if cancel is PR_FALSE,
      *    widget should return the current composition text
      */
-    sync EndIMEComposition(PRBool cancel) returns (nsString composition);
+    sync EndIMEComposition(bool cancel) returns (nsString composition);
 
     sync GetIMEEnabled() returns (PRUint32 value);
 
     SetInputMode(PRUint32 value, nsString type, nsString actionHint, PRUint32 reason);
 
-    sync GetIMEOpenState() returns (PRBool value);
+    sync GetIMEOpenState() returns (bool value);
 
-    SetIMEOpenState(PRBool value);
+    SetIMEOpenState(bool value);
 
     /**
      * Gets the DPI of the screen corresponding to this browser.
      */
     sync GetDPI() returns (float value);
+
+    /**
+     * Return native data of root widget
+     */
+    sync GetWidgetNativeData() returns (WindowsHandle value);
+
+    SetCursor(PRUint32 value);
 
     PContentPermissionRequest(nsCString aType, URI uri);
 
@@ -234,12 +245,14 @@ child:
 
     LoadURL(nsCString uri);
 
-    Move(nsIntSize size);
+    UpdateDimensions(nsRect rect, nsIntSize size);
 
     /**
      * Sending an activate message moves focus to the child.
      */
     Activate();
+
+    Deactivate();
 
     /**
      * @see nsIDOMWindowUtils sendMouseEvent.
@@ -251,6 +264,10 @@ child:
                PRInt32 aClickCount,
                PRInt32 aModifiers,
                bool aIgnoreRootScrollFrame);
+
+    RealMouseEvent(nsMouseEvent event);
+    RealKeyEvent(nsKeyEvent event);
+    MouseScrollEvent(nsMouseScrollEvent event);
 
     /**
      * @see nsIDOMWindowUtils sendKeyEvent.

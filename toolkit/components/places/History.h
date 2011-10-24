@@ -46,7 +46,7 @@
 #include "nsTHashtable.h"
 #include "nsString.h"
 #include "nsURIHashKey.h"
-#include "nsTArray.h"
+#include "nsTObserverArray.h"
 #include "nsDeque.h"
 #include "nsIObserver.h"
 #include "mozIStorageConnection.h"
@@ -111,6 +111,12 @@ public:
   bool FetchPageInfo(VisitData& _place);
 
   /**
+   * Get the number of bytes of memory this History object is using (not
+   * counting sizeof(*this)).
+   */
+  PRInt64 SizeOf();
+
+  /**
    * Obtains a pointer to this service.
    */
   static History* GetService();
@@ -167,7 +173,7 @@ private:
   // Ensures new tasks aren't started on destruction.
   bool mShuttingDown;
 
-  typedef nsTArray<mozilla::dom::Link* > ObserverArray;
+  typedef nsTObserverArray<mozilla::dom::Link* > ObserverArray;
 
   class KeyClass : public nsURIHashKey
   {
@@ -183,6 +189,11 @@ private:
     }
     ObserverArray array;
   };
+
+  /**
+   * Helper function for nsTHashtable::EnumerateEntries call in SizeOf().
+   */
+  static PLDHashOperator SizeOfEnumerator(KeyClass* aEntry, void* aArg);
 
   nsTHashtable<KeyClass> mObservers;
 };

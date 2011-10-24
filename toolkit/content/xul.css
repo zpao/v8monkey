@@ -189,7 +189,10 @@ iframe {
 notificationbox {
   -moz-binding: url("chrome://global/content/bindings/notification.xml#notificationbox");
   -moz-box-orient: vertical;
-  overflow-y: hidden;
+}
+
+.notificationbox-stack {
+  overflow: -moz-hidden-unscrollable;
 }
 
 notification {
@@ -1193,5 +1196,6 @@ filefield {
 /*********** tabmodalprompt ************/
 tabmodalprompt {
   -moz-binding: url("chrome://global/content/tabprompts.xml#tabmodalprompt");
+  overflow: hidden;
   text-shadow: none;
 }

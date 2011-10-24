@@ -97,7 +97,7 @@ public:
   ULONG  GetMsg()    { return mMsg; };
   MPARAM GetWParam() { return mWParam; };
   MPARAM GetLParam() { return mLParam; };
-  PRBool InUse()     { return (mWnd!=NULL); };
+  bool InUse()     { return (mWnd!=NULL); };
   
   NS_DECL_NSIRUNNABLE
 
@@ -139,19 +139,19 @@ void PluginWindowEvent::Init(const PluginWindowWeakRef &ref, HWND aWnd,
 class nsDelayedPopupsEnabledEvent : public nsRunnable
 {
 public:
-  nsDelayedPopupsEnabledEvent(nsIPluginInstance *inst)
+  nsDelayedPopupsEnabledEvent(nsNPAPIPluginInstance *inst)
     : mInst(inst)
   {}
 
   NS_DECL_NSIRUNNABLE
 
 private:
-  nsCOMPtr<nsIPluginInstance> mInst;
+  nsRefPtr<nsNPAPIPluginInstance> mInst;
 };
 
 NS_IMETHODIMP nsDelayedPopupsEnabledEvent::Run()
 {
-  mInst->PushPopupsEnabledState(PR_FALSE);
+  mInst->PushPopupsEnabledState(false);
   return NS_OK;	
 }
 
@@ -173,7 +173,7 @@ public:
   nsPluginNativeWindowOS2();
   virtual ~nsPluginNativeWindowOS2();
 
-  virtual nsresult CallSetWindow(nsCOMPtr<nsIPluginInstance> &aPluginInstance);
+  virtual nsresult CallSetWindow(nsRefPtr<nsNPAPIPluginInstance> &aPluginInstance);
 
 private:
   nsresult SubclassAndAssociateWindow();
@@ -198,8 +198,8 @@ public:
 
 /*****************************************************************************/
 
-static PRBool ProcessFlashMessageDelayed(nsPluginNativeWindowOS2 * aWin,
-                                         nsIPluginInstance * aInst,
+static bool ProcessFlashMessageDelayed(nsPluginNativeWindowOS2 * aWin,
+                                         nsNPAPIPluginInstance * aInst,
                                          HWND hWnd, ULONG msg,
                                          MPARAM mp1, MPARAM mp2)
 {
@@ -214,15 +214,15 @@ static PRBool ProcessFlashMessageDelayed(nsPluginNativeWindowOS2 * aWin,
   }
 
   if (msg != WM_USER_FLASH)
-    return PR_FALSE; // no need to delay
+    return false; // no need to delay
 
   // do stuff
   nsCOMPtr<nsIRunnable> pwe = aWin->GetPluginWindowEvent(hWnd, msg, mp1, mp2);
   if (pwe) {
     NS_DispatchToCurrentThread(pwe);
-    return PR_TRUE;  
+    return true;  
   }
-  return PR_FALSE;
+  return false;
 }
 
 /*****************************************************************************/
@@ -240,7 +240,7 @@ static MRESULT EXPENTRY PluginWndProc(HWND hWnd, ULONG msg, MPARAM mp1, MPARAM m
   // The DispatchEvent(NS_PLUGIN_ACTIVATE) below can trigger a reentrant focus
   // event which might destroy us.  Hold a strong ref on the plugin instance
   // to prevent that, bug 374229.
-  nsCOMPtr<nsIPluginInstance> inst;
+  nsRefPtr<nsNPAPIPluginInstance> inst;
   win->GetPluginInstance(inst);
 
   // check plugin mime type and cache whether it is Flash or java-vm or not;
@@ -260,7 +260,7 @@ static MRESULT EXPENTRY PluginWndProc(HWND hWnd, ULONG msg, MPARAM mp1, MPARAM m
     }
   }
 
-  PRBool enablePopups = PR_FALSE;
+  bool enablePopups = false;
 
   // Activate/deactivate mouse capture on the plugin widget
   // here, before we pass the Windows event to the plugin
@@ -274,7 +274,7 @@ static MRESULT EXPENTRY PluginWndProc(HWND hWnd, ULONG msg, MPARAM mp1, MPARAM m
       nsCOMPtr<nsIWidget> widget;
       win->GetPluginWidget(getter_AddRefs(widget));
       if (widget)
-        widget->CaptureMouse(PR_TRUE);
+        widget->CaptureMouse(true);
       break;
     }
 
@@ -282,12 +282,12 @@ static MRESULT EXPENTRY PluginWndProc(HWND hWnd, ULONG msg, MPARAM mp1, MPARAM m
     case WM_BUTTON2UP:
     case WM_BUTTON3UP: {
       if (msg == WM_BUTTON1UP)
-        enablePopups = PR_TRUE;
+        enablePopups = true;
 
       nsCOMPtr<nsIWidget> widget;
       win->GetPluginWidget(getter_AddRefs(widget));
       if (widget)
-        widget->CaptureMouse(PR_FALSE);
+        widget->CaptureMouse(false);
       break;
     }
 
@@ -295,7 +295,7 @@ static MRESULT EXPENTRY PluginWndProc(HWND hWnd, ULONG msg, MPARAM mp1, MPARAM m
       // Ignore repeating keydown messages...
       if (SHORT1FROMMP(mp1) & KC_PREVDOWN)
         break;
-      enablePopups = PR_TRUE;
+      enablePopups = true;
       break;
 
     // When the child of a plugin gets the focus, nsWindow doesn't get
@@ -340,7 +340,7 @@ static MRESULT EXPENTRY PluginWndProc(HWND hWnd, ULONG msg, MPARAM mp1, MPARAM m
     PRUint16 apiVersion;
     if (NS_SUCCEEDED(inst->GetPluginAPIVersion(&apiVersion)) &&
         !versionOK(apiVersion, NP_POPUP_API_VERSION))
-      inst->PushPopupsEnabledState(PR_TRUE);
+      inst->PushPopupsEnabledState(true);
   }
 
   MRESULT res = (MRESULT)TRUE;
@@ -421,7 +421,7 @@ NS_IMETHODIMP PluginWindowEvent::Run()
   if (!hWnd)
     return NS_OK;
 
-  nsCOMPtr<nsIPluginInstance> inst;
+  nsRefPtr<nsNPAPIPluginInstance> inst;
   win->GetPluginInstance(inst);
 
   if (GetMsg() == WM_USER_FLASH)
@@ -472,7 +472,7 @@ nsPluginNativeWindowOS2::GetPluginWindowEvent(HWND aWnd, ULONG aMsg, MPARAM aMp1
   return event;
 }
 
-nsresult nsPluginNativeWindowOS2::CallSetWindow(nsCOMPtr<nsIPluginInstance> &aPluginInstance)
+nsresult nsPluginNativeWindowOS2::CallSetWindow(nsRefPtr<nsNPAPIPluginInstance> &aPluginInstance)
 {
   // check the incoming instance, null indicates that window is going away and we are
   // not interested in subclassing business any more, undo and don't subclass

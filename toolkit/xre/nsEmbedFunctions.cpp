@@ -105,12 +105,16 @@
 #include "mozilla/ipc/TestShellParent.h"
 #include "mozilla/ipc/XPCShellEnvironment.h"
 
+#include "mozilla/Util.h" // for DebugOnly
+
 #ifdef MOZ_IPDL_TESTS
 #include "mozilla/_ipdltest/IPDLUnitTests.h"
 #include "mozilla/_ipdltest/IPDLUnitTestProcessChild.h"
 
 using mozilla::_ipdltest::IPDLUnitTestProcessChild;
 #endif  // ifdef MOZ_IPDL_TESTS
+
+using namespace mozilla;
 
 using mozilla::ipc::BrowserProcessSubThread;
 using mozilla::ipc::GeckoChildProcessHost;
@@ -236,7 +240,7 @@ GeckoProcessType
 XRE_StringToChildProcessType(const char* aProcessTypeString)
 {
   for (int i = 0;
-       i < (int) NS_ARRAY_LENGTH(kGeckoProcessTypeString);
+       i < (int) ArrayLength(kGeckoProcessTypeString);
        ++i) {
     if (!strcmp(kGeckoProcessTypeString[i], aProcessTypeString)) {
       return static_cast<GeckoProcessType>(i);
@@ -255,13 +259,13 @@ GeckoProcessType sChildProcessType = GeckoProcessType_Default;
 // FIXME/bug 539522: this out-of-place function is stuck here because
 // IPDL wants access to this crashreporter interface, and
 // crashreporter is built in such a way to make that awkward
-PRBool
+bool
 XRE_TakeMinidumpForChild(PRUint32 aChildPid, nsILocalFile** aDump)
 {
   return CrashReporter::TakeMinidumpForChild(aChildPid, aDump);
 }
 
-PRBool
+bool
 XRE_SetRemoteExceptionHandler(const char* aPipe/*= 0*/)
 {
 #if defined(XP_WIN) || defined(XP_MACOSX)
@@ -359,7 +363,9 @@ XRE_InitChildProcess(int aArgc,
     return 1;
   }
 #endif
-  
+
+  SetupErrorHandling(aArgv[0]);  
+
 #if defined(MOZ_CRASHREPORTER)
   if (aArgc < 1)
     return 1;
@@ -369,15 +375,19 @@ XRE_InitChildProcess(int aArgc,
   // on windows and mac, |crashReporterArg| is the named pipe on which the
   // server is listening for requests, or "-" if crash reporting is
   // disabled.
-  if (0 != strcmp("-", crashReporterArg)
-      && !XRE_SetRemoteExceptionHandler(crashReporterArg))
-    return 1;
+  if (0 != strcmp("-", crashReporterArg) && 
+      !XRE_SetRemoteExceptionHandler(crashReporterArg)) {
+    // Bug 684322 will add better visibility into this condition
+    NS_WARNING("Could not setup crash reporting\n");
+  }
 #  elif defined(OS_LINUX)
   // on POSIX, |crashReporterArg| is "true" if crash reporting is
   // enabled, false otherwise
-  if (0 != strcmp("false", crashReporterArg)
-      && !XRE_SetRemoteExceptionHandler(NULL))
-    return 1;
+  if (0 != strcmp("false", crashReporterArg) && 
+      !XRE_SetRemoteExceptionHandler(NULL)) {
+    // Bug 684322 will add better visibility into this condition
+    NS_WARNING("Could not setup crash reporting\n");
+  }
 #  else
 #    error "OOP crash reporting unsupported on this platform"
 #  endif   
@@ -386,8 +396,6 @@ XRE_InitChildProcess(int aArgc,
   gArgv = aArgv;
   gArgc = aArgc;
 
-  SetupErrorHandling(aArgv[0]);
-  
 #if defined(MOZ_WIDGET_GTK2)
   g_thread_init(NULL);
 #endif
@@ -417,7 +425,7 @@ XRE_InitChildProcess(int aArgc,
   NS_ABORT_IF_FALSE(!*end, "invalid parent PID");
 
   base::ProcessHandle parentHandle;
-  bool ok = base::OpenProcessHandle(parentPID, &parentHandle);
+  mozilla::DebugOnly<bool> ok = base::OpenProcessHandle(parentPID, &parentHandle);
   NS_ABORT_IF_FALSE(ok, "can't open handle to parent");
 
 #if defined(XP_WIN)
@@ -512,9 +520,7 @@ XRE_InitChildProcess(int aArgc,
       // Allow ProcessChild to clean up after itself before going out of
       // scope and being deleted
       process->CleanUp();
-#ifdef MOZ_OMNIJAR
-      mozilla::SetOmnijar(nsnull);
-#endif
+      mozilla::Omnijar::CleanUp();
     }
   }
 
@@ -570,13 +576,13 @@ XRE_InitParentProcess(int aArgc,
   NS_ENSURE_ARG_POINTER(aArgv);
   NS_ENSURE_ARG_POINTER(aArgv[0]);
 
+  ScopedXREEmbed embed;
+
   gArgc = aArgc;
   gArgv = aArgv;
   int rv = XRE_InitCommandLine(gArgc, gArgv);
   if (NS_FAILED(rv))
       return NS_ERROR_FAILURE;
-
-  ScopedXREEmbed embed;
 
   {
     embed.Start();
@@ -685,7 +691,7 @@ XRE_ShutdownChildProcess()
 {
   NS_ABORT_IF_FALSE(MessageLoopForUI::current(), "Wrong thread!");
 
-  MessageLoop* ioLoop = XRE_GetIOMessageLoop();
+  mozilla::DebugOnly<MessageLoop*> ioLoop = XRE_GetIOMessageLoop();
   NS_ABORT_IF_FALSE(!!ioLoop, "Bad shutdown order");
 
   // Quit() sets off the following chain of events
@@ -708,16 +714,19 @@ XRE_ShutdownChildProcess()
 }
 
 namespace {
-TestShellParent* gTestShellParent = nsnull;
+ContentParent* gContentParent; //long-lived, manually refcounted
 TestShellParent* GetOrCreateTestShellParent()
 {
-    if (!gTestShellParent) {
-        ContentParent* parent = ContentParent::GetSingleton();
-        NS_ENSURE_TRUE(parent, nsnull);
-        gTestShellParent = parent->CreateTestShell();
-        NS_ENSURE_TRUE(gTestShellParent, nsnull);
+    if (!gContentParent) {
+        NS_ADDREF(gContentParent = ContentParent::GetNewOrUsed());
+    } else if (!gContentParent->IsAlive()) {
+        return nsnull;
     }
-    return gTestShellParent;
+    TestShellParent* tsp = gContentParent->GetTestShellSingleton();
+    if (!tsp) {
+        tsp = gContentParent->CreateTestShell();
+    }
+    return tsp;
 }
 }
 
@@ -730,7 +739,7 @@ XRE_SendTestShellCommand(JSContext* aCx,
     NS_ENSURE_TRUE(tsp, false);
 
     nsDependentJSString command;
-    NS_ENSURE_TRUE(command.init(aCx, aCommand), NS_ERROR_FAILURE);
+    NS_ENSURE_TRUE(command.init(aCx, aCommand), false);
 
     if (!aCallback) {
         return tsp->SendExecuteCommand(command);
@@ -756,9 +765,16 @@ XRE_GetChildGlobalObject(JSContext* aCx, JSObject** aGlobalP)
 bool
 XRE_ShutdownTestShell()
 {
-  if (!gTestShellParent)
-    return true;
-  return ContentParent::GetSingleton()->DestroyTestShell(gTestShellParent);
+    if (!gContentParent) {
+        return true;
+    }
+    bool ret = true;
+    if (gContentParent->IsAlive()) {
+        ret = gContentParent->DestroyTestShell(
+            gContentParent->GetTestShellSingleton());
+    }
+    NS_RELEASE(gContentParent);
+    return ret;
 }
 
 #ifdef MOZ_X11

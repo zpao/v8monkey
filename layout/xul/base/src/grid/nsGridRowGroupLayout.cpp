@@ -54,9 +54,9 @@
 #include "nsGridLayout2.h"
 #include "nsGridRow.h"
 
-already_AddRefed<nsIBoxLayout> NS_NewGridRowGroupLayout()
+already_AddRefed<nsBoxLayout> NS_NewGridRowGroupLayout()
 {
-  nsIBoxLayout* layout = new nsGridRowGroupLayout();
+  nsBoxLayout* layout = new nsGridRowGroupLayout();
   NS_IF_ADDREF(layout);
   return layout;
 } 
@@ -74,14 +74,14 @@ nsGridRowGroupLayout::ChildAddedOrRemoved(nsIBox* aBox, nsBoxLayoutState& aState
 {
   PRInt32 index = 0;
   nsGrid* grid = GetGrid(aBox, &index);
-  PRBool isHorizontal = IsHorizontal(aBox);
+  bool isHorizontal = IsHorizontal(aBox);
 
   if (grid)
     grid->RowAddedOrRemoved(aState, index, isHorizontal);
 }
 
 void
-nsGridRowGroupLayout::AddWidth(nsSize& aSize, nscoord aSize2, PRBool aIsHorizontal)
+nsGridRowGroupLayout::AddWidth(nsSize& aSize, nscoord aSize2, bool aIsHorizontal)
 {
   nscoord& size = GET_WIDTH(aSize, aIsHorizontal);
 
@@ -110,7 +110,7 @@ nsGridRowGroupLayout::GetPrefSize(nsIBox* aBox, nsBoxLayoutState& aState)
   if (grid) 
   {
     // make sure we add in extra columns sizes as well
-    PRBool isHorizontal = IsHorizontal(aBox);
+    bool isHorizontal = IsHorizontal(aBox);
     PRInt32 extraColumns = grid->GetExtraColumnCount(isHorizontal);
     PRInt32 start = grid->GetColumnCount(isHorizontal) - grid->GetExtraColumnCount(isHorizontal);
     for (PRInt32 i=0; i < extraColumns; i++)
@@ -136,7 +136,7 @@ nsGridRowGroupLayout::GetMaxSize(nsIBox* aBox, nsBoxLayoutState& aState)
   if (grid) 
   {
     // make sure we add in extra columns sizes as well
-    PRBool isHorizontal = IsHorizontal(aBox);
+    bool isHorizontal = IsHorizontal(aBox);
     PRInt32 extraColumns = grid->GetExtraColumnCount(isHorizontal);
     PRInt32 start = grid->GetColumnCount(isHorizontal) - grid->GetExtraColumnCount(isHorizontal);
     for (PRInt32 i=0; i < extraColumns; i++)
@@ -162,7 +162,7 @@ nsGridRowGroupLayout::GetMinSize(nsIBox* aBox, nsBoxLayoutState& aState)
   if (grid) 
   {
     // make sure we add in extra columns sizes as well
-    PRBool isHorizontal = IsHorizontal(aBox);
+    bool isHorizontal = IsHorizontal(aBox);
     PRInt32 extraColumns = grid->GetExtraColumnCount(isHorizontal);
     PRInt32 start = grid->GetColumnCount(isHorizontal) - grid->GetExtraColumnCount(isHorizontal);
     for (PRInt32 i=0; i < extraColumns; i++)
@@ -196,13 +196,9 @@ nsGridRowGroupLayout::DirtyRows(nsIBox* aBox, nsBoxLayoutState& aState)
       nsIBox* deepChild = nsGrid::GetScrolledBox(child);
 
       // walk into other monuments
-      nsCOMPtr<nsIBoxLayout> layout;
-      deepChild->GetLayoutManager(getter_AddRefs(layout));
-      if (layout) {
-        nsCOMPtr<nsIGridPart> monument( do_QueryInterface(layout) );
-        if (monument) 
-          monument->DirtyRows(deepChild, aState);
-      }
+      nsIGridPart* monument = nsGrid::GetPartFromBox(deepChild);
+      if (monument) 
+        monument->DirtyRows(deepChild, aState);
 
       child = child->GetNextBox();
     }
@@ -223,16 +219,12 @@ nsGridRowGroupLayout::CountRowsColumns(nsIBox* aBox, PRInt32& aRowCount, PRInt32
       // first see if it is a scrollframe. If so walk down into it and get the scrolled child
       nsIBox* deepChild = nsGrid::GetScrolledBox(child);
 
-      nsCOMPtr<nsIBoxLayout> layout;
-      deepChild->GetLayoutManager(getter_AddRefs(layout));
-      if (layout) {
-        nsCOMPtr<nsIGridPart> monument( do_QueryInterface(layout) );
-        if (monument) {
-          monument->CountRowsColumns(deepChild, aRowCount, aComputedColumnCount);
-          child = child->GetNextBox();
-          deepChild = child;
-          continue;
-        }
+      nsIGridPart* monument = nsGrid::GetPartFromBox(deepChild);
+      if (monument) {
+        monument->CountRowsColumns(deepChild, aRowCount, aComputedColumnCount);
+        child = child->GetNextBox();
+        deepChild = child;
+        continue;
       }
 
       child = child->GetNextBox();
@@ -262,19 +254,15 @@ nsGridRowGroupLayout::BuildRows(nsIBox* aBox, nsGridRow* aRows)
       // first see if it is a scrollframe. If so walk down into it and get the scrolled child
       nsIBox* deepChild = nsGrid::GetScrolledBox(child);
 
-      nsCOMPtr<nsIBoxLayout> layout;
-      deepChild->GetLayoutManager(getter_AddRefs(layout));
-      if (layout) {
-        nsCOMPtr<nsIGridPart> monument( do_QueryInterface(layout) );
-        if (monument) {
-          rowCount += monument->BuildRows(deepChild, &aRows[rowCount]);
-          child = child->GetNextBox();
-          deepChild = child;
-          continue;
-        }
+      nsIGridPart* monument = nsGrid::GetPartFromBox(deepChild);
+      if (monument) {
+        rowCount += monument->BuildRows(deepChild, &aRows[rowCount]);
+        child = child->GetNextBox();
+        deepChild = child;
+        continue;
       }
 
-      aRows[rowCount].Init(child, PR_TRUE);
+      aRows[rowCount].Init(child, true);
 
       child = child->GetNextBox();
 
@@ -287,7 +275,7 @@ nsGridRowGroupLayout::BuildRows(nsIBox* aBox, nsGridRow* aRows)
 }
 
 nsMargin
-nsGridRowGroupLayout::GetTotalMargin(nsIBox* aBox, PRBool aIsHorizontal)
+nsGridRowGroupLayout::GetTotalMargin(nsIBox* aBox, bool aIsHorizontal)
 {
   // group have border and padding added to the total margin
 

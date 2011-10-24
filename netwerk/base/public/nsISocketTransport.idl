@@ -129,6 +129,7 @@ interface nsISocketTransport : nsITransport
      * of this interface may choose not to generate.
      */
     const unsigned long STATUS_RESOLVING      = 0x804b0003;
+    const unsigned long STATUS_RESOLVED       = 0x804b000b;
     const unsigned long STATUS_CONNECTING_TO  = 0x804b0007;
     const unsigned long STATUS_CONNECTED_TO   = 0x804b0004;
     const unsigned long STATUS_SENDING_TO     = 0x804b0005;
@@ -137,7 +138,7 @@ interface nsISocketTransport : nsITransport
 
     /**
      * connectionFlags is a bitmask that can be used to modify underlying 
-     * behavior of the socket connection.
+     * behavior of the socket connection. See the flags below.
      */
     attribute unsigned long connectionFlags;
 
@@ -159,6 +160,12 @@ interface nsISocketTransport : nsITransport
     const unsigned long ANONYMOUS_CONNECT = (1 << 1);
 
     /**
+     * If set, we will skip all IPv6 addresses the host may have and only
+     * connect to IPv4 ones.
+     */
+    const unsigned long DISABLE_IPV6 = (1 << 2);
+
+    /**
      * Socket QoS/ToS markings. Valid values are IPTOS_DSCP_AFxx or
      * IPTOS_CLASS_CSx (or IPTOS_DSCP_EF, but currently no supported
      * services require expedited-forwarding).
@@ -175,6 +182,7 @@ interface nsISocketTransport : nsITransport
  * #define's for compatibility
  */
 #define NS_NET_STATUS_RESOLVING_HOST nsISocketTransport::STATUS_RESOLVING
+#define NS_NET_STATUS_RESOLVED_HOST  nsISocketTransport::STATUS_RESOLVED
 #define NS_NET_STATUS_CONNECTED_TO   nsISocketTransport::STATUS_CONNECTED_TO
 #define NS_NET_STATUS_SENDING_TO     nsISocketTransport::STATUS_SENDING_TO
 #define NS_NET_STATUS_RECEIVING_FROM nsISocketTransport::STATUS_RECEIVING_FROM

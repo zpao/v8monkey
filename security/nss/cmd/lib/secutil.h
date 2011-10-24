@@ -38,6 +38,7 @@
 
 #include "seccomon.h"
 #include "secitem.h"
+#include "secport.h"
 #include "prerror.h"
 #include "base64.h"
 #include "key.h"
@@ -52,6 +53,7 @@
 #define SEC_CT_CERTIFICATE_REQUEST	"certificate-request"
 #define SEC_CT_PKCS7			"pkcs7"
 #define SEC_CT_CRL			"crl"
+#define SEC_CT_NAME			"name"
 
 #define NS_CERTREQ_HEADER "-----BEGIN NEW CERTIFICATE REQUEST-----"
 #define NS_CERTREQ_TRAILER "-----END NEW CERTIFICATE REQUEST-----"
@@ -61,6 +63,8 @@
 
 #define NS_CRL_HEADER  "-----BEGIN CRL-----"
 #define NS_CRL_TRAILER "-----END CRL-----"
+
+#define SECU_Strerror PORT_ErrorToString
 
 #ifdef SECUTIL_NEW
 typedef int (*SECU_PPFunc)(PRFileDesc *out, SECItem *item, 
@@ -170,9 +174,6 @@ extern void SECU_PrintError(char *progName, char *msg, ...);
 /* print out a system error message */
 extern void SECU_PrintSystemError(char *progName, char *msg, ...);
 
-/* Return informative error string */
-extern const char * SECU_Strerror(PRErrorCode errNum);
-
 /* revalidate the cert and print information about cert verification
  * failure at time == now */
 extern void
@@ -258,6 +259,9 @@ extern int SECU_PrintCertificateRequest(FILE *out, SECItem *der, char *m,
 
 /* Dump contents of certificate */
 extern int SECU_PrintCertificate(FILE *out, SECItem *der, char *m, int level);
+
+/* Dump contents of a DER certificate name (issuer or subject) */
+extern int SECU_PrintDERName(FILE *out, SECItem *der, const char *m, int level);
 
 /* print trust flags on a cert */
 extern void SECU_PrintTrustFlags(FILE *out, CERTCertTrust *trust, char *m, 
@@ -441,12 +445,6 @@ SECU_GetOptionArg(const secuCommand *cmd, int optionNum);
  *  Error messaging
  *
  */
-
-/* Return informative error string */
-char *SECU_ErrorString(int16 err);
-
-/* Return informative error string. Does not call XP_GetString */
-char *SECU_ErrorStringRaw(int16 err);
 
 void printflags(char *trusts, unsigned int flags);
 

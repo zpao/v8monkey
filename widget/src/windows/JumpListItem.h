@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *   Jim Mathies <jmathies@mozilla.com>
+ *   Brian R. Bondy <netzen@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -55,6 +56,8 @@
 #include "nsString.h"
 #include "nsCycleCollectionParticipant.h"
 
+class nsIThread;
+
 namespace mozilla {
 namespace widget {
 
@@ -69,12 +72,20 @@ public:
    mItemType(type)
   {}
 
+  virtual ~JumpListItem() 
+  {}
+
   NS_DECL_ISUPPORTS
   NS_DECL_NSIJUMPLISTITEM
+
+  static const char kJumpListCacheDir[];
 
 protected:
   short Type() { return mItemType; }
   short mItemType;
+
+  static nsresult HashURI(nsCOMPtr<nsICryptoHash> &aCryptoHash,
+                          nsIURI *aUri, nsACString& aUriHash);
 };
 
 class JumpListSeparator : public JumpListItem, public nsIJumpListSeparator
@@ -86,7 +97,7 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_IMETHOD GetType(PRInt16 *aType) { return JumpListItem::GetType(aType); }
-  NS_IMETHOD Equals(nsIJumpListItem *item, PRBool *_retval) { return JumpListItem::Equals(item, _retval); }
+  NS_IMETHOD Equals(nsIJumpListItem *item, bool *_retval) { return JumpListItem::Equals(item, _retval); }
 
   static nsresult GetSeparator(nsRefPtr<IShellLinkW>& aShellLink);
 };
@@ -100,7 +111,7 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_IMETHOD GetType(PRInt16 *aType) { return JumpListItem::GetType(aType); }
-  NS_IMETHOD Equals(nsIJumpListItem *item, PRBool *_retval);
+  NS_IMETHOD Equals(nsIJumpListItem *item, bool *_retval);
   NS_DECL_NSIJUMPLISTLINK
 
   static nsresult GetShellItem(nsCOMPtr<nsIJumpListItem>& item, nsRefPtr<IShellItem2>& aShellItem);
@@ -115,8 +126,6 @@ protected:
   static const PRUnichar kSehllLibraryName[];
   static HMODULE sShellDll;
   static SHCreateItemFromParsingNamePtr createItemFromParsingName;
-
-  nsresult HashURI(nsIURI *uri, nsACString& aUriHas);
 };
 
 class JumpListShortcut : public JumpListItem, public nsIJumpListShortcut
@@ -129,17 +138,28 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(JumpListShortcut, JumpListItem);
   NS_IMETHOD GetType(PRInt16 *aType) { return JumpListItem::GetType(aType); }
-  NS_IMETHOD Equals(nsIJumpListItem *item, PRBool *_retval);
+  NS_IMETHOD Equals(nsIJumpListItem *item, bool *_retval);
   NS_DECL_NSIJUMPLISTSHORTCUT
 
-  static nsresult GetShellLink(nsCOMPtr<nsIJumpListItem>& item, nsRefPtr<IShellLinkW>& aShellLink);
+  static nsresult GetShellLink(nsCOMPtr<nsIJumpListItem>& item, 
+                               nsRefPtr<IShellLinkW>& aShellLink, 
+                               nsCOMPtr<nsIThread> &aIOThread);
   static nsresult GetJumpListShortcut(IShellLinkW *pLink, nsCOMPtr<nsIJumpListShortcut>& aShortcut);
+  static nsresult GetOutputIconPath(nsCOMPtr<nsIURI> aFaviconPageURI, 
+                                    nsCOMPtr<nsIFile> &aICOFile);
 
 protected:
   PRInt32 mIconIndex;
+  nsCOMPtr<nsIURI> mFaviconPageURI;
   nsCOMPtr<nsILocalHandlerApp> mHandlerApp;
 
-  PRBool ExecutableExists(nsCOMPtr<nsILocalHandlerApp>& handlerApp);
+  bool ExecutableExists(nsCOMPtr<nsILocalHandlerApp>& handlerApp);
+  static nsresult ObtainCachedIconFile(nsCOMPtr<nsIURI> aFaviconPageURI, 
+                                       nsString &aICOFilePath,
+                                       nsCOMPtr<nsIThread> &aIOThread);
+  static nsresult CacheIconFileFromFaviconURIAsync(nsCOMPtr<nsIURI> aFaviconPageURI, 
+                                                   nsCOMPtr<nsIFile> aICOFile,
+                                                   nsCOMPtr<nsIThread> &aIOThread);
 };
 
 } // namespace widget

@@ -91,13 +91,17 @@ public:
     mDocAccessibleCache.Remove(aDocument);
   }
 
+#ifdef DEBUG
+  bool IsProcessingRefreshDriverNotification() const;
+#endif
+
 protected:
   nsAccDocManager() { };
 
   /**
    * Initialize the manager.
    */
-  PRBool Init();
+  bool Init();
 
   /**
    * Shutdown the manager.
@@ -121,27 +125,9 @@ private:
                              PRUint32 aLoadEventType);
 
   /**
-   * Return true if accessibility events accompanying document accessible
-   * loading should be fired.
-   *
-   * The rules are: do not fire events for root chrome document accessibles and
-   * for sub document accessibles (like HTML frame of iframe) of the loading
-   * document accessible.
-   *
-   * XXX: in general AT expect events for document accessible loading into
-   * tabbrowser, events from other document accessibles may break AT. We need to
-   * figure out what AT wants to know about loading page (for example, some of
-   * them have separate processing of iframe documents on the page and therefore
-   * they need a way to distinguish sub documents from page document). Ideally
-   * we should make events firing for any loaded document and provide additional
-   * info AT are needing.
-   */
-  PRBool IsEventTargetDocument(nsIDocument *aDocument) const;
-
-  /**
    * Add 'pagehide' and 'DOMContentLoaded' event listeners.
    */
-  void AddListeners(nsIDocument *aDocument, PRBool aAddPageShowListener);
+  void AddListeners(nsIDocument *aDocument, bool aAddPageShowListener);
 
   /**
    * Create document or root accessible.
@@ -175,6 +161,12 @@ private:
                                nsDocAccessible* aDocAccessible,
                                void* aUserArg);
 
+#ifdef DEBUG
+  static PLDHashOperator
+    SearchIfDocIsRefreshing(const nsIDocument* aKey,
+                            nsDocAccessible* aDocAccessible, void* aUserArg);
+#endif
+
   nsDocAccessibleHashtable mDocAccessibleCache;
 };
 
@@ -182,6 +174,8 @@ private:
  * nsAccDocManager debugging macros.
  */
 #ifdef DEBUG_ACCDOCMGR
+
+#include "nsTraceRefcntImpl.h"
 
 // Enable these to log accessible document loading, creation or destruction.
 #define DEBUG_ACCDOCMGR_DOCLOAD
@@ -199,23 +193,45 @@ private:
   printf("uri: %s", spec);
 
 #define NS_LOG_ACCDOC_TYPE(aDocument)                                          \
-  PRBool isContent = nsCoreUtils::IsContentDocument(aDocument);                \
-  printf("%s document", (isContent ? "content" : "chrome"));
+  if (aDocument->IsActive()) {                                                 \
+    bool isContent = nsCoreUtils::IsContentDocument(aDocument);              \
+    printf("%s document", (isContent ? "content" : "chrome"));                 \
+  } else {                                                                     \
+    printf("document type: [failed]");                                         \
+  }
+
+#define NS_LOG_ACCDOC_DOCSHELLTREE(aDocument)                                  \
+  if (aDocument->IsActive()) {                                                 \
+    nsCOMPtr<nsISupports> container = aDocument->GetContainer();               \
+    nsCOMPtr<nsIDocShellTreeItem> treeItem(do_QueryInterface(container));      \
+    nsCOMPtr<nsIDocShellTreeItem> parentTreeItem;                              \
+    treeItem->GetParent(getter_AddRefs(parentTreeItem));                       \
+    nsCOMPtr<nsIDocShellTreeItem> rootTreeItem;                                \
+    treeItem->GetRootTreeItem(getter_AddRefs(rootTreeItem));                   \
+    printf("docshell hierarchy, parent: %p, root: %p, is tab document: %s;",   \
+           parentTreeItem, rootTreeItem,                                       \
+           (nsCoreUtils::IsTabDocument(aDocument) ? "yes" : "no"));            \
+  }
 
 #define NS_LOG_ACCDOC_SHELLSTATE(aDocument)                                    \
-  nsCOMPtr<nsISupports> container = aDocument->GetContainer();                 \
-  nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(container);               \
-  PRUint32 busyFlags = nsIDocShell::BUSY_FLAGS_NONE;                           \
-  docShell->GetBusyFlags(&busyFlags);                                          \
   nsCAutoString docShellBusy;                                                  \
-  if (busyFlags == nsIDocShell::BUSY_FLAGS_NONE)                               \
-    docShellBusy.AppendLiteral("'none'");                                      \
-  if (busyFlags & nsIDocShell::BUSY_FLAGS_BUSY)                                \
-    docShellBusy.AppendLiteral("'busy'");                                      \
-  if (busyFlags & nsIDocShell::BUSY_FLAGS_BEFORE_PAGE_LOAD)                    \
-    docShellBusy.AppendLiteral(", 'before page load'");                        \
-  if (busyFlags & nsIDocShell::BUSY_FLAGS_PAGE_LOADING)                        \
-    docShellBusy.AppendLiteral(", 'page loading'");                            \
+  nsCOMPtr<nsISupports> container = aDocument->GetContainer();                 \
+  if (container) {                                                             \
+    nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(container);             \
+    PRUint32 busyFlags = nsIDocShell::BUSY_FLAGS_NONE;                         \
+    docShell->GetBusyFlags(&busyFlags);                                        \
+    if (busyFlags == nsIDocShell::BUSY_FLAGS_NONE)                             \
+      docShellBusy.AppendLiteral("'none'");                                    \
+    if (busyFlags & nsIDocShell::BUSY_FLAGS_BUSY)                              \
+      docShellBusy.AppendLiteral("'busy'");                                    \
+    if (busyFlags & nsIDocShell::BUSY_FLAGS_BEFORE_PAGE_LOAD)                  \
+      docShellBusy.AppendLiteral(", 'before page load'");                      \
+    if (busyFlags & nsIDocShell::BUSY_FLAGS_PAGE_LOADING)                      \
+      docShellBusy.AppendLiteral(", 'page loading'");                          \
+  }                                                                            \
+  else {                                                                       \
+    docShellBusy.AppendLiteral("[failed]");                                    \
+  }                                                                            \
   printf("docshell busy: %s", docShellBusy.get());
 
 #define NS_LOG_ACCDOC_DOCSTATES(aDocument)                                     \
@@ -336,20 +352,24 @@ private:
     printf("    ");                                                            \
     NS_LOG_ACCDOC_ADDRESS(aDocument, aDocAcc)                                  \
     printf("\n    ");                                                          \
-    NS_LOG_ACCDOC_URI(aDocument)                                               \
-    printf("\n    ");                                                          \
-    NS_LOG_ACCDOC_SHELLSTATE(aDocument)                                        \
-    printf("; ");                                                              \
-    NS_LOG_ACCDOC_TYPE(aDocument)                                              \
-    printf("\n    ");                                                          \
-    NS_LOG_ACCDOC_DOCSTATES(aDocument)                                         \
-    printf("\n    ");                                                          \
-    NS_LOG_ACCDOC_DOCPRESSHELL(aDocument)                                      \
-    printf("\n    ");                                                          \
-    NS_LOG_ACCDOC_DOCLOADGROUP(aDocument)                                      \
-    printf(", ");                                                              \
-    NS_LOG_ACCDOC_DOCPARENT(aDocument)                                         \
-    printf("\n");                                                              \
+    if (aDocument) {                                                           \
+      NS_LOG_ACCDOC_URI(aDocument)                                             \
+      printf("\n    ");                                                        \
+      NS_LOG_ACCDOC_SHELLSTATE(aDocument)                                      \
+      printf("; ");                                                            \
+      NS_LOG_ACCDOC_TYPE(aDocument)                                            \
+      printf("\n    ");                                                        \
+      NS_LOG_ACCDOC_DOCSHELLTREE(aDocument)                                    \
+      printf("\n    ");                                                        \
+      NS_LOG_ACCDOC_DOCSTATES(aDocument)                                       \
+      printf("\n    ");                                                        \
+      NS_LOG_ACCDOC_DOCPRESSHELL(aDocument)                                    \
+      printf("\n    ");                                                        \
+      NS_LOG_ACCDOC_DOCLOADGROUP(aDocument)                                    \
+      printf(", ");                                                            \
+      NS_LOG_ACCDOC_DOCPARENT(aDocument)                                       \
+      printf("\n");                                                            \
+    }                                                                          \
   }
 #define NS_LOG_ACCDOC_DOCINFO_END                                              \
   printf("  }\n");
@@ -396,6 +416,10 @@ private:
 
 #define NS_LOG_ACCDOC_TEXT(aMsg)                                               \
   printf("  " aMsg "\n");
+
+#define NS_LOG_ACCDOC_STACK                                                    \
+  printf("  stack: \n");                                                       \
+  nsTraceRefcntImpl::WalkTheStack(stdout);
 
 // Accessible document loading macros.
 #ifdef DEBUG_ACCDOCMGR_DOCLOAD
@@ -450,7 +474,7 @@ private:
         NS_LOG_ACCDOCLOAD_REQUEST(aRequest)                                    \
         printf("\n");                                                          \
         printf("    state flags: %x", aStateFlags);                            \
-        PRBool isDocLoading;                                                   \
+        bool isDocLoading;                                                   \
         aWebProgress->GetIsLoadingDocument(&isDocLoading);                     \
         printf(", document is %sloading\n", (isDocLoading ? "" : "not "));     \
         printf("  }\n");                                                       \
@@ -507,7 +531,10 @@ private:
   NS_LOG_ACCDOC_ACCADDRESS(aName, aAcc)
 
 #define NS_LOG_ACCDOCCREATE_TEXT(aMsg)                                         \
-    NS_LOG_ACCDOC_TEXT(aMsg)
+  NS_LOG_ACCDOC_TEXT(aMsg)
+
+#define NS_LOG_ACCDOCCREATE_STACK                                              \
+  NS_LOG_ACCDOC_STACK
 
 #endif // DEBUG_ACCDOCMGR_DOCCREATE
 
@@ -551,6 +578,7 @@ private:
 #define NS_LOG_ACCDOCCREATE(aMsg, aDocument)
 #define NS_LOG_ACCDOCCREATE_ACCADDRESS(aName, aAcc)
 #define NS_LOG_ACCDOCCREATE_TEXT(aMsg)
+#define NS_LOG_ACCDOCCREATE_STACK
 #endif
 
 #ifndef DEBUG_ACCDOCMGR_DOCDESTROY

@@ -48,29 +48,29 @@ namespace dom {
 class AudioWriteEvent : public nsRunnable
 {
  public:
-  AudioWriteEvent(nsAudioStream* owner, nsCString data, PRUint32 count)
+  AudioWriteEvent(nsAudioStream* owner, nsCString data, PRUint32 frames)
   {
     mOwner = owner;
     mData  = data;
-    mCount = count;
+    mFrames = frames;
   }
 
   NS_IMETHOD Run()
   {
-    mOwner->Write(mData.get(), mCount, true);
+    mOwner->Write(mData.get(), mFrames);
     return NS_OK;
   }
 
  private:
     nsRefPtr<nsAudioStream> mOwner;
     nsCString mData;
-    PRUint32  mCount;
+    PRUint32  mFrames;
 };
 
 class AudioPauseEvent : public nsRunnable
 {
  public:
-  AudioPauseEvent(nsAudioStream* owner, PRBool aPause)
+  AudioPauseEvent(nsAudioStream* owner, bool aPause)
   {
     mOwner = owner;
     mPause = aPause;
@@ -87,7 +87,7 @@ class AudioPauseEvent : public nsRunnable
 
  private:
     nsRefPtr<nsAudioStream> mOwner;
-    PRBool mPause;
+    bool mPause;
 };
 
 class AudioStreamShutdownEvent : public nsRunnable
@@ -106,6 +106,49 @@ class AudioStreamShutdownEvent : public nsRunnable
 
  private:
     nsRefPtr<nsAudioStream> mOwner;
+};
+
+
+class AudioMinWriteSizeDone : public nsRunnable
+{
+ public:
+  AudioMinWriteSizeDone(AudioParent* owner, PRInt32 minFrames)
+  {
+    mOwner = owner;
+    mMinFrames = minFrames;
+  }
+
+  NS_IMETHOD Run()
+  {
+    mOwner->SendMinWriteSizeDone(mMinFrames);
+    return NS_OK;
+  }
+
+ private:
+    nsRefPtr<AudioParent> mOwner;
+    PRInt32 mMinFrames;
+};
+
+class AudioMinWriteSizeEvent : public nsRunnable
+{
+ public:
+  AudioMinWriteSizeEvent(AudioParent* parent, nsAudioStream* owner)
+  {
+    mParent = parent;
+    mOwner = owner;
+  }
+
+  NS_IMETHOD Run()
+  {
+    PRInt32 minFrames = mOwner->GetMinWriteSize();
+    nsCOMPtr<nsIRunnable> event = new AudioMinWriteSizeDone(mParent, minFrames);
+    NS_DispatchToMainThread(event);
+    return NS_OK;
+  }
+
+ private:
+    nsRefPtr<nsAudioStream> mOwner;
+    nsRefPtr<AudioParent> mParent;
 };
 
 class AudioDrainDoneEvent : public nsRunnable
@@ -159,19 +202,17 @@ AudioParent::Notify(nsITimer* timer)
   }
 
   NS_ASSERTION(mStream, "AudioStream not initialized.");
-  PRInt64 offset = mStream->GetSampleOffset();
-  unused << SendSampleOffsetUpdate(offset, PR_IntervalNow());
+  PRInt64 position = mStream->GetPositionInFrames();
+  unused << SendPositionInFramesUpdate(position, PR_IntervalNow());
   return NS_OK;
 }
 
 bool
-AudioParent::RecvWrite(
-        const nsCString& data,
-        const PRUint32& count)
+AudioParent::RecvWrite(const nsCString& data, const PRUint32& frames)
 {
   if (!mStream)
     return false;
-  nsCOMPtr<nsIRunnable> event = new AudioWriteEvent(mStream, data, count);
+  nsCOMPtr<nsIRunnable> event = new AudioWriteEvent(mStream, data, frames);
   nsCOMPtr<nsIThread> thread = mStream->GetThread();
   thread->Dispatch(event, nsIEventTarget::DISPATCH_NORMAL);
   return true;
@@ -183,6 +224,17 @@ AudioParent::RecvSetVolume(const float& aVolume)
   if (!mStream)
       return false;
   mStream->SetVolume(aVolume);
+  return true;
+}
+
+bool
+AudioParent::RecvMinWriteSize()
+{
+  if (!mStream)
+    return false;
+  nsCOMPtr<nsIRunnable> event = new AudioMinWriteSizeEvent(this, mStream);
+  nsCOMPtr<nsIThread> thread = mStream->GetThread();
+  thread->Dispatch(event, nsIEventTarget::DISPATCH_NORMAL);
   return true;
 }
 
@@ -202,7 +254,7 @@ AudioParent::RecvPause()
 {
   if (!mStream)
     return false;
-  nsCOMPtr<nsIRunnable> event = new AudioPauseEvent(mStream, PR_TRUE);
+  nsCOMPtr<nsIRunnable> event = new AudioPauseEvent(mStream, true);
   nsCOMPtr<nsIThread> thread = mStream->GetThread();
   thread->Dispatch(event, nsIEventTarget::DISPATCH_NORMAL);
   return true;
@@ -213,7 +265,7 @@ AudioParent::RecvResume()
 {
   if (!mStream)
     return false;
-  nsCOMPtr<nsIRunnable> event = new AudioPauseEvent(mStream, PR_FALSE);
+  nsCOMPtr<nsIRunnable> event = new AudioPauseEvent(mStream, false);
   nsCOMPtr<nsIThread> thread = mStream->GetThread();
   thread->Dispatch(event, nsIEventTarget::DISPATCH_NORMAL);
   return true;
@@ -228,6 +280,14 @@ AudioParent::RecvShutdown()
 }
 
 bool
+AudioParent::SendMinWriteSizeDone(PRInt32 minFrames)
+{
+  if (mIPCOpen)
+    return PAudioParent::SendMinWriteSizeDone(minFrames);
+  return true;
+}
+
+bool
 AudioParent::SendDrainDone()
 {
   if (mIPCOpen)
@@ -236,7 +296,7 @@ AudioParent::SendDrainDone()
 }
 
 AudioParent::AudioParent(PRInt32 aNumChannels, PRInt32 aRate, PRInt32 aFormat)
-  : mIPCOpen(PR_TRUE)
+  : mIPCOpen(true)
 {
   mStream = nsAudioStream::AllocateStream();
   NS_ASSERTION(mStream, "AudioStream allocation failed.");
@@ -259,7 +319,7 @@ AudioParent::~AudioParent()
 void
 AudioParent::ActorDestroy(ActorDestroyReason aWhy)
 {
-  mIPCOpen = PR_FALSE;
+  mIPCOpen = false;
 
   Shutdown();
 }

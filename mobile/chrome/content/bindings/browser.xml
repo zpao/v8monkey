@@ -115,34 +115,43 @@
                 break;
 
               case "DOMTitleChanged":
-                self._contentTitle = aMessage.json.title;
+                self._contentTitle = json.title;
                 break;
 
               case "DOMLinkAdded":
-                let link = aMessage.json;
                 // ignore results from subdocuments
-                if (link.windowId != self.contentWindowId)
+                if (json.windowId != self.contentWindowId)
                   return;
 
-                let linkType = self._getLinkType(link);
+                let linkType = self._getLinkType(json);
                 switch(linkType) {
                   case "icon":
-                    self.loadFavicon(link.href, link.charset);
+                    self.loadFavicon(json.href, json.charset);
                     break;
                   case "search":
-                    self._searchEngines.push({ title: link.title, href: link.href });
+                    self._searchEngines.push({ title: json.title, href: json.href });
                     break;
                 }
                 break;
 
-              case "MozScrolledAreaChanged":
-                self._contentDocumentWidth = aMessage.json.width;
-                self._contentDocumentHeight = aMessage.json.height;
+              case "MozScrolledAreaChanged": {
+                self._contentDocumentWidth = json.width;
+                self._contentDocumentHeight = json.height;
+                self._contentDocumentLeft = (json.left < 0) ? json.left : 0;
 
                 // Recalculate whether the visible area is actually in bounds
                 let view = self.getRootView();
                 view.scrollBy(0, 0);
                 break;
+              }
+
+              case "Content:UpdateDisplayPort": {
+                // Recalculate whether the visible area is actually in bounds
+                let view = self.getRootView();
+                view.scrollBy(0, 0);
+                view._updateCacheViewport();
+                break;
+              }
             }
           }
         })
@@ -211,9 +220,9 @@
               case "Content:LocationChange":
                 try {
                   let locationURI = this._browser._ios.newURI(json.location, null, null);
-                  this._browser._webNavigation._currentURI = locationURI;
-                  this._browser._webNavigation.canGoBack = json.canGoBack;
-                  this._browser._webNavigation.canGoForward = json.canGoForward;
+                  this._browser.webNavigation._currentURI = locationURI;
+                  this._browser.webNavigation.canGoBack = json.canGoBack;
+                  this._browser.webNavigation.canGoForward = json.canGoForward;
                   this._browser._charset = json.charset;
                 } catch(e) {}
 
@@ -284,7 +293,7 @@
                                         .getService(Components.interfaces.nsICertOverrideService);
 
               // Check whether this site is a security exception.
-              let currentURI = this._browser._webNavigation._currentURI;
+              let currentURI = this._browser.webNavigation._currentURI;
               result.isException = !!this._overrideService.hasMatchingOverride(currentURI.asciiHost, currentURI.port, cert, {}, {});
             }
 
@@ -369,6 +378,8 @@
       <field name="_contentViewManager">null</field>
 
       <!-- Dimensions of content window -->
+      <field name="_contentWindowWidth">0</field>
+      <field name="_contentWindowHeight">0</field>
       <property name="contentWindowWidth"
                 onget="return this._contentWindowWidth;"
                 readonly="true"/>
@@ -385,6 +396,11 @@
       <property name="contentDocumentHeight"
                 onget="return this._contentDocumentHeight;"
                 readonly="true"/>
+
+      <!-- If this attribute is negative this indicate the document is rtl and
+           some operations like panning or calculating the cache area should
+           take it into account. This is useless for non-remote browser -->
+      <field name="_contentDocumentLeft">0</field>
 
       <!-- The ratio of device pixels to CSS pixels -->
       <property name="scale"
@@ -492,9 +508,6 @@
 
           scrollBy: function(x, y) {
             let self = this.self;
-            let position = this.getPosition();
-            x = Math.floor(Math.max(0, Math.min(self.contentDocumentWidth,  position.x + x)) - position.x);
-            y = Math.floor(Math.max(0, Math.min(self.contentDocumentHeight, position.y + y)) - position.y);
             self.contentWindow.scrollBy(x, y);
           },
 
@@ -528,10 +541,22 @@
         <body>
           <![CDATA[
             let bcr = this.getBoundingClientRect();
-            let view = this.getRootView();
             let scroll = this.getRootView().getPosition();
             return { x: (clientX + scroll.x - bcr.left) / this.scale,
                      y: (clientY + scroll.y - bcr.top) / this.scale };
+          ]]>
+        </body>
+      </method>
+
+      <method name="transformBrowserToClient">
+        <parameter name="browserX"/>
+        <parameter name="browserY"/>
+        <body>
+          <![CDATA[
+            let bcr = this.getBoundingClientRect();
+            let scroll = this.getRootView().getPosition();
+            return { x: (browserX * this.scale - scroll.x + bcr.left) ,
+                     y: (browserY * this.scale - scroll.y + bcr.top)};
           ]]>
         </body>
       </method>
@@ -558,6 +583,7 @@
           this.messageManager.addMessageListener("pagehide", this._messageListenerLocal);
           this.messageManager.addMessageListener("DOMPopupBlocked", this._messageListenerLocal);
           this.messageManager.addMessageListener("MozScrolledAreaChanged", this._messageListenerLocal);
+          this.messageManager.addMessageListener("Content:UpdateDisplayPort", this._messageListenerLocal);
 
           this._webProgress._init();
 
@@ -635,74 +661,8 @@
                 onget="return this._contentTitle;"
                 readonly="true"/>
 
-      <field name="_webNavigation"><![CDATA[
-        ({
-          LOAD_FLAGS_MASK: 65535,
-          LOAD_FLAGS_NONE: 0,
-          LOAD_FLAGS_IS_REFRESH: 16,
-          LOAD_FLAGS_IS_LINK: 32,
-          LOAD_FLAGS_BYPASS_HISTORY: 64,
-          LOAD_FLAGS_REPLACE_HISTORY: 128,
-          LOAD_FLAGS_BYPASS_CACHE: 256,
-          LOAD_FLAGS_BYPASS_PROXY: 512,
-          LOAD_FLAGS_CHARSET_CHANGE: 1024,
-          LOAD_FLAGS_STOP_CONTENT: 2048,
-          LOAD_FLAGS_FROM_EXTERNAL: 4096,
-          LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP: 8192,
-          LOAD_FLAGS_FIRST_LOAD: 16384,
-          LOAD_FLAGS_ALLOW_POPUPS: 32768,
-          LOAD_FLAGS_BYPASS_CLASSIFIER: 65536,
-          LOAD_FLAGS_FORCE_ALLOW_COOKIES: 131072,
-
-          STOP_NETWORK: 1,
-          STOP_CONTENT: 2,
-          STOP_ALL: 3,
-
-          canGoBack: false,
-          canGoForward: false,
-          goBack: function() { this._sendMessage("WebNavigation:GoBack", {}); },
-          goForward: function() { this._sendMessage("WebNavigation:GoForward", {}); },
-          gotoIndex: function(aIndex) { this._sendMessage("WebNavigation:GotoIndex", {index: aIndex}); },
-          loadURI: function(aURI, aLoadFlags, aReferrer, aPostData, aHeaders) {
-            this._browser.userTypedValue = aURI;
-            this._browser._contentTitle = "";
-            this._sendMessage("WebNavigation:LoadURI", {uri: aURI, flags: aLoadFlags});
-          },
-          reload: function(aReloadFlags) { this._sendMessage("WebNavigation:Reload", {flags: aReloadFlags}); },
-          stop: function(aStopFlags) { this._sendMessage("WebNavigation:Stop", {flags: aStopFlags}); },
-          get document() { Components.utils.reportError("contentDocument is not available"); return null; },
-          get currentURI() {
-            if (!this._currentURI)
-               this._currentURI = this._browser._ios.newURI("about:blank", null, null);
-
-            return this._currentURI;
-          },
-          set currentURI(aURI) { this.loadURI(aURI.spec, null, null, null); },
-          referringURI: null,
-          get sessionHistory() { return null; },
-          set sessionHistory(aValue) { },
-
-          _currentURI: null,
-          _browser: this,
-          _sendMessage: function(aMessage, aData) {
-            try {
-              this._browser.messageManager.sendAsyncMessage(aMessage, aData);
-            }
-            catch (e) {
-              Components.utils.reportError(e);
-            }
-         },
-
-         QueryInterface: function(aIID) {
-           if (aIID.equals(Components.interfaces.nsIWebNavigation) || aIID.equals(Components.interfaces.nsISupports))
-             return this;
-           throw Components.results.NS_NOINTERFACE;
-         }
-        })
-      ]]></field>
-
       <property name="webNavigation"
-                onget="return this._webNavigation;"
+                onget="return this._remoteWebNavigation;"
                 readonly="true"/>
 
       <property name="contentWindow"
@@ -839,9 +799,8 @@
               this._timeout = null;
             }
 
-            if (this._contentView && this._pixelsPannedSinceRefresh > 0) {
+            if (this._contentView && Math.abs(this._pixelsPannedSinceRefresh) > 0)
               this._updateCacheViewport();
-            }
 
             // We expect contentViews to contain our ID. If not, something bad
             // happened.
@@ -925,12 +884,14 @@
             let contentSize = this._getContentSize();
 
             // Use our pixels efficiently and don't try to cache things outside of content
-            // boundaries.
-            let bounds = new Rect(0, 0, contentSize.width, contentSize.height);
+            // boundaries (The left bound can be negative because of RTL).
+
+            let rootScale = self.scale;
+            let leftBound = self._contentDocumentLeft * rootScale;
+            let bounds = new Rect(leftBound, 0, contentSize.width, contentSize.height);
             let displayport = new Rect(cacheX, cacheY, cacheSize.width, cacheSize.height);
             displayport.translateInside(bounds);
 
-            let rootScale = self.scale;
             self.messageManager.sendAsyncMessage("Content:SetCacheViewport", {
               scrollX: Math.round(scrollX) / rootScale,
               scrollY: Math.round(scrollY) / rootScale,
@@ -969,16 +930,8 @@
 
           _getContentSize: function() {
             let self = this.self;
-            if (this.isRoot()) {
-              // XXX Bug 626792 means contentWidth and contentHeight aren't always
-              // updated immediately. This makes the displayport go haywire so
-              // use contentDocument properties.
-              return { width: self._contentDocumentWidth * this._scale,
-                       height: self._contentDocumentHeight * this._scale };
-            } else {
-              return { width: this._contentView.contentWidth,
-                       height: this._contentView.contentHeight };
-            }
+            return { width: this._contentView.contentWidth,
+                     height: this._contentView.contentHeight };
           },
 
           _getViewportSize: function() {
@@ -987,7 +940,8 @@
               let bcr = self.getBoundingClientRect();
               return { width: bcr.width, height: bcr.height };
             } else {
-              return { width: this._contentView.viewportWidth, height: this._contentView.viewportHeight };
+              return { width: this._contentView.viewportWidth,
+                       height: this._contentView.viewportHeight };
             }
           },
 
@@ -1013,6 +967,8 @@
           },
 
           scrollBy: function(x, y) {
+            let self = this.self;
+
             // Bounding content rectangle is in device pixels
             let contentView = this._contentView;
             let viewportSize = this._getViewportSize();
@@ -1021,7 +977,8 @@
             let scrollRangeX = contentSize.width - viewportSize.width;
             let scrollRangeY = contentSize.height - viewportSize.height;
 
-            x = Math.floor(Math.max(0, Math.min(scrollRangeX, contentView.scrollX + x))) - contentView.scrollX;
+            let leftOffset = self._contentDocumentLeft * this._scale;
+            x = Math.floor(Math.max(leftOffset, Math.min(scrollRangeX + leftOffset, contentView.scrollX + x))) - contentView.scrollX;
             y = Math.floor(Math.max(0, Math.min(scrollRangeY, contentView.scrollY + y))) - contentView.scrollY;
 
             if (x == 0 && y == 0)

@@ -43,7 +43,7 @@
 #include "nsDOMValidityState.h"
 #include "nsIFormControl.h"
 #include "nsHTMLFormElement.h"
-
+#include "nsContentUtils.h"
 
 const PRUint16 nsIConstraintValidation::sContentSpecifiedMaxLengthMessage = 256;
 
@@ -51,7 +51,7 @@ nsIConstraintValidation::nsIConstraintValidation()
   : mValidityBitField(0)
   , mValidity(nsnull)
   // By default, all elements are subjects to constraint validation.
-  , mBarredFromConstraintValidation(PR_FALSE)
+  , mBarredFromConstraintValidation(false)
 {
 }
 
@@ -119,28 +119,28 @@ nsIConstraintValidation::GetValidationMessage(nsAString& aValidationMessage)
 }
 
 nsresult
-nsIConstraintValidation::CheckValidity(PRBool* aValidity)
+nsIConstraintValidation::CheckValidity(bool* aValidity)
 {
   if (!IsCandidateForConstraintValidation() || IsValid()) {
-    *aValidity = PR_TRUE;
+    *aValidity = true;
     return NS_OK;
   }
 
-  *aValidity = PR_FALSE;
+  *aValidity = false;
 
   nsCOMPtr<nsIContent> content = do_QueryInterface(this);
   NS_ASSERTION(content, "This class should be inherited by HTML elements only!");
 
-  return nsContentUtils::DispatchTrustedEvent(content->GetOwnerDoc(), content,
+  return nsContentUtils::DispatchTrustedEvent(content->OwnerDoc(), content,
                                               NS_LITERAL_STRING("invalid"),
-                                              PR_FALSE, PR_TRUE);
+                                              false, true);
 }
 
 void
 nsIConstraintValidation::SetValidityState(ValidityStateType aState,
-                                          PRBool aValue)
+                                          bool aValue)
 {
-  PRBool previousValidity = IsValid();
+  bool previousValidity = IsValid();
 
   if (aValue) {
     mValidityBitField |= aState;
@@ -169,9 +169,9 @@ nsIConstraintValidation::SetCustomValidity(const nsAString& aError)
 }
 
 void
-nsIConstraintValidation::SetBarredFromConstraintValidation(PRBool aBarred)
+nsIConstraintValidation::SetBarredFromConstraintValidation(bool aBarred)
 {
-  PRBool previousBarred = mBarredFromConstraintValidation;
+  bool previousBarred = mBarredFromConstraintValidation;
 
   mBarredFromConstraintValidation = aBarred;
 

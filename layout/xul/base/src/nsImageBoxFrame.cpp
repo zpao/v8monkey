@@ -101,12 +101,7 @@ private:
 NS_IMETHODIMP
 nsImageBoxFrameEvent::Run()
 {
-  nsIDocument* doc = mContent->GetOwnerDoc();
-  if (!doc) {
-    return NS_OK;
-  }
-
-  nsIPresShell *pres_shell = doc->GetShell();
+  nsIPresShell *pres_shell = mContent->OwnerDoc()->GetShell();
   if (!pres_shell) {
     return NS_OK;
   }
@@ -117,7 +112,7 @@ nsImageBoxFrameEvent::Run()
   }
 
   nsEventStatus status = nsEventStatus_eIgnore;
-  nsEvent event(PR_TRUE, mMessage);
+  nsEvent event(true, mMessage);
 
   event.flags |= NS_EVENT_FLAG_CANT_BUBBLE;
   nsEventDispatcher::Dispatch(mContent, pres_context, &event, nsnull, &status);
@@ -179,8 +174,8 @@ nsImageBoxFrame::nsImageBoxFrame(nsIPresShell* aShell, nsStyleContext* aContext)
   nsLeafBoxFrame(aShell, aContext),
   mIntrinsicSize(0,0),
   mLoadFlags(nsIRequest::LOAD_NORMAL),
-  mUseSrcAttr(PR_FALSE),
-  mSuppressStyleCheck(PR_FALSE)
+  mUseSrcAttr(false),
+  mSuppressStyleCheck(false)
 {
   MarkIntrinsicWidthsDirty();
 }
@@ -224,9 +219,9 @@ nsImageBoxFrame::Init(nsIContent*      aContent,
     NS_RELEASE(listener);
   }
 
-  mSuppressStyleCheck = PR_TRUE;
+  mSuppressStyleCheck = true;
   nsresult rv = nsLeafBoxFrame::Init(aContent, aParent, aPrevInFlow);
-  mSuppressStyleCheck = PR_FALSE;
+  mSuppressStyleCheck = false;
 
   UpdateLoadFlags();
   UpdateImage();
@@ -382,7 +377,7 @@ nsImageBoxFrame::PaintImage(nsRenderingContext& aRenderingContext,
   mImageRequest->GetImage(getter_AddRefs(imgCon));
 
   if (imgCon) {
-    PRBool hasSubRect = !mUseSrcAttr && (mSubRect.width > 0 || mSubRect.height > 0);
+    bool hasSubRect = !mUseSrcAttr && (mSubRect.width > 0 || mSubRect.height > 0);
     nsLayoutUtils::DrawSingleImage(&aRenderingContext, imgCon,
         nsLayoutUtils::GetGraphicsFilterForFrame(this),
         rect, dirty, aFlags, hasSubRect ? &mSubRect : nsnull);
@@ -419,7 +414,7 @@ nsImageBoxFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
     mImageRequest->GetURI(getter_AddRefs(oldURI));
   if (myList->GetListStyleImage())
     myList->GetListStyleImage()->GetURI(getter_AddRefs(newURI));
-  PRBool equal;
+  bool equal;
   if (newURI == oldURI ||   // handles null==null
       (newURI && oldURI &&
        NS_SUCCEEDED(newURI->Equals(oldURI, &equal)) && equal))
@@ -440,7 +435,6 @@ nsImageBoxFrame::GetImageSize()
   }
 }
 
-
 /**
  * Ok return our dimensions
  */
@@ -456,12 +450,68 @@ nsImageBoxFrame::GetPrefSize(nsBoxLayoutState& aState)
     size = nsSize(mSubRect.width, mSubRect.height);
   else
     size = mImageSize;
-  AddBorderAndPadding(size);
-  PRBool widthSet, heightSet;
+
+  nsSize intrinsicSize = size;
+
+  nsMargin borderPadding(0,0,0,0);
+  GetBorderAndPadding(borderPadding);
+  size.width += borderPadding.LeftRight();
+  size.height += borderPadding.TopBottom();
+
+  bool widthSet, heightSet;
   nsIBox::AddCSSPrefSize(this, size, widthSet, heightSet);
+  NS_ASSERTION(size.width != NS_INTRINSICSIZE && size.height != NS_INTRINSICSIZE,
+               "non-nintrinsic size expected");
 
   nsSize minSize = GetMinSize(aState);
-  nsSize maxSize = GetMaxSize(aState);  
+  nsSize maxSize = GetMaxSize(aState);
+
+  if (!widthSet && !heightSet) {
+    if (minSize.width != NS_INTRINSICSIZE)
+      minSize.width -= borderPadding.LeftRight();
+    if (minSize.height != NS_INTRINSICSIZE)
+      minSize.height -= borderPadding.TopBottom();
+    if (maxSize.width != NS_INTRINSICSIZE)
+      maxSize.width -= borderPadding.LeftRight();
+    if (maxSize.height != NS_INTRINSICSIZE)
+      maxSize.height -= borderPadding.TopBottom();
+
+    size = nsLayoutUtils::ComputeAutoSizeWithIntrinsicDimensions(minSize.width, minSize.height,
+                                                                 maxSize.width, maxSize.height,
+                                                                 intrinsicSize.width, intrinsicSize.height);
+    NS_ASSERTION(size.width != NS_INTRINSICSIZE && size.height != NS_INTRINSICSIZE,
+                 "non-nintrinsic size expected");
+    size.width += borderPadding.LeftRight();
+    size.height += borderPadding.TopBottom();
+    return size;
+  }
+
+  if (!widthSet) {
+    if (intrinsicSize.height > 0) {
+      // Subtract off the border and padding from the height because the
+      // content-box needs to be used to determine the ratio
+      nscoord height = size.height - borderPadding.TopBottom();
+      size.width = nscoord(PRInt64(height) * PRInt64(intrinsicSize.width) /
+                           PRInt64(intrinsicSize.height));
+    }
+    else {
+      size.width = intrinsicSize.width;
+    }
+
+    size.width += borderPadding.LeftRight();
+  }
+  else if (!heightSet) {
+    if (intrinsicSize.width > 0) {
+      nscoord width = size.width - borderPadding.LeftRight();
+      size.height = nscoord(PRInt64(width) * PRInt64(intrinsicSize.height) /
+                            PRInt64(intrinsicSize.width));
+    }
+    else {
+      size.height = intrinsicSize.height;
+    }
+
+    size.height += borderPadding.TopBottom();
+  }
 
   return BoundsCheck(minSize, size, maxSize);
 }
@@ -473,7 +523,7 @@ nsImageBoxFrame::GetMinSize(nsBoxLayoutState& aState)
   nsSize size(0,0);
   DISPLAY_MIN_SIZE(this, size);
   AddBorderAndPadding(size);
-  PRBool widthSet, heightSet;
+  bool widthSet, heightSet;
   nsIBox::AddCSSMinSize(aState, this, size, widthSet, heightSet);
   return size;
 }

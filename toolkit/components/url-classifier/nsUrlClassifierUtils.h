@@ -64,7 +64,7 @@ private:
     /**
      * Do a quick lookup to see if the letter is in the map.
      */
-    PRBool Contains(unsigned char c) const
+    bool Contains(unsigned char c) const
     {
       return mMap[c >> 5] & (1 << (c & 31));
     }
@@ -94,14 +94,14 @@ public:
   // space), 37(%), and anything 127 or above (special characters).  Url is the
   // string to encode, ret is the encoded string.  Function returns true if
   // ret != url.
-  PRBool SpecialEncode(const nsACString & url,
-                       PRBool foldSlashes,
+  bool SpecialEncode(const nsACString & url,
+                       bool foldSlashes,
                        nsACString & _retval);
 
   void ParseIPAddress(const nsACString & host, nsACString & _retval);
   void CanonicalNum(const nsACString & num,
                     PRUint32 bytes,
-                    PRBool allowOctal,
+                    bool allowOctal,
                     nsACString & _retval);
 
   // Convert an urlsafe base64 string to a normal base64 string.
@@ -117,132 +117,11 @@ private:
   nsUrlClassifierUtils(const nsUrlClassifierUtils&);
 
   // Function to tell if we should encode a character.
-  PRBool ShouldURLEscape(const unsigned char c) const;
+  bool ShouldURLEscape(const unsigned char c) const;
 
   void CleanupHostname(const nsACString & host, nsACString & _retval);
 
   nsAutoPtr<Charmap> mEscapeCharmap;
-};
-
-// An MRU list of fragments.  This is used by the DB service to
-// keep a set of known-clean fragments that don't need a database
-// lookup.
-class nsUrlClassifierFragmentSet
-{
-public:
-  nsUrlClassifierFragmentSet() : mFirst(nsnull), mLast(nsnull), mCapacity(16) {}
-
-  PRBool Init(PRUint32 maxEntries) {
-    mCapacity = maxEntries;
-    if (!mEntryStorage.SetCapacity(mCapacity))
-      return PR_FALSE;
-
-    if (!mEntries.Init())
-      return PR_FALSE;
-
-    return PR_TRUE;
-  }
-
-  PRBool Put(const nsACString &fragment) {
-    Entry *entry = nsnull;
-    if (mEntries.Get(fragment, &entry)) {
-      // Remove this entry from the list, we'll add it back
-      // to the front.
-      UnlinkEntry(entry);
-    } else {
-      if (mEntryStorage.Length() < mEntryStorage.Capacity()) {
-        entry = mEntryStorage.AppendElement();
-        if (!entry)
-          return PR_FALSE;
-      } else {
-        // Reuse the oldest entry.
-        entry = mLast;
-        UnlinkEntry(entry);
-        mEntries.Remove(entry->mFragment);
-      }
-      entry->mFragment = fragment;
-      mEntries.Put(fragment, entry);
-    }
-
-    LinkEntry(entry);
-
-    return PR_TRUE;
-  }
-
-  PRBool Has(const nsACString &fragment, PRBool update = PR_TRUE) {
-    Entry *entry = nsnull;
-    PRBool exists = mEntries.Get(fragment, &entry);
-    // Move this entry to the front of the list (if it isn't already there)
-    if (update && exists && entry != mFirst) {
-      UnlinkEntry(entry);
-      LinkEntry(entry);
-    }
-
-    return exists;
-  }
-
-  void Clear() {
-    mFirst = mLast = nsnull;
-    mEntries.Clear();
-    mEntryStorage.Clear();
-    mEntryStorage.SetCapacity(mCapacity);
-  }
-
-private:
-  // One entry in the set.  We maintain a doubly-linked list, with
-  // the most recently used entry at the front.
-  class Entry {
-  public:
-    Entry() : mNext(nsnull), mPrev(nsnull) {};
-    ~Entry() { }
-
-    Entry *mNext;
-    Entry *mPrev;
-    nsCString mFragment;
-  };
-
-  void LinkEntry(Entry *entry)
-  {
-    // Add the entry to the front of the list
-    entry->mPrev = nsnull;
-    entry->mNext = mFirst;
-    if (mFirst) {
-      mFirst->mPrev = entry;
-    }
-    mFirst = entry;
-    if (!mLast) {
-      mLast = entry;
-    }
-  }
-
-  void UnlinkEntry(Entry *entry)
-  {
-    if (entry->mPrev)
-      entry->mPrev->mNext = entry->mNext;
-    else
-      mFirst = entry->mNext;
-
-    if (entry->mNext)
-      entry->mNext->mPrev = entry->mPrev;
-    else
-      mLast = entry->mPrev;
-
-    entry->mPrev = entry->mNext = nsnull;
-  }
-
-  // The newest entry in the cache.
-  Entry *mFirst;
-  // The oldest entry in the cache.
-  Entry *mLast;
-
-  // Max entries in the cache.
-  PRUint32 mCapacity;
-
-  // Storage for the entries in this set.
-  nsTArray<Entry> mEntryStorage;
-
-  // Entry lookup by fragment.
-  nsDataHashtable<nsCStringHashKey, Entry*> mEntries;
 };
 
 #endif // nsUrlClassifierUtils_h_

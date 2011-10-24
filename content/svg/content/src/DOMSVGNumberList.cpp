@@ -119,7 +119,7 @@ DOMSVGNumberList::InternalListLengthWillChange(PRUint32 aNewLength)
   }
 
   nsRefPtr<DOMSVGNumberList> kungFuDeathGrip;
-  if (oldLength && !aNewLength) {
+  if (aNewLength < oldLength) {
     // RemovingFromList() might clear last reference to |this|.
     // Retain a temporary reference to keep from dying before returning.
     kungFuDeathGrip = this;
@@ -182,7 +182,7 @@ DOMSVGNumberList::Clear()
 
     mItems.Clear();
     InternalList().Clear();
-    Element()->DidChangeNumberList(AttrEnum(), PR_TRUE);
+    Element()->DidChangeNumberList(AttrEnum(), true);
 #ifdef MOZ_SMIL
     if (mAList->IsAnimating()) {
       Element()->AnimationNeedsResample();
@@ -275,7 +275,7 @@ DOMSVGNumberList::InsertItemBefore(nsIDOMSVGNumber *newItem,
 
   UpdateListIndicesFromIndex(mItems, index + 1);
 
-  Element()->DidChangeNumberList(AttrEnum(), PR_TRUE);
+  Element()->DidChangeNumberList(AttrEnum(), true);
 #ifdef MOZ_SMIL
   if (mAList->IsAnimating()) {
     Element()->AnimationNeedsResample();
@@ -319,7 +319,7 @@ DOMSVGNumberList::ReplaceItem(nsIDOMSVGNumber *newItem,
   // would end up reading bad data from InternalList()!
   domItem->InsertingIntoList(this, AttrEnum(), index, IsAnimValList());
 
-  Element()->DidChangeNumberList(AttrEnum(), PR_TRUE);
+  Element()->DidChangeNumberList(AttrEnum(), true);
 #ifdef MOZ_SMIL
   if (mAList->IsAnimating()) {
     Element()->AnimationNeedsResample();
@@ -360,7 +360,7 @@ DOMSVGNumberList::RemoveItem(PRUint32 index,
 
   UpdateListIndicesFromIndex(mItems, index);
 
-  Element()->DidChangeNumberList(AttrEnum(), PR_TRUE);
+  Element()->DidChangeNumberList(AttrEnum(), true);
 #ifdef MOZ_SMIL
   if (mAList->IsAnimating()) {
     Element()->AnimationNeedsResample();

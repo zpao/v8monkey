@@ -34,7 +34,7 @@
 
 #include "gfxCrashReporterUtils.h"
 
-#if defined(MOZ_CRASHREPORTER) && defined(MOZ_ENABLE_LIBXUL)
+#if defined(MOZ_CRASHREPORTER)
 #define MOZ_GFXFEATUREREPORTER 1
 #endif
 
@@ -94,7 +94,7 @@ ScopedGfxFeatureReporter::WriteAppNote(char statusChar)
     if (!observerService)
       return;
     nsRefPtr<ObserverToDestroyFeaturesAlreadyReported> observer = new ObserverToDestroyFeaturesAlreadyReported;
-    nsresult rv = observerService->AddObserver(observer, "xpcom-shutdown", PR_FALSE);
+    nsresult rv = observerService->AddObserver(observer, "xpcom-shutdown", false);
     if (NS_FAILED(rv)) {
       observer = nsnull;
       return;

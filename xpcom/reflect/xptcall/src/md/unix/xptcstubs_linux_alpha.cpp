@@ -112,7 +112,7 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32 methodIndex, PRUint64* args)
             // in the first NUM_ARG_REGS entries in args
             dp->val.u64 = (i < NUM_ARG_REGS) ? args[i] : *ap;
             break;
-        case nsXPTType::T_BOOL   : dp->val.b   = (PRBool)    *ap;    break;
+        case nsXPTType::T_BOOL   : dp->val.b   = (bool)    *ap;    break;
         case nsXPTType::T_CHAR   : dp->val.c   = (char)      *ap;    break;
         case nsXPTType::T_WCHAR  : dp->val.wc  = (PRUnichar) *ap;    break;
         default:
@@ -196,8 +196,6 @@ symbol ":"                    "\n\t" \
     "br $31,$SharedStub..ng"  "\n\t" \
     ".end " symbol
 
-#if defined(__GXX_ABI_VERSION) && __GXX_ABI_VERSION >= 100 /* G++ V3 ABI */
-
 #define STUB_ENTRY(n) \
 __asm__( \
     ".if "#n" < 10"                                              "\n\t" \
@@ -211,14 +209,6 @@ __asm__( \
     ".endif" \
     );
 
-#else /* not G++ V3 ABI */
-
-#define STUB_ENTRY(n) \
-__asm__( \
-    STUB_MANGLED_ENTRY(n, "Stub"#n"__14nsXPTCStubBase") \
-    );
-
-#endif /* G++ V3 ABI */
 
 #define SENTINEL_ENTRY(n) \
 nsresult nsXPTCStubBase::Sentinel##n() \

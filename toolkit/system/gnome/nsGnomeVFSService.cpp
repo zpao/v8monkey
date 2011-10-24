@@ -86,7 +86,7 @@ nsGnomeVFSMimeApp::GetCommand(nsACString& aCommand)
 }
 
 NS_IMETHODIMP
-nsGnomeVFSMimeApp::GetCanOpenMultipleFiles(PRBool* aCanOpen)
+nsGnomeVFSMimeApp::GetCanOpenMultipleFiles(bool* aCanOpen)
 {
   *aCanOpen = mApp->can_open_multiple_files;
   return NS_OK;
@@ -107,17 +107,11 @@ nsGnomeVFSMimeApp::Launch(const nsACString &aUri)
   if (! uri)
     return NS_ERROR_FAILURE;
 
-  GList *uris = g_list_append(NULL, uri);
+  GList uris = { 0 };
+  uris.data = uri;
 
-  if (! uris) {
-    g_free(uri);
-    return NS_ERROR_FAILURE;
-  }
-
-  GnomeVFSResult result = gnome_vfs_mime_application_launch(mApp, uris);
-
+  GnomeVFSResult result = gnome_vfs_mime_application_launch(mApp, &uris);
   g_free(uri);
-  g_list_free(uris);
 
   if (result != GNOME_VFS_OK)
     return NS_ERROR_FAILURE;
@@ -141,7 +135,7 @@ public:
 NS_IMPL_ISUPPORTS1(UTF8StringEnumerator, nsIUTF8StringEnumerator)
 
 NS_IMETHODIMP
-UTF8StringEnumerator::HasMore(PRBool *aResult)
+UTF8StringEnumerator::HasMore(bool *aResult)
 {
   *aResult = mIndex < mStrings.Length();
   return NS_OK;
@@ -177,7 +171,7 @@ nsGnomeVFSMimeApp::GetSupportedURISchemes(nsIUTF8StringEnumerator** aSchemes)
 }
 
 NS_IMETHODIMP
-nsGnomeVFSMimeApp::GetRequiresTerminal(PRBool* aRequires)
+nsGnomeVFSMimeApp::GetRequiresTerminal(bool* aRequires)
 {
   *aRequires = mApp->requires_terminal;
   return NS_OK;
@@ -258,7 +252,6 @@ nsGnomeVFSService::ShowURIForInput(const nsACString &aUri)
   if (gnome_vfs_url_show_with_env(spec, NULL) == GNOME_VFS_OK)
     rv = NS_OK;
 
-  if (spec)
-    g_free(spec);
+  g_free(spec);
   return rv;
 }

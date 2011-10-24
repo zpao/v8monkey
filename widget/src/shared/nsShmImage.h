@@ -56,7 +56,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
 
-#if defined(MOZ_WIDGET_GTK2)
+#if defined(MOZ_WIDGET_GTK2) || defined(MOZ_WIDGET_GTK3)
 #define DISPLAY gdk_x11_get_default_xdisplay
 #elif defined(MOZ_WIDGET_QT)
 #include "QX11Info"
@@ -74,7 +74,7 @@ class nsShmImage {
 public:
     typedef gfxASurface::gfxImageFormat Format;
 
-    static PRBool UseShm();
+    static bool UseShm();
     static already_AddRefed<nsShmImage>
         Create(const gfxIntSize& aSize, Visual* aVisual, unsigned int aDepth);
     static already_AddRefed<gfxASurface>
@@ -95,6 +95,8 @@ public:
 
 #if defined(MOZ_WIDGET_GTK2)
     void Put(GdkWindow* aWindow, GdkRectangle* aRects, GdkRectangle* aEnd);
+#elif defined(MOZ_WIDGET_GTK3)
+    void Put(GdkWindow* aWindow, cairo_rectangle_list_t* aRects);
 #elif defined(MOZ_WIDGET_QT)
     void Put(QWidget* aWindow, QRect& aRect);
 #endif
@@ -104,7 +106,7 @@ public:
 private:
     nsShmImage()
         : mImage(nsnull)
-        , mXAttached(PR_FALSE)
+        , mXAttached(false)
     { mInfo.shmid = SharedMemorySysV::NULLHandle(); }
 
     nsRefPtr<SharedMemorySysV>   mSegment;
@@ -112,7 +114,7 @@ private:
     XShmSegmentInfo              mInfo;
     gfxIntSize                   mSize;
     Format                       mFormat;
-    PRPackedBool                 mXAttached;
+    bool                         mXAttached;
 };
 
 #endif // MOZ_HAVE_SHMIMAGE

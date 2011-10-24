@@ -43,9 +43,7 @@
 
 #include <windows.h>
 
-#ifndef WINCE
 #include <usp10.h>
-#endif
 
 #include "nsUTF8Utils.h"
 #include "nsString.h"
@@ -53,18 +51,15 @@
 
 void
 NS_GetComplexLineBreaks(const PRUnichar* aText, PRUint32 aLength,
-                        PRPackedBool* aBreakBefore)
+                        PRUint8* aBreakBefore)
 {
   NS_ASSERTION(aText, "aText shouldn't be null"); 
 
-#ifdef WINCE
-  memset(aBreakBefore, PR_FALSE, aLength);
-#else
   int outItems = 0;
   HRESULT result;
   nsAutoTArray<SCRIPT_ITEM, 64> items;
 
-  memset(aBreakBefore, PR_FALSE, aLength);
+  memset(aBreakBefore, false, aLength);
 
   if (!items.AppendElements(64))
     return;
@@ -94,5 +89,4 @@ NS_GetComplexLineBreaks(const PRUnichar* aText, PRUint32 aLength,
        aBreakBefore[j+startOffset] = sla[j].fSoftBreak;
     }
   }
-#endif  
 }

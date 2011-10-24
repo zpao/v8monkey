@@ -85,13 +85,13 @@ nsStreamConverterService::~nsStreamConverterService() {
 }
 
 // Delete all the entries in the adjacency list
-static PRBool DeleteAdjacencyEntry(nsHashKey *aKey, void *aData, void* closure) {
+static bool DeleteAdjacencyEntry(nsHashKey *aKey, void *aData, void* closure) {
     SCTableData *entry = (SCTableData*)aData;
     NS_ASSERTION(entry->key && entry->data.edges, "malformed adjacency list entry");
     delete entry->key;
     delete entry->data.edges;
     delete entry;
-    return PR_TRUE;   
+    return true;   
 }
 
 nsresult
@@ -259,14 +259,14 @@ nsStreamConverterService::ParseFromTo(const char *aContractID, nsCString &aFromR
 // nsObjectHashtable enumerator functions.
 
 // Initializes the BFS state table.
-static PRBool InitBFSTable(nsHashKey *aKey, void *aData, void* closure) {
+static bool InitBFSTable(nsHashKey *aKey, void *aData, void* closure) {
     NS_ASSERTION((SCTableData*)aData, "no data in the table enumeration");
     
     nsHashtable *BFSTable = (nsHashtable*)closure;
-    if (!BFSTable) return PR_FALSE;
+    if (!BFSTable) return false;
 
     BFSState *state = new BFSState;
-    if (!state) return PR_FALSE;
+    if (!state) return false;
 
     state->color = white;
     state->distance = -1;
@@ -275,22 +275,22 @@ static PRBool InitBFSTable(nsHashKey *aKey, void *aData, void* closure) {
     SCTableData *data = new SCTableData(static_cast<nsCStringKey*>(aKey));
     if (!data) {
         delete state;
-        return PR_FALSE;
+        return false;
     }
     data->data.state = state;
 
     BFSTable->Put(aKey, data);
-    return PR_TRUE;   
+    return true;   
 }
 
 // cleans up the BFS state table
-static PRBool DeleteBFSEntry(nsHashKey *aKey, void *aData, void *closure) {
+static bool DeleteBFSEntry(nsHashKey *aKey, void *aData, void *closure) {
     SCTableData *data = (SCTableData*)aData;
     BFSState *state = data->data.state;
     delete state;
     data->key = nsnull;
     delete data;
-    return PR_TRUE;
+    return true;
 }
 
 class CStreamConvDeallocator : public nsDequeFunctor {
@@ -477,7 +477,7 @@ nsStreamConverterService::FindConverter(const char *aContractID, nsTArray<nsCStr
 NS_IMETHODIMP
 nsStreamConverterService::CanConvert(const char* aFromType,
                                      const char* aToType,
-                                     PRBool* _retval) {
+                                     bool* _retval) {
     nsCOMPtr<nsIComponentRegistrar> reg;
     nsresult rv = NS_GetComponentRegistrar(getter_AddRefs(reg));
     if (NS_FAILED(rv))

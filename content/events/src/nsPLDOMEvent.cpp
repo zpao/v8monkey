@@ -39,16 +39,15 @@
 #include "nsIDOMEvent.h"
 #include "nsIPrivateDOMEvent.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMDocumentEvent.h"
 #include "nsIDOMEventTarget.h"
 #include "nsContentUtils.h"
 #include "nsEventDispatcher.h"
 #include "nsGUIEvent.h"
 
 nsPLDOMEvent::nsPLDOMEvent(nsINode *aEventNode, nsEvent &aEvent)
-  : mEventNode(aEventNode), mDispatchChromeOnly(PR_FALSE)
+  : mEventNode(aEventNode), mDispatchChromeOnly(false)
 {
-  PRBool trusted = NS_IS_TRUSTED_EVENT(&aEvent);
+  bool trusted = NS_IS_TRUSTED_EVENT(&aEvent);
   nsEventDispatcher::CreateEvent(nsnull, &aEvent, EmptyString(),
                                  getter_AddRefs(mEvent));
   NS_ASSERTION(mEvent, "Should never fail to create an event");
@@ -67,18 +66,16 @@ NS_IMETHODIMP nsPLDOMEvent::Run()
   if (mEvent) {
     NS_ASSERTION(!mDispatchChromeOnly, "Can't do that");
     nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(mEventNode);
-    PRBool defaultActionEnabled; // This is not used because the caller is async
+    bool defaultActionEnabled; // This is not used because the caller is async
     target->DispatchEvent(mEvent, &defaultActionEnabled);
   } else {
-    nsIDocument* doc = mEventNode->GetOwnerDoc();
-    if (doc) {
-      if (mDispatchChromeOnly) {
-        nsContentUtils::DispatchChromeEvent(doc, mEventNode, mEventType,
-                                            mBubbles, PR_FALSE);
-      } else {
-        nsContentUtils::DispatchTrustedEvent(doc, mEventNode, mEventType,
-                                             mBubbles, PR_FALSE);
-      }
+    nsIDocument* doc = mEventNode->OwnerDoc();
+    if (mDispatchChromeOnly) {
+      nsContentUtils::DispatchChromeEvent(doc, mEventNode, mEventType,
+                                          mBubbles, false);
+    } else {
+      nsContentUtils::DispatchTrustedEvent(doc, mEventNode, mEventType,
+                                           mBubbles, false);
     }
   }
 
@@ -98,6 +95,6 @@ void nsPLDOMEvent::RunDOMEventWhenSafe()
 nsLoadBlockingPLDOMEvent::~nsLoadBlockingPLDOMEvent()
 {
   if (mBlockedDoc) {
-    mBlockedDoc->UnblockOnload(PR_TRUE);
+    mBlockedDoc->UnblockOnload(true);
   }
 }

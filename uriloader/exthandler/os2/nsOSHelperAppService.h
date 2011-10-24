@@ -69,15 +69,15 @@ public:
                                      nsIMIMEInfo **_retval);
   already_AddRefed<nsIMIMEInfo> GetMIMEInfoFromOS(const nsACString& aMimeType,
                                                   const nsACString& aFileExt,
-                                                  PRBool     *aFound);
+                                                  bool       *aFound);
   NS_IMETHOD GetProtocolHandlerInfoFromOS(const nsACString &aScheme,
-                                          PRBool *found,
+                                          bool *found,
                                           nsIHandlerInfo **_retval);
 
   // override nsIExternalProtocolService methods
   NS_IMETHODIMP GetApplicationDescription(const nsACString& aScheme, nsAString& _retval);
 
-  nsresult OSProtocolHandlerExists(const char * aProtocolScheme, PRBool * aHandlerExists);
+  nsresult OSProtocolHandlerExists(const char * aProtocolScheme, bool * aHandlerExists);
 
 protected:
   already_AddRefed<nsMIMEInfoOS2> GetFromType(const nsCString& aMimeType);
@@ -92,7 +92,7 @@ private:
                                   nsACString& aUnEscapedCommand);
   static nsresult GetFileLocation(const char* aPrefName,
                                   const char* aEnvVarName,
-                                  PRUnichar** aFileLocation);
+                                  nsAString& aFileLocation);
   static nsresult LookUpTypeAndDescription(const nsAString& aFileExtension,
                                            nsAString& aMajorType,
                                            nsAString& aMinorType,
@@ -101,8 +101,8 @@ private:
                                     nsIFileInputStream ** aFileInputStream,
                                     nsILineInputStream ** aLineInputStream,
                                     nsACString& aBuffer,
-                                    PRBool * aNetscapeFormat,
-                                    PRBool * aMore);
+                                    bool * aNetscapeFormat,
+                                    bool * aMore);
 
   static nsresult GetTypeAndDescriptionFromMimetypesFile(const nsAString& aFilename,
                                                          const nsAString& aFileExtension,

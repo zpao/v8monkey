@@ -53,7 +53,6 @@ GFMethod *
 GFMethod_consGFp_mont(const mp_int *irr)
 {
 	mp_err res = MP_OKAY;
-	int i;
 	GFMethod *meth = NULL;
 	mp_mont_modulus *mmm;
 
@@ -77,9 +76,6 @@ GFMethod_consGFp_mont(const mp_int *irr)
 	meth->extra_free = &ec_GFp_extra_free_mont;
 
 	mmm->N = meth->irr;
-	i = mpl_significant_bits(&meth->irr);
-	i += MP_DIGIT_BIT - 1;
-	mmm->b = i - i % MP_DIGIT_BIT;
 	mmm->n0prime = 0 - s_mp_invmod_radix(MP_DIGIT(&meth->irr, 0));
 
   CLEANUP:
@@ -160,7 +156,8 @@ ec_GFp_enc_mont(const mp_int *a, mp_int *r, const GFMethod *meth)
 	mp_err res = MP_OKAY;
 
 	mmm = (mp_mont_modulus *) meth->extra1;
-	MP_CHECKOK(mpl_lsh(a, r, mmm->b));
+	MP_CHECKOK(mp_copy(a, r));
+	MP_CHECKOK(s_mp_lshd(r, MP_USED(&mmm->N)));
 	MP_CHECKOK(mp_mod(r, &mmm->N, r));
   CLEANUP:
 	return res;

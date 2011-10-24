@@ -65,7 +65,7 @@ nsDataDocumentContentPolicy::ShouldLoad(PRUint32 aContentType,
   nsCOMPtr<nsIDocument> doc;
   nsCOMPtr<nsINode> node = do_QueryInterface(aRequestingContext);
   if (node) {
-    doc = node->GetOwnerDoc();
+    doc = node->OwnerDoc();
   } else {
     nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(aRequestingContext);
     if (window) {
@@ -86,10 +86,10 @@ nsDataDocumentContentPolicy::ShouldLoad(PRUint32 aContentType,
     return NS_OK;
   }
 
-  // Allow local resources for SVG-as-an-image documents, but disallow
-  // everything else, to prevent data leakage
   if (doc->IsBeingUsedAsImage()) {
-    PRBool hasFlags;
+    // Allow local resources for SVG-as-an-image documents, but disallow
+    // everything else, to prevent data leakage
+    bool hasFlags;
     nsresult rv = NS_URIChainHasFlags(aContentLocation,
                                       nsIProtocolHandler::URI_IS_LOCAL_RESOURCE,
                                       &hasFlags);
@@ -107,6 +107,16 @@ nsDataDocumentContentPolicy::ShouldLoad(PRUint32 aContentType,
             nsnull, NS_LITERAL_STRING("CheckSameOriginError"), principalURI,
             aContentLocation);
         }
+      }
+    } else if (aContentType == nsIContentPolicy::TYPE_IMAGE &&
+               doc->GetDocumentURI()) {
+      // Check for (& disallow) recursive image-loads
+      bool isRecursiveLoad;
+      rv = aContentLocation->EqualsExceptRef(doc->GetDocumentURI(),
+                                             &isRecursiveLoad);
+      if (NS_FAILED(rv) || isRecursiveLoad) {
+        NS_WARNING("Refusing to recursively load image");
+        *aDecision = nsIContentPolicy::REJECT_TYPE;
       }
     }
     return NS_OK;

@@ -34,6 +34,9 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
+#include "mozilla/Util.h"
+
 #include "nsIDOMHTMLOListElement.h"
 #include "nsIDOMHTMLDListElement.h"
 #include "nsIDOMHTMLUListElement.h"
@@ -43,6 +46,8 @@
 #include "nsStyleConsts.h"
 #include "nsMappedAttributes.h"
 #include "nsRuleData.h"
+
+using namespace mozilla;
 
 class nsHTMLSharedListElement : public nsGenericHTMLElement,
                                 public nsIDOMHTMLOListElement,
@@ -74,12 +79,12 @@ public:
   // nsIDOMHTMLUListElement
   // fully declared by NS_DECL_NSIDOMHTMLOLISTELEMENT
 
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
+  virtual bool ParseAttribute(PRInt32 aNamespaceID,
                                 nsIAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const;
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
   virtual nsXPCClassInfo* GetClassInfo()
   {
@@ -148,7 +153,7 @@ NS_IMPL_BOOL_ATTR(nsHTMLSharedListElement, Compact, compact)
 NS_IMPL_INT_ATTR_DEFAULT_VALUE(nsHTMLSharedListElement, Start, start, 1)
 NS_IMPL_STRING_ATTR(nsHTMLSharedListElement, Type, type)
 
-
+// Shared with nsHTMLSharedElement.cpp
 nsAttrValue::EnumTable kListTypeTable[] = {
   { "none", NS_STYLE_LIST_STYLE_NONE },
   { "disc", NS_STYLE_LIST_STYLE_DISC },
@@ -163,16 +168,16 @@ nsAttrValue::EnumTable kListTypeTable[] = {
   { 0 }
 };
 
-nsAttrValue::EnumTable kOldListTypeTable[] = {
-  { "1", NS_STYLE_LIST_STYLE_OLD_DECIMAL },
-  { "A", NS_STYLE_LIST_STYLE_OLD_UPPER_ALPHA },
-  { "a", NS_STYLE_LIST_STYLE_OLD_LOWER_ALPHA },
-  { "I", NS_STYLE_LIST_STYLE_OLD_UPPER_ROMAN },
-  { "i", NS_STYLE_LIST_STYLE_OLD_LOWER_ROMAN },
+static const nsAttrValue::EnumTable kOldListTypeTable[] = {
+  { "1", NS_STYLE_LIST_STYLE_DECIMAL },
+  { "A", NS_STYLE_LIST_STYLE_UPPER_ALPHA },
+  { "a", NS_STYLE_LIST_STYLE_LOWER_ALPHA },
+  { "I", NS_STYLE_LIST_STYLE_UPPER_ROMAN },
+  { "i", NS_STYLE_LIST_STYLE_LOWER_ROMAN },
   { 0 }
 };
 
-PRBool
+bool
 nsHTMLSharedListElement::ParseAttribute(PRInt32 aNamespaceID,
                                         nsIAtom* aAttribute,
                                         const nsAString& aValue,
@@ -182,8 +187,8 @@ nsHTMLSharedListElement::ParseAttribute(PRInt32 aNamespaceID,
     if (mNodeInfo->Equals(nsGkAtoms::ol) ||
         mNodeInfo->Equals(nsGkAtoms::ul)) {
       if (aAttribute == nsGkAtoms::type) {
-        return aResult.ParseEnumValue(aValue, kListTypeTable, PR_FALSE) ||
-               aResult.ParseEnumValue(aValue, kOldListTypeTable, PR_TRUE);
+        return aResult.ParseEnumValue(aValue, kListTypeTable, false) ||
+               aResult.ParseEnumValue(aValue, kOldListTypeTable, true);
       }
       if (aAttribute == nsGkAtoms::start) {
         return aResult.ParseIntValue(aValue);
@@ -215,7 +220,7 @@ MapAttributesIntoRule(const nsMappedAttributes* aAttributes, nsRuleData* aData)
   nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aData);
 }
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsHTMLSharedListElement::IsAttributeMapped(const nsIAtom* aAttribute) const
 {
   if (mNodeInfo->Equals(nsGkAtoms::ol) ||
@@ -230,7 +235,7 @@ nsHTMLSharedListElement::IsAttributeMapped(const nsIAtom* aAttribute) const
       sCommonAttributeMap,
     };
 
-    return FindAttributeDependence(aAttribute, map, NS_ARRAY_LENGTH(map));
+    return FindAttributeDependence(aAttribute, map, ArrayLength(map));
   }
 
   return nsGenericHTMLElement::IsAttributeMapped(aAttribute);

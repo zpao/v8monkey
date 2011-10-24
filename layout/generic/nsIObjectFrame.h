@@ -45,14 +45,14 @@
 
 #include "nsIFrame.h"
 
-class nsIPluginInstance;
+class nsNPAPIPluginInstance;
 
 class nsIObjectFrame : public nsQueryFrame
 {
 public:
   NS_DECL_QUERYFRAME_TARGET(nsIObjectFrame)
 
-  NS_IMETHOD GetPluginInstance(nsIPluginInstance*& aPluginInstance) = 0;
+  NS_IMETHOD GetPluginInstance(nsNPAPIPluginInstance** aPluginInstance) = 0;
 
   /**
    * Instantiate a plugin for a channel, returning a stream listener for the
@@ -96,12 +96,11 @@ public:
   virtual nsIWidget* GetWidget() = 0;
 
   /**
-   * Tells the object to paint directly in this location ignoring any
-   * positioning information that may have been provided otherwise.
+   * Update plugin active state. Frame should update if it is on an active tab
+   * or not and forward that information to the plugin to make it possible to
+   * throttle down plugin instance in non active case.
    */
-  virtual nsresult SetAbsoluteScreenPosition(class nsIDOMElement* element,
-                                             nsIDOMClientRect* position,
-                                             nsIDOMClientRect* clip) = 0;
+  virtual void SetIsDocumentActive(bool aIsActive) = 0;
 };
 
 #endif /* nsIObjectFrame_h___ */

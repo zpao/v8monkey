@@ -41,12 +41,12 @@
 #include "AccessibleApplication.h"
 #include "ISimpleDOMNode_i.c"
 
-#include "nsAccessibilityAtoms.h"
 #include "nsAccessibilityService.h"
 #include "nsApplicationAccessibleWrap.h"
 #include "nsCoreUtils.h"
 #include "nsRootAccessible.h"
 #include "nsWinUtils.h"
+#include "Statistics.h"
 
 #include "nsAttrName.h"
 #include "nsIDocument.h"
@@ -54,10 +54,13 @@
 #include "nsIDOMNSHTMLElement.h"
 #include "nsIFrame.h"
 #include "nsINameSpaceManager.h"
-#include "nsIPrefService.h"
-#include "nsIPrefBranch.h"
 #include "nsPIDOMWindow.h"
 #include "nsIServiceManager.h"
+
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
+using namespace mozilla::a11y;
 
 /// the accessible library and cached methods
 HINSTANCE nsAccessNodeWrap::gmAccLib = nsnull;
@@ -67,9 +70,8 @@ LPFNLRESULTFROMOBJECT nsAccessNodeWrap::gmLresultFromObject = NULL;
 LPFNNOTIFYWINEVENT nsAccessNodeWrap::gmNotifyWinEvent = nsnull;
 LPFNGETGUITHREADINFO nsAccessNodeWrap::gmGetGUIThreadInfo = nsnull;
 
-PRBool nsAccessNodeWrap::gIsEnumVariantSupportDisabled = 0;
 // Used to determine whether an IAccessible2 compatible screen reader is loaded.
-PRBool nsAccessNodeWrap::gIsIA2Disabled = PR_FALSE;
+bool nsAccessNodeWrap::gIsIA2Disabled = false;
 
 AccTextChangeEvent* nsAccessNodeWrap::gTextEvent = nsnull;
 
@@ -120,11 +122,14 @@ STDMETHODIMP nsAccessNodeWrap::QueryInterface(REFIID iid, void** ppv)
 {
   *ppv = nsnull;
 
-  if (IID_IUnknown == iid || IID_ISimpleDOMNode == iid)
+  if (IID_IUnknown == iid) {
     *ppv = static_cast<ISimpleDOMNode*>(this);
-
-  if (nsnull == *ppv)
+  } else if (IID_ISimpleDOMNode == iid) {
+    statistics::ISimpleDOMUsed();
+    *ppv = static_cast<ISimpleDOMNode*>(this);
+  } else {
     return E_NOINTERFACE;      //iid not supported.
+  }
    
   (reinterpret_cast<IUnknown*>(*ppv))->AddRef(); 
   return S_OK;
@@ -276,7 +281,7 @@ STDMETHODIMP nsAccessNodeWrap::get_attributes(
 __try{
   *aNumAttribs = 0;
 
-  if (IsDefunct() || IsDocument())
+  if (IsDefunct() || IsDocumentNode())
     return E_FAIL;
 
   PRUint32 numAttribs = mContent->GetAttrCount();
@@ -349,7 +354,7 @@ STDMETHODIMP nsAccessNodeWrap::get_computedStyle(
 __try{
   *aNumStyleProperties = 0;
 
-  if (IsDefunct() || IsDocument())
+  if (IsDefunct() || IsDocumentNode())
     return E_FAIL;
 
   nsCOMPtr<nsIDOMCSSStyleDeclaration> cssDecl =
@@ -384,7 +389,7 @@ STDMETHODIMP nsAccessNodeWrap::get_computedStyleForProperties(
     /* [length_is][size_is][out] */ BSTR __RPC_FAR *aStyleValues)
 {
 __try {
-  if (IsDefunct() || IsDocument())
+  if (IsDefunct() || IsDocumentNode())
     return E_FAIL;
  
   nsCOMPtr<nsIDOMCSSStyleDeclaration> cssDecl =
@@ -597,11 +602,6 @@ __try {
  
 void nsAccessNodeWrap::InitAccessibility()
 {
-  nsCOMPtr<nsIPrefBranch> prefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (prefBranch) {
-    prefBranch->GetBoolPref("accessibility.disableenumvariant", &gIsEnumVariantSupportDisabled);
-  }
-
   if (!gmUserLib) {
     gmUserLib =::LoadLibraryW(L"USER32.DLL");
   }
@@ -671,11 +671,11 @@ GetHRESULT(nsresult aResult)
   }
 }
 
-PRBool nsAccessNodeWrap::IsOnlyMsaaCompatibleJawsPresent()
+bool nsAccessNodeWrap::IsOnlyMsaaCompatibleJawsPresent()
 {
   HMODULE jhookhandle = ::GetModuleHandleW(kJAWSModuleHandle);
   if (!jhookhandle)
-    return PR_FALSE;  // No JAWS, or some other screen reader, use IA2
+    return false;  // No JAWS, or some other screen reader, use IA2
 
   PRUnichar fileName[MAX_PATH];
   ::GetModuleFileNameW(jhookhandle, fileName, MAX_PATH);
@@ -717,29 +717,23 @@ void nsAccessNodeWrap::TurnOffNewTabSwitchingForJawsAndWE()
   // Check to see if the pref for disallowing CtrlTab is already set.
   // If so, bail out.
   // If not, set it.
-  nsCOMPtr<nsIPrefBranch> prefs (do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (prefs) {
-    PRBool hasDisallowNewCtrlTabPref = PR_FALSE;
-    nsresult rv = prefs->PrefHasUserValue(CTRLTAB_DISALLOW_FOR_SCREEN_READERS_PREF,
-             &hasDisallowNewCtrlTabPref);
-    if (NS_SUCCEEDED(rv) && hasDisallowNewCtrlTabPref) {
-      // This pref has been set before. There is no default for it.
-      // Do nothing further, respect the setting that's there.
-      // That way, if noone touches it, it'll stay on after toggled once.
-      // If someone decided to turn it off, we respect that, too.
-      return;
-    }
-    
-    // Value has never been set, set it.
-    prefs->SetBoolPref(CTRLTAB_DISALLOW_FOR_SCREEN_READERS_PREF, PR_TRUE);
+  if (Preferences::HasUserValue(CTRLTAB_DISALLOW_FOR_SCREEN_READERS_PREF)) {
+    // This pref has been set before. There is no default for it.
+    // Do nothing further, respect the setting that's there.
+    // That way, if noone touches it, it'll stay on after toggled once.
+    // If someone decided to turn it off, we respect that, too.
+    return;
   }
+  
+  // Value has never been set, set it.
+  Preferences::SetBool(CTRLTAB_DISALLOW_FOR_SCREEN_READERS_PREF, true);
 }
 
 void nsAccessNodeWrap::DoATSpecificProcessing()
 {
   if (IsOnlyMsaaCompatibleJawsPresent())
     // All versions below 8.0.2173 are not compatible
-    gIsIA2Disabled  = PR_TRUE;
+    gIsIA2Disabled  = true;
 
   TurnOffNewTabSwitchingForJawsAndWE();
 }
@@ -749,6 +743,10 @@ nsRefPtrHashtable<nsVoidPtrHashKey, nsDocAccessible> nsAccessNodeWrap::sHWNDCach
 LRESULT CALLBACK
 nsAccessNodeWrap::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+  // Note, this window's message handling should not invoke any call that
+  // may result in a cross-process ipc call. Doing so may violate RPC
+  // message semantics.
+
   switch (msg) {
     case WM_GETOBJECT:
     {

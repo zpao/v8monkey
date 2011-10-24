@@ -80,6 +80,7 @@ CSRCS = \
 	derenc.c \
 	dersubr.c \
 	dertime.c \
+	errstrs.c \
 	nssb64d.c \
 	nssb64e.c \
 	nssrwlk.c \

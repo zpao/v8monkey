@@ -40,10 +40,8 @@
  */
 
 #include "nsTextNode.h"
-#include "nsIDOM3Text.h"
 #include "nsContentUtils.h"
 #include "nsIDOMEventListener.h"
-#include "nsIDOMEventTarget.h"
 #include "nsIDOMMutationEvent.h"
 #include "nsIAttribute.h"
 #include "nsIDocument.h"
@@ -78,15 +76,15 @@ public:
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
-                              PRBool aCompileEventHandlers);
-  virtual void UnbindFromTree(PRBool aDeep = PR_TRUE,
-                              PRBool aNullParent = PR_TRUE);
+                              bool aCompileEventHandlers);
+  virtual void UnbindFromTree(bool aDeep = true,
+                              bool aNullParent = true);
 
   NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
   NS_DECL_NSIMUTATIONOBSERVER_NODEWILLBEDESTROYED
 
   virtual nsGenericDOMDataNode *CloneDataNode(nsINodeInfo *aNodeInfo,
-                                              PRBool aCloneText) const
+                                              bool aCloneText) const
   {
     nsCOMPtr<nsINodeInfo> ni = aNodeInfo;
     nsAttributeTextNode *it = new nsAttributeTextNode(ni.forget(),
@@ -101,12 +99,12 @@ public:
 
   // Public method for the event to run
   void UpdateText() {
-    UpdateText(PR_TRUE);
+    UpdateText(true);
   }
 
 private:
   // Update our text to our parent's current attr value
-  void UpdateText(PRBool aNotify);
+  void UpdateText(bool aNotify);
 
   // This doesn't need to be a strong pointer because it's only non-null
   // while we're bound to the document tree, and it points to an ancestor
@@ -142,8 +140,10 @@ NS_NewTextNode(nsIContent** aInstancePtrResult,
 }
 
 nsTextNode::nsTextNode(already_AddRefed<nsINodeInfo> aNodeInfo)
-  : nsGenericTextNode(aNodeInfo)
+  : nsGenericDOMDataNode(aNodeInfo)
 {
+  NS_ABORT_IF_FALSE(mNodeInfo->NodeType() == nsIDOMNode::TEXT_NODE,
+                    "Bad NodeType in aNodeInfo");
 }
 
 nsTextNode::~nsTextNode()
@@ -159,45 +159,18 @@ DOMCI_NODE_DATA(Text, nsTextNode)
 NS_INTERFACE_TABLE_HEAD(nsTextNode)
   NS_NODE_INTERFACE_TABLE3(nsTextNode, nsIDOMNode, nsIDOMText,
                            nsIDOMCharacterData)
-  NS_INTERFACE_MAP_ENTRY_TEAROFF(nsIDOM3Text, new nsText3Tearoff(this))
   NS_INTERFACE_MAP_ENTRIES_CYCLE_COLLECTION(nsTextNode)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(Text)
 NS_INTERFACE_MAP_END_INHERITING(nsGenericDOMDataNode)
 
-NS_IMETHODIMP
-nsTextNode::GetNodeName(nsAString& aNodeName)
-{
-  aNodeName.AssignLiteral("#text");
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsTextNode::GetNodeValue(nsAString& aNodeValue)
-{
-  return nsGenericDOMDataNode::GetNodeValue(aNodeValue);
-}
-
-NS_IMETHODIMP
-nsTextNode::SetNodeValue(const nsAString& aNodeValue)
-{
-  return nsGenericDOMDataNode::SetNodeValue(aNodeValue);
-}
-
-NS_IMETHODIMP
-nsTextNode::GetNodeType(PRUint16* aNodeType)
-{
-  *aNodeType = (PRUint16)nsIDOMNode::TEXT_NODE;
-  return NS_OK;
-}
-
-PRBool
+bool
 nsTextNode::IsNodeOfType(PRUint32 aFlags) const
 {
   return !(aFlags & ~(eCONTENT | eTEXT | eDATA_NODE));
 }
 
 nsGenericDOMDataNode*
-nsTextNode::CloneDataNode(nsINodeInfo *aNodeInfo, PRBool aCloneText) const
+nsTextNode::CloneDataNode(nsINodeInfo *aNodeInfo, bool aCloneText) const
 {
   nsCOMPtr<nsINodeInfo> ni = aNodeInfo;
   nsTextNode *it = new nsTextNode(ni.forget());
@@ -232,6 +205,16 @@ nsTextNode::UnbindFromAttribute()
   return NS_OK;
 }
 
+nsresult
+nsTextNode::AppendTextForNormalize(const PRUnichar* aBuffer, PRUint32 aLength,
+                                   bool aNotify, nsIContent* aNextSibling)
+{
+  CharacterDataChangeInfo::Details details = {
+    CharacterDataChangeInfo::Details::eMerge, aNextSibling
+  };
+  return SetTextInternal(mText.GetLength(), 0, aBuffer, aLength, aNotify, &details);
+}
+
 #ifdef DEBUG
 void
 nsTextNode::List(FILE* out, PRInt32 aIndent) const
@@ -240,7 +223,6 @@ nsTextNode::List(FILE* out, PRInt32 aIndent) const
   for (index = aIndent; --index >= 0; ) fputs("  ", out);
 
   fprintf(out, "Text@%p", static_cast<const void*>(this));
-  fprintf(out, " intrinsicstate=[%llx]", IntrinsicState().GetInternalValue());
   fprintf(out, " flags=[%08x]", static_cast<unsigned int>(GetFlags()));
   fprintf(out, " primaryframe=%p", static_cast<void*>(GetPrimaryFrame()));
   fprintf(out, " refcount=%d<", mRefCnt.get());
@@ -253,7 +235,7 @@ nsTextNode::List(FILE* out, PRInt32 aIndent) const
 }
 
 void
-nsTextNode::DumpContent(FILE* out, PRInt32 aIndent, PRBool aDumpAll) const
+nsTextNode::DumpContent(FILE* out, PRInt32 aIndent, bool aDumpAll) const
 {
   if(aDumpAll) {
     PRInt32 index;
@@ -304,7 +286,7 @@ NS_IMPL_ISUPPORTS_INHERITED1(nsAttributeTextNode, nsTextNode,
 nsresult
 nsAttributeTextNode::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                 nsIContent* aBindingParent,
-                                PRBool aCompileEventHandlers)
+                                bool aCompileEventHandlers)
 {
   NS_PRECONDITION(aParent && aParent->GetParent(),
                   "This node can't be a child of the document or of the document root");
@@ -319,13 +301,13 @@ nsAttributeTextNode::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 
   // Note that there is no need to notify here, since we have no
   // frame yet at this point.
-  UpdateText(PR_FALSE);
+  UpdateText(false);
 
   return NS_OK;
 }
 
 void
-nsAttributeTextNode::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+nsAttributeTextNode::UnbindFromTree(bool aDeep, bool aNullParent)
 {
   // UnbindFromTree can be called anytime so we have to be safe.
   if (mGrandparent) {
@@ -364,7 +346,7 @@ nsAttributeTextNode::NodeWillBeDestroyed(const nsINode* aNode)
 }
 
 void
-nsAttributeTextNode::UpdateText(PRBool aNotify)
+nsAttributeTextNode::UpdateText(bool aNotify)
 {
   if (mGrandparent) {
     nsAutoString attrValue;

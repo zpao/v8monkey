@@ -42,6 +42,7 @@
 #include "nsIInputStream.h"
 #include "nsIDocShell.h"
 #include "gfxPattern.h"
+#include "mozilla/RefPtr.h"
 
 #define NS_ICANVASRENDERINGCONTEXTINTERNAL_IID \
 { 0xffb42d3c, 0x8281, 0x44c8, \
@@ -60,6 +61,9 @@ class LayerManager;
 }
 namespace ipc {
 class Shmem;
+}
+namespace gfx {
+class SourceSurface;
 }
 }
 
@@ -96,12 +100,17 @@ public:
   // If this canvas context can be represented with a simple Thebes surface,
   // return the surface.  Otherwise returns an error.
   NS_IMETHOD GetThebesSurface(gfxASurface **surface) = 0;
+  
+  // This gets an Azure SourceSurface for the canvas, this will be a snapshot
+  // of the canvas at the time it was called. This will return null for a
+  // non-azure canvas.
+  virtual mozilla::TemporaryRef<mozilla::gfx::SourceSurface> GetSurfaceSnapshot() = 0;
 
   // If this context is opaque, the backing store of the canvas should
   // be created as opaque; all compositing operators should assume the
   // dst alpha is always 1.0.  If this is never called, the context
   // defaults to false (not opaque).
-  NS_IMETHOD SetIsOpaque(PRBool isOpaque) = 0;
+  NS_IMETHOD SetIsOpaque(bool isOpaque) = 0;
 
   // Invalidate this context and release any held resources, in preperation
   // for possibly reinitializing with SetDimensions/InitializeWithSurface.
@@ -112,6 +121,11 @@ public:
   virtual already_AddRefed<CanvasLayer> GetCanvasLayer(nsDisplayListBuilder* aBuilder,
                                                        CanvasLayer *aOldLayer,
                                                        LayerManager *aManager) = 0;
+
+  // Return true if the canvas should be forced to be "inactive" to ensure
+  // it can be drawn to the screen even if it's too large to be blitted by
+  // an accelerated CanvasLayer.
+  virtual bool ShouldForceInactiveLayer(LayerManager *aManager) { return false; }
 
   virtual void MarkContextClean() = 0;
 
@@ -130,7 +144,7 @@ public:
   // store, this will set it to that state. Note that if you have drawn
   // anything into this canvas before changing the shmem state, it will be
   // lost.
-  NS_IMETHOD SetIsIPC(PRBool isIPC) = 0;
+  NS_IMETHOD SetIsIPC(bool isIPC) = 0;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsICanvasRenderingContextInternal,

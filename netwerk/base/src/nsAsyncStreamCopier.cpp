@@ -60,7 +60,7 @@ nsAsyncStreamCopier::nsAsyncStreamCopier()
     , mMode(NS_ASYNCCOPY_VIA_READSEGMENTS)
     , mChunkSize(nsIOService::gDefaultSegmentSize)
     , mStatus(NS_OK)
-    , mIsPending(PR_FALSE)
+    , mIsPending(false)
 {
 #if defined(PR_LOGGING)
     if (!gStreamCopierLog)
@@ -74,7 +74,7 @@ nsAsyncStreamCopier::~nsAsyncStreamCopier()
     LOG(("Destroying nsAsyncStreamCopier @%x\n", this));
 }
 
-PRBool
+bool
 nsAsyncStreamCopier::IsComplete(nsresult *status)
 {
     MutexAutoLock lock(mLock);
@@ -95,7 +95,7 @@ nsAsyncStreamCopier::Complete(nsresult status)
         mCopierCtx = nsnull;
 
         if (mIsPending) {
-            mIsPending = PR_FALSE;
+            mIsPending = false;
             mStatus = status;
 
             // setup OnStopRequest callback and release references...
@@ -138,7 +138,7 @@ nsAsyncStreamCopier::GetName(nsACString &name)
 }
 
 NS_IMETHODIMP
-nsAsyncStreamCopier::IsPending(PRBool *result)
+nsAsyncStreamCopier::IsPending(bool *result)
 {
     *result = !IsComplete();
     return NS_OK;
@@ -220,11 +220,11 @@ NS_IMETHODIMP
 nsAsyncStreamCopier::Init(nsIInputStream *source,
                           nsIOutputStream *sink,
                           nsIEventTarget *target,
-                          PRBool sourceBuffered,
-                          PRBool sinkBuffered,
+                          bool sourceBuffered,
+                          bool sinkBuffered,
                           PRUint32 chunkSize,
-                          PRBool closeSource,
-                          PRBool closeSink)
+                          bool closeSource,
+                          bool closeSink)
 {
     NS_ASSERTION(sourceBuffered || sinkBuffered, "at least one stream must be buffered");
 
@@ -265,7 +265,7 @@ nsAsyncStreamCopier::AsyncCopy(nsIRequestObserver *observer, nsISupports *ctx)
 
     // from this point forward, AsyncCopy is going to return NS_OK.  any errors
     // will be reported via OnStopRequest.
-    mIsPending = PR_TRUE;
+    mIsPending = true;
 
     mObserverContext = ctx;
     if (mObserver) {

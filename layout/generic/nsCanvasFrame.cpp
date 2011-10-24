@@ -56,7 +56,6 @@
 #include "nsFrameManager.h"
 
 // for focus
-#include "nsIDOMWindowInternal.h"
 #include "nsIScrollableFrame.h"
 #include "nsIDocShell.h"
 
@@ -94,13 +93,13 @@ void
 nsCanvasFrame::ScrollPositionWillChange(nscoord aX, nscoord aY)
 {
   if (mDoPaintFocus) {
-    mDoPaintFocus = PR_FALSE;
+    mDoPaintFocus = false;
     PresContext()->FrameManager()->GetRootFrame()->InvalidateFrameSubtree();
   }
 }
 
 NS_IMETHODIMP
-nsCanvasFrame::SetHasFocus(PRBool aHasFocus)
+nsCanvasFrame::SetHasFocus(bool aHasFocus)
 {
   if (mDoPaintFocus != aHasFocus) {
     mDoPaintFocus = aHasFocus;
@@ -111,7 +110,7 @@ nsCanvasFrame::SetHasFocus(PRBool aHasFocus)
         PresContext()->GetPresShell()->GetRootScrollFrameAsScrollable();
       if (sf) {
         sf->AddScrollPositionListener(this);
-        mAddedScrollPositionListener = PR_TRUE;
+        mAddedScrollPositionListener = true;
       }
     }
   }
@@ -119,27 +118,30 @@ nsCanvasFrame::SetHasFocus(PRBool aHasFocus)
 }
 
 NS_IMETHODIMP
-nsCanvasFrame::SetInitialChildList(nsIAtom*        aListName,
+nsCanvasFrame::SetInitialChildList(ChildListID     aListID,
                                    nsFrameList&    aChildList)
 {
-  NS_ASSERTION(aListName || aChildList.IsEmpty() || aChildList.OnlyChild(),
+  NS_ASSERTION(aListID != kPrincipalList ||
+               aChildList.IsEmpty() || aChildList.OnlyChild(),
                "Primary child list can have at most one frame in it");
-  return nsHTMLContainerFrame::SetInitialChildList(aListName, aChildList);
+  return nsHTMLContainerFrame::SetInitialChildList(aListID, aChildList);
 }
 
 NS_IMETHODIMP
-nsCanvasFrame::AppendFrames(nsIAtom*        aListName,
+nsCanvasFrame::AppendFrames(ChildListID     aListID,
                             nsFrameList&    aFrameList)
 {
-  NS_ASSERTION(!aListName, "unexpected child list name");
-  NS_PRECONDITION(mFrames.IsEmpty(), "already have a child frame");
-  if (aListName) {
-    // We only support unnamed principal child list
+  NS_ASSERTION(aListID == kPrincipalList ||
+               aListID == kAbsoluteList, "unexpected child list ID");
+  NS_PRECONDITION(aListID != kAbsoluteList ||
+                  mFrames.IsEmpty(), "already have a child frame");
+  if (aListID != kPrincipalList) {
+    // We only support the Principal and Absolute child lists.
     return NS_ERROR_INVALID_ARG;
   }
 
   if (!mFrames.IsEmpty()) {
-    // We only allow a single child frame
+    // We only allow a single principal child frame.
     return NS_ERROR_INVALID_ARG;
   }
 
@@ -159,7 +161,7 @@ nsCanvasFrame::AppendFrames(nsIAtom*        aListName,
 }
 
 NS_IMETHODIMP
-nsCanvasFrame::InsertFrames(nsIAtom*        aListName,
+nsCanvasFrame::InsertFrames(ChildListID     aListID,
                             nsIFrame*       aPrevFrame,
                             nsFrameList&    aFrameList)
 {
@@ -169,16 +171,17 @@ nsCanvasFrame::InsertFrames(nsIAtom*        aListName,
   if (aPrevFrame)
     return NS_ERROR_UNEXPECTED;
 
-  return AppendFrames(aListName, aFrameList);
+  return AppendFrames(aListID, aFrameList);
 }
 
 NS_IMETHODIMP
-nsCanvasFrame::RemoveFrame(nsIAtom*        aListName,
+nsCanvasFrame::RemoveFrame(ChildListID     aListID,
                            nsIFrame*       aOldFrame)
 {
-  NS_ASSERTION(!aListName, "unexpected child list name");
-  if (aListName) {
-    // We only support the unnamed principal child list
+  NS_ASSERTION(aListID == kPrincipalList ||
+               aListID == kAbsoluteList, "unexpected child list ID");
+  if (aListID != kPrincipalList || aListID != kAbsoluteList) {
+    // We only support the Principal and Absolute child lists.
     return NS_ERROR_INVALID_ARG;
   }
 
@@ -292,7 +295,7 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   }
 
   nsIFrame* kid;
-  for (kid = GetFirstChild(nsnull); kid; kid = kid->GetNextSibling()) {
+  for (kid = GetFirstPrincipalChild(); kid; kid = kid->GetNextSibling()) {
     // Put our child into its own pseudo-stack.
     rv = BuildDisplayListForChild(aBuilder, kid, aDirtyRect, aLists);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -303,7 +306,7 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   aPresContext->EventStateManager()->
     GetFocusedContent(getter_AddRefs(focusContent));
 
-  PRBool hasFocus = PR_FALSE;
+  bool hasFocus = false;
   nsCOMPtr<nsISupports> container;
   aPresContext->GetContainer(getter_AddRefs(container));
   nsCOMPtr<nsIDocShell> docShell(do_QueryInterface(container));
@@ -427,7 +430,7 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
   } else {
     nsIFrame* kidFrame = mFrames.FirstChild();
     nsRect oldKidRect = kidFrame->GetRect();
-    PRBool kidDirty = (kidFrame->GetStateBits() & NS_FRAME_IS_DIRTY) != 0;
+    bool kidDirty = (kidFrame->GetStateBits() & NS_FRAME_IS_DIRTY) != 0;
 
     nsHTMLReflowState kidReflowState(aPresContext, aReflowState, kidFrame,
                                      nsSize(aReflowState.availableWidth,
@@ -437,7 +440,7 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
         (kidFrame->GetStateBits() & NS_FRAME_CONTAINS_RELATIVE_HEIGHT)) {
       // Tell our kid it's being vertically resized too.  Bit of a
       // hack for framesets.
-      kidReflowState.mFlags.mVResize = PR_TRUE;
+      kidReflowState.mFlags.mVResize = true;
     }
 
     nsPoint kidPt(kidReflowState.mComputedMargin.left,
@@ -574,19 +577,16 @@ nsCanvasFrame::GetType() const
 }
 
 NS_IMETHODIMP 
-nsCanvasFrame::GetContentForEvent(nsPresContext* aPresContext,
-                                nsEvent* aEvent,
-                                nsIContent** aContent)
+nsCanvasFrame::GetContentForEvent(nsEvent* aEvent,
+                                  nsIContent** aContent)
 {
   NS_ENSURE_ARG_POINTER(aContent);
-  nsresult rv = nsFrame::GetContentForEvent(aPresContext,
-                                            aEvent,
+  nsresult rv = nsFrame::GetContentForEvent(aEvent,
                                             aContent);
   if (NS_FAILED(rv) || !*aContent) {
     nsIFrame* kid = mFrames.FirstChild();
     if (kid) {
-      rv = kid->GetContentForEvent(aPresContext,
-                                   aEvent,
+      rv = kid->GetContentForEvent(aEvent,
                                    aContent);
     }
   }

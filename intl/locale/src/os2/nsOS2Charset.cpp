@@ -38,6 +38,9 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
+#include "mozilla/Util.h"
+
 #include "nsIPlatformCharset.h"
 #include "nsUConvPropertySearch.h"
 #include "pratom.h"
@@ -48,8 +51,9 @@
 #include "nsReadableUtils.h"
 #include "nsLocaleCID.h"
 #include "nsIServiceManager.h"
-#include "nsITimelineService.h"
 #include "nsPlatformCharset.h"
+
+using namespace mozilla;
 
 static const char* kOS2Charsets[][3] = {
 #include "os2charset.properties.h"
@@ -59,17 +63,13 @@ NS_IMPL_ISUPPORTS1(nsPlatformCharset, nsIPlatformCharset)
 
 nsPlatformCharset::nsPlatformCharset()
 {
-  NS_TIMELINE_START_TIMER("nsPlatformCharset()");
-
   UINT acp = ::WinQueryCp(HMQ_CURRENT);
   PRInt32 acpint = (PRInt32)(acp & 0x00FFFF);
   nsAutoString acpKey(NS_LITERAL_STRING("os2."));
   acpKey.AppendInt(acpint, 10);
   nsresult res = MapToCharset(acpKey, mCharset);
+}
 
-  NS_TIMELINE_STOP_TIMER("nsPlatformCharset()");
-  NS_TIMELINE_MARK_TIMER("nsPlatformCharset()");
-          }
 nsPlatformCharset::~nsPlatformCharset()
 {
 }
@@ -81,7 +81,7 @@ nsPlatformCharset::MapToCharset(nsAString& inANSICodePage, nsACString& outCharse
   LossyCopyUTF16toASCII(inANSICodePage, key);
 
   nsresult rv = nsUConvPropertySearch::SearchPropertyValue(kOS2Charsets,
-      NS_ARRAY_LENGTH(kOS2Charsets), key, outCharset);
+      ArrayLength(kOS2Charsets), key, outCharset);
   if (NS_FAILED(rv)) {
     outCharset.AssignLiteral("IBM850");
   }

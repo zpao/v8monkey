@@ -78,7 +78,7 @@ static PRInt32 FindSafeLength(const char *aString, PRUint32 aLength,
                               PRUint32 aMaxChunkLength)
 {
     // Since it's ASCII, we don't need to worry about clusters or RTL
-    return PR_MIN(aLength, aMaxChunkLength);
+    return NS_MIN(aLength, aMaxChunkLength);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -123,7 +123,7 @@ nsRenderingContext::IntersectClip(const nsRect& aRect)
 {
     mThebes->NewPath();
     gfxRect clipRect(GFX_RECT_FROM_TWIPS_RECT(aRect));
-    if (mThebes->UserToDevicePixelSnapped(clipRect, PR_TRUE)) {
+    if (mThebes->UserToDevicePixelSnapped(clipRect, true)) {
         gfxMatrix mat(mThebes->CurrentMatrix());
         mThebes->IdentityMatrix();
         mThebes->Rectangle(clipRect);
@@ -154,7 +154,7 @@ nsRenderingContext::SetClip(const nsIntRegion& aRegion)
     const nsIntRect* rect;
     while ((rect = iter.Next())) {
         mThebes->Rectangle(gfxRect(rect->x, rect->y, rect->width, rect->height),
-                           PR_TRUE);
+                           true);
     }
     mThebes->Clip();
     mThebes->SetMatrix(mat);
@@ -259,7 +259,7 @@ void
 nsRenderingContext::DrawRect(const nsRect& aRect)
 {
     mThebes->NewPath();
-    mThebes->Rectangle(GFX_RECT_FROM_TWIPS_RECT(aRect), PR_TRUE);
+    mThebes->Rectangle(GFX_RECT_FROM_TWIPS_RECT(aRect), true);
     mThebes->Stroke();
 }
 
@@ -274,8 +274,8 @@ nsRenderingContext::DrawRect(nscoord aX, nscoord aY,
 /* Clamp r to (0,0) (2^23,2^23)
  * these are to be device coordinates.
  *
- * Returns PR_FALSE if the rectangle is completely out of bounds,
- * PR_TRUE otherwise.
+ * Returns false if the rectangle is completely out of bounds,
+ * true otherwise.
  *
  * This function assumes that it will be called with a rectangle being
  * drawn into a surface with an identity transformation matrix; that
@@ -283,7 +283,7 @@ nsRenderingContext::DrawRect(nscoord aX, nscoord aY,
  *
  * First it checks if the rectangle is entirely beyond
  * CAIRO_COORD_MAX; if so, it can't ever appear on the screen --
- * PR_FALSE is returned.
+ * false is returned.
  *
  * Then it shifts any rectangles with x/y < 0 so that x and y are = 0,
  * and adjusts the width and height appropriately.  For example, a
@@ -292,25 +292,25 @@ nsRenderingContext::DrawRect(nscoord aX, nscoord aY,
  *
  * If after negative x/y adjustment to 0, either the width or height
  * is negative, then the rectangle is completely offscreen, and
- * nothing is drawn -- PR_FALSE is returned.
+ * nothing is drawn -- false is returned.
  *
  * Finally, if x+width or y+height are greater than CAIRO_COORD_MAX,
  * the width and height are clamped such x+width or y+height are equal
- * to CAIRO_COORD_MAX, and PR_TRUE is returned.
+ * to CAIRO_COORD_MAX, and true is returned.
  */
 #define CAIRO_COORD_MAX (double(0x7fffff))
 
-static PRBool
+static bool
 ConditionRect(gfxRect& r) {
     // if either x or y is way out of bounds;
     // note that we don't handle negative w/h here
     if (r.X() > CAIRO_COORD_MAX || r.Y() > CAIRO_COORD_MAX)
-        return PR_FALSE;
+        return false;
 
     if (r.X() < 0.0) {
         r.width += r.X();
         if (r.width < 0.0)
-            return PR_FALSE;
+            return false;
         r.x = 0.0;
     }
 
@@ -321,7 +321,7 @@ ConditionRect(gfxRect& r) {
     if (r.Y() < 0.0) {
         r.height += r.Y();
         if (r.Height() < 0.0)
-            return PR_FALSE;
+            return false;
 
         r.y = 0.0;
     }
@@ -329,7 +329,7 @@ ConditionRect(gfxRect& r) {
     if (r.YMost() > CAIRO_COORD_MAX) {
         r.height = CAIRO_COORD_MAX - r.Y();
     }
-    return PR_TRUE;
+    return true;
 }
 
 void
@@ -356,13 +356,13 @@ nsRenderingContext::FillRect(const nsRect& aRect)
         mThebes->IdentityMatrix();
         mThebes->NewPath();
 
-        mThebes->Rectangle(r, PR_TRUE);
+        mThebes->Rectangle(r, true);
         mThebes->Fill();
         mThebes->SetMatrix(mat);
     }
 
     mThebes->NewPath();
-    mThebes->Rectangle(r, PR_TRUE);
+    mThebes->Rectangle(r, true);
     mThebes->Fill();
 }
 
@@ -449,25 +449,9 @@ nsRenderingContext::FillPolygon(const nsPoint twPoints[], PRInt32 aNumPoints)
 //
 
 void
-nsRenderingContext::SetTextRunRTL(PRBool aIsRTL)
+nsRenderingContext::SetTextRunRTL(bool aIsRTL)
 {
     mFontMetrics->SetTextRunRTL(aIsRTL);
-}
-
-void
-nsRenderingContext::SetFont(const nsFont& aFont, nsIAtom* aLanguage,
-                            gfxUserFontSet *aUserFontSet)
-{
-    mDeviceContext->GetMetricsFor(aFont, aLanguage, aUserFontSet,
-                                  *getter_AddRefs(mFontMetrics));
-}
-
-void
-nsRenderingContext::SetFont(const nsFont& aFont,
-                            gfxUserFontSet *aUserFontSet)
-{
-    mDeviceContext->GetMetricsFor(aFont, nsnull, aUserFontSet,
-                                  *getter_AddRefs(mFontMetrics));
 }
 
 void
@@ -481,7 +465,7 @@ nsRenderingContext::GetMaxChunkLength()
 {
     if (!mFontMetrics)
         return 1;
-    return PR_MIN(mFontMetrics->GetMaxStringLength(), MAX_GFX_TEXT_BUF_SIZE);
+    return NS_MIN(mFontMetrics->GetMaxStringLength(), MAX_GFX_TEXT_BUF_SIZE);
 }
 
 nscoord
@@ -540,7 +524,6 @@ nsRenderingContext::GetWidth(const PRUnichar *aString, PRUint32 aLength)
     return width;
 }
 
-#ifdef MOZ_MATHML
 nsBoundingMetrics
 nsRenderingContext::GetBoundingMetrics(const PRUnichar* aString,
                                        PRUint32 aLength)
@@ -565,7 +548,6 @@ nsRenderingContext::GetBoundingMetrics(const PRUnichar* aString,
     }
     return totalMetrics;
 }
-#endif
 
 void
 nsRenderingContext::DrawString(const char *aString, PRUint32 aLength,
@@ -601,7 +583,7 @@ nsRenderingContext::DrawString(const PRUnichar *aString, PRUint32 aLength,
         return;
     }
 
-    PRBool isRTL = mFontMetrics->GetTextRunRTL();
+    bool isRTL = mFontMetrics->GetTextRunRTL();
 
     // If we're drawing right to left, we must start at the end.
     if (isRTL) {

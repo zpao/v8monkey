@@ -87,12 +87,12 @@ compareQueries: function(fragments)
   for (var i = 0; i < fragments.length; i++) {
     expectedQueries.push(this.getHash(fragments[i]).slice(0, 4));
   }
+  do_check_eq(this.queries.length, expectedQueries.length);
   expectedQueries.sort();
   this.queries.sort();
   for (var i = 0; i < this.queries.length; i++) {
     do_check_eq(this.queries[i], expectedQueries[i]);
   }
-  do_check_eq(this.queries.length, expectedQueries.length);
 }
 };
 
@@ -195,6 +195,98 @@ function testPartialAddsWithConflicts() {
   };
 
   doTest([update], assertions);
+}
+
+// Test whether the fragmenting code does not cause duplicated completions
+function testFragments() {
+  var addUrls = [ "foo.com/a/b/c", "foo.net/", "foo.com/c/" ];
+  var update = buildPhishingUpdate(
+        [
+          { "chunkNum" : 1,
+            "urls" : addUrls
+          }],
+    4);
+
+
+  var completer = installCompleter('test-phish-simple', [[1, addUrls]], []);
+
+  var assertions = {
+    "tableData" : "test-phish-simple;a:1",
+    "urlsExist" : addUrls,
+    "completerQueried" : [completer, addUrls]
+  };
+
+
+  doTest([update], assertions);
+}
+
+// Test http://code.google.com/p/google-safe-browsing/wiki/Protocolv2Spec
+// section 6.2 example 1
+function testSpecFragments() {
+  var probeUrls = [ "a.b.c/1/2.html?param=1" ];
+
+  var addUrls = [ "a.b.c/1/2.html",
+                  "a.b.c/",
+                  "a.b.c/1/",
+                  "b.c/1/2.html?param=1",
+                  "b.c/1/2.html",
+                  "b.c/",
+                  "b.c/1/",
+                  "a.b.c/1/2.html?param=1" ];
+
+  var update = buildPhishingUpdate(
+        [
+          { "chunkNum" : 1,
+            "urls" : addUrls
+          }],
+    4);
+
+
+  var completer = installCompleter('test-phish-simple', [[1, addUrls]], []);
+
+  var assertions = {
+    "tableData" : "test-phish-simple;a:1",
+    "urlsExist" : probeUrls,
+    "completerQueried" : [completer, addUrls]
+  };
+
+  doTest([update], assertions);
+
+}
+
+// Test http://code.google.com/p/google-safe-browsing/wiki/Protocolv2Spec
+// section 6.2 example 2
+function testMoreSpecFragments() {
+  var probeUrls = [ "a.b.c.d.e.f.g/1.html" ];
+
+  var addUrls = [ "a.b.c.d.e.f.g/1.html",
+                  "a.b.c.d.e.f.g/",
+                  "c.d.e.f.g/1.html",
+                  "c.d.e.f.g/",
+                  "d.e.f.g/1.html",
+                  "d.e.f.g/",
+                  "e.f.g/1.html",
+                  "e.f.g/",
+                  "f.g/1.html",
+                  "f.g/" ];
+
+  var update = buildPhishingUpdate(
+        [
+          { "chunkNum" : 1,
+            "urls" : addUrls
+          }],
+    4);
+
+  var completer = installCompleter('test-phish-simple', [[1, addUrls]], []);
+
+  var assertions = {
+    "tableData" : "test-phish-simple;a:1",
+    "urlsExist" : probeUrls,
+    "completerQueried" : [completer, addUrls]
+  };
+
+  doTest([update], assertions);
+
 }
 
 function testFalsePositives() {
@@ -329,15 +421,23 @@ function testInvalidHashSize()
           }],
         12); // only 4 and 32 are legal hash sizes
 
+  var addUrls2 = [ "zaz.com/a", "xyz.com/b" ];
+  var update2 = buildPhishingUpdate(
+        [
+          { "chunkNum" : 2,
+            "urls" : addUrls2
+          }],
+        4);
+
   var completer = installCompleter('test-phish-simple', [[1, addUrls]], []);
 
   var assertions = {
-    "tableData" : "",
+    "tableData" : "test-phish-simple;a:2",
     "urlsDontExist" : addUrls
   };
 
   // A successful update will trigger an error
-  doUpdateTest([update], assertions, updateError, runNextTest);
+  doUpdateTest([update2, update], assertions, updateError, runNextTest);
 }
 
 function testWrongTable()
@@ -708,6 +808,9 @@ function run_test()
   runTests([
       testPartialAdds,
       testPartialAddsWithConflicts,
+      testFragments,
+      testSpecFragments,
+      testMoreSpecFragments,
       testFalsePositives,
       testEmptyCompleter,
       testCompleterFailure,

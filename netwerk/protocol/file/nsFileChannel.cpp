@@ -118,7 +118,7 @@ nsFileCopyEvent::DoCopy()
     if (NS_FAILED(rv))
       break;
 
-    PRInt32 num = PR_MIN((PRInt32) len, chunk);
+    PRInt32 num = NS_MIN((PRInt32) len, chunk);
 
     PRUint32 result;
     rv = mSource->ReadSegments(NS_CopySegmentToStream, mDest, num, &result);
@@ -170,7 +170,7 @@ nsFileCopyEvent::Dispatch(nsIRunnable *callback,
 
   // Build a coalescing proxy for progress events
   nsresult rv = net_NewTransportEventSinkProxy(getter_AddRefs(mSink), sink,
-                                               target, PR_TRUE);
+                                               target, true);
   if (NS_FAILED(rv))
     return rv;
 
@@ -192,7 +192,7 @@ class nsFileUploadContentStream : public nsBaseContentStream {
 public:
   NS_DECL_ISUPPORTS_INHERITED
 
-  nsFileUploadContentStream(PRBool nonBlocking,
+  nsFileUploadContentStream(bool nonBlocking,
                             nsIOutputStream *dest,
                             nsIInputStream *source,
                             PRInt64 len,
@@ -202,7 +202,7 @@ public:
     , mSink(sink) {
   }
 
-  PRBool IsInitialized() {
+  bool IsInitialized() {
     return mCopyEvent != nsnull;
   }
 
@@ -279,7 +279,7 @@ nsFileChannel::MakeFileInputStream(nsIFile *file,
                                    nsCString &contentType)
 {
   // we accept that this might result in a disk hit to stat the file
-  PRBool isDir;
+  bool isDir;
   nsresult rv = file->IsDirectory(&isDir);
   if (NS_FAILED(rv)) {
     // canonicalize error message
@@ -306,7 +306,7 @@ nsFileChannel::MakeFileInputStream(nsIFile *file,
 }
 
 nsresult
-nsFileChannel::OpenContentStream(PRBool async, nsIInputStream **result,
+nsFileChannel::OpenContentStream(bool async, nsIInputStream **result,
                                  nsIChannel** channel)
 {
   // NOTE: the resulting file is a clone, so it is safe to pass it to the
@@ -371,7 +371,7 @@ nsFileChannel::OpenContentStream(PRBool async, nsIInputStream **result,
     if (NS_FAILED(rv))
       return rv;
 
-    EnableSynthesizedProgressEvents(PR_TRUE);
+    EnableSynthesizedProgressEvents(true);
 
     // fixup content length and type
     if (ContentLength64() < 0) {

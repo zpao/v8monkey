@@ -41,10 +41,11 @@
 #include "nscore.h"
 #include "nsTextStore.h"
 #include "nsWindow.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
 #include "prlog.h"
 #include "nsPrintfCString.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 /******************************************************************/
 /* nsTextStore                                                    */
@@ -84,7 +85,7 @@ nsTextStore::~nsTextStore()
   SaveTextEvent(nsnull);
 }
 
-PRBool
+bool
 nsTextStore::Create(nsWindow* aWindow,
                     PRUint32 aIMEState)
 {
@@ -92,7 +93,7 @@ nsTextStore::Create(nsWindow* aWindow,
     // Create document manager
     HRESULT hr = sTsfThreadMgr->CreateDocumentMgr(
                                     getter_AddRefs(mDocumentMgr));
-    NS_ENSURE_TRUE(SUCCEEDED(hr), PR_FALSE);
+    NS_ENSURE_TRUE(SUCCEEDED(hr), false);
     mWindow = aWindow;
     // Create context and add it to document manager
     hr = mDocumentMgr->CreateContext(sTsfClientId, 0,
@@ -105,15 +106,15 @@ nsTextStore::Create(nsWindow* aWindow,
     if (SUCCEEDED(hr)) {
       PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
              ("TSF: Created, window=%08x\n", aWindow));
-      return PR_TRUE;
+      return true;
     }
     mContext = NULL;
     mDocumentMgr = NULL;
   }
-  return PR_FALSE;
+  return false;
 }
 
-PRBool
+bool
 nsTextStore::Destroy(void)
 {
   if (mWindow) {
@@ -137,7 +138,7 @@ nsTextStore::Destroy(void)
   PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
          ("TSF: Destroyed, window=%08x\n", mWindow));
   mWindow = NULL;
-  return PR_TRUE;
+  return true;
 }
 
 STDMETHODIMP
@@ -300,7 +301,7 @@ nsTextStore::GetSelection(ULONG ulIndex,
     *pSelection = mCompositionSelection;
   } else {
     // Construct and initialize an event to get selection info
-    nsQueryContentEvent event(PR_TRUE, NS_QUERY_SELECTED_TEXT, mWindow);
+    nsQueryContentEvent event(true, NS_QUERY_SELECTED_TEXT, mWindow);
     mWindow->InitEvent(event);
     mWindow->DispatchWindowEvent(&event);
     NS_ENSURE_TRUE(event.mSucceeded, E_FAIL);
@@ -542,7 +543,7 @@ nsTextStore::SaveTextEvent(const nsTextEvent* aEvent)
   if (!aEvent)
     return S_OK;
 
-  mLastDispatchedTextEvent = new nsTextEvent(PR_TRUE, NS_TEXT_TEXT, nsnull);
+  mLastDispatchedTextEvent = new nsTextEvent(true, NS_TEXT_TEXT, nsnull);
   if (!mLastDispatchedTextEvent)
     return E_OUTOFMEMORY;
   mLastDispatchedTextEvent->rangeCount = aEvent->rangeCount;
@@ -565,7 +566,7 @@ nsTextStore::SaveTextEvent(const nsTextEvent* aEvent)
   return S_OK;
 }
 
-static PRBool
+static bool
 IsSameTextEvent(const nsTextEvent* aEvent1, const nsTextEvent* aEvent2)
 {
   NS_PRECONDITION(aEvent1 || aEvent2, "both events are null");
@@ -607,7 +608,7 @@ nsTextStore::UpdateCompositionExtent(ITfRange* aRangeNew)
     // a new one. OnEndComposition followed by OnStartComposition
     // will accomplish this automagically.
     OnEndComposition(pComposition);
-    OnStartCompositionInternal(pComposition, composingRange, PR_TRUE);
+    OnStartCompositionInternal(pComposition, composingRange, true);
     PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
            ("TSF: UpdateCompositionExtent, (reset) range=%ld-%ld\n",
             compStart, compStart + compLength));
@@ -621,7 +622,7 @@ nsTextStore::UpdateCompositionExtent(ITfRange* aRangeNew)
   return S_OK;
 }
 
-static PRBool
+static bool
 GetColor(const TF_DA_COLOR &aTSFColor, nscolor &aResult)
 {
   switch (aTSFColor.type) {
@@ -629,39 +630,39 @@ GetColor(const TF_DA_COLOR &aTSFColor, nscolor &aResult)
       DWORD sysColor = ::GetSysColor(aTSFColor.nIndex);
       aResult = NS_RGB(GetRValue(sysColor), GetGValue(sysColor),
                        GetBValue(sysColor));
-      return PR_TRUE;
+      return true;
     }
     case TF_CT_COLORREF:
       aResult = NS_RGB(GetRValue(aTSFColor.cr), GetGValue(aTSFColor.cr),
                        GetBValue(aTSFColor.cr));
-      return PR_TRUE;
+      return true;
     case TF_CT_NONE:
     default:
-      return PR_FALSE;
+      return false;
   }
 }
 
-static PRBool
+static bool
 GetLineStyle(TF_DA_LINESTYLE aTSFLineStyle, PRUint8 &aTextRangeLineStyle)
 {
   switch (aTSFLineStyle) {
     case TF_LS_NONE:
       aTextRangeLineStyle = nsTextRangeStyle::LINESTYLE_NONE;
-      return PR_TRUE;
+      return true;
     case TF_LS_SOLID:
       aTextRangeLineStyle = nsTextRangeStyle::LINESTYLE_SOLID;
-      return PR_TRUE;
+      return true;
     case TF_LS_DOT:
       aTextRangeLineStyle = nsTextRangeStyle::LINESTYLE_DOTTED;
-      return PR_TRUE;
+      return true;
     case TF_LS_DASH:
       aTextRangeLineStyle = nsTextRangeStyle::LINESTYLE_DASHED;
-      return PR_TRUE;
+      return true;
     case TF_LS_SQUIGGLE:
       aTextRangeLineStyle = nsTextRangeStyle::LINESTYLE_WAVY;
-      return PR_TRUE;
+      return true;
     default:
-      return PR_FALSE;
+      return false;
   }
 }
 
@@ -687,7 +688,7 @@ nsTextStore::SendTextEventForCompositionString()
   NS_ENSURE_TRUE(SUCCEEDED(hr) && attrPropetry, hr);
 
   // Use NS_TEXT_TEXT to set composition string
-  nsTextEvent event(PR_TRUE, NS_TEXT_TEXT, mWindow);
+  nsTextEvent event(true, NS_TEXT_TEXT, mWindow);
   mWindow->InitEvent(event);
 
   nsRefPtr<ITfRange> composingRange;
@@ -768,9 +769,9 @@ nsTextStore::SendTextEventForCompositionString()
   if (mCompositionSelection.acpStart != mCompositionSelection.acpEnd &&
       textRanges.Length() == 1) {
     nsTextRange& range = textRanges[0];
-    LONG start = PR_MIN(mCompositionSelection.acpStart,
+    LONG start = NS_MIN(mCompositionSelection.acpStart,
                         mCompositionSelection.acpEnd);
-    LONG end = PR_MAX(mCompositionSelection.acpStart,
+    LONG end = NS_MAX(mCompositionSelection.acpStart,
                       mCompositionSelection.acpEnd);
     if ((LONG)range.mStartOffset == start - mCompositionStart &&
         (LONG)range.mEndOffset == end - mCompositionStart &&
@@ -782,7 +783,7 @@ nsTextStore::SendTextEventForCompositionString()
   }
 
   // The caret position has to be collapsed.
-  LONG caretPosition = PR_MAX(mCompositionSelection.acpStart,
+  LONG caretPosition = NS_MAX(mCompositionSelection.acpStart,
                               mCompositionSelection.acpEnd);
   caretPosition -= mCompositionStart;
   nsTextRange caretRange;
@@ -802,15 +803,29 @@ nsTextStore::SendTextEventForCompositionString()
     return S_OK;
   }
 
-  mWindow->DispatchWindowEvent(&event);
-  PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
-         ("TSF: SendTextEventForCompositionString DISPATCHED\n"));
+  if (mCompositionString != mLastDispatchedCompositionString) {
+    nsCompositionEvent compositionUpdate(true, NS_COMPOSITION_UPDATE,
+                                         mWindow);
+    mWindow->InitEvent(compositionUpdate);
+    compositionUpdate.data = mCompositionString;
+    mLastDispatchedCompositionString = mCompositionString;
+    mWindow->DispatchWindowEvent(&compositionUpdate);
+    PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
+           ("TSF: SendTextEventForCompositionString compositionupdate "
+            "DISPATCHED\n"));
+  }
+
+  if (mWindow && !mWindow->Destroyed()) {
+    mWindow->DispatchWindowEvent(&event);
+    PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
+           ("TSF: SendTextEventForCompositionString text event DISPATCHED\n"));
+  }
   return SaveTextEvent(&event);
 }
 
 HRESULT
 nsTextStore::SetSelectionInternal(const TS_SELECTION_ACP* pSelection,
-                                  PRBool aDispatchTextEvent)
+                                  bool aDispatchTextEvent)
 {
   PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
          ("TSF: SetSelection, sel=%ld-%ld\n",
@@ -830,7 +845,7 @@ nsTextStore::SetSelectionInternal(const TS_SELECTION_ACP* pSelection,
       NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
     }
   } else {
-    nsSelectionEvent event(PR_TRUE, NS_SELECTION_SET, mWindow);
+    nsSelectionEvent event(true, NS_SELECTION_SET, mWindow);
     event.mOffset = pSelection->acpStart;
     event.mLength = PRUint32(pSelection->acpEnd - pSelection->acpStart);
     event.mReversed = pSelection->style.ase == TS_AE_START;
@@ -850,7 +865,7 @@ nsTextStore::SetSelection(ULONG ulCount,
   NS_ENSURE_TRUE(TS_LF_READWRITE == (mLock & TS_LF_READWRITE), TS_E_NOLOCK);
   NS_ENSURE_TRUE(1 == ulCount && pSelection, E_INVALIDARG);
 
-  return SetSelectionInternal(pSelection, PR_TRUE);
+  return SetSelectionInternal(pSelection, true);
 }
 
 STDMETHODIMP
@@ -891,11 +906,11 @@ nsTextStore::GetText(LONG acpStart,
       // OnUpdateComposition. In this case the returned text would
       // be out of sync because we haven't sent NS_TEXT_TEXT in
       // OnUpdateComposition yet. Manually resync here.
-      compOldEnd = PR_MIN(LONG(length) + acpStart,
+      compOldEnd = NS_MIN(LONG(length) + acpStart,
                        mCompositionLength + mCompositionStart);
-      compNewEnd = PR_MIN(LONG(length) + acpStart,
+      compNewEnd = NS_MIN(LONG(length) + acpStart,
                        LONG(mCompositionString.Length()) + mCompositionStart);
-      compNewStart = PR_MAX(acpStart, mCompositionStart);
+      compNewStart = NS_MAX(acpStart, mCompositionStart);
       // Check if the range is affected
       if (compOldEnd > compNewStart || compNewEnd > compNewStart) {
         NS_ASSERTION(compOldEnd >= mCompositionStart &&
@@ -904,7 +919,7 @@ nsTextStore::GetText(LONG acpStart,
       }
     }
     // Send NS_QUERY_TEXT_CONTENT to get text content
-    nsQueryContentEvent event(PR_TRUE, NS_QUERY_TEXT_CONTENT, mWindow);
+    nsQueryContentEvent event(true, NS_QUERY_TEXT_CONTENT, mWindow);
     mWindow->InitEvent(event);
     event.InitForQueryTextContent(PRUint32(acpStart), length);
     mWindow->DispatchWindowEvent(&event);
@@ -913,7 +928,7 @@ nsTextStore::GetText(LONG acpStart,
     if (compOldEnd > compNewStart || compNewEnd > compNewStart) {
       // Resync composition string
       const PRUnichar* compStrStart = mCompositionString.BeginReading() +
-          PR_MAX(compNewStart - mCompositionStart, 0);
+          NS_MAX<LONG>(compNewStart - mCompositionStart, 0);
       event.mReply.mString.Replace(compNewStart - acpStart,
           compOldEnd - mCompositionStart, compStrStart,
           compNewEnd - mCompositionStart);
@@ -921,7 +936,7 @@ nsTextStore::GetText(LONG acpStart,
     }
     NS_ENSURE_TRUE(-1 == acpEnd || event.mReply.mString.Length() == length,
                    TS_E_INVALIDPOS);
-    length = PR_MIN(length, event.mReply.mString.Length());
+    length = NS_MIN(length, event.mReply.mString.Length());
 
     if (pchPlain && cchPlainReq) {
       memcpy(pchPlain, event.mReply.mString.BeginReading(),
@@ -1066,7 +1081,7 @@ nsTextStore::GetEndACP(LONG *pacp)
   NS_ENSURE_TRUE(TS_LF_READ == (mLock & TS_LF_READ), TS_E_NOLOCK);
   NS_ENSURE_TRUE(pacp, E_INVALIDARG);
   // Flattened text is retrieved and its length returned
-  nsQueryContentEvent event(PR_TRUE, NS_QUERY_TEXT_CONTENT, mWindow);
+  nsQueryContentEvent event(true, NS_QUERY_TEXT_CONTENT, mWindow);
   mWindow->InitEvent(event);
   // Return entire text
   event.InitForQueryTextContent(0, PR_INT32_MAX);
@@ -1111,7 +1126,7 @@ nsTextStore::GetTextExt(TsViewCookie vcView,
   NS_ENSURE_TRUE(acpStart >= 0 && acpEnd >= acpStart, TS_E_INVALIDPOS);
 
   // use NS_QUERY_TEXT_RECT to get rect in system, screen coordinates
-  nsQueryContentEvent event(PR_TRUE, NS_QUERY_TEXT_RECT, mWindow);
+  nsQueryContentEvent event(true, NS_QUERY_TEXT_RECT, mWindow);
   mWindow->InitEvent(event);
   event.InitForQueryTextRect(acpStart, acpEnd - acpStart);
   mWindow->DispatchWindowEvent(&event);
@@ -1126,7 +1141,7 @@ nsTextStore::GetTextExt(TsViewCookie vcView,
   nsWindow* refWindow = static_cast<nsWindow*>(
       event.mReply.mFocusedWidget ? event.mReply.mFocusedWidget : mWindow);
   // Result rect is in top level widget coordinates
-  refWindow = refWindow->GetTopLevelWindow(PR_FALSE);
+  refWindow = refWindow->GetTopLevelWindow(false);
   NS_ENSURE_TRUE(refWindow, E_FAIL);
 
   event.mReply.mRect.MoveBy(refWindow->WidgetToScreenOffset());
@@ -1154,7 +1169,7 @@ nsTextStore::GetScreenExt(TsViewCookie vcView,
 {
   NS_ENSURE_TRUE(TEXTSTORE_DEFAULT_VIEW == vcView && prc, E_INVALIDARG);
   // use NS_QUERY_EDITOR_RECT to get rect in system, screen coordinates
-  nsQueryContentEvent event(PR_TRUE, NS_QUERY_EDITOR_RECT, mWindow);
+  nsQueryContentEvent event(true, NS_QUERY_EDITOR_RECT, mWindow);
   mWindow->InitEvent(event);
   mWindow->DispatchWindowEvent(&event);
   NS_ENSURE_TRUE(event.mSucceeded, E_FAIL);
@@ -1162,7 +1177,7 @@ nsTextStore::GetScreenExt(TsViewCookie vcView,
   nsWindow* refWindow = static_cast<nsWindow*>(
       event.mReply.mFocusedWidget ? event.mReply.mFocusedWidget : mWindow);
   // Result rect is in top level widget coordinates
-  refWindow = refWindow->GetTopLevelWindow(PR_FALSE);
+  refWindow = refWindow->GetTopLevelWindow(false);
   NS_ENSURE_TRUE(refWindow, E_FAIL);
 
   nsIntRect boundRect;
@@ -1240,22 +1255,33 @@ nsTextStore::InsertTextAtSelection(DWORD dwFlags,
               sel.acpEnd - mCompositionStart));
     } else {
       // Use a temporary composition to contain the text
-      nsCompositionEvent compEvent(PR_TRUE, NS_COMPOSITION_START, mWindow);
+      nsCompositionEvent compEvent(true, NS_COMPOSITION_START, mWindow);
       mWindow->InitEvent(compEvent);
       mWindow->DispatchWindowEvent(&compEvent);
-      nsTextEvent event(PR_TRUE, NS_TEXT_TEXT, mWindow);
-      mWindow->InitEvent(event);
-      if (!cch) {
-        // XXX See OnEndComposition comment on inserting empty strings
-        event.theText = NS_LITERAL_STRING(" ");
-        mWindow->DispatchWindowEvent(&event);
+      if (mWindow && !mWindow->Destroyed()) {
+        compEvent.message = NS_COMPOSITION_UPDATE;
+        compEvent.data.Assign(pchText, cch);
+        mWindow->DispatchWindowEvent(&compEvent);
+        if (mWindow && !mWindow->Destroyed()) {
+          nsTextEvent event(true, NS_TEXT_TEXT, mWindow);
+          mWindow->InitEvent(event);
+          if (!cch) {
+            // XXX See OnEndComposition comment on inserting empty strings
+            event.theText = NS_LITERAL_STRING(" ");
+            mWindow->DispatchWindowEvent(&event);
+          }
+          if (mWindow && !mWindow->Destroyed()) {
+            event.theText.Assign(pchText, cch);
+            event.theText.ReplaceSubstring(NS_LITERAL_STRING("\r\n"),
+                                           NS_LITERAL_STRING("\n"));
+            mWindow->DispatchWindowEvent(&event);
+            if (mWindow && !mWindow->Destroyed()) {
+              compEvent.message = NS_COMPOSITION_END;
+              mWindow->DispatchWindowEvent(&compEvent);
+            }
+          }
+        }
       }
-      event.theText.Assign(pchText, cch);
-      event.theText.ReplaceSubstring(NS_LITERAL_STRING("\r\n"),
-                                     NS_LITERAL_STRING("\n"));
-      mWindow->DispatchWindowEvent(&event);
-      compEvent.message = NS_COMPOSITION_END;
-      mWindow->DispatchWindowEvent(&compEvent);
     }
     pChange->acpStart = sel.acpStart;
     pChange->acpOldEnd = sel.acpEnd;
@@ -1287,7 +1313,7 @@ nsTextStore::InsertEmbeddedAtSelection(DWORD dwFlags,
 HRESULT
 nsTextStore::OnStartCompositionInternal(ITfCompositionView* pComposition,
                                         ITfRange* aRange,
-                                        PRBool aPreserveSelection)
+                                        bool aPreserveSelection)
 {
   mCompositionView = pComposition;
   HRESULT hr = GetRangeExtent(aRange, &mCompositionStart, &mCompositionLength);
@@ -1298,16 +1324,16 @@ nsTextStore::OnStartCompositionInternal(ITfCompositionView* pComposition,
           mCompositionStart + mCompositionLength));
 
   // Select composition range so the new composition replaces the range
-  nsSelectionEvent selEvent(PR_TRUE, NS_SELECTION_SET, mWindow);
+  nsSelectionEvent selEvent(true, NS_SELECTION_SET, mWindow);
   mWindow->InitEvent(selEvent);
   selEvent.mOffset = PRUint32(mCompositionStart);
   selEvent.mLength = PRUint32(mCompositionLength);
-  selEvent.mReversed = PR_FALSE;
+  selEvent.mReversed = false;
   mWindow->DispatchWindowEvent(&selEvent);
   NS_ENSURE_TRUE(selEvent.mSucceeded, E_FAIL);
 
   // Set up composition
-  nsQueryContentEvent queryEvent(PR_TRUE, NS_QUERY_SELECTED_TEXT, mWindow);
+  nsQueryContentEvent queryEvent(true, NS_QUERY_SELECTED_TEXT, mWindow);
   mWindow->InitEvent(queryEvent);
   mWindow->DispatchWindowEvent(&queryEvent);
   NS_ENSURE_TRUE(queryEvent.mSucceeded, E_FAIL);
@@ -1318,7 +1344,7 @@ nsTextStore::OnStartCompositionInternal(ITfCompositionView* pComposition,
     mCompositionSelection.style.ase = TS_AE_END;
     mCompositionSelection.style.fInterimChar = FALSE;
   }
-  nsCompositionEvent event(PR_TRUE, NS_COMPOSITION_START, mWindow);
+  nsCompositionEvent event(true, NS_COMPOSITION_START, mWindow);
   mWindow->InitEvent(event);
   mWindow->DispatchWindowEvent(&event);
   return S_OK;
@@ -1331,19 +1357,8 @@ GetLayoutChangeIntervalTime()
   if (sTime > 0)
     return PRUint32(sTime);
 
-  sTime = 100;
-  nsCOMPtr<nsIPrefService> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-  if (!prefs)
-    return PRUint32(sTime);
-  nsCOMPtr<nsIPrefBranch> prefBranch;
-  prefs->GetBranch(nsnull, getter_AddRefs(prefBranch));
-  if (!prefBranch)
-    return PRUint32(sTime);
-  nsresult rv =
-    prefBranch->GetIntPref("intl.tsf.on_layout_change_interval", &sTime);
-  if (NS_FAILED(rv))
-    return PRUint32(sTime);
-  sTime = PR_MAX(10, sTime);
+  sTime = NS_MAX(10,
+    Preferences::GetInt("intl.tsf.on_layout_change_interval", 100));
   return PRUint32(sTime);
 }
 
@@ -1360,7 +1375,7 @@ nsTextStore::OnStartComposition(ITfCompositionView* pComposition,
   nsRefPtr<ITfRange> range;
   HRESULT hr = pComposition->GetRange(getter_AddRefs(range));
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
-  hr = OnStartCompositionInternal(pComposition, range, PR_FALSE);
+  hr = OnStartCompositionInternal(pComposition, range, false);
   if (FAILED(hr))
     return hr;
 
@@ -1408,8 +1423,22 @@ nsTextStore::OnEndComposition(ITfCompositionView* pComposition)
     mCompositionTimer = nsnull;
   }
 
+  if (mCompositionString != mLastDispatchedCompositionString) {
+    nsCompositionEvent compositionUpdate(true, NS_COMPOSITION_UPDATE,
+                                         mWindow);
+    mWindow->InitEvent(compositionUpdate);
+    compositionUpdate.data = mCompositionString;
+    mLastDispatchedCompositionString = mCompositionString;
+    mWindow->DispatchWindowEvent(&compositionUpdate);
+    if (!mWindow || mWindow->Destroyed()) {
+      PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
+             ("TSF: CompositionUpdate caused aborting compositionend\n"));
+      return S_OK;
+    }
+  }
+
   // Use NS_TEXT_TEXT to commit composition string
-  nsTextEvent textEvent(PR_TRUE, NS_TEXT_TEXT, mWindow);
+  nsTextEvent textEvent(true, NS_TEXT_TEXT, mWindow);
   mWindow->InitEvent(textEvent);
   if (!mCompositionString.Length()) {
     // XXX HACK! HACK! NS_TEXT_TEXT handler specifically rejects
@@ -1425,19 +1454,28 @@ nsTextStore::OnEndComposition(ITfCompositionView* pComposition)
                                      NS_LITERAL_STRING("\n"));
   mWindow->DispatchWindowEvent(&textEvent);
 
-  nsCompositionEvent event(PR_TRUE, NS_COMPOSITION_END, mWindow);
+  if (!mWindow || mWindow->Destroyed()) {
+    PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
+           ("TSF: Text event caused aborting compositionend\n"));
+    return S_OK;
+  }
+
+  nsCompositionEvent event(true, NS_COMPOSITION_END, mWindow);
+  event.data = mLastDispatchedCompositionString;
   mWindow->InitEvent(event);
   mWindow->DispatchWindowEvent(&event);
 
   mCompositionView = NULL;
   mCompositionString.Truncate(0);
+  mLastDispatchedCompositionString.Truncate();
+
   // Maintain selection
   SetSelectionInternal(&mCompositionSelection);
   return S_OK;
 }
 
 nsresult
-nsTextStore::OnFocusChange(PRBool aFocus,
+nsTextStore::OnFocusChange(bool aFocus,
                            nsWindow* aWindow,
                            PRUint32 aIMEEnabled)
 {
@@ -1446,7 +1484,7 @@ nsTextStore::OnFocusChange(PRBool aFocus,
     return NS_ERROR_NOT_AVAILABLE;
 
   if (aFocus) {
-    PRBool bRet = sTsfTextStore->Create(aWindow, aIMEEnabled);
+    bool bRet = sTsfTextStore->Create(aWindow, aIMEEnabled);
     NS_ENSURE_TRUE(bRet, NS_ERROR_FAILURE);
     NS_ENSURE_TRUE(sTsfTextStore->mDocumentMgr, NS_ERROR_FAILURE);
     HRESULT hr = sTsfThreadMgr->SetFocus(sTsfTextStore->mDocumentMgr);
@@ -1463,9 +1501,9 @@ nsTextStore::OnTextChangeInternal(PRUint32 aStart,
                                   PRUint32 aNewEnd)
 {
   if (!mLock && mSink && 0 != (mSinkMask & TS_AS_TEXT_CHANGE)) {
-    mTextChange.acpStart = PR_MIN(mTextChange.acpStart, LONG(aStart));
-    mTextChange.acpOldEnd = PR_MAX(mTextChange.acpOldEnd, LONG(aOldEnd));
-    mTextChange.acpNewEnd = PR_MAX(mTextChange.acpNewEnd, LONG(aNewEnd));
+    mTextChange.acpStart = NS_MIN(mTextChange.acpStart, LONG(aStart));
+    mTextChange.acpOldEnd = NS_MAX(mTextChange.acpOldEnd, LONG(aOldEnd));
+    mTextChange.acpNewEnd = NS_MAX(mTextChange.acpNewEnd, LONG(aNewEnd));
     ::PostMessageW(mWindow->GetWindowHandle(),
                    WM_USER_TSF_TEXTCHANGE, 0, 0);
   }
@@ -1509,7 +1547,7 @@ nsTextStore::OnCompositionTimer()
 }
 
 void
-nsTextStore::CommitCompositionInternal(PRBool aDiscard)
+nsTextStore::CommitCompositionInternal(bool aDiscard)
 {
   if (mCompositionView && aDiscard) {
     mCompositionString.Truncate(0);
@@ -1540,23 +1578,23 @@ nsTextStore::CommitCompositionInternal(PRBool aDiscard)
 }
 
 static
-PRBool
+bool
 GetCompartment(IUnknown* pUnk,
                const GUID& aID,
                ITfCompartment** aCompartment)
 {
-  if (!pUnk) return PR_FALSE;
+  if (!pUnk) return false;
 
   nsRefPtr<ITfCompartmentMgr> compMgr;
   pUnk->QueryInterface(IID_ITfCompartmentMgr, getter_AddRefs(compMgr));
-  if (!compMgr) return PR_FALSE;
+  if (!compMgr) return false;
 
   return SUCCEEDED(compMgr->GetCompartment(aID, aCompartment)) &&
          (*aCompartment) != NULL;
 }
 
 void
-nsTextStore::SetIMEOpenState(PRBool aState)
+nsTextStore::SetIMEOpenState(bool aState)
 {
   PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
          ("TSF: SetIMEOpenState, state=%lu\n", aState));
@@ -1573,14 +1611,14 @@ nsTextStore::SetIMEOpenState(PRBool aState)
   comp->SetValue(sTsfClientId, &variant);
 }
 
-PRBool
+bool
 nsTextStore::GetIMEOpenState(void)
 {
   nsRefPtr<ITfCompartment> comp;
   if (!GetCompartment(sTsfThreadMgr,
                       GUID_COMPARTMENT_KEYBOARD_OPENCLOSE,
                       getter_AddRefs(comp)))
-    return PR_FALSE;
+    return false;
 
   VARIANT variant;
   ::VariantInit(&variant);
@@ -1588,7 +1626,7 @@ nsTextStore::GetIMEOpenState(void)
     return variant.lVal != 0;
 
   ::VariantClear(&variant); // clear up in case variant.vt != VT_I4
-  return PR_FALSE;
+  return false;
 }
 
 void
@@ -1625,15 +1663,8 @@ nsTextStore::Initialize(void)
     sTextStoreLog = PR_NewLogModule("nsTextStoreWidgets");
 #endif
   if (!sTsfThreadMgr) {
-    PRBool enableTsf = PR_TRUE;
-    nsCOMPtr<nsIPrefService> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-    if (prefs) {
-      nsCOMPtr<nsIPrefBranch> prefBranch;
-      prefs->GetBranch(nsnull, getter_AddRefs(prefBranch));
-      if (prefBranch && NS_FAILED(prefBranch->GetBoolPref(
-            "intl.enable_tsf_support", &enableTsf)))
-        enableTsf = PR_TRUE;
-    }
+    bool enableTsf =
+      Preferences::GetBool("intl.enable_tsf_support", false);
     if (enableTsf) {
       if (SUCCEEDED(CoCreateInstance(CLSID_TF_ThreadMgr, NULL,
             CLSCTX_INPROC_SERVER, IID_ITfThreadMgr,

@@ -96,7 +96,7 @@ public:
   GetPresShellForContent(nsIContent* aContent);
 
   // Helper for nsDOMWindowUtils::GetVisitedDependentComputedStyle
-  void SetExposeVisitedStyle(PRBool aExpose) {
+  void SetExposeVisitedStyle(bool aExpose) {
     NS_ASSERTION(aExpose != mExposeVisitedStyle, "should always be changing");
     mExposeVisitedStyle = aExpose;
   }
@@ -104,7 +104,7 @@ public:
   // nsDOMCSSDeclaration abstract methods which should never be called
   // on a nsComputedDOMStyle object, but must be defined to avoid
   // compile errors.
-  virtual mozilla::css::Declaration* GetCSSDeclaration(PRBool);
+  virtual mozilla::css::Declaration* GetCSSDeclaration(bool);
   virtual nsresult SetCSSDeclaration(mozilla::css::Declaration*);
   virtual nsIDocument* DocToUpdate();
   virtual void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv);
@@ -128,7 +128,7 @@ private:
 
   nsIDOMCSSValue* GetEllipseRadii(const nsStyleCorners& aRadius,
                                   PRUint8 aFullCorner,
-                                  PRBool aIsBorder); // else outline
+                                  bool aIsBorder); // else outline
 
   nsIDOMCSSValue* GetOffsetWidthFor(mozilla::css::Side aSide);
 
@@ -150,13 +150,13 @@ private:
 
   nsIDOMCSSValue* GetMarginWidthFor(mozilla::css::Side aSide);
 
-  nsIDOMCSSValue* GetSVGPaintFor(PRBool aFill);
+  nsIDOMCSSValue* GetSVGPaintFor(bool aFill);
 
-  PRBool GetLineHeightCoord(nscoord& aCoord);
+  bool GetLineHeightCoord(nscoord& aCoord);
 
   nsIDOMCSSValue* GetCSSShadowArray(nsCSSShadowArray* aArray,
                                     const nscolor& aDefaultColor,
-                                    PRBool aIsBoxShadow);
+                                    bool aIsBoxShadow);
 
   nsIDOMCSSValue* GetBackgroundList(PRUint8 nsStyleBackground::Layer::* aMember,
                                     PRUint32 nsStyleBackground::* aCount,
@@ -313,6 +313,7 @@ private:
   nsIDOMCSSValue* DoGetMozTextDecorationLine();
   nsIDOMCSSValue* DoGetMozTextDecorationStyle();
   nsIDOMCSSValue* DoGetTextIndent();
+  nsIDOMCSSValue* DoGetTextOverflow();
   nsIDOMCSSValue* DoGetTextTransform();
   nsIDOMCSSValue* DoGetTextShadow();
   nsIDOMCSSValue* DoGetLetterSpacing();
@@ -346,6 +347,11 @@ private:
   nsIDOMCSSValue* DoGetPageBreakBefore();
   nsIDOMCSSValue* DoGetMozTransform();
   nsIDOMCSSValue* DoGetMozTransformOrigin();
+  nsIDOMCSSValue* DoGetMozPerspective();
+  nsIDOMCSSValue* DoGetMozBackfaceVisibility();
+  nsIDOMCSSValue* DoGetMozPerspectiveOrigin();
+  nsIDOMCSSValue* DoGetMozTransformStyle();
+  nsIDOMCSSValue* DoGetOrient();
 
   /* User interface properties */
   nsIDOMCSSValue* DoGetCursor();
@@ -370,7 +376,6 @@ private:
   nsIDOMCSSValue* DoGetTransitionDelay();
   nsIDOMCSSValue* DoGetTransitionTimingFunction();
 
-#ifdef MOZ_CSS_ANIMATIONS
   /* CSS Animations */
   nsIDOMCSSValue* DoGetAnimationName();
   nsIDOMCSSValue* DoGetAnimationDuration();
@@ -380,7 +385,6 @@ private:
   nsIDOMCSSValue* DoGetAnimationFillMode();
   nsIDOMCSSValue* DoGetAnimationIterationCount();
   nsIDOMCSSValue* DoGetAnimationPlayState();
-#endif
 
   /* SVG properties */
   nsIDOMCSSValue* DoGetFill();
@@ -421,22 +425,22 @@ private:
   nsIDOMCSSValue* DoGetMask();
 
   nsROCSSPrimitiveValue* GetROCSSPrimitiveValue();
-  nsDOMCSSValueList* GetROCSSValueList(PRBool aCommaDelimited);
+  nsDOMCSSValueList* GetROCSSValueList(bool aCommaDelimited);
   void SetToRGBAColor(nsROCSSPrimitiveValue* aValue, nscolor aColor);
   void SetValueToStyleImage(const nsStyleImage& aStyleImage,
                             nsROCSSPrimitiveValue* aValue);
 
   /**
-   * A method to get a percentage base for a percentage value.  Returns PR_TRUE
-   * if a percentage base value was determined, PR_FALSE otherwise.
+   * A method to get a percentage base for a percentage value.  Returns true
+   * if a percentage base value was determined, false otherwise.
    */
-  typedef PRBool (nsComputedDOMStyle::*PercentageBaseGetter)(nscoord&);
+  typedef bool (nsComputedDOMStyle::*PercentageBaseGetter)(nscoord&);
 
   /**
    * Method to set aValue to aCoord.  If aCoord is a percentage value and
    * aPercentageBaseGetter is not null, aPercentageBaseGetter is called.  If it
-   * returns PR_TRUE, the percentage base it outputs in its out param is used
-   * to compute an nscoord value.  If the getter is null or returns PR_FALSE,
+   * returns true, the percentage base it outputs in its out param is used
+   * to compute an nscoord value.  If the getter is null or returns false,
    * the percent value of aCoord is set as a percent value on aValue.  aTable,
    * if not null, is the keyword table to handle eStyleUnit_Enumerated.  When
    * calling SetAppUnits on aValue (for coord or percent values), the value
@@ -448,7 +452,7 @@ private:
    */
   void SetValueToCoord(nsROCSSPrimitiveValue* aValue,
                        const nsStyleCoord& aCoord,
-                       PRBool aClampNegativeCalc,
+                       bool aClampNegativeCalc,
                        PercentageBaseGetter aPercentageBaseGetter = nsnull,
                        const PRInt32 aTable[] = nsnull,
                        nscoord aMinAppUnits = nscoord_MIN,
@@ -463,14 +467,14 @@ private:
   nscoord StyleCoordToNSCoord(const nsStyleCoord& aCoord,
                               PercentageBaseGetter aPercentageBaseGetter,
                               nscoord aDefaultValue,
-                              PRBool aClampNegativeCalc);
+                              bool aClampNegativeCalc);
 
-  PRBool GetCBContentWidth(nscoord& aWidth);
-  PRBool GetCBContentHeight(nscoord& aWidth);
-  PRBool GetFrameBoundsWidthForTransform(nscoord &aWidth);
-  PRBool GetFrameBoundsHeightForTransform(nscoord &aHeight);
-  PRBool GetFrameBorderRectWidth(nscoord& aWidth);
-  PRBool GetFrameBorderRectHeight(nscoord& aHeight);
+  bool GetCBContentWidth(nscoord& aWidth);
+  bool GetCBContentHeight(nscoord& aWidth);
+  bool GetFrameBoundsWidthForTransform(nscoord &aWidth);
+  bool GetFrameBoundsHeightForTransform(nscoord &aHeight);
+  bool GetFrameBorderRectWidth(nscoord& aWidth);
+  bool GetFrameBorderRectHeight(nscoord& aHeight);
 
   struct ComputedStyleMapEntry
   {
@@ -479,7 +483,7 @@ private:
 
     nsCSSProperty mProperty;
     ComputeMethod mGetter;
-    PRBool mNeedsLayoutFlush;
+    bool mNeedsLayoutFlush;
   };
 
   static const ComputedStyleMapEntry* GetQueryablePropertyMap(PRUint32* aLength);
@@ -516,10 +520,10 @@ private:
    */
   nsIPresShell* mPresShell;
 
-  PRPackedBool mExposeVisitedStyle;
+  bool mExposeVisitedStyle;
 
 #ifdef DEBUG
-  PRBool mFlushedPendingReflows;
+  bool mFlushedPendingReflows;
 #endif
 };
 

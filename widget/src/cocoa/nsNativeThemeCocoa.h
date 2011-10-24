@@ -44,13 +44,14 @@
 #include "nsITheme.h"
 #include "nsCOMPtr.h"
 #include "nsIAtom.h"
-#include "nsILookAndFeel.h"
 #include "nsNativeTheme.h"
 #include "gfxASurface.h"
 
 @class CellDrawView;
 @class NSProgressBarCell;
+@class ContextAwareSearchFieldCell;
 class nsDeviceContext;
+struct SegmentedControlRenderSettings;
 
 class nsNativeThemeCocoa : private nsNativeTheme,
                            public nsITheme
@@ -72,30 +73,32 @@ public:
                              PRUint8 aWidgetType,
                              nsIntMargin* aResult);
 
-  virtual PRBool GetWidgetPadding(nsDeviceContext* aContext,
+  virtual bool GetWidgetPadding(nsDeviceContext* aContext,
                                   nsIFrame* aFrame,
                                   PRUint8 aWidgetType,
                                   nsIntMargin* aResult);
 
-  virtual PRBool GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFrame,
+  virtual bool GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFrame,
                                    PRUint8 aWidgetType, nsRect* aOverflowRect);
 
   NS_IMETHOD GetMinimumWidgetSize(nsRenderingContext* aContext, nsIFrame* aFrame,
                                   PRUint8 aWidgetType,
-                                  nsIntSize* aResult, PRBool* aIsOverridable);
+                                  nsIntSize* aResult, bool* aIsOverridable);
   NS_IMETHOD WidgetStateChanged(nsIFrame* aFrame, PRUint8 aWidgetType, 
-                                nsIAtom* aAttribute, PRBool* aShouldRepaint);
+                                nsIAtom* aAttribute, bool* aShouldRepaint);
   NS_IMETHOD ThemeChanged();
-  PRBool ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* aFrame, PRUint8 aWidgetType);
-  PRBool WidgetIsContainer(PRUint8 aWidgetType);
-  PRBool ThemeDrawsFocusForWidget(nsPresContext* aPresContext, nsIFrame* aFrame, PRUint8 aWidgetType);
-  PRBool ThemeNeedsComboboxDropmarker();
+  bool ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* aFrame, PRUint8 aWidgetType);
+  bool WidgetIsContainer(PRUint8 aWidgetType);
+  bool ThemeDrawsFocusForWidget(nsPresContext* aPresContext, nsIFrame* aFrame, PRUint8 aWidgetType);
+  bool ThemeNeedsComboboxDropmarker();
   virtual Transparency GetWidgetTransparency(nsIFrame* aFrame, PRUint8 aWidgetType);
 
 protected:  
 
-  nsresult GetSystemColor(PRUint8 aWidgetType, nsILookAndFeel::nsColorID& aColorID);
   nsIntMargin RTLAwareMargin(const nsIntMargin& aMargin, nsIFrame* aFrame);
+  nsIFrame* SeparatorResponsibility(nsIFrame* aBefore, nsIFrame* aAfter);
+  CGRect SeparatorAdjustedRect(CGRect aRect, nsIFrame* aLeft,
+                               nsIFrame* aCurrent, nsIFrame* aRight);
 
   // Helpers for progressbar.
   double GetProgressValue(nsIFrame* aFrame);
@@ -103,27 +106,28 @@ protected:
 
   // HITheme drawing routines
   void DrawFrame(CGContextRef context, HIThemeFrameKind inKind,
-                 const HIRect& inBoxRect, PRBool inReadOnly,
+                 const HIRect& inBoxRect, bool inReadOnly,
                  nsEventStates inState);
   void DrawProgress(CGContextRef context, const HIRect& inBoxRect,
-                    PRBool inIsIndeterminate, PRBool inIsHorizontal,
+                    bool inIsIndeterminate, bool inIsHorizontal,
                     double inValue, double inMaxValue, nsIFrame* aFrame);
-  void DrawTab(CGContextRef context, HIRect inBoxRect, nsEventStates inState,
-               nsIFrame* aFrame);
+  void DrawSegment(CGContextRef cgContext, const HIRect& inBoxRect,
+                   nsEventStates inState, nsIFrame* aFrame,
+                   const SegmentedControlRenderSettings& aSettings);
   void DrawTabPanel(CGContextRef context, const HIRect& inBoxRect, nsIFrame* aFrame);
   void DrawScale(CGContextRef context, const HIRect& inBoxRect,
-                 nsEventStates inState, PRBool inDirection,
-                 PRBool inIsReverse, PRInt32 inCurrentValue, PRInt32 inMinValue,
+                 nsEventStates inState, bool inDirection,
+                 bool inIsReverse, PRInt32 inCurrentValue, PRInt32 inMinValue,
                  PRInt32 inMaxValue, nsIFrame* aFrame);
-  void DrawCheckboxOrRadio(CGContextRef cgContext, PRBool inCheckbox,
-                           const HIRect& inBoxRect, PRBool inSelected,
+  void DrawCheckboxOrRadio(CGContextRef cgContext, bool inCheckbox,
+                           const HIRect& inBoxRect, bool inSelected,
                            nsEventStates inState, nsIFrame* aFrame);
   void DrawSearchField(CGContextRef cgContext, const HIRect& inBoxRect,
                        nsIFrame* aFrame, nsEventStates inState);
   void DrawPushButton(CGContextRef cgContext, const HIRect& inBoxRect,
                       nsEventStates inState, nsIFrame* aFrame);
   void DrawButton(CGContextRef context, ThemeButtonKind inKind,
-                  const HIRect& inBoxRect, PRBool inIsDefault, 
+                  const HIRect& inBoxRect, bool inIsDefault, 
                   ThemeButtonValue inValue, ThemeButtonAdornment inAdornment,
                   nsEventStates inState, nsIFrame* aFrame);
   void DrawDropdown(CGContextRef context, const HIRect& inBoxRect,
@@ -143,14 +147,14 @@ protected:
   void DrawScrollbar(CGContextRef aCGContext, const HIRect& aBoxRect, nsIFrame *aFrame);
   void GetScrollbarPressStates (nsIFrame *aFrame, nsEventStates aButtonStates[]);
   void GetScrollbarDrawInfo (HIThemeTrackDrawInfo& aTdi, nsIFrame *aFrame, 
-                             const CGSize& aSize, PRBool aShouldGetButtonStates);
+                             const CGSize& aSize, bool aShouldGetButtonStates);
   nsIFrame* GetParentScrollbarFrame(nsIFrame *aFrame);
 
 private:
   NSButtonCell* mPushButtonCell;
   NSButtonCell* mRadioButtonCell;
   NSButtonCell* mCheckboxCell;
-  NSSearchFieldCell* mSearchFieldCell;
+  ContextAwareSearchFieldCell* mSearchFieldCell;
   NSPopUpButtonCell* mDropdownCell;
   NSComboBoxCell* mComboBoxCell;
   NSProgressBarCell* mProgressBarCell;

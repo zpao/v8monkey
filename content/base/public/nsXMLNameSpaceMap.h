@@ -64,7 +64,7 @@ public:
    * Allocates a new nsXMLNameSpaceMap (with new()) and if aForXML is
    * true initializes it with the xmlns and xml namespaces.
    */
-  static NS_HIDDEN_(nsXMLNameSpaceMap*) Create(PRBool aForXML);
+  static NS_HIDDEN_(nsXMLNameSpaceMap*) Create(bool aForXML);
 
   /**
    * Add a prefix and its corresponding namespace ID to the map.
@@ -78,9 +78,6 @@ public:
    * to its corresponding namespace ID.
    */
   NS_HIDDEN_(nsresult) AddPrefix(nsIAtom *aPrefix, nsString &aURI);
-
-  /* Remove a prefix from the map. */
-  NS_HIDDEN_(void) RemovePrefix(nsIAtom *aPrefix);
 
   /*
    * Returns the namespace ID for the given prefix, if it is in the map.

@@ -62,7 +62,7 @@ private:
   ~nsUnixSystemProxySettings() {}
   
   nsCOMPtr<nsIGConfService> mGConf;
-  PRBool IsProxyMode(const char* aMode);
+  bool IsProxyMode(const char* aMode);
   nsresult SetProxyResultFromGConf(const char* aKeyBase, const char* aType, nsACString& aResult);
   nsresult GetProxyFromGConf(const nsACString& aScheme, const nsACString& aHost, PRInt32 aPort, nsACString& aResult);
 };
@@ -76,7 +76,7 @@ nsUnixSystemProxySettings::Init()
   return NS_OK;
 }
 
-PRBool
+bool
 nsUnixSystemProxySettings::IsProxyMode(const char* aMode)
 {
   nsCAutoString mode;
@@ -97,14 +97,14 @@ nsUnixSystemProxySettings::GetPACURI(nsACString& aResult)
                            aResult);
 }
 
-static PRBool
+static bool
 IsInNoProxyList(const nsACString& aHost, PRInt32 aPort, const char* noProxyVal)
 {
   NS_ASSERTION(aPort >= 0, "Negative port?");
   
   nsCAutoString noProxy(noProxyVal);
   if (noProxy.EqualsLiteral("*"))
-    return PR_TRUE;
+    return true;
     
   noProxy.StripWhitespace();
   
@@ -143,13 +143,13 @@ IsInNoProxyList(const nsACString& aHost, PRInt32 aPort, const char* noProxyVal)
       nsDependentCSubstring hostStr(pos, colon);
       // By using StringEndsWith instead of an equality comparator, we can include sub-domains
       if (StringEndsWith(aHost, hostStr, nsCaseInsensitiveCStringComparator()))
-        return PR_TRUE;
+        return true;
     }
     
     pos = nextPos;
   }
   
-  return PR_FALSE;
+  return false;
 }
 
 static void SetProxyResult(const char* aType, const nsACString& aHost,
@@ -194,7 +194,7 @@ GetProxyFromEnvironment(const nsACString& aScheme,
 
   // Is there a way to specify "socks://" or something in these environment
   // variables? I can't find any documentation.
-  PRBool isHTTP;
+  bool isHTTP;
   rv = proxyURI->SchemeIs("http", &isHTTP);
   NS_ENSURE_SUCCESS(rv, rv);
   if (!isHTTP)
@@ -267,12 +267,12 @@ proxy_MaskIPv6Addr(PRIPv6Addr &addr, PRUint16 mask_len)
   }
 }
 
-static PRBool ConvertToIPV6Addr(const nsACString& aName,
+static bool ConvertToIPV6Addr(const nsACString& aName,
                                 PRIPv6Addr* aAddr)
 {
   PRNetAddr addr;
   if (PR_StringToNetAddr(PromiseFlatCString(aName).get(), &addr) != PR_SUCCESS)
-    return PR_FALSE;
+    return false;
 
   PRIPv6Addr ipv6;
   // convert parsed address to IPv6
@@ -283,22 +283,22 @@ static PRBool ConvertToIPV6Addr(const nsACString& aName,
     // copy the address
     memcpy(&ipv6, &addr.ipv6.ip, sizeof(PRIPv6Addr));
   } else {
-    return PR_FALSE;
+    return false;
   }
   
-  return PR_TRUE;
+  return true;
 }
 
-static PRBool GConfIgnoreHost(const nsACString& aIgnore,
+static bool GConfIgnoreHost(const nsACString& aIgnore,
                               const nsACString& aHost)
 {
   if (aIgnore.Equals(aHost, nsCaseInsensitiveCStringComparator()))
-    return PR_TRUE;
+    return true;
 
   if (aIgnore.First() == '*' &&
       StringEndsWith(aHost, nsDependentCSubstring(aIgnore, 1),
                      nsCaseInsensitiveCStringComparator()))
-    return PR_TRUE;
+    return true;
 
   PRInt32 mask = 128;
   nsReadingIterator<char> start;
@@ -324,7 +324,7 @@ static PRBool GConfIgnoreHost(const nsACString& aIgnore,
   PRIPv6Addr ignoreAddr, hostAddr;
   if (!ConvertToIPV6Addr(aIgnore, &ignoreAddr) ||
       !ConvertToIPV6Addr(aHost, &hostAddr))
-    return PR_FALSE;
+    return false;
 
   proxy_MaskIPv6Addr(ignoreAddr, mask);
   proxy_MaskIPv6Addr(hostAddr, mask);
@@ -338,7 +338,7 @@ nsUnixSystemProxySettings::GetProxyFromGConf(const nsACString& aScheme,
                                              PRInt32 aPort,
                                              nsACString& aResult)
 {
-  PRBool masterProxySwitch = PR_FALSE;
+  bool masterProxySwitch = false;
   mGConf->GetBool(NS_LITERAL_CSTRING("/system/http_proxy/use_http_proxy"), &masterProxySwitch);
   if (!IsProxyMode("manual") || !masterProxySwitch) {
     aResult.AppendLiteral("DIRECT");
@@ -364,7 +364,7 @@ nsUnixSystemProxySettings::GetProxyFromGConf(const nsACString& aScheme,
     }
   }
 
-  PRBool useHttpProxyForAll = PR_FALSE;
+  bool useHttpProxyForAll = false;
   // This setting sometimes doesn't exist, don't bail on failure
   mGConf->GetBool(NS_LITERAL_CSTRING("/system/http_proxy/use_same_proxy"), &useHttpProxyForAll);
 

@@ -90,13 +90,13 @@ public:
 
   void RemoveProperty(nsCSSProperty aProperty);
 
-  PRBool HasProperty(nsCSSProperty aProperty) const;
+  bool HasProperty(nsCSSProperty aProperty) const;
 
   void GetValue(nsCSSProperty aProperty, nsAString& aValue) const;
 
-  PRBool HasImportantData() const { return mImportantData != nsnull; }
-  PRBool GetValueIsImportant(nsCSSProperty aProperty) const;
-  PRBool GetValueIsImportant(const nsAString& aProperty) const;
+  bool HasImportantData() const { return mImportantData != nsnull; }
+  bool GetValueIsImportant(nsCSSProperty aProperty) const;
+  bool GetValueIsImportant(const nsAString& aProperty) const;
 
   PRUint32 Count() const {
     return mOrder.Length();
@@ -158,28 +158,28 @@ public:
    * Attempt to replace the value for |aProperty| stored in this
    * declaration with the matching value from |aFromBlock|.
    * This method may only be called on a mutable declaration.
-   * It will fail (returning PR_FALSE) if |aProperty| is shorthand,
+   * It will fail (returning false) if |aProperty| is shorthand,
    * is not already in this declaration, or does not have the indicated
-   * importance level.  If it returns PR_TRUE, it erases the value in
-   * |aFromBlock|.  |aChanged| is set to PR_TRUE if the declaration
-   * changed as a result of the call, and to PR_FALSE otherwise.
+   * importance level.  If it returns true, it erases the value in
+   * |aFromBlock|.  |aChanged| is set to true if the declaration
+   * changed as a result of the call, and to false otherwise.
    */
-  PRBool TryReplaceValue(nsCSSProperty aProperty, PRBool aIsImportant,
+  bool TryReplaceValue(nsCSSProperty aProperty, bool aIsImportant,
                          nsCSSExpandedDataBlock& aFromBlock,
-                         PRBool* aChanged)
+                         bool* aChanged)
   {
     AssertMutable();
     NS_ABORT_IF_FALSE(mData, "called while expanded");
 
     if (nsCSSProps::IsShorthand(aProperty)) {
-      *aChanged = PR_FALSE;
-      return PR_FALSE;
+      *aChanged = false;
+      return false;
     }
     nsCSSCompressedDataBlock *block = aIsImportant ? mImportantData : mData;
     // mImportantData might be null
     if (!block) {
-      *aChanged = PR_FALSE;
-      return PR_FALSE;
+      *aChanged = false;
+      return false;
     }
 
 #ifdef DEBUG
@@ -193,7 +193,7 @@ public:
     return block->TryReplaceValue(aProperty, aFromBlock, aChanged);
   }
 
-  PRBool HasNonImportantValueFor(nsCSSProperty aProperty) const {
+  bool HasNonImportantValueFor(nsCSSProperty aProperty) const {
     NS_ABORT_IF_FALSE(!nsCSSProps::IsShorthand(aProperty), "must be longhand");
     return !!mData->ValueFor(aProperty);
   }
@@ -221,7 +221,7 @@ public:
    * Mark this declaration as unmodifiable.  It's 'const' so it can
    * be called from ToString.
    */
-  void SetImmutable() const { mImmutable = PR_TRUE; }
+  void SetImmutable() const { mImmutable = true; }
 
   /**
    * Clear the data, in preparation for its replacement with entirely
@@ -241,11 +241,11 @@ public:
 private:
   // Not implemented, and not supported.
   Declaration& operator=(const Declaration& aCopy);
-  PRBool operator==(const Declaration& aCopy) const;
+  bool operator==(const Declaration& aCopy) const;
 
-  static void AppendImportanceToString(PRBool aIsImportant, nsAString& aString);
+  static void AppendImportanceToString(bool aIsImportant, nsAString& aString);
   // return whether there was a value in |aValue| (i.e., it had a non-null unit)
-  PRBool AppendValueToString(nsCSSProperty aProperty, nsAString& aResult) const;
+  bool AppendValueToString(nsCSSProperty aProperty, nsAString& aResult) const;
   // Helper for ToString with strange semantics regarding aValue.
   void AppendPropertyAndValueToString(nsCSSProperty aProperty,
                                       nsAutoString& aValue,
@@ -268,7 +268,7 @@ private:
 
   // set by style rules when |RuleMatched| is called;
   // also by ToString (hence the 'mutable').
-  mutable PRPackedBool mImmutable;
+  mutable bool mImmutable;
 };
 
 } // namespace css

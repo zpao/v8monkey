@@ -12,7 +12,7 @@
  *
  * You should have received a copy of the LGPL along with this library
  * in the file COPYING-LGPL-2.1; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA
  * You should have received a copy of the MPL along with this library
  * in the file COPYING-MPL-1.1
  *
@@ -48,6 +48,9 @@
 #endif
 
 #define WIN32_FONT_LOGICAL_SCALE 1
+
+
+CAIRO_BEGIN_DECLS
 
 typedef struct _cairo_win32_surface {
     cairo_surface_t base;
@@ -159,6 +162,17 @@ _cairo_win32_surface_set_clip_region (void           *abstract_surface,
 				      cairo_region_t *region);
 
 cairo_int_status_t
+_cairo_win32_surface_show_glyphs_internal (void			 *surface,
+					   cairo_operator_t	  op,
+					   const cairo_pattern_t *source,
+					   cairo_glyph_t	 *glyphs,
+					   int			  num_glyphs,
+					   cairo_scaled_font_t	 *scaled_font,
+					   cairo_clip_t		 *clip,
+					   int			 *remaining_glyphs,
+					   cairo_bool_t		  glyph_indices);
+
+cairo_int_status_t
 _cairo_win32_surface_show_glyphs (void			*surface,
 				  cairo_operator_t	 op,
 				  const cairo_pattern_t	*source,
@@ -213,29 +227,7 @@ _cairo_win32_scaled_font_is_type1 (cairo_scaled_font_t *scaled_font);
 cairo_bool_t
 _cairo_win32_scaled_font_is_bitmap (cairo_scaled_font_t *scaled_font);
 
-BYTE
-_cairo_win32_get_system_text_quality (void);
-
-#ifdef WINCE
-
-// These are the required stubs for windows mobile
-#define ETO_GLYPH_INDEX 0
-#define ETO_PDY 0
-#define HALFTONE COLORONCOLOR
-#define GM_ADVANCED 2
-#define MWT_IDENTITY 1
-
-inline int SetGraphicsMode(HDC hdc, int iMode) {return 1;}
-inline int GetGraphicsMode(HDC hdc)            {return 1;} /*GM_COMPATIBLE*/
-inline void GdiFlush()                         {}
-inline BOOL SetWorldTransform(HDC hdc, CONST XFORM *lpXform) { return FALSE; }
-inline BOOL GetWorldTransform(HDC hdc, LPXFORM lpXform )     { return FALSE; }
-inline BOOL ModifyWorldTransform(HDC hdc, CONST XFORM * lpxf, DWORD mode) { return 1; }
-
-#endif
-
 #ifdef CAIRO_HAS_DWRITE_FONT
-CAIRO_BEGIN_DECLS
 
 cairo_int_status_t
 _cairo_dwrite_show_glyphs_on_surface(void			*surface,
@@ -250,6 +242,6 @@ cairo_int_status_t
 _cairo_dwrite_scaled_font_create_win32_scaled_font(cairo_scaled_font_t *scaled_font,
                                                    cairo_scaled_font_t **new_font);
 
-CAIRO_END_DECLS
 #endif /* CAIRO_HAS_DWRITE_FONT */
+CAIRO_END_DECLS
 #endif /* CAIRO_WIN32_PRIVATE_H */

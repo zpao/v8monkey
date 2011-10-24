@@ -108,11 +108,6 @@ public:
   nsRootAccessible* RootAccessible() const;
 
   /**
-   * Reference to a node of focused accessible.
-   */
-  static nsINode *gLastFocusedNode;
-
-  /**
    * Return focused node within accessible window.
    *
    * XXX: it shouldn't break us if we return focused node not depending on
@@ -121,19 +116,19 @@ public:
   already_AddRefed<nsINode> GetCurrentFocus();
 
   /**
-   * Returns true when the accessible is defunct.
-   */
-  virtual PRBool IsDefunct() { return !mContent; }
-
-  /**
    * Initialize the access node object, add it to the cache.
    */
-  virtual PRBool Init();
+  virtual bool Init();
 
   /**
    * Shutdown the access node object.
    */
   virtual void Shutdown();
+
+  /**
+   * Returns true when the accessible is defunct.
+   */
+  virtual bool IsDefunct() const;
 
   /**
    * Return frame for the given access node object.
@@ -157,12 +152,12 @@ public:
   virtual nsINode* GetNode() const { return mContent; }
   nsIContent* GetContent() const { return mContent; }
   virtual nsIDocument* GetDocumentNode() const
-    { return mContent ? mContent->GetOwnerDoc() : nsnull; }
+    { return mContent ? mContent->OwnerDoc() : nsnull; }
 
   /**
    * Return node type information of DOM node associated with the accessible.
    */
-  PRBool IsContent() const
+  bool IsContent() const
   {
     return GetNode() && GetNode()->IsNodeOfType(nsINode::eCONTENT);
   }
@@ -171,7 +166,7 @@ public:
     nsINode* node = GetNode();
     return node && node->IsElement();
   }
-  PRBool IsDocument() const
+  bool IsDocumentNode() const
   {
     return GetNode() && GetNode()->IsNodeOfType(nsINode::eDOCUMENT);
   }
@@ -211,13 +206,12 @@ protected:
     /**
      * Notify global nsIObserver's that a11y is getting init'd or shutdown
      */
-    static void NotifyA11yInitOrShutdown(PRBool aIsInit);
+    static void NotifyA11yInitOrShutdown(bool aIsInit);
 
     // Static data, we do our own refcounting for our static data
     static nsIStringBundle *gStringBundle;
-    static nsIStringBundle *gKeyStringBundle;
 
-    static PRBool gIsFormFillEnabled;
+    static bool gIsFormFillEnabled;
 
 private:
   static nsApplicationAccessible *gApplicationAccessible;

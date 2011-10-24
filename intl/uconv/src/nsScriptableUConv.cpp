@@ -54,7 +54,7 @@ static PRInt32          gInstanceCount = 0;
 NS_IMPL_ISUPPORTS1(nsScriptableUnicodeConverter, nsIScriptableUnicodeConverter)
 
 nsScriptableUnicodeConverter::nsScriptableUnicodeConverter()
-: mIsInternal(PR_FALSE)
+: mIsInternal(false)
 {
   PR_ATOMIC_INCREMENT(&gInstanceCount);
 }
@@ -271,14 +271,14 @@ nsScriptableUnicodeConverter::SetCharset(const char * aCharset)
 }
 
 NS_IMETHODIMP
-nsScriptableUnicodeConverter::GetIsInternal(PRBool *aIsInternal)
+nsScriptableUnicodeConverter::GetIsInternal(bool *aIsInternal)
 {
   *aIsInternal = mIsInternal;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsScriptableUnicodeConverter::SetIsInternal(const PRBool aIsInternal)
+nsScriptableUnicodeConverter::SetIsInternal(const bool aIsInternal)
 {
   mIsInternal = aIsInternal;
   return NS_OK;

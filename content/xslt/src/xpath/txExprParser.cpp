@@ -46,7 +46,7 @@
 #include "txExprLexer.h"
 #include "txExpr.h"
 #include "txStack.h"
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txError.h"
 #include "txIXPathContext.h"
 #include "txStringUtils.h"
@@ -68,7 +68,7 @@ txExprParser::createAVT(const nsSubstring& aAttrValue,
     FunctionCall* concat = nsnull;
 
     nsAutoString literalString;
-    PRBool inExpr = PR_FALSE;
+    bool inExpr = false;
     nsSubstring::const_char_iterator iter, start, end, avtStart;
     aAttrValue.BeginReading(iter);
     aAttrValue.EndReading(end);
@@ -98,7 +98,7 @@ txExprParser::createAVT(const nsSubstring& aAttrValue,
                             return NS_ERROR_XPATH_UNBALANCED_CURLY_BRACE;
                         }
 
-                        inExpr = PR_TRUE;
+                        inExpr = true;
                         break;
                     }
                     // We found a second brace, let that be part of the next
@@ -125,7 +125,7 @@ txExprParser::createAVT(const nsSubstring& aAttrValue,
                                             getter_Transfers(newExpr));
                     NS_ENSURE_SUCCESS(rv, rv);
 
-                    inExpr = PR_FALSE;
+                    inExpr = false;
                     ++iter; // skip closing '}'
                     break;
                 }
@@ -347,7 +347,7 @@ txExprParser::createExpr(txExprLexer& lexer, txIParseContext* aContext,
                                       static_cast<Token*>(ops.pop()),
                                       getter_Transfers(expr));
                 if (NS_FAILED(rv)) {
-                    done = PR_TRUE;
+                    done = true;
                     break;
                 }
             }
@@ -356,7 +356,7 @@ txExprParser::createExpr(txExprLexer& lexer, txIParseContext* aContext,
         }
         else {
             lexer.pushBack();
-            done = PR_TRUE;
+            done = true;
         }
     }
 
@@ -518,43 +518,43 @@ txExprParser::createLocationStep(txExprLexer& lexer, txIParseContext* aContext,
             //-- eat token
             lexer.nextToken();
             nsCOMPtr<nsIAtom> axis = do_GetAtom(tok->Value());
-            if (axis == txXPathAtoms::ancestor) {
+            if (axis == nsGkAtoms::ancestor) {
                 axisIdentifier = LocationStep::ANCESTOR_AXIS;
             }
-            else if (axis == txXPathAtoms::ancestorOrSelf) {
+            else if (axis == nsGkAtoms::ancestorOrSelf) {
                 axisIdentifier = LocationStep::ANCESTOR_OR_SELF_AXIS;
             }
-            else if (axis == txXPathAtoms::attribute) {
+            else if (axis == nsGkAtoms::attribute) {
                 axisIdentifier = LocationStep::ATTRIBUTE_AXIS;
             }
-            else if (axis == txXPathAtoms::child) {
+            else if (axis == nsGkAtoms::child) {
                 axisIdentifier = LocationStep::CHILD_AXIS;
             }
-            else if (axis == txXPathAtoms::descendant) {
+            else if (axis == nsGkAtoms::descendant) {
                 axisIdentifier = LocationStep::DESCENDANT_AXIS;
             }
-            else if (axis == txXPathAtoms::descendantOrSelf) {
+            else if (axis == nsGkAtoms::descendantOrSelf) {
                 axisIdentifier = LocationStep::DESCENDANT_OR_SELF_AXIS;
             }
-            else if (axis == txXPathAtoms::following) {
+            else if (axis == nsGkAtoms::following) {
                 axisIdentifier = LocationStep::FOLLOWING_AXIS;
             }
-            else if (axis == txXPathAtoms::followingSibling) {
+            else if (axis == nsGkAtoms::followingSibling) {
                 axisIdentifier = LocationStep::FOLLOWING_SIBLING_AXIS;
             }
-            else if (axis == txXPathAtoms::_namespace) {
+            else if (axis == nsGkAtoms::_namespace) {
                 axisIdentifier = LocationStep::NAMESPACE_AXIS;
             }
-            else if (axis == txXPathAtoms::parent) {
+            else if (axis == nsGkAtoms::parent) {
                 axisIdentifier = LocationStep::PARENT_AXIS;
             }
-            else if (axis == txXPathAtoms::preceding) {
+            else if (axis == nsGkAtoms::preceding) {
                 axisIdentifier = LocationStep::PRECEDING_AXIS;
             }
-            else if (axis == txXPathAtoms::precedingSibling) {
+            else if (axis == nsGkAtoms::precedingSibling) {
                 axisIdentifier = LocationStep::PRECEDING_SIBLING_AXIS;
             }
-            else if (axis == txXPathAtoms::self) {
+            else if (axis == nsGkAtoms::self) {
                 axisIdentifier = LocationStep::SELF_AXIS;
             }
             else {
@@ -596,7 +596,7 @@ txExprParser::createLocationStep(txExprLexer& lexer, txIParseContext* aContext,
             PRInt32 nspace;
             rv = resolveQName(tok->Value(), getter_AddRefs(prefix),
                               aContext, getter_AddRefs(lName),
-                              nspace, PR_TRUE);
+                              nspace, true);
             NS_ENSURE_SUCCESS(rv, rv);
 
             nodeTest =
@@ -716,7 +716,7 @@ txExprParser::createPathExpr(txExprLexer& lexer, txIParseContext* aContext,
         NS_ENSURE_TRUE(expr, NS_ERROR_OUT_OF_MEMORY);
 
 #ifdef TX_TO_STRING
-        static_cast<RootExpr*>(expr.get())->setSerialize(PR_FALSE);
+        static_cast<RootExpr*>(expr.get())->setSerialize(false);
 #endif
     }
     
@@ -799,7 +799,7 @@ txExprParser::createUnionExpr(txExprLexer& lexer, txIParseContext* aContext,
     return NS_OK;
 }
 
-PRBool
+bool
 txExprParser::isLocationStepToken(Token* aToken)
 {
     // We could put these in consecutive order in ExprLexer.h for speed
@@ -929,7 +929,7 @@ nsresult
 txExprParser::resolveQName(const nsAString& aQName,
                            nsIAtom** aPrefix, txIParseContext* aContext,
                            nsIAtom** aLocalName, PRInt32& aNamespace,
-                           PRBool aIsNameTest)
+                           bool aIsNameTest)
 {
     aNamespace = kNameSpaceID_None;
     PRInt32 idx = aQName.FindChar(':');

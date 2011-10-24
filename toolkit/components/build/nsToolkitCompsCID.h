@@ -81,6 +81,9 @@
 #define NS_PARENTALCONTROLSSERVICE_CONTRACTID \
     "@mozilla.org/parental-controls-service;1"
 
+#define NS_URLCLASSIFIERPREFIXSET_CONTRACTID \
+  "@mozilla.org/url-classifier/prefixset;1"
+
 #define NS_URLCLASSIFIERDBSERVICE_CONTRACTID \
     "@mozilla.org/url-classifier/dbservice;1"
 
@@ -107,9 +110,6 @@
 #define NS_LIVEMARKSERVICE_CONTRACTID \
   "@mozilla.org/browser/livemark-service;2"
 
-#define NS_MORKHISTORYIMPORTER_CONTRACTID \
-  "@mozilla.org/browser/history-importer;1"
-
 #define NS_FAVICONSERVICE_CONTRACTID \
   "@mozilla.org/browser/favicon-service;1"
 
@@ -118,9 +118,6 @@
 
 #define NS_APPSTARTUP_CONTRACTID \
   "@mozilla.org/toolkit/app-startup;1"
-
-#define NS_WEBAPPSSUPPORT_CONTRACTID \
-  "@mozilla.org/webapps/installer;1"
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -162,7 +159,11 @@
 // {e7f70966-9a37-48d7-8aeb-35998f31090e}
 #define NS_TYPEAHEADFIND_CID \
 { 0xe7f70966, 0x9a37, 0x48d7, { 0x8a, 0xeb, 0x35, 0x99, 0x8f, 0x31, 0x09, 0x0e} }
-  
+
+// {42ef1d52-3351-4973-98f8-d18f089bccfa}
+#define NS_URLCLASSIFIERPREFIXSET_CID \
+{ 0x42ef1d52, 0x3351, 0x4973, { 0x98, 0xf8, 0xd1, 0x8f, 0x08, 0x9b, 0xcc, 0xfa} }
+
 // {5eb7c3c1-ec1f-4007-87cc-eefb37d68ce6}
 #define NS_URLCLASSIFIERDBSERVICE_CID \
 { 0x5eb7c3c1, 0xec1f, 0x4007, { 0x87, 0xcc, 0xee, 0xfb, 0x37, 0xd6, 0x8c, 0xe6} }
@@ -191,16 +192,9 @@
 #define NS_NAVBOOKMARKSSERVICE_CID \
 { 0x9de95a0c, 0x39a4, 0x4d64, {0x9a, 0x53, 0x17, 0x94, 0x0d, 0xd7, 0xca, 0xbb}}
 
-#define NS_MORKHISTORYIMPORTER_CID \
-{ 0x428e6d12, 0x9c6d, 0x436f, {0xb7, 0xa3, 0x6c, 0xa5, 0xf4, 0x80, 0x92, 0x12}}
-
 #define NS_FAVICONSERVICE_CID \
 { 0x984e3259, 0x9266, 0x49cf, { 0xb6, 0x05, 0x60, 0xb0, 0x22, 0xa0, 0x07, 0x56 } }
 
 // {6fb0c970-e1b1-11db-8314-0800200c9a66}
 #define NS_PLACESIMPORTEXPORTSERVICE_CID \
 { 0x6fb0c970, 0xe1b1, 0x11db, { 0x83, 0x14, 0x08, 0x00, 0x20, 0x0c, 0x9a, 0x66 } }
-
-#define NS_WEBAPPSSUPPORT_CID \
-{ 0xd0b62752, 0x88be, 0x4c88, {0x94, 0xe5, 0xc6, 0x9e, 0x15, 0xa1, 0x0c, 0x4e} }
-

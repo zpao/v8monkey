@@ -45,9 +45,12 @@
 #include "mozilla/plugins/PPluginSurfaceChild.h"
 #if defined(OS_WIN)
 #include "mozilla/gfx/SharedDIBWin.h"
-#elif defined(OS_MACOSX)
+#elif defined(MOZ_WIDGET_COCOA)
+#include "PluginUtilsOSX.h"
 #include "nsCoreAnimationSupport.h"
 #include "base/timer.h"
+
+using namespace mozilla::plugins::PluginUtilsOSX;
 #endif
 
 #include "npfunctions.h"
@@ -88,6 +91,8 @@ protected:
     virtual bool AnswerNPP_SetWindow(const NPRemoteWindow& window);
 
     virtual bool
+    AnswerNPP_GetValue_NPPVpluginWantsAllNetworkStreams(bool* wantsAllStreams, NPError* rv);
+    virtual bool
     AnswerNPP_GetValue_NPPVpluginNeedsXEmbed(bool* needs, NPError* rv);
     virtual bool
     AnswerNPP_GetValue_NPPVpluginScriptableNPObject(PPluginScriptableObjectChild** value,
@@ -114,6 +119,11 @@ protected:
     DoAsyncSetWindow(const gfxSurfaceType& aSurfaceType,
                      const NPRemoteWindow& aWindow,
                      bool aIsAsync);
+
+    virtual bool
+    AnswerHandleKeyEvent(const nsKeyEvent& aEvent, bool* handled);
+    virtual bool
+    AnswerHandleTextEvent(const nsTextEvent& aEvent, bool* handled);
 
     virtual PPluginSurfaceChild* AllocPPluginSurface(const WindowsSharedMemoryHandle&,
                                                      const gfxIntSize&, const bool&) {
@@ -226,6 +236,10 @@ public:
 
     void InvalidateRect(NPRect* aInvalidRect);
 
+#ifdef MOZ_WIDGET_COCOA
+    void Invalidate();
+#endif // definied(MOZ_WIDGET_COCOA)
+
     uint32_t ScheduleTimer(uint32_t interval, bool repeat, TimerFunc func);
     void UnscheduleTimer(uint32_t id);
 
@@ -271,7 +285,7 @@ private:
     void SetupFlashMsgThrottle();
     void UnhookWinlessFlashThrottle();
     void HookSetWindowLongPtr();
-    static inline PRBool SetWindowLongHookCheck(HWND hWnd,
+    static inline bool SetWindowLongHookCheck(HWND hWnd,
                                                 int nIndex,
                                                 LONG_PTR newLong);
     void FlashThrottleMessage(HWND, UINT, WPARAM, LPARAM, bool);
@@ -405,7 +419,7 @@ private:
       HBITMAP         bmp;
     } mAlphaExtract;
 #endif // defined(OS_WIN)
-#if defined(OS_MACOSX)
+#if defined(MOZ_WIDGET_COCOA)
 private:
 #if defined(__i386__)
     NPEventModel          mEventModel;
@@ -414,11 +428,17 @@ private:
     CGContextRef          mShContext;
     int16_t               mDrawingModel;
     nsCARenderer          mCARenderer;
+    void                 *mCGLayer;
+
+    // Core Animation drawing model requires a refresh timer.
+    uint32_t mCARefreshTimer;
 
 public:
     const NPCocoaEvent* getCurrentEvent() {
         return mCurrentEvent;
     }
+  
+    bool CGDraw(CGContextRef ref, nsIntRect aUpdateRect);
 
 #if defined(__i386__)
     NPEventModel EventModel() { return mEventModel; }
@@ -431,10 +451,15 @@ private:
     bool CanPaintOnBackground();
 
     bool IsVisible() {
+#ifdef XP_MACOSX
+        return mWindow.clipRect.top != mWindow.clipRect.bottom &&
+               mWindow.clipRect.left != mWindow.clipRect.right;
+#else
         return mWindow.clipRect.top != 0 ||
             mWindow.clipRect.left != 0 ||
             mWindow.clipRect.bottom != 0 ||
             mWindow.clipRect.right != 0;
+#endif
     }
 
     // ShowPluginFrame - in general does four things:
@@ -511,6 +536,12 @@ private:
     // surface which is on ParentProcess side
     nsRefPtr<gfxASurface> mBackSurface;
 
+#ifdef XP_MACOSX
+    // Current IOSurface available for rendering
+    // We can't use thebes gfxASurface like other platforms.
+    nsDoubleBufferCARenderer mDoubleBufferCARenderer; 
+#endif
+
     // (Not to be confused with mBackSurface).  This is a recent copy
     // of the opaque pixels under our object frame, if
     // |mIsTransparent|.  We ask the plugin render directly onto a
@@ -570,7 +601,7 @@ private:
 #if (MOZ_PLATFORM_MAEMO == 5) || (MOZ_PLATFORM_MAEMO == 6)
     // Maemo5 Flash does not remember WindowlessLocal state
     // we should listen for NPP values negotiation and remember it
-    PRPackedBool          mMaemoImageRendering;
+    bool                  mMaemoImageRendering;
 #endif
 };
 

@@ -51,6 +51,7 @@
 #include "nsContentUtils.h"
 #include "nsFormControlFrame.h"
 #include "nsFontMetrics.h"
+#include "mozilla/dom/Element.h"
 
 
 nsIFrame*
@@ -77,7 +78,7 @@ nsProgressFrame::DestroyFrom(nsIFrame* aDestructRoot)
   NS_ASSERTION(!GetPrevContinuation(),
                "nsProgressFrame should not have continuations; if it does we "
                "need to call RegUnregAccessKey only for the first.");
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), PR_FALSE);
+  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
   nsContentUtils::DestroyAnonymousContent(&mBarDiv);
   nsHTMLContainerFrame::DestroyFrom(aDestructRoot);
 }
@@ -90,7 +91,8 @@ nsProgressFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 
   nsCOMPtr<nsINodeInfo> nodeInfo;
   nodeInfo = doc->NodeInfoManager()->GetNodeInfo(nsGkAtoms::div, nsnull,
-                                                 kNameSpaceID_XHTML);
+                                                 kNameSpaceID_XHTML,
+                                                 nsIDOMNode::ELEMENT_NODE);
   NS_ENSURE_TRUE(nodeInfo, NS_ERROR_OUT_OF_MEMORY);
 
   // Create the div.
@@ -138,7 +140,7 @@ NS_IMETHODIMP nsProgressFrame::Reflow(nsPresContext*           aPresContext,
                "need to call RegUnregAccessKey only for the first.");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, PR_TRUE);
+    nsFormControlFrame::RegUnRegAccessKey(this, true);
   }
 
   nsIFrame* barFrame = mBarDiv->GetPrimaryFrame();
@@ -171,10 +173,12 @@ nsProgressFrame::ReflowBarFrame(nsIFrame*                aBarFrame,
                                 const nsHTMLReflowState& aReflowState,
                                 nsReflowStatus&          aStatus)
 {
+  bool vertical = GetStyleDisplay()->mOrient == NS_STYLE_ORIENT_VERTICAL;
   nsHTMLReflowState reflowState(aPresContext, aReflowState, aBarFrame,
                                 nsSize(aReflowState.ComputedWidth(),
                                        NS_UNCONSTRAINEDSIZE));
-  nscoord width = aReflowState.ComputedWidth();
+  nscoord size = vertical ? aReflowState.ComputedHeight()
+                          : aReflowState.ComputedWidth();
   nscoord xoffset = aReflowState.mComputedBorderPadding.left;
   nscoord yoffset = aReflowState.mComputedBorderPadding.top;
 
@@ -183,28 +187,43 @@ nsProgressFrame::ReflowBarFrame(nsIFrame*                aBarFrame,
     do_QueryInterface(mContent);
   progressElement->GetPosition(&position);
 
-  // Force the bar's width to match the current progress.
-  // When indeterminate, the progress' width will be 100%.
+  // Force the bar's size to match the current progress.
+  // When indeterminate, the progress' size will be 100%.
   if (position >= 0.0) {
-    width *= position;
+    size *= position;
   }
 
-  if (GetStyleVisibility()->mDirection == NS_STYLE_DIRECTION_RTL) {
-    xoffset += aReflowState.ComputedWidth() - width;
+  if (!vertical && GetStyleVisibility()->mDirection == NS_STYLE_DIRECTION_RTL) {
+    xoffset += aReflowState.ComputedWidth() - size;
   }
 
-  // The bar width is fixed in these cases:
-  // - the progress position is determined: the bar width is fixed according
+  // The bar size is fixed in these cases:
+  // - the progress position is determined: the bar size is fixed according
   //   to it's value.
   // - the progress position is indeterminate and the bar appearance should be
-  //   shown as native: the bar width is forced to 100%.
+  //   shown as native: the bar size is forced to 100%.
   // Otherwise (when the progress is indeterminate and the bar appearance isn't
-  // native), the bar width isn't fixed and can be set by the author.
+  // native), the bar size isn't fixed and can be set by the author.
   if (position != -1 || ShouldUseNativeStyle()) {
-    width -= reflowState.mComputedMargin.LeftRight() +
-             reflowState.mComputedBorderPadding.LeftRight();
-    width = NS_MAX(width, 0);
-    reflowState.SetComputedWidth(width);
+    if (vertical) {
+      // We want the bar to begin at the bottom.
+      yoffset += aReflowState.ComputedHeight() - size;
+
+      size -= reflowState.mComputedMargin.TopBottom() +
+              reflowState.mComputedBorderPadding.TopBottom();
+      size = NS_MAX(size, 0);
+      reflowState.SetComputedHeight(size);
+    } else {
+      size -= reflowState.mComputedMargin.LeftRight() +
+              reflowState.mComputedBorderPadding.LeftRight();
+      size = NS_MAX(size, 0);
+      reflowState.SetComputedWidth(size);
+    }
+  } else if (vertical) {
+    // For vertical progress bars, we need to position the bar specificly when
+    // the width isn't constrained (position == -1 and !ShouldUseNativeStyle())
+    // because aReflowState.ComputedHeight() - size == 0.
+    yoffset += aReflowState.ComputedHeight() - reflowState.ComputedHeight();
   }
 
   xoffset += reflowState.mComputedMargin.left;
@@ -230,6 +249,7 @@ nsProgressFrame::AttributeChanged(PRInt32  aNameSpaceID,
     NS_ASSERTION(barFrame, "The progress frame should have a child with a frame!");
     PresContext()->PresShell()->FrameNeedsReflow(barFrame, nsIPresShell::eResize,
                                                  NS_FRAME_IS_DIRTY);
+    Invalidate(GetVisualOverflowRectRelativeToSelf());
   }
 
   return nsHTMLContainerFrame::AttributeChanged(aNameSpaceID, aAttribute,
@@ -240,7 +260,7 @@ nsSize
 nsProgressFrame::ComputeAutoSize(nsRenderingContext *aRenderingContext,
                                  nsSize aCBSize, nscoord aAvailableWidth,
                                  nsSize aMargin, nsSize aBorder,
-                                 nsSize aPadding, PRBool aShrinkWrap)
+                                 nsSize aPadding, bool aShrinkWrap)
 {
   nsRefPtr<nsFontMetrics> fontMet;
   NS_ENSURE_SUCCESS(nsLayoutUtils::GetFontMetricsForFrame(this,
@@ -249,9 +269,36 @@ nsProgressFrame::ComputeAutoSize(nsRenderingContext *aRenderingContext,
 
   nsSize autoSize;
   autoSize.height = autoSize.width = fontMet->Font().size; // 1em
-  autoSize.width *= 10; // 10em
+
+  if (GetStyleDisplay()->mOrient == NS_STYLE_ORIENT_VERTICAL) {
+    autoSize.height *= 10; // 10em
+  } else {
+    autoSize.width *= 10; // 10em
+  }
 
   return autoSize;
+}
+
+nscoord
+nsProgressFrame::GetMinWidth(nsRenderingContext *aRenderingContext)
+{
+  nsRefPtr<nsFontMetrics> fontMet;
+  NS_ENSURE_SUCCESS(
+      nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fontMet)), 0);
+
+  nscoord minWidth = fontMet->Font().size; // 1em
+
+  if (GetStyleDisplay()->mOrient == NS_STYLE_ORIENT_HORIZONTAL) {
+    minWidth *= 10; // 10em
+  }
+
+  return minWidth;
+}
+
+nscoord
+nsProgressFrame::GetPrefWidth(nsRenderingContext *aRenderingContext)
+{
+  return GetMinWidth(aRenderingContext);
 }
 
 bool

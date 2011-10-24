@@ -37,14 +37,19 @@
 # ***** END LICENSE BLOCK *****
 */
 
+"use strict";
+
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cr = Components.results;
 
 const PREF_BLOCKLIST_PINGCOUNTVERSION = "extensions.blocklist.pingCountVersion";
-const PREF_EM_UPDATE_ENABLED   = "extensions.update.enabled";
-const PREF_EM_LAST_APP_VERSION = "extensions.lastAppVersion";
-const PREF_EM_AUTOUPDATE_DEFAULT = "extensions.update.autoUpdateDefault";
+const PREF_EM_UPDATE_ENABLED          = "extensions.update.enabled";
+const PREF_EM_LAST_APP_VERSION        = "extensions.lastAppVersion";
+const PREF_EM_LAST_PLATFORM_VERSION   = "extensions.lastPlatformVersion";
+const PREF_EM_AUTOUPDATE_DEFAULT      = "extensions.update.autoUpdateDefault";
+
+const VALID_TYPES_REGEXP = /^[\w\-]+$/;
 
 Components.utils.import("resource://gre/modules/Services.jsm");
 
@@ -188,25 +193,90 @@ AddonAuthor.prototype = {
  *
  * @param  aURL
  *         The URL to the full version of the screenshot
+ * @param  aWidth
+ *         The width in pixels of the screenshot
+ * @param  aHeight
+ *         The height in pixels of the screenshot
  * @param  aThumbnailURL
  *         The URL to the thumbnail version of the screenshot
+ * @param  aThumbnailWidth
+ *         The width in pixels of the thumbnail version of the screenshot
+ * @param  aThumbnailHeight
+ *         The height in pixels of the thumbnail version of the screenshot
  * @param  aCaption
  *         The caption of the screenshot
  */
-function AddonScreenshot(aURL, aThumbnailURL, aCaption) {
+function AddonScreenshot(aURL, aWidth, aHeight, aThumbnailURL,
+                         aThumbnailWidth, aThumbnailHeight, aCaption) {
   this.url = aURL;
-  this.thumbnailURL = aThumbnailURL;
-  this.caption = aCaption;
+  if (aWidth) this.width = aWidth;
+  if (aHeight) this.height = aHeight;
+  if (aThumbnailURL) this.thumbnailURL = aThumbnailURL;
+  if (aThumbnailWidth) this.thumbnailWidth = aThumbnailWidth;
+  if (aThumbnailHeight) this.thumbnailHeight = aThumbnailHeight;
+  if (aCaption) this.caption = aCaption;
 }
 
 AddonScreenshot.prototype = {
   url: null,
+  width: null,
+  height: null,
   thumbnailURL: null,
+  thumbnailWidth: null,
+  thumbnailHeight: null,
   caption: null,
 
   // Returns the screenshot URL, defaulting to the empty string
   toString: function() {
     return this.url || "";
+  }
+}
+
+/**
+ * A type of add-on, used by the UI to determine how to display different types
+ * of add-ons.
+ *
+ * @param  aId
+ *         The add-on type ID
+ * @param  aLocaleURI
+ *         The URI of a localized properties file to get the displayable name
+ *         for the type from
+ * @param  aLocaleKey
+ *         The key for the string in the properties file or the actual display
+ *         name if aLocaleURI is null. Include %ID% to include the type ID in
+ *         the key
+ * @param  aViewType
+ *         The optional type of view to use in the UI
+ * @param  aUIPriority
+ *         The priority is used by the UI to list the types in order. Lower
+ *         values push the type higher in the list.
+ * @param  aFlags
+ *         An option set of flags that customize the display of the add-on in
+ *         the UI.
+ */
+function AddonType(aId, aLocaleURI, aLocaleKey, aViewType, aUIPriority, aFlags) {
+  if (!aId)
+    throw new Error("An AddonType must have an ID");
+  if (aViewType && aUIPriority === undefined)
+    throw new Error("An AddonType with a defined view must have a set UI priority");
+  if (!aLocaleKey)
+    throw new Error("An AddonType must have a displayable name");
+
+  this.id = aId;
+  this.uiPriority = aUIPriority;
+  this.viewType = aViewType;
+  this.flags = aFlags;
+
+  if (aLocaleURI) {
+    this.__defineGetter__("name", function() {
+      delete this.name;
+      let bundle = Services.strings.createBundle(aLocaleURI);
+      this.name = bundle.GetStringFromName(aLocaleKey.replace("%ID%", aId));
+      return this.name;
+    });
+  }
+  else {
+    this.name = aLocaleKey;
   }
 }
 
@@ -219,7 +289,57 @@ var gStarted = false;
 var AddonManagerInternal = {
   installListeners: [],
   addonListeners: [],
+  typeListeners: [],
   providers: [],
+  types: {},
+  startupChanges: {},
+
+  // A read-only wrapper around the types dictionary
+  typesProxy: Proxy.create({
+    getOwnPropertyDescriptor: function(aName) {
+      if (!(aName in AddonManagerInternal.types))
+        return undefined;
+
+      return {
+        value: AddonManagerInternal.types[aName].type,
+        writable: false,
+        configurable: false,
+        enumerable: true
+      }
+    },
+
+    getPropertyDescriptor: function(aName) {
+      return this.getOwnPropertyDescriptor(aName);
+    },
+
+    getOwnPropertyNames: function() {
+      return Object.keys(AddonManagerInternal.types);
+    },
+
+    getPropertyNames: function() {
+      return this.getOwnPropertyNames();
+    },
+
+    delete: function(aName) {
+      // Not allowed to delete properties
+      return false;
+    },
+
+    defineProperty: function(aName, aProperty) {
+      // Ignore attempts to define properties
+    },
+
+    fix: function() {
+      return undefined;
+    },
+
+    // Despite MDC's claims to the contrary, it is required that this trap
+    // be defined
+    enumerate: function() {
+      // All properties are enumerable
+      return this.getPropertyNames();
+    }
+  }),
 
   /**
    * Initializes the AddonManager, loading any known providers and initializing
@@ -231,9 +351,16 @@ var AddonManagerInternal = {
 
     let appChanged = undefined;
 
+    let oldAppVersion = null;
     try {
-      appChanged = Services.appinfo.version !=
-                   Services.prefs.getCharPref(PREF_EM_LAST_APP_VERSION);
+      oldAppVersion = Services.prefs.getCharPref(PREF_EM_LAST_APP_VERSION);
+      appChanged = Services.appinfo.version != oldAppVersion;
+    }
+    catch (e) { }
+
+    let oldPlatformVersion = null;
+    try {
+      oldPlatformVersion = Services.prefs.getCharPref(PREF_EM_LAST_PLATFORM_VERSION);
     }
     catch (e) { }
 
@@ -241,6 +368,8 @@ var AddonManagerInternal = {
       LOG("Application has been upgraded");
       Services.prefs.setCharPref(PREF_EM_LAST_APP_VERSION,
                                  Services.appinfo.version);
+      Services.prefs.setCharPref(PREF_EM_LAST_PLATFORM_VERSION,
+                                 Services.appinfo.platformVersion);
       Services.prefs.setIntPref(PREF_BLOCKLIST_PINGCOUNTVERSION,
                                 (appChanged === undefined ? 0 : -1));
     }
@@ -273,8 +402,16 @@ var AddonManagerInternal = {
     }
 
     this.providers.forEach(function(provider) {
-      callProvider(provider, "startup", null, appChanged);
+      callProvider(provider, "startup", null, appChanged, oldAppVersion,
+                   oldPlatformVersion);
     });
+
+    // If this is a new profile just pretend that there were no changes
+    if (appChanged === undefined) {
+      for (let type in this.startupChanges)
+        delete this.startupChanges[type];
+    }
+
     gStarted = true;
   },
 
@@ -283,9 +420,36 @@ var AddonManagerInternal = {
    *
    * @param  aProvider
    *         The provider to register
+   * @param  aTypes
+   *         An array of add-on types
    */
-  registerProvider: function AMI_registerProvider(aProvider) {
+  registerProvider: function AMI_registerProvider(aProvider, aTypes) {
     this.providers.push(aProvider);
+
+    if (aTypes) {
+      aTypes.forEach(function(aType) {
+        if (!(aType.id in this.types)) {
+          if (!VALID_TYPES_REGEXP.test(aType.id)) {
+            WARN("Ignoring invalid type " + aType.id);
+            return;
+          }
+
+          this.types[aType.id] = {
+            type: aType,
+            providers: [aProvider]
+          };
+
+          this.typeListeners.forEach(function(aListener) {
+            safeCall(function() {
+              aListener.onTypeAdded(aType);
+            });
+          });
+        }
+        else {
+          this.types[aType.id].providers.push(aProvider);
+        }
+      }, this);
+    }
 
     // If we're registering after startup call this provider's startup.
     if (gStarted)
@@ -307,6 +471,20 @@ var AddonManagerInternal = {
         pos++;
     }
 
+    for (let type in this.types) {
+      this.types[type].providers = this.types[type].providers.filter(function(p) p != aProvider);
+      if (this.types[type].providers.length == 0) {
+        let oldType = this.types[type].type;
+        delete this.types[type];
+
+        this.typeListeners.forEach(function(aListener) {
+          safeCall(function() {
+            aListener.onTypeRemoved(oldType);
+          });
+        });
+      }
+    }
+
     // If we're unregistering after startup call this provider's shutdown.
     if (gStarted)
       callProvider(aProvider, "shutdown");
@@ -316,13 +494,16 @@ var AddonManagerInternal = {
    * Shuts down the addon manager and all registered providers, this must clean
    * up everything in order for automated tests to fake restarts.
    */
-  shutdown: function AM_shutdown() {
+  shutdown: function AMI_shutdown() {
     this.providers.forEach(function(provider) {
       callProvider(provider, "shutdown");
     });
 
-    this.installListeners.splice(0);
-    this.addonListeners.splice(0);
+    this.installListeners.splice(0, this.installListeners.length);
+    this.addonListeners.splice(0, this.addonListeners.length);
+    this.typeListeners.splice(0, this.typeListeners.length);
+    for (let type in this.startupChanges)
+      delete this.startupChanges[type];
     gStarted = false;
   },
 
@@ -353,17 +534,6 @@ var AddonManagerInternal = {
       scope.AddonRepository.repopulateCache(ids, notifyComplete);
 
       pendingUpdates += aAddons.length;
-      var autoUpdateDefault = AddonManager.autoUpdateDefault;
-
-      function shouldAutoUpdate(aAddon) {
-        if (!("applyBackgroundUpdates" in aAddon))
-          return false;
-        if (aAddon.applyBackgroundUpdates == AddonManager.AUTOUPDATE_ENABLE)
-          return true;
-        if (aAddon.applyBackgroundUpdates == AddonManager.AUTOUPDATE_DISABLE)
-          return false;
-        return autoUpdateDefault;
-      }
 
       aAddons.forEach(function BUC_forEachCallback(aAddon) {
         // Check all add-ons for updates so that any compatibility updates will
@@ -373,7 +543,7 @@ var AddonManagerInternal = {
             // Start installing updates when the add-on can be updated and
             // background updates should be applied.
             if (aAddon.permissions & AddonManager.PERM_CAN_UPGRADE &&
-                shouldAutoUpdate(aAddon)) {
+                AddonManager.shouldAutoUpdate(aAddon)) {
               aInstall.install();
             }
           },
@@ -384,6 +554,49 @@ var AddonManagerInternal = {
 
       notifyComplete();
     });
+  },
+
+  /**
+   * Adds a add-on to the list of detected changes for this startup. If
+   * addStartupChange is called multiple times for the same add-on in the same
+   * startup then only the most recent change will be remembered.
+   *
+   * @param  aType
+   *         The type of change as a string. Providers can define their own
+   *         types of changes or use the existing defined STARTUP_CHANGE_*
+   *         constants
+   * @param  aID
+   *         The ID of the add-on
+   */
+  addStartupChange: function AMI_addStartupChange(aType, aID) {
+    if (gStarted)
+      return;
+
+    // Ensure that an ID is only listed in one type of change
+    for (let type in this.startupChanges)
+      this.removeStartupChange(type, aID);
+
+    if (!(aType in this.startupChanges))
+      this.startupChanges[aType] = [];
+    this.startupChanges[aType].push(aID);
+  },
+
+  /**
+   * Removes a startup change for an add-on.
+   *
+   * @param  aType
+   *         The type of change
+   * @param  aID
+   *         The ID of the add-on
+   */
+  removeStartupChange: function AMI_removeStartupChange(aType, aID) {
+    if (gStarted)
+      return;
+
+    if (!(aType in this.startupChanges))
+      return;
+
+    this.startupChanges[aType] = this.startupChanges[aType].filter(function(aItem) aItem != aID);
   },
 
   /**
@@ -622,7 +835,7 @@ var AddonManagerInternal = {
    * @param  aMimetype
    *         The mimetype of add-ons being installed
    * @param  aSource
-   *         The nsIDOMWindowInternal that started the installs
+   *         The nsIDOMWindow that started the installs
    * @param  aURI
    *         the nsIURI that started the installs
    * @param  aInstalls
@@ -858,6 +1071,25 @@ var AddonManagerInternal = {
     }
   },
 
+  addTypeListener: function AMI_addTypeListener(aListener) {
+    if (!this.typeListeners.some(function(i) { return i == aListener; }))
+      this.typeListeners.push(aListener);
+  },
+
+  removeTypeListener: function AMI_removeTypeListener(aListener) {
+    let pos = 0;
+    while (pos < this.typeListeners.length) {
+      if (this.typeListeners[pos] == aListener)
+        this.typeListeners.splice(pos, 1);
+      else
+        pos++;
+    }
+  },
+
+  get addonTypes() {
+    return this.typesProxy;
+  },
+
   get autoUpdateDefault() {
     try {
       return Services.prefs.getBoolPref(PREF_EM_AUTOUPDATE_DEFAULT);
@@ -877,8 +1109,8 @@ var AddonManagerPrivate = {
     AddonManagerInternal.startup();
   },
 
-  registerProvider: function AMP_registerProvider(aProvider) {
-    AddonManagerInternal.registerProvider(aProvider);
+  registerProvider: function AMP_registerProvider(aProvider, aTypes) {
+    AddonManagerInternal.registerProvider(aProvider, aTypes);
   },
 
   unregisterProvider: function AMP_unregisterProvider(aProvider) {
@@ -891,6 +1123,14 @@ var AddonManagerPrivate = {
 
   backgroundUpdateCheck: function AMP_backgroundUpdateCheck() {
     AddonManagerInternal.backgroundUpdateCheck();
+  },
+
+  addStartupChange: function AMP_addStartupChange(aType, aID) {
+    AddonManagerInternal.addStartupChange(aType, aID);
+  },
+
+  removeStartupChange: function AMP_removeStartupChange(aType, aID) {
+    AddonManagerInternal.removeStartupChange(aType, aID);
   },
 
   notifyAddonChanged: function AMP_notifyAddonChanged(aId, aType, aPendingRestart) {
@@ -912,7 +1152,9 @@ var AddonManagerPrivate = {
 
   AddonAuthor: AddonAuthor,
 
-  AddonScreenshot: AddonScreenshot
+  AddonScreenshot: AddonScreenshot,
+
+  AddonType: AddonType
 };
 
 /**
@@ -1025,6 +1267,11 @@ var AddonManager = {
   // The combination of all scopes.
   SCOPE_ALL: 15,
 
+  // 1-15 are different built-in views for the add-on type
+  VIEW_TYPE_LIST: "list",
+
+  TYPE_UI_HIDE_EMPTY: 16,
+
   // Constants for Addon.applyBackgroundUpdates.
   // Indicates that the Addon should not update automatically.
   AUTOUPDATE_DISABLE: 0,
@@ -1033,6 +1280,34 @@ var AddonManager = {
   AUTOUPDATE_DEFAULT: 1,
   // Indicates that the Addon should update automatically.
   AUTOUPDATE_ENABLE: 2,
+
+  // Constants for how Addon options should be shown.
+  // Options will be opened in a new window
+  OPTIONS_TYPE_DIALOG: 1,
+  // Options will be displayed within the AM detail view
+  OPTIONS_TYPE_INLINE: 2,
+  // Options will be displayed in a new tab, if possible
+  OPTIONS_TYPE_TAB: 3,
+
+  // Constants for getStartupChanges, addStartupChange and removeStartupChange
+  // Add-ons that were detected as installed during startup. Doesn't include
+  // add-ons that were pending installation the last time the application ran.
+  STARTUP_CHANGE_INSTALLED: "installed",
+  // Add-ons that were detected as changed during startup. This includes an
+  // add-on moving to a different location, changing version or just having
+  // been detected as possibly changed.
+  STARTUP_CHANGE_CHANGED: "changed",
+  // Add-ons that were detected as uninstalled during startup. Doesn't include
+  // add-ons that were pending uninstallation the last time the application ran.
+  STARTUP_CHANGE_UNINSTALLED: "uninstalled",
+  // Add-ons that were detected as disabled during startup, normally because of
+  // an application change making an add-on incompatible. Doesn't include
+  // add-ons that were pending being disabled the last time the application ran.
+  STARTUP_CHANGE_DISABLED: "disabled",
+  // Add-ons that were detected as enabled during startup, normally because of
+  // an application change making an add-on compatible. Doesn't include
+  // add-ons that were pending being enabled the last time the application ran.
+  STARTUP_CHANGE_ENABLED: "enabled",
 
   getInstallForURL: function AM_getInstallForURL(aUrl, aCallback, aMimetype,
                                                  aHash, aName, aIconURL,
@@ -1043,6 +1318,19 @@ var AddonManager = {
 
   getInstallForFile: function AM_getInstallForFile(aFile, aCallback, aMimetype) {
     AddonManagerInternal.getInstallForFile(aFile, aCallback, aMimetype);
+  },
+
+  /**
+   * Gets an array of add-on IDs that changed during the most recent startup.
+   *
+   * @param  aType
+   *         The type of startup change to get
+   * @return An array of add-on IDs
+   */
+  getStartupChanges: function AM_getStartupChanges(aType) {
+    if (!(aType in AddonManagerInternal.startupChanges))
+      return [];
+    return AddonManagerInternal.startupChanges[aType].slice(0);
   },
 
   getAddonByID: function AM_getAddonByID(aId, aCallback) {
@@ -1103,8 +1391,30 @@ var AddonManager = {
     AddonManagerInternal.removeAddonListener(aListener);
   },
 
+  addTypeListener: function AM_addTypeListener(aListener) {
+    AddonManagerInternal.addTypeListener(aListener);
+  },
+
+  removeTypeListener: function AM_removeTypeListener(aListener) {
+    AddonManagerInternal.removeTypeListener(aListener);
+  },
+
+  get addonTypes() {
+    return AddonManagerInternal.addonTypes;
+  },
+
   get autoUpdateDefault() {
     return AddonManagerInternal.autoUpdateDefault;
+  },
+
+  shouldAutoUpdate: function AM_shouldAutoUpdate(aAddon) {
+    if (!("applyBackgroundUpdates" in aAddon))
+      return false;
+    if (aAddon.applyBackgroundUpdates == AddonManager.AUTOUPDATE_ENABLE)
+      return true;
+    if (aAddon.applyBackgroundUpdates == AddonManager.AUTOUPDATE_DISABLE)
+      return false;
+    return this.autoUpdateDefault;
   }
 };
 

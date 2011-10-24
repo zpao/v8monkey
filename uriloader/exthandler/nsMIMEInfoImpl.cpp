@@ -65,7 +65,7 @@ nsMIMEInfoBase::nsMIMEInfoBase(const char *aMIMEType) :
     mSchemeOrType(aMIMEType),
     mClass(eMIMEInfo),
     mPreferredAction(nsIMIMEInfo::saveToDisk),
-    mAlwaysAskBeforeHandling(PR_TRUE)
+    mAlwaysAskBeforeHandling(true)
 {
 }
 
@@ -73,7 +73,7 @@ nsMIMEInfoBase::nsMIMEInfoBase(const nsACString& aMIMEType) :
     mSchemeOrType(aMIMEType),
     mClass(eMIMEInfo),
     mPreferredAction(nsIMIMEInfo::saveToDisk),
-    mAlwaysAskBeforeHandling(PR_TRUE)
+    mAlwaysAskBeforeHandling(true)
 {
 }
 
@@ -86,7 +86,7 @@ nsMIMEInfoBase::nsMIMEInfoBase(const nsACString& aType, HandlerClass aClass) :
     mSchemeOrType(aType),
     mClass(aClass),
     mPreferredAction(nsIMIMEInfo::saveToDisk),
-    mAlwaysAskBeforeHandling(PR_TRUE)
+    mAlwaysAskBeforeHandling(true)
 {
 }
 
@@ -101,17 +101,17 @@ nsMIMEInfoBase::GetFileExtensions(nsIUTF8StringEnumerator** aResult)
 }
 
 NS_IMETHODIMP
-nsMIMEInfoBase::ExtensionExists(const nsACString& aExtension, PRBool *_retval)
+nsMIMEInfoBase::ExtensionExists(const nsACString& aExtension, bool *_retval)
 {
     NS_ASSERTION(!aExtension.IsEmpty(), "no extension");
-    PRBool found = PR_FALSE;
+    bool found = false;
     PRUint32 extCount = mExtensions.Length();
     if (extCount < 1) return NS_OK;
 
     for (PRUint8 i=0; i < extCount; i++) {
         const nsCString& ext = mExtensions[i];
         if (ext.Equals(aExtension, nsCaseInsensitiveCStringComparator())) {
-            found = PR_TRUE;
+            found = true;
             break;
         }
     }
@@ -136,11 +136,11 @@ nsMIMEInfoBase::SetPrimaryExtension(const nsACString& aExtension)
   NS_ASSERTION(!aExtension.IsEmpty(), "no extension");
   PRUint32 extCount = mExtensions.Length();
   PRUint8 i;
-  PRBool found = PR_FALSE;
+  bool found = false;
   for (i=0; i < extCount; i++) {
     const nsCString& ext = mExtensions[i];
     if (ext.Equals(aExtension, nsCaseInsensitiveCStringComparator())) {
-      found = PR_TRUE;
+      found = true;
       break;
     }
   }
@@ -195,7 +195,7 @@ nsMIMEInfoBase::SetDescription(const nsAString& aDescription)
 }
 
 NS_IMETHODIMP
-nsMIMEInfoBase::Equals(nsIMIMEInfo *aMIMEInfo, PRBool *_retval)
+nsMIMEInfoBase::Equals(nsIMIMEInfo *aMIMEInfo, bool *_retval)
 {
     if (!aMIMEInfo) return NS_ERROR_NULL_POINTER;
 
@@ -276,7 +276,7 @@ nsMIMEInfoBase::SetPreferredAction(nsHandlerInfoAction aPreferredAction)
 }
 
 NS_IMETHODIMP
-nsMIMEInfoBase::GetAlwaysAskBeforeHandling(PRBool * aAlwaysAsk)
+nsMIMEInfoBase::GetAlwaysAskBeforeHandling(bool * aAlwaysAsk)
 {
   *aAlwaysAsk = mAlwaysAskBeforeHandling;
 
@@ -284,7 +284,7 @@ nsMIMEInfoBase::GetAlwaysAskBeforeHandling(PRBool * aAlwaysAsk)
 }
 
 NS_IMETHODIMP
-nsMIMEInfoBase::SetAlwaysAskBeforeHandling(PRBool aAlwaysAsk)
+nsMIMEInfoBase::SetAlwaysAskBeforeHandling(bool aAlwaysAsk)
 {
   mAlwaysAskBeforeHandling = aAlwaysAsk;
   return NS_OK;
@@ -401,7 +401,7 @@ nsMIMEInfoBase::LaunchWithIProcess(nsIFile* aApp, const nsCString& aArg)
 
   const char *string = aArg.get();
 
-  return process->Run(PR_FALSE, &string, 1);
+  return process->Run(false, &string, 1);
 }
 
 /* static */
@@ -415,7 +415,7 @@ nsMIMEInfoBase::LaunchWithIProcess(nsIFile* aApp, const nsString& aArg)
 
   const PRUnichar *string = aArg.get();
 
-  return process->Runw(PR_FALSE, &string, 1);
+  return process->Runw(false, &string, 1);
 }
 
 // nsMIMEInfoImpl implementation
@@ -434,11 +434,11 @@ nsMIMEInfoImpl::GetDefaultDescription(nsAString& aDefaultDescription)
 }
 
 NS_IMETHODIMP
-nsMIMEInfoImpl::GetHasDefaultHandler(PRBool * _retval)
+nsMIMEInfoImpl::GetHasDefaultHandler(bool * _retval)
 {
   *_retval = !mDefaultAppDescription.IsEmpty();
   if (mDefaultApplication) {
-    PRBool exists;
+    bool exists;
     *_retval = NS_SUCCEEDED(mDefaultApplication->Exists(&exists)) && exists;
   }
   return NS_OK;

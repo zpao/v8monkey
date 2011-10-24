@@ -68,7 +68,7 @@ NS_INTERFACE_MAP_END
 /* static */ already_AddRefed<DOMSVGPathSegList>
 DOMSVGPathSegList::GetDOMWrapper(void *aList,
                                  nsSVGElement *aElement,
-                                 PRBool aIsAnimValList)
+                                 bool aIsAnimValList)
 {
   DOMSVGPathSegList *wrapper =
     sSVGPathSegListTearoffTable.GetTearoff(aList);
@@ -156,9 +156,20 @@ DOMSVGPathSegList::InternalListWillChangeTo(const SVGPathData& aNewValue)
   PRUint32 newSegType;
 
   nsRefPtr<DOMSVGPathSegList> kungFuDeathGrip;
-  if (length && aNewValue.IsEmpty()) {
+  if (length) {
     // RemovingFromList() might clear last reference to |this|.
     // Retain a temporary reference to keep from dying before returning.
+    //
+    // NOTE: For path-seg lists (unlike other list types), we have to do this
+    // *whenever our list is nonempty* (even if we're growing in length).
+    // That's because the path-seg-type of any segment could differ between old
+    // list vs. new list, which will make us destroy & recreate that segment,
+    // which could remove the last reference to us.
+    //
+    // (We explicitly *don't* want to create a kungFuDeathGrip in the length=0
+    // case, though, because we do hit this code inside our constructor before
+    // any other owning references have been added, and at that point, the
+    // deathgrip-removal would make us die before we exit our constructor.)
     kungFuDeathGrip = this;
   }
 
@@ -218,7 +229,7 @@ DOMSVGPathSegList::InternalListWillChangeTo(const SVGPathData& aNewValue)
   NS_ABORT_IF_FALSE(index == length, "Serious counting error");
 }
 
-PRBool
+bool
 DOMSVGPathSegList::AttrIsAnimating() const
 {
   return const_cast<DOMSVGPathSegList*>(this)->InternalAList().IsAnimating();
@@ -277,7 +288,7 @@ DOMSVGPathSegList::Clear()
     }
 
     InternalList().Clear();
-    Element()->DidChangePathSegList(PR_TRUE);
+    Element()->DidChangePathSegList(true);
 #ifdef MOZ_SMIL
     if (AttrIsAnimating()) {
       Element()->AnimationNeedsResample();
@@ -381,7 +392,7 @@ DOMSVGPathSegList::InsertItemBefore(nsIDOMSVGPathSeg *aNewItem,
 
   UpdateListIndicesFromIndex(aIndex + 1, argCount + 1);
 
-  Element()->DidChangePathSegList(PR_TRUE);
+  Element()->DidChangePathSegList(true);
 #ifdef MOZ_SMIL
   if (AttrIsAnimating()) {
     Element()->AnimationNeedsResample();
@@ -428,7 +439,7 @@ DOMSVGPathSegList::ReplaceItem(nsIDOMSVGPathSeg *aNewItem,
   float segAsRaw[1 + NS_SVG_PATH_SEG_MAX_ARGS];
   domItem->ToSVGPathSegEncodedData(segAsRaw);
 
-  PRBool ok = !!InternalList().mData.ReplaceElementsAt(
+  bool ok = !!InternalList().mData.ReplaceElementsAt(
                   internalIndex, 1 + oldArgCount,
                   segAsRaw, 1 + newArgCount);
   if (!ok) {
@@ -447,7 +458,7 @@ DOMSVGPathSegList::ReplaceItem(nsIDOMSVGPathSeg *aNewItem,
     }
   }
 
-  Element()->DidChangePathSegList(PR_TRUE);
+  Element()->DidChangePathSegList(true);
 #ifdef MOZ_SMIL
   if (AttrIsAnimating()) {
     Element()->AnimationNeedsResample();
@@ -491,7 +502,7 @@ DOMSVGPathSegList::RemoveItem(PRUint32 aIndex,
 
   UpdateListIndicesFromIndex(aIndex, -(argCount + 1));
 
-  Element()->DidChangePathSegList(PR_TRUE);
+  Element()->DidChangePathSegList(true);
 #ifdef MOZ_SMIL
   if (AttrIsAnimating()) {
     Element()->AnimationNeedsResample();

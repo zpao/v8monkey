@@ -91,9 +91,9 @@ struct JSObject; // until we finally remove GetGlobalJSObject...
 // A helper function for nsIScriptGlobalObject implementations to use
 // when handling a script error.  Generally called by the global when a context
 // notifies it of an error via nsIScriptGlobalObject::HandleScriptError.
-// Returns PR_TRUE if HandleDOMEvent was actually called, in which case
+// Returns true if HandleDOMEvent was actually called, in which case
 // aStatus will be filled in with the status.
-PRBool
+bool
 NS_HandleScriptError(nsIScriptGlobalObject *aScriptGlobal,
                      nsScriptErrorEvent *aErrorEvent,
                      nsEventStatus *aStatus);
@@ -161,7 +161,7 @@ public:
   /**
    * Called to enable/disable scripts.
    */
-  virtual void SetScriptsEnabled(PRBool aEnabled, PRBool aFireTimeouts) = 0;
+  virtual void SetScriptsEnabled(bool aEnabled, bool aFireTimeouts) = 0;
 
   /**
    * Handle a script error.  Generally called by a script context.

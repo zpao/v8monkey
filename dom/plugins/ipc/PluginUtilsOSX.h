@@ -37,19 +37,71 @@
   *
   * ***** END LICENSE BLOCK ***** */
 
+#ifndef dom_plugins_PluginUtilsOSX_h
+#define dom_plugins_PluginUtilsOSX_h 1
+
 #include "npapi.h"
+#include "nsRect.h"
+#include "nsCoreAnimationSupport.h"
 
 namespace mozilla {
 namespace plugins {
 namespace PluginUtilsOSX {
 
-// Need to call back into the browser's to process event.
+// Need to call back into the browser's message loop to process event.
 typedef void (*RemoteProcessEvents) (void*);
 
 NPError ShowCocoaContextMenu(void* aMenu, int aX, int aY, void* pluginModule, RemoteProcessEvents remoteEvent);
 
 void InvokeNativeEventLoop();
 
+// Need to call back and send a cocoa draw event to the plugin.
+typedef void (*DrawPluginFunc) (CGContextRef, void*, nsIntRect aUpdateRect);
+
+void* GetCGLayer(DrawPluginFunc aFunc, void* aPluginInstance);
+void ReleaseCGLayer(void* cgLayer);
+void Repaint(void* cgLayer, nsIntRect aRect);
+
+bool SetProcessName(const char* aProcessName);
+
+/*
+ * Provides a wrapper around nsCARenderer to manage double buffering
+ * without having to unbind nsCARenderer on every surface swaps.
+ *
+ * The double buffer renderer begins with no initialize surfaces.
+ * The buffers can be initialized and cleared individually.
+ * Swapping still occurs regardless if the buffers are initialized.
+ */
+class THEBES_API nsDoubleBufferCARenderer {
+public:
+  nsDoubleBufferCARenderer() : mCALayer(nsnull) {}
+  size_t GetFrontSurfaceWidth();
+  size_t GetFrontSurfaceHeight();
+  size_t GetBackSurfaceWidth();
+  size_t GetBackSurfaceHeight();
+  IOSurfaceID GetFrontSurfaceID();
+
+  bool HasBackSurface();
+  bool HasFrontSurface();
+  bool HasCALayer();
+
+  void SetCALayer(void *aCALayer);
+  bool InitFrontSurface(size_t aWidth, size_t aHeight);
+  void Render();
+  void SwapSurfaces();
+  void ClearFrontSurface();
+  void ClearBackSurface();
+
+private:
+  void *mCALayer;
+  nsRefPtr<nsCARenderer> mFrontRenderer;
+  nsRefPtr<nsCARenderer> mBackRenderer;
+  nsRefPtr<nsIOSurface> mFrontSurface;
+  nsRefPtr<nsIOSurface> mBackSurface;
+};
+
 } // namespace PluginUtilsOSX
 } // namespace plugins
 } // namespace mozilla
+
+#endif //dom_plugins_PluginUtilsOSX_h

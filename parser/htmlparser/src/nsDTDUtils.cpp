@@ -152,7 +152,7 @@ void nsEntryStack::EnsureCapacityFor(PRInt32 aNewMax,PRInt32 aShiftOffset) {
  */
 void nsEntryStack::Push(nsCParserNode* aNode,
                         nsEntryStack* aStyleStack, 
-                        PRBool aRefCntNode) 
+                        bool aRefCntNode) 
 {
   if(aNode) {
     EnsureCapacityFor(mCount+1);
@@ -184,7 +184,7 @@ void nsEntryStack::PushTag(eHTMLTags aTag)
  */
 void nsEntryStack::PushFront(nsCParserNode* aNode,
                              nsEntryStack* aStyleStack, 
-                             PRBool aRefCntNode) 
+                             bool aRefCntNode) 
 {
   if(aNode) {
     if(mCount<mCapacity) {
@@ -424,7 +424,7 @@ nsEntryStack::PopEntry()
 }
 
 void nsEntryStack::PushEntry(nsTagEntry* aEntry, 
-                             PRBool aRefCntNode) 
+                             bool aRefCntNode) 
 {
   if (aEntry) {
     EnsureCapacityFor(mCount+1);
@@ -476,9 +476,9 @@ nsDTDContext::~nsDTDContext()
  * 
  * @update  gess7/9/98
  */
-PRBool nsDTDContext::HasOpenContainer(eHTMLTags aTag) const {
+bool nsDTDContext::HasOpenContainer(eHTMLTags aTag) const {
   PRInt32 theIndex=mStack.LastOf(aTag);
-  return PRBool(-1<theIndex);
+  return bool(-1<theIndex);
 }
 
 /**
@@ -487,7 +487,7 @@ PRBool nsDTDContext::HasOpenContainer(eHTMLTags aTag) const {
  */
 void nsDTDContext::Push(nsCParserNode* aNode,
                         nsEntryStack* aStyleStack, 
-                        PRBool aRefCntNode) {
+                        bool aRefCntNode) {
   if(aNode) {
 #ifdef  NS_DEBUG
     eHTMLTags theTag = (eHTMLTags)aNode->GetNodeType();
@@ -525,7 +525,7 @@ nsDTDContext::PopEntry()
 }
 
 void nsDTDContext::PushEntry(nsTagEntry* aEntry, 
-                             PRBool aRefCntNode)
+                             bool aRefCntNode)
 {
 #ifdef  NS_DEBUG
     int size=mStack.mCount;
@@ -535,7 +535,7 @@ void nsDTDContext::PushEntry(nsTagEntry* aEntry,
     mStack.PushEntry(aEntry, aRefCntNode);
 }
 
-/* This method will move the top entires, in the entry-stack, into dest context.
+/* This method will move the top entries, in the entry-stack, into dest context.
  * @param aDest  - Destination context for the entries.
  * @param aCount - Number of entries, on top of the entry-stack, to be moved.
  */
@@ -546,7 +546,7 @@ nsDTDContext::MoveEntries(nsDTDContext& aDest,
   NS_ASSERTION(aCount > 0 && mStack.mCount >= aCount, "cannot move entries");
   if (aCount > 0 && mStack.mCount >= aCount) {
     while (aCount) {
-      aDest.PushEntry(&mStack.mEntries[--mStack.mCount], PR_FALSE);
+      aDest.PushEntry(&mStack.mEntries[--mStack.mCount], false);
 #ifdef  NS_DEBUG
       if (mStack.mCount < eMaxTags) {
         mXTags[mStack.mCount] = eHTMLTag_unknown;
@@ -869,7 +869,7 @@ CToken* nsTokenAllocator::CreateTokenOfType(eHTMLTokenTypes aType,eHTMLTags aTag
     case eToken_doctypeDecl:      result=new(mArenaPool) CDoctypeDeclToken(aString); break;
     case eToken_markupDecl:       result=new(mArenaPool) CMarkupDeclToken(aString); break;
       default:
-        NS_ASSERTION(PR_FALSE, "nsDTDUtils::CreateTokenOfType: illegal token type"); 
+        NS_ASSERTION(false, "nsDTDUtils::CreateTokenOfType: illegal token type"); 
         break;
   }
 
@@ -906,7 +906,7 @@ CToken* nsTokenAllocator::CreateTokenOfType(eHTMLTokenTypes aType,eHTMLTags aTag
     case eToken_doctypeDecl:      result=new(mArenaPool) CDoctypeDeclToken(aTag); break;
     case eToken_markupDecl:       result=new(mArenaPool) CMarkupDeclToken(); break;
     default:
-      NS_ASSERTION(PR_FALSE, "nsDTDUtils::CreateTokenOfType: illegal token type"); 
+      NS_ASSERTION(false, "nsDTDUtils::CreateTokenOfType: illegal token type"); 
       break;
    }
 
@@ -1041,9 +1041,7 @@ nsObserverEntry::nsObserverEntry(const nsAString& aTopic) : mTopic(aTopic)
 
 nsObserverEntry::~nsObserverEntry() {
   for (PRInt32 i = 0; i <= NS_HTML_TAG_MAX; ++i){
-    if (mObservers[i]) {
-      delete mObservers[i];
-    }
+    delete mObservers[i];
   }
 }
 
@@ -1121,9 +1119,9 @@ nsObserverEntry::Notify(nsIParserNode* aNode,
   return result;
 }
 
-PRBool 
+bool 
 nsObserverEntry::Matches(const nsAString& aString) {
-  PRBool result = aString.Equals(mTopic);
+  bool result = aString.Equals(mTopic);
   return result;
 }
 

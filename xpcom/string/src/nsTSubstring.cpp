@@ -70,7 +70,7 @@ AsFixedString( const nsTSubstring_CharT* s )
    * returns the old data and old flags members if mData is newly allocated.
    * the old data must be released by the caller.
    */
-PRBool
+bool
 nsTSubstring_CharT::MutatePrep( size_type capacity, char_type** oldData, PRUint32* oldFlags )
   {
     // initialize to no old data
@@ -89,7 +89,7 @@ nsTSubstring_CharT::MutatePrep( size_type capacity, char_type** oldData, PRUint3
       // Also assert for |capacity| equal to |size_type(-1)|, since we used to
       // use that value to flag immutability.
       NS_ASSERTION(capacity != size_type(-1), "Bogus capacity");
-      return PR_FALSE;
+      return false;
     }
 
     // |curCapacity == 0| means that the buffer is immutable or 0-sized, so we
@@ -100,7 +100,7 @@ nsTSubstring_CharT::MutatePrep( size_type capacity, char_type** oldData, PRUint3
       {
         if (capacity <= curCapacity) {
           mFlags &= ~F_VOIDED;  // mutation clears voided flag
-          return PR_TRUE;
+          return true;
         }
 
         // Use doubling algorithm when forced to increase available capacity.
@@ -134,12 +134,12 @@ nsTSubstring_CharT::MutatePrep( size_type capacity, char_type** oldData, PRUint3
           {
             nsStringBuffer *newHdr = nsStringBuffer::Realloc(hdr, storageSize);
             if (!newHdr)
-              return PR_FALSE; // out-of-memory (original header left intact)
+              return false; // out-of-memory (original header left intact)
 
             hdr = newHdr;
             mData = (char_type*) hdr->Data();
             mFlags &= ~F_VOIDED;  // mutation clears voided flag
-            return PR_TRUE;
+            return true;
           }
       }
 
@@ -161,7 +161,7 @@ nsTSubstring_CharT::MutatePrep( size_type capacity, char_type** oldData, PRUint3
 
         nsStringBuffer* newHdr = nsStringBuffer::Alloc(storageSize);
         if (!newHdr)
-          return PR_FALSE; // we are still in a consistent state
+          return false; // we are still in a consistent state
 
         newData = (char_type*) newHdr->Data();
         newDataFlags = F_TERMINATED | F_SHARED;
@@ -179,7 +179,7 @@ nsTSubstring_CharT::MutatePrep( size_type capacity, char_type** oldData, PRUint3
     // though we are not necessarily terminated at the moment, now is probably
     // still the best time to set F_TERMINATED.
 
-    return PR_TRUE;
+    return true;
   }
 
 void
@@ -189,14 +189,14 @@ nsTSubstring_CharT::Finalize()
     // mData, mLength, and mFlags are purposefully left dangling
   }
 
-PRBool
+bool
 nsTSubstring_CharT::ReplacePrepInternal(index_type cutStart, size_type cutLen,
                                         size_type fragLen, size_type newLen)
   {
     char_type* oldData;
     PRUint32 oldFlags;
     if (!MutatePrep(newLen, &oldData, &oldFlags))
-      return PR_FALSE; // out-of-memory
+      return false; // out-of-memory
 
     if (oldData)
       {
@@ -240,7 +240,7 @@ nsTSubstring_CharT::ReplacePrepInternal(index_type cutStart, size_type cutLen,
     mData[newLen] = char_type(0);
     mLength = newLen;
 
-    return PR_TRUE;
+    return true;
   }
 
 nsTSubstring_CharT::size_type
@@ -279,15 +279,15 @@ nsTSubstring_CharT::Capacity() const
     return capacity;
   }
 
-PRBool
+bool
 nsTSubstring_CharT::EnsureMutable( size_type newLen )
   {
     if (newLen == size_type(-1) || newLen == mLength)
       {
         if (mFlags & (F_FIXED | F_OWNED))
-          return PR_TRUE;
+          return true;
         if ((mFlags & F_SHARED) && !nsStringBuffer::FromData(mData)->IsReadonly())
-          return PR_TRUE;
+          return true;
 
         // promote to a shared string buffer
         char_type* prevData = mData;
@@ -445,7 +445,7 @@ nsTSubstring_CharT::Adopt( char_type* data, size_type length )
       }
     else
       {
-        SetIsVoid(PR_TRUE);
+        SetIsVoid(true);
       }
   }
 
@@ -454,7 +454,7 @@ nsTSubstring_CharT::Adopt( char_type* data, size_type length )
 void
 nsTSubstring_CharT::Replace( index_type cutStart, size_type cutLength, char_type c )
   {
-    cutStart = PR_MIN(cutStart, Length());
+    cutStart = NS_MIN(cutStart, Length());
 
     if (ReplacePrep(cutStart, cutLength, 1))
       mData[cutStart] = c;
@@ -482,7 +482,7 @@ nsTSubstring_CharT::Replace( index_type cutStart, size_type cutLength, const cha
           }
       }
 
-    cutStart = PR_MIN(cutStart, Length());
+    cutStart = NS_MIN(cutStart, Length());
 
     if (ReplacePrep(cutStart, cutLength, length) && length > 0)
       char_traits::copy(mData + cutStart, data, length);
@@ -505,7 +505,7 @@ nsTSubstring_CharT::ReplaceASCII( index_type cutStart, size_type cutLength, cons
       }
 #endif
 
-    cutStart = PR_MIN(cutStart, Length());
+    cutStart = NS_MIN(cutStart, Length());
 
     if (ReplacePrep(cutStart, cutLength, length) && length > 0)
       char_traits::copyASCII(mData + cutStart, data, length);
@@ -523,13 +523,13 @@ nsTSubstring_CharT::Replace( index_type cutStart, size_type cutLength, const sub
 
     size_type length = tuple.Length();
 
-    cutStart = PR_MIN(cutStart, Length());
+    cutStart = NS_MIN(cutStart, Length());
 
     if (ReplacePrep(cutStart, cutLength, length) && length > 0)
       tuple.WriteTo(mData + cutStart, length);
   }
 
-PRBool
+bool
 nsTSubstring_CharT::SetCapacity( size_type capacity )
   {
     // capacity does not include room for the terminating null char
@@ -547,7 +547,7 @@ nsTSubstring_CharT::SetCapacity( size_type capacity )
         char_type* oldData;
         PRUint32 oldFlags;
         if (!MutatePrep(capacity, &oldData, &oldFlags))
-          return PR_FALSE; // out-of-memory
+          return false; // out-of-memory
 
         // compute new string length
         size_type newLen = NS_MIN(mLength, capacity);
@@ -570,7 +570,7 @@ nsTSubstring_CharT::SetCapacity( size_type capacity )
         mData[capacity] = char_type(0);
       }
 
-    return PR_TRUE;
+    return true;
   }
 
 void
@@ -581,7 +581,7 @@ nsTSubstring_CharT::SetLength( size_type length )
   }
 
 void
-nsTSubstring_CharT::SetIsVoid( PRBool val )
+nsTSubstring_CharT::SetIsVoid( bool val )
   {
     if (val)
       {
@@ -594,19 +594,19 @@ nsTSubstring_CharT::SetIsVoid( PRBool val )
       }
   }
 
-PRBool
+bool
 nsTSubstring_CharT::Equals( const self_type& str ) const
   {
     return mLength == str.mLength && char_traits::compare(mData, str.mData, mLength) == 0;
   }
 
-PRBool
+bool
 nsTSubstring_CharT::Equals( const self_type& str, const comparator_type& comp ) const
   {
     return mLength == str.mLength && comp(mData, str.mData, mLength, str.mLength) == 0;
   }
 
-PRBool
+bool
 nsTSubstring_CharT::Equals( const char_type* data ) const
   {
     // unfortunately, some callers pass null :-(
@@ -621,7 +621,7 @@ nsTSubstring_CharT::Equals( const char_type* data ) const
     return mLength == length && char_traits::compare(mData, data, mLength) == 0;
   }
 
-PRBool
+bool
 nsTSubstring_CharT::Equals( const char_type* data, const comparator_type& comp ) const
   {
     // unfortunately, some callers pass null :-(
@@ -636,25 +636,25 @@ nsTSubstring_CharT::Equals( const char_type* data, const comparator_type& comp )
     return mLength == length && comp(mData, data, mLength, length) == 0;
   }
 
-PRBool
+bool
 nsTSubstring_CharT::EqualsASCII( const char* data, size_type len ) const
   {
     return mLength == len && char_traits::compareASCII(mData, data, len) == 0;
   }
 
-PRBool
+bool
 nsTSubstring_CharT::EqualsASCII( const char* data ) const
   {
     return char_traits::compareASCIINullTerminated(mData, mLength, data) == 0;
   }
 
-PRBool
+bool
 nsTSubstring_CharT::LowerCaseEqualsASCII( const char* data, size_type len ) const
   {
     return mLength == len && char_traits::compareLowerCaseToASCII(mData, data, len) == 0;
   }
 
-PRBool
+bool
 nsTSubstring_CharT::LowerCaseEqualsASCII( const char* data ) const
   {
     return char_traits::compareLowerCaseToASCIINullTerminated(mData, mLength, data) == 0;
@@ -735,13 +735,24 @@ nsTSubstring_CharT::StripChars( const char_type* aChars, PRUint32 aOffset )
     mLength = to - mData;
   }
 
-void nsTSubstring_CharT::AppendPrintf( const char* format, ...)
+void nsTSubstring_CharT::AppendPrintf31( const char* format, ...)
   {
     char buf[32];
     va_list ap;
     va_start(ap, format);
     PRUint32 len = PR_vsnprintf(buf, sizeof(buf), format, ap);
     AppendASCII(buf, len);
+    va_end(ap);
+  }
+
+void nsTSubstring_CharT::AppendPrintf( const char* format, ...)
+  {
+    char *buf;
+    va_list ap;
+    va_start(ap, format);
+    buf = PR_vsmprintf(format, ap);
+    AppendASCII(buf);
+    PR_smprintf_free(buf);
     va_end(ap);
   }
 

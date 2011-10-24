@@ -112,7 +112,7 @@ nsresult nsMathMLmencloseFrame::AllocateMathMLChar(nsMencloseNotation mask)
   mMathMLChar[i].SetData(presContext, Char);
   ResolveMathMLCharStyle(presContext, mContent, mStyleContext,
                          &mMathMLChar[i],
-                         PR_TRUE);
+                         true);
 
   return NS_OK;
 }
@@ -170,9 +170,14 @@ nsresult nsMathMLmencloseFrame::AddNotation(const nsAString& aNotation)
  */
 void nsMathMLmencloseFrame::InitNotations()
 {
+  mNotationsToDraw = 0;
+  mLongDivCharIndex = mRadicalCharIndex = -1;
+  mMathMLChar.Clear();
+
   nsAutoString value;
 
-  if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::notation_, value)) {
+  if (GetAttribute(mContent, mPresentationData.mstyle, nsGkAtoms::notation_,
+                   value)) {
     // parse the notation attribute
     nsWhitespaceTokenizer tokenizer(value);
 
@@ -187,25 +192,14 @@ void nsMathMLmencloseFrame::InitNotations()
 }
 
 NS_IMETHODIMP
-nsMathMLmencloseFrame::Init(nsIContent*      aContent,
-                            nsIFrame*        aParent,
-                            nsIFrame*        aPrevInFlow)
-{
-  nsresult rv = nsMathMLContainerFrame::Init(aContent, aParent, aPrevInFlow);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  InitNotations();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsMathMLmencloseFrame::InheritAutomaticData(nsIFrame* aParent)
 {
   // let the base class get the default from our parent
   nsMathMLContainerFrame::InheritAutomaticData(aParent);
 
   mPresentationData.flags |= NS_MATHML_STRETCH_ALL_CHILDREN_VERTICALLY;
+
+  InitNotations();
 
   return NS_OK;
 }
@@ -334,32 +328,32 @@ nsMathMLmencloseFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 nsMathMLmencloseFrame::MeasureForWidth(nsRenderingContext& aRenderingContext,
                                        nsHTMLReflowMetrics& aDesiredSize)
 {
-  return PlaceInternal(aRenderingContext, PR_FALSE, aDesiredSize, PR_TRUE);
+  return PlaceInternal(aRenderingContext, false, aDesiredSize, true);
 }
 
 /* virtual */ nsresult
 nsMathMLmencloseFrame::Place(nsRenderingContext& aRenderingContext,
-                             PRBool               aPlaceOrigin,
+                             bool                 aPlaceOrigin,
                              nsHTMLReflowMetrics& aDesiredSize)
 {
-  return PlaceInternal(aRenderingContext, aPlaceOrigin, aDesiredSize, PR_FALSE);
+  return PlaceInternal(aRenderingContext, aPlaceOrigin, aDesiredSize, false);
 }
 
 /* virtual */ nsresult
 nsMathMLmencloseFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
-                                     PRBool               aPlaceOrigin,
+                                     bool                 aPlaceOrigin,
                                      nsHTMLReflowMetrics& aDesiredSize,
-                                     PRBool               aWidthOnly)
+                                     bool                 aWidthOnly)
 {
   ///////////////
   // Measure the size of our content using the base class to format like an
   // inferred mrow.
   nsHTMLReflowMetrics baseSize;
   nsresult rv =
-    nsMathMLContainerFrame::Place(aRenderingContext, PR_FALSE, baseSize);
+    nsMathMLContainerFrame::Place(aRenderingContext, false, baseSize);
 
   if (NS_MATHML_HAS_ERROR(mPresentationData.flags) || NS_FAILED(rv)) {
-      DidReflowChildren(GetFirstChild(nsnull));
+      DidReflowChildren(GetFirstPrincipalChild());
       return rv;
     }
 
@@ -375,9 +369,9 @@ nsMathMLmencloseFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
   nscoord onePixel = nsPresContext::CSSPixelsToAppUnits(1);
 
   nscoord mEmHeight;
-  aRenderingContext.SetFont(GetStyleFont()->mFont,
-                            PresContext()->GetUserFontSet());
-  nsFontMetrics* fm = aRenderingContext.FontMetrics();
+  nsRefPtr<nsFontMetrics> fm;
+  nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm));
+  aRenderingContext.SetFont(fm);
   GetRuleThickness(aRenderingContext, fm, mRuleThickness);
   GetEmHeight(fm, mEmHeight);
 
@@ -702,10 +696,6 @@ nsMathMLmencloseFrame::AttributeChanged(PRInt32         aNameSpaceID,
                                         PRInt32         aModType)
 {
   if (aAttribute == nsGkAtoms::notation_) {
-    mNotationsToDraw = 0;
-    mLongDivCharIndex = mRadicalCharIndex = -1;
-    mMathMLChar.Clear();
-    
     InitNotations();
   }
 
@@ -788,7 +778,7 @@ void nsDisplayNotation::Paint(nsDisplayListBuilder* aBuilder,
       break;
 
     case NOTATION_ROUNDEDBOX:
-      gfxCtx->RoundedRectangle(rect, gfxCornerSizes(3 * e), PR_TRUE);
+      gfxCtx->RoundedRectangle(rect, gfxCornerSizes(3 * e), true);
       break;
 
     case NOTATION_UPDIAGONALSTRIKE:

@@ -34,89 +34,9 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
-#include "nsIDOMHTMLFrameSetElement.h"
-#include "nsIDOMEventTarget.h"
-#include "nsGenericHTMLElement.h"
-#include "nsGkAtoms.h"
-#include "nsStyleConsts.h"
-#include "nsIFrameSetElement.h"
-#include "nsIHTMLDocument.h"
-#include "nsIDocument.h"
 
-class nsHTMLFrameSetElement : public nsGenericHTMLElement,
-                              public nsIDOMHTMLFrameSetElement,
-                              public nsIFrameSetElement
-{
-public:
-  nsHTMLFrameSetElement(already_AddRefed<nsINodeInfo> aNodeInfo);
-  virtual ~nsHTMLFrameSetElement();
-
-  // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
-
-  // nsIDOMNode
-  NS_FORWARD_NSIDOMNODE(nsGenericHTMLElement::)
-
-  // nsIDOMElement
-  NS_FORWARD_NSIDOMELEMENT(nsGenericHTMLElement::)
-
-  // nsIDOMHTMLElement
-  NS_FORWARD_NSIDOMHTMLELEMENT(nsGenericHTMLElement::)
-
-  // nsIDOMHTMLFrameSetElement
-  NS_DECL_NSIDOMHTMLFRAMESETELEMENT
-
-  // These override the SetAttr methods in nsGenericHTMLElement (need
-  // both here to silence compiler warnings).
-  nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                   const nsAString& aValue, PRBool aNotify)
-  {
-    return SetAttr(aNameSpaceID, aName, nsnull, aValue, aNotify);
-  }
-  virtual nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                           nsIAtom* aPrefix, const nsAString& aValue,
-                           PRBool aNotify);
-
-  // nsIFramesetElement
-  NS_IMETHOD GetRowSpec(PRInt32 *aNumValues, const nsFramesetSpec** aSpecs);
-  NS_IMETHOD GetColSpec(PRInt32 *aNumValues, const nsFramesetSpec** aSpecs);
-
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
-                                nsIAtom* aAttribute,
-                                const nsAString& aValue,
-                                nsAttrValue& aResult);
-  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
-                                              PRInt32 aModType) const;
-
-  virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
-  virtual nsXPCClassInfo* GetClassInfo();
-private:
-  nsresult ParseRowCol(const nsAString& aValue,
-                       PRInt32&         aNumSpecs,
-                       nsFramesetSpec** aSpecs);
-
-  /**
-   * The number of size specs in our "rows" attr
-   */
-  PRInt32          mNumRows;
-  /**
-   * The number of size specs in our "cols" attr
-   */
-  PRInt32          mNumCols;
-  /**
-   * The style hint to return for the rows/cols attrs in
-   * GetAttributeChangeHint
-   */
-  nsChangeHint      mCurrentRowColHint;
-  /**
-   * The parsed representation of the "rows" attribute
-   */
-  nsAutoArrayPtr<nsFramesetSpec>  mRowSpecs; // parsed, non-computed dimensions
-  /**
-   * The parsed representation of the "cols" attribute
-   */
-  nsAutoArrayPtr<nsFramesetSpec>  mColSpecs; // parsed, non-computed dimensions
-};
+#include "nsHTMLFrameSetElement.h"
+#include "jsapi.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(FrameSet)
 
@@ -140,9 +60,8 @@ DOMCI_NODE_DATA(HTMLFrameSetElement, nsHTMLFrameSetElement)
 
 // QueryInterface implementation for nsHTMLFrameSetElement
 NS_INTERFACE_TABLE_HEAD(nsHTMLFrameSetElement)
-  NS_HTML_CONTENT_INTERFACE_TABLE2(nsHTMLFrameSetElement,
-                                   nsIDOMHTMLFrameSetElement,
-                                   nsIFrameSetElement)
+  NS_HTML_CONTENT_INTERFACE_TABLE1(nsHTMLFrameSetElement,
+                                   nsIDOMHTMLFrameSetElement)
   NS_HTML_CONTENT_INTERFACE_TABLE_TO_MAP_SEGUE(nsHTMLFrameSetElement,
                                                nsGenericHTMLElement)
 NS_HTML_CONTENT_INTERFACE_TABLE_TAIL_CLASSINFO(HTMLFrameSetElement)
@@ -159,7 +78,7 @@ nsHTMLFrameSetElement::SetAttr(PRInt32 aNameSpaceID,
                                nsIAtom* aAttribute,
                                nsIAtom* aPrefix,
                                const nsAString& aValue,
-                               PRBool aNotify)
+                               bool aNotify)
 {
   nsresult rv;
   /* The main goal here is to see whether the _number_ of rows or
@@ -194,7 +113,7 @@ nsHTMLFrameSetElement::SetAttr(PRInt32 aNameSpaceID,
   return rv;
 }
 
-NS_IMETHODIMP
+nsresult
 nsHTMLFrameSetElement::GetRowSpec(PRInt32 *aNumValues,
                                   const nsFramesetSpec** aSpecs)
 {
@@ -228,7 +147,7 @@ nsHTMLFrameSetElement::GetRowSpec(PRInt32 *aNumValues,
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsHTMLFrameSetElement::GetColSpec(PRInt32 *aNumValues,
                                   const nsFramesetSpec** aSpecs)
 {
@@ -263,7 +182,7 @@ nsHTMLFrameSetElement::GetColSpec(PRInt32 *aNumValues,
 }
 
 
-PRBool
+bool
 nsHTMLFrameSetElement::ParseAttribute(PRInt32 aNamespaceID,
                                       nsIAtom* aAttribute,
                                       const nsAString& aValue,
@@ -339,7 +258,7 @@ nsHTMLFrameSetElement::ParseRowCol(const nsAString & aValue,
   }
 
   // Pre-grab the compat mode; we may need it later in the loop.
-  PRBool isInQuirks = InNavQuirksMode(GetOwnerDoc());
+  bool isInQuirks = InNavQuirksMode(OwnerDoc());
       
   // Parse each comma separated token
 
@@ -403,7 +322,7 @@ nsHTMLFrameSetElement::ParseRowCol(const nsAString & aValue,
         }
       }
         
-      // Catch zero and negative frame sizes for Nav compatability
+      // Catch zero and negative frame sizes for Nav compatibility
       // Nav resized absolute and relative frames to "1" and
       // percent frames to an even percentage of the width
       //
@@ -430,3 +349,54 @@ nsHTMLFrameSetElement::ParseRowCol(const nsAString & aValue,
   return NS_OK;
 }
 
+// Event listener stuff
+// FIXME (https://bugzilla.mozilla.org/show_bug.cgi?id=431767)
+// nsDocument::GetInnerWindow can return an outer window in some
+// cases.  We don't want to stick an event listener on an outer
+// window, so bail if it does.  See also similar code in
+// nsGenericHTMLElement::GetEventListenerManagerForAttr.
+#define EVENT(name_, id_, type_, struct_) /* nothing; handled by the shim */
+#define FORWARDED_EVENT(name_, id_, type_, struct_)                   \
+  NS_IMETHODIMP nsHTMLFrameSetElement::GetOn##name_(JSContext *cx,    \
+                                               jsval *vp) {           \
+    /* XXXbz note to self: add tests for this! */                     \
+    nsPIDOMWindow* win = OwnerDoc()->GetInnerWindow();             \
+    if (win && win->IsInnerWindow()) {                                \
+      nsCOMPtr<nsIInlineEventHandlers> ev = do_QueryInterface(win);   \
+      return ev->GetOn##name_(cx, vp);                                \
+    }                                                                 \
+    *vp = JSVAL_NULL;                                                 \
+    return NS_OK;                                                     \
+  }                                                                   \
+  NS_IMETHODIMP nsHTMLFrameSetElement::SetOn##name_(JSContext *cx,    \
+                                               const jsval &v) {      \
+    nsPIDOMWindow* win = OwnerDoc()->GetInnerWindow();             \
+    if (win && win->IsInnerWindow()) {                                \
+      nsCOMPtr<nsIInlineEventHandlers> ev = do_QueryInterface(win);   \
+      return ev->SetOn##name_(cx, v);                                 \
+    }                                                                 \
+    return NS_OK;                                                     \
+  }
+#define WINDOW_EVENT(name_, id_, type_, struct_)                      \
+  NS_IMETHODIMP nsHTMLFrameSetElement::GetOn##name_(JSContext *cx,    \
+                                                    jsval *vp) {      \
+    /* XXXbz note to self: add tests for this! */                     \
+    nsPIDOMWindow* win = OwnerDoc()->GetInnerWindow();             \
+    if (win && win->IsInnerWindow()) {                                \
+      return win->GetOn##name_(cx, vp);                               \
+    }                                                                 \
+    *vp = JSVAL_NULL;                                                 \
+    return NS_OK;                                                     \
+  }                                                                   \
+  NS_IMETHODIMP nsHTMLFrameSetElement::SetOn##name_(JSContext *cx,    \
+                                                    const jsval &v) { \
+    nsPIDOMWindow* win = OwnerDoc()->GetInnerWindow();             \
+    if (win && win->IsInnerWindow()) {                                \
+      return win->SetOn##name_(cx, v);                                \
+    }                                                                 \
+    return NS_OK;                                                     \
+  }
+#include "nsEventNameList.h"
+#undef WINDOW_EVENT
+#undef FORWARDED_EVENT
+#undef EVENT

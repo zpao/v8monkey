@@ -51,7 +51,6 @@
  ******/
 
 HTTP_ATOM(Accept,                    "Accept")
-HTTP_ATOM(Accept_Charset,            "Accept-Charset")
 HTTP_ATOM(Accept_Encoding,           "Accept-Encoding")
 HTTP_ATOM(Accept_Language,           "Accept-Language")
 HTTP_ATOM(Accept_Ranges,             "Accept-Ranges")
@@ -145,5 +144,7 @@ HTTP_ATOM(Post,                      "POST")
 HTTP_ATOM(Propfind,                  "PROPFIND")
 HTTP_ATOM(Proppatch,                 "PROPPATCH")
 HTTP_ATOM(Put,                       "PUT")
+HTTP_ATOM(Report,                    "REPORT")
+HTTP_ATOM(Search,                    "SEARCH")
 HTTP_ATOM(Trace,                     "TRACE")
 HTTP_ATOM(Unlock,                    "UNLOCK")

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2010 The ANGLE Project Authors. All rights reserved.
+// Copyright (c) 2002-2011 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -28,6 +28,31 @@
 #include "libGLESv2/Shader.h"
 #include "libGLESv2/Texture.h"
 
+bool validImageSize(GLint level, GLsizei width, GLsizei height)
+{
+    if (level < 0 || width < 0 || height < 0)
+    {
+        return false;
+    }
+
+    if (gl::getContext() && gl::getContext()->supportsNonPower2Texture())
+    {
+        return true;
+    }
+
+    if (level == 0)
+    {
+        return true;
+    }
+
+    if (gl::isPow2(width) && gl::isPow2(height))
+    {
+        return true;
+    }
+
+    return false;
+}
+
 extern "C"
 {
 
@@ -37,15 +62,15 @@ void __stdcall glActiveTexture(GLenum texture)
 
     try
     {
-        if (texture < GL_TEXTURE0 || texture > GL_TEXTURE0 + gl::MAX_TEXTURE_IMAGE_UNITS - 1)
-        {
-            return error(GL_INVALID_ENUM);
-        }
-
         gl::Context *context = gl::getContext();
 
         if (context)
         {
+            if (texture < GL_TEXTURE0 || texture > GL_TEXTURE0 + context->getMaximumCombinedTextureImageUnits() - 1)
+            {
+                return error(GL_INVALID_ENUM);
+            }
+
             context->setActiveSampler(texture - GL_TEXTURE0);
         }
     }
@@ -738,12 +763,7 @@ void __stdcall glCompressedTexImage2D(GLenum target, GLint level, GLenum interna
 
     try
     {
-        if (level < 0)
-        {
-            return error(GL_INVALID_VALUE);
-        }
-
-        if (width < 0 || height < 0 || (level > 0 && !gl::isPow2(width)) || (level > 0 && !gl::isPow2(height)) || border != 0 || imageSize < 0)
+        if (!validImageSize(level, width, height) || border != 0 || imageSize < 0)
         {
             return error(GL_INVALID_VALUE);
         }
@@ -752,6 +772,8 @@ void __stdcall glCompressedTexImage2D(GLenum target, GLint level, GLenum interna
         {
           case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
           case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+          case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+          case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
             break;
           default:
             return error(GL_INVALID_ENUM);
@@ -801,9 +823,27 @@ void __stdcall glCompressedTexImage2D(GLenum target, GLint level, GLenum interna
                 return error(GL_INVALID_ENUM);
             }
 
-            if (!context->supportsCompressedTextures())
-            {
-                return error(GL_INVALID_ENUM); // in this case, it's as though the internal format switch failed
+            switch (internalformat) {
+              case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
+              case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+                if (!context->supportsDXT1Textures())
+                {
+                    return error(GL_INVALID_ENUM); // in this case, it's as though the internal format switch failed
+                }
+                break;
+              case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+                if (!context->supportsDXT3Textures())
+                {
+                    return error(GL_INVALID_ENUM); // in this case, it's as though the internal format switch failed
+                }
+                break;
+              case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
+                if (!context->supportsDXT5Textures())
+                {
+                    return error(GL_INVALID_ENUM); // in this case, it's as though the internal format switch failed
+                }
+                break;
+              default: UNREACHABLE();
             }
 
             if (imageSize != gl::ComputeCompressedSize(width, height, internalformat))
@@ -868,13 +908,7 @@ void __stdcall glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffs
             return error(GL_INVALID_ENUM);
         }
 
-        if (level < 0)
-        {
-            return error(GL_INVALID_VALUE);
-        }
-
-        if (xoffset < 0 || yoffset < 0 || width < 0 || height < 0 || 
-            (level > 0 && !gl::isPow2(width)) || (level > 0 && !gl::isPow2(height)) || imageSize < 0)
+        if (xoffset < 0 || yoffset < 0 || !validImageSize(level, width, height) || imageSize < 0)
         {
             return error(GL_INVALID_VALUE);
         }
@@ -883,6 +917,8 @@ void __stdcall glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffs
         {
           case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
           case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+          case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+          case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
             break;
           default:
             return error(GL_INVALID_ENUM);
@@ -902,9 +938,27 @@ void __stdcall glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffs
                 return error(GL_INVALID_VALUE);
             }
 
-            if (!context->supportsCompressedTextures())
-            {
-                return error(GL_INVALID_ENUM); // in this case, it's as though the format switch has failed.
+            switch (format) {
+              case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
+              case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+                if (!context->supportsDXT1Textures())
+                {
+                    return error(GL_INVALID_ENUM); // in this case, it's as though the internal format switch failed
+                }
+                break;
+              case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+                if (!context->supportsDXT3Textures())
+                {
+                    return error(GL_INVALID_ENUM); // in this case, it's as though the internal format switch failed
+                }
+                break;
+              case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
+                if (!context->supportsDXT5Textures())
+                {
+                    return error(GL_INVALID_ENUM); // in this case, it's as though the internal format switch failed
+                }
+                break;
+              default: UNREACHABLE();
             }
 
             if (imageSize != gl::ComputeCompressedSize(width, height, format))
@@ -915,7 +969,7 @@ void __stdcall glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffs
             if (xoffset % 4 != 0 || yoffset % 4 != 0)
             {
                 return error(GL_INVALID_OPERATION); // we wait to check the offsets until this point, because the multiple-of-four restriction
-                                                    // does not exist unless DXT1 textures are supported.
+                                                    // does not exist unless DXT textures are supported.
             }
 
             if (target == GL_TEXTURE_2D)
@@ -982,12 +1036,7 @@ void __stdcall glCopyTexImage2D(GLenum target, GLint level, GLenum internalforma
 
     try
     {
-        if (level < 0 || width < 0 || height < 0)
-        {
-            return error(GL_INVALID_VALUE);
-        }
-
-        if (level > 0 && (!gl::isPow2(width) || !gl::isPow2(height)))
+        if (!validImageSize(level, width, height))
         {
             return error(GL_INVALID_VALUE);
         }
@@ -1044,7 +1093,7 @@ void __stdcall glCopyTexImage2D(GLenum target, GLint level, GLenum internalforma
             }
 
             gl::Colorbuffer *source = framebuffer->getColorbuffer();
-            GLenum colorbufferFormat = source->getFormat();
+            GLenum colorbufferFormat = source->getInternalFormat();
 
             // [OpenGL ES 2.0.24] table 3.9
             switch (internalformat)
@@ -1084,7 +1133,27 @@ void __stdcall glCopyTexImage2D(GLenum target, GLint level, GLenum internalforma
                  break;
               case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
               case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
-                if (context->supportsCompressedTextures())
+                if (context->supportsDXT1Textures())
+                {
+                    return error(GL_INVALID_OPERATION);
+                }
+                else
+                {
+                    return error(GL_INVALID_ENUM);
+                }
+                break;
+              case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+                if (context->supportsDXT3Textures())
+                {
+                    return error(GL_INVALID_OPERATION);
+                }
+                else
+                {
+                    return error(GL_INVALID_ENUM);
+                }
+                break;
+              case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
+                if (context->supportsDXT5Textures())
                 {
                     return error(GL_INVALID_OPERATION);
                 }
@@ -1178,7 +1247,7 @@ void __stdcall glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GL
             }
 
             gl::Colorbuffer *source = framebuffer->getColorbuffer();
-            GLenum colorbufferFormat = source->getFormat();
+            GLenum colorbufferFormat = source->getInternalFormat();
             gl::Texture *texture = NULL;
 
             if (target == GL_TEXTURE_2D)
@@ -1196,7 +1265,7 @@ void __stdcall glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GL
                 return error(GL_INVALID_OPERATION);
             }
 
-            GLenum textureFormat = texture->getFormat();
+            GLenum textureFormat = texture->getInternalFormat();
 
             // [OpenGL ES 2.0.24] table 3.9
             switch (textureFormat)
@@ -1236,6 +1305,8 @@ void __stdcall glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GL
                 break;
               case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
               case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+              case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+              case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
                 return error(GL_INVALID_OPERATION);
               default:
                 return error(GL_INVALID_OPERATION);
@@ -2954,85 +3025,23 @@ void __stdcall glGetRenderbufferParameteriv(GLenum target, GLenum pname, GLint* 
 
             switch (pname)
             {
-              case GL_RENDERBUFFER_WIDTH:
-                *params = renderbuffer->getWidth();
-                break;
-              case GL_RENDERBUFFER_HEIGHT:
-                *params = renderbuffer->getHeight();
-                break;
-              case GL_RENDERBUFFER_INTERNAL_FORMAT:
-                *params = renderbuffer->getFormat();
-                break;
-              case GL_RENDERBUFFER_RED_SIZE:
-                if (renderbuffer->isColorbuffer())
-                {
-                    *params = static_cast<gl::Colorbuffer*>(renderbuffer->getStorage())->getRedSize();
-                }
-                else
-                {
-                    *params = 0;
-                }
-                break;
-              case GL_RENDERBUFFER_GREEN_SIZE:
-                if (renderbuffer->isColorbuffer())
-                {
-                    *params = static_cast<gl::Colorbuffer*>(renderbuffer->getStorage())->getGreenSize();
-                }
-                else
-                {
-                    *params = 0;
-                }
-                break;
-              case GL_RENDERBUFFER_BLUE_SIZE:
-                if (renderbuffer->isColorbuffer())
-                {
-                    *params = static_cast<gl::Colorbuffer*>(renderbuffer->getStorage())->getBlueSize();
-                }
-                else
-                {
-                    *params = 0;
-                }
-                break;
-              case GL_RENDERBUFFER_ALPHA_SIZE:
-                if (renderbuffer->isColorbuffer())
-                {
-                    *params = static_cast<gl::Colorbuffer*>(renderbuffer->getStorage())->getAlphaSize();
-                }
-                else
-                {
-                    *params = 0;
-                }
-                break;
-              case GL_RENDERBUFFER_DEPTH_SIZE:
-                if (renderbuffer->isDepthbuffer())
-                {
-                    *params = static_cast<gl::Depthbuffer*>(renderbuffer->getStorage())->getDepthSize();
-                }
-                else
-                {
-                    *params = 0;
-                }
-                break;
-              case GL_RENDERBUFFER_STENCIL_SIZE:
-                if (renderbuffer->isStencilbuffer())
-                {
-                    *params = static_cast<gl::Stencilbuffer*>(renderbuffer->getStorage())->getStencilSize();
-                }
-                else
-                {
-                    *params = 0;
-                }
-                break;
+              case GL_RENDERBUFFER_WIDTH:           *params = renderbuffer->getWidth();          break;
+              case GL_RENDERBUFFER_HEIGHT:          *params = renderbuffer->getHeight();         break;
+              case GL_RENDERBUFFER_INTERNAL_FORMAT: *params = renderbuffer->getInternalFormat(); break;
+              case GL_RENDERBUFFER_RED_SIZE:        *params = renderbuffer->getRedSize();        break;
+              case GL_RENDERBUFFER_GREEN_SIZE:      *params = renderbuffer->getGreenSize();      break;
+              case GL_RENDERBUFFER_BLUE_SIZE:       *params = renderbuffer->getBlueSize();       break;
+              case GL_RENDERBUFFER_ALPHA_SIZE:      *params = renderbuffer->getAlphaSize();      break;
+              case GL_RENDERBUFFER_DEPTH_SIZE:      *params = renderbuffer->getDepthSize();      break;
+              case GL_RENDERBUFFER_STENCIL_SIZE:    *params = renderbuffer->getStencilSize();    break;
               case GL_RENDERBUFFER_SAMPLES_ANGLE:
+                if (context->getMaxSupportedSamples() != 0)
                 {
-                    if (context->getMaxSupportedSamples() != 0)
-                    {
-                        *params = renderbuffer->getStorage()->getSamples();
-                    }
-                    else
-                    {
-                        return error(GL_INVALID_ENUM);
-                    }
+                    *params = renderbuffer->getSamples();
+                }
+                else
+                {
+                    return error(GL_INVALID_ENUM);
                 }
                 break;
               default:
@@ -3213,7 +3222,7 @@ const GLubyte* __stdcall glGetString(GLenum name)
           case GL_VENDOR:
             return (GLubyte*)"Google Inc.";
           case GL_RENDERER:
-            return (GLubyte*)"ANGLE";
+            return (GLubyte*)((context != NULL) ? context->getRendererString() : "ANGLE");
           case GL_VERSION:
             return (GLubyte*)"OpenGL ES 2.0 (ANGLE "VERSION_STRING")";
           case GL_SHADING_LANGUAGE_VERSION:
@@ -3437,7 +3446,7 @@ int __stdcall glGetUniformLocation(GLuint program, const GLchar* name)
                 return error(GL_INVALID_OPERATION, -1);
             }
 
-            return programObject->getUniformLocation(name, false);
+            return programObject->getUniformLocation(name);
         }
     }
     catch(std::bad_alloc&)
@@ -4459,12 +4468,7 @@ void __stdcall glTexImage2D(GLenum target, GLint level, GLint internalformat, GL
 
     try
     {
-        if (level < 0 || width < 0 || height < 0)
-        {
-            return error(GL_INVALID_VALUE);
-        }
-
-        if (level > 0 && (!gl::isPow2(width) || !gl::isPow2(height)))
+        if (!validImageSize(level, width, height))
         {
             return error(GL_INVALID_VALUE);
         }
@@ -4474,7 +4478,7 @@ void __stdcall glTexImage2D(GLenum target, GLint level, GLint internalformat, GL
             return error(GL_INVALID_OPERATION);
         }
 
-        switch (internalformat)
+        switch (format)
         {
           case GL_ALPHA:
           case GL_LUMINANCE:
@@ -4525,6 +4529,8 @@ void __stdcall glTexImage2D(GLenum target, GLint level, GLint internalformat, GL
             break;
           case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:  // error cases for compressed textures are handled below
           case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+          case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+          case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
             break; 
           default:
             return error(GL_INVALID_VALUE);
@@ -4569,10 +4575,10 @@ void __stdcall glTexImage2D(GLenum target, GLint level, GLint internalformat, GL
                 return error(GL_INVALID_ENUM);
             }
 
-            if (internalformat == GL_COMPRESSED_RGB_S3TC_DXT1_EXT ||
-                internalformat == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT)
-            {
-                if (context->supportsCompressedTextures())
+            switch (format) {
+              case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
+              case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+                if (context->supportsDXT1Textures())
                 {
                     return error(GL_INVALID_OPERATION);
                 }
@@ -4580,6 +4586,29 @@ void __stdcall glTexImage2D(GLenum target, GLint level, GLint internalformat, GL
                 {
                     return error(GL_INVALID_ENUM);
                 }
+                break;
+              case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+                if (context->supportsDXT3Textures())
+                {
+                    return error(GL_INVALID_OPERATION);
+                }
+                else
+                {
+                    return error(GL_INVALID_ENUM);
+                }
+                break;
+              case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
+                if (context->supportsDXT5Textures())
+                {
+                    return error(GL_INVALID_OPERATION);
+                }
+                else
+                {
+                    return error(GL_INVALID_ENUM);
+                }
+                break;
+              default:
+                break;
             }
 
             if (type == GL_FLOAT)
@@ -4606,7 +4635,7 @@ void __stdcall glTexImage2D(GLenum target, GLint level, GLint internalformat, GL
                     return error(GL_INVALID_OPERATION);
                 }
 
-                texture->setImage(level, internalformat, width, height, format, type, context->getUnpackAlignment(), pixels);
+                texture->setImage(level, width, height, format, type, context->getUnpackAlignment(), pixels);
             }
             else
             {
@@ -4620,22 +4649,22 @@ void __stdcall glTexImage2D(GLenum target, GLint level, GLint internalformat, GL
                 switch (target)
                 {
                   case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
-                    texture->setImagePosX(level, internalformat, width, height, format, type, context->getUnpackAlignment(), pixels);
+                    texture->setImagePosX(level, width, height, format, type, context->getUnpackAlignment(), pixels);
                     break;
                   case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
-                    texture->setImageNegX(level, internalformat, width, height, format, type, context->getUnpackAlignment(), pixels);
+                    texture->setImageNegX(level, width, height, format, type, context->getUnpackAlignment(), pixels);
                     break;
                   case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
-                    texture->setImagePosY(level, internalformat, width, height, format, type, context->getUnpackAlignment(), pixels);
+                    texture->setImagePosY(level, width, height, format, type, context->getUnpackAlignment(), pixels);
                     break;
                   case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
-                    texture->setImageNegY(level, internalformat, width, height, format, type, context->getUnpackAlignment(), pixels);
+                    texture->setImageNegY(level, width, height, format, type, context->getUnpackAlignment(), pixels);
                     break;
                   case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
-                    texture->setImagePosZ(level, internalformat, width, height, format, type, context->getUnpackAlignment(), pixels);
+                    texture->setImagePosZ(level, width, height, format, type, context->getUnpackAlignment(), pixels);
                     break;
                   case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
-                    texture->setImageNegZ(level, internalformat, width, height, format, type, context->getUnpackAlignment(), pixels);
+                    texture->setImageNegZ(level, width, height, format, type, context->getUnpackAlignment(), pixels);
                     break;
                   default: UNREACHABLE();
                 }
@@ -4797,7 +4826,7 @@ void __stdcall glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint 
                     return error(GL_INVALID_OPERATION);
                 }
 
-                if (format != texture->getFormat())
+                if (format != texture->getInternalFormat())
                 {
                     return error(GL_INVALID_OPERATION);
                 }
@@ -4809,16 +4838,6 @@ void __stdcall glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint 
                 gl::TextureCubeMap *texture = context->getTextureCubeMap();
 
                 if (!texture)
-                {
-                    return error(GL_INVALID_OPERATION);
-                }
-
-                if (texture->isCompressed())
-                {
-                    return error(GL_INVALID_OPERATION);
-                }
-
-                if (format != texture->getFormat())
                 {
                     return error(GL_INVALID_OPERATION);
                 }
@@ -5761,6 +5780,31 @@ __eglMustCastToProperFunctionPointerType __stdcall glGetProcAddress(const char *
     }
 
     return NULL;
+}
+
+void __stdcall glBindTexImage(egl::Surface *surface)
+{
+    EVENT("(egl::Surface* surface = 0x%0.8p)",
+          surface);
+
+    try
+    {
+        gl::Context *context = gl::getContext();
+
+        if (context)
+        {
+            gl::Texture2D *textureObject = context->getTexture2D();
+
+            if (textureObject)
+            {
+                textureObject->bindTexImage(surface);
+            }
+        }
+    }
+    catch(std::bad_alloc&)
+    {
+        return error(GL_OUT_OF_MEMORY);
+    }
 }
 
 }

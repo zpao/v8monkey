@@ -49,8 +49,7 @@ class nsSVGClipPathFrame : public nsSVGClipPathFrameBase
 protected:
   nsSVGClipPathFrame(nsStyleContext* aContext) :
     nsSVGClipPathFrameBase(aContext),
-    mClipParentMatrix(nsnull),
-    mInUse(PR_FALSE) {}
+    mInUse(false) {}
 
 public:
   NS_DECL_FRAMEARENA_HELPERS
@@ -60,16 +59,16 @@ public:
                      nsIFrame* aParent,
                      const gfxMatrix &aMatrix);
 
-  PRBool ClipHitTest(nsIFrame* aParent,
+  bool ClipHitTest(nsIFrame* aParent,
                      const gfxMatrix &aMatrix,
                      const nsPoint &aPoint);
 
   // Check if this clipPath is made up of more than one geometry object.
   // If so, the clipping API in cairo isn't enough and we need to use
   // mask based clipping.
-  PRBool IsTrivial();
+  bool IsTrivial();
 
-  PRBool IsValid();
+  bool IsValid();
 
   // nsIFrame interface:
   NS_IMETHOD AttributeChanged(PRInt32         aNameSpaceID,
@@ -105,19 +104,19 @@ public:
     AutoClipPathReferencer(nsSVGClipPathFrame *aFrame)
        : mFrame(aFrame) {
       NS_ASSERTION(!mFrame->mInUse, "reference loop!");
-      mFrame->mInUse = PR_TRUE;
+      mFrame->mInUse = true;
     }
     ~AutoClipPathReferencer() {
-      mFrame->mInUse = PR_FALSE;
+      mFrame->mInUse = false;
     }
   private:
     nsSVGClipPathFrame *mFrame;
   };
 
   nsIFrame *mClipParent;
-  nsCOMPtr<nsIDOMSVGMatrix> mClipParentMatrix;
+  nsAutoPtr<gfxMatrix> mClipParentMatrix;
   // recursion prevention flag
-  PRPackedBool mInUse;
+  bool mInUse;
 
   // nsSVGContainerFrame methods:
   virtual gfxMatrix GetCanvasTM();

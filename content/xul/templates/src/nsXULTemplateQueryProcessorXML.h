@@ -151,7 +151,7 @@ class nsXULTemplateQueryProcessorXML : public nsIXULTemplateQueryProcessor,
 public:
 
     nsXULTemplateQueryProcessorXML()
-        : mGenerationStarted(PR_FALSE)
+        : mGenerationStarted(false)
     {}
 
     // nsISupports interface
@@ -177,7 +177,7 @@ public:
 
 private:
 
-    PRBool mGenerationStarted;
+    bool mGenerationStarted;
 
     nsRefPtrHashtable<nsISupportsHashKey, nsXMLBindingSet> mRuleToBindingsMap;
 

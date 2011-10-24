@@ -86,10 +86,10 @@ nsXULTemplateResultSetStorage::nsXULTemplateResultSetStorage(mozIStorageStatemen
 }
 
 NS_IMETHODIMP
-nsXULTemplateResultSetStorage::HasMoreElements(PRBool *aResult)
+nsXULTemplateResultSetStorage::HasMoreElements(bool *aResult)
 {
     if (!mStatement) {
-        *aResult = PR_FALSE;
+        *aResult = false;
         return NS_OK;
     }
 
@@ -177,20 +177,20 @@ NS_IMPL_ISUPPORTS1(nsXULTemplateQueryProcessorStorage,
 
 
 nsXULTemplateQueryProcessorStorage::nsXULTemplateQueryProcessorStorage() 
-    : mGenerationStarted(PR_FALSE)
+    : mGenerationStarted(false)
 {
 }
 
 NS_IMETHODIMP
 nsXULTemplateQueryProcessorStorage::GetDatasource(nsIArray* aDataSources,
                                                   nsIDOMNode* aRootNode,
-                                                  PRBool aIsTrusted,
+                                                  bool aIsTrusted,
                                                   nsIXULTemplateBuilder* aBuilder,
-                                                  PRBool* aShouldDelayBuilding,
+                                                  bool* aShouldDelayBuilding,
                                                   nsISupports** aReturn)
 {
     *aReturn = nsnull;
-    *aShouldDelayBuilding = PR_FALSE;
+    *aShouldDelayBuilding = false;
 
     if (!aIsTrusted) {
         return NS_OK;
@@ -285,7 +285,7 @@ nsXULTemplateQueryProcessorStorage::InitializeForBuilding(nsISupports* aDatasour
     if (!mStorageConnection)
         return NS_ERROR_INVALID_ARG;
 
-    PRBool ready;
+    bool ready;
     mStorageConnection->GetConnectionReady(&ready);
     if (!ready)
       return NS_ERROR_UNEXPECTED;
@@ -296,7 +296,7 @@ nsXULTemplateQueryProcessorStorage::InitializeForBuilding(nsISupports* aDatasour
 NS_IMETHODIMP
 nsXULTemplateQueryProcessorStorage::Done()
 {
-    mGenerationStarted = PR_FALSE;
+    mGenerationStarted = false;
     return NS_OK;
 }
 
@@ -318,7 +318,7 @@ nsXULTemplateQueryProcessorStorage::CompileQuery(nsIXULTemplateBuilder* aBuilder
     nsAutoString sqlQuery;
 
     // Let's get all text nodes (which should be the query) 
-    nsContentUtils::GetNodeTextContent(queryContent, PR_FALSE, sqlQuery);
+    nsContentUtils::GetNodeTextContent(queryContent, false, sqlQuery);
 
     nsresult rv = mStorageConnection->CreateStatement(NS_ConvertUTF16toUTF8(sqlQuery),
                                                               getter_AddRefs(statement));
@@ -328,14 +328,13 @@ nsXULTemplateQueryProcessorStorage::CompileQuery(nsIXULTemplateBuilder* aBuilder
     }
 
     PRUint32 parameterCount = 0;
-    PRUint32 count = queryContent->GetChildCount();
-
-    for (PRUint32 i = 0; i < count; ++i) {
-        nsIContent *child = queryContent->GetChildAt(i);
+    for (nsIContent* child = queryContent->GetFirstChild();
+         child;
+         child = child->GetNextSibling()) {
 
         if (child->NodeInfo()->Equals(nsGkAtoms::param, kNameSpaceID_XUL)) {
             nsAutoString value;
-            nsContentUtils::GetNodeTextContent(child, PR_FALSE, value);
+            nsContentUtils::GetNodeTextContent(child, false, value);
 
             PRUint32 index = parameterCount;
             nsAutoString name, indexValue;
@@ -422,7 +421,7 @@ nsXULTemplateQueryProcessorStorage::GenerateResults(nsISupports* aDatasource,
                                                     nsISupports* aQuery,
                                                     nsISimpleEnumerator** aResults)
 {
-    mGenerationStarted = PR_TRUE;
+    mGenerationStarted = true;
 
     nsCOMPtr<mozIStorageStatement> statement = do_QueryInterface(aQuery);
     if (!statement)

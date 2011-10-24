@@ -45,9 +45,10 @@
 
 #include "nsTArray.h"
 #include "nsAlgorithm.h"
-#include "nsServiceManagerUtils.h"
-#include "nsIPrefService.h"
+#include "mozilla/Preferences.h"
 #include "cairo-xlib-xrender.h"
+
+using namespace mozilla;
 
 // Although the dimension parameters in the xCreatePixmapReq wire protocol are
 // 16-bit unsigned integers, the server's CreatePixmap returns BadAlloc if
@@ -55,7 +56,10 @@
 #define XLIB_IMAGE_SIDE_SIZE_LIMIT 0x7fff
 
 gfxXlibSurface::gfxXlibSurface(Display *dpy, Drawable drawable, Visual *visual)
-    : mPixmapTaken(PR_FALSE), mDisplay(dpy), mDrawable(drawable)
+    : mPixmapTaken(false), mDisplay(dpy), mDrawable(drawable)
+#if defined(MOZ_WIDGET_GTK2) && !defined(MOZ_PLATFORM_MAEMO)
+    , mGLXPixmap(None)
+#endif
 {
     DoSizeQuery();
     cairo_surface_t *surf = cairo_xlib_surface_create(dpy, drawable, visual, mSize.width, mSize.height);
@@ -63,7 +67,10 @@ gfxXlibSurface::gfxXlibSurface(Display *dpy, Drawable drawable, Visual *visual)
 }
 
 gfxXlibSurface::gfxXlibSurface(Display *dpy, Drawable drawable, Visual *visual, const gfxIntSize& size)
-    : mPixmapTaken(PR_FALSE), mDisplay(dpy), mDrawable(drawable), mSize(size)
+    : mPixmapTaken(false), mDisplay(dpy), mDrawable(drawable), mSize(size)
+#if defined(MOZ_WIDGET_GTK2) && !defined(MOZ_PLATFORM_MAEMO)
+    , mGLXPixmap(None)
+#endif
 {
     NS_ASSERTION(CheckSurfaceSize(size, XLIB_IMAGE_SIDE_SIZE_LIMIT),
                  "Bad size");
@@ -74,8 +81,11 @@ gfxXlibSurface::gfxXlibSurface(Display *dpy, Drawable drawable, Visual *visual, 
 
 gfxXlibSurface::gfxXlibSurface(Screen *screen, Drawable drawable, XRenderPictFormat *format,
                                const gfxIntSize& size)
-    : mPixmapTaken(PR_FALSE), mDisplay(DisplayOfScreen(screen)),
+    : mPixmapTaken(false), mDisplay(DisplayOfScreen(screen)),
       mDrawable(drawable), mSize(size)
+#if defined(MOZ_WIDGET_GTK2) && !defined(MOZ_PLATFORM_MAEMO)
+      , mGLXPixmap(None)
+#endif
 {
     NS_ASSERTION(CheckSurfaceSize(size, XLIB_IMAGE_SIDE_SIZE_LIMIT),
                  "Bad Size");
@@ -88,9 +98,12 @@ gfxXlibSurface::gfxXlibSurface(Screen *screen, Drawable drawable, XRenderPictFor
 }
 
 gfxXlibSurface::gfxXlibSurface(cairo_surface_t *csurf)
-    : mPixmapTaken(PR_FALSE),
+    : mPixmapTaken(false),
       mSize(cairo_xlib_surface_get_width(csurf),
             cairo_xlib_surface_get_height(csurf))
+#if defined(MOZ_WIDGET_GTK2) && !defined(MOZ_PLATFORM_MAEMO)
+      , mGLXPixmap(None)
+#endif
 {
     NS_PRECONDITION(cairo_surface_status(csurf) == 0,
                     "Not expecting an error surface");
@@ -98,11 +111,17 @@ gfxXlibSurface::gfxXlibSurface(cairo_surface_t *csurf)
     mDrawable = cairo_xlib_surface_get_drawable(csurf);
     mDisplay = cairo_xlib_surface_get_display(csurf);
 
-    Init(csurf, PR_TRUE);
+    Init(csurf, true);
 }
 
 gfxXlibSurface::~gfxXlibSurface()
 {
+#if defined(MOZ_WIDGET_GTK2) && !defined(MOZ_PLATFORM_MAEMO)
+    if (mGLXPixmap) {
+        gl::sGLXLibrary.DestroyPixmap(mGLXPixmap);
+    }
+#endif
+    // gfxASurface's destructor calls RecordMemoryFreed().
     if (mPixmapTaken) {
         XFreePixmap (mDisplay, mDrawable);
     }
@@ -124,6 +143,26 @@ CreatePixmap(Screen *screen, const gfxIntSize& size, unsigned int depth,
     return XCreatePixmap(dpy, relatedDrawable,
                          NS_MAX(1, size.width), NS_MAX(1, size.height),
                          depth);
+}
+
+void
+gfxXlibSurface::TakePixmap()
+{
+    NS_ASSERTION(!mPixmapTaken, "I already own the Pixmap!");
+    mPixmapTaken = true;
+
+    // Divide by 8 because surface_get_depth gives us the number of *bits* per
+    // pixel.
+    RecordMemoryUsed(mSize.width * mSize.height *
+        cairo_xlib_surface_get_depth(CairoSurface()) / 8);
+}
+
+Drawable
+gfxXlibSurface::ReleasePixmap() {
+    NS_ASSERTION(mPixmapTaken, "I don't own the Pixmap!");
+    mPixmapTaken = false;
+    RecordMemoryFreed();
+    return mDrawable;
 }
 
 /* static */
@@ -167,16 +206,9 @@ gfxXlibSurface::Create(Screen *screen, XRenderPictFormat *format,
     return result.forget();
 }
 
-static PRBool GetForce24bppPref()
+static bool GetForce24bppPref()
 {
-    PRBool val = PR_FALSE; // default
-
-    nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-    if (!prefs)
-        return val;
-
-    prefs->GetBoolPref("mozilla.widget.force-24bpp", &val);
-    return val;
+    return Preferences::GetBool("mozilla.widget.force-24bpp", false);
 }
 
 already_AddRefed<gfxASurface>
@@ -191,7 +223,7 @@ gfxXlibSurface::CreateSimilarSurface(gfxContentType aContent,
         // cairo_surface_create_similar will use a matching visual if it can.
         // However, systems with 16-bit or indexed default visuals may benefit
         // from rendering with 24-bit formats.
-        static PRBool force24bpp = GetForce24bppPref();
+        static bool force24bpp = GetForce24bppPref();
         if (force24bpp
             && cairo_xlib_surface_get_depth(CairoSurface()) != 24) {
             XRenderPictFormat* format =
@@ -236,7 +268,7 @@ gfxXlibSurface::DoSizeQuery()
 
 class DisplayTable {
 public:
-    static PRBool GetColormapAndVisual(Screen* screen,
+    static bool GetColormapAndVisual(Screen* screen,
                                        XRenderPictFormat* format,
                                        Visual* visual, Colormap* colormap,
                                        Visual** visualForColormap);
@@ -262,7 +294,7 @@ private:
     // Comparator for finding the DisplayInfo
     class FindDisplay {
     public:
-        PRBool Equals(const DisplayInfo& info, const Display *display) const
+        bool Equals(const DisplayInfo& info, const Display *display) const
         {
             return info.mDisplay == display;
         }
@@ -299,7 +331,7 @@ DisplayTable* DisplayTable::sDisplayTable;
 // differ from the visual passed in.  Colormaps are tied to a visual, so
 // should only be used with their visual.
 
-/* static */ PRBool
+/* static */ bool
 DisplayTable::GetColormapAndVisual(Screen* aScreen, XRenderPictFormat* aFormat,
                                    Visual* aVisual, Colormap* aColormap,
                                    Visual** aVisualForColormap)
@@ -315,12 +347,12 @@ DisplayTable::GetColormapAndVisual(Screen* aScreen, XRenderPictFormat* aFormat,
     {
         *aColormap = DefaultColormapOfScreen(aScreen);
         *aVisualForColormap = defaultVisual;
-        return PR_TRUE;
+        return true;
     }
 
     // Only supporting TrueColor non-default visuals
     if (!aVisual || aVisual->c_class != TrueColor)
-        return PR_FALSE;
+        return false;
 
     if (!sDisplayTable) {
         sDisplayTable = new DisplayTable();
@@ -335,7 +367,7 @@ DisplayTable::GetColormapAndVisual(Screen* aScreen, XRenderPictFormat* aFormat,
         // becomes invalid.
         XExtCodes *codes = XAddExtension(display);
         if (!codes)
-            return PR_FALSE;
+            return false;
 
         XESetCloseDisplay(display, codes->extension, DisplayClosing);
         // Add a new DisplayInfo.
@@ -356,7 +388,7 @@ DisplayTable::GetColormapAndVisual(Screen* aScreen, XRenderPictFormat* aFormat,
             || aVisual == entry.mVisual) {
             *aColormap = entry.mColormap;
             *aVisualForColormap = entry.mVisual;
-            return PR_TRUE;
+            return true;
         }
     }
 
@@ -371,7 +403,7 @@ DisplayTable::GetColormapAndVisual(Screen* aScreen, XRenderPictFormat* aFormat,
 
     *aColormap = colormap;
     *aVisualForColormap = aVisual;
-    return PR_TRUE;
+    return true;
 }
 
 /* static */ int
@@ -387,11 +419,11 @@ DisplayTable::DisplayClosing(Display *display, XExtCodes* codes)
     return 0;
 }
 
-PRBool
+bool
 gfxXlibSurface::GetColormapAndVisual(Colormap* aColormap, Visual** aVisual)
 {
     if (!mSurfaceValid)
-        return PR_FALSE;
+        return false;
 
     XRenderPictFormat* format =
         cairo_xlib_surface_get_xrender_format(CairoSurface());
@@ -508,3 +540,19 @@ gfxXlibSurface::XRenderFormat()
     return cairo_xlib_surface_get_xrender_format(CairoSurface());
 }
 
+#if defined(MOZ_WIDGET_GTK2) && !defined(MOZ_PLATFORM_MAEMO)
+GLXPixmap
+gfxXlibSurface::GetGLXPixmap()
+{
+    if (!mGLXPixmap) {
+        mGLXPixmap = gl::sGLXLibrary.CreatePixmap(this);
+    }
+    return mGLXPixmap;
+}
+#endif
+
+gfxASurface::MemoryLocation
+gfxXlibSurface::GetMemoryLocation() const
+{
+    return MEMORY_OUT_OF_PROCESS;
+}

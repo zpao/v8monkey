@@ -59,6 +59,18 @@ class Channel : public Message::Sender {
   //
   Channel(const std::wstring& channel_id, Mode mode, Listener* listener);
 
+  // XXX it would nice not to have yet more platform-specific code in
+  // here but it's just not worth the trouble.
+# if defined(OS_POSIX)
+  // Connect to a pre-created channel |fd| as |mode|.
+  Channel(int fd, Mode mode, Listener* listener);
+# elif defined(OS_WIN)
+  // Connect to a pre-created channel as |mode|.  Clients connect to
+  // the pre-existing server pipe, and servers take over |server_pipe|.
+  Channel(const std::wstring& channel_id, void* server_pipe,
+	  Mode mode, Listener* listener);
+# endif
+
   ~Channel();
 
   // Connect the pipe.  On the server side, this will initiate
@@ -72,11 +84,7 @@ class Channel : public Message::Sender {
   void Close();
 
   // Modify the Channel's listener.
-#ifdef CHROMIUM_MOZILLA_BUILD
   Listener* set_listener(Listener* listener);
-#else
-  void set_listener(Listener* listener);
-#endif
 
   // Send a message over the Channel to the listener on the other end.
   //
@@ -99,6 +107,12 @@ class Channel : public Message::Sender {
   // a named FIFO is used as the channel transport mechanism rather than a
   // socketpair() in which case this method returns -1 for both parameters.
   void GetClientFileDescriptorMapping(int *src_fd, int *dest_fd) const;
+
+  // Return the server side of the socketpair.
+  int GetServerFileDescriptor() const;
+#elif defined(OS_WIN)
+  // Return the server pipe handle.
+  void* GetServerPipeHandle() const;
 #endif  // defined(OS_POSIX)
 
  private:

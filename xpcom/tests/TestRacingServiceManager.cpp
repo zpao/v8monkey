@@ -91,8 +91,8 @@ PRInt32 gComponent2Count = 0;
 
 ReentrantMonitor* gReentrantMonitor = nsnull;
 
-PRBool gCreateInstanceCalled = PR_FALSE;
-PRBool gMainThreadWaiting = PR_FALSE;
+bool gCreateInstanceCalled = false;
+bool gMainThreadWaiting = false;
 
 class AutoCreateAndDestroyReentrantMonitor
 {
@@ -120,17 +120,17 @@ class Factory : public nsIFactory
 public:
   NS_DECL_ISUPPORTS
 
-  Factory() : mFirstComponentCreated(PR_FALSE) { }
+  Factory() : mFirstComponentCreated(false) { }
 
   NS_IMETHOD CreateInstance(nsISupports* aDelegate,
                             const nsIID& aIID,
                             void** aResult);
 
-  NS_IMETHOD LockFactory(PRBool aLock) {
+  NS_IMETHOD LockFactory(bool aLock) {
     return NS_OK;
   }
 
-  PRBool mFirstComponentCreated;
+  bool mFirstComponentCreated;
 };
 
 NS_IMPL_THREADSAFE_ISUPPORTS1(Factory, nsIFactory)
@@ -187,7 +187,7 @@ Factory::CreateInstance(nsISupports* aDelegate,
   {
     ReentrantMonitorAutoEnter mon(*gReentrantMonitor);
 
-    gCreateInstanceCalled = PR_TRUE;
+    gCreateInstanceCalled = true;
     mon.Notify();
 
     mon.Wait(PR_MillisecondsToInterval(3000));
@@ -217,9 +217,9 @@ class Runnable : public nsRunnable
 public:
   NS_DECL_NSIRUNNABLE
 
-  Runnable() : mFirstRunnableDone(PR_FALSE) { }
+  Runnable() : mFirstRunnableDone(false) { }
 
-  PRBool mFirstRunnableDone;
+  bool mFirstRunnableDone;
 };
 
 NS_IMETHODIMP
@@ -298,7 +298,7 @@ int main(int argc, char** argv)
   {
     ReentrantMonitorAutoEnter mon(*gReentrantMonitor);
 
-    gMainThreadWaiting = PR_TRUE;
+    gMainThreadWaiting = true;
     mon.Notify();
 
     while (!gCreateInstanceCalled) {
@@ -310,8 +310,8 @@ int main(int argc, char** argv)
   NS_ENSURE_SUCCESS(rv, 1);
 
   // Reset for the contractID test
-  gMainThreadWaiting = gCreateInstanceCalled = PR_FALSE;
-  gFactory->mFirstComponentCreated = runnable->mFirstRunnableDone = PR_TRUE;
+  gMainThreadWaiting = gCreateInstanceCalled = false;
+  gFactory->mFirstComponentCreated = runnable->mFirstRunnableDone = true;
   component = nsnull;
 
   rv = newThread->Dispatch(runnable, NS_DISPATCH_NORMAL);
@@ -320,7 +320,7 @@ int main(int argc, char** argv)
   {
     ReentrantMonitorAutoEnter mon(*gReentrantMonitor);
 
-    gMainThreadWaiting = PR_TRUE;
+    gMainThreadWaiting = true;
     mon.Notify();
 
     while (!gCreateInstanceCalled) {

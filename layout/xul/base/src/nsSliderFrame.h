@@ -44,7 +44,7 @@
 #include "nsIAtom.h"
 #include "nsCOMPtr.h"
 #include "nsITimer.h"
-#include "nsIDOMMouseListener.h"
+#include "nsIDOMEventListener.h"
 
 class nsString;
 class nsITimer;
@@ -52,7 +52,7 @@ class nsSliderFrame;
 
 nsIFrame* NS_NewSliderFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 
-class nsSliderMediator : public nsIDOMMouseListener
+class nsSliderMediator : public nsIDOMEventListener
 {
 public:
 
@@ -65,51 +65,7 @@ public:
 
   virtual void SetSlider(nsSliderFrame* aSlider) { mSlider = aSlider; }
 
- /**
-  * Processes a mouse down event
-  * @param aMouseEvent @see nsIDOMEvent.h 
-  * @returns whether the event was consumed or ignored. @see nsresult
-  */
-  NS_IMETHOD MouseDown(nsIDOMEvent* aMouseEvent);
-
-  /**
-   * Processes a mouse up event
-   * @param aMouseEvent @see nsIDOMEvent.h 
-   * @returns whether the event was consumed or ignored. @see nsresult
-   */
-  NS_IMETHOD MouseUp(nsIDOMEvent* aMouseEvent);
-
-  /**
-   * Processes a mouse click event
-   * @param aMouseEvent @see nsIDOMEvent.h 
-   * @returns whether the event was consumed or ignored. @see nsresult
-   *
-   */
-  NS_IMETHOD MouseClick(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-
-  /**
-   * Processes a mouse click event
-   * @param aMouseEvent @see nsIDOMEvent.h 
-   * @returns whether the event was consumed or ignored. @see nsresult
-   *
-   */
-  NS_IMETHOD MouseDblClick(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-
-  /**
-   * Processes a mouse enter event
-   * @param aMouseEvent @see nsIDOMEvent.h 
-   * @returns whether the event was consumed or ignored. @see nsresult
-   */
-  NS_IMETHOD MouseOver(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-
-  /**
-   * Processes a mouse leave event
-   * @param aMouseEvent @see nsIDOMEvent.h 
-   * @returns whether the event was consumed or ignored. @see nsresult
-   */
-  NS_IMETHOD MouseOut(nsIDOMEvent* aMouseEvent) { return NS_OK; }
-
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) { return NS_OK; }
+  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent);
 };
 
 class nsSliderFrame : public nsBoxFrame
@@ -135,14 +91,14 @@ public:
   NS_IMETHOD DoLayout(nsBoxLayoutState& aBoxLayoutState);
 
   // nsIFrame overrides
-  NS_IMETHOD  AppendFrames(nsIAtom*        aListName,
+  NS_IMETHOD  AppendFrames(ChildListID     aListID,
                            nsFrameList&    aFrameList);
 
-  NS_IMETHOD  InsertFrames(nsIAtom*        aListName,
+  NS_IMETHOD  InsertFrames(ChildListID     aListID,
                            nsIFrame*       aPrevFrame,
                            nsFrameList&    aFrameList);
 
-  NS_IMETHOD  RemoveFrame(nsIAtom*        aListName,
+  NS_IMETHOD  RemoveFrame(ChildListID     aListID,
                           nsIFrame*       aOldFrame);
 
   virtual void DestroyFrom(nsIFrame* aDestructRoot);
@@ -168,15 +124,12 @@ public:
                          nsGUIEvent* aEvent,
                          nsEventStatus* aEventStatus);
 
-  NS_IMETHOD SetInitialChildList(nsIAtom*        aListName,
+  NS_IMETHOD SetInitialChildList(ChildListID     aListID,
                                  nsFrameList&    aChildList);
 
   virtual nsIAtom* GetType() const;
 
-  NS_IMETHOD MouseDown(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseUp(nsIDOMEvent* aMouseEvent);
-
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) { return NS_OK; }
+  nsresult MouseDown(nsIDOMEvent* aMouseEvent);
 
   static PRInt32 GetCurrentPosition(nsIContent* content);
   static PRInt32 GetMinPosition(nsIContent* content);
@@ -193,7 +146,7 @@ public:
   NS_IMETHOD HandleMultiplePress(nsPresContext* aPresContext,
                                  nsGUIEvent *    aEvent,
                                  nsEventStatus*  aEventStatus,
-                                 PRBool aControlHeld)  { return NS_OK; }
+                                 bool aControlHeld)  { return NS_OK; }
 
   NS_IMETHOD HandleDrag(nsPresContext* aPresContext,
                         nsGUIEvent *    aEvent,
@@ -205,22 +158,22 @@ public:
 
 private:
 
-  PRBool GetScrollToClick();
+  bool GetScrollToClick();
   nsIBox* GetScrollbar();
 
   void PageUpDown(nscoord change);
-  void SetCurrentThumbPosition(nsIContent* aScrollbar, nscoord aNewPos, PRBool aIsSmooth,
-                               PRBool aImmediateRedraw, PRBool aMaySnap);
-  void SetCurrentPosition(nsIContent* aScrollbar, PRInt32 aNewPos, PRBool aIsSmooth,
-                          PRBool aImmediateRedraw);
+  void SetCurrentThumbPosition(nsIContent* aScrollbar, nscoord aNewPos, bool aIsSmooth,
+                               bool aImmediateRedraw, bool aMaySnap);
+  void SetCurrentPosition(nsIContent* aScrollbar, PRInt32 aNewPos, bool aIsSmooth,
+                          bool aImmediateRedraw);
   void SetCurrentPositionInternal(nsIContent* aScrollbar, PRInt32 pos,
-                                  PRBool aIsSmooth, PRBool aImmediateRedraw);
+                                  bool aIsSmooth, bool aImmediateRedraw);
   nsresult CurrentPositionChanged(nsPresContext* aPresContext,
-                                  PRBool aImmediateRedraw);
-  void DragThumb(PRBool aGrabMouseEvents);
+                                  bool aImmediateRedraw);
+  void DragThumb(bool aGrabMouseEvents);
   void AddListener();
   void RemoveListener();
-  PRBool isDraggingThumb();
+  bool isDraggingThumb();
 
   void StartRepeat() {
     nsRepeatService::GetInstance()->Start(Notify, this);
@@ -248,9 +201,9 @@ private:
   // true if an attribute change has been caused by the user manipulating the
   // slider. This allows notifications to tell how a slider's current position
   // was changed.
-  PRBool mUserChanged;
+  bool mUserChanged;
 
-  static PRBool gMiddlePref;
+  static bool gMiddlePref;
   static PRInt32 gSnapMultiplier;
 }; // class nsSliderFrame
 

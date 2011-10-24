@@ -58,7 +58,7 @@ void nsCertVerificationJob::Run()
   nsRefPtr<nsCertVerificationResult> vres = new nsCertVerificationResult;
   if (vres)
   {
-    nsresult rv = mCert->GetUsagesArray(PR_FALSE, // do not ignore OCSP
+    nsresult rv = mCert->GetUsagesArray(false, // do not ignore OCSP
                                         &verified,
                                         &count,
                                         &usages);
@@ -126,20 +126,21 @@ nsresult nsCertVerificationThread::addJob(nsBaseVerificationJob *aJob)
 
 void nsCertVerificationThread::Run(void)
 {
-  while (PR_TRUE) {
+  while (true) {
 
     nsBaseVerificationJob *job = nsnull;
 
     {
       MutexAutoLock threadLock(verification_thread_singleton->mMutex);
-      
-      while (!mExitRequested && (0 == verification_thread_singleton->mJobQ.GetSize())) {
+
+      while (!exitRequested(threadLock) &&
+             0 == verification_thread_singleton->mJobQ.GetSize()) {
         // no work to do ? let's wait a moment
 
         mCond.Wait();
       }
       
-      if (mExitRequested)
+      if (exitRequested(threadLock))
         break;
       
       job = static_cast<nsBaseVerificationJob*>(mJobQ.PopFront());
@@ -160,6 +161,7 @@ void nsCertVerificationThread::Run(void)
         static_cast<nsCertVerificationJob*>(mJobQ.PopFront());
       delete job;
     }
+    postStoppedEventToMainThread(threadLock);
   }
 }
 

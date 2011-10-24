@@ -70,7 +70,7 @@ static PRInt32         gTableRefCount = 0;
 static PRUint32        gOperatorCount = 0;
 static OperatorData*   gOperatorArray = nsnull;
 static nsHashtable*    gOperatorTable = nsnull;
-static PRBool          gInitialized   = PR_FALSE;
+static bool            gInitialized   = false;
 static nsTArray<nsString>*      gInvariantCharArray    = nsnull;
 
 static const PRUnichar kNullCh  = PRUnichar('\0');
@@ -139,11 +139,11 @@ SetProperty(OperatorData* aOperatorData,
       aOperatorData->mFlags |= NS_MATHML_OPERATOR_DIRECTION_HORIZONTAL;
     else return; // invalid value
   } else {
-    PRBool isLeftSpace;
+    bool isLeftSpace;
     if (aName.EqualsLiteral("lspace"))
-      isLeftSpace = PR_TRUE;
+      isLeftSpace = true;
     else if (aName.EqualsLiteral("rspace"))
-      isLeftSpace = PR_FALSE;
+      isLeftSpace = false;
     else return;  // input is not applicable
 
     // aValue is assumed to be a digit from 0 to 7
@@ -158,7 +158,7 @@ SetProperty(OperatorData* aOperatorData,
   }
 }
 
-static PRBool
+static bool
 SetOperator(OperatorData*   aOperatorData,
             nsOperatorFlags aForm,
             const nsCString& aOperator,
@@ -176,12 +176,12 @@ SetOperator(OperatorData*   aOperatorData,
   while (i <= len) {
     if (0 == state) {
       if (c != '\\')
-        return PR_FALSE;
+        return false;
       if (i < len)
         c = aOperator[i];
       i++;
       if (('u' != c) && ('U' != c))
-        return PR_FALSE;
+        return false;
       if (i < len)
         c = aOperator[i];
       i++;
@@ -194,7 +194,7 @@ SetOperator(OperatorData*   aOperatorData,
          uchar = (uchar << 4) | (c - 'a' + 0x0a);
       else if (('A' <= c) && (c <= 'F'))
          uchar = (uchar << 4) | (c - 'A' + 0x0a);
-      else return PR_FALSE;
+      else return false;
       if (i < len)
         c = aOperator[i];
       i++;
@@ -206,12 +206,12 @@ SetOperator(OperatorData*   aOperatorData,
       }
     }
   }
-  if (0 != state) return PR_FALSE;
+  if (0 != state) return false;
 
   // Quick return when the caller doesn't care about the attributes and just wants
   // to know if this is a valid operator (this is the case at the first pass of the
   // parsing of the dictionary in InitOperators())
-  if (!aForm) return PR_TRUE;
+  if (!aForm) return true;
 
   // Add operator to hash table
   aOperatorData->mFlags |= aForm;
@@ -241,7 +241,7 @@ SetOperator(OperatorData*   aOperatorData,
       ++end;
     }
     // If ':' is not found, then it's a boolean property
-    PRBool IsBooleanProperty = (kColonCh != *end);
+    bool IsBooleanProperty = (kColonCh != *end);
     *end = kNullCh; // end segment here
     // this segment is the name
     if (start < end) {
@@ -265,7 +265,7 @@ SetOperator(OperatorData*   aOperatorData,
     }
     start = ++end;
   }
-  return PR_TRUE;
+  return true;
 }
 
 static nsresult
@@ -295,7 +295,7 @@ InitOperators(void)
     OperatorData* operatorData = &dummyData;
     nsCOMPtr<nsISimpleEnumerator> iterator;
     if (NS_SUCCEEDED(mathfontProp->Enumerate(getter_AddRefs(iterator)))) {
-      PRBool more;
+      bool more;
       PRUint32 index = 0;
       nsCAutoString name;
       nsAutoString attributes;
@@ -351,7 +351,7 @@ InitOperators(void)
 static nsresult
 InitGlobals()
 {
-  gInitialized = PR_TRUE;
+  gInitialized = true;
   nsresult rv = NS_ERROR_OUT_OF_MEMORY;
   gInvariantCharArray = new nsTArray<nsString>();
   if (gInvariantCharArray) {
@@ -405,7 +405,7 @@ GetOperatorData(const nsString& aOperator, nsOperatorFlags aForm)
   return (OperatorData*)gOperatorTable->Get(&hkey);
 }
 
-PRBool
+bool
 nsMathMLOperators::LookupOperator(const nsString&       aOperator,
                                   const nsOperatorFlags aForm,
                                   nsOperatorFlags*      aFlags,
@@ -445,10 +445,10 @@ nsMathMLOperators::LookupOperator(const nsString&       aOperator,
       *aRightSpace = found->mRightSpace;
       *aFlags &= ~NS_MATHML_OPERATOR_FORM; // clear the form bits
       *aFlags |= found->mFlags; // just add bits without overwriting
-      return PR_TRUE;
+      return true;
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
 void
@@ -496,7 +496,7 @@ nsMathMLOperators::LookupOperators(const nsString&       aOperator,
   }
 }
 
-PRBool
+bool
 nsMathMLOperators::IsMutableOperator(const nsString& aOperator)
 {
   if (!gInitialized) {

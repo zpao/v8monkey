@@ -42,6 +42,8 @@
 
 #include "nsMappedAttributeElement.h"
 #include "nsIDOMElement.h"
+#include "nsILink.h"
+#include "Link.h"
 
 class nsCSSValue;
 
@@ -50,12 +52,15 @@ typedef nsMappedAttributeElement nsMathMLElementBase;
 /*
  * The base class for MathML elements.
  */
-class nsMathMLElement : public nsMathMLElementBase
-                      , public nsIDOMElement
+class nsMathMLElement : public nsMathMLElementBase,
+                        public nsIDOMElement,
+                        public nsILink,
+                        public mozilla::dom::Link
 {
 public:
   nsMathMLElement(already_AddRefed<nsINodeInfo> aNodeInfo)
-    : nsMathMLElementBase(aNodeInfo), mIncrementScriptLevel(PR_FALSE)
+    : nsMathMLElementBase(aNodeInfo), Link(this),
+      mIncrementScriptLevel(false)
   {}
 
   // Implementation of nsISupports is inherited from nsMathMLElementBase
@@ -68,41 +73,65 @@ public:
 
   nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                       nsIContent* aBindingParent,
-                      PRBool aCompileEventHandlers);
+                      bool aCompileEventHandlers);
+  virtual void UnbindFromTree(bool aDeep = true,
+                              bool aNullParent = true);
 
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
+  virtual bool ParseAttribute(PRInt32 aNamespaceID,
                                 nsIAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
 
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const;
 
   enum {
     PARSE_ALLOW_UNITLESS = 0x01, // unitless 0 will be turned into 0px
     PARSE_ALLOW_NEGATIVE = 0x02
   };
-  static PRBool ParseNumericValue(const nsString& aString,
+  static bool ParseNumericValue(const nsString& aString,
                                   nsCSSValue&     aCSSValue,
                                   PRUint32        aFlags);
 
   static void MapMathMLAttributesInto(const nsMappedAttributes* aAttributes, 
                                       nsRuleData* aRuleData);
   
+  virtual nsresult PreHandleEvent(nsEventChainPreVisitor& aVisitor);
+  virtual nsresult PostHandleEvent(nsEventChainPostVisitor& aVisitor);
   nsresult Clone(nsINodeInfo*, nsINode**) const;
   virtual nsEventStates IntrinsicState() const;
-  virtual PRBool IsNodeOfType(PRUint32 aFlags) const;
+  virtual bool IsNodeOfType(PRUint32 aFlags) const;
 
   // Set during reflow as necessary. Does a style change notification,
   // aNotify must be true.
-  void SetIncrementScriptLevel(PRBool aIncrementScriptLevel, PRBool aNotify);
-  PRBool GetIncrementScriptLevel() const {
+  void SetIncrementScriptLevel(bool aIncrementScriptLevel, bool aNotify);
+  bool GetIncrementScriptLevel() const {
     return mIncrementScriptLevel;
   }
 
+  NS_IMETHOD LinkAdded() { return NS_OK; }
+  NS_IMETHOD LinkRemoved() { return NS_OK; }
+  virtual bool IsFocusable(PRInt32 *aTabIndex = nsnull,
+                             bool aWithMouse = false);
+  virtual bool IsLink(nsIURI** aURI) const;
+  virtual void GetLinkTarget(nsAString& aTarget);
+  virtual nsLinkState GetLinkState() const;
+  virtual void RequestLinkStateUpdate();
+  virtual already_AddRefed<nsIURI> GetHrefURI() const;
+  nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
+                   const nsAString& aValue, bool aNotify)
+  {
+    return SetAttr(aNameSpaceID, aName, nsnull, aValue, aNotify);
+  }
+  virtual nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
+                           nsIAtom* aPrefix, const nsAString& aValue,
+                           bool aNotify);
+  virtual nsresult UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttribute,
+                             bool aNotify);
+
   virtual nsXPCClassInfo* GetClassInfo();
 private:
-  PRPackedBool mIncrementScriptLevel;
+  bool mIncrementScriptLevel;
 };
 
 #endif // nsMathMLElement_h

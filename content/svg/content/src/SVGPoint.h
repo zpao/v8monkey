@@ -38,8 +38,8 @@
 #define MOZILLA_SVGPOINT_H__
 
 #include "nsDebug.h"
-#include "nsContentUtils.h"
 #include "gfxPoint.h"
+#include "nsMathUtils.h"
 
 namespace mozilla {
 
@@ -77,7 +77,7 @@ public:
     return *this;
   }
 
-  PRBool operator==(const SVGPoint &rhs) const {
+  bool operator==(const SVGPoint &rhs) const {
     return mX == rhs.mX && mY == rhs.mY;
   }
 
@@ -92,8 +92,8 @@ public:
   }
 
 #ifdef DEBUG
-  PRBool IsValid() const {
-    return NS_FloatIsFinite(mX) && NS_FloatIsFinite(mY);
+  bool IsValid() const {
+    return NS_finite(mX) && NS_finite(mY);
   }
 #endif
 

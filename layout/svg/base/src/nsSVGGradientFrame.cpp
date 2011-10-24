@@ -39,8 +39,7 @@
 
 #include "nsIDOMSVGAnimatedNumber.h"
 #include "nsIDOMSVGAnimTransformList.h"
-#include "nsSVGTransformList.h"
-#include "nsSVGMatrix.h"
+#include "SVGAnimatedTransformList.h"
 #include "nsSVGEffects.h"
 #include "nsIDOMSVGStopElement.h"
 #include "nsSVGGradientElement.h"
@@ -48,14 +47,17 @@
 #include "nsSVGGradientFrame.h"
 #include "gfxContext.h"
 #include "gfxPattern.h"
+#include "nsContentUtils.h"
+
+using mozilla::SVGAnimatedTransformList;
 
 //----------------------------------------------------------------------
 // Implementation
 
 nsSVGGradientFrame::nsSVGGradientFrame(nsStyleContext* aContext) :
   nsSVGGradientFrameBase(aContext),
-  mLoopFlag(PR_FALSE),
-  mNoHRefURI(PR_FALSE)
+  mLoopFlag(false),
+  mNoHRefURI(false)
 {
 }
 
@@ -85,7 +87,7 @@ nsSVGGradientFrame::AttributeChanged(PRInt32         aNameSpaceID,
              aAttribute == nsGkAtoms::href) {
     // Blow away our reference, if any
     Properties().Delete(nsSVGEffects::HrefProperty());
-    mNoHRefURI = PR_FALSE;
+    mNoHRefURI = false;
     // And update whoever references us
     nsSVGEffects::InvalidateRenderingObservers(this);
   }
@@ -159,18 +161,14 @@ nsSVGGradientFrame::GetGradientTransform(nsIFrame *aSource,
   nsSVGGradientElement *element =
     GetGradientWithAttr(nsGkAtoms::gradientTransform, mContent);
 
-  if (!element->mGradientTransform)
+  SVGAnimatedTransformList* animTransformList =
+    element->GetAnimatedTransformList();
+  if (!animTransformList)
     return bboxMatrix;
 
-  nsCOMPtr<nsIDOMSVGTransformList> trans;
-  element->mGradientTransform->GetAnimVal(getter_AddRefs(trans));
-  nsCOMPtr<nsIDOMSVGMatrix> gradientTransform =
-    nsSVGTransformList::GetConsolidationMatrix(trans);
-
-  if (!gradientTransform)
-    return bboxMatrix;
-
-  return bboxMatrix.PreMultiply(nsSVGUtils::ConvertSVGMatrixToThebes(gradientTransform));
+  gfxMatrix gradientTransform =
+    animTransformList->GetAnimValue().GetConsolidationMatrix();
+  return bboxMatrix.PreMultiply(gradientTransform);
 }
 
 PRUint16
@@ -263,7 +261,7 @@ nsSVGGradientFrame::GetReferencedGradient()
     nsAutoString href;
     grad->mStringAttributes[nsSVGGradientElement::HREF].GetAnimValue(href, grad);
     if (href.IsEmpty()) {
-      mNoHRefURI = PR_TRUE;
+      mNoHRefURI = true;
       return nsnull; // no URL
     }
 
@@ -304,13 +302,13 @@ nsSVGGradientFrame::GetGradientWithAttr(nsIAtom *aAttrName, nsIContent *aDefault
     return grad;
 
   // Set mLoopFlag before checking mNextGrad->mLoopFlag in case we are mNextGrad
-  mLoopFlag = PR_TRUE;
+  mLoopFlag = true;
   // XXXjwatt: we should really send an error to the JavaScript Console here:
   NS_WARN_IF_FALSE(!next->mLoopFlag, "gradient reference loop detected "
                                      "while inheriting attribute!");
   if (!next->mLoopFlag)
     grad = next->GetGradientWithAttr(aAttrName, aDefault);
-  mLoopFlag = PR_FALSE;
+  mLoopFlag = false;
 
   return grad;
 }
@@ -329,13 +327,13 @@ nsSVGGradientFrame::GetGradientWithAttr(nsIAtom *aAttrName, nsIAtom *aGradType,
     return grad;
 
   // Set mLoopFlag before checking mNextGrad->mLoopFlag in case we are mNextGrad
-  mLoopFlag = PR_TRUE;
+  mLoopFlag = true;
   // XXXjwatt: we should really send an error to the JavaScript Console here:
   NS_WARN_IF_FALSE(!next->mLoopFlag, "gradient reference loop detected "
                                      "while inheriting attribute!");
   if (!next->mLoopFlag)
     grad = next->GetGradientWithAttr(aAttrName, aGradType, aDefault);
-  mLoopFlag = PR_FALSE;
+  mLoopFlag = false;
 
   return grad;
 }
@@ -369,13 +367,13 @@ nsSVGGradientFrame::GetStopFrame(PRInt32 aIndex, nsIFrame * *aStopFrame)
   }
 
   // Set mLoopFlag before checking mNextGrad->mLoopFlag in case we are mNextGrad
-  mLoopFlag = PR_TRUE;
+  mLoopFlag = true;
   // XXXjwatt: we should really send an error to the JavaScript Console here:
   NS_WARN_IF_FALSE(!next->mLoopFlag, "gradient reference loop detected "
                                      "while inheriting stop!");
   if (!next->mLoopFlag)
     stopCount = next->GetStopFrame(aIndex, aStopFrame);
-  mLoopFlag = PR_FALSE;
+  mLoopFlag = false;
 
   return stopCount;
 }

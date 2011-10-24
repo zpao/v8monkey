@@ -45,8 +45,7 @@ the JavaScript specification. There are also some supporting functions. */
 #include "pcre_internal.h"
 
 #include <limits.h>
-#include "yarr/jswtfbridge.h"
-#include "yarr/wtf/ASCIICType.h"
+#include "yarr/ASCIICType.h"
 #include "jsarena.h"
 #include "jscntxt.h"
 

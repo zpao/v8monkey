@@ -59,12 +59,12 @@ txErrorExpr::evaluate(txIEvalContext* aContext, txAExprResult** aResult)
 
 TX_IMPL_EXPR_STUBS_0(txErrorExpr, ANY_RESULT)
 
-PRBool
+bool
 txErrorExpr::isSensitiveTo(ContextSensitivity aContext)
 {
     // It doesn't really matter what we return here, but it might
     // be a good idea to try to keep this as unoptimizable as possible
-    return PR_TRUE;
+    return true;
 }
 
 #ifdef TX_TO_STRING

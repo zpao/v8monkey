@@ -62,7 +62,7 @@ public:
 
   virtual gfxIntSize GetCurrentSize();
 
-  virtual PRBool SetLayerManager(LayerManager *aManager);
+  virtual bool SetLayerManager(LayerManager *aManager);
 
   virtual LayerManager::LayersBackend GetBackendType() { return LayerManager::LAYERS_D3D10; }
 
@@ -112,11 +112,14 @@ public:
    */
   void AllocateTextures();
 
-  PRBool HasData() { return mHasData; }
+  bool HasData() { return mHasData; }
+
+  PRUint32 GetDataSize() { return mBuffer ? mBufferSize : 0; }
 
   virtual already_AddRefed<gfxASurface> GetAsSurface();
 
   nsAutoArrayPtr<PRUint8> mBuffer;
+  PRUint32 mBufferSize;
   nsRefPtr<ID3D10Device1> mDevice;
   Data mData;
   gfxIntSize mSize;
@@ -126,8 +129,7 @@ public:
   nsRefPtr<ID3D10ShaderResourceView> mYView;
   nsRefPtr<ID3D10ShaderResourceView> mCbView;
   nsRefPtr<ID3D10ShaderResourceView> mCrView;
-  PRPackedBool mHasData;
-  gfx::YUVType mType; 
+  bool mHasData;
 };
 
 

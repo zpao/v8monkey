@@ -39,28 +39,20 @@
 #ifndef txXPathNode_h__
 #define txXPathNode_h__
 
-#ifdef TX_EXE
-#include "txDOM.h"
-#else
 #include "nsAutoPtr.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsIDOMNode.h"
 #include "nsINameSpaceManager.h"
 #include "nsContentUtils.h"
-#endif
 
-#ifdef TX_EXE
-typedef Node txXPathNodeType;
-#else
 typedef nsIDOMNode txXPathNodeType;
-#endif
 
 class txXPathNode
 {
 public:
-    PRBool operator==(const txXPathNode& aNode) const;
-    PRBool operator!=(const txXPathNode& aNode) const
+    bool operator==(const txXPathNode& aNode) const;
+    bool operator!=(const txXPathNode& aNode) const
     {
         return !(*this == aNode);
     }
@@ -74,13 +66,6 @@ private:
 
     txXPathNode(const txXPathNode& aNode);
 
-#ifdef TX_EXE
-    txXPathNode(NodeDefinition* aNode) : mInner(aNode)
-    {
-    }
-
-    NodeDefinition* mInner;
-#else
     txXPathNode(nsIDocument* aDocument) : mNode(aDocument),
                                           mRefCountRoot(0),
                                           mIndex(eDocument)
@@ -115,15 +100,15 @@ private:
         return mRefCountRoot ? Root() : nsnull;
     }
 
-    PRBool isDocument() const
+    bool isDocument() const
     {
         return mIndex == eDocument;
     }
-    PRBool isContent() const
+    bool isContent() const
     {
         return mIndex == eContent;
     }
-    PRBool isAttribute() const
+    bool isAttribute() const
     {
         return mIndex != eDocument && mIndex != eContent;
     }
@@ -148,7 +133,6 @@ private:
     nsINode* mNode;
     PRUint32 mRefCountRoot : 1;
     PRUint32 mIndex : 31;
-#endif
 };
 
 class txNamespaceManager
@@ -162,36 +146,24 @@ public:
 inline PRInt32
 txNamespaceManager::getNamespaceID(const nsAString& aNamespaceURI)
 {
-#ifdef TX_EXE
-    return txStandaloneNamespaceManager::getNamespaceID(aNamespaceURI);
-#else
     PRInt32 namespaceID = kNameSpaceID_Unknown;
     nsContentUtils::NameSpaceManager()->
         RegisterNameSpace(aNamespaceURI, namespaceID);
     return namespaceID;
-#endif
 }
 
 /* static */
 inline nsresult
 txNamespaceManager::getNamespaceURI(const PRInt32 aID, nsAString& aResult)
 {
-#ifdef TX_EXE
-    return txStandaloneNamespaceManager::getNamespaceURI(aID, aResult);
-#else
     return nsContentUtils::NameSpaceManager()->
         GetNameSpaceURI(aID, aResult);
-#endif
 }
 
-inline PRBool
+inline bool
 txXPathNode::operator==(const txXPathNode& aNode) const
 {
-#ifdef TX_EXE
-    return (mInner == aNode.mInner);
-#else
     return mIndex == aNode.mIndex && mNode == aNode.mNode;
-#endif
 }
 
 #endif /* txXPathNode_h__ */

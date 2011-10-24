@@ -8,8 +8,6 @@
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
   <title>Key event tests</title>
-  <script type="application/javascript" 
-   src="chrome://mochikit/content/MochiKit/packed.js"></script>
   <script type="application/javascript"
           src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
 
@@ -46,8 +44,6 @@ const IS_WIN = navigator.platform.indexOf("Win") == 0;
 function synthesizeNativeKey(aLayout, aKeyCode, aModifiers, aSystemChars,
                              aSystemUnmodifiedChars, aWindow)
 {
-  netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
-
   if (!aWindow)
     aWindow = window;
 
@@ -279,8 +275,10 @@ function runKeyEventTests()
 
   if (IS_MAC) {
     // On Mac, you can produce event records for any desired keyboard input
-    // by running with NSPR_LOG_MODULES=nsCocoaWidgets:5 and typing into the browser.
-    // We will dump the key event fields to the console. Use the International system
+    // by running with NSPR_LOG_MODULES=TextInputHandlerWidgets:5 and typing
+    // into the browser.  We will dump the key event fields to the console
+    // (Find TextInputHandler::HandleKeyDownEvent or
+    // TextInputHandler::HandleKeyUpEvent in the log). Use the International system
     // preferences widget to enable other keyboard layouts and select them from the
     // input menu to see what keyboard events they generate.
     // Note that it's possible to send bogus key events here, e.g.
@@ -333,7 +331,7 @@ function runKeyEventTests()
     testKey({layout:"Greek", keyCode:0, command:1, chars:"a", unmodifiedChars:"\u03b1"},
             "a", SHOULD_DELIVER_KEYDOWN_KEYPRESS);
     // Shift-cmd gives us the shifted character
-    testKey({layout:"Greek", keyCode:0, command:1, shift:1, chars:"a", unmodifiedChars:"\u391"},
+    testKey({layout:"Greek", keyCode:0, command:1, shift:1, chars:"a", unmodifiedChars:"\u0391"},
             "A", SHOULD_DELIVER_KEYDOWN_KEYPRESS);
     // Ctrl-cmd gives us the unshifted character
     testKey({layout:"Greek", keyCode:0, command:1, ctrl:1, chars:"\u0001", unmodifiedChars:"\u03b1"},

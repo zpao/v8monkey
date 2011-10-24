@@ -60,6 +60,9 @@
 #include "nsContentUtils.h"
 #include "nsMenuPopupFrame.h"
 #include "nsIScreenManager.h"
+#include "mozilla/dom/Element.h"
+#include "nsContentErrors.h"
+
 
 //
 // NS_NewResizerFrame
@@ -90,7 +93,7 @@ nsResizerFrame::HandleEvent(nsPresContext* aPresContext,
   }
 
   nsWeakFrame weakFrame(this);
-  PRBool doDefault = PR_TRUE;
+  bool doDefault = true;
 
   switch (aEvent->message) {
     case NS_MOUSE_BUTTON_DOWN: {
@@ -120,34 +123,36 @@ nsResizerFrame::HandleEvent(nsPresContext* aPresContext,
           }
 
           mMouseDownRect = rect.ToNearestPixels(aPresContext->AppUnitsPerDevPixel());
+          doDefault = false;
         }
         else {
+          // If there is no window, then resizing isn't allowed.
+          if (!window)
+            break;
+
+          doDefault = false;
+            
           // ask the widget implementation to begin a resize drag if it can
           Direction direction = GetDirection();
           nsresult rv = aEvent->widget->BeginResizeDrag(aEvent,
                         direction.mHorizontal, direction.mVertical);
-          if (rv == NS_ERROR_NOT_IMPLEMENTED && window) {
-            // if there's no native resize support, we need to do window
-            // resizing ourselves
-            window->GetPositionAndSize(&mMouseDownRect.x, &mMouseDownRect.y,
-                                       &mMouseDownRect.width, &mMouseDownRect.height);
-          }
-          else {
-            // for native drags, don't set the fields below
-            doDefault = PR_FALSE;
-            break;
-          }
+          // for native drags, don't set the fields below
+          if (rv != NS_ERROR_NOT_IMPLEMENTED)
+             break;
+             
+          // if there's no native resize support, we need to do window
+          // resizing ourselves
+          window->GetPositionAndSize(&mMouseDownRect.x, &mMouseDownRect.y,
+                                     &mMouseDownRect.width, &mMouseDownRect.height);
         }
 
         // we're tracking
-        mTrackingMouseMove = PR_TRUE;
+        mTrackingMouseMove = true;
 
         // remember current mouse coordinates
         mMouseDownPoint = aEvent->refPoint + aEvent->widget->WidgetToScreenOffset();
 
         nsIPresShell::SetCapturingContent(GetContent(), CAPTURE_IGNOREALLOWED);
-
-        doDefault = PR_FALSE;
       }
     }
     break;
@@ -158,11 +163,11 @@ nsResizerFrame::HandleEvent(nsPresContext* aPresContext,
         static_cast<nsMouseEvent*>(aEvent)->button == nsMouseEvent::eLeftButton)
     {
       // we're done tracking.
-      mTrackingMouseMove = PR_FALSE;
+      mTrackingMouseMove = false;
 
       nsIPresShell::SetCapturingContent(nsnull, 0);
 
-      doDefault = PR_FALSE;
+      doDefault = false;
     }
   }
   break;
@@ -251,67 +256,38 @@ nsResizerFrame::HandleEvent(nsPresContext* aPresContext,
           appUnitsRect.height = mRect.height;
         nsIntRect cssRect = appUnitsRect.ToInsidePixels(nsPresContext::AppUnitsPerCSSPixel());
 
-        nsAutoString widthstr, heightstr;
-        widthstr.AppendInt(cssRect.width);
-        heightstr.AppendInt(cssRect.height);
+        nsIntRect oldRect;
+        nsWeakFrame weakFrame(menuPopupFrame);
+        if (menuPopupFrame) {
+          nsCOMPtr<nsIWidget> widget;
+          menuPopupFrame->GetWidget(getter_AddRefs(widget));
+          if (widget)
+            widget->GetScreenBounds(oldRect);
 
-        // for XUL elements, just set the width and height attributes. For
-        // other elements, set style.width and style.height
-        if (contentToResize->IsXUL()) {
-          nsIntRect oldRect;
-          nsWeakFrame weakFrame(menuPopupFrame);
-          if (menuPopupFrame) {
-            nsCOMPtr<nsIWidget> widget;
-            menuPopupFrame->GetWidget(getter_AddRefs(widget));
-            if (widget)
-              widget->GetScreenBounds(oldRect);
-
-            // convert the new rectangle into outer window coordinates
-            nsIntPoint clientOffset = widget->GetClientOffset();
-            rect.x -= clientOffset.x; 
-            rect.y -= clientOffset.y; 
-          }
-
-          // only set the property if the element could have changed in that direction
-          if (direction.mHorizontal) {
-            contentToResize->SetAttr(kNameSpaceID_None, nsGkAtoms::width, widthstr, PR_TRUE);
-          }
-          if (direction.mVertical) {
-            contentToResize->SetAttr(kNameSpaceID_None, nsGkAtoms::height, heightstr, PR_TRUE);
-          }
-
-          if (weakFrame.IsAlive() &&
-              (oldRect.x != rect.x || oldRect.y != rect.y)) {
-            // XXX This might go very wrong, since menu popups may add
-            // offsets (e.g. from margins) to this position, so the popup's
-            // widget won't end up at the desired position.
-            menuPopupFrame->MoveTo(rect.x, rect.y, PR_TRUE);
-          }
+          // convert the new rectangle into outer window coordinates
+          nsIntPoint clientOffset = widget->GetClientOffset();
+          rect.x -= clientOffset.x; 
+          rect.y -= clientOffset.y; 
         }
-        else {
-          nsCOMPtr<nsIDOMElementCSSInlineStyle> inlineStyleContent =
-            do_QueryInterface(contentToResize);
-          if (inlineStyleContent) {
-            nsCOMPtr<nsIDOMCSSStyleDeclaration> decl;
-            inlineStyleContent->GetStyle(getter_AddRefs(decl));
 
-            // only set the property if the element could have changed in that direction
-            if (direction.mHorizontal) {
-              widthstr.AppendLiteral("px");
-              decl->SetProperty(NS_LITERAL_STRING("width"), widthstr, EmptyString());
-            }
-            if (direction.mVertical) {
-              heightstr.AppendLiteral("px");
-              decl->SetProperty(NS_LITERAL_STRING("height"), heightstr, EmptyString());
-            }
-          }
+        SizeInfo sizeInfo, originalSizeInfo;
+        sizeInfo.width.AppendInt(cssRect.width);
+        sizeInfo.height.AppendInt(cssRect.height);
+        ResizeContent(contentToResize, direction, sizeInfo, &originalSizeInfo);
+        MaybePersistOriginalSize(contentToResize, originalSizeInfo);
+
+        if (weakFrame.IsAlive() &&
+            (oldRect.x != rect.x || oldRect.y != rect.y) &&
+            (!menuPopupFrame->IsAnchored() ||
+             menuPopupFrame->PopupLevel() != ePopupLevelParent)) {
+          menuPopupFrame->MoveTo(rect.x, rect.y, true);
         }
       }
       else {
-        window->SetPositionAndSize(rect.x, rect.y, rect.width, rect.height, PR_TRUE); // do the repaint.
+        window->SetPositionAndSize(rect.x, rect.y, rect.width, rect.height, true); // do the repaint.
       }
 
-      doDefault = PR_FALSE;
+      doDefault = false;
     }
   }
   break;
@@ -322,6 +298,25 @@ nsResizerFrame::HandleEvent(nsPresContext* aPresContext,
       MouseClicked(aPresContext, aEvent);
     }
     break;
+
+  case NS_MOUSE_DOUBLECLICK:
+    if (aEvent->eventStructType == NS_MOUSE_EVENT &&
+        static_cast<nsMouseEvent*>(aEvent)->button == nsMouseEvent::eLeftButton)
+    {
+      nsCOMPtr<nsIBaseWindow> window;
+      nsIPresShell* presShell = aPresContext->GetPresShell();
+      nsIContent* contentToResize =
+        GetContentToResize(presShell, getter_AddRefs(window));
+      if (contentToResize) {
+        nsIFrame* frameToResize = contentToResize->GetPrimaryFrame();
+        if (frameToResize && frameToResize->GetType() == nsGkAtoms::menuPopupFrame)
+          break; // Don't restore original sizing for menupopup frames until
+                 // we handle screen constraints here. (Bug 357725)
+
+        RestoreOriginalSize(contentToResize);
+      }
+    }
+    break;
   }
 
   if (!doDefault)
@@ -329,8 +324,8 @@ nsResizerFrame::HandleEvent(nsPresContext* aPresContext,
 
   if (doDefault && weakFrame.IsAlive())
     return nsTitleBarFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
-  else
-    return NS_OK;
+
+  return NS_OK;
 }
 
 nsIContent*
@@ -352,7 +347,7 @@ nsResizerFrame::GetContentToResize(nsIPresShell* aPresShell, nsIBaseWindow** aWi
     }
 
     // don't allow resizing windows in content shells
-    PRBool isChromeShell = PR_FALSE;
+    bool isChromeShell = false;
     nsCOMPtr<nsISupports> cont = aPresShell->GetPresContext()->GetContainer();
     nsCOMPtr<nsIDocShellTreeItem> dsti = do_QueryInterface(cont);
     if (dsti) {
@@ -365,7 +360,7 @@ nsResizerFrame::GetContentToResize(nsIPresShell* aPresShell, nsIBaseWindow** aWi
       // don't allow resizers in content shells, except for the viewport
       // scrollbar which doesn't have a parent
       nsIContent* nonNativeAnon = mContent->FindFirstNonNativeAnonymous();
-      if (nonNativeAnon && !nonNativeAnon->GetParent()) {
+      if (!nonNativeAnon || nonNativeAnon->GetParent()) {
         return nsnull;
       }
     }
@@ -417,6 +412,102 @@ nsResizerFrame::AdjustDimensions(PRInt32* aPos, PRInt32* aSize,
   }
 }
 
+/* static */ void
+nsResizerFrame::ResizeContent(nsIContent* aContent, const Direction& aDirection,
+                              const SizeInfo& aSizeInfo, SizeInfo* aOriginalSizeInfo)
+{
+  // for XUL elements, just set the width and height attributes. For
+  // other elements, set style.width and style.height
+  if (aContent->IsXUL()) {
+    if (aOriginalSizeInfo) {
+      aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::width,
+                        aOriginalSizeInfo->width);
+      aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::height,
+                        aOriginalSizeInfo->height);
+    }
+    // only set the property if the element could have changed in that direction
+    if (aDirection.mHorizontal) {
+      aContent->SetAttr(kNameSpaceID_None, nsGkAtoms::width, aSizeInfo.width, true);
+    }
+    if (aDirection.mVertical) {
+      aContent->SetAttr(kNameSpaceID_None, nsGkAtoms::height, aSizeInfo.height, true);
+    }
+  }
+  else {
+    nsCOMPtr<nsIDOMElementCSSInlineStyle> inlineStyleContent =
+      do_QueryInterface(aContent);
+    if (inlineStyleContent) {
+      nsCOMPtr<nsIDOMCSSStyleDeclaration> decl;
+      inlineStyleContent->GetStyle(getter_AddRefs(decl));
+
+      if (aOriginalSizeInfo) {
+        decl->GetPropertyValue(NS_LITERAL_STRING("width"),
+                               aOriginalSizeInfo->width);
+        decl->GetPropertyValue(NS_LITERAL_STRING("height"),
+                               aOriginalSizeInfo->height);
+      }
+
+      // only set the property if the element could have changed in that direction
+      if (aDirection.mHorizontal) {
+        nsAutoString widthstr(aSizeInfo.width);
+        if (!widthstr.IsEmpty() &&
+            !Substring(widthstr, widthstr.Length() - 2, 2).EqualsLiteral("px"))
+          widthstr.AppendLiteral("px");
+        decl->SetProperty(NS_LITERAL_STRING("width"), widthstr, EmptyString());
+      }
+      if (aDirection.mVertical) {
+        nsAutoString heightstr(aSizeInfo.height);
+        if (!heightstr.IsEmpty() &&
+            !Substring(heightstr, heightstr.Length() - 2, 2).EqualsLiteral("px"))
+          heightstr.AppendLiteral("px");
+        decl->SetProperty(NS_LITERAL_STRING("height"), heightstr, EmptyString());
+      }
+    }
+  }
+}
+
+/* static */ void
+nsResizerFrame::SizeInfoDtorFunc(void *aObject, nsIAtom *aPropertyName,
+                                 void *aPropertyValue, void *aData)
+{
+  nsResizerFrame::SizeInfo *propertyValue =
+    static_cast<nsResizerFrame::SizeInfo*>(aPropertyValue);
+  delete propertyValue;
+}
+
+/* static */ void
+nsResizerFrame::MaybePersistOriginalSize(nsIContent* aContent,
+                                         const SizeInfo& aSizeInfo)
+{
+  nsresult rv;
+
+  aContent->GetProperty(nsGkAtoms::_moz_original_size, &rv);
+  if (rv != NS_PROPTABLE_PROP_NOT_THERE)
+    return;
+
+  nsAutoPtr<SizeInfo> sizeInfo(new SizeInfo(aSizeInfo));
+  rv = aContent->SetProperty(nsGkAtoms::_moz_original_size, sizeInfo.get(),
+                             &SizeInfoDtorFunc);
+  if (NS_SUCCEEDED(rv))
+    sizeInfo.forget();
+}
+
+/* static */ void
+nsResizerFrame::RestoreOriginalSize(nsIContent* aContent)
+{
+  nsresult rv;
+  SizeInfo* sizeInfo =
+    static_cast<SizeInfo*>(aContent->GetProperty(nsGkAtoms::_moz_original_size,
+                           &rv));
+  if (NS_FAILED(rv))
+    return;
+
+  NS_ASSERTION(sizeInfo, "We set a null sizeInfo!?");
+  Direction direction = {1, 1};
+  ResizeContent(aContent, direction, *sizeInfo, nsnull);
+  aContent->DeleteProperty(nsGkAtoms::_moz_original_size);
+}
+
 /* returns a Direction struct containing the horizontal and vertical direction
  */
 nsResizerFrame::Direction
@@ -426,14 +517,14 @@ nsResizerFrame::GetDirection()
     {&nsGkAtoms::topleft,    &nsGkAtoms::top,    &nsGkAtoms::topright,
      &nsGkAtoms::left,                           &nsGkAtoms::right,
      &nsGkAtoms::bottomleft, &nsGkAtoms::bottom, &nsGkAtoms::bottomright,
-                                                 &nsGkAtoms::bottomend,
+     &nsGkAtoms::bottomstart,                    &nsGkAtoms::bottomend,
      nsnull};
 
   static const Direction directions[] =
     {{-1, -1}, {0, -1}, {1, -1},
      {-1,  0},          {1,  0},
      {-1,  1}, {0,  1}, {1,  1},
-                        {1,  1}
+     {-1,  1},          {1,  1}
     };
 
   if (!GetContent())
@@ -460,5 +551,5 @@ nsResizerFrame::MouseClicked(nsPresContext* aPresContext, nsGUIEvent *aEvent)
   // Execute the oncommand event handler.
   nsContentUtils::DispatchXULCommand(mContent,
                                      aEvent ?
-                                       NS_IS_TRUSTED_EVENT(aEvent) : PR_FALSE);
+                                       NS_IS_TRUSTED_EVENT(aEvent) : false);
 }

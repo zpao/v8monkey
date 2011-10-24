@@ -42,16 +42,11 @@
 #include "txCore.h"
 #include "nsIAtom.h"
 
-class txOutputFormat;
-
-#ifdef TX_EXE
-#include <iostream.h>
-#else
 #define kTXNameSpaceURI "http://www.mozilla.org/TransforMiix"
 #define kTXWrapper "transformiix:result"
 
+class txOutputFormat;
 class nsIDOMDocument;
-#endif
 
 /**
  * An interface for handling XML documents, loosely modeled
@@ -95,7 +90,7 @@ public:
      * @param aData the characters to receive
      * @param aDOE disable output escaping for these characters
      */
-    virtual nsresult characters(const nsSubstring& aData, PRBool aDOE) = 0;
+    virtual nsresult characters(const nsSubstring& aData, bool aDOE) = 0;
 
     /**
      * Signals to receive data that should be treated as a comment.
@@ -163,7 +158,7 @@ public:
                                const nsSubstring& aLocalName,                \
                                const PRInt32 aNsID,                          \
                                const nsString& aValue);                      \
-    virtual nsresult characters(const nsSubstring& aData, PRBool aDOE);      \
+    virtual nsresult characters(const nsSubstring& aData, bool aDOE);      \
     virtual nsresult comment(const nsString& aData);                         \
     virtual nsresult endDocument(nsresult aResult = NS_OK);                  \
     virtual nsresult endElement();                                           \
@@ -179,10 +174,6 @@ public:
                                   const PRInt32 aNsID);
 
 
-#ifdef TX_EXE
-typedef txAXMLEventHandler txAOutputXMLEventHandler;
-#define TX_DECL_TXAOUTPUTXMLEVENTHANDLER
-#else
 class txAOutputXMLEventHandler : public txAXMLEventHandler
 {
 public:
@@ -196,7 +187,6 @@ public:
 
 #define TX_DECL_TXAOUTPUTXMLEVENTHANDLER                        \
     virtual void getOutputDocument(nsIDOMDocument** aDocument);
-#endif
 
 /**
  * Interface used to create the appropriate outputhandler

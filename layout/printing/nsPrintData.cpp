@@ -66,15 +66,15 @@ static PRLogModuleInfo * kPrintingLogMod = PR_NewLogModule("printing");
 //---------------------------------------------------
 nsPrintData::nsPrintData(ePrintDataType aType) :
   mType(aType), mDebugFilePtr(nsnull), mPrintObject(nsnull), mSelectedPO(nsnull),
-  mPrintDocList(nsnull), mIsIFrameSelected(PR_FALSE),
-  mIsParentAFrameSet(PR_FALSE), mOnStartSent(PR_FALSE),
-  mIsAborted(PR_FALSE), mPreparingForPrint(PR_FALSE), mDocWasToBeDestroyed(PR_FALSE),
-  mShrinkToFit(PR_FALSE), mPrintFrameType(nsIPrintSettings::kFramesAsIs), 
+  mPrintDocList(nsnull), mIsIFrameSelected(false),
+  mIsParentAFrameSet(false), mOnStartSent(false),
+  mIsAborted(false), mPreparingForPrint(false), mDocWasToBeDestroyed(false),
+  mShrinkToFit(false), mPrintFrameType(nsIPrintSettings::kFramesAsIs), 
   mNumPrintablePages(0), mNumPagesPrinted(0),
   mShrinkRatio(1.0), mOrigDCScale(1.0), mPPEventListeners(NULL), 
   mBrandName(nsnull)
 {
-
+  MOZ_COUNT_CTOR(nsPrintData);
   nsCOMPtr<nsIStringBundle> brandBundle;
   nsCOMPtr<nsIStringBundleService> svc =
     mozilla::services::GetStringBundleService();
@@ -93,6 +93,7 @@ nsPrintData::nsPrintData(ePrintDataType aType) :
 
 nsPrintData::~nsPrintData()
 {
+  MOZ_COUNT_DTOR(nsPrintData);
   // remove the event listeners
   if (mPPEventListeners) {
     mPPEventListeners->RemoveListeners();
@@ -107,7 +108,7 @@ nsPrintData::~nsPrintData()
   if (mPrintDC && !mDebugFilePtr) {
     PR_PL(("****************** End Document ************************\n"));
     PR_PL(("\n"));
-    PRBool isCancelled = PR_FALSE;
+    bool isCancelled = false;
     mPrintSettings->GetIsCancelled(&isCancelled);
 
     nsresult rv = NS_OK;
@@ -133,20 +134,20 @@ nsPrintData::~nsPrintData()
 void nsPrintData::OnStartPrinting()
 {
   if (!mOnStartSent) {
-    DoOnProgressChange(0, 0, PR_TRUE, nsIWebProgressListener::STATE_START|nsIWebProgressListener::STATE_IS_DOCUMENT);
-    mOnStartSent = PR_TRUE;
+    DoOnProgressChange(0, 0, true, nsIWebProgressListener::STATE_START|nsIWebProgressListener::STATE_IS_DOCUMENT);
+    mOnStartSent = true;
   }
 }
 
 void nsPrintData::OnEndPrinting()
 {
-  DoOnProgressChange(100, 100, PR_TRUE, nsIWebProgressListener::STATE_STOP|nsIWebProgressListener::STATE_IS_DOCUMENT);
+  DoOnProgressChange(100, 100, true, nsIWebProgressListener::STATE_STOP|nsIWebProgressListener::STATE_IS_DOCUMENT);
 }
 
 void
 nsPrintData::DoOnProgressChange(PRInt32      aProgess,
                                 PRInt32      aMaxProgress,
-                                PRBool       aDoStartStop,
+                                bool         aDoStartStop,
                                 PRInt32      aFlag)
 {
   if (aProgess == 0) return;

@@ -49,18 +49,18 @@ txPredicatedNodeTest::txPredicatedNodeTest(txNodeTest* aNodeTest,
                  "predicate must not be context-nodeset-sensitive");
 }
 
-PRBool
+bool
 txPredicatedNodeTest::matches(const txXPathNode& aNode,
                               txIMatchContext* aContext)
 {
     if (!mNodeTest->matches(aNode, aContext)) {
-        return PR_FALSE;
+        return false;
     }
 
     txSingleNodeContext context(aNode, aContext);
     nsRefPtr<txAExprResult> res;
     nsresult rv = mPredicate->evaluate(&context, getter_AddRefs(res));
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
+    NS_ENSURE_SUCCESS(rv, false);
 
     return res->booleanValue();
 }
@@ -71,7 +71,7 @@ txPredicatedNodeTest::getDefaultPriority()
     return 0.5;
 }
 
-PRBool
+bool
 txPredicatedNodeTest::isSensitiveTo(Expr::ContextSensitivity aContext)
 {
     return mNodeTest->isSensitiveTo(aContext) ||

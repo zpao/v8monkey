@@ -83,18 +83,18 @@ public:
     return mMeetOrSlice;
   };
 
-  void SetDefer(PRBool aDefer) {
+  void SetDefer(bool aDefer) {
     mDefer = aDefer;
   };
 
-  PRBool GetDefer() const {
+  bool GetDefer() const {
     return mDefer;
   };
 
 private:
   PRUint8 mAlign;
   PRUint8 mMeetOrSlice;
-  PRPackedBool mDefer;
+  bool mDefer;
 };
 
 class SVGAnimatedPreserveAspectRatio
@@ -103,15 +103,14 @@ public:
   void Init() {
     mBaseVal.mAlign = nsIDOMSVGPreserveAspectRatio::SVG_PRESERVEASPECTRATIO_XMIDYMID;
     mBaseVal.mMeetOrSlice = nsIDOMSVGPreserveAspectRatio::SVG_MEETORSLICE_MEET;
-    mBaseVal.mDefer = PR_FALSE;
+    mBaseVal.mDefer = false;
     mAnimVal = mBaseVal;
-    mIsAnimated = PR_FALSE;
-    mIsBaseSet = PR_FALSE;
+    mIsAnimated = false;
+    mIsBaseSet = false;
   }
 
   nsresult SetBaseValueString(const nsAString& aValue,
-                              nsSVGElement *aSVGElement,
-                              PRBool aDoSetAttr);
+                              nsSVGElement *aSVGElement);
   void GetBaseValueString(nsAString& aValue);
 
   nsresult SetBaseAlign(PRUint16 aAlign, nsSVGElement *aSVGElement);
@@ -122,9 +121,9 @@ public:
     { return mBaseVal; }
   const SVGPreserveAspectRatio &GetAnimValue() const
     { return mAnimVal; }
-  PRBool IsAnimated() const
+  bool IsAnimated() const
     { return mIsAnimated; }
-  PRBool IsExplicitlySet() const
+  bool IsExplicitlySet() const
     { return mIsAnimated || mIsBaseSet; }
 
   nsresult ToDOMAnimatedPreserveAspectRatio(
@@ -139,8 +138,8 @@ private:
 
   SVGPreserveAspectRatio mAnimVal;
   SVGPreserveAspectRatio mBaseVal;
-  PRPackedBool mIsAnimated;
-  PRPackedBool mIsBaseSet;
+  bool mIsAnimated;
+  bool mIsBaseSet;
 
   nsresult ToDOMBaseVal(nsIDOMSVGPreserveAspectRatio **aResult,
                         nsSVGElement* aSVGElement);
@@ -245,7 +244,7 @@ public:
     virtual nsresult ValueFromString(const nsAString& aStr,
                                      const nsISMILAnimationElement* aSrcElement,
                                      nsSMILValue& aValue,
-                                     PRBool& aPreventCachingOfSandwich) const;
+                                     bool& aPreventCachingOfSandwich) const;
     virtual nsSMILValue GetBaseValue() const;
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);

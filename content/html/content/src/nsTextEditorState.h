@@ -40,7 +40,9 @@
 #define nsTextEditorState_h__
 
 #include "nsAutoPtr.h"
+#include "nsString.h"
 #include "nsITextControlElement.h"
+#include "nsITextControlFrame.h"
 #include "nsCycleCollectionParticipant.h"
 
 class nsTextInputListener;
@@ -51,7 +53,6 @@ class nsISelectionController;
 class nsFrameSelection;
 class nsIEditor;
 class nsITextControlElement;
-struct SelectionState;
 
 /**
  * nsTextEditorState is a class which is responsible for managing the state of
@@ -116,6 +117,11 @@ struct SelectionState;
  *    invalidating this cache when the anonymous contect containing the value is
  *    changed.
  *
+ *  * The editor's cached selection properties.  These vales are stored in the
+ *    mSelectionProperties member, and include the selection's start, end and
+ *    direction. They are only used when there is no frame available for the
+ *    text field.
+ *
  *
  * As a general rule, nsTextEditorState objects own the value of the text control, and any
  * attempt to retrieve or set the value must be made through those objects.  Internally,
@@ -140,6 +146,8 @@ struct SelectionState;
  *     frame is bound to the text editor state object.
  */
 
+class RestoreSelectionState;
+
 class nsTextEditorState {
 public:
   explicit nsTextEditorState(nsITextControlElement* aOwningElement);
@@ -156,10 +164,10 @@ public:
   nsresult PrepareEditor(const nsAString *aValue = nsnull);
   void InitializeKeyboardEventListeners();
 
-  void SetValue(const nsAString& aValue, PRBool aUserInput);
-  void GetValue(nsAString& aValue, PRBool aIgnoreWrap) const;
+  void SetValue(const nsAString& aValue, bool aUserInput);
+  void GetValue(nsAString& aValue, bool aIgnoreWrap) const;
   void EmptyValue() { if (mValue) mValue->Truncate(); }
-  PRBool IsEmpty() const { return mValue ? mValue->IsEmpty() : PR_TRUE; }
+  bool IsEmpty() const { return mValue ? mValue->IsEmpty() : true; }
 
   nsresult CreatePlaceholderNode();
 
@@ -172,16 +180,16 @@ public:
     return mPlaceholderDiv;
   }
 
-  PRBool IsSingleLineTextControl() const {
+  bool IsSingleLineTextControl() const {
     return mTextCtrlElement->IsSingleLineTextControl();
   }
-  PRBool IsTextArea() const {
+  bool IsTextArea() const {
     return mTextCtrlElement->IsTextArea();
   }
-  PRBool IsPlainTextControl() const {
+  bool IsPlainTextControl() const {
     return mTextCtrlElement->IsPlainTextControl();
   }
-  PRBool IsPasswordTextControl() const {
+  bool IsPasswordTextControl() const {
     return mTextCtrlElement->IsPasswordTextControl();
   }
   PRInt32 GetCols() {
@@ -195,15 +203,15 @@ public:
   }
 
   // placeholder methods
-  void SetPlaceholderClass(PRBool aVisible, PRBool aNotify);
-  void UpdatePlaceholderText(PRBool aNotify); 
+  void SetPlaceholderClass(bool aVisible, bool aNotify);
+  void UpdatePlaceholderText(bool aNotify); 
 
   /**
    * Get the maxlength attribute
    * @param aMaxLength the value of the max length attr
-   * @returns PR_FALSE if attr not defined
+   * @returns false if attr not defined
    */
-  PRBool GetMaxLength(PRInt32* aMaxLength);
+  bool GetMaxLength(PRInt32* aMaxLength);
 
   /* called to free up native keybinding services */
   static NS_HIDDEN_(void) ShutDown();
@@ -212,7 +220,27 @@ public:
 
   void HideSelectionIfBlurred();
 
+  struct SelectionProperties {
+    SelectionProperties() : mStart(0), mEnd(0),
+      mDirection(nsITextControlFrame::eForward) {}
+    bool IsDefault() const {
+      return mStart == 0 && mEnd == 0 &&
+             mDirection == nsITextControlFrame::eForward;
+    }
+    PRInt32 mStart, mEnd;
+    nsITextControlFrame::SelectionDirection mDirection;
+  };
+
+  bool IsSelectionCached() const { return mSelectionCached; }
+  SelectionProperties& GetSelectionProperties() {
+    return mSelectionProperties;
+  }
+  void WillInitEagerly() { mSelectionRestoreEagerInit = true; }
+  bool HasNeverInitializedBefore() const { return !mEverInited; }
+
 private:
+  friend class RestoreSelectionState;
+
   // not copy constructible
   nsTextEditorState(const nsTextEditorState&);
   // not assignable
@@ -220,39 +248,44 @@ private:
 
   nsresult CreateRootNode();
 
-  void ValueWasChanged(PRBool aNotify);
+  void ValueWasChanged(bool aNotify);
 
   void DestroyEditor();
   void Clear();
+
+  nsresult InitializeRootNode();
+
+  void FinishedRestoringSelection() { mRestoringSelection = nsnull; }
 
   class InitializationGuard {
   public:
     explicit InitializationGuard(nsTextEditorState& aState) :
       mState(aState),
-      mGuardSet(PR_FALSE)
+      mGuardSet(false)
     {
       if (!mState.mInitializing) {
-        mGuardSet = PR_TRUE;
-        mState.mInitializing = PR_TRUE;
+        mGuardSet = true;
+        mState.mInitializing = true;
       }
     }
     ~InitializationGuard() {
       if (mGuardSet) {
-        mState.mInitializing = PR_FALSE;
+        mState.mInitializing = false;
       }
     }
-    PRBool IsInitializingRecursively() const {
+    bool IsInitializingRecursively() const {
       return !mGuardSet;
     }
   private:
     nsTextEditorState& mState;
-    PRBool mGuardSet;
+    bool mGuardSet;
   };
   friend class InitializationGuard;
+  friend class PrepareEditorEvent;
 
   nsITextControlElement* const mTextCtrlElement;
   nsRefPtr<nsTextInputSelectionImpl> mSelCon;
-  nsAutoPtr<SelectionState> mSelState;
+  RestoreSelectionState* mRestoringSelection;
   nsCOMPtr<nsIEditor> mEditor;
   nsCOMPtr<nsIContent> mRootNode;
   nsCOMPtr<nsIContent> mPlaceholderDiv;
@@ -261,8 +294,13 @@ private:
   nsAutoPtr<nsCString> mValue;
   nsRefPtr<nsAnonDivObserver> mMutationObserver;
   mutable nsString mCachedValue; // Caches non-hard-wrapped value on a multiline control.
-  PRPackedBool mEditorInitialized;
-  PRPackedBool mInitializing; // Whether we're in the process of initialization
+  bool mEverInited; // Have we ever been initialized?
+  bool mEditorInitialized;
+  bool mInitializing; // Whether we're in the process of initialization
+  bool mValueTransferInProgress; // Whether a value is being transferred to the frame
+  bool mSelectionCached; // Whether mSelectionProperties is valid
+  mutable bool mSelectionRestoreEagerInit; // Whether we're eager initing because of selection restore
+  SelectionProperties mSelectionProperties;
 };
 
 #endif

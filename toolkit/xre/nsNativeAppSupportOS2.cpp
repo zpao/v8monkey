@@ -110,7 +110,7 @@ static HWND hwndForDOMWindow( nsISupports * );
 
 static
 nsresult
-GetMostRecentWindow(const PRUnichar* aType, nsIDOMWindowInternal** aWindow) {
+GetMostRecentWindow(const PRUnichar* aType, nsIDOMWindow** aWindow) {
     nsresult rv;
     nsCOMPtr<nsIWindowMediator> med( do_GetService( NS_WINDOWMEDIATOR_CONTRACTID, &rv ) );
     if ( NS_FAILED( rv ) )
@@ -124,7 +124,7 @@ GetMostRecentWindow(const PRUnichar* aType, nsIDOMWindowInternal** aWindow) {
 
 static
 void
-activateWindow( nsIDOMWindowInternal *win ) {
+activateWindow( nsIDOMWindow *win ) {
     // Try to get native window handle.
     HWND hwnd = hwndForDOMWindow( win );
     if ( hwnd ) {
@@ -300,8 +300,8 @@ public:
     NS_DECL_ISUPPORTS_INHERITED
 
     // Overrides of base implementation.
-    NS_IMETHOD Start( PRBool *aResult );
-    NS_IMETHOD Stop( PRBool *aResult );
+    NS_IMETHOD Start( bool *aResult );
+    NS_IMETHOD Stop( bool *aResult );
     NS_IMETHOD Quit();
     NS_IMETHOD Enable();
 
@@ -329,7 +329,7 @@ private:
     static void ActivateLastWindow();
     static HDDEDATA CreateDDEData( DWORD value );
     static HDDEDATA CreateDDEData( LPBYTE value, DWORD len );
-    static PRBool   InitTopicStrings();
+    static bool     InitTopicStrings();
     static int      FindTopic( HSZ topic );
     static nsresult OpenWindow( const char *urlstr, const char *args );
     static nsresult OpenBrowserWindow();
@@ -349,9 +349,9 @@ private:
 
     static HSZ   mApplication, mTopics[ topicCount ];
     static DWORD mInstance;
-    static PRBool mCanHandleRequests;
+    static bool mCanHandleRequests;
     static char mMutexName[];
-    static PRBool mUseDDE;
+    static bool mUseDDE;
     friend struct MessageWindow;
 }; // nsNativeAppSupportOS2
 
@@ -404,7 +404,7 @@ int   nsNativeAppSupportOS2::mConversations = 0;
 HSZ   nsNativeAppSupportOS2::mApplication   = 0;
 HSZ   nsNativeAppSupportOS2::mTopics[nsNativeAppSupportOS2::topicCount] = { 0 };
 DWORD nsNativeAppSupportOS2::mInstance      = 0;
-PRBool nsNativeAppSupportOS2::mCanHandleRequests   = PR_FALSE;
+bool nsNativeAppSupportOS2::mCanHandleRequests   = false;
 
 // Added this as pmddeml has no api like this
 int DdeCmpStringHandles( HSZ hsz1, HSZ hsz2 )
@@ -741,7 +741,7 @@ struct MessageWindow {
         if (cds->dwData >= 1) {
             char* wdpath = strchr( (char*)cds->lpData, 0) + 1;
             NS_NewNativeLocalFile(nsDependentCString(wdpath),
-                                  PR_FALSE, getter_AddRefs(workingDir));
+                                  false, getter_AddRefs(workingDir));
         }
 
         nsNativeAppSupportOS2::HandleCommandLine((char*)cds->lpData,
@@ -755,7 +755,7 @@ private:
     USHORT   mMsgWindowAtom;
 }; // struct MessageWindow
 
-PRBool nsNativeAppSupportOS2::mUseDDE = PR_FALSE;
+bool nsNativeAppSupportOS2::mUseDDE = false;
 
 /* Start: Tries to find the "message window" to determine if it
  *        exists.  If so, then Mozilla is already running.  In that
@@ -770,12 +770,12 @@ PRBool nsNativeAppSupportOS2::mUseDDE = PR_FALSE;
  *        be protected by use of a mutex semaphore.
  */
 NS_IMETHODIMP
-nsNativeAppSupportOS2::Start( PRBool *aResult ) {
+nsNativeAppSupportOS2::Start( bool *aResult ) {
     NS_ENSURE_ARG( aResult );
     NS_ENSURE_TRUE( mInstance == 0, NS_ERROR_NOT_INITIALIZED );
 
     nsresult rv = NS_ERROR_FAILURE;
-    *aResult = PR_FALSE;
+    *aResult = false;
 
     // see if DDE should be enabled AND remove OS/2-specific
     // options the app's commandline handler won't recognize
@@ -783,7 +783,7 @@ nsNativeAppSupportOS2::Start( PRBool *aResult ) {
     for (int i = 1; i < gArgc; i++) {
         if (stricmp("-dde", gArgv[i]) == 0 ||
             stricmp("/dde", gArgv[i]) == 0)
-            mUseDDE = PR_TRUE;
+            mUseDDE = true;
         else
             if (stricmp("-console", gArgv[i]) != 0 &&
                 stricmp("/console", gArgv[i]) != 0)
@@ -798,8 +798,8 @@ nsNativeAppSupportOS2::Start( PRBool *aResult ) {
     // if this is a standalone instance, turn off DDE regardless of the
     // commandline, then skip out before we look for another instance
     if (getenv("MOZ_NO_REMOTE")) {
-        mUseDDE = PR_FALSE;
-        *aResult = PR_TRUE;
+        mUseDDE = false;
+        *aResult = true;
         return NS_OK;
     }
 
@@ -839,13 +839,13 @@ nsNativeAppSupportOS2::Start( PRBool *aResult ) {
             if (mUseDDE)
                 this->StartDDE();
             // Tell caller to spin message loop.
-            *aResult = PR_TRUE;
+            *aResult = true;
         }
     }
 
     startupLock.Unlock();
 
-    if( *aResult == PR_FALSE )
+    if( *aResult == false )
     {
         /* This process isn't going to continue much longer.  Make sure that we
          * clean up the message queue
@@ -859,14 +859,14 @@ nsNativeAppSupportOS2::Start( PRBool *aResult ) {
     return rv;
 }
 
-PRBool
+bool
 nsNativeAppSupportOS2::InitTopicStrings() {
     for ( int i = 0; i < topicCount; i++ ) {
         if ( !( mTopics[ i ] = WinDdeCreateStringHandle( (PSZ)topicNames[ i ], CP_WINANSI ) ) ) {
-            return PR_FALSE;
+            return false;
         }
     }
-    return PR_TRUE;
+    return true;
 }
 
 int
@@ -896,10 +896,10 @@ nsNativeAppSupportOS2::StartDDE() {
     /* Get entrypoints for PMDDEML */
     BOOL bDDEML = SetupOS2ddeml();
 
-    /* If we couldn't initialize DDEML, set mUSEDDE to PR_FALSE */
+    /* If we couldn't initialize DDEML, set mUSEDDE to false */
     /* so we don't do anything else DDE related */
     if (!bDDEML) {
-       mUseDDE = PR_FALSE;
+       mUseDDE = false;
        return NS_OK;
     }
 
@@ -926,12 +926,12 @@ nsNativeAppSupportOS2::StartDDE() {
 
 // If no DDE conversations are pending, terminate DDE.
 NS_IMETHODIMP
-nsNativeAppSupportOS2::Stop( PRBool *aResult ) {
+nsNativeAppSupportOS2::Stop( bool *aResult ) {
     NS_ENSURE_ARG( aResult );
     NS_ENSURE_TRUE( mInstance, NS_ERROR_NOT_INITIALIZED );
 
     nsresult rv = NS_OK;
-    *aResult = PR_TRUE;
+    *aResult = true;
 
     if (!mUseDDE) {
        return rv;
@@ -943,7 +943,7 @@ nsNativeAppSupportOS2::Stop( PRBool *aResult ) {
         if ( mConversations == 0 ) {
             this->Quit();
         } else {
-            *aResult = PR_FALSE;
+            *aResult = false;
         }
 
         ddeLock.Unlock();
@@ -951,7 +951,7 @@ nsNativeAppSupportOS2::Stop( PRBool *aResult ) {
     else {
         // No DDE application name specified, but that's OK.  Just
         // forge ahead.
-        *aResult = PR_TRUE;
+        *aResult = true;
     }
 
     return rv;
@@ -1011,10 +1011,10 @@ nsNativeAppSupportOS2::Quit() {
 NS_IMETHODIMP
 nsNativeAppSupportOS2::Enable()
 {
-    mCanHandleRequests = PR_TRUE;
+    mCanHandleRequests = true;
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
     if (obs) {
-        obs->AddObserver(this, "quit-application", PR_FALSE);
+        obs->AddObserver(this, "quit-application", false);
     } else {
         NS_ERROR("No observer service?");
     }
@@ -1166,7 +1166,7 @@ nsNativeAppSupportOS2::HandleDDENotification( ULONG idInst,     // DDEML instanc
                     // something goes wrong.
                     do {
                         // Get most recently used Nav window.
-                        nsCOMPtr<nsIDOMWindowInternal> navWin;
+                        nsCOMPtr<nsIDOMWindow> navWin;
                         GetMostRecentWindow( NS_LITERAL_STRING( "navigator:browser" ).get(),
                                              getter_AddRefs( navWin ) );
                         if ( !navWin ) {
@@ -1238,7 +1238,7 @@ nsNativeAppSupportOS2::HandleDDENotification( ULONG idInst,     // DDEML instanc
 #if MOZ_DEBUG_DDE
                         printf( "WWW_GetWindowInfo->%s\n", outpt.get() );
 #endif
-                    } while ( PR_FALSE );
+                    } while ( false );
                     break;
                 }
                 case topicActivate: {
@@ -1264,12 +1264,12 @@ nsNativeAppSupportOS2::HandleDDENotification( ULONG idInst,     // DDEML instanc
                 }
                 case topicRegisterViewer: {
                     // Register new viewer (not implemented).
-                    result = CreateDDEData( PR_FALSE );
+                    result = CreateDDEData( false );
                     break;
                 }
                 case topicUnRegisterViewer: {
                     // Unregister new viewer (not implemented).
-                    result = CreateDDEData( PR_FALSE );
+                    result = CreateDDEData( false );
                     break;
                 }
                 default:
@@ -1408,7 +1408,7 @@ void nsNativeAppSupportOS2::ParseDDEArg( HSZ args, int index, nsCString& aString
 }
 
 void nsNativeAppSupportOS2::ActivateLastWindow() {
-    nsCOMPtr<nsIDOMWindowInternal> navWin;
+    nsCOMPtr<nsIDOMWindow> navWin;
     GetMostRecentWindow( NS_LITERAL_STRING("navigator:browser").get(), getter_AddRefs( navWin ) );
     if ( navWin )
         // Activate that window.
@@ -1586,9 +1586,9 @@ nsNativeAppSupportOS2::HandleCommandLine(const char* aCmdLineString,
 
     // if these OS/2-specific flags aren't removed,
     // any URL following them will be ignored
-    PRBool found;
-    cmdLine->HandleFlag(NS_LITERAL_STRING("console"), PR_FALSE, &found);
-    cmdLine->HandleFlag(NS_LITERAL_STRING("dde"), PR_FALSE, &found);
+    bool found;
+    cmdLine->HandleFlag(NS_LITERAL_STRING("console"), false, &found);
+    cmdLine->HandleFlag(NS_LITERAL_STRING("dde"), false, &found);
 
     // Cleanup.
     while ( argc ) {
@@ -1709,7 +1709,7 @@ nsNativeAppSupportOS2::OpenBrowserWindow()
     // If at all possible, hand the request off to the most recent
     // browser window.
 
-    nsCOMPtr<nsIDOMWindowInternal> navWin;
+    nsCOMPtr<nsIDOMWindow> navWin;
     GetMostRecentWindow( NS_LITERAL_STRING( "navigator:browser" ).get(), getter_AddRefs( navWin ) );
 
     // This isn't really a loop.  We just use "break" statements to fall
@@ -1749,7 +1749,7 @@ nsNativeAppSupportOS2::OpenBrowserWindow()
         }
 
         NS_ERROR("failed to hand off external URL to extant window");
-    } while ( PR_FALSE );
+    } while ( false );
 
     // open a new window if caller requested it or if anything above failed
 
@@ -1772,9 +1772,9 @@ nsNativeAppSupportOS2::OpenBrowserWindow()
 // It returns TRUE if the current instance should continue running and
 // FALSE if it should terminate upon this function's return.
 
-PRBool     StartOS2App(int aArgc, char **aArgv)
+bool       StartOS2App(int aArgc, char **aArgv)
 {
-  PRBool    rv = PR_TRUE;
+  bool      rv = true;
   PPIB      ppib;
   PTIB      ptib;
 
@@ -1796,7 +1796,7 @@ PRBool     StartOS2App(int aArgc, char **aArgv)
         stricmp("help", arg) == 0 ||
         stricmp("version", arg) == 0 ||
         stricmp("console", arg) == 0) {
-        rv = PR_FALSE;
+        rv = false;
         break;
       }
     }
@@ -1844,7 +1844,7 @@ PRBool     StartOS2App(int aArgc, char **aArgv)
   PID   pid;
   ULONG rc = DosStartSession(&x, &ulSession, &pid);
   if (rc && rc != ERROR_SMG_START_IN_BACKGROUND)
-    rv = PR_TRUE;
+    rv = true;
 
   return rv;
 }

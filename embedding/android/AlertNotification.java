@@ -60,7 +60,6 @@ public class AlertNotification
     double mPrevPercent  = -1;
     String mPrevAlertText = "";
     static final double UPDATE_THRESHOLD = .01;
-    Uri mIconUri = null;
 
     public AlertNotification(Context aContext, int aNotificationId, int aIcon,
                              String aTitle, String aText, long aWhen) {
@@ -86,7 +85,9 @@ public class AlertNotification
     }
 
     public void setCustomIcon(Uri aIconUri) {
-        mIconUri = aIconUri;
+        if (aIconUri == null || aIconUri.getScheme() == null)
+            return;
+
         // Custom view
         int layout = R.layout.notification_icon_text;
         RemoteViews view = new RemoteViews(GeckoApp.mAppContext.getPackageName(), layout);
@@ -103,7 +104,6 @@ public class AlertNotification
         } catch(Exception ex) {
             Log.e("GeckoAlert", "failed to create bitmap", ex);
         }
-
     }
 
     public void updateProgress(String aAlertText, long aProgress, long aProgressMax) {
@@ -115,7 +115,7 @@ public class AlertNotification
             view.setImageViewResource(R.id.notificationImage, mIcon);
             view.setTextViewText(R.id.notificationTitle, mTitle);
             contentView = view;
-            flags |= FLAG_ONGOING_EVENT;
+            flags |= FLAG_ONGOING_EVENT | FLAG_ONLY_ALERT_ONCE;
 
             mProgressStyle = true;
         }

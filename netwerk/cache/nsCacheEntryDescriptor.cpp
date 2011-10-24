@@ -177,7 +177,7 @@ nsCacheEntryDescriptor::SetExpirationTime(PRUint32 expirationTime)
 }
 
 
-NS_IMETHODIMP nsCacheEntryDescriptor::IsStreamBased(PRBool *result)
+NS_IMETHODIMP nsCacheEntryDescriptor::IsStreamBased(bool *result)
 {
     NS_ENSURE_ARG_POINTER(result);
     nsCacheServiceAutoLock lock;
@@ -360,7 +360,7 @@ nsCacheEntryDescriptor::SetStoragePolicy(nsCacheStoragePolicy policy)
     if (!mCacheEntry)  return NS_ERROR_NOT_AVAILABLE;
     // XXX validate policy against session?
     
-    PRBool      storageEnabled = PR_FALSE;
+    bool        storageEnabled = false;
     storageEnabled = nsCacheService::IsStorageEnabledForPolicy_Locked(policy);
     if (!storageEnabled)    return NS_ERROR_FAILURE;
 
@@ -538,7 +538,7 @@ nsInputStreamWrapper::LazyInit()
                                                  getter_AddRefs(mInput));
     if (NS_FAILED(rv)) return rv;
 
-    mInitialized = PR_TRUE;
+    mInitialized = true;
     return NS_OK;
 }
 
@@ -578,10 +578,10 @@ nsInputStreamWrapper::ReadSegments(nsWriteSegmentFun writer, void *closure,
 }
 
 nsresult nsCacheEntryDescriptor::
-nsInputStreamWrapper::IsNonBlocking(PRBool *result)
+nsInputStreamWrapper::IsNonBlocking(bool *result)
 {
     // cache streams will never return NS_BASE_STREAM_WOULD_BLOCK
-    *result = PR_FALSE;
+    *result = false;
     return NS_OK;
 }
 
@@ -609,23 +609,35 @@ nsOutputStreamWrapper::LazyInit()
     nsCacheEntry* cacheEntry = mDescriptor->CacheEntry();
     if (!cacheEntry) return NS_ERROR_NOT_AVAILABLE;
 
-    rv = nsCacheService::OpenOutputStreamForEntry(cacheEntry, mode, mStartOffset,
-                                                  getter_AddRefs(mOutput));
-    if (NS_FAILED(rv)) return rv;
+    NS_ASSERTION(mOutput == nsnull, "mOutput set in LazyInit");
 
-    mDescriptor->mOutput = mOutput;
+    nsCOMPtr<nsIOutputStream> stream;
+    rv = nsCacheService::OpenOutputStreamForEntry(cacheEntry, mode, mStartOffset,
+                                                  getter_AddRefs(stream));
+    if (NS_FAILED(rv))
+        return rv;
 
     nsCacheDevice* device = cacheEntry->CacheDevice();
-    if (!device) return NS_ERROR_NOT_AVAILABLE;
+    if (device) {
+        // the entry has been truncated to mStartOffset bytes, inform device
+        PRInt32 size = cacheEntry->DataSize();
+        rv = device->OnDataSizeChange(cacheEntry, mStartOffset - size);
+        if (NS_SUCCEEDED(rv))
+            cacheEntry->SetDataSize(mStartOffset);
+    } else {
+        rv = NS_ERROR_NOT_AVAILABLE;
+    }
 
-    // the entry has been truncated to mStartOffset bytes, inform the device.
-    PRInt32 size = cacheEntry->DataSize();
-    rv = device->OnDataSizeChange(cacheEntry, mStartOffset - size);
-    if (NS_FAILED(rv)) return rv;
+    // If anything above failed, clean up internal state and get out of here
+    // (see bug #654926)...
+    if (NS_FAILED(rv)) {
+        mDescriptor->InternalCleanup(stream);
+        return rv;
+    }
 
-    cacheEntry->SetDataSize(mStartOffset);
-
-    mInitialized = PR_TRUE;
+    // ... otherwise, set members and mark initialized
+    mDescriptor->mOutput = mOutput = stream;
+    mInitialized = true;
     return NS_OK;
 }
 
@@ -686,9 +698,9 @@ nsOutputStreamWrapper::WriteSegments(nsReadSegmentFun  reader,
 }
 
 NS_IMETHODIMP nsCacheEntryDescriptor::
-nsOutputStreamWrapper::IsNonBlocking(PRBool *result)
+nsOutputStreamWrapper::IsNonBlocking(bool *result)
 {
     // cache streams will never return NS_BASE_STREAM_WOULD_BLOCK
-    *result = PR_FALSE;
+    *result = false;
     return NS_OK;
 }

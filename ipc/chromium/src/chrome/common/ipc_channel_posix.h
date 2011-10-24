@@ -24,23 +24,26 @@ class Channel::ChannelImpl : public MessageLoopForIO::Watcher {
  public:
   // Mirror methods of Channel, see ipc_channel.h for description.
   ChannelImpl(const std::wstring& channel_id, Mode mode, Listener* listener);
+  ChannelImpl(int fd, Mode mode, Listener* listener);
   ~ChannelImpl() { Close(); }
   bool Connect();
   void Close();
-#ifdef CHROMIUM_MOZILLA_BUILD
   Listener* set_listener(Listener* listener) {
     Listener* old = listener_;
     listener_ = listener;
     return old;
   }
-#else
-  void set_listener(Listener* listener) { listener_ = listener; }
-#endif
   bool Send(Message* message);
   void GetClientFileDescriptorMapping(int *src_fd, int *dest_fd) const;
+  int GetServerFileDescriptor() const {
+    DCHECK(mode_ == MODE_SERVER);
+    return pipe_;
+  }
 
  private:
+  void Init(Mode mode, Listener* listener);
   bool CreatePipe(const std::wstring& channel_id, Mode mode);
+  bool EnqueueHelloMessage();
 
   bool ProcessIncomingMessages();
   bool ProcessOutgoingMessages();

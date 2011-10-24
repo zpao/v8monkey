@@ -38,6 +38,8 @@
 #include "nsGenericHTMLElement.h"
 #include "nsIDOMHTMLElement.h"
 
+#include "nsContentUtils.h"
+
 using namespace mozilla::dom;
 
 class nsHTMLElement : public nsGenericHTMLElement,
@@ -109,7 +111,7 @@ nsHTMLElement::GetInnerHTML(nsAString& aInnerHTML)
    */
   if (mNodeInfo->Equals(nsGkAtoms::xmp) ||
       mNodeInfo->Equals(nsGkAtoms::plaintext)) {
-    nsContentUtils::GetNodeTextContent(this, PR_FALSE, aInnerHTML);
+    nsContentUtils::GetNodeTextContent(this, false, aInnerHTML);
     return NS_OK;
   }
 

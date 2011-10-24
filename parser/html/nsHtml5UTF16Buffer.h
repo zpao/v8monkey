@@ -66,13 +66,12 @@ class nsHtml5UTF16Buffer
     PRInt32 start;
     PRInt32 end;
   public:
-    nsHtml5UTF16Buffer(PRUnichar* buffer, PRInt32 start, PRInt32 end);
     PRInt32 getStart();
     void setStart(PRInt32 start);
     PRUnichar* getBuffer();
     PRInt32 getEnd();
-    PRBool hasMore();
-    void adjust(PRBool lastWasCR);
+    bool hasMore();
+    void adjust(bool lastWasCR);
     void setEnd(PRInt32 end);
     static void initializeStatics();
     static void releaseStatics();

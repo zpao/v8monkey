@@ -42,15 +42,17 @@ relativesrcdir  = testing/mochitest/tests/SimpleTest
 include $(DEPTH)/config/autoconf.mk
 
 include $(topsrcdir)/config/rules.mk
-_SIMPLETEST_FILES =	MozillaFileLogger.js \
-			quit.js \
+_SIMPLETEST_FILES =	MozillaLogger.js \
+			LogController.js \
 			SimpleTest.js \
 			test.css \
 			TestRunner.js \
 			setup.js \
 			EventUtils.js \
+			ChromeUtils.js \
 			WindowSnapshot.js \
-			PluginUtils.js \
+			specialpowersAPI.js \
+			SpecialPowersObserverAPI.js \
 			$(DEPTH)/toolkit/content/tests/browser/common/mockObjects.js \
                         $(DEPTH)/docshell/test/chrome/docshell_helpers.js \
 			$(NULL)

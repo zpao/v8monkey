@@ -39,33 +39,18 @@
 
 #include "mozilla/ModuleUtils.h"
 
-#ifndef ANDROID
-#include "nsPhoneSupport.h"
-#endif
+#include "nsShellService.h"
 
-#include "nsSSLCertErrorDialog.h"
-
-#ifndef ANDROID
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsPhoneSupport)
-NS_DEFINE_NAMED_CID(nsPhoneSupport_CID);
-#endif
-
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsSSLCertErrorDialog)
-NS_DEFINE_NAMED_CID(nsSSLCertErrorDialog_CID);
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsShellService)
+NS_DEFINE_NAMED_CID(nsShellService_CID);
 
 static const mozilla::Module::CIDEntry kBrowserCIDs[] = {
-#ifndef ANDROID
-  { &knsPhoneSupport_CID, false, NULL, nsPhoneSupportConstructor },
-#endif
-  { &knsSSLCertErrorDialog_CID, false, NULL, nsSSLCertErrorDialogConstructor },
+  { &knsShellService_CID, false, NULL, nsShellServiceConstructor },
   { NULL }
 };
 
 static const mozilla::Module::ContractIDEntry kBrowserContracts[] = {
-#ifndef ANDROID
-  { nsPhoneSupport_ContractID, &knsPhoneSupport_CID },
-#endif
-  { nsSSLCertErrorDialog_ContractID, &knsSSLCertErrorDialog_CID },
+  { nsShellService_ContractID, &knsShellService_CID },
   { NULL }
 };
 

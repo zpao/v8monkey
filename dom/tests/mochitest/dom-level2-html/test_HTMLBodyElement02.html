@@ -5,7 +5,9 @@
 <meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
 <title>http://www.w3.org/2001/DOM-Test-Suite/level2/html/HTMLBodyElement02</title>
 <link type="text/css" rel="stylesheet" href="/tests/SimpleTest/test.css">
-<script src="/MochiKit/packed.js" type="text/javascript"></script><script src="/tests/SimpleTest/SimpleTest.js" type="text/javascript"></script><script src="DOMTestCase.js" type="text/javascript"></script><script type="text/javascript">
+<script src="/tests/SimpleTest/SimpleTest.js" type="text/javascript"></script>
+<script src="DOMTestCase.js" type="text/javascript"></script>
+<script type="text/javascript">
 // expose test function names
 function exposeTestFunctionNames()
 {
@@ -95,9 +97,7 @@ function HTMLBodyElement02() {
       assertSize("Asize",1,nodeList);
 testNode = nodeList.item(0);
       vbackground = testNode.background;
-      // its not clear if this test is valid
-      //assertEquals("backgroundLink","./pix/back1.gif",vbackground);
-      todo_is(vbackground, "./pix/back1.gif", "backgroundLink");
+      assertEquals("backgroundLink","./pix/back1.gif",vbackground);
        
 }
 

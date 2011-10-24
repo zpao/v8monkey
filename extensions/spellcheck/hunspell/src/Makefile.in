@@ -64,18 +64,14 @@ CPPSRCS         += affentry.cpp \
                    suggestmgr.cpp \
                    $(NULL)
 
+# This variable is referenced in configure.in.  Make sure to change that file
+# too if you need to change this variable.
 DEFINES = -DHUNSPELL_STATIC
 endif
 
-EXTRA_DSO_LDOPTS = \
-                   $(LIBS_DIR) \
-                   $(XPCOM_LIBS) \
-                   $(NSPR_LIBS) \
-                   $(MOZ_UNICHARUTIL_LIBS) \
-                   $(MOZ_HUNSPELL_LIBS) \
-                   $(NULL)
-
 include $(topsrcdir)/config/rules.mk
+
+INCLUDES        += -I$(topsrcdir)/extensions/spellcheck/src
 
 ifdef MOZ_NATIVE_HUNSPELL
 CXXFLAGS += $(MOZ_HUNSPELL_CFLAGS)

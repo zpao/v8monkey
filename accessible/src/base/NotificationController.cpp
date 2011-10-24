@@ -44,8 +44,12 @@
 #include "nsDocAccessible.h"
 #include "nsEventShell.h"
 #include "nsTextAccessible.h"
+#include "FocusManager.h"
 #include "TextUpdater.h"
 
+#include "mozilla/dom/Element.h"
+
+using namespace mozilla::a11y;
 
 ////////////////////////////////////////////////////////////////////////////////
 // NotificationCollector
@@ -54,7 +58,7 @@
 NotificationController::NotificationController(nsDocAccessible* aDocument,
                                                nsIPresShell* aPresShell) :
   mObservingState(eNotObservingRefresh), mDocument(aDocument),
-  mPresShell(aPresShell), mTreeConstructedState(eTreeConstructionPending)
+  mPresShell(aPresShell)
 {
   mTextHash.Init();
 
@@ -153,10 +157,6 @@ NotificationController::ScheduleContentInsertion(nsAccessible* aContainer,
                                                  nsIContent* aStartChildNode,
                                                  nsIContent* aEndChildNode)
 {
-  // Ignore content insertions until we constructed accessible tree.
-  if (mTreeConstructedState == eTreeConstructionPending)
-    return;
-
   nsRefPtr<ContentInsertion> insertion = new ContentInsertion(mDocument,
                                                               aContainer);
   if (insertion && insertion->InitChildList(aStartChildNode, aEndChildNode) &&
@@ -185,7 +185,8 @@ NotificationController::IsUpdatePending()
   return mPresShell->IsLayoutFlushObserver() ||
     mObservingState == eRefreshProcessingForUpdate ||
     mContentInsertions.Length() != 0 || mNotifications.Length() != 0 ||
-    mTextHash.Count() != 0;
+    mTextHash.Count() != 0 ||
+    !mDocument->HasLoadState(nsDocAccessible::eTreeConstructed);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -206,19 +207,20 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
   mObservingState = eRefreshProcessingForUpdate;
 
   // Initial accessible tree construction.
-  if (mTreeConstructedState == eTreeConstructionPending) {
+  if (!mDocument->HasLoadState(nsDocAccessible::eTreeConstructed)) {
     // If document is not bound to parent at this point then the document is not
     // ready yet (process notifications later).
-    if (!mDocument->IsBoundToParent())
+    if (!mDocument->IsBoundToParent()) {
+      mObservingState = eRefreshObserving;
       return;
+    }
 
 #ifdef DEBUG_NOTIFICATIONS
     printf("\ninitial tree created, document: %p, document node: %p\n",
            mDocument.get(), mDocument->GetDocumentNode());
 #endif
 
-    mTreeConstructedState = eTreeConstructed;
-    mDocument->NotifyOfInitialUpdate();
+    mDocument->DoInitialUpdate();
 
     NS_ASSERTION(mContentInsertions.Length() == 0,
                  "Pending content insertions while initial accessible tree isn't created!");
@@ -249,8 +251,8 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
   mTextHash.Clear();
 
   // Bind hanging child documents.
-  PRUint32 childDocCount = mHangingChildDocuments.Length();
-  for (PRUint32 idx = 0; idx < childDocCount; idx++) {
+  PRUint32 hangingDocCnt = mHangingChildDocuments.Length();
+  for (PRUint32 idx = 0; idx < hangingDocCnt; idx++) {
     nsDocAccessible* childDoc = mHangingChildDocuments[idx];
 
     nsIContent* ownerContent = mDocument->GetDocumentNode()->
@@ -258,17 +260,9 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
     if (ownerContent) {
       nsAccessible* outerDocAcc = mDocument->GetAccessible(ownerContent);
       if (outerDocAcc && outerDocAcc->AppendChild(childDoc)) {
-        if (mDocument->AppendChildDocument(childDoc)) {
-          // Fire reorder event to notify new accessible document has been
-          // attached to the tree.
-          nsRefPtr<AccEvent> reorderEvent =
-              new AccEvent(nsIAccessibleEvent::EVENT_REORDER, outerDocAcc,
-                           eAutoDetect, AccEvent::eCoalesceFromSameSubtree);
-          if (reorderEvent)
-            QueueEvent(reorderEvent);
-
+        if (mDocument->AppendChildDocument(childDoc))
           continue;
-        }
+
         outerDocAcc->RemoveChild(childDoc);
       }
 
@@ -277,6 +271,25 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
     }
   }
   mHangingChildDocuments.Clear();
+
+  // If the document is ready and all its subdocuments are completely loaded
+  // then process the document load.
+  if (mDocument->HasLoadState(nsDocAccessible::eReady) &&
+      !mDocument->HasLoadState(nsDocAccessible::eCompletelyLoaded) &&
+      hangingDocCnt == 0) {
+    PRUint32 childDocCnt = mDocument->ChildDocumentCount(), childDocIdx = 0;
+    for (; childDocIdx < childDocCnt; childDocIdx++) {
+      nsDocAccessible* childDoc = mDocument->GetChildDocumentAt(childDocIdx);
+      if (!childDoc->HasLoadState(nsDocAccessible::eCompletelyLoaded))
+        break;
+    }
+
+    if (childDocIdx == childDocCnt) {
+      mDocument->ProcessLoad();
+      if (!mDocument)
+        return;
+    }
+  }
 
   // Process only currently queued generic notifications.
   nsTArray < nsRefPtr<Notification> > notifications;
@@ -288,6 +301,10 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
     if (!mDocument)
       return;
   }
+
+  // Process invalidation list of the document after all accessible tree
+  // modification are done.
+  mDocument->ProcessInvalidationList();
 
   // If a generic notification occurs after this point then we may be allowed to
   // process it synchronously.
@@ -301,8 +318,19 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
   for (PRUint32 idx = 0; idx < eventCount; idx++) {
     AccEvent* accEvent = events[idx];
     if (accEvent->mEventRule != AccEvent::eDoNotEmit) {
+      nsAccessible* target = accEvent->GetAccessible();
+      if (!target || target->IsDefunct())
+        continue;
+
+      // Dispatch the focus event if target is still focused.
+      if (accEvent->mEventType == nsIAccessibleEvent::EVENT_FOCUS) {
+        FocusMgr()->ProcessFocusEvent(accEvent);
+        continue;
+      }
+
       mDocument->ProcessPendingEvent(accEvent);
 
+      // Fire text change event caused by tree mutation.
       AccMutationEvent* showOrHideEvent = downcast_accEvent(accEvent);
       if (showOrHideEvent) {
         if (showOrHideEvent->mTextChangeEvent)
@@ -313,10 +341,12 @@ NotificationController::WillRefresh(mozilla::TimeStamp aTime)
       return;
   }
 
-  // Stop further processing if there are no newly queued insertions,
-  // notifications or events.
+  // Stop further processing if there are no new notifications of any kind or
+  // events and document load is processed.
   if (mContentInsertions.Length() == 0 && mNotifications.Length() == 0 &&
-      mEvents.Length() == 0 &&
+      mEvents.Length() == 0 && mTextHash.Count() == 0 &&
+      mHangingChildDocuments.Length() == 0 &&
+      mDocument->HasLoadState(nsDocAccessible::eCompletelyLoaded) &&
       mPresShell->RemoveRefreshObserver(this, Flush_Display)) {
     mObservingState = eNotObservingRefresh;
   }
@@ -332,14 +362,14 @@ NotificationController::CoalesceEvents()
   PRInt32 tail = numQueuedEvents - 1;
   AccEvent* tailEvent = mEvents[tail];
 
-  // No node means this is application accessible (which can be a subject
-  // of reorder events), we do not coalesce events for it currently.
-  if (!tailEvent->mNode)
-    return;
-
   switch(tailEvent->mEventRule) {
     case AccEvent::eCoalesceFromSameSubtree:
     {
+      // No node means this is application accessible (which is a subject of
+      // reorder events), we do not coalesce events for it currently.
+      if (!tailEvent->mNode)
+        return;
+
       for (PRInt32 index = tail - 1; index >= 0; index--) {
         AccEvent* thisEvent = mEvents[index];
 
@@ -350,7 +380,7 @@ NotificationController::CoalesceEvents()
         // is supported. Ignore events from different documents since we don't
         // coalesce them.
         if (!thisEvent->mNode ||
-            thisEvent->mNode->GetOwnerDoc() != tailEvent->mNode->GetOwnerDoc())
+            thisEvent->mNode->OwnerDoc() != tailEvent->mNode->OwnerDoc())
           continue;
 
         // Coalesce earlier event for the same target.
@@ -377,8 +407,8 @@ NotificationController::CoalesceEvents()
             return;
           }
         } else if (tailEvent->mEventType == nsIAccessibleEvent::EVENT_SHOW) {
-          if (thisEvent->mAccessible->GetParent() ==
-              tailEvent->mAccessible->GetParent()) {
+          if (thisEvent->mAccessible->Parent() ==
+              tailEvent->mAccessible->Parent()) {
             tailEvent->mEventRule = thisEvent->mEventRule;
 
             // Coalesce text change events for show events.
@@ -433,21 +463,18 @@ NotificationController::CoalesceEvents()
 
     } break; // case eCoalesceFromSameSubtree
 
-    case AccEvent::eCoalesceFromSameDocument:
+    case AccEvent::eCoalesceOfSameType:
     {
-      // Used for focus event, coalesce more older event since focus event
-      // for accessible can be duplicated by event for its document, we are
-      // interested in focus event for accessible.
+      // Coalesce old events by newer event.
       for (PRInt32 index = tail - 1; index >= 0; index--) {
-        AccEvent* thisEvent = mEvents[index];
-        if (thisEvent->mEventType == tailEvent->mEventType &&
-            thisEvent->mEventRule == tailEvent->mEventRule &&
-            thisEvent->GetDocAccessible() == tailEvent->GetDocAccessible()) {
-          thisEvent->mEventRule = AccEvent::eDoNotEmit;
+        AccEvent* accEvent = mEvents[index];
+        if (accEvent->mEventType == tailEvent->mEventType &&
+            accEvent->mEventRule == tailEvent->mEventRule) {
+          accEvent->mEventRule = AccEvent::eDoNotEmit;
           return;
         }
       }
-    } break; // case eCoalesceFromSameDocument
+    } break; // case eCoalesceOfSameType
 
     case AccEvent::eRemoveDupes:
     {
@@ -515,14 +542,14 @@ NotificationController::CoalesceTextChangeEventsFor(AccShowEvent* aTailEvent,
   if (!textEvent)
     return;
 
-  if (aTailEvent->mAccessible->GetIndexInParent() ==
-      aThisEvent->mAccessible->GetIndexInParent() + 1) {
+  if (aTailEvent->mAccessible->IndexInParent() ==
+      aThisEvent->mAccessible->IndexInParent() + 1) {
     // If tail target was inserted after this target, i.e. tail target is next
     // sibling of this target.
     aTailEvent->mAccessible->AppendTextTo(textEvent->mModifiedText);
 
-  } else if (aTailEvent->mAccessible->GetIndexInParent() ==
-             aThisEvent->mAccessible->GetIndexInParent() -1) {
+  } else if (aTailEvent->mAccessible->IndexInParent() ==
+             aThisEvent->mAccessible->IndexInParent() -1) {
     // If tail target was inserted before this target, i.e. tail target is
     // previous sibling of this target.
     nsAutoString startText;
@@ -552,7 +579,7 @@ NotificationController::CreateTextChangeEventFor(AccMutationEvent* aEvent)
     nsCOMPtr<nsIEditor> editor;
     textAccessible->GetAssociatedEditor(getter_AddRefs(editor));
     if (editor) {
-      PRBool isEmpty = PR_FALSE;
+      bool isEmpty = false;
       editor->GetDocumentIsEmpty(&isEmpty);
       if (isEmpty)
         return;
@@ -668,10 +695,15 @@ NotificationController::TextEnumerator(nsCOMPtrHashKey<nsIContent>* aEntry,
              tag.get(), id.get(), index);
 #endif
 
+    // Make sure the text node is in accessible document still.
     nsAccessible* container = document->GetAccessibleOrContainer(containerNode);
-    nsTArray<nsCOMPtr<nsIContent> > insertedContents;
-    insertedContents.AppendElement(textNode);
-    document->ProcessContentInserted(container, &insertedContents);
+    NS_ASSERTION(container,
+                 "Text node having rendered text hasn't accessible document!");
+    if (container) {
+      nsTArray<nsCOMPtr<nsIContent> > insertedContents;
+      insertedContents.AppendElement(textNode);
+      document->ProcessContentInserted(container, &insertedContents);
+    }
   }
 
   return PL_DHASH_NEXT;

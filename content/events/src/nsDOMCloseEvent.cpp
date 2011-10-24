@@ -50,22 +50,40 @@ NS_INTERFACE_MAP_BEGIN(nsDOMCloseEvent)
 NS_INTERFACE_MAP_END_INHERITING(nsDOMEvent)
 
 NS_IMETHODIMP
-nsDOMCloseEvent::GetWasClean(PRBool *aWasClean)
+nsDOMCloseEvent::GetWasClean(bool *aWasClean)
 {
   *aWasClean = mWasClean;
   return NS_OK;
 }
 
 NS_IMETHODIMP
+nsDOMCloseEvent::GetCode(PRUint16 *aCode)
+{
+  *aCode = mReasonCode;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMCloseEvent::GetReason(nsAString & aReason)
+{
+  aReason = mReason;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMCloseEvent::InitCloseEvent(const nsAString& aType,
-                                PRBool aCanBubble,
-                                PRBool aCancelable,
-                                PRBool aWasClean)
+                                bool aCanBubble,
+                                bool aCancelable,
+                                bool aWasClean,
+                                PRUint16 aReasonCode,
+                                const nsAString &aReason)
 {
   nsresult rv = nsDOMEvent::InitEvent(aType, aCanBubble, aCancelable);
   NS_ENSURE_SUCCESS(rv, rv);
 
   mWasClean = aWasClean;
+  mReasonCode = aReasonCode;
+  mReason = aReason;
 
   return NS_OK;
 }

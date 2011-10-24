@@ -115,7 +115,7 @@ extern "C" {
             case nsXPTType::T_U64    : *((PRUint64*)d) = s->val.u64; d++;    break;
             case nsXPTType::T_FLOAT  : *((float*)   d) = s->val.f;           break;
             case nsXPTType::T_DOUBLE : *((double*)  d) = s->val.d;   d++;    break;
-            case nsXPTType::T_BOOL   : *((PRBool*)  d) = s->val.b;           break;
+            case nsXPTType::T_BOOL   : *((bool*)  d) = s->val.b;           break;
             case nsXPTType::T_CHAR   : *((PRUint32*)d) = s->val.c;           break;
             case nsXPTType::T_WCHAR  : *((wchar_t*) d) = s->val.wc;          break;
 
@@ -145,11 +145,7 @@ NS_InvokeByIndex_P(nsISupports* that, PRUint32 methodIndex,
     "addw  #12, %%sp\n\t"
     "movel %1, %%sp@-\n\t"
     "movel %1@, %%a0\n\t"
-#if defined(__GXX_ABI_VERSION) && __GXX_ABI_VERSION >= 100 /* G++ V3 ABI */
     "movel %%a0@(%2:l:4), %%a0\n\t"
-#else /* not V3 */
-    "movel %%a0@(8,%2:l:4), %%a0\n\t"
-#endif
     "jbsr  %%a0@\n\t"         /* safe to not cleanup sp */
     "lea   %%sp@(4,%5:l), %%sp\n\t"
     "movel %%d0, %0"

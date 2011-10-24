@@ -23,6 +23,7 @@
  *
  * Contributor(s):
  *   Daniel Witte <dwitte@mozilla.com>
+ *   Jason Duell <jduell.mcbugs@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -59,7 +60,9 @@
 #include "nsISupportsPriority.h"
 #include "nsIApplicationCache.h"
 #include "nsIResumableChannel.h"
+#include "nsITraceableChannel.h"
 #include "mozilla/net/NeckoCommon.h"
+#include "nsThreadUtils.h"
 
 namespace mozilla {
 namespace net {
@@ -79,11 +82,13 @@ class HttpBaseChannel : public nsHashPropertyBag
                       , public nsIUploadChannel2
                       , public nsISupportsPriority
                       , public nsIResumableChannel
+                      , public nsITraceableChannel
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIUPLOADCHANNEL
   NS_DECL_NSIUPLOADCHANNEL2
+  NS_DECL_NSITRACEABLECHANNEL
 
   HttpBaseChannel();
   virtual ~HttpBaseChannel();
@@ -92,7 +97,7 @@ public:
 
   // nsIRequest
   NS_IMETHOD GetName(nsACString& aName);
-  NS_IMETHOD IsPending(PRBool *aIsPending);
+  NS_IMETHOD IsPending(bool *aIsPending);
   NS_IMETHOD GetStatus(nsresult *aStatus);
   NS_IMETHOD GetLoadGroup(nsILoadGroup **aLoadGroup);
   NS_IMETHOD SetLoadGroup(nsILoadGroup *aLoadGroup);
@@ -111,13 +116,16 @@ public:
   NS_IMETHOD SetContentType(const nsACString& aContentType);
   NS_IMETHOD GetContentCharset(nsACString& aContentCharset);
   NS_IMETHOD SetContentCharset(const nsACString& aContentCharset);
+  NS_IMETHOD GetContentDisposition(PRUint32 *aContentDisposition);
+  NS_IMETHOD GetContentDispositionFilename(nsAString& aContentDispositionFilename);
+  NS_IMETHOD GetContentDispositionHeader(nsACString& aContentDispositionHeader);
   NS_IMETHOD GetContentLength(PRInt32 *aContentLength);
   NS_IMETHOD SetContentLength(PRInt32 aContentLength);
   NS_IMETHOD Open(nsIInputStream **aResult);
 
   // nsIEncodedChannel
-  NS_IMETHOD GetApplyConversion(PRBool *value);
-  NS_IMETHOD SetApplyConversion(PRBool value);
+  NS_IMETHOD GetApplyConversion(bool *value);
+  NS_IMETHOD SetApplyConversion(bool value);
   NS_IMETHOD GetContentEncodings(nsIUTF8StringEnumerator** aEncodings);
 
   // HttpBaseChannel::nsIHttpChannel
@@ -127,21 +135,21 @@ public:
   NS_IMETHOD SetReferrer(nsIURI *referrer);
   NS_IMETHOD GetRequestHeader(const nsACString& aHeader, nsACString& aValue);
   NS_IMETHOD SetRequestHeader(const nsACString& aHeader, 
-                              const nsACString& aValue, PRBool aMerge);
+                              const nsACString& aValue, bool aMerge);
   NS_IMETHOD VisitRequestHeaders(nsIHttpHeaderVisitor *visitor);
   NS_IMETHOD GetResponseHeader(const nsACString &header, nsACString &value);
   NS_IMETHOD SetResponseHeader(const nsACString& header, 
-                               const nsACString& value, PRBool merge);
+                               const nsACString& value, bool merge);
   NS_IMETHOD VisitResponseHeaders(nsIHttpHeaderVisitor *visitor);
-  NS_IMETHOD GetAllowPipelining(PRBool *value);
-  NS_IMETHOD SetAllowPipelining(PRBool value);
+  NS_IMETHOD GetAllowPipelining(bool *value);
+  NS_IMETHOD SetAllowPipelining(bool value);
   NS_IMETHOD GetRedirectionLimit(PRUint32 *value);
   NS_IMETHOD SetRedirectionLimit(PRUint32 value);
-  NS_IMETHOD IsNoStoreResponse(PRBool *value);
-  NS_IMETHOD IsNoCacheResponse(PRBool *value);
+  NS_IMETHOD IsNoStoreResponse(bool *value);
+  NS_IMETHOD IsNoCacheResponse(bool *value);
   NS_IMETHOD GetResponseStatus(PRUint32 *aValue);
   NS_IMETHOD GetResponseStatusText(nsACString& aValue);
-  NS_IMETHOD GetRequestSucceeded(PRBool *aValue);
+  NS_IMETHOD GetRequestSucceeded(bool *aValue);
 
   // nsIHttpChannelInternal
   NS_IMETHOD GetDocumentURI(nsIURI **aDocumentURI);
@@ -149,11 +157,11 @@ public:
   NS_IMETHOD GetRequestVersion(PRUint32 *major, PRUint32 *minor);
   NS_IMETHOD GetResponseVersion(PRUint32 *major, PRUint32 *minor);
   NS_IMETHOD SetCookie(const char *aCookieHeader);
-  NS_IMETHOD GetForceAllowThirdPartyCookie(PRBool *aForce);
-  NS_IMETHOD SetForceAllowThirdPartyCookie(PRBool aForce);
-  NS_IMETHOD GetCanceled(PRBool *aCanceled);
-  NS_IMETHOD GetChannelIsForDownload(PRBool *aChannelIsForDownload);
-  NS_IMETHOD SetChannelIsForDownload(PRBool aChannelIsForDownload);
+  NS_IMETHOD GetForceAllowThirdPartyCookie(bool *aForce);
+  NS_IMETHOD SetForceAllowThirdPartyCookie(bool aForce);
+  NS_IMETHOD GetCanceled(bool *aCanceled);
+  NS_IMETHOD GetChannelIsForDownload(bool *aChannelIsForDownload);
+  NS_IMETHOD SetChannelIsForDownload(bool aChannelIsForDownload);
   NS_IMETHOD SetCacheKeysRedirectChain(nsTArray<nsCString> *cacheKeys);
   NS_IMETHOD GetLocalAddress(nsACString& addr);
   NS_IMETHOD GetLocalPort(PRInt32* port);
@@ -166,6 +174,8 @@ public:
           mRedirectedCachekeys = nsnull;
       }
   }
+  NS_IMETHOD HTTPUpgrade(const nsACString & aProtocolName,
+                         nsIHttpUpgradeListener *aListener); 
 
   // nsISupportsPriority
   NS_IMETHOD GetPriority(PRInt32 *value);
@@ -195,7 +205,7 @@ public:
         // header with it.
         nsCOMPtr<nsIHttpChannel> mChannel;
         
-        PRPackedBool mReady;
+        bool mReady;
     };
 
     nsHttpResponseHead * GetResponseHead() const { return mResponseHead; }
@@ -204,13 +214,23 @@ public:
     const PRNetAddr& GetSelfAddr() { return mSelfAddr; }
     const PRNetAddr& GetPeerAddr() { return mPeerAddr; }
 
+public: /* Necko internal use only... */
+
+  bool ShouldRewriteRedirectToGET(PRUint32 httpStatus, nsHttpAtom method);
+  bool IsSafeMethod(nsHttpAtom method);
+  
 protected:
+
+  // Handle notifying listener, removing from loadgroup if request failed.
+  void     DoNotifyListener();
+  virtual void DoNotifyListenerCleanup() = 0;
+
   nsresult ApplyContentConversions();
 
   void AddCookiesToRequest();
   virtual nsresult SetupReplacementChannel(nsIURI *,
                                            nsIChannel *,
-                                           PRBool preserveMethod);
+                                           bool preserveMethod);
 
   // Helper function to simplify getting notification callbacks.
   template <class T>
@@ -246,6 +266,10 @@ protected:
   PRNetAddr                         mSelfAddr;
   PRNetAddr                         mPeerAddr;
 
+  // HTTP Upgrade Data
+  nsCString                        mUpgradeProtocol;
+  nsCOMPtr<nsIHttpUpgradeListener> mUpgradeProtocolCallback;
+
   // Resumable channel specific data
   nsCString                         mEntityID;
   PRUint64                          mStartPos;
@@ -268,10 +292,96 @@ protected:
   PRUint32                          mChooseApplicationCache     : 1;
   PRUint32                          mLoadedFromApplicationCache : 1;
   PRUint32                          mChannelIsForDownload       : 1;
+  PRUint32                          mTracingEnabled             : 1;
+  // True if timing collection is enabled
+  PRUint32                          mTimingEnabled              : 1;
+
+  // Current suspension depth for this channel object
+  PRUint32                          mSuspendCount;
 
   nsTArray<nsCString>              *mRedirectedCachekeys;
 };
 
+// Share some code while working around C++'s absurd inability to handle casting
+// of member functions between base/derived types.
+// - We want to store member function pointer to call at resume time, but one
+//   such function--HandleAsyncAbort--we want to share between the
+//   nsHttpChannel/HttpChannelChild.  Can't define it in base class, because
+//   then we'd have to cast member function ptr between base/derived class
+//   types.  Sigh...
+template <class T>
+class HttpAsyncAborter
+{
+public:
+  HttpAsyncAborter(T *derived) : mThis(derived), mCallOnResume(0) {}
+
+  // Aborts channel: calls OnStart/Stop with provided status, removes channel
+  // from loadGroup.
+  nsresult AsyncAbort(nsresult status);
+
+  // Does most the actual work.
+  void HandleAsyncAbort();
+
+  // AsyncCall calls a member function asynchronously (via an event).
+  // retval isn't refcounted and is set only when event was successfully
+  // posted, the event is returned for the purpose of cancelling when needed
+  nsresult AsyncCall(void (T::*funcPtr)(),
+                     nsRunnableMethod<T> **retval = nsnull);
+private:
+  T *mThis;
+
+protected:
+  // Function to be called at resume time
+  void (T::* mCallOnResume)(void);
+};
+
+template <class T>
+nsresult HttpAsyncAborter<T>::AsyncAbort(nsresult status)
+{
+  LOG(("HttpAsyncAborter::AsyncAbort [this=%p status=%x]\n", mThis, status));
+
+  mThis->mStatus = status;
+  mThis->mIsPending = false;
+
+  // if this fails?  Callers ignore our return value anyway....
+  return AsyncCall(&T::HandleAsyncAbort);
+}
+
+// Each subclass needs to define its own version of this (which just calls this
+// base version), else we wind up casting base/derived member function ptrs
+template <class T>
+inline void HttpAsyncAborter<T>::HandleAsyncAbort()
+{
+  NS_PRECONDITION(!mCallOnResume, "How did that happen?");
+
+  if (mThis->mSuspendCount) {
+    LOG(("Waiting until resume to do async notification [this=%p]\n",
+         mThis));
+    mCallOnResume = &T::HandleAsyncAbort;
+    return;
+  }
+
+  mThis->DoNotifyListener();
+
+  // finally remove ourselves from the load group.
+  if (mThis->mLoadGroup)
+    mThis->mLoadGroup->RemoveRequest(mThis, nsnull, mThis->mStatus);
+}
+
+template <class T>
+nsresult HttpAsyncAborter<T>::AsyncCall(void (T::*funcPtr)(),
+                                   nsRunnableMethod<T> **retval)
+{
+  nsresult rv;
+
+  nsRefPtr<nsRunnableMethod<T> > event = NS_NewRunnableMethod(mThis, funcPtr);
+  rv = NS_DispatchToCurrentThread(event);
+  if (NS_SUCCEEDED(rv) && retval) {
+    *retval = event;
+  }
+
+  return rv;
+}
 
 } // namespace net
 } // namespace mozilla

@@ -153,10 +153,10 @@ static nsresult GetExtensionFrom4xRegistryInfo(const nsACString& aMimeType,
   return NS_OK;
 }
 
-nsresult nsOSHelperAppService::OSProtocolHandlerExists(const char * aProtocolScheme, PRBool * aHandlerExists)
+nsresult nsOSHelperAppService::OSProtocolHandlerExists(const char * aProtocolScheme, bool * aHandlerExists)
 {
   // look up the protocol scheme in the windows registry....if we find a match then we have a handler for it...
-  *aHandlerExists = PR_FALSE;
+  *aHandlerExists = false;
   if (aProtocolScheme && *aProtocolScheme)
   {
 #if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
@@ -170,7 +170,7 @@ nsresult nsOSHelperAppService::OSProtocolHandlerExists(const char * aProtocolSch
                                                   &pResult);
       if (SUCCEEDED(hr)) {
         CoTaskMemFree(pResult);
-        *aHandlerExists = PR_TRUE;
+        *aHandlerExists = true;
       }
       return NS_OK;
     }
@@ -280,18 +280,18 @@ nsresult nsOSHelperAppService::GetMIMEInfoFromRegistry(const nsAFlatString& file
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Looks up the type for the extension aExt and compares it to aType
-/* static */ PRBool
+/* static */ bool
 nsOSHelperAppService::typeFromExtEquals(const PRUnichar* aExt, const char *aType)
 {
   if (!aType)
-    return PR_FALSE;
+    return false;
   nsAutoString fileExtToUse;
   if (aExt[0] != PRUnichar('.'))
     fileExtToUse = PRUnichar('.');
 
   fileExtToUse.Append(aExt);
 
-  PRBool eq = PR_FALSE;
+  bool eq = false;
   nsCOMPtr<nsIWindowsRegKey> regKey = 
     do_CreateInstance("@mozilla.org/windows-registry-key;1");
   if (!regKey) 
@@ -328,15 +328,15 @@ static void CleanupHandlerPath(nsString& aPath)
   aPath.AppendLiteral(" ");
 
   // case insensitive
-  PRUint32 index = aPath.Find(".exe ", PR_TRUE);
+  PRUint32 index = aPath.Find(".exe ", true);
   if (index == kNotFound)
-    index = aPath.Find(".dll ", PR_TRUE);
+    index = aPath.Find(".dll ", true);
   if (index == kNotFound)
-    index = aPath.Find(".cpl ", PR_TRUE);
+    index = aPath.Find(".cpl ", true);
 
   if (index != kNotFound)
     aPath.Truncate(index + 4);
-  aPath.Trim(" ", PR_TRUE, PR_TRUE);
+  aPath.Trim(" ", true, true);
 }
 
 // Strip the windows host process bootstrap executable rundll32.exe
@@ -354,10 +354,10 @@ static void StripRundll32(nsString& aCommandString)
 
   // case insensitive
   PRInt32 strLen = rundllSegment.Length();
-  PRInt32 index = aCommandString.Find(rundllSegment, PR_TRUE);
+  PRInt32 index = aCommandString.Find(rundllSegment, true);
   if (index == kNotFound) {
     strLen = rundllSegmentShort.Length();
-    index = aCommandString.Find(rundllSegmentShort, PR_TRUE);
+    index = aCommandString.Find(rundllSegmentShort, true);
   }
 
   if (index != kNotFound) {
@@ -371,7 +371,7 @@ static void StripRundll32(nsString& aCommandString)
 // to launch the associated application as it strips parameters and
 // rundll.exe from the string. Designed for retrieving display information
 // on a particular handler.   
-/* static */ PRBool nsOSHelperAppService::CleanupCmdHandlerPath(nsAString& aCommandHandler)
+/* static */ bool nsOSHelperAppService::CleanupCmdHandlerPath(nsAString& aCommandHandler)
 {
   nsAutoString handlerCommand(aCommandHandler);
 
@@ -393,14 +393,14 @@ static void StripRundll32(nsString& aCommandString)
   PRUint32 bufLength = ::ExpandEnvironmentStringsW(handlerCommand.get(),
                                                    L"", 0);
   if (bufLength == 0) // Error
-    return PR_FALSE;
+    return false;
 
   nsAutoArrayPtr<PRUnichar> destination(new PRUnichar[bufLength]);
   if (!destination)
-    return PR_FALSE;
+    return false;
   if (!::ExpandEnvironmentStringsW(handlerCommand.get(), destination,
                                    bufLength))
-    return PR_FALSE;
+    return false;
 
   handlerCommand = destination;
 
@@ -416,7 +416,7 @@ static void StripRundll32(nsString& aCommandString)
   CleanupHandlerPath(handlerCommand);
 
   aCommandHandler.Assign(handlerCommand);
-  return PR_TRUE;
+  return true;
 }
 
 // The "real" name of a given helper app (as specified by the path to the 
@@ -486,7 +486,7 @@ nsOSHelperAppService::GetDefaultAppInfo(const nsAString& aAppInfo,
   // for example won't resolve correctly to the system dir. The 
   // subsequent launch of the helper app will work though.
   nsCOMPtr<nsILocalFile> lf;
-  NS_NewLocalFile(handlerCommand, PR_TRUE, getter_AddRefs(lf));
+  NS_NewLocalFile(handlerCommand, true, getter_AddRefs(lf));
   if (!lf)
     return NS_ERROR_FILE_NOT_FOUND;
 
@@ -553,7 +553,7 @@ already_AddRefed<nsMIMEInfoWin> nsOSHelperAppService::GetByExtension(const nsAFl
   mimeInfo->SetPreferredAction(nsIMIMEInfo::useSystemDefault);
 
   nsAutoString appInfo;
-  PRBool found;
+  bool found;
 
 #if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   // Retrieve the default application for this extension
@@ -566,12 +566,12 @@ already_AddRefed<nsMIMEInfoWin> nsOSHelperAppService::GetByExtension(const nsAFl
                                                 AT_FILEEXTENSION, AL_EFFECTIVE,
                                                 &pResult);
     if (SUCCEEDED(hr)) {
-      found = PR_TRUE;
+      found = true;
       appInfo.Assign(pResult);
       CoTaskMemFree(pResult);
     } 
     else {
-      found = PR_FALSE;
+      found = false;
     }
   } 
   else
@@ -583,7 +583,7 @@ already_AddRefed<nsMIMEInfoWin> nsOSHelperAppService::GetByExtension(const nsAFl
 
   // Bug 358297 - ignore the default handler, force the user to choose app
   if (appInfo.EqualsLiteral("XPSViewer.Document"))
-    found = PR_FALSE;
+    found = false;
 
   if (!found) {
     NS_IF_RELEASE(mimeInfo); // we failed to really find an entry in the registry
@@ -609,9 +609,9 @@ already_AddRefed<nsMIMEInfoWin> nsOSHelperAppService::GetByExtension(const nsAFl
   return mimeInfo;
 }
 
-already_AddRefed<nsIMIMEInfo> nsOSHelperAppService::GetMIMEInfoFromOS(const nsACString& aMIMEType, const nsACString& aFileExt, PRBool *aFound)
+already_AddRefed<nsIMIMEInfo> nsOSHelperAppService::GetMIMEInfoFromOS(const nsACString& aMIMEType, const nsACString& aFileExt, bool *aFound)
 {
-  *aFound = PR_TRUE;
+  *aFound = true;
 
   const nsCString& flatType = PromiseFlatCString(aMIMEType);
   const nsCString& flatExt = PromiseFlatCString(aFileExt);
@@ -641,7 +641,7 @@ already_AddRefed<nsIMIMEInfo> nsOSHelperAppService::GetMIMEInfoFromOS(const nsAC
     mi = GetByExtension(fileExtension, flatType.get()).get();
   LOG(("Extension lookup on '%s' found: 0x%p\n", fileExtension.get(), mi));
 
-  PRBool hasDefault = PR_FALSE;
+  bool hasDefault = false;
   if (mi) {
     mi->GetHasDefaultHandler(&hasDefault);
     // OK. We might have the case that |aFileExt| is a valid extension for the
@@ -652,7 +652,7 @@ already_AddRefed<nsIMIMEInfo> nsOSHelperAppService::GetMIMEInfoFromOS(const nsAC
     if (!aFileExt.IsEmpty() && typeFromExtEquals(NS_ConvertUTF8toUTF16(flatExt).get(), flatType.get())) {
       LOG(("Appending extension '%s' to mimeinfo, because its mimetype is '%s'\n",
            flatExt.get(), flatType.get()));
-      PRBool extExist = PR_FALSE;
+      bool extExist = false;
       mi->ExtensionExists(aFileExt, &extExist);
       if (!extExist)
         mi->AppendExtension(aFileExt);
@@ -669,7 +669,7 @@ already_AddRefed<nsIMIMEInfo> nsOSHelperAppService::GetMIMEInfoFromOS(const nsAC
       return mi;
     }
     if (!miByExt && !mi) {
-      *aFound = PR_FALSE;
+      *aFound = false;
       mi = new nsMIMEInfoWin(flatType);
       if (mi) {
         NS_ADDREF(mi);
@@ -692,7 +692,7 @@ already_AddRefed<nsIMIMEInfo> nsOSHelperAppService::GetMIMEInfoFromOS(const nsAC
 
 NS_IMETHODIMP
 nsOSHelperAppService::GetProtocolHandlerInfoFromOS(const nsACString &aScheme,
-                                                   PRBool *found,
+                                                   bool *found,
                                                    nsIHandlerInfo **_retval)
 {
   NS_ASSERTION(!aScheme.IsEmpty(), "No scheme was specified!");

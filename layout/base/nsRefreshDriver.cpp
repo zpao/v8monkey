@@ -41,6 +41,8 @@
  * refresh rate.  (Perhaps temporary, until replaced by compositor.)
  */
 
+#include "mozilla/Util.h"
+
 #include "nsRefreshDriver.h"
 #include "nsPresContext.h"
 #include "nsComponentManagerUtils.h"
@@ -52,21 +54,24 @@
 #include "nsEventDispatcher.h"
 #include "jsapi.h"
 #include "nsContentUtils.h"
+#include "mozilla/Preferences.h"
 
 using mozilla::TimeStamp;
 using mozilla::TimeDuration;
 
+using namespace mozilla;
+
 #define DEFAULT_FRAME_RATE 60
 #define DEFAULT_THROTTLED_FRAME_RATE 1
 
-static PRBool sPrecisePref;
+static bool sPrecisePref;
 
 /* static */ void
 nsRefreshDriver::InitializeStatics()
 {
-  nsContentUtils::AddBoolPrefVarCache("layout.frame_rate.precise",
-                                      &sPrecisePref,
-                                      PR_FALSE);
+  Preferences::AddBoolVarCache(&sPrecisePref,
+                               "layout.frame_rate.precise",
+                               false);
 }
 // Compute the interval to use for the refresh driver timer, in
 // milliseconds
@@ -75,7 +80,7 @@ nsRefreshDriver::GetRefreshTimerInterval() const
 {
   const char* prefName =
     mThrottled ? "layout.throttled_frame_rate" : "layout.frame_rate";
-  PRInt32 rate = nsContentUtils::GetIntPref(prefName, -1);
+  PRInt32 rate = Preferences::GetInt(prefName, -1);
   if (rate <= 0) {
     // TODO: get the rate from the platform
     rate = mThrottled ? DEFAULT_THROTTLED_FRAME_RATE : DEFAULT_FRAME_RATE;
@@ -160,19 +165,19 @@ nsRefreshDriver::MostRecentRefreshEpochTime() const
   return mMostRecentRefreshEpochTime;
 }
 
-PRBool
+bool
 nsRefreshDriver::AddRefreshObserver(nsARefreshObserver *aObserver,
                                     mozFlushType aFlushType)
 {
   ObserverArray& array = ArrayFor(aFlushType);
-  PRBool success = array.AppendElement(aObserver) != nsnull;
+  bool success = array.AppendElement(aObserver) != nsnull;
 
   EnsureTimerStarted(false);
 
   return success;
 }
 
-PRBool
+bool
 nsRefreshDriver::RemoveRefreshObserver(nsARefreshObserver *aObserver,
                                        mozFlushType aFlushType)
 {
@@ -230,7 +235,7 @@ PRUint32
 nsRefreshDriver::ObserverCount() const
 {
   PRUint32 sum = 0;
-  for (PRUint32 i = 0; i < NS_ARRAY_LENGTH(mObservers); ++i) {
+  for (PRUint32 i = 0; i < ArrayLength(mObservers); ++i) {
     sum += mObservers[i].Length();
   }
   // Even while throttled, we need to process layout and style changes.  Style
@@ -267,7 +272,7 @@ nsRefreshDriver::ArrayFor(mozFlushType aFlushType)
     case Flush_Display:
       return mObservers[2];
     default:
-      NS_ABORT_IF_FALSE(PR_FALSE, "bad flush type");
+      NS_ABORT_IF_FALSE(false, "bad flush type");
       return *static_cast<ObserverArray*>(nsnull);
   }
 }
@@ -316,7 +321,7 @@ nsRefreshDriver::Notify(nsITimer *aTimer)
    * the pres context, which will cause our |mPresContext| to become
    * null.  If this happens, we must stop notifying observers.
    */
-  for (PRUint32 i = 0; i < NS_ARRAY_LENGTH(mObservers); ++i) {
+  for (PRUint32 i = 0; i < ArrayLength(mObservers); ++i) {
     ObserverArray::EndLimitedIterator etor(mObservers[i]);
     while (etor.HasMore()) {
       nsRefPtr<nsARefreshObserver> obs = etor.GetNext();
@@ -349,7 +354,7 @@ nsRefreshDriver::Notify(nsITimer *aTimer)
 
       PRInt64 eventTime = mMostRecentRefreshEpochTime / PR_USEC_PER_MSEC;
       for (PRUint32 i = 0; i < targets.Length(); ++i) {
-        nsEvent ev(PR_TRUE, NS_BEFOREPAINT);
+        nsEvent ev(true, NS_BEFOREPAINT);
         ev.time = eventTime;
         nsEventDispatcher::Dispatch(targets[i], nsnull, &ev);
       }
@@ -371,7 +376,7 @@ nsRefreshDriver::Notify(nsITimer *aTimer)
             continue;
           NS_ADDREF(shell);
           mStyleFlushObservers.RemoveElement(shell);
-          shell->FrameConstructor()->mObservingRefreshDriver = PR_FALSE;
+          shell->FrameConstructor()->mObservingRefreshDriver = false;
           shell->FlushPendingNotifications(Flush_Style);
           NS_RELEASE(shell);
         }
@@ -390,8 +395,8 @@ nsRefreshDriver::Notify(nsITimer *aTimer)
             continue;
           NS_ADDREF(shell);
           mLayoutFlushObservers.RemoveElement(shell);
-          shell->mReflowScheduled = PR_FALSE;
-          shell->mSuppressInterruptibleReflows = PR_FALSE;
+          shell->mReflowScheduled = false;
+          shell->mSuppressInterruptibleReflows = false;
           shell->FlushPendingNotifications(Flush_InterruptibleLayout);
           NS_RELEASE(shell);
         }
@@ -466,7 +471,7 @@ nsRefreshDriver::DoRefresh()
 }
 
 #ifdef DEBUG
-PRBool
+bool
 nsRefreshDriver::IsRefreshObserver(nsARefreshObserver *aObserver,
                                    mozFlushType aFlushType)
 {
@@ -475,13 +480,13 @@ nsRefreshDriver::IsRefreshObserver(nsARefreshObserver *aObserver,
 }
 #endif
 
-PRBool
+bool
 nsRefreshDriver::ScheduleBeforePaintEvent(nsIDocument* aDocument)
 {
   NS_ASSERTION(mBeforePaintTargets.IndexOf(aDocument) ==
                mBeforePaintTargets.NoIndex,
                "Shouldn't have a paint event posted for this document");
-  PRBool appended = mBeforePaintTargets.AppendElement(aDocument) != nsnull;
+  bool appended = mBeforePaintTargets.AppendElement(aDocument) != nsnull;
   EnsureTimerStarted(false);
   return appended;
 }

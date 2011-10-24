@@ -60,14 +60,21 @@
 
 class nsIURI;
 class nsCSSFontFaceRule;
-#ifdef MOZ_CSS_ANIMATIONS
 class nsCSSKeyframesRule;
-#endif
 class nsRuleWalker;
 struct RuleProcessorData;
 struct TreeMatchContext;
 
 class nsEmptyStyleRule : public nsIStyleRule
+{
+  NS_DECL_ISUPPORTS
+  virtual void MapRuleInfoInto(nsRuleData* aRuleData);
+#ifdef DEBUG
+  virtual void List(FILE* out = stdout, PRInt32 aIndent = 0) const;
+#endif
+};
+
+class nsInitialStyleRule : public nsIStyleRule
 {
   NS_DECL_ISUPPORTS
   virtual void MapRuleInfoInto(nsRuleData* aRuleData);
@@ -85,6 +92,8 @@ class nsStyleSet
  public:
   nsStyleSet();
 
+  size_t SizeOf() const;
+
   // Initialize the object.  You must check the return code and not use
   // the nsStyleSet if Init() fails.
 
@@ -97,7 +106,7 @@ class nsStyleSet
   nsRuleNode* GetRuleTree() { return mRuleTree; }
 
   // enable / disable the Quirk style sheet
-  void EnableQuirkStyleSheet(PRBool aEnable);
+  void EnableQuirkStyleSheet(bool aEnable);
 
   // get a style context for a non-pseudo frame.
   already_AddRefed<nsStyleContext>
@@ -171,15 +180,13 @@ class nsStyleSet
 
   // Append all the currently-active font face rules to aArray.  Return
   // true for success and false for failure.
-  PRBool AppendFontFaceRules(nsPresContext* aPresContext,
+  bool AppendFontFaceRules(nsPresContext* aPresContext,
                              nsTArray<nsFontFaceRuleContainer>& aArray);
 
-#ifdef MOZ_CSS_ANIMATIONS
   // Append all the currently-active keyframes rules to aArray.  Return
   // true for success and false for failure.
-  PRBool AppendKeyframesRules(nsPresContext* aPresContext,
+  bool AppendKeyframesRules(nsPresContext* aPresContext,
                               nsTArray<nsCSSKeyframesRule*>& aArray);
-#endif
 
   // Begin ignoring style context destruction, to avoid lots of unnecessary
   // work on document teardown.
@@ -204,7 +211,7 @@ class nsStyleSet
                        mozilla::dom::Element* aElement);
 
   // Test if style is dependent on a document state.
-  PRBool HasDocumentStateDependentStyle(nsPresContext* aPresContext,
+  bool HasDocumentStateDependentStyle(nsPresContext* aPresContext,
                                         nsIContent*    aContent,
                                         nsEventStates  aStateMask);
 
@@ -218,14 +225,14 @@ class nsStyleSet
                                            mozilla::dom::Element* aElement,
                                            nsIAtom*       aAttribute,
                                            PRInt32        aModType,
-                                           PRBool         aAttrHasChanged);
+                                           bool           aAttrHasChanged);
 
   /*
    * Do any processing that needs to happen as a result of a change in
    * the characteristics of the medium, and return whether style rules
    * may have changed as a result.
    */
-  PRBool MediumFeaturesChanged(nsPresContext* aPresContext);
+  bool MediumFeaturesChanged(nsPresContext* aPresContext);
 
   // APIs for registering objects that can supply additional
   // rules during processing.
@@ -243,9 +250,7 @@ class nsStyleSet
     eDocSheet, // CSS
     eStyleAttrSheet,
     eOverrideSheet, // CSS
-#ifdef MOZ_CSS_ANIMATIONS
     eAnimationSheet,
-#endif
     eTransitionSheet,
     eSheetTypeCount
     // be sure to keep the number of bits in |mDirty| below and in
@@ -262,8 +267,8 @@ class nsStyleSet
                          const nsCOMArray<nsIStyleSheet> &aNewSheets);
 
   // Enable/Disable entire author style level (Doc & PresHint levels)
-  PRBool GetAuthorStyleDisabled();
-  nsresult SetAuthorStyleDisabled(PRBool aStyleDisabled);
+  bool GetAuthorStyleDisabled();
+  nsresult SetAuthorStyleDisabled(bool aStyleDisabled);
 
   PRInt32 SheetCount(sheetType aType) const {
     return mSheets[aType].Count();
@@ -296,7 +301,7 @@ class nsStyleSet
   // We don't care whether we have cached rule processors or whether
   // they have cached rule cascades; getting the rule cascades again in
   // order to do rule matching will get the correct rule cascade.
-  PRBool HasCachedStyleData() const {
+  bool HasCachedStyleData() const {
     return (mRuleTree && mRuleTree->TreeHasCachedData()) || !mRoots.IsEmpty();
   }
 
@@ -313,13 +318,15 @@ class nsStyleSet
 
   nsCSSStyleSheet::EnsureUniqueInnerResult EnsureUniqueInnerOnCSSSheets();
 
+  nsIStyleRule* InitialStyleRule();
+
  private:
   // Not to be implemented
   nsStyleSet(const nsStyleSet& aCopy);
   nsStyleSet& operator=(const nsStyleSet& aCopy);
 
   // Returns false on out-of-memory.
-  PRBool BuildDefaultStyleData(nsPresContext* aPresContext);
+  bool BuildDefaultStyleData(nsPresContext* aPresContext);
 
   // Run mark-and-sweep GC on mRuleTree and mOldRuleTrees, based on mRoots.
   void GCRuleTrees();
@@ -362,17 +369,17 @@ class nsStyleSet
   // of the rules and break out if the enumeration is halted.
   void WalkRuleProcessors(nsIStyleRuleProcessor::EnumFunc aFunc,
                           RuleProcessorData* aData,
-                          PRBool aWalkAllXBLStylesheets);
+                          bool aWalkAllXBLStylesheets);
 
   already_AddRefed<nsStyleContext>
   GetContext(nsStyleContext* aParentContext,
              nsRuleNode* aRuleNode,
              nsRuleNode* aVisitedRuleNode,
-             PRBool aIsLink,
-             PRBool aIsVisitedLink,
+             bool aIsLink,
+             bool aIsVisitedLink,
              nsIAtom* aPseudoTag,
              nsCSSPseudoElements::Type aPseudoType,
-             PRBool aDoAnimation,
+             bool aDoAnimation,
              mozilla::dom::Element* aElementForAnimation);
 
   nsPresContext* PresContext() { return mRuleTree->GetPresContext(); }
@@ -403,6 +410,10 @@ class nsStyleSet
   // Empty style rules to force things that restrict which properties
   // apply into different branches of the rule tree.
   nsRefPtr<nsEmptyStyleRule> mFirstLineRule, mFirstLetterRule;
+
+  // Style rule which sets all properties to their initial values for
+  // determining when context-sensitive values are in use.
+  nsRefPtr<nsInitialStyleRule> mInitialStyleRule;
 
   PRUint16 mBatching;
 

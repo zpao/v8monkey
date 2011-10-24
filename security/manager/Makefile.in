@@ -57,14 +57,11 @@ NSSUTIL3_LIB = $(DLL_PREFIX)nssutil3$(DLL_SUFFIX)
 SMIME3_LIB = $(DLL_PREFIX)smime3$(DLL_SUFFIX)
 SSL3_LIB =  $(DLL_PREFIX)ssl3$(DLL_SUFFIX)
 SOFTOKEN3_LIB = $(DLL_PREFIX)softokn3$(DLL_SUFFIX)
-SOFTOKEN3_CHK = $(DLL_PREFIX)softokn3.chk
 
 ifndef NSS_DISABLE_DBM
 NSSDBM3_LIB = $(DLL_PREFIX)nssdbm3$(DLL_SUFFIX)
-NSSDBM3_CHK = $(DLL_PREFIX)nssdbm3.chk
 else
 NSSDBM3_LIB = 
-NSSDBM3_CHK = 
 endif
 
 ifndef MOZ_NATIVE_NSS
@@ -116,23 +113,17 @@ endif
 
 ifdef HAVE_FREEBL_LIBS
 FREEBL_LIB = $(DLL_PREFIX)freebl3$(DLL_SUFFIX)
-FREEBL_CHK = $(DLL_PREFIX)freebl3.chk
 endif
 ifdef HAVE_FREEBL_LIBS_32
 FREEBL_32INT_LIB = libfreebl_32int_3$(DLL_SUFFIX)
-FREEBL_32INT_CHK = libfreebl_32int_3.chk
 FREEBL_32FPU_LIB = libfreebl_32fpu_3$(DLL_SUFFIX)
-FREEBL_32FPU_CHK = libfreebl_32fpu_3.chk
 endif
 ifdef HAVE_FREEBL_LIBS_32INT64
 FREEBL_32INT64_LIB = libfreebl_32int64_3$(DLL_SUFFIX)
-FREEBL_32INT64_CHK = libfreebl_32int64_3.chk
 endif
 ifdef HAVE_FREEBL_LIBS_64
 FREEBL_64INT_LIB = libfreebl_64int_3$(DLL_SUFFIX)
-FREEBL_64INT_CHK = libfreebl_64int_3.chk
 FREEBL_64FPU_LIB = libfreebl_64fpu_3$(DLL_SUFFIX)
-FREEBL_64FPU_CHK = libfreebl_64fpu_3.chk
 endif
 
 ABS_DIST := $(call core_abspath,$(DIST))
@@ -144,6 +135,8 @@ ifneq (,$(filter mingw%,$(host_os)))
 ABS_DIST := $(shell cd $(DIST) && pwd -W)
 endif
 endif
+# For all variables such as DLLFLAGS, that may contain $(DIST)
+DIST := $(ABS_DIST)
 NSPR_INCLUDE_DIR = $(firstword $(filter -I%,$(NSPR_CFLAGS)))
 ifneq (,$(strip $(NSPR_INCLUDE_DIR)))
 NSPR_INCLUDE_DIR := $(subst -I,,$(subst -I$(DIST),-I$(ABS_DIST),$(NSPR_INCLUDE_DIR)))
@@ -198,9 +191,9 @@ ifndef MOZ_DEBUG
 DEFAULT_GMAKE_FLAGS += BUILD_OPT=1 OPT_CODE_SIZE=1
 endif
 ifdef GNU_CC
-DEFAULT_GMAKE_FLAGS += NS_USE_GCC=1 NS_USE_NATIVE=
+DEFAULT_GMAKE_FLAGS += NS_USE_GCC=1
 else
-DEFAULT_GMAKE_FLAGS += NS_USE_GCC= NS_USE_NATIVE=1
+DEFAULT_GMAKE_FLAGS += NS_USE_GCC=
 endif
 ifdef USE_N32
 # It is not really necessary to specify USE_PTHREADS=1.  USE_PTHREADS
@@ -241,6 +234,10 @@ DEFAULT_GMAKE_FLAGS += NSS_ENABLE_ZLIB=
 # Disable building of the test programs in security/nss/lib/zlib
 DEFAULT_GMAKE_FLAGS += PROGRAMS=
 
+# Disable creating .chk files. They will be generated from packager.mk
+# When bug 681624 lands, we can replace CHECKLOC= with SKIP_SHLIBSIGN=1
+DEFAULT_GMAKE_FLAGS += CHECKLOC=
+
 ifdef CROSS_COMPILE
 
 DEFAULT_GMAKE_FLAGS += \
@@ -257,24 +254,21 @@ DEFAULT_GMAKE_FLAGS += \
 	CPU_ARCH="$(TARGET_CPU)" \
 	$(NULL)
 
-# Android has pthreads integrated into -lc, so OS_LIBS is set to nothing
+# Android has pthreads integrated into -lc, so OS_PTHREAD is set to nothing
 ifeq ($(OS_TARGET), Android)
 DEFAULT_GMAKE_FLAGS += \
 	OS_RELEASE="2.6" \
-	OS_LIBS= \
+	OS_PTHREAD= \
 	STANDARDS_CFLAGS="-std=gnu89" \
-	DSO_CFLAGS="$(CFLAGS) -DCHECK_FORK_GETPID -DRTLD_NOLOAD=0 -DANDROID_VERSION=$(ANDROID_VERSION) -include $(ABS_topsrcdir)/security/manager/android_stub.h" \
-	DSO_LDOPTS="-shared $(LDFLAGS) $(WRAP_MALLOC_CFLAGS) $(WRAP_MALLOC_LIB) " \
+	ARCHFLAG="$(CFLAGS) -DCHECK_FORK_GETPID -DRTLD_NOLOAD=0 -DANDROID_VERSION=$(ANDROID_VERSION) -include $(ABS_topsrcdir)/security/manager/android_stub.h" \
 	$(NULL)
 endif
+endif
 
-ifndef UNIVERSAL_BINARY
-SKIP_CHK=1
-endif
-endif
-ifdef WRAP_MALLOC_CFLAGS
+ifdef WRAP_LDFLAGS
 DEFAULT_GMAKE_FLAGS += \
-	LDFLAGS="$(LDFLAGS) $(WRAP_MALLOC_CFLAGS) $(WRAP_MALLOC_LIB) " \
+	LDFLAGS="$(LDFLAGS) $(WRAP_LDFLAGS)" \
+	DSO_LDOPTS="-shared $(LDFLAGS) $(WRAP_LDFLAGS)" \
 	$(NULL)
 endif
 
@@ -324,21 +318,18 @@ ifdef ENABLE_TESTS
 	$(NSSMAKE) -C $(NSS_SRCDIR)/security/nss/cmd/pk12util $(DEFAULT_GMAKE_FLAGS)
 	$(NSSMAKE) -C $(NSS_SRCDIR)/security/nss/cmd/modutil $(DEFAULT_GMAKE_FLAGS)
 endif
-ifndef SKIP_CHK
 ifndef ENABLE_TESTS # Just avoid secondary compile
 	$(NSSMAKE) -C $(NSS_SRCDIR)/security/nss/cmd/lib $(DEFAULT_GMAKE_FLAGS)
 endif
 	$(NSSMAKE) -C $(NSS_SRCDIR)/security/nss/cmd/shlibsign $(DEFAULT_GMAKE_FLAGS)
-endif
 	$(INSTALL) -m 755 $(DIST)/lib/$(LOADABLE_ROOT_MODULE) $(DIST)/bin
-ifndef SKIP_CHK
-	$(INSTALL) -m 644 $(DIST)/lib/$(SOFTOKEN3_CHK) $(DIST)/bin
-endif
+ifeq ($(OS_ARCH), SunOS)
+# has to use copy mode on Solaris, see #665509
+	$(NSINSTALL) -t -m 755 $(DIST)/lib/$(SOFTOKEN3_LIB) $(DIST)/bin
+else
 	$(INSTALL) -m 755 $(DIST)/lib/$(SOFTOKEN3_LIB) $(DIST)/bin
-ifndef NSS_DISABLE_DBM
-ifndef SKIP_CHK
-	$(INSTALL) -m 644 $(DIST)/lib/$(NSSDBM3_CHK) $(DIST)/bin
 endif
+ifndef NSS_DISABLE_DBM
 	$(INSTALL) -m 755 $(DIST)/lib/$(NSSDBM3_LIB) $(DIST)/bin
 endif
 	$(INSTALL) -m 755 $(DIST)/lib/$(NSS3_LIB) $(DIST)/bin
@@ -347,30 +338,16 @@ endif
 	$(INSTALL) -m 755 $(DIST)/lib/$(SMIME3_LIB) $(DIST)/bin
 	$(INSTALL) -m 755 $(SDK_LIBS) $(DIST)/sdk/lib
 ifdef HAVE_FREEBL_LIBS
-ifndef SKIP_CHK
-	$(INSTALL) -m 644 $(DIST)/lib/$(FREEBL_CHK) $(DIST)/bin
-endif
 	$(INSTALL) -m 755 $(DIST)/lib/$(FREEBL_LIB) $(DIST)/bin
 endif
 ifdef HAVE_FREEBL_LIBS_32
-ifndef SKIP_CHK
-	$(INSTALL) -m 644 $(DIST)/lib/$(FREEBL_32INT_CHK) $(DIST)/bin
-	$(INSTALL) -m 644 $(DIST)/lib/$(FREEBL_32FPU_CHK) $(DIST)/bin
-endif
 	$(INSTALL) -m 755 $(DIST)/lib/$(FREEBL_32INT_LIB) $(DIST)/bin
 	$(INSTALL) -m 755 $(DIST)/lib/$(FREEBL_32FPU_LIB) $(DIST)/bin
 endif
 ifdef HAVE_FREEBL_LIBS_32INT64
-ifndef SKIP_CHK
-	$(INSTALL) -m 644 $(DIST)/lib/$(FREEBL_32INT64_CHK) $(DIST)/bin
-endif
 	$(INSTALL) -m 755 $(DIST)/lib/$(FREEBL_32INT64_LIB) $(DIST)/bin
 endif
 ifdef HAVE_FREEBL_LIBS_64
-ifndef SKIP_CHK
-	$(INSTALL) -m 644 $(DIST)/lib/$(FREEBL_64INT_CHK) $(DIST)/bin
-	$(INSTALL) -m 644 $(DIST)/lib/$(FREEBL_64FPU_CHK) $(DIST)/bin
-endif
 	$(INSTALL) -m 755 $(DIST)/lib/$(FREEBL_64INT_LIB) $(DIST)/bin
 	$(INSTALL) -m 755 $(DIST)/lib/$(FREEBL_64FPU_LIB) $(DIST)/bin
 endif
@@ -394,43 +371,23 @@ check::
 install::
 ifndef MOZ_NATIVE_NSS
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(LOADABLE_ROOT_MODULE) $(DESTDIR)$(mozappdir)
-ifndef SKIP_CHK
-	$(SYSINSTALL) -m 644 $(DIST)/lib/$(SOFTOKEN3_CHK) $(DESTDIR)$(mozappdir)
-endif
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(SOFTOKEN3_LIB) $(DESTDIR)$(mozappdir)
-ifndef SKIP_CHK
-	$(SYSINSTALL) -m 644 $(DIST)/lib/$(NSSDBM3_CHK) $(DESTDIR)$(mozappdir)
-endif
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(NSSDBM3_LIB) $(DESTDIR)$(mozappdir)
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(NSS3_LIB) $(DESTDIR)$(mozappdir)
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(NSSUTIL3_LIB) $(DESTDIR)$(mozappdir)
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(SSL3_LIB) $(DESTDIR)$(mozappdir)
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(SMIME3_LIB) $(DESTDIR)$(mozappdir)
 ifdef HAVE_FREEBL_LIBS
-ifndef SKIP_CHK
-	$(SYSINSTALL) -m 644 $(DIST)/lib/$(FREEBL_CHK) $(DESTDIR)$(mozappdir)
-endif
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(FREEBL_LIB) $(DESTDIR)$(mozappdir)
 endif
 ifdef HAVE_FREEBL_LIBS_32
-ifndef SKIP_CHK
-	$(SYSINSTALL) -m 644 $(DIST)/lib/$(FREEBL_32INT_CHK) $(DESTDIR)$(mozappdir)
-	$(SYSINSTALL) -m 644 $(DIST)/lib/$(FREEBL_32FPU_CHK) $(DESTDIR)$(mozappdir)
-endif
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(FREEBL_32INT_LIB) $(DESTDIR)$(mozappdir)
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(FREEBL_32FPU_LIB) $(DESTDIR)$(mozappdir)
 endif
 ifdef HAVE_FREEBL_LIBS_32INT64
-ifndef SKIP_CHK
-	$(SYSINSTALL) -m 644 $(DIST)/lib/$(FREEBL_32INT64_CHK) $(DESTDIR)$(mozappdir)
-endif
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(FREEBL_32INT64_LIB) $(DESTDIR)$(mozappdir)
 endif
 ifdef HAVE_FREEBL_LIBS_64
-ifndef SKIP_CHK
-	$(SYSINSTALL) -m 644 $(DIST)/lib/$(FREEBL_64INT_CHK) $(DESTDIR)$(mozappdir)
-	$(SYSINSTALL) -m 644 $(DIST)/lib/$(FREEBL_64FPU_CHK) $(DESTDIR)$(mozappdir)
-endif
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(FREEBL_64INT_LIB) $(DESTDIR)$(mozappdir)
 	$(SYSINSTALL) -m 755 $(DIST)/lib/$(FREEBL_64FPU_LIB) $(DESTDIR)$(mozappdir)
 endif
@@ -452,8 +409,6 @@ endif
 ifndef MOZ_NATIVE_NSS
 	$(NSSMAKE) -C $(NSS_SRCDIR)/security/coreconf $(DEFAULT_GMAKE_FLAGS) clean
 	$(NSSMAKE) -C $(NSS_SRCDIR)/security/nss/lib $(DEFAULT_GMAKE_FLAGS) clean
-ifndef SKIP_CHK
 	$(NSSMAKE) -C $(NSS_SRCDIR)/security/nss/cmd/lib $(DEFAULT_GMAKE_FLAGS) clean
 	$(NSSMAKE) -C $(NSS_SRCDIR)/security/nss/cmd/shlibsign $(DEFAULT_GMAKE_FLAGS) clean
-endif
 endif

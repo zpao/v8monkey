@@ -43,7 +43,7 @@
 #include "nsDirectoryServiceUtils.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsIConsoleService.h"
-#include "nsIPrefService.h"
+#include "mozilla/Preferences.h"
 #include "gfxASurface.h"
 #include "gfxImageSurface.h"
 
@@ -75,7 +75,7 @@ typedef void* PrivateOSMesaContext;
 class OSMesaLibrary
 {
 public:
-    OSMesaLibrary() : mInitialized(PR_FALSE), mOSMesaLibrary(nsnull) {}
+    OSMesaLibrary() : mInitialized(false), mOSMesaLibrary(nsnull) {}
 
     typedef PrivateOSMesaContext (GLAPIENTRY * PFNOSMESACREATECONTEXTEXT) (GLenum, GLint, GLint, GLint, PrivateOSMesaContext);
     typedef void (GLAPIENTRY * PFNOSMESADESTROYCONTEXT) (PrivateOSMesaContext);
@@ -91,45 +91,31 @@ public:
     PFNOSMESAPIXELSTORE fPixelStore;
     PFNOSMESAGETPROCADDRESS fGetProcAddress;
 
-    PRBool EnsureInitialized();
+    bool EnsureInitialized();
 
 private:
-    PRBool mInitialized;
+    bool mInitialized;
     PRLibrary *mOSMesaLibrary;
 };
 
 OSMesaLibrary sOSMesaLibrary;
 
-PRBool
+bool
 OSMesaLibrary::EnsureInitialized()
 {
     if (mInitialized)
-        return PR_TRUE;
+        return true;
 
-    nsresult rv;
-
-    nsCOMPtr<nsIPrefService> prefService = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    nsCOMPtr<nsIPrefBranch> prefBranch;
-    rv = prefService->GetBranch("webgl.", getter_AddRefs(prefBranch));
-    NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-    nsCString osmesalib;
-
-    rv = prefBranch->GetCharPref("osmesalib", getter_Copies(osmesalib));
-
-    if (NS_FAILED(rv) ||
-        osmesalib.Length() == 0)
-    {
-        return PR_FALSE;
+    nsAdoptingCString osmesalib = Preferences::GetCString("webgl.osmesalib");
+    if (osmesalib.IsEmpty()) {
+        return false;
     }
 
     mOSMesaLibrary = PR_LoadLibrary(osmesalib.get());
 
     if (!mOSMesaLibrary) {
         LogMessage("Couldn't open OSMesa lib for software rendering -- webgl.osmesalib path is incorrect, or not a valid shared library");
-        return PR_FALSE;
+        return false;
     }
 
     LibrarySymbolLoader::SymLoadStruct symbols[] = {
@@ -145,18 +131,18 @@ OSMesaLibrary::EnsureInitialized()
 
     if (!LibrarySymbolLoader::LoadSymbols(mOSMesaLibrary, &symbols[0])) {
         LogMessage("Couldn't find required entry points in OSMesa libary");
-        return PR_FALSE;
+        return false;
     }
 
-    mInitialized = PR_TRUE;
-    return PR_TRUE;
+    mInitialized = true;
+    return true;
 }
 
 class GLContextOSMesa : public GLContext
 {
 public:
     GLContextOSMesa(const ContextFormat& aFormat)
-        : GLContext(aFormat, PR_TRUE, nsnull),
+        : GLContext(aFormat, true, nsnull),
           mThebesSurface(nsnull),
           mContext(nsnull)
     {
@@ -174,11 +160,11 @@ public:
         return ContextTypeOSMesa;
     }
 
-    PRBool Init(const gfxIntSize &aSize)
+    bool Init(const gfxIntSize &aSize)
     {
         int osmesa_format = -1;
         int gfxasurface_imageformat = -1;
-        PRBool format_accepted = PR_FALSE;
+        bool format_accepted = false;
 
         if (mCreationFormat.red > 0 &&
             mCreationFormat.green > 0 &&
@@ -193,42 +179,42 @@ public:
                 // to make sure that the dummy alpha channel is ignored.
                 osmesa_format = OSMESA_BGRA;
                 gfxasurface_imageformat = gfxASurface::ImageFormatRGB24;
-                format_accepted = PR_TRUE;
+                format_accepted = true;
             } else if (mCreationFormat.alpha <= 8) {
                 osmesa_format = OSMESA_BGRA;
                 gfxasurface_imageformat = gfxASurface::ImageFormatARGB32;
-                format_accepted = PR_TRUE;
+                format_accepted = true;
             }
         }
         if (!format_accepted) {
             NS_WARNING("Pixel format not supported with OSMesa.");
-            return PR_FALSE;
+            return false;
         }
 
         mThebesSurface = new gfxImageSurface(aSize, gfxASurface::gfxImageFormat(gfxasurface_imageformat));
         if (mThebesSurface->CairoStatus() != 0) {
             NS_WARNING("image surface failed");
-            return PR_FALSE;
+            return false;
         }
 
         mContext = sOSMesaLibrary.fCreateContextExt(osmesa_format, mCreationFormat.depth, mCreationFormat.stencil, 0, NULL);
         if (!mContext) {
             NS_WARNING("OSMesaCreateContextExt failed!");
-            return PR_FALSE;
+            return false;
         }
 
-        if (!MakeCurrent()) return PR_FALSE;
-        if (!SetupLookupFunction()) return PR_FALSE;
+        if (!MakeCurrent()) return false;
+        if (!SetupLookupFunction()) return false;
 
         // OSMesa's different from the other GL providers, it renders to an image surface, not to a pbuffer
         sOSMesaLibrary.fPixelStore(OSMESA_Y_UP, 0);
 
-        return InitWithPrefix("gl", PR_TRUE);
+        return InitWithPrefix("gl", true);
     }
 
-    PRBool MakeCurrentImpl(PRBool aForce = PR_FALSE)
+    bool MakeCurrentImpl(bool aForce = false)
     {
-        PRBool succeeded
+        bool succeeded
           = sOSMesaLibrary.fMakeCurrent(mContext, mThebesSurface->Data(),
                                         LOCAL_GL_UNSIGNED_BYTE,
                                         mThebesSurface->Width(),
@@ -238,10 +224,10 @@ public:
         return succeeded;
     }
 
-    PRBool SetupLookupFunction()
+    bool SetupLookupFunction()
     {
         mLookupFunc = (PlatformLookupFunction)sOSMesaLibrary.fGetProcAddress;
-        return PR_TRUE;
+        return true;
     }
 
     void *GetNativeData(NativeDataType aType)
@@ -273,7 +259,10 @@ GLContextProviderOSMesa::CreateOffscreen(const gfxIntSize& aSize,
         return nsnull;
     }
 
-    nsRefPtr<GLContextOSMesa> glContext = new GLContextOSMesa(aFormat);
+    ContextFormat actualFormat(aFormat);
+    actualFormat.samples = 0;
+
+    nsRefPtr<GLContextOSMesa> glContext = new GLContextOSMesa(actualFormat);
 
     if (!glContext->Init(aSize))
     {

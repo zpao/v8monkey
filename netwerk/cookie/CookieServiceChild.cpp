@@ -90,8 +90,8 @@ CookieServiceChild::CookieServiceChild()
     do_GetService(NS_PREFSERVICE_CONTRACTID);
   NS_WARN_IF_FALSE(prefBranch, "no prefservice");
   if (prefBranch) {
-    prefBranch->AddObserver(kPrefCookieBehavior, this, PR_TRUE);
-    prefBranch->AddObserver(kPrefThirdPartySession, this, PR_TRUE);
+    prefBranch->AddObserver(kPrefCookieBehavior, this, true);
+    prefBranch->AddObserver(kPrefThirdPartySession, this, true);
     PrefChanged(prefBranch);
   }
 }
@@ -109,7 +109,7 @@ CookieServiceChild::PrefChanged(nsIPrefBranch *aPrefBranch)
     mCookieBehavior =
       val >= BEHAVIOR_ACCEPT && val <= BEHAVIOR_REJECT ? val : BEHAVIOR_ACCEPT;
 
-  PRBool boolval;
+  bool boolval;
   if (NS_SUCCEEDED(aPrefBranch->GetBoolPref(kPrefThirdPartySession, &boolval)))
     mThirdPartySession = !!boolval;
 
@@ -137,7 +137,7 @@ CookieServiceChild::GetCookieStringInternal(nsIURI *aHostURI,
   *aCookieString = NULL;
 
   // Determine whether the request is foreign. Failure is acceptable.
-  PRBool isForeign = true;
+  bool isForeign = true;
   if (RequireThirdPartyCheck())
     mThirdPartyUtil->IsThirdPartyChannel(aChannel, aHostURI, &isForeign);
 
@@ -161,7 +161,7 @@ CookieServiceChild::SetCookieStringInternal(nsIURI *aHostURI,
   NS_ENSURE_ARG_POINTER(aCookieString);
 
   // Determine whether the request is foreign. Failure is acceptable.
-  PRBool isForeign = true;
+  bool isForeign = true;
   if (RequireThirdPartyCheck())
     mThirdPartyUtil->IsThirdPartyChannel(aChannel, aHostURI, &isForeign);
 

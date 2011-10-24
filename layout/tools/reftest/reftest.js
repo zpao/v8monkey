@@ -65,6 +65,7 @@ const NS_OBSERVER_SERVICE_CONTRACTID =
 var gLoadTimeout = 0;
 var gTimeoutHook = null;
 var gRemote = false;
+var gIgnoreWindowSize = false;
 var gTotalChunks = 0;
 var gThisChunk = 0;
 
@@ -156,6 +157,7 @@ var gRecycledCanvases = new Array();
 
 // By default we just log to stdout
 var gDumpLog = dump;
+var gVerbose = false;
 
 // Only dump the sandbox once, because it doesn't depend on the
 // manifest URL (yet!).
@@ -169,14 +171,18 @@ function LogWarning(str)
 
 function LogInfo(str)
 {
-//    gDumpLog("REFTEST INFO | " + str + "\n");
+    if (gVerbose)
+        gDumpLog("REFTEST INFO | " + str + "\n");
     gTestLog.push(str);
 }
 
 function FlushTestLog()
 {
-    for (var i = 0; i < gTestLog.length; ++i) {
-        gDumpLog("REFTEST INFO | Saved log: " + gTestLog[i] + "\n");
+    if (!gVerbose) {
+        // In verbose mode, we've dumped all these messages already.
+        for (var i = 0; i < gTestLog.length; ++i) {
+            gDumpLog("REFTEST INFO | Saved log: " + gTestLog[i] + "\n");
+        }
     }
     gTestLog = [];
 }
@@ -218,6 +224,10 @@ function OnRefTestLoad()
                     .getService(CI.nsIProperties)
                     .get("ProfD", CI.nsIFile);
     gCrashDumpDir.append("minidumps");
+    
+    var env = CC["@mozilla.org/process/environment;1"].
+              getService(CI.nsIEnvironment);
+    gVerbose = !!env.get("MOZ_REFTEST_VERBOSE");
 
     var prefs = Components.classes["@mozilla.org/preferences-service;1"].
                 getService(Components.interfaces.nsIPrefBranch2);
@@ -246,29 +256,48 @@ function OnRefTestLoad()
 
 function InitAndStartRefTests()
 {
-    /* set the gLoadTimeout */
+    /* These prefs are optional, so we don't need to spit an error to the log */
     try {
       var prefs = Components.classes["@mozilla.org/preferences-service;1"].
                   getService(Components.interfaces.nsIPrefBranch2);
+    } catch(e) {
+      gDumpLog("REFTEST TEST-UNEXPECTED-FAIL | | EXCEPTION: " + e + "\n");
+    }
+    
+    /* set the gLoadTimeout */
+    try {
       gLoadTimeout = prefs.getIntPref("reftest.timeout");
+    } catch(e) { 
+      gLoadTimeout = 5 * 60 * 1000; //5 minutes as per bug 479518
+    }
+    
+    /* Get the logfile for android tests */
+    try {
       logFile = prefs.getCharPref("reftest.logFile");
       if (logFile) {
         try {
-          MozillaFileLogger.init(logFile);
+          var mfl = new MozillaFileLogger(logFile);
           // Set to mirror to stdout as well as the file
-          gDumpLog = function (msg) {dump(msg); MozillaFileLogger.log(msg);};
+          gDumpLog = function (msg) {dump(msg); mfl.log(msg);};
         }
         catch(e) {
           // If there is a problem, just use stdout
           gDumpLog = dump;
         }
       }
+    } catch(e) {}
+    
+    try {
       gRemote = prefs.getBoolPref("reftest.remote");
-    }
-    catch(e) {
-      gLoadTimeout = 5 * 60 * 1000; //5 minutes as per bug 479518
+    } catch(e) { 
+      gRemote = false;
     }
 
+    try {
+      gIgnoreWindowSize = prefs.getBoolPref("reftest.ignoreWindowSize");
+    } catch(e) {
+      gIgnoreWindowSize = false;
+    }
 
     /* Support for running a chunk (subset) of tests.  In separate try as this is optional */
     try {
@@ -547,7 +576,7 @@ function ReadManifest(aURL, inherited_status)
     }
     var streamBuf = getStreamContent(inputStream);
     inputStream.close();
-    var lines = streamBuf.split(/(\n|\r|\r\n)/);
+    var lines = streamBuf.split(/\n|\r|\r\n/);
 
     // Build the sandbox for fails-if(), etc., condition evaluation.
     var sandbox = BuildConditionSandbox(aURL);
@@ -581,7 +610,7 @@ function ReadManifest(aURL, inherited_status)
         var needs_focus = false;
         var slow = false;
         
-        while (items[0].match(/^(fails|needs-focus|random|skip|asserts|slow|silentfail)/)) {
+        while (items[0].match(/^(fails|needs-focus|random|skip|asserts|slow|require-or|silentfail)/)) {
             var item = items.shift();
             var stat;
             var cond;
@@ -612,6 +641,30 @@ function ReadManifest(aURL, inherited_status)
             } else if (item == "slow") {
                 cond = false;
                 slow = true;
+            } else if ((m = item.match(/^require-or\((.*?)\)$/))) {
+                var args = m[1].split(/,/);
+                if (args.length != 2) {
+                    throw "Error 7 in manifest file " + aURL.spec + " line " + lineNo + ": wrong number of args to require-or";
+                }
+                var [precondition_str, fallback_action] = args;
+                var preconditions = precondition_str.split(/&&/);
+                cond = false;
+                for each (var precondition in preconditions) {
+                    if (precondition === "debugMode") {
+                        // Currently unimplemented. Requires asynchronous
+                        // JSD call + getting an event while no JS is running
+                        stat = fallback_action;
+                        cond = true;
+                        break;
+                    } else if (precondition === "true") {
+                        // For testing
+                    } else {
+                        // Unknown precondition. Assume it is unimplemented.
+                        stat = fallback_action;
+                        cond = true;
+                        break;
+                    }
+                }
             } else if ((m = item.match(/^slow-if\((.*?)\)$/))) {
                 cond = false;
                 if (Components.utils.evalInSandbox("(" + m[1] + ")", sandbox))
@@ -829,14 +882,13 @@ function Focus()
         return false;
     }
 
-    // FIXME/bug 623625: determine if the window is focused and/or try
-    // to acquire focus if it's not.
-    //
-    // NB: we can't add anything here that would return false on
-    // tinderbox, otherwise we could lose testing coverage due to
-    // problems on the test machines.  We might want a require-focus
-    // mode, defaulting to false for developers, but that's true on
-    // tinderbox.
+    var fm = CC["@mozilla.org/focus-manager;1"].getService(CI.nsIFocusManager);
+    fm.activeWindow = window;
+    try {
+        var dock = CC["@mozilla.org/widget/macdocksupport;1"].getService(CI.nsIMacDockSupport);
+        dock.activateApplication(true);
+    } catch(ex) {
+    }
     return true;
 }
 
@@ -888,7 +940,9 @@ function StartCurrentURI(aState)
         // there's already a canvas for this URL
         setTimeout(RecordResult, 0);
     } else {
-        gDumpLog("REFTEST TEST-START | " + gCurrentURL + "\n");
+        var currentTest = gTotalTests - gURLs.length;
+        gDumpLog("REFTEST TEST-START | " + gCurrentURL + " | " + currentTest + " / " + gTotalTests +
+            " (" + Math.floor(100 * (currentTest / gTotalTests)) + "%)\n");
         LogInfo("START " + gCurrentURL);
         var type = gURLs[0].type
         if (TYPE_SCRIPT == type) {
@@ -966,10 +1020,11 @@ function DoDrawWindow(ctx, x, y, w, h)
 {
     var flags = ctx.DRAWWINDOW_DRAW_CARET | ctx.DRAWWINDOW_DRAW_VIEW;
     var testRect = gBrowser.getBoundingClientRect();
-    if (0 <= testRect.left &&
-        0 <= testRect.top &&
-        window.innerWidth >= testRect.right &&
-        window.innerHeight >= testRect.bottom) {
+    if (gIgnoreWindowSize ||
+        (0 <= testRect.left &&
+         0 <= testRect.top &&
+         window.innerWidth >= testRect.right &&
+         window.innerHeight >= testRect.bottom)) {
         // We can use the window's retained layer manager
         // because the window is big enough to display the entire
         // browser element

@@ -43,7 +43,7 @@
 #include "nsContentUtils.h"
 #include "nsTArray.h"
 
-PRBool
+bool
 nsCounterUseNode::InitTextFrame(nsGenConList* aList,
         nsIFrame* aPseudoFrame, nsIFrame* aTextFrame)
 {
@@ -51,23 +51,23 @@ nsCounterUseNode::InitTextFrame(nsGenConList* aList,
 
   nsCounterList *counterList = static_cast<nsCounterList*>(aList);
   counterList->Insert(this);
-  PRBool dirty = counterList->IsDirty();
+  bool dirty = counterList->IsDirty();
   if (!dirty) {
     if (counterList->IsLast(this)) {
       Calc(counterList);
       nsAutoString contentString;
       GetText(contentString);
-      aTextFrame->GetContent()->SetText(contentString, PR_FALSE);
+      aTextFrame->GetContent()->SetText(contentString, false);
     } else {
       // In all other cases (list already dirty or node not at the end),
       // just start with an empty string for now and when we recalculate
       // the list we'll change the value to the right one.
       counterList->SetDirty();
-      return PR_TRUE;
+      return true;
     }
   }
   
-  return PR_FALSE;
+  return false;
 }
 
 // assign the correct |mValueAfter| value to a node that has been inserted
@@ -185,7 +185,7 @@ nsCounterList::SetScope(nsCounterNode *aNode)
 void
 nsCounterList::RecalcAll()
 {
-    mDirty = PR_FALSE;
+    mDirty = false;
 
     nsCounterNode *node = First();
     if (!node)
@@ -214,18 +214,18 @@ nsCounterManager::nsCounterManager()
     mNames.Init(16);
 }
 
-PRBool
+bool
 nsCounterManager::AddCounterResetsAndIncrements(nsIFrame *aFrame)
 {
     const nsStyleContent *styleContent = aFrame->GetStyleContent();
     if (!styleContent->CounterIncrementCount() &&
         !styleContent->CounterResetCount())
-        return PR_FALSE;
+        return false;
 
     // Add in order, resets first, so all the comparisons will be optimized
     // for addition at the end of the list.
     PRInt32 i, i_end;
-    PRBool dirty = PR_FALSE;
+    bool dirty = false;
     for (i = 0, i_end = styleContent->CounterResetCount(); i != i_end; ++i)
         dirty |= AddResetOrIncrement(aFrame, i,
                                      styleContent->GetCounterResetAt(i),
@@ -237,20 +237,18 @@ nsCounterManager::AddCounterResetsAndIncrements(nsIFrame *aFrame)
     return dirty;
 }
 
-PRBool
+bool
 nsCounterManager::AddResetOrIncrement(nsIFrame *aFrame, PRInt32 aIndex,
                                       const nsStyleCounterData *aCounterData,
                                       nsCounterNode::Type aType)
 {
     nsCounterChangeNode *node =
         new nsCounterChangeNode(aFrame, aType, aCounterData->mValue, aIndex);
-    if (!node)
-        return PR_FALSE;
 
     nsCounterList *counterList = CounterListFor(aCounterData->mCounter);
     if (!counterList) {
         NS_NOTREACHED("CounterListFor failed (should only happen on OOM)");
-        return PR_FALSE;
+        return false;
     }
 
     counterList->Insert(node);
@@ -258,7 +256,7 @@ nsCounterManager::AddResetOrIncrement(nsIFrame *aFrame, PRInt32 aIndex,
         // Tell the caller it's responsible for recalculating the entire
         // list.
         counterList->SetDirty();
-        return PR_TRUE;
+        return true;
     }
 
     // Don't call Calc() if the list is already dirty -- it'll be recalculated
@@ -266,7 +264,7 @@ nsCounterManager::AddResetOrIncrement(nsIFrame *aFrame, PRInt32 aIndex,
     if (NS_LIKELY(!counterList->IsDirty())) {
         node->Calc(counterList);
     }
-    return PR_FALSE;
+    return false;
 }
 
 nsCounterList*
@@ -277,8 +275,6 @@ nsCounterManager::CounterListFor(const nsSubstring& aCounterName)
     nsCounterList *counterList;
     if (!mNames.Get(aCounterName, &counterList)) {
         counterList = new nsCounterList();
-        if (!counterList)
-            return nsnull;
         if (!mNames.Put(aCounterName, counterList)) {
             delete counterList;
             return nsnull;
@@ -304,12 +300,12 @@ nsCounterManager::RecalcAll()
 struct DestroyNodesData {
     DestroyNodesData(nsIFrame *aFrame)
         : mFrame(aFrame)
-        , mDestroyedAny(PR_FALSE)
+        , mDestroyedAny(false)
     {
     }
 
     nsIFrame *mFrame;
-    PRBool mDestroyedAny;
+    bool mDestroyedAny;
 };
 
 static PLDHashOperator
@@ -317,13 +313,13 @@ DestroyNodesInList(const nsAString& aKey, nsCounterList* aList, void* aClosure)
 {
     DestroyNodesData *data = static_cast<DestroyNodesData*>(aClosure);
     if (aList->DestroyNodesFor(data->mFrame)) {
-        data->mDestroyedAny = PR_TRUE;
+        data->mDestroyedAny = true;
         aList->SetDirty();
     }
     return PL_DHASH_NEXT;
 }
 
-PRBool
+bool
 nsCounterManager::DestroyNodesFor(nsIFrame *aFrame)
 {
     DestroyNodesData data(aFrame);

@@ -70,6 +70,10 @@ nsresult SetRestartArgs(int argc, char** argv);
 nsresult SetupExtraData(nsILocalFile* aAppDataDirectory,
                         const nsACString& aBuildID);
 
+// Registers an additional memory region to be included in the minidump
+nsresult RegisterAppMemory(void* ptr, size_t length);
+nsresult UnregisterAppMemory(void* ptr);
+
 // Functions for working with minidumps and .extras
 typedef nsDataHashtable<nsCStringHashKey, nsCString> AnnotationTable;
 
@@ -86,8 +90,8 @@ bool AppendExtraData(nsILocalFile* extraFile, const AnnotationTable& data);
 #ifdef XP_MACOSX
   nsresult AppendObjCExceptionInfoToAppNotes(void *inException);
 #endif
-nsresult GetSubmitReports(PRBool* aSubmitReport);
-nsresult SetSubmitReports(PRBool aSubmitReport);
+nsresult GetSubmitReports(bool* aSubmitReport);
+nsresult SetSubmitReports(bool aSubmitReport);
 
 // Out-of-process crash reporter API.
 

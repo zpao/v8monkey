@@ -87,7 +87,7 @@ nsStructuredCloneContainer::InitFromVariant(nsIVariant *aData, JSContext *aCx)
   cxPusher.Push(aCx);
 
   PRUint64* jsBytes = nsnull;
-  PRBool success = JS_WriteStructuredClone(aCx, jsData, &jsBytes, &mSize,
+  bool success = JS_WriteStructuredClone(aCx, jsData, &jsBytes, &mSize,
                                            nsnull, nsnull);
   NS_ENSURE_STATE(success);
   NS_ENSURE_STATE(jsBytes);
@@ -97,6 +97,10 @@ nsStructuredCloneContainer::InitFromVariant(nsIVariant *aData, JSContext *aCx)
   if (!mData) {
     mSize = 0;
     mVersion = 0;
+
+    // FIXME This should really be js::Foreground::Free, but that's not public.
+    JS_free(aCx, jsBytes);
+
     return NS_ERROR_FAILURE;
   }
   else {
@@ -104,6 +108,9 @@ nsStructuredCloneContainer::InitFromVariant(nsIVariant *aData, JSContext *aCx)
   }
 
   memcpy(mData, jsBytes, mSize);
+
+  // FIXME Similarly, this should be js::Foreground::free.
+  JS_free(aCx, jsBytes);
   return NS_OK;
 }
 
@@ -141,7 +148,7 @@ nsStructuredCloneContainer::DeserializeToVariant(JSContext *aCx,
 
   // Deserialize to a jsval.
   jsval jsStateObj;
-  PRBool success = JS_ReadStructuredClone(aCx, mData, mSize, mVersion,
+  bool success = JS_ReadStructuredClone(aCx, mData, mSize, mVersion,
                                           &jsStateObj, nsnull, nsnull);
   NS_ENSURE_STATE(success);
 

@@ -124,9 +124,9 @@ ifdef NS_USE_GCC
     # The -mnop-fun-dllimport flag allows us to avoid a drawback of
     # the dllimport attribute that a pointer to a function marked as
     # dllimport cannot be used as as a constant address.
-    OS_CFLAGS += -mno-cygwin -mms-bitfields -mnop-fun-dllimport
+    OS_CFLAGS += -mwindows -mms-bitfields -mnop-fun-dllimport
     _GEN_IMPORT_LIB=-Wl,--out-implib,$(IMPORT_LIBRARY)
-    DLLFLAGS  += -mno-cygwin -o $@ -shared -Wl,--export-all-symbols $(if $(IMPORT_LIBRARY),$(_GEN_IMPORT_LIB))
+    DLLFLAGS  += -mwindows -o $@ -shared -Wl,--export-all-symbols $(if $(IMPORT_LIBRARY),$(_GEN_IMPORT_LIB))
     ifdef BUILD_OPT
 	ifeq (11,$(ALLOW_OPT_CODE_SIZE)$(OPT_CODE_SIZE))
 		OPTIMIZER += -Os
@@ -143,7 +143,8 @@ ifdef NS_USE_GCC
 	DEFINES    += -DDEBUG -D_DEBUG -UNDEBUG -DDEBUG_$(USERNAME)
     endif
 else # !NS_USE_GCC
-    OS_CFLAGS += -W3 -nologo -D_CRT_SECURE_NO_WARNINGS
+    OS_CFLAGS += -W3 -nologo -D_CRT_SECURE_NO_WARNINGS \
+		 -D_CRT_NONSTDC_NO_WARNINGS
     OS_DLLFLAGS += -nologo -DLL -SUBSYSTEM:WINDOWS
     ifeq ($(_MSC_VER),$(_MSC_VER_6))
     ifndef MOZ_DEBUG_SYMBOLS

@@ -98,9 +98,9 @@ public:
         if (mBuf) memcpy(mBuf, (char *)aBuf, aCount);
         mCount = aCount;
         mSink = aSink;
-        PRBool isNonBlocking;
+        bool isNonBlocking;
         mSink->IsNonBlocking(&isNonBlocking);
-        NS_ASSERTION(isNonBlocking == PR_FALSE, "mSink is nonblocking");
+        NS_ASSERTION(isNonBlocking == false, "mSink is nonblocking");
         mTee = aTee;
     }
 
@@ -222,7 +222,7 @@ nsInputStreamTee::WriteSegmentFun(nsIInputStream *in, void *closure, const char 
 
     nsresult rv = tee->mWriter(in, tee->mClosure, fromSegment, offset, count, writeCount);
     if (NS_FAILED(rv) || (*writeCount == 0)) {
-        NS_ASSERTION((NS_FAILED(rv) ? (*writeCount == 0) : PR_TRUE),
+        NS_ASSERTION((NS_FAILED(rv) ? (*writeCount == 0) : true),
                 "writer returned an error with non-zero writeCount");
         return rv;
     }
@@ -277,7 +277,7 @@ nsInputStreamTee::ReadSegments(nsWriteSegmentFun writer,
 }
 
 NS_IMETHODIMP
-nsInputStreamTee::IsNonBlocking(PRBool *result)
+nsInputStreamTee::IsNonBlocking(bool *result)
 {
     NS_ENSURE_TRUE(mSource, NS_ERROR_NOT_INITIALIZED);
     return mSource->IsNonBlocking(result);
@@ -302,7 +302,7 @@ nsInputStreamTee::SetSink(nsIOutputStream *sink)
 {
 #ifdef DEBUG
     if (sink) {
-        PRBool nonBlocking;
+        bool nonBlocking;
         nsresult rv = sink->IsNonBlocking(&nonBlocking);
         if (NS_FAILED(rv) || nonBlocking)
             NS_ERROR("sink should be a blocking stream");
@@ -338,7 +338,7 @@ nsInputStreamTee::GetEventTarget(nsIEventTarget **anEventTarget)
 }
 
 
-NS_COM nsresult
+nsresult
 NS_NewInputStreamTeeAsync(nsIInputStream **result,
                           nsIInputStream *source,
                           nsIOutputStream *sink,
@@ -363,7 +363,7 @@ NS_NewInputStreamTeeAsync(nsIInputStream **result,
     return rv;
 }
 
-NS_COM nsresult
+nsresult
 NS_NewInputStreamTee(nsIInputStream **result,
                      nsIInputStream *source,
                      nsIOutputStream *sink)

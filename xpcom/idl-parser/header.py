@@ -58,27 +58,52 @@ def firstCap(str):
 def attributeParamName(a):
     return "a" + firstCap(a.name)
 
+def attributeParamNames(a):
+    l = [attributeParamName(a)]
+    if a.implicit_jscontext:
+        l.insert(0, "cx")
+    return ", ".join(l)
+
 def attributeNativeName(a, getter):
     binaryname = a.binaryname is not None and a.binaryname or firstCap(a.name)
     return "%s%s" % (getter and 'Get' or 'Set', binaryname)
 
+def attributeReturnType(a, macro):
+    """macro should be NS_IMETHOD or NS_IMETHODIMP"""
+    if (a.nostdcall):
+        return macro == "NS_IMETHOD" and "virtual nsresult" or "nsresult"
+    else:
+        return macro
+
 def attributeParamlist(a, getter):
-    return "%s%s" % (a.realtype.nativeType(getter and 'out' or 'in'),
-                     attributeParamName(a))
+    l = ["%s%s" % (a.realtype.nativeType(getter and 'out' or 'in'),
+                   attributeParamName(a))]
+    if a.implicit_jscontext:
+        l.insert(0, "JSContext* cx")
+
+    return ", ".join(l)
 
 def attributeAsNative(a, getter):
         scriptable = a.isScriptable() and "NS_SCRIPTABLE " or ""
+        deprecated = a.deprecated and "NS_DEPRECATED " or ""
         params = {'scriptable': scriptable,
+                  'deprecated': deprecated,
+                  'returntype': attributeReturnType(a, 'NS_IMETHOD'),
                   'binaryname': attributeNativeName(a, getter),
                   'paramlist': attributeParamlist(a, getter)}
-        return "%(scriptable)sNS_IMETHOD %(binaryname)s(%(paramlist)s)" % params
+        return "%(deprecated)s%(scriptable)s%(returntype)s %(binaryname)s(%(paramlist)s)" % params
 
 def methodNativeName(m):
     return m.binaryname is not None and m.binaryname or firstCap(m.name)
 
 def methodReturnType(m, macro):
     """macro should be NS_IMETHOD or NS_IMETHODIMP"""
-    if m.notxpcom:
+    if m.nostdcall and m.notxpcom:
+        return "%s%s" % (macro == "NS_IMETHOD" and "virtual " or "",
+                         m.realtype.nativeType('in').strip())
+    elif m.nostdcall:
+        return "%snsresult" % (macro == "NS_IMETHOD" and "virtual " or "")
+    elif m.notxpcom:
         return "%s_(%s)" % (macro, m.realtype.nativeType('in').strip())
     else:
         return macro
@@ -89,24 +114,29 @@ def methodAsNative(m):
     return "%s%s %s(%s)" % (scriptable,
                             methodReturnType(m, 'NS_IMETHOD'),
                             methodNativeName(m),
-                            paramlistAsNative(m.params,
-                                              m.realtype,
-                                              notxpcom=m.notxpcom))
+                            paramlistAsNative(m))
 
-def paramlistAsNative(l, rettype, notxpcom, empty='void'):
-    l = list(l)
-    if not notxpcom and rettype.name != 'void':
-        l.append(xpidl.Param(paramtype='out',
-                             type=None,
-                             name='_retval',
-                             attlist=[],
-                             location=None,
-                             realtype=rettype))
+def paramlistAsNative(m, empty='void'):
+    l = [paramAsNative(p) for p in m.params]
+
+    if m.implicit_jscontext:
+        l.append("JSContext* cx")
+
+    if m.optional_argc:
+        l.append('PRUint8 _argc')
+
+    if not m.notxpcom and m.realtype.name != 'void':
+        l.append(paramAsNative(xpidl.Param(paramtype='out',
+                                           type=None,
+                                           name='_retval',
+                                           attlist=[],
+                                           location=None,
+                                           realtype=m.realtype)))
 
     if len(l) == 0:
         return empty
 
-    return ", ".join([paramAsNative(p) for p in l])
+    return ", ".join(l)
 
 def paramAsNative(p):
     if p.paramtype == 'in':
@@ -118,10 +148,18 @@ def paramAsNative(p):
                        p.name,
                        typeannotate)
 
-def paramlistNames(l, rettype, notxpcom):
-    names = [p.name for p in l]
-    if not notxpcom and rettype.name != 'void':
+def paramlistNames(m):
+    names = [p.name for p in m.params]
+
+    if m.implicit_jscontext:
+        names.append('cx')
+
+    if m.optional_argc:
+        names.append('_argc')
+
+    if not m.notxpcom and m.realtype.name != 'void':
         names.append('_retval')
+
     if len(names) == 0:
         return ''
     return ', '.join(names)
@@ -138,6 +176,10 @@ include = """
 #ifndef __gen_%(basename)s_h__
 #include "%(basename)s.h"
 #endif
+"""
+
+jspubtd_include = """
+#include "jspubtd.h"
 """
 
 header_end = """/* For IDL files that don't want to include root IDL files. */
@@ -168,6 +210,9 @@ def print_header(idl, fd, filename):
             foundinc = True
             fd.write('\n')
         fd.write(include % {'basename': idl_basename(inc.filename)})
+
+    if idl.needsJSTypes():
+        fd.write(jspubtd_include)
 
     fd.write('\n')
     fd.write(header_end)
@@ -345,7 +390,7 @@ def write_interface(iface, fd):
     if iface.attributes.scriptable:
         fd.write("NS_SCRIPTABLE ")
     if iface.attributes.deprecated:
-        fd.write("NS_DEPRECATED ")
+        fd.write("MOZ_DEPRECATED ")
     fd.write(iface.name)
     if iface.base:
         fd.write(" : public %s" % iface.base)
@@ -383,15 +428,15 @@ def write_interface(iface, fd):
             if isinstance(member, xpidl.Attribute):
                 fd.write(tmpl % {'asNative': attributeAsNative(member, True),
                                  'nativeName': attributeNativeName(member, True),
-                                 'paramList': attributeParamName(member)})
+                                 'paramList': attributeParamNames(member)})
                 if not member.readonly:
                     fd.write(tmpl % {'asNative': attributeAsNative(member, False),
                                      'nativeName': attributeNativeName(member, False),
-                                     'paramList': attributeParamName(member)})
+                                     'paramList': attributeParamNames(member)})
             elif isinstance(member, xpidl.Method):
                 fd.write(tmpl % {'asNative': methodAsNative(member),
                                  'nativeName': methodNativeName(member),
-                                 'paramList': paramlistNames(member.params, member.realtype, member.notxpcom)})
+                                 'paramList': paramlistNames(member)})
         if len(iface.members) == 0:
             fd.write('\\\n  /* no methods! */')
         elif not member.kind in ('attribute', 'method'):
@@ -410,19 +455,19 @@ def write_interface(iface, fd):
         fd.write("/* %s */\n" % member.toIDL())
         if isinstance(member, xpidl.Attribute):
             fd.write(example_tmpl % {'implclass': implclass,
-                                     'returntype': 'NS_IMETHODIMP',
+                                     'returntype': attributeReturnType(member, 'NS_IMETHODIMP'),
                                      'nativeName': attributeNativeName(member, True),
                                      'paramList': attributeParamlist(member, True)})
             if not member.readonly:
                 fd.write(example_tmpl % {'implclass': implclass,
-                                         'returntype': 'NS_IMETHODIMP',
+                                         'returntype': attributeReturnType(member, 'NS_IMETHODIMP'),
                                          'nativeName': attributeNativeName(member, False),
                                          'paramList': attributeParamlist(member, False)})
         elif isinstance(member, xpidl.Method):
             fd.write(example_tmpl % {'implclass': implclass,
                                      'returntype': methodReturnType(member, 'NS_IMETHODIMP'),
                                      'nativeName': methodNativeName(member),
-                                     'paramList': paramlistAsNative(member.params, member.realtype, notxpcom=member.notxpcom, empty='')})
+                                     'paramList': paramlistAsNative(member, empty='')})
         fd.write('\n')
 
     fd.write(iface_template_epilog)
@@ -430,15 +475,53 @@ def write_interface(iface, fd):
 if __name__ == '__main__':
     from optparse import OptionParser
     o = OptionParser()
-    o.add_option('-I', action='append', dest='incdirs', help="Directory to search for imported files", default=[])
-    o.add_option('--cachedir', dest='cachedir', help="Directory in which to cache lex/parse tables.", default='')
+    o.add_option('-I', action='append', dest='incdirs', default=['.'],
+                 help="Directory to search for imported files")
+    o.add_option('--cachedir', dest='cachedir', default=None,
+                 help="Directory in which to cache lex/parse tables.")
+    o.add_option('-o', dest='outfile', default=None,
+                 help="Output file (default is stdout)")
+    o.add_option('-d', dest='depfile', default=None,
+                 help="Generate a make dependency file")
+    o.add_option('--regen', action='store_true', dest='regen', default=False,
+                 help="Regenerate IDL Parser cache")
     options, args = o.parse_args()
     file, = args
 
-    if options.cachedir != '':
+    if options.cachedir is not None:
+        if not os.path.isdir(options.cachedir):
+            os.mkdir(options.cachedir)
         sys.path.append(options.cachedir)
+
+    if options.regen:
+        if options.cachedir is None:
+            print >>sys.stderr, "--regen requires --cachedir"
+            sys.exit(1)
+
+        p = xpidl.IDLParser(outputdir=options.cachedir, regen=True)
+        sys.exit(0)
+
+    if options.depfile is not None and options.outfile is None:
+        print >>sys.stderr, "-d requires -o"
+        sys.exit(1)
+
+    if options.outfile is not None:
+        outfd = open(options.outfile, 'w')
+        closeoutfd = True
+    else:
+        outfd = sys.stdout
+        closeoutfd = False
 
     p = xpidl.IDLParser(outputdir=options.cachedir)
     idl = p.parse(open(file).read(), filename=file)
     idl.resolve(options.incdirs, p)
-    print_header(idl, sys.stdout, file)
+    print_header(idl, outfd, file)
+
+    if closeoutfd:
+        outfd.close()
+
+    if options.depfile is not None:
+        depfd = open(options.depfile, 'w')
+        deps = [dep.replace('\\', '/') for dep in idl.deps]
+
+        print >>depfd, "%s: %s" % (options.outfile, " ".join(deps))

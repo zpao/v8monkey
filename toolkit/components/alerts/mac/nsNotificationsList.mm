@@ -68,7 +68,7 @@ nsNotificationsList::~nsNotificationsList()
 }
 
 NS_IMETHODIMP
-nsNotificationsList::AddNotification(const nsAString &aName, PRBool aEnabled)
+nsNotificationsList::AddNotification(const nsAString &aName, bool aEnabled)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
@@ -86,14 +86,14 @@ nsNotificationsList::AddNotification(const nsAString &aName, PRBool aEnabled)
 }
 
 NS_IMETHODIMP
-nsNotificationsList::IsNotification(const nsAString &aName, PRBool *retVal)
+nsNotificationsList::IsNotification(const nsAString &aName, bool *retVal)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
   NSString *name = [NSString stringWithCharacters: aName.BeginReading()
                                            length: aName.Length()];
 
-  *retVal = [mNames containsObject: name] ? PR_TRUE : PR_FALSE;
+  *retVal = [mNames containsObject: name] ? true : false;
   return NS_OK;
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NSRESULT;

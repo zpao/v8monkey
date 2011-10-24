@@ -45,7 +45,7 @@
 #include "mozilla/storage.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
-#include "nsDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsEventDispatcher.h"
 #include "nsJSUtils.h"
 #include "nsThreadUtils.h"
@@ -301,9 +301,9 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(IDBCursor)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(IDBCursor)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR_AMBIGUOUS(mRequest,
-                                                       nsPIDOMEventTarget)
+                                                       nsIDOMEventTarget)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR_AMBIGUOUS(mTransaction,
-                                                       nsPIDOMEventTarget)
+                                                       nsIDOMEventTarget)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mObjectStore)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mIndex)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mOwner)
@@ -404,7 +404,7 @@ IDBCursor::GetKey(nsIVariant** aKey)
     }
     NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
-    rv = variant->SetWritable(PR_FALSE);
+    rv = variant->SetWritable(false);
     NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
     nsIWritableVariant* result;
@@ -470,14 +470,12 @@ IDBCursor::GetValue(JSContext* aCx,
       mRooted = true;
     }
 
-    JSAutoRequest ar(aCx);
-
-    if (!mCloneBuffer.read(&mCachedValue, aCx)) {
+    if (!IDBObjectStore::DeserializeValue(aCx, mCloneBuffer, &mCachedValue)) {
       mCachedValue = JSVAL_VOID;
       return NS_ERROR_DOM_DATA_CLONE_ERR;
     }
 
-    mCloneBuffer.clear(aCx);
+    mCloneBuffer.clear();
     mHaveCachedValue = true;
   }
 
@@ -681,7 +679,7 @@ ContinueHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
   nsresult rv = BindArgumentsToStatement(stmt);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
-  PRBool hasResult;
+  bool hasResult;
   rv = stmt->ExecuteStep(&hasResult);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
@@ -722,7 +720,7 @@ ContinueHelper::GetSuccessResult(JSContext* aCx,
     mCursor->mContinueToKey = Key::UNSETKEY;
 
     mCursor->mCloneBuffer.swap(mCloneBuffer);
-    mCloneBuffer.clear(aCx);
+    mCloneBuffer.clear();
 
     nsresult rv = WrapNative(aCx, mCursor, aVal);
     NS_ENSURE_SUCCESS(rv, rv);

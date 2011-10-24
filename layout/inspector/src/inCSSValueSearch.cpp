@@ -41,8 +41,7 @@
 #include "nsIServiceManager.h"
 #include "nsVoidArray.h"
 #include "nsReadableUtils.h"
-#include "nsIDOMDocumentStyle.h"
-#include "nsIDOM3Node.h"
+#include "nsIDOMDocument.h"
 #include "nsIDOMStyleSheetList.h"
 #include "nsIDOMCSSStyleSheet.h"
 #include "nsIDOMCSSRuleList.h"
@@ -59,10 +58,10 @@ inCSSValueSearch::inCSSValueSearch()
     mProperties(nsnull),
     mResultCount(0),
     mPropertyCount(0),
-    mIsActive(PR_FALSE),
-    mHoldResults(PR_TRUE),
-    mReturnRelativeURLs(PR_TRUE),
-    mNormalizeChromeURLs(PR_FALSE)
+    mIsActive(false),
+    mHoldResults(true),
+    mReturnRelativeURLs(true),
+    mNormalizeChromeURLs(false)
 {
   nsCSSProps::AddRefTable();
   mProperties = new nsCSSProperty[100];
@@ -81,7 +80,7 @@ NS_IMPL_ISUPPORTS2(inCSSValueSearch, inISearchProcess, inICSSValueSearch)
 // inISearchProcess
 
 NS_IMETHODIMP 
-inCSSValueSearch::GetIsActive(PRBool *aIsActive)
+inCSSValueSearch::GetIsActive(bool *aIsActive)
 {
   *aIsActive = mIsActive;
   return NS_OK;
@@ -95,14 +94,14 @@ inCSSValueSearch::GetResultCount(PRInt32 *aResultCount)
 }
 
 NS_IMETHODIMP 
-inCSSValueSearch::GetHoldResults(PRBool *aHoldResults)
+inCSSValueSearch::GetHoldResults(bool *aHoldResults)
 {
   *aHoldResults = mHoldResults;
   return NS_OK;
 }
 
 NS_IMETHODIMP 
-inCSSValueSearch::SetHoldResults(PRBool aHoldResults)
+inCSSValueSearch::SetHoldResults(bool aHoldResults)
 {
   mHoldResults = aHoldResults;
   return NS_OK;
@@ -113,29 +112,28 @@ inCSSValueSearch::SearchSync()
 {
   InitSearch();
 
-  nsCOMPtr<nsIURI> baseURL;
-  nsCOMPtr<nsIDOM3Node> dom3Node = do_QueryInterface(mDocument);
-  if (dom3Node) {
-    nsAutoString uri;
-    dom3Node->GetBaseURI(uri);
-    NS_NewURI(getter_AddRefs(baseURL), uri);
+  if (!mDocument) {
+    return NS_OK;
   }
-  
-  nsCOMPtr<nsIDOMDocumentStyle> doc = do_QueryInterface(mDocument);
-  if (doc) {
-    nsCOMPtr<nsIDOMStyleSheetList> sheets;
-    nsresult rv = doc->GetStyleSheets(getter_AddRefs(sheets));
-    NS_ENSURE_SUCCESS(rv, NS_OK);
 
-    PRUint32 length;
-    sheets->GetLength(&length);
-    for (PRUint32 i = 0; i < length; ++i) {
-      nsCOMPtr<nsIDOMStyleSheet> sheet;
-      sheets->Item(i, getter_AddRefs(sheet));
-      nsCOMPtr<nsIDOMCSSStyleSheet> cssSheet = do_QueryInterface(sheet);
-      if (cssSheet)
-        SearchStyleSheet(cssSheet, baseURL);
-    }
+  nsCOMPtr<nsIURI> baseURI;
+  nsCOMPtr<nsIDocument> idoc = do_QueryInterface(mDocument);
+  if (idoc) {
+    baseURI = idoc->GetBaseURI();
+  }
+
+  nsCOMPtr<nsIDOMStyleSheetList> sheets;
+  nsresult rv = mDocument->GetStyleSheets(getter_AddRefs(sheets));
+  NS_ENSURE_SUCCESS(rv, NS_OK);
+
+  PRUint32 length;
+  sheets->GetLength(&length);
+  for (PRUint32 i = 0; i < length; ++i) {
+    nsCOMPtr<nsIDOMStyleSheet> sheet;
+    sheets->Item(i, getter_AddRefs(sheet));
+    nsCOMPtr<nsIDOMCSSStyleSheet> cssSheet = do_QueryInterface(sheet);
+    if (cssSheet)
+      SearchStyleSheet(cssSheet, baseURI);
   }
 
   // XXX would be nice to search inline style as well.
@@ -161,7 +159,7 @@ inCSSValueSearch::SearchStop()
 }
 
 NS_IMETHODIMP
-inCSSValueSearch::SearchStep(PRBool* _retval)
+inCSSValueSearch::SearchStep(bool* _retval)
 {
 
   return NS_OK;
@@ -228,28 +226,28 @@ inCSSValueSearch::SetBaseURL(const PRUnichar* aBaseURL)
 }
 
 NS_IMETHODIMP 
-inCSSValueSearch::GetReturnRelativeURLs(PRBool* aReturnRelativeURLs)
+inCSSValueSearch::GetReturnRelativeURLs(bool* aReturnRelativeURLs)
 {
   *aReturnRelativeURLs = mReturnRelativeURLs;
   return NS_OK;
 }
 
 NS_IMETHODIMP 
-inCSSValueSearch::SetReturnRelativeURLs(PRBool aReturnRelativeURLs)
+inCSSValueSearch::SetReturnRelativeURLs(bool aReturnRelativeURLs)
 {
   mReturnRelativeURLs = aReturnRelativeURLs;
   return NS_OK;
 }
 
 NS_IMETHODIMP 
-inCSSValueSearch::GetNormalizeChromeURLs(PRBool *aNormalizeChromeURLs)
+inCSSValueSearch::GetNormalizeChromeURLs(bool *aNormalizeChromeURLs)
 {
   *aNormalizeChromeURLs = mNormalizeChromeURLs;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inCSSValueSearch::SetNormalizeChromeURLs(PRBool aNormalizeChromeURLs)
+inCSSValueSearch::SetNormalizeChromeURLs(bool aNormalizeChromeURLs)
 {
   mNormalizeChromeURLs = aNormalizeChromeURLs;
   return NS_OK;
@@ -298,7 +296,7 @@ inCSSValueSearch::InitSearch()
 nsresult
 inCSSValueSearch::KillSearch(PRInt16 aResult)
 {
-  mIsActive = PR_TRUE;
+  mIsActive = true;
   mObserver->OnSearchEnd(this, aResult);
 
   return NS_OK;
@@ -405,7 +403,7 @@ nsresult
 inCSSValueSearch::EqualizeURL(nsAutoString* aURL)
 {
   if (mNormalizeChromeURLs) {
-    if (aURL->Find("chrome://", PR_FALSE, 0, 1) >= 0) {
+    if (aURL->Find("chrome://", false, 0, 1) >= 0) {
       PRUint32 len = aURL->Length();
       PRUnichar* result = new PRUnichar[len-8];
       const PRUnichar* src = aURL->get();

@@ -48,7 +48,7 @@
 using namespace mozilla::dom;
 
 // Helper function
-static PRBool
+static bool
 GetCSSComputedValue(nsIContent* aElem,
                     nsCSSProperty aPropID,
                     nsAString& aResult)
@@ -63,13 +63,13 @@ GetCSSComputedValue(nsIContent* aElem,
     // This can happen if we process certain types of restyles mid-sample
     // and remove anonymous animated content from the document as a result.
     // See bug 534975.
-    return PR_FALSE;
+    return false;
   }
 
   nsIPresShell* shell = doc->GetShell();
   if (!shell) {
     NS_WARNING("Unable to look up computed style -- no pres shell");
-    return PR_FALSE;
+    return false;
   }
 
   nsRefPtr<nsComputedDOMStyle> computedStyle;
@@ -79,9 +79,9 @@ GetCSSComputedValue(nsIContent* aElem,
 
   if (NS_SUCCEEDED(rv)) {
     computedStyle->GetPropertyValue(aPropID, aResult);
-    return PR_TRUE;
+    return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 // Class Methods
@@ -136,7 +136,7 @@ nsSMILCSSProperty::GetBaseValue() const
 
   // (2) Get Computed Style
   nsAutoString computedStyleVal;
-  PRBool didGetComputedVal = GetCSSComputedValue(mElement, mPropID,
+  bool didGetComputedVal = GetCSSComputedValue(mElement, mPropID,
                                                  computedStyleVal);
 
   // (3) Put cached override style back (if it's non-empty)
@@ -146,8 +146,14 @@ nsSMILCSSProperty::GetBaseValue() const
 
   // (4) Populate our nsSMILValue from the computed style
   if (didGetComputedVal) {
+    // When we parse animation values we check if they are context-sensitive or
+    // not so that we don't cache animation values whose meaning may change.
+    // For base values however this is unnecessary since on each sample the
+    // compositor will fetch the (computed) base value and compare it against
+    // the cached (computed) value and detect changes for us.
     nsSMILCSSValueType::ValueFromString(mPropID, mElement,
-                                        computedStyleVal, baseValue);
+                                        computedStyleVal, baseValue,
+                                        nsnull);
   }
   return baseValue;
 }
@@ -156,26 +162,21 @@ nsresult
 nsSMILCSSProperty::ValueFromString(const nsAString& aStr,
                                    const nsISMILAnimationElement* aSrcElement,
                                    nsSMILValue& aValue,
-                                   PRBool& aPreventCachingOfSandwich) const
+                                   bool& aPreventCachingOfSandwich) const
 {
   NS_ENSURE_TRUE(IsPropertyAnimatable(mPropID), NS_ERROR_FAILURE);
 
-  nsSMILCSSValueType::ValueFromString(mPropID, mElement, aStr, aValue);
-  if (aValue.IsNull()) {
-    return NS_ERROR_FAILURE;
+  nsSMILCSSValueType::ValueFromString(mPropID, mElement, aStr, aValue,
+      &aPreventCachingOfSandwich);
+
+  // XXX Due to bug 536660 (or at least that seems to be the most likely
+  // culprit), when we have animation setting display:none on a <use> element,
+  // if we DON'T set the property every sample, chaos ensues.
+  if (!aPreventCachingOfSandwich && mPropID == eCSSProperty_display) {
+    aPreventCachingOfSandwich = true;
   }
 
-  // XXXdholbert: For simplicity, just assume that all CSS values have to
-  // reparsed every sample. This prevents us from doing the "nothing's changed
-  // so don't recompose" optimization (bug 533291) for CSS properties & mapped
-  // attributes.  If it ends up being expensive to always recompose those, we
-  // can be a little smarter here.  We really only need to set
-  // aPreventCachingOfSandwich to true for "inherit" & "currentColor" (whose
-  // values could change at any time), for length-valued types (particularly
-  // those with em/ex/percent units, since their conversion ratios can change
-  // at any time), and for any value for 'font-family'.
-  aPreventCachingOfSandwich = PR_TRUE;
-  return NS_OK;
+  return aValue.IsNull() ? NS_ERROR_FAILURE : NS_OK;
 }
 
 nsresult
@@ -212,7 +213,7 @@ nsSMILCSSProperty::ClearAnimValue()
 
 // Based on http://www.w3.org/TR/SVG/propidx.html
 // static
-PRBool
+bool
 nsSMILCSSProperty::IsPropertyAnimatable(nsCSSProperty aPropID)
 {
   // NOTE: Right now, Gecko doesn't recognize the following properties from
@@ -279,7 +280,7 @@ nsSMILCSSProperty::IsPropertyAnimatable(nsCSSProperty aPropID)
     case eCSSProperty_text_rendering:
     case eCSSProperty_visibility:
     case eCSSProperty_word_spacing:
-      return PR_TRUE;
+      return true;
 
     // EXPLICITLY NON-ANIMATABLE PROPERTIES:
     // (Some of these aren't supported at all in Gecko -- I've commented those
@@ -291,9 +292,9 @@ nsSMILCSSProperty::IsPropertyAnimatable(nsCSSProperty aPropID)
     // case eCSSProperty_writing_mode:
     case eCSSProperty_direction:
     case eCSSProperty_unicode_bidi:
-      return PR_FALSE;
+      return false;
 
     default:
-      return PR_FALSE;
+      return false;
   }
 }

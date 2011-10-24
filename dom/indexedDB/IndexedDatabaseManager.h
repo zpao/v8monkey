@@ -55,6 +55,7 @@
 
 #define INDEXEDDB_MANAGER_CONTRACTID "@mozilla.org/dom/indexeddb/manager;1"
 
+class mozIStorageQuotaCallback;
 class nsITimer;
 
 BEGIN_INDEXEDDB_NAMESPACE
@@ -96,8 +97,9 @@ public:
 
   // Begins the process of setting a database version.
   nsresult SetDatabaseVersion(IDBDatabase* aDatabase,
-                              IDBVersionChangeRequest* aRequest,
-                              const nsAString& aVersion,
+                              IDBOpenDBRequest* aRequest,
+                              PRInt64 aOldVersion,
+                              PRInt64 aNewVersion,
                               AsyncConnectionHelper* aHelper);
 
   // Called when a window is being purged from the bfcache or the user leaves
@@ -107,6 +109,14 @@ public:
 
   // Used to check if there are running transactions in a given window.
   bool HasOpenTransactions(nsPIDOMWindow* aWindow);
+
+  static bool
+  SetCurrentDatabase(IDBDatabase* aDatabase);
+
+  static PRUint32
+  GetIndexedDBQuotaMB();
+
+  nsresult EnsureQuotaManagementForDirectory(nsIFile* aDirectory);
 
 private:
   IndexedDatabaseManager();
@@ -235,6 +245,15 @@ private:
 
   // A timer that gets activated at shutdown to ensure we close all databases.
   nsCOMPtr<nsITimer> mShutdownTimer;
+
+  // A single threadsafe instance of our quota callback. Created on the main
+  // thread during GetOrCreate().
+  nsCOMPtr<mozIStorageQuotaCallback> mQuotaCallbackSingleton;
+
+  // A list of all paths that are under SQLite's quota tracking system. This
+  // list isn't protected by any mutex but it is only ever touched on the IO
+  // thread.
+  nsTArray<nsCString> mTrackedQuotaPaths;
 };
 
 END_INDEXEDDB_NAMESPACE

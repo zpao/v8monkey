@@ -57,15 +57,15 @@ NS_IMPL_ISUPPORTS3(WyciwygChannelChild,
 
 
 WyciwygChannelChild::WyciwygChannelChild()
-  : ChannelEventQueue<WyciwygChannelChild>(this)
-  , mStatus(NS_OK)
-  , mIsPending(PR_FALSE)
+  : mStatus(NS_OK)
+  , mIsPending(false)
   , mCanceled(false)
   , mLoadFlags(LOAD_NORMAL)
   , mContentLength(-1)
   , mCharsetSource(kCharsetUninitialized)
   , mState(WCC_NEW)
   , mIPCOpen(false)
+  , mEventQ(this)
 {
   LOG(("Creating WyciwygChannelChild @%x\n", this));
 }
@@ -138,9 +138,10 @@ WyciwygChannelChild::RecvOnStartRequest(const nsresult& statusCode,
                                         const nsCString& charset,
                                         const nsCString& securityInfo)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new WyciwygStartRequestEvent(this, statusCode, contentLength,
-                                              source, charset, securityInfo));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new WyciwygStartRequestEvent(this, statusCode,
+                                                 contentLength, source,
+                                                 charset, securityInfo));
   } else {
     OnStartRequest(statusCode, contentLength, source, charset, securityInfo);
   }
@@ -167,7 +168,7 @@ WyciwygChannelChild::OnStartRequest(const nsresult& statusCode,
     NS_DeserializeObject(securityInfo, getter_AddRefs(mSecurityInfo));
   }
 
-  AutoEventEnqueuer ensureSerialDispatch(this);
+  AutoEventEnqueuer ensureSerialDispatch(mEventQ);
 
   nsresult rv = mListener->OnStartRequest(this, mListenerContext);
   if (NS_FAILED(rv))
@@ -192,8 +193,8 @@ bool
 WyciwygChannelChild::RecvOnDataAvailable(const nsCString& data,
                                          const PRUint32& offset)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new WyciwygDataAvailableEvent(this, data, offset));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new WyciwygDataAvailableEvent(this, data, offset));
   } else {
     OnDataAvailable(data, offset);
   }
@@ -226,7 +227,7 @@ WyciwygChannelChild::OnDataAvailable(const nsCString& data,
     return;
   }
 
-  AutoEventEnqueuer ensureSerialDispatch(this);
+  AutoEventEnqueuer ensureSerialDispatch(mEventQ);
   
   rv = mListener->OnDataAvailable(this, mListenerContext,
                                   stringStream, offset, data.Length());
@@ -253,8 +254,8 @@ private:
 bool
 WyciwygChannelChild::RecvOnStopRequest(const nsresult& statusCode)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new WyciwygStopRequestEvent(this, statusCode));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new WyciwygStopRequestEvent(this, statusCode));
   } else {
     OnStopRequest(statusCode);
   }
@@ -269,11 +270,11 @@ WyciwygChannelChild::OnStopRequest(const nsresult& statusCode)
 
   { // We need to ensure that all IPDL message dispatching occurs
     // before we delete the protocol below
-    AutoEventEnqueuer ensureSerialDispatch(this);
-    
+    AutoEventEnqueuer ensureSerialDispatch(mEventQ);
+
     mState = WCC_ONSTOP;
 
-    mIsPending = PR_FALSE;
+    mIsPending = false;
 
     if (!mCanceled)
       mStatus = statusCode;
@@ -310,8 +311,8 @@ class WyciwygCancelEvent : public ChannelEvent
 bool
 WyciwygChannelChild::RecvCancelEarly(const nsresult& statusCode)
 {
-  if (ShouldEnqueue()) {
-    EnqueueEvent(new WyciwygCancelEvent(this, statusCode));
+  if (mEventQ.ShouldEnqueue()) {
+    mEventQ.Enqueue(new WyciwygCancelEvent(this, statusCode));
   } else {
     CancelEarly(statusCode);
   }
@@ -356,7 +357,7 @@ WyciwygChannelChild::GetName(nsACString & aName)
 
 /* boolean isPending (); */
 NS_IMETHODIMP
-WyciwygChannelChild::IsPending(PRBool *aIsPending)
+WyciwygChannelChild::IsPending(bool *aIsPending)
 {
   *aIsPending = mIsPending;
   return NS_OK;
@@ -534,6 +535,24 @@ WyciwygChannelChild::SetContentCharset(const nsACString & aContentCharset)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+NS_IMETHODIMP
+WyciwygChannelChild::GetContentDisposition(PRUint32 *aContentDisposition)
+{
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WyciwygChannelChild::GetContentDispositionFilename(nsAString &aContentDispositionFilename)
+{
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WyciwygChannelChild::GetContentDispositionHeader(nsACString &aContentDispositionHeader)
+{
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
 /* attribute long contentLength; */
 NS_IMETHODIMP
 WyciwygChannelChild::GetContentLength(PRInt32 *aContentLength)
@@ -570,7 +589,7 @@ WyciwygChannelChild::AsyncOpen(nsIStreamListener *aListener, nsISupports *aConte
 
   mListener = aListener;
   mListenerContext = aContext;
-  mIsPending = PR_TRUE;
+  mIsPending = true;
 
   if (mLoadGroup)
     mLoadGroup->AddRequest(this, nsnull);

@@ -72,11 +72,11 @@
 // **********************************************************************
 
 #if defined (XP_UNIX)
-static PRBool sDisableSignalHandling = PR_FALSE;
+static bool sDisableSignalHandling = false;
 #endif
 
 nsProfileLock::nsProfileLock() :
-    mHaveLock(PR_FALSE)
+    mHaveLock(false)
 #if defined (XP_WIN)
     ,mLockFileHandle(INVALID_HANDLE_VALUE)
 #elif defined (XP_OS2)
@@ -88,7 +88,7 @@ nsProfileLock::nsProfileLock() :
 {
 #if defined (XP_UNIX)
     next = prev = this;
-    sDisableSignalHandling = PR_GetEnv("MOZ_DISABLE_SIG_HANDLER") ? PR_TRUE : PR_FALSE;
+    sDisableSignalHandling = PR_GetEnv("MOZ_DISABLE_SIG_HANDLER") ? true : false;
 #endif
 }
 
@@ -104,7 +104,7 @@ nsProfileLock& nsProfileLock::operator=(nsProfileLock& rhs)
     Unlock();
 
     mHaveLock = rhs.mHaveLock;
-    rhs.mHaveLock = PR_FALSE;
+    rhs.mHaveLock = false;
 
 #if defined (XP_WIN)
     mLockFileHandle = rhs.mLockFileHandle;
@@ -142,7 +142,7 @@ static int setupPidLockCleanup;
 PRCList nsProfileLock::mPidLockList =
     PR_INIT_STATIC_CLIST(&nsProfileLock::mPidLockList);
 
-void nsProfileLock::RemovePidLockFiles(PRBool aFatalSignal)
+void nsProfileLock::RemovePidLockFiles(bool aFatalSignal)
 {
     while (!PR_CLIST_IS_EMPTY(&mPidLockList))
     {
@@ -166,7 +166,7 @@ void nsProfileLock::FatalSignalHandler(int signo
                                        )
 {
     // Remove any locks still held.
-    RemovePidLockFiles(PR_TRUE);
+    RemovePidLockFiles(true);
 
     // Chain to the old handler, which may exit.
     struct sigaction *oldact = nsnull;
@@ -271,7 +271,7 @@ nsresult nsProfileLock::LockWithFcntl(const nsACString& lockFilePath)
                 rv = NS_ERROR_FAILURE;
         }
         else
-            mHaveLock = PR_TRUE;
+            mHaveLock = true;
     }
     else
     {
@@ -281,8 +281,8 @@ nsresult nsProfileLock::LockWithFcntl(const nsACString& lockFilePath)
     return rv;
 }
 
-static PRBool IsSymlinkStaleLock(struct in_addr* aAddr, const char* aFileName,
-                                 PRBool aHaveFcntlLock)
+static bool IsSymlinkStaleLock(struct in_addr* aAddr, const char* aFileName,
+                                 bool aHaveFcntlLock)
 {
     // the link exists; see if it's from this machine, and if
     // so if the process is still active
@@ -302,7 +302,7 @@ static PRBool IsSymlinkStaleLock(struct in_addr* aAddr, const char* aFileName,
                     // This lock was placed by a Firefox build which would have
                     // taken the fnctl lock, and we've already taken the fcntl lock,
                     // so the process that created this obsolete lock must be gone
-                    return PR_TRUE;
+                    return true;
                 }
                     
                 char *after = nsnull;
@@ -312,7 +312,7 @@ static PRBool IsSymlinkStaleLock(struct in_addr* aAddr, const char* aFileName,
                     if (addr != aAddr->s_addr)
                     {
                         // Remote lock: give up even if stuck.
-                        return PR_FALSE;
+                        return false;
                     }
     
                     // kill(pid,0) is a neat trick to check if a
@@ -323,16 +323,16 @@ static PRBool IsSymlinkStaleLock(struct in_addr* aAddr, const char* aFileName,
                         // is another Mozilla instance, or a compatible
                         // derivative, that's currently using the profile.
                         // XXX need an "are you Mozilla?" protocol
-                        return PR_FALSE;
+                        return false;
                     }
                 }
             }
         }
     }
-    return PR_TRUE;
+    return true;
 }
 
-nsresult nsProfileLock::LockWithSymlink(const nsACString& lockFilePath, PRBool aHaveFcntlLock)
+nsresult nsProfileLock::LockWithSymlink(const nsACString& lockFilePath, bool aHaveFcntlLock)
 {
     nsresult rv;
 
@@ -382,7 +382,7 @@ nsresult nsProfileLock::LockWithSymlink(const nsACString& lockFilePath, PRBool a
         // We exclusively created the symlink: record its name for eventual
         // unlock-via-unlink.
         rv = NS_OK;
-        mHaveLock = PR_TRUE;
+        mHaveLock = true;
         mPidLockFileName = strdup(fileName);
         if (mPidLockFileName)
         {
@@ -390,7 +390,10 @@ nsresult nsProfileLock::LockWithSymlink(const nsACString& lockFilePath, PRBool a
             if (!setupPidLockCleanup++)
             {
                 // Clean up on normal termination.
-                atexit(RemovePidLockFilesExiting);
+                // This instanciates a dummy class, and will trigger the class
+                // destructor when libxul is unloaded. This is equivalent to atexit(),
+                // but gracefully handles dlclose().
+                static RemovePidLockFilesExiting r;
 
                 // Clean up on abnormal termination, using POSIX sigaction.
                 // Don't arm a handler if the signal is being ignored, e.g.,
@@ -459,7 +462,7 @@ nsresult nsProfileLock::Lock(nsILocalFile* aProfileDir,
 
     NS_ENSURE_STATE(!mHaveLock);
 
-    PRBool isDir;
+    bool isDir;
     rv = aProfileDir->IsDirectory(&isDir);
     if (NS_FAILED(rv))
         return rv;
@@ -488,7 +491,7 @@ nsresult nsProfileLock::Lock(nsILocalFile* aProfileDir,
     {
         // If that failed for any reason other than NS_ERROR_FILE_ACCESS_DENIED,
         // assume we tried an NFS that does not support it. Now, try with symlink.
-        rv = LockWithSymlink(filePath, PR_FALSE);
+        rv = LockWithSymlink(filePath, false);
     }
     
     if (NS_SUCCEEDED(rv))
@@ -566,7 +569,7 @@ nsresult nsProfileLock::Lock(nsILocalFile* aProfileDir,
         // Firefox build, and also place our own symlink lock --- but
         // mark it "obsolete" so that other newer builds can break the lock
         // if they obtain the fcntl lock
-        rv = LockWithSymlink(oldFilePath, PR_TRUE);
+        rv = LockWithSymlink(oldFilePath, true);
 
         // If the symlink failed for some reason other than it already
         // exists, then something went wrong e.g. the file system
@@ -583,7 +586,7 @@ nsresult nsProfileLock::Lock(nsILocalFile* aProfileDir,
         // If that failed for any reason other than NS_ERROR_FILE_ACCESS_DENIED,
         // assume we tried an NFS that does not support it. Now, try with symlink
         // using the old symlink path
-        rv = LockWithSymlink(oldFilePath, PR_FALSE);
+        rv = LockWithSymlink(oldFilePath, false);
     }
 
 #elif defined(XP_WIN)
@@ -591,23 +594,13 @@ nsresult nsProfileLock::Lock(nsILocalFile* aProfileDir,
     rv = lockFile->GetPath(filePath);
     if (NS_FAILED(rv))
         return rv;
-#ifdef WINCE
-    // WinCE doesn't have FILE_FLAG_DELETE_ON_CLOSE, so let's just try
-    // to delete the file first before creating it.  This will fail
-    // if it's already open.
-    DeleteFileW(filePath.get());
-#endif
 
     mLockFileHandle = CreateFileW(filePath.get(),
                                   GENERIC_READ | GENERIC_WRITE,
                                   0, // no sharing - of course
                                   nsnull,
                                   OPEN_ALWAYS,
-#ifndef WINCE
                                   FILE_FLAG_DELETE_ON_CLOSE,
-#else
-                                  FILE_ATTRIBUTE_NORMAL,
-#endif
                                   nsnull);
     if (mLockFileHandle == INVALID_HANDLE_VALUE) {
         // XXXbsmedberg: provide a profile-unlocker here!
@@ -655,13 +648,13 @@ nsresult nsProfileLock::Lock(nsILocalFile* aProfileDir,
     }
 #endif
 
-    mHaveLock = PR_TRUE;
+    mHaveLock = true;
 
     return rv;
 }
 
 
-nsresult nsProfileLock::Unlock(PRBool aFatalSignal)
+nsresult nsProfileLock::Unlock(bool aFatalSignal)
 {
     nsresult rv = NS_OK;
 
@@ -702,7 +695,7 @@ nsresult nsProfileLock::Unlock(PRBool aFatalSignal)
         }
 #endif
 
-        mHaveLock = PR_FALSE;
+        mHaveLock = false;
     }
 
     return rv;

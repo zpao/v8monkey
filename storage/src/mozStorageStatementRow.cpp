@@ -45,7 +45,6 @@
 #include "mozStorageStatement.h"
 
 #include "jsapi.h"
-#include "jsdate.h"
 
 namespace mozilla {
 namespace storage {
@@ -80,7 +79,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
                           JSObject *aScopeObj,
                           jsid aId,
                           jsval *_vp,
-                          PRBool *_retval)
+                          bool *_retval)
 {
   NS_ENSURE_TRUE(mStatement, NS_ERROR_NOT_INITIALIZED);
 
@@ -102,7 +101,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
       rv = mStatement->GetDouble(idx, &dval);
       NS_ENSURE_SUCCESS(rv, rv);
       if (!::JS_NewNumberValue(aCtx, dval, _vp)) {
-        *_retval = PR_FALSE;
+        *_retval = false;
         return NS_OK;
       }
     }
@@ -114,7 +113,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
       );
       JSString *str = ::JS_NewUCStringCopyN(aCtx, sval, bytes / 2);
       if (!str) {
-        *_retval = PR_FALSE;
+        *_retval = false;
         return NS_OK;
       }
       *_vp = STRING_TO_JSVAL(str);
@@ -125,7 +124,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
         AsSharedBlob(idx, &length);
       JSObject *obj = ::JS_NewArrayObject(aCtx, length, nsnull);
       if (!obj) {
-        *_retval = PR_FALSE;
+        *_retval = false;
         return NS_OK;
       }
       *_vp = OBJECT_TO_JSVAL(obj);
@@ -134,7 +133,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
       for (PRUint32 i = 0; i < length; i++) {
         jsval val = INT_TO_JSVAL(blob[i]);
         if (!::JS_SetElement(aCtx, aScopeObj, i, &val)) {
-          *_retval = PR_FALSE;
+          *_retval = false;
           return NS_OK;
         }
       }
@@ -157,7 +156,7 @@ StatementRow::NewResolve(nsIXPConnectWrappedNative *aWrapper,
                          jsid aId,
                          PRUint32 aFlags,
                          JSObject **_objp,
-                         PRBool *_retval)
+                         bool *_retval)
 {
   NS_ENSURE_TRUE(mStatement, NS_ERROR_NOT_INITIALIZED);
   // We do not throw at any point after this because we want to allow the

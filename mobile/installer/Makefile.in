@@ -52,16 +52,7 @@ include $(topsrcdir)/config/rules.mk
 
 MOZ_PKG_REMOVALS = $(srcdir)/removed-files.in
 
-ifdef MOZ_ENABLE_LIBXUL
 MOZ_PKG_MANIFEST_P = $(srcdir)/package-manifest.in
-else
-define message
-You need to build with --enable-libxul (the default, unless you specify
---disable-libxul or --enable-shared or --enable-debug) to package a build.
-endef
-default libs installer::
-	$(error $(message))
-endif
 
 MOZ_NONLOCALIZED_PKG_LIST = \
 	xpcom \
@@ -91,8 +82,7 @@ ifdef MOZ_PKG_MANIFEST_P
 MOZ_PKG_MANIFEST = package-manifest
 endif
 
-libs::
-	find $(DIST)/bin/chrome -type f -name *.properties -exec sed -i '/^#/d' {} \;
+MOZ_POST_STAGING_CMD = find chrome -type f -name *.properties -exec sed -i '/^\#/d' {} \;
 
 include $(topsrcdir)/toolkit/mozapps/installer/packager.mk
 
@@ -166,7 +156,7 @@ DEFINES += \
 	-DGRE_MILESTONE=$(GRE_MILESTONE) \
 	-DGRE_BUILDID=$(GRE_BUILDID) \
 	-Dinstalldir=$(installdir) \
-	-DMOZ_APP_DISPLAYNAME=$(MOZ_APP_DISPLAYNAME) \
+	-DMOZ_APP_DISPLAYNAME="$(MOZ_APP_DISPLAYNAME)" \
 	-DMOZ_APP_VERSION=$(MOZ_APP_VERSION) \
 	-DABS_OBJDIR=$(ABS_OBJDIR) \
 	-DBASE64_ICON=$(BASE64_ICON) \
@@ -189,6 +179,16 @@ PP_DEB_FILES =	debian/control \
 		debian/fennec.postinst \
 		$(NULL)
 
+ifeq ($(MOZ_PLATFORM_MAEMO),6)
+PP_DEB_FILES += debian/fennec.aegis \
+		debian/backup \
+		debian/restore \
+		debian/fennec.conf \
+		debian/fennec-cud.sh \
+		debian/fennec-rfs.sh \
+		 debian/fennec.policy \
+                $(NULL)
+endif
 
 $(PP_DEB_FILES):
 	@$(EXIT_ON_ERROR) \
@@ -201,20 +201,30 @@ $(PP_DEB_FILES):
              $(AUTOMATION_PPARGS) $(DEFINES) $(ACDEFINES) $$src > $$f; \
          done
 
-$(MOZILLA_VERSION).$(MOZ_APP_NAME).conf: $(topsrcdir)/config/milestone.txt Makefile
-	printf "[%s]\nGRE_PATH=%s\nxulrunner=true\nabi=%s" \
-	  $(MOZILLA_VERSION) $(installdir)/xulrunner $(TARGET_XPCOM_ABI)> $@
-
-# to register xulrunner per-user, override this with $HOME/.gre.d
-regdir = /etc/gre.d
-
 deb: $(PP_DEB_FILES) $(DIST)/branding/$(MOZ_APP_NAME)_scalable.png \
 	$(DIST)/branding/$(MOZ_APP_NAME)_26x26.png \
-	$(DIST)/branding/$(MOZ_APP_NAME)_40x40.png \
-	$(MOZILLA_VERSION).$(MOZ_APP_NAME).conf
+	$(DIST)/branding/$(MOZ_APP_NAME)_40x40.png
 	rm -rf $(DEBDESTDIR)/$(installdir)/*
 	$(NSINSTALL) -D $(DEBDESTDIR)/$(installdir)
 	cp -pRL $(DIST)/$(MOZ_APP_NAME)/* $(DEBDESTDIR)/$(installdir)
+ifeq ($(MOZ_PLATFORM_MAEMO),6)
+	$(NSINSTALL)  debian/$(MOZ_APP_NAME).desktop $(DEBDESTDIR)/usr/share/applications/
+	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/dbus-1/services/
+	cp debian/$(MOZ_APP_NAME).service $(DEBDESTDIR)/usr/share/dbus-1/services/org.mozilla.$(MOZ_APP_NAME).service
+	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/themes/blanco/meegotouch/icons/
+	cp $(DIST)/branding/$(MOZ_APP_NAME)_scalable.png $(DEBDESTDIR)/usr/share/themes/blanco/meegotouch/icons/$(MOZ_APP_NAME).png
+	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/backup-framework/applications
+	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/$(MOZ_APP_NAME)
+	$(NSINSTALL) -D $(DEBDESTDIR)/etc/osso-cud-scripts
+	$(NSINSTALL) -D $(DEBDESTDIR)/etc/osso-rfs-scripts
+	$(NSINSTALL) -m 755 debian/backup  $(DEBDESTDIR)/usr/share/$(MOZ_APP_NAME)/
+	$(NSINSTALL) -m 755 debian/restore $(DEBDESTDIR)/usr/share/$(MOZ_APP_NAME)/
+	cp debian/$(MOZ_APP_NAME).conf $(DEBDESTDIR)/usr/share/backup-framework/applications/$(MOZ_APP_NAME).conf
+	cp debian/$(MOZ_APP_NAME)-cud.sh $(DEBDESTDIR)/etc/osso-cud-scripts/$(MOZ_APP_NAME)-cud.sh
+	cp debian/$(MOZ_APP_NAME)-rfs.sh $(DEBDESTDIR)/etc/osso-rfs-scripts/$(MOZ_APP_NAME)-rfs.sh
+	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/policy/etc/syspart.conf.d
+	cp debian/$(MOZ_APP_NAME).policy $(DEBDESTDIR)/usr/share/policy/etc/syspart.conf.d/$(MOZ_APP_NAME)
+else
 	$(NSINSTALL)  debian/$(MOZ_APP_NAME).desktop $(DEBDESTDIR)/usr/share/applications/hildon/
 	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/dbus-1/services/
 	cp debian/$(MOZ_APP_NAME).service $(DEBDESTDIR)/usr/share/dbus-1/services/org.mozilla.$(MOZ_APP_NAME).service
@@ -224,9 +234,19 @@ deb: $(PP_DEB_FILES) $(DIST)/branding/$(MOZ_APP_NAME)_scalable.png \
 	cp $(DIST)/branding/$(MOZ_APP_NAME)_26x26.png $(DEBDESTDIR)/usr/share/icons/hicolor/26x26/hildon/$(MOZ_APP_NAME).png
 	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/icons/hicolor/40x40/hildon/
 	cp $(DIST)/branding/$(MOZ_APP_NAME)_40x40.png $(DEBDESTDIR)/usr/share/icons/hicolor/40x40/hildon/$(MOZ_APP_NAME).png
-	$(NSINSTALL) -D $(DEBDESTDIR)$(regdir)
-	$(SYSINSTALL) $(MOZILLA_VERSION).$(MOZ_APP_NAME).conf $(DEBDESTDIR)$(regdir)/
-	dh_link; fakeroot dh_fixperms; fakeroot dh_installdeb; dh_shlibdeps; fakeroot dh_gencontrol; fakeroot dh_md5sums; dh_builddeb
+endif
+	fakeroot dh_link; fakeroot dh_fixperms; fakeroot dh_installdeb; fakeroot dh_shlibdeps; fakeroot dh_gencontrol; fakeroot dh_md5sums; fakeroot dh_builddeb;
+
+# a defined CONTENTMANAGER implicitly means MOZ_PLATFORM_MAEMO is equals 6
+# in case you use CONTENTMANGER you need to sign your package to gain tracker access.
+ifeq ($(MOZ_PLATFORM_MAEMO),6)
+	if test -e "/usr/bin/aegis-deb-add"; then \
+	   fakeroot aegis-deb-add -control $(DEBDESTDIR)/DEBIAN/control .. debian/fennec.aegis=_aegis; \
+	else \
+	   echo aegis-builder not found, security signing failed!; \
+	fi
+endif
+
 	echo $(DEB_PKG_NAME) > $(DIST)/deb_name.txt
 
 installer: deb

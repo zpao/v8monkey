@@ -34,33 +34,32 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
-#include "nsIDOMHTMLIsIndexElement.h"
+
+#include "mozilla/Util.h"
+
 #include "nsIDOMHTMLParamElement.h"
 #include "nsIDOMHTMLBaseElement.h"
 #include "nsIDOMHTMLDirectoryElement.h"
-#include "nsIDOMHTMLMenuElement.h"
 #include "nsIDOMHTMLQuoteElement.h"
 #include "nsIDOMHTMLHeadElement.h"
 #include "nsIDOMHTMLHtmlElement.h"
 #include "nsGenericHTMLElement.h"
+
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
 #include "nsRuleData.h"
 #include "nsMappedAttributes.h"
-#include "nsNetUtil.h"
-#include "nsHTMLFormElement.h"
-#include "nsHtml5Module.h"
+#include "nsContentUtils.h"
 
+using namespace mozilla;
 
 // XXX nav4 has type= start= (same as OL/UL)
 extern nsAttrValue::EnumTable kListTypeTable[];
 
 class nsHTMLSharedElement : public nsGenericHTMLElement,
-                            public nsIDOMHTMLIsIndexElement,
                             public nsIDOMHTMLParamElement,
                             public nsIDOMHTMLBaseElement,
                             public nsIDOMHTMLDirectoryElement,
-                            public nsIDOMHTMLMenuElement,
                             public nsIDOMHTMLQuoteElement,
                             public nsIDOMHTMLHeadElement,
                             public nsIDOMHTMLHtmlElement
@@ -81,9 +80,6 @@ public:
   // nsIDOMHTMLElement
   NS_FORWARD_NSIDOMHTMLELEMENT(nsGenericHTMLElement::)
 
-  // nsIDOMHTMLIsIndexElement
-  NS_DECL_NSIDOMHTMLISINDEXELEMENT
-
   // nsIDOMHTMLParamElement
   NS_DECL_NSIDOMHTMLPARAMELEMENT
 
@@ -92,9 +88,6 @@ public:
 
   // nsIDOMHTMLDirectoryElement
   NS_DECL_NSIDOMHTMLDIRECTORYELEMENT
-
-  // nsIDOMHTMLMenuElement
-  // Same as directoryelement
 
   // nsIDOMHTMLQuoteElement
   NS_DECL_NSIDOMHTMLQUOTEELEMENT
@@ -106,31 +99,31 @@ public:
   NS_DECL_NSIDOMHTMLHTMLELEMENT
 
   // nsIContent
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
+  virtual bool ParseAttribute(PRInt32 aNamespaceID,
                                 nsIAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
   nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                   const nsAString& aValue, PRBool aNotify)
+                   const nsAString& aValue, bool aNotify)
   {
     return SetAttr(aNameSpaceID, aName, nsnull, aValue, aNotify);
   }
   virtual nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                            nsIAtom* aPrefix, const nsAString& aValue,
-                           PRBool aNotify);
+                           bool aNotify);
 
   virtual nsresult UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                             PRBool aNotify);
+                             bool aNotify);
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
-                              PRBool aCompileEventHandlers);
+                              bool aCompileEventHandlers);
 
-  virtual void UnbindFromTree(PRBool aDeep = PR_TRUE,
-                              PRBool aNullParent = PR_TRUE);
+  virtual void UnbindFromTree(bool aDeep = true,
+                              bool aNullParent = true);
 
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const;
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
 
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
 
@@ -142,22 +135,6 @@ public:
 };
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(Shared)
-
-/**
- * When creating a isindex element, we should create a nsHTMLElement if the html5
- * parser is enabled. Otherwise, a nsHTMLSharedElement should be created.
- */
-nsGenericHTMLElement*
-NS_NewHTMLIsIndexElement(already_AddRefed<nsINodeInfo> aNodeInfo,
-                         mozilla::dom::FromParser aFromParser)
-{
-  if (nsHtml5Module::sEnabled) {
-    return NS_NewHTMLElement(aNodeInfo, aFromParser);
-  } else {
-    return NS_NewHTMLSharedElement(aNodeInfo, aFromParser);
-  }
-}
-
 
 
 nsHTMLSharedElement::nsHTMLSharedElement(already_AddRefed<nsINodeInfo> aNodeInfo)
@@ -175,10 +152,8 @@ NS_IMPL_RELEASE_INHERITED(nsHTMLSharedElement, nsGenericElement)
 
 
 DOMCI_DATA(HTMLParamElement, nsHTMLSharedElement)
-DOMCI_DATA(HTMLIsIndexElement, nsHTMLSharedElement)
 DOMCI_DATA(HTMLBaseElement, nsHTMLSharedElement)
 DOMCI_DATA(HTMLDirectoryElement, nsHTMLSharedElement)
-DOMCI_DATA(HTMLMenuElement, nsHTMLSharedElement)
 DOMCI_DATA(HTMLQuoteElement, nsHTMLSharedElement)
 DOMCI_DATA(HTMLHeadElement, nsHTMLSharedElement)
 DOMCI_DATA(HTMLHtmlElement, nsHTMLSharedElement)
@@ -189,17 +164,11 @@ nsHTMLSharedElement::GetClassInfoInternal()
   if (mNodeInfo->Equals(nsGkAtoms::param)) {
     return NS_GetDOMClassInfoInstance(eDOMClassInfo_HTMLParamElement_id);
   }
-  if (mNodeInfo->Equals(nsGkAtoms::isindex)) {
-    return NS_GetDOMClassInfoInstance(eDOMClassInfo_HTMLIsIndexElement_id);
-  }
   if (mNodeInfo->Equals(nsGkAtoms::base)) {
     return NS_GetDOMClassInfoInstance(eDOMClassInfo_HTMLBaseElement_id);
   }
   if (mNodeInfo->Equals(nsGkAtoms::dir)) {
     return NS_GetDOMClassInfoInstance(eDOMClassInfo_HTMLDirectoryElement_id);
-  }
-  if (mNodeInfo->Equals(nsGkAtoms::menu)) {
-    return NS_GetDOMClassInfoInstance(eDOMClassInfo_HTMLMenuElement_id);
   }
   if (mNodeInfo->Equals(nsGkAtoms::q)) {
     return NS_GetDOMClassInfoInstance(eDOMClassInfo_HTMLQuoteElement_id);
@@ -225,10 +194,8 @@ NS_INTERFACE_TABLE_HEAD(nsHTMLSharedElement)
                                                          nsGenericHTMLElement,
                                                          nsIDOMHTMLParamElement)
   NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLParamElement, param)
-  NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLIsIndexElement, isindex)
   NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLBaseElement, base)
   NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLDirectoryElement, dir)
-  NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLMenuElement, menu)
   NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLQuoteElement, q)
   NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLQuoteElement, blockquote)
   NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLHeadElement, head)
@@ -246,38 +213,14 @@ NS_IMPL_STRING_ATTR(nsHTMLSharedElement, Type, type)
 NS_IMPL_STRING_ATTR(nsHTMLSharedElement, Value, value)
 NS_IMPL_STRING_ATTR(nsHTMLSharedElement, ValueType, valuetype)
 
-// nsIDOMHTMLIsIndexElement
-NS_IMPL_STRING_ATTR(nsHTMLSharedElement, Prompt, prompt)
-NS_IMETHODIMP
-nsHTMLSharedElement::GetForm(nsIDOMHTMLFormElement** aForm)
-{
-  NS_IF_ADDREF(*aForm = FindAncestorForm());
-
-  return NS_OK;
-}
-
 // nsIDOMHTMLDirectoryElement
 NS_IMPL_BOOL_ATTR(nsHTMLSharedElement, Compact, compact)
-
-// nsIDOMHTMLMenuElement
-//NS_IMPL_BOOL_ATTR(nsHTMLSharedElement, Compact, compact)
 
 // nsIDOMHTMLQuoteElement
 NS_IMPL_URI_ATTR(nsHTMLSharedElement, Cite, cite)
 
 // nsIDOMHTMLHeadElement
-// Deprecated and not exposed to script, but has to be implemented in order to
-// not break binary compat.
-NS_IMETHODIMP
-nsHTMLSharedElement::GetProfile(nsAString& aValue)
-{
-  return NS_ERROR_FAILURE;
-}
-NS_IMETHODIMP
-nsHTMLSharedElement::SetProfile(const nsAString& aValue)
-{
-  return NS_ERROR_FAILURE;
-}
+// Empty
 
 // nsIDOMHTMLHtmlElement
 NS_IMPL_STRING_ATTR(nsHTMLSharedElement, Version, version)
@@ -291,11 +234,10 @@ nsHTMLSharedElement::GetHref(nsAString& aValue)
   GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
 
   nsCOMPtr<nsIURI> uri;
-  nsIDocument* doc = GetOwnerDoc();
-  if (doc) {
-    nsContentUtils::NewURIWithDocumentCharset(
-      getter_AddRefs(uri), href, doc, doc->GetDocumentURI());
-  }
+  nsIDocument* doc = OwnerDoc();
+  nsContentUtils::NewURIWithDocumentCharset(
+    getter_AddRefs(uri), href, doc, doc->GetDocumentURI());
+
   if (!uri) {
     aValue = href;
     return NS_OK;
@@ -314,17 +256,16 @@ nsHTMLSharedElement::SetHref(const nsAString& aValue)
 }
 
 
-PRBool
+bool
 nsHTMLSharedElement::ParseAttribute(PRInt32 aNamespaceID,
                                     nsIAtom* aAttribute,
                                     const nsAString& aValue,
                                     nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None &&
-      (mNodeInfo->Equals(nsGkAtoms::dir) ||
-       mNodeInfo->Equals(nsGkAtoms::menu))) {
+      mNodeInfo->Equals(nsGkAtoms::dir)) {
     if (aAttribute == nsGkAtoms::type) {
-      return aResult.ParseEnumValue(aValue, kListTypeTable, PR_FALSE);
+      return aResult.ParseEnumValue(aValue, kListTypeTable, false);
     }
     if (aAttribute == nsGkAtoms::start) {
       return aResult.ParseIntWithBounds(aValue, 1);
@@ -336,7 +277,7 @@ nsHTMLSharedElement::ParseAttribute(PRInt32 aNamespaceID,
 }
 
 static void
-DirectoryMenuMapAttributesIntoRule(const nsMappedAttributes* aAttributes,
+DirectoryMapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                                nsRuleData* aData)
 {
   if (aData->mSIDs & NS_STYLE_INHERIT_BIT(List)) {
@@ -357,7 +298,7 @@ DirectoryMenuMapAttributesIntoRule(const nsMappedAttributes* aAttributes,
   nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aData);
 }
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsHTMLSharedElement::IsAttributeMapped(const nsIAtom* aAttribute) const
 {
   if (mNodeInfo->Equals(nsGkAtoms::dir)) {
@@ -372,7 +313,7 @@ nsHTMLSharedElement::IsAttributeMapped(const nsIAtom* aAttribute) const
       sCommonAttributeMap,
     };
 
-    return FindAttributeDependence(aAttribute, map, NS_ARRAY_LENGTH(map));
+    return FindAttributeDependence(aAttribute, map, ArrayLength(map));
   }
 
   return nsGenericHTMLElement::IsAttributeMapped(aAttribute);
@@ -439,7 +380,7 @@ SetBaseTargetUsingFirstBaseWithTarget(nsIDocument* aDocument,
 nsresult
 nsHTMLSharedElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                              nsIAtom* aPrefix, const nsAString& aValue,
-                             PRBool aNotify)
+                             bool aNotify)
 {
   nsresult rv =  nsGenericHTMLElement::SetAttr(aNameSpaceID, aName, aPrefix,
                                                aValue, aNotify);
@@ -464,7 +405,7 @@ nsHTMLSharedElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 
 nsresult
 nsHTMLSharedElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                               PRBool aNotify)
+                               bool aNotify)
 {
   nsresult rv = nsGenericHTMLElement::UnsetAttr(aNameSpaceID, aName, aNotify);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -488,7 +429,7 @@ nsHTMLSharedElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 nsresult
 nsHTMLSharedElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                 nsIContent* aBindingParent,
-                                PRBool aCompileEventHandlers)
+                                bool aCompileEventHandlers)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
                                                  aBindingParent,
@@ -511,7 +452,7 @@ nsHTMLSharedElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 }
 
 void
-nsHTMLSharedElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+nsHTMLSharedElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
   nsIDocument* doc = GetCurrentDoc();
 
@@ -532,8 +473,8 @@ nsHTMLSharedElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
 nsMapRuleToAttributesFunc
 nsHTMLSharedElement::GetAttributeMappingFunction() const
 {
-  if (mNodeInfo->Equals(nsGkAtoms::dir) || mNodeInfo->Equals(nsGkAtoms::menu)) {
-    return &DirectoryMenuMapAttributesIntoRule;
+  if (mNodeInfo->Equals(nsGkAtoms::dir)) {
+    return &DirectoryMapAttributesIntoRule;
   }
 
   return nsGenericHTMLElement::GetAttributeMappingFunction();

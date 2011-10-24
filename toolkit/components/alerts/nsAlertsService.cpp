@@ -40,7 +40,6 @@
 
 #include "mozilla/dom/ContentChild.h"
 #include "nsXULAppAPI.h"
-using mozilla::dom::ContentChild;
 
 #include "nsAlertsService.h"
 
@@ -52,18 +51,19 @@ using mozilla::dom::ContentChild;
 #include "nsXPCOM.h"
 #include "nsISupportsPrimitives.h"
 #include "nsIServiceManager.h"
-#include "nsIDOMWindowInternal.h"
+#include "nsIDOMWindow.h"
 #include "nsIWindowWatcher.h"
-#include "nsDependentString.h"
-#include "nsWidgetsCID.h"
-#include "nsILookAndFeel.h"
+#include "nsPromiseFlatString.h"
 #include "nsToolkitCompsCID.h"
-
-static NS_DEFINE_CID(kLookAndFeelCID, NS_LOOKANDFEEL_CID);
+#include "mozilla/LookAndFeel.h"
 
 #define ALERT_CHROME_URL "chrome://global/content/alerts/alert.xul"
 
 #endif // !ANDROID
+
+using namespace mozilla;
+
+using mozilla::dom::ContentChild;
 
 NS_IMPL_THREADSAFE_ISUPPORTS2(nsAlertsService, nsIAlertsService, nsIAlertsProgressListener)
 
@@ -75,7 +75,7 @@ nsAlertsService::~nsAlertsService()
 {}
 
 NS_IMETHODIMP nsAlertsService::ShowAlertNotification(const nsAString & aImageUrl, const nsAString & aAlertTitle, 
-                                                     const nsAString & aAlertText, PRBool aAlertTextClickable,
+                                                     const nsAString & aAlertText, bool aAlertTextClickable,
                                                      const nsAString & aAlertCookie,
                                                      nsIObserver * aAlertListener,
                                                      const nsAString & aAlertName)
@@ -84,7 +84,7 @@ NS_IMETHODIMP nsAlertsService::ShowAlertNotification(const nsAString & aImageUrl
     ContentChild* cpc = ContentChild::GetSingleton();
 
     if (aAlertListener)
-      cpc->AddRemoteAlertObserver(nsDependentString(aAlertCookie), aAlertListener);
+      cpc->AddRemoteAlertObserver(PromiseFlatString(aAlertCookie), aAlertListener);
 
     cpc->SendShowAlertNotification(nsAutoString(aImageUrl),
                                    nsAutoString(aAlertTitle),
@@ -155,14 +155,11 @@ NS_IMETHODIMP nsAlertsService::ShowAlertNotification(const nsAString & aImageUrl
 
   nsCOMPtr<nsISupportsPRInt32> scriptableOrigin (do_CreateInstance(NS_SUPPORTS_PRINT32_CONTRACTID));
   NS_ENSURE_TRUE(scriptableOrigin, NS_ERROR_FAILURE);
-  nsCOMPtr<nsILookAndFeel> lookAndFeel = do_GetService("@mozilla.org/widget/lookandfeel;1");
-  if (lookAndFeel)
-  {
-    PRInt32 origin;
-    lookAndFeel->GetMetric(nsILookAndFeel::eMetric_AlertNotificationOrigin,
-                           origin);
-    scriptableOrigin->SetData(origin);
-  }
+
+  PRInt32 origin =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_AlertNotificationOrigin);
+  scriptableOrigin->SetData(origin);
+
   rv = argsArray->AppendElement(scriptableOrigin);
   NS_ENSURE_SUCCESS(rv, rv);
 

@@ -36,6 +36,7 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
 #include "nsCOMPtr.h"
 #include "nsIScrollBoxObject.h"
 #include "nsBoxObject.h"
@@ -43,7 +44,6 @@
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMNSDocument.h"
 #include "nsIDOMElement.h"
 #include "nsPresContext.h"
 #include "nsIFrame.h"
@@ -59,7 +59,7 @@ public:
   virtual ~nsScrollBoxObject();
 
   virtual nsIScrollableFrame* GetScrollFrame() {
-    return do_QueryFrame(GetFrame(PR_FALSE));
+    return do_QueryFrame(GetFrame(false));
   }
 
   /* additional members */
@@ -127,7 +127,7 @@ NS_IMETHODIMP nsScrollBoxObject::ScrollByLine(PRInt32 dlines)
 // the <scrollbox>'s box frame is the scrollframe's "scrolled frame", and
 // the <scrollbox>'s child box is a child of that.
 static nsIFrame* GetScrolledBox(nsBoxObject* aScrollBox) {
-  nsIFrame* frame = aScrollBox->GetFrame(PR_FALSE);
+  nsIFrame* frame = aScrollBox->GetFrame(false);
   if (!frame) 
     return nsnull;
   nsIScrollableFrame* scrollFrame = do_QueryFrame(frame);
@@ -156,16 +156,16 @@ NS_IMETHODIMP nsScrollBoxObject::ScrollByIndex(PRInt32 dindexes)
     // now get the scrolled boxes first child.
     nsIFrame* child = scrolledBox->GetChildBox();
 
-    PRBool horiz = scrolledBox->IsHorizontal();
+    bool horiz = scrolledBox->IsHorizontal();
     nsPoint cp = sf->GetScrollPosition();
     nscoord diff = 0;
     PRInt32 curIndex = 0;
-    PRBool isLTR = scrolledBox->IsNormalDirection();
+    bool isLTR = scrolledBox->IsNormalDirection();
 
     PRInt32 frameWidth = 0;
     if (!isLTR && horiz) {
       GetWidth(&frameWidth);
-      nsCOMPtr<nsIPresShell> shell = GetPresShell(PR_FALSE);
+      nsCOMPtr<nsIPresShell> shell = GetPresShell(false);
       if (!shell) {
         return NS_ERROR_UNEXPECTED;
       }
@@ -256,7 +256,7 @@ NS_IMETHODIMP nsScrollBoxObject::ScrollToElement(nsIDOMElement *child)
 {
     NS_ENSURE_ARG_POINTER(child);
 
-    nsCOMPtr<nsIPresShell> shell = GetPresShell(PR_FALSE);
+    nsCOMPtr<nsIPresShell> shell = GetPresShell(false);
     if (!shell) {
       return NS_ERROR_UNEXPECTED;
     }
@@ -310,7 +310,7 @@ NS_IMETHODIMP nsScrollBoxObject::EnsureElementIsVisible(nsIDOMElement *child)
 {
     NS_ENSURE_ARG_POINTER(child);
 
-    nsCOMPtr<nsIPresShell> shell = GetPresShell(PR_FALSE);
+    nsCOMPtr<nsIPresShell> shell = GetPresShell(false);
     if (!shell) {
       return NS_ERROR_UNEXPECTED;
     }

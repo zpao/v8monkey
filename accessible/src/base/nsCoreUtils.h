@@ -39,9 +39,7 @@
 #ifndef nsCoreUtils_h_
 #define nsCoreUtils_h_
 
-#include "nsAccessibilityAtoms.h"
 
-#include "nsIDOMDocumentXBL.h"
 #include "nsIDOMNode.h"
 #include "nsIContent.h"
 #include "nsIBoxObject.h"
@@ -66,7 +64,7 @@ public:
    * Return true if the given node has registered click, mousedown or mouseup
    * event listeners.
    */
-  static PRBool HasClickListener(nsIContent *aContent);
+  static bool HasClickListener(nsIContent *aContent);
 
   /**
    * Dispatch click event to XUL tree cell.
@@ -88,7 +86,7 @@ public:
    * @param  aPresShell  [in] the presshell for the given element
    * @param  aContent    [in] the element
    */
-  static PRBool DispatchMouseEvent(PRUint32 aEventType,
+  static bool DispatchMouseEvent(PRUint32 aEventType,
                                    nsIPresShell *aPresShell,
                                    nsIContent *aContent);
 
@@ -152,10 +150,10 @@ public:
    *                                   aPossibleAncestorNode
    * @param  aRootNode               [in, optional] the root node that search
    *                                   search should be performed within
-   * @return PR_TRUE                  if aPossibleAncestorNode is an ancestor of
+   * @return true                     if aPossibleAncestorNode is an ancestor of
    *                                   aPossibleDescendantNode
    */
-   static PRBool IsAncestorOf(nsINode *aPossibleAncestorNode,
+   static bool IsAncestorOf(nsINode *aPossibleAncestorNode,
                               nsINode *aPossibleDescendantNode,
                               nsINode *aRootNode = nsnull);
 
@@ -226,17 +224,22 @@ public:
   /**
    * Return true if the given document is root document.
    */
-  static PRBool IsRootDocument(nsIDocument *aDocument);
+  static bool IsRootDocument(nsIDocument *aDocument);
 
   /**
    * Return true if the given document is content document (not chrome).
    */
-  static PRBool IsContentDocument(nsIDocument *aDocument);
+  static bool IsContentDocument(nsIDocument *aDocument);
+
+  /**
+   * Return true if the given document node is for tab document accessible.
+   */
+  static bool IsTabDocument(nsIDocument* aDocumentNode);
 
   /**
    * Return true if the given document is an error page.
    */
-  static PRBool IsErrorPage(nsIDocument *aDocument);
+  static bool IsErrorPage(nsIDocument *aDocument);
 
   /**
    * Retrun true if the type of given frame equals to the given frame type.
@@ -244,15 +247,14 @@ public:
    * @param aFrame  the frame
    * @param aAtom   the frame type
    */
-  static PRBool IsCorrectFrameType(nsIFrame* aFrame, nsIAtom* aAtom);
+  static bool IsCorrectFrameType(nsIFrame* aFrame, nsIAtom* aAtom);
 
   /**
    * Return presShell for the document containing the given DOM node.
    */
   static nsIPresShell *GetPresShellFor(nsINode *aNode)
   {
-    nsIDocument *document = aNode->GetOwnerDoc();
-    return document ? document->GetShell() : nsnull;
+    return aNode->OwnerDoc()->GetShell();
   }
   static already_AddRefed<nsIWeakReference> GetWeakShellFor(nsINode *aNode)
   {
@@ -271,24 +273,24 @@ public:
    * Get the ID for an element, in some types of XML this may not be the ID attribute
    * @param aContent  Node to get the ID for
    * @param aID       Where to put ID string
-   * @return          PR_TRUE if there is an ID set for this node
+   * @return          true if there is an ID set for this node
    */
-  static PRBool GetID(nsIContent *aContent, nsAString& aID);
+  static bool GetID(nsIContent *aContent, nsAString& aID);
 
   /**
    * Convert attribute value of the given node to positive integer. If no
    * attribute or wrong value then false is returned.
    */
-  static PRBool GetUIntAttr(nsIContent *aContent, nsIAtom *aAttr,
+  static bool GetUIntAttr(nsIContent *aContent, nsIAtom *aAttr,
                             PRInt32 *aUInt);
 
   /**
    * Check if the given element is XLink.
    *
    * @param aContent  the given element
-   * @return          PR_TRUE if the given element is XLink
+   * @return          true if the given element is XLink
    */
-  static PRBool IsXLink(nsIContent *aContent);
+  static bool IsXLink(nsIContent *aContent);
 
   /**
    * Returns language for the given node.
@@ -357,16 +359,22 @@ public:
   /**
    * Return true if the given column is hidden (i.e. not sensible).
    */
-  static PRBool IsColumnHidden(nsITreeColumn *aColumn);
+  static bool IsColumnHidden(nsITreeColumn *aColumn);
 
   /**
    * Return true if the given node is table header element.
    */
-  static PRBool IsHTMLTableHeader(nsIContent *aContent)
+  static bool IsHTMLTableHeader(nsIContent *aContent)
   {
-    return aContent->NodeInfo()->Equals(nsAccessibilityAtoms::th) ||
-      aContent->HasAttr(kNameSpaceID_None, nsAccessibilityAtoms::scope);
+    return aContent->NodeInfo()->Equals(nsGkAtoms::th) ||
+      aContent->HasAttr(kNameSpaceID_None, nsGkAtoms::scope);
   }
+
+  /**
+   * Check the visibility across both parent content and chrome.
+   */
+  static bool CheckVisibilityInParentChain(nsIFrame* aFrame);
+
 };
 
 
@@ -382,46 +390,12 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMDOMSTRINGLIST
 
-  PRBool Add(const nsAString& aName) {
+  bool Add(const nsAString& aName) {
     return mNames.AppendElement(aName) != nsnull;
   }
 
 private:
   nsTArray<nsString> mNames;
-};
-
-/**
- * Used to iterate through IDs or elements pointed by IDRefs attribute. Note,
- * any method used to iterate through IDs or elements moves iterator to next
- * position.
- */
-class IDRefsIterator
-{
-public:
-  IDRefsIterator(nsIContent* aContent, nsIAtom* aIDRefsAttr);
-
-  /**
-   * Return next ID.
-   */
-  const nsDependentSubstring NextID();
-
-  /**
-   * Return next element.
-   */
-  nsIContent* NextElem();
-
-  /**
-   * Return the element with the given ID.
-   */
-  nsIContent* GetElem(const nsDependentSubstring& aID);
-
-private:
-  nsString mIDs;
-  nsAString::index_type mCurrIdx;
-
-  nsIDocument* mDocument;
-  nsCOMPtr<nsIDOMDocumentXBL> mXBLDocument;
-  nsCOMPtr<nsIDOMElement> mBindingParent;
 };
 
 #endif

@@ -66,7 +66,6 @@ XPIDLSRCS = \
   nsIDocShellTreeOwner.idl \
   nsIDocShellHistory.idl \
   nsIGlobalHistory2.idl \
-  nsIGlobalHistory3.idl \
   nsIMarkupDocumentViewer.idl \
   nsIScrollable.idl \
   nsITextScroll.idl \
@@ -118,6 +117,8 @@ include $(topsrcdir)/config/rules.mk
 
 LOCAL_INCLUDES += \
   -I$(srcdir)/../shistory/src \
+  -I$(topsrcdir)/dom/base \
   -I$(topsrcdir)/layout/base \
-  -I$(topsrcdir)/js/src/xpconnect/src \
+  -I$(topsrcdir)/js/xpconnect/src \
+  -I$(topsrcdir)/xpcom/ds \
   $(NULL)

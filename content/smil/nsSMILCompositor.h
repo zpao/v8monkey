@@ -61,21 +61,21 @@ public:
 
   explicit nsSMILCompositor(KeyTypePointer aKey)
    : mKey(*aKey),
-     mForceCompositing(PR_FALSE)
+     mForceCompositing(false)
   { }
   nsSMILCompositor(const nsSMILCompositor& toCopy)
     : mKey(toCopy.mKey),
       mAnimationFunctions(toCopy.mAnimationFunctions),
-      mForceCompositing(PR_FALSE)
+      mForceCompositing(false)
   { }
   ~nsSMILCompositor() { }
 
   // PLDHashEntryHdr methods
   KeyTypeRef GetKey() const { return mKey; }
-  PRBool KeyEquals(KeyTypePointer aKey) const;
+  bool KeyEquals(KeyTypePointer aKey) const;
   static KeyTypePointer KeyToPointer(KeyTypeRef aKey) { return &aKey; }
   static PLDHashNumber HashKey(KeyTypePointer aKey);
-  enum { ALLOW_MEMMOVE = PR_FALSE };
+  enum { ALLOW_MEMMOVE = false };
 
   // Adds the given animation function to this Compositor's list of functions
   void AddAnimationFunction(nsSMILAnimationFunction* aFunc);
@@ -93,7 +93,7 @@ public:
 
   // Toggles a bit that will force us to composite (bypassing early-return
   // optimizations) when we hit ComposeAttribute.
-  void ToggleForceCompositing() { mForceCompositing = PR_TRUE; }
+  void ToggleForceCompositing() { mForceCompositing = true; }
 
   // Transfers |aOther|'s mCachedBaseValue to |this|
   void StealCachedBaseValue(nsSMILCompositor* aOther) {
@@ -126,9 +126,9 @@ public:
 
   // Member data for detecting when we need to force-recompose
   // ---------------------------------------------------------
-  // Flag for tracking whether we need to compose. Initialized to PR_FALSE, but
-  // gets flipped to PR_TRUE if we detect that something has changed.
-  PRPackedBool mForceCompositing;
+  // Flag for tracking whether we need to compose. Initialized to false, but
+  // gets flipped to true if we detect that something has changed.
+  bool mForceCompositing;
 
   // Cached base value, so we can detect & force-recompose when it changes
   // from one sample to the next.  (nsSMILAnimationController copies this

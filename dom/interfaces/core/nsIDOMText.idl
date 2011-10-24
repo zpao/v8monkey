@@ -44,12 +44,20 @@
  * the textual content (termed character data in XML) of an Element or Attr.
  *
  * For more information on this interface please see 
- * http://www.w3.org/TR/DOM-Level-2-Core/
+ * http://dvcs.w3.org/hg/domcore/raw-file/tip/Overview.html
  */
 
-[scriptable, uuid(48642156-d686-46b7-8e96-35edd5b2afa8)]
+[scriptable, uuid(437ed60c-febd-4bd0-892f-cf358adc3c96)]
 interface nsIDOMText : nsIDOMCharacterData
 {
   nsIDOMText                      splitText(in unsigned long offset)
                                        raises(DOMException);
+
+  /**
+   * The concatenation of all logically adjacent text nodes with this text
+   * node, where "logically adjacent" consists of all text nodes which can be
+   * reached by traversing the document tree in either direction without
+   * passing an element, comment, or processing-instruction boundary.  
+   */
+  readonly attribute DOMString wholeText;
 };

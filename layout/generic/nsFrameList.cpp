@@ -50,16 +50,12 @@
 const nsFrameList* nsFrameList::sEmptyList;
 
 /* static */
-nsresult
+void
 nsFrameList::Init()
 {
   NS_PRECONDITION(!sEmptyList, "Shouldn't be allocated");
 
   sEmptyList = new nsFrameList();
-  if (!sEmptyList)
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  return NS_OK;
 }
 
 void
@@ -138,7 +134,7 @@ nsFrameList::RemoveFrame(nsIFrame* aFrame)
   }
 }
 
-PRBool
+bool
 nsFrameList::RemoveFrameIfPresent(nsIFrame* aFrame)
 {
   NS_PRECONDITION(aFrame, "null ptr");
@@ -146,10 +142,10 @@ nsFrameList::RemoveFrameIfPresent(nsIFrame* aFrame)
   for (Enumerator e(*this); !e.AtEnd(); e.Next()) {
     if (e.get() == aFrame) {
       RemoveFrame(aFrame);
-      return PR_TRUE;
+      return true;
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
 nsFrameList
@@ -193,16 +189,16 @@ nsFrameList::DestroyFrame(nsIFrame* aFrame)
   aFrame->Destroy();
 }
 
-PRBool
+bool
 nsFrameList::DestroyFrameIfPresent(nsIFrame* aFrame)
 {
   NS_PRECONDITION(aFrame, "null ptr");
 
   if (RemoveFrameIfPresent(aFrame)) {
     aFrame->Destroy();
-    return PR_TRUE;
+    return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 nsFrameList::Slice
@@ -351,7 +347,7 @@ nsFrameList::IndexOf(nsIFrame* aFrame) const
   return -1;
 }
 
-PRBool
+bool
 nsFrameList::ContainsFrame(const nsIFrame* aFrame) const
 {
   NS_PRECONDITION(aFrame, "null ptr");
@@ -359,11 +355,11 @@ nsFrameList::ContainsFrame(const nsIFrame* aFrame) const
   nsIFrame* frame = mFirstChild;
   while (frame) {
     if (frame == aFrame) {
-      return PR_TRUE;
+      return true;
     }
     frame = frame->GetNextSibling();
   }
-  return PR_FALSE;
+  return false;
 }
 
 PRInt32
@@ -402,17 +398,17 @@ static int CompareByContentOrder(const nsIFrame* aF1, const nsIFrame* aF2)
     }
   }
 
-  NS_ASSERTION(PR_FALSE, "Frames for same content but not in relative flow order");
+  NS_ASSERTION(false, "Frames for same content but not in relative flow order");
   return 0;
 }
 
 class CompareByContentOrderComparator
 {
   public:
-  PRBool Equals(const nsIFrame* aA, const nsIFrame* aB) const {
+  bool Equals(const nsIFrame* aA, const nsIFrame* aB) const {
     return aA == aB;
   }
-  PRBool LessThan(const nsIFrame* aA, const nsIFrame* aB) const {
+  bool LessThan(const nsIFrame* aA, const nsIFrame* aB) const {
     return CompareByContentOrder(aA, aB) < 0;
   }
 };
@@ -452,7 +448,6 @@ nsFrameList::GetPrevVisualFor(nsIFrame* aFrame) const
     return aFrame ? aFrame->GetPrevSibling() : LastChild();
 
   nsBidiLevel baseLevel = nsBidiPresUtils::GetFrameBaseLevel(mFirstChild);  
-  nsBidiPresUtils* bidiUtils = mFirstChild->PresContext()->GetBidiUtils();
 
   nsAutoLineIterator iter = parent->GetLineIterator();
   if (!iter) { 
@@ -460,9 +455,9 @@ nsFrameList::GetPrevVisualFor(nsIFrame* aFrame) const
     if (parent->GetType() == nsGkAtoms::lineFrame) {
       // Line frames are not bidi-splittable, so need to consider bidi reordering
       if (baseLevel == NSBIDI_LTR) {
-        return bidiUtils->GetFrameToLeftOf(aFrame, mFirstChild, -1);
+        return nsBidiPresUtils::GetFrameToLeftOf(aFrame, mFirstChild, -1);
       } else { // RTL
-        return bidiUtils->GetFrameToRightOf(aFrame, mFirstChild, -1);
+        return nsBidiPresUtils::GetFrameToRightOf(aFrame, mFirstChild, -1);
       }
     } else {
       // Just get the next or prev sibling, depending on block and frame direction.
@@ -497,9 +492,9 @@ nsFrameList::GetPrevVisualFor(nsIFrame* aFrame) const
     iter->GetLine(thisLine, &firstFrameOnLine, &numFramesOnLine, lineBounds, &lineFlags);
 
     if (baseLevel == NSBIDI_LTR) {
-      frame = bidiUtils->GetFrameToLeftOf(aFrame, firstFrameOnLine, numFramesOnLine);
+      frame = nsBidiPresUtils::GetFrameToLeftOf(aFrame, firstFrameOnLine, numFramesOnLine);
     } else { // RTL
-      frame = bidiUtils->GetFrameToRightOf(aFrame, firstFrameOnLine, numFramesOnLine);
+      frame = nsBidiPresUtils::GetFrameToRightOf(aFrame, firstFrameOnLine, numFramesOnLine);
     }
   }
 
@@ -508,9 +503,9 @@ nsFrameList::GetPrevVisualFor(nsIFrame* aFrame) const
     iter->GetLine(thisLine - 1, &firstFrameOnLine, &numFramesOnLine, lineBounds, &lineFlags);
 
     if (baseLevel == NSBIDI_LTR) {
-      frame = bidiUtils->GetFrameToLeftOf(nsnull, firstFrameOnLine, numFramesOnLine);
+      frame = nsBidiPresUtils::GetFrameToLeftOf(nsnull, firstFrameOnLine, numFramesOnLine);
     } else { // RTL
-      frame = bidiUtils->GetFrameToRightOf(nsnull, firstFrameOnLine, numFramesOnLine);
+      frame = nsBidiPresUtils::GetFrameToRightOf(nsnull, firstFrameOnLine, numFramesOnLine);
     }
   }
   return frame;
@@ -527,7 +522,6 @@ nsFrameList::GetNextVisualFor(nsIFrame* aFrame) const
     return aFrame ? aFrame->GetPrevSibling() : mFirstChild;
 
   nsBidiLevel baseLevel = nsBidiPresUtils::GetFrameBaseLevel(mFirstChild);
-  nsBidiPresUtils* bidiUtils = mFirstChild->PresContext()->GetBidiUtils();
   
   nsAutoLineIterator iter = parent->GetLineIterator();
   if (!iter) { 
@@ -535,9 +529,9 @@ nsFrameList::GetNextVisualFor(nsIFrame* aFrame) const
     if (parent->GetType() == nsGkAtoms::lineFrame) {
       // Line frames are not bidi-splittable, so need to consider bidi reordering
       if (baseLevel == NSBIDI_LTR) {
-        return bidiUtils->GetFrameToRightOf(aFrame, mFirstChild, -1);
+        return nsBidiPresUtils::GetFrameToRightOf(aFrame, mFirstChild, -1);
       } else { // RTL
-        return bidiUtils->GetFrameToLeftOf(aFrame, mFirstChild, -1);
+        return nsBidiPresUtils::GetFrameToLeftOf(aFrame, mFirstChild, -1);
       }
     } else {
       // Just get the next or prev sibling, depending on block and frame direction.
@@ -572,9 +566,9 @@ nsFrameList::GetNextVisualFor(nsIFrame* aFrame) const
     iter->GetLine(thisLine, &firstFrameOnLine, &numFramesOnLine, lineBounds, &lineFlags);
     
     if (baseLevel == NSBIDI_LTR) {
-      frame = bidiUtils->GetFrameToRightOf(aFrame, firstFrameOnLine, numFramesOnLine);
+      frame = nsBidiPresUtils::GetFrameToRightOf(aFrame, firstFrameOnLine, numFramesOnLine);
     } else { // RTL
-      frame = bidiUtils->GetFrameToLeftOf(aFrame, firstFrameOnLine, numFramesOnLine);
+      frame = nsBidiPresUtils::GetFrameToLeftOf(aFrame, firstFrameOnLine, numFramesOnLine);
     }
   }
   
@@ -584,9 +578,9 @@ nsFrameList::GetNextVisualFor(nsIFrame* aFrame) const
     iter->GetLine(thisLine + 1, &firstFrameOnLine, &numFramesOnLine, lineBounds, &lineFlags);
     
     if (baseLevel == NSBIDI_LTR) {
-      frame = bidiUtils->GetFrameToRightOf(nsnull, firstFrameOnLine, numFramesOnLine);
+      frame = nsBidiPresUtils::GetFrameToRightOf(nsnull, firstFrameOnLine, numFramesOnLine);
     } else { // RTL
-      frame = bidiUtils->GetFrameToLeftOf(nsnull, firstFrameOnLine, numFramesOnLine);
+      frame = nsBidiPresUtils::GetFrameToLeftOf(nsnull, firstFrameOnLine, numFramesOnLine);
     }
   }
   return frame;

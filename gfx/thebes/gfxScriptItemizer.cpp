@@ -241,13 +241,13 @@ gfxScriptItemizer::SetText(const PRUnichar *src, PRUint32 length)
     reset();
 }
 
-PRBool
+bool
 gfxScriptItemizer::Next(PRUint32& aRunStart, PRUint32& aRunLimit,
                         PRInt32& aRunScript)
 {
     /* if we've fallen off the end of the text, we're done */
     if (scriptLimit >= textLength) {
-        return PR_FALSE;
+        return false;
     }
 
     SYNC_FIXUP();
@@ -341,5 +341,5 @@ gfxScriptItemizer::Next(PRUint32& aRunStart, PRUint32& aRunLimit,
     aRunLimit = scriptLimit;
     aRunScript = scriptCode;
 
-    return PR_TRUE;
+    return true;
 }

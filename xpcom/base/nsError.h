@@ -327,7 +327,7 @@ inline int NS_SUCCEEDED(nsresult _nsresult) {
   *      Do not depend on this function. It will be going away!
   ***********************************************************************
   */
-extern NS_COM nsresult
+extern nsresult
 NS_ErrorAccordingToNSPR();
 
 
@@ -336,8 +336,8 @@ NS_ErrorAccordingToNSPR();
 #pragma warning(disable: 4275) /* non dll-interface class 'nsISupports' used as base for dll-interface class 'nsIRDFNode' */
 #endif
 
-#ifdef XP_WIN
-extern NS_COM PRBool sXPCOMHasLoadedNewDLLs;
+#if defined(XP_WIN) && defined(__cplusplus)
+extern bool sXPCOMHasLoadedNewDLLs;
 NS_EXPORT void NS_SetHasLoadedNewDLLs();
 #endif
 

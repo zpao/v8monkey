@@ -54,6 +54,7 @@ nsContentErrors.h \
 nsContentPolicyUtils.h \
 nsContentUtils.h \
 nsIDocument.h \
+nsDeprecatedOperationList.h \
 nsIDocumentObserver.h \
 nsIMutationObserver.h \
 nsIMutationObserver2.h \
@@ -76,6 +77,7 @@ nsContentCreatorFunctions.h \
 nsDOMFile.h \
 nsLineBreaker.h \
 nsReferencedElement.h \
+nsTreeSanitizer.h \
 nsXMLNameSpaceMap.h \
 nsDOMEventTargetWrapperCache.h \
 $(NULL)
@@ -106,24 +108,20 @@ XPIDLSRCS	= \
 		nsIDOMFormData.idl \
 		nsIDOMParser.idl \
 		nsIDOMSerializer.idl \
-		nsISelection2.idl \
-		nsISelection3.idl \
 		nsISelectionController.idl  \
 		nsISelectionDisplay.idl  \
 		nsISelectionListener.idl  \
 		nsISelectionPrivate.idl  \
 		nsIScriptLoaderObserver.idl  \
-		nsISyncLoadDOMService.idl  \
 		nsIDroppedLinkHandler.idl \
-		nsIScriptEventHandler.idl \
-		nsIScriptEventManager.idl \
 		nsIImageLoadingContent.idl \
 		nsIObjectLoadingContent.idl \
 		nsIFrameLoader.idl \
 		nsIXMLHttpRequest.idl \
 		nsIContentSecurityPolicy.idl \
 		nsIFrameMessageManager.idl \
-		nsIWebSocket.idl \
+		nsIMozWebSocket.idl \
+		nsIEventSource.idl \
 		$(NULL)
 
 include $(topsrcdir)/config/rules.mk

@@ -47,7 +47,7 @@
 // note that aEditor is not refcounted
 SetDocTitleTxn::SetDocTitleTxn()
   : EditTxn()
-, mIsTransient(PR_FALSE)
+, mIsTransient(false)
 {
 }
 
@@ -95,7 +95,7 @@ nsresult SetDocTitleTxn::SetDomTitle(const nsAString& aTitle)
 
   // First assume we will NOT really do anything
   // (transaction will not be pushed on stack)
-  mIsTransient = PR_TRUE;
+  mIsTransient = true;
 
   nsCOMPtr<nsIDOMNode>titleNode;
   if(titleList)
@@ -129,7 +129,7 @@ nsresult SetDocTitleTxn::SetDomTitle(const nsAString& aTitle)
   }
 
   // We didn't return above, thus we really will be changing the title
-  mIsTransient = PR_FALSE;
+  mIsTransient = false;
 
   // Get the <HEAD> node, create a <TITLE> and insert it under the HEAD
   nsCOMPtr<nsIDOMNodeList> headList;
@@ -141,7 +141,7 @@ nsresult SetDocTitleTxn::SetDomTitle(const nsAString& aTitle)
   headList->Item(0, getter_AddRefs(headNode));
   NS_ENSURE_TRUE(headNode, NS_ERROR_FAILURE);
 
-  PRBool   newTitleNode = PR_FALSE;
+  bool     newTitleNode = false;
   PRUint32 newTitleIndex = 0;
 
   if (!titleNode)
@@ -153,7 +153,7 @@ nsresult SetDocTitleTxn::SetDomTitle(const nsAString& aTitle)
     NS_ENSURE_TRUE(titleElement, NS_ERROR_FAILURE);
 
     titleNode = do_QueryInterface(titleElement);
-    newTitleNode = PR_TRUE;
+    newTitleNode = true;
 
     // Get index so we append new title node 
     // after all existing HEAD children
@@ -203,7 +203,7 @@ NS_IMETHODIMP SetDocTitleTxn::GetTxnDescription(nsAString& aString)
   return NS_OK;
 }
 
-NS_IMETHODIMP SetDocTitleTxn::GetIsTransient(PRBool *aIsTransient)
+NS_IMETHODIMP SetDocTitleTxn::GetIsTransient(bool *aIsTransient)
 {
   NS_ENSURE_TRUE(aIsTransient, NS_ERROR_NULL_POINTER);  
   *aIsTransient = mIsTransient;

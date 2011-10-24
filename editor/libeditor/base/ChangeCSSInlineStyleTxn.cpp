@@ -65,11 +65,11 @@ NS_INTERFACE_MAP_END_INHERITING(EditTxn)
 
 // answers true if aValue is in the string list of white-space separated values aValueList
 // a case-sensitive search is performed if aCaseSensitive is true
-PRBool
-ChangeCSSInlineStyleTxn::ValueIncludes(const nsAString &aValueList, const nsAString &aValue, PRBool aCaseSensitive)
+bool
+ChangeCSSInlineStyleTxn::ValueIncludes(const nsAString &aValueList, const nsAString &aValue, bool aCaseSensitive)
 {
   nsAutoString  valueList(aValueList);
-  PRBool result = PR_FALSE;
+  bool result = false;
 
   valueList.Append(kNullCh);  // put an extra null at the end
 
@@ -83,7 +83,7 @@ ChangeCSSInlineStyleTxn::ValueIncludes(const nsAString &aValueList, const nsAStr
     }
     end = start;
 
-    while ((kNullCh != *end) && (PR_FALSE == nsCRT::IsAsciiSpace(*end))) { // look for space or end
+    while ((kNullCh != *end) && (false == nsCRT::IsAsciiSpace(*end))) { // look for space or end
       end++;
     }
     *end = kNullCh; // end string here
@@ -91,14 +91,14 @@ ChangeCSSInlineStyleTxn::ValueIncludes(const nsAString &aValueList, const nsAStr
     if (start < end) {
       if (aCaseSensitive) {
         if (!nsCRT::strcmp(value, start)) {
-          result = PR_TRUE;
+          result = true;
           break;
         }
       }
       else {
         if (nsDependentString(value).Equals(nsDependentString(start),
                                             nsCaseInsensitiveStringComparator())) {
-          result = PR_TRUE;
+          result = true;
           break;
         }
       }
@@ -126,7 +126,7 @@ ChangeCSSInlineStyleTxn::RemoveValueFromListOfValues(nsAString & aValues, const 
     }
     end = start;
 
-    while ((kNullCh != *end) && (PR_FALSE == nsCRT::IsAsciiSpace(*end))) { // look for space or end
+    while ((kNullCh != *end) && (false == nsCRT::IsAsciiSpace(*end))) { // look for space or end
       end++;
     }
     *end = kNullCh; // end string here
@@ -152,7 +152,7 @@ NS_IMETHODIMP ChangeCSSInlineStyleTxn::Init(nsIEditor      *aEditor,
                                             nsIDOMElement  *aElement,
                                             nsIAtom        *aProperty,
                                             const nsAString& aValue,
-                                            PRBool aRemoveProperty)
+                                            bool aRemoveProperty)
 {
   NS_ASSERTION(aEditor && aElement, "bad arg");
   if (!aEditor || !aElement) { return NS_ERROR_NULL_POINTER; }
@@ -163,8 +163,8 @@ NS_IMETHODIMP ChangeCSSInlineStyleTxn::Init(nsIEditor      *aEditor,
   NS_ADDREF(mProperty);
   mValue.Assign(aValue);
   mRemoveProperty = aRemoveProperty;
-  mUndoAttributeWasSet = PR_FALSE;
-  mRedoAttributeWasSet = PR_FALSE;
+  mUndoAttributeWasSet = false;
+  mRedoAttributeWasSet = false;
   mUndoValue.Truncate();
   mRedoValue.Truncate();
   return NS_OK;
@@ -197,7 +197,7 @@ NS_IMETHODIMP ChangeCSSInlineStyleTxn::DoTransaction(void)
 
   // does this property accept more than 1 value ?
   // we need to know that because of bug 62682
-  PRBool multiple = AcceptsMoreThanOneValue(mProperty);
+  bool multiple = AcceptsMoreThanOneValue(mProperty);
   
   if (mRemoveProperty) {
     nsAutoString returnString;
@@ -255,12 +255,12 @@ NS_IMETHODIMP ChangeCSSInlineStyleTxn::DoTransaction(void)
     NS_ENSURE_SUCCESS(result, result);     
   }
   else
-    mRedoAttributeWasSet = PR_TRUE;
+    mRedoAttributeWasSet = true;
 
   return cssDecl->GetPropertyValue(propertyNameString, mRedoValue);
 }
 
-nsresult ChangeCSSInlineStyleTxn::SetStyle(PRBool aAttributeWasSet,
+nsresult ChangeCSSInlineStyleTxn::SetStyle(bool aAttributeWasSet,
                                            nsAString & aValue)
 {
   NS_ASSERTION(mEditor && mElement, "bad state");
@@ -323,7 +323,7 @@ NS_IMETHODIMP ChangeCSSInlineStyleTxn::GetTxnDescription(nsAString& aString)
 }
 
 // answers true if the CSS property accepts more than one value
-PRBool
+bool
 ChangeCSSInlineStyleTxn::AcceptsMoreThanOneValue(nsIAtom *aCSSProperty)
 {
   return aCSSProperty == nsGkAtoms::text_decoration;
@@ -338,7 +338,7 @@ ChangeCSSInlineStyleTxn::AddValueToMultivalueProperty(nsAString & aValues, const
     // the list of values is empty of the value is 'none'
     aValues.Assign(aNewValue);
   }
-  else if (!ValueIncludes(aValues, aNewValue, PR_FALSE)) {
+  else if (!ValueIncludes(aValues, aNewValue, false)) {
     // we already have another value but not this one; add it
     aValues.Append(PRUnichar(' '));
     aValues.Append(aNewValue);

@@ -89,7 +89,7 @@ public:
   // added.
   virtual void SetLateness(PRIntervalTime aHowLate);
 
-  nsresult Init(nsGlobalWindow *aWindow, PRBool *aIsInterval,
+  nsresult Init(nsGlobalWindow *aWindow, bool *aIsInterval,
                 PRInt32 *aInterval);
 
   void ReleaseJSObjects();
@@ -128,8 +128,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsJSScriptTimeoutHandler)
       foo.AppendLiteral("]");
     }
     else if (tmp->mFunObj) {
-      JSFunction* fun = (JSFunction*)tmp->mFunObj->getPrivate();
-      if (fun->atom) {
+      JSFunction* fun = JS_GetObjectFunction(tmp->mFunObj);
+      if (JS_GetFunctionId(fun)) {
         JSFlatString *funId = JS_ASSERT_STRING_IS_FLAT(JS_GetFunctionId(fun));
         size_t size = 1 + JS_PutEscapedFlatString(NULL, 0, funId, 0);
         char *name = new char[size];
@@ -142,13 +142,12 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsJSScriptTimeoutHandler)
         }
       }
     }
-    cb.DescribeNode(RefCounted, tmp->mRefCnt.get(),
-                    sizeof(nsJSScriptTimeoutHandler), foo.get());
+    cb.DescribeRefCountedNode(tmp->mRefCnt.get(),
+                              sizeof(nsJSScriptTimeoutHandler), foo.get());
   }
   else {
-    cb.DescribeNode(RefCounted, tmp->mRefCnt.get(),
-                    sizeof(nsJSScriptTimeoutHandler),
-                    "nsJSScriptTimeoutHandler");
+    NS_IMPL_CYCLE_COLLECTION_DESCRIBE(nsJSScriptTimeoutHandler,
+                                      tmp->mRefCnt.get())
   }
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mContext)
@@ -199,7 +198,7 @@ nsJSScriptTimeoutHandler::ReleaseJSObjects()
 }
 
 nsresult
-nsJSScriptTimeoutHandler::Init(nsGlobalWindow *aWindow, PRBool *aIsInterval,
+nsJSScriptTimeoutHandler::Init(nsGlobalWindow *aWindow, bool *aIsInterval,
                                PRInt32 *aInterval)
 {
   mContext = aWindow->GetContextInternal();
@@ -251,7 +250,7 @@ nsJSScriptTimeoutHandler::Init(nsGlobalWindow *aWindow, PRBool *aIsInterval,
   if (argc == 1) {
     // If no interval was specified, treat this like a timeout, to avoid
     // setting an interval of 0 milliseconds.
-    *aIsInterval = PR_FALSE;
+    *aIsInterval = false;
   }
 
   switch (::JS_TypeOfValue(cx, argv[0])) {
@@ -293,7 +292,7 @@ nsJSScriptTimeoutHandler::Init(nsGlobalWindow *aWindow, PRBool *aIsInterval,
       NS_ENSURE_SUCCESS(rv, rv);
 
       if (csp) {
-        PRBool allowsEval;
+        bool allowsEval;
         // this call will send violation reports as warranted (and return true if
         // reportOnly is set).
         rv = csp->GetAllowsEval(&allowsEval);
@@ -376,7 +375,7 @@ nsJSScriptTimeoutHandler::GetHandlerText()
 }
 
 nsresult NS_CreateJSTimeoutHandler(nsGlobalWindow *aWindow,
-                                   PRBool *aIsInterval,
+                                   bool *aIsInterval,
                                    PRInt32 *aInterval,
                                    nsIScriptTimeoutHandler **aRet)
 {

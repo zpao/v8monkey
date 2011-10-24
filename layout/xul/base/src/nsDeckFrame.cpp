@@ -70,7 +70,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsDeckFrame)
 nsDeckFrame::nsDeckFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
   : nsBoxFrame(aPresShell, aContext), mIndex(0)
 {
-  nsCOMPtr<nsIBoxLayout> layout;
+  nsCOMPtr<nsBoxLayout> layout;
   NS_NewStackLayout(aPresShell, layout);
   SetLayoutManager(layout);
 }
@@ -114,33 +114,33 @@ static void
 CreateViewsForFrames(const nsFrameList& aFrames)
 {
   for (nsFrameList::Enumerator f(aFrames); !f.AtEnd(); f.Next()) {
-    nsContainerFrame::CreateViewForFrame(f.get(), PR_TRUE);
+    nsContainerFrame::CreateViewForFrame(f.get(), true);
   }
 }
 
 NS_IMETHODIMP
-nsDeckFrame::SetInitialChildList(nsIAtom*        aListName,
+nsDeckFrame::SetInitialChildList(ChildListID     aListID,
                                  nsFrameList&    aChildList)
 {
   CreateViewsForFrames(aChildList);
-  return nsBoxFrame::SetInitialChildList(aListName, aChildList);
+  return nsBoxFrame::SetInitialChildList(aListID, aChildList);
 }
 
 NS_IMETHODIMP
-nsDeckFrame::AppendFrames(nsIAtom*        aListName,
+nsDeckFrame::AppendFrames(ChildListID     aListID,
                           nsFrameList&    aFrameList)
 {
   CreateViewsForFrames(aFrameList);
-  return nsBoxFrame::AppendFrames(aListName, aFrameList);
+  return nsBoxFrame::AppendFrames(aListID, aFrameList);
 }
 
 NS_IMETHODIMP
-nsDeckFrame::InsertFrames(nsIAtom*        aListName,
+nsDeckFrame::InsertFrames(ChildListID     aListID,
                           nsIFrame*       aPrevFrame,
                           nsFrameList&    aFrameList)
 {
   CreateViewsForFrames(aFrameList);
-  return nsBoxFrame::InsertFrames(aListName, aPrevFrame, aFrameList);
+  return nsBoxFrame::InsertFrames(aListID, aPrevFrame, aFrameList);
 }
 
 void
@@ -177,8 +177,7 @@ nsDeckFrame::IndexChanged(nsPresContext* aPresContext)
     return;
 
   // redraw
-  nsBoxLayoutState state(aPresContext);
-  Redraw(state);
+  InvalidateOverflowRect();
 
   // hide the currently showing box
   nsIBox* currentBox = GetSelectedBox();

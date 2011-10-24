@@ -52,7 +52,7 @@
 #include "nsThreadUtils.h"
 #include "mozilla/Services.h"
 
-#include "IDBFactory.h"
+#include "IndexedDatabaseManager.h"
 
 #define PERMISSION_INDEXEDDB_UNLIMITED "indexedDB-unlimited"
 
@@ -202,8 +202,7 @@ CheckQuotaHelper::Run()
     }
   }
   else if (mPromptResult == nsIPermissionManager::UNKNOWN_ACTION) {
-    PRUint32 quota = IDBFactory::GetIndexedDBQuota();
-    NS_ASSERTION(quota, "Shouldn't get here if quota is disabled!");
+    PRUint32 quota = IndexedDatabaseManager::GetIndexedDBQuotaMB();
 
     nsString quotaString;
     quotaString.AppendInt(quota);
@@ -213,7 +212,7 @@ CheckQuotaHelper::Run()
 
     // We have to watch to make sure that the window doesn't go away without
     // responding to us. Otherwise our database threads will hang.
-    rv = obs->AddObserver(this, DOM_WINDOW_DESTROYED_TOPIC, PR_FALSE);
+    rv = obs->AddObserver(this, DOM_WINDOW_DESTROYED_TOPIC, false);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = obs->NotifyObservers(static_cast<nsIRunnable*>(this),

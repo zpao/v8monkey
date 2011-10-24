@@ -44,6 +44,7 @@
 #include <windows.h>
 #endif
 
+#include "nsPluginInstanceOwner.h"
 #include "nsIObjectFrame.h"
 #include "nsFrame.h"
 #include "nsRegion.h"
@@ -56,12 +57,9 @@
 class nsIAccessible;
 #endif
 
-class nsPluginInstanceOwner;
 class nsPluginHost;
-class nsIPluginInstance;
 class nsPresContext;
 class nsDisplayPlugin;
-class nsIDOMElement;
 class nsIOSurface;
 class PluginBackgroundSink;
 
@@ -110,12 +108,12 @@ public:
 
   virtual nsIAtom* GetType() const;
 
-  virtual PRBool IsFrameOfType(PRUint32 aFlags) const
+  virtual bool IsFrameOfType(PRUint32 aFlags) const
   {
     return nsObjectFrameSuper::IsFrameOfType(aFlags & ~(nsIFrame::eReplaced));
   }
 
-  virtual PRBool NeedsView() { return PR_TRUE; }
+  virtual bool NeedsView() { return true; }
 
 #ifdef DEBUG
   NS_IMETHOD GetFrameName(nsAString& aResult) const;
@@ -125,11 +123,12 @@ public:
 
   virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext);
 
-  NS_IMETHOD GetPluginInstance(nsIPluginInstance*& aPluginInstance);
+  NS_METHOD GetPluginInstance(nsNPAPIPluginInstance** aPluginInstance);
   virtual nsresult Instantiate(nsIChannel* aChannel, nsIStreamListener** aStreamListener);
   virtual nsresult Instantiate(const char* aMimeType, nsIURI* aURI);
   virtual void TryNotifyContentObjectWrapper();
   virtual void StopPlugin();
+  virtual void SetIsDocumentActive(bool aIsActive);
 
   /*
    * Stop a plugin instance. If aDelayedStop is true, the plugin will
@@ -137,7 +136,7 @@ public:
    * while destroying the frame tree). Delayed stopping is only
    * implemented on Win32 for now.
    */
-  void StopPluginInternal(PRBool aDelayedStop);
+  void StopPluginInternal(bool aDelayedStop);
 
   NS_IMETHOD GetCursor(const nsPoint& aPoint, nsIFrame::Cursor& aCursor);
 
@@ -164,14 +163,14 @@ public:
 #endif
 
   //local methods
-  nsresult CreateWidget(nscoord aWidth, nscoord aHeight, PRBool aViewOnly);
+  nsresult CreateWidget(nscoord aWidth, nscoord aHeight, bool aViewOnly);
 
   // for a given aRoot, this walks the frame tree looking for the next outFrame
   static nsIObjectFrame* GetNextObjectFrame(nsPresContext* aPresContext,
                                             nsIFrame* aRoot);
 
   // nsIReflowCallback
-  virtual PRBool ReflowFinished();
+  virtual bool ReflowFinished();
   virtual void ReflowCallbackCanceled();
 
   void UpdateImageLayer(ImageContainer* aContainer, const gfxRect& aRect);
@@ -233,19 +232,19 @@ protected:
   /**
    * Sets up the plugin window and calls SetWindow on the plugin.
    */
-  nsresult CallSetWindow(PRBool aCheckIsHidden = PR_TRUE);
+  nsresult CallSetWindow(bool aCheckIsHidden = true);
 
-  PRBool IsFocusable(PRInt32 *aTabIndex = nsnull, PRBool aWithMouse = PR_FALSE);
+  bool IsFocusable(PRInt32 *aTabIndex = nsnull, bool aWithMouse = false);
 
   // check attributes and optionally CSS to see if we should display anything
-  PRBool IsHidden(PRBool aCheckVisibilityStyle = PR_TRUE) const;
+  bool IsHidden(bool aCheckVisibilityStyle = true) const;
 
-  PRBool IsOpaque() const;
-  PRBool IsTransparentMode() const;
+  bool IsOpaque() const;
+  bool IsTransparentMode() const;
 
   void NotifyContentObjectWrapper();
 
-  nsIntPoint GetWindowOriginInPixels(PRBool aWindowless);
+  nsIntPoint GetWindowOriginInPixels(bool aWindowless);
 
   static void PaintPrintPlugin(nsIFrame* aFrame,
                                nsRenderingContext* aRenderingContext,
@@ -274,10 +273,6 @@ protected:
   void ComputeWidgetGeometry(const nsRegion& aRegion,
                              const nsPoint& aPluginOrigin,
                              nsTArray<nsIWidget::Configuration>* aConfigurations);
-
-  nsresult SetAbsoluteScreenPosition(nsIDOMElement* element,
-                                     nsIDOMClientRect* position,
-                                     nsIDOMClientRect* clip);
 
   void NotifyPluginReflowObservers();
 
@@ -310,9 +305,9 @@ private:
   // For assertions that make it easier to determine if a crash is due
   // to the underlying problem described in bug 136927, and to prevent
   // reentry into instantiation.
-  PRBool mPreventInstantiation;
+  bool mPreventInstantiation;
 
-  PRPackedBool mReflowCallbackPosted;
+  bool mReflowCallbackPosted;
 
   // A reference to the ImageContainer which contains the current frame
   // of plugin to display.
@@ -334,13 +329,12 @@ public:
 
   virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder);
   virtual nsRegion GetOpaqueRegion(nsDisplayListBuilder* aBuilder,
-                                   PRBool* aForceTransparentSurface = nsnull);
+                                   bool* aForceTransparentSurface = nsnull);
   virtual void Paint(nsDisplayListBuilder* aBuilder,
                      nsRenderingContext* aCtx);
-  virtual PRBool ComputeVisibility(nsDisplayListBuilder* aBuilder,
+  virtual bool ComputeVisibility(nsDisplayListBuilder* aBuilder,
                                    nsRegion* aVisibleRegion,
-                                   const nsRect& aAllowVisibleRegionExpansion,
-                                   PRBool& aContainsRootContentDocBG);
+                                   const nsRect& aAllowVisibleRegionExpansion);
 
   NS_DISPLAY_DECL_NAME("Plugin", TYPE_PLUGIN)
 
@@ -355,7 +349,8 @@ public:
                               nsTArray<nsIWidget::Configuration>* aConfigurations);
 
   virtual already_AddRefed<Layer> BuildLayer(nsDisplayListBuilder* aBuilder,
-                                             LayerManager* aManager)
+                                             LayerManager* aManager,
+                                             const ContainerParameters& aContainerParameters)
   {
     return static_cast<nsObjectFrame*>(mFrame)->BuildLayer(aBuilder,
                                                            aManager, 

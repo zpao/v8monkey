@@ -35,16 +35,15 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nscore.h"
 
 #include "nsXPLookAndFeel.h"
-#include "nsIServiceManager.h"
-#include "nsIPrefBranch2.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
-#include "nsIObserver.h"
+#include "nsLookAndFeel.h"
 #include "nsCRT.h"
 #include "nsFont.h"
+#include "mozilla/Preferences.h"
 
 #include "gfxPlatform.h"
 #include "qcms.h"
@@ -53,63 +52,96 @@
 #include "nsSize.h"
 #endif
 
-NS_IMPL_ISUPPORTS2(nsXPLookAndFeel, nsILookAndFeel, nsIObserver)
+using namespace mozilla;
 
 nsLookAndFeelIntPref nsXPLookAndFeel::sIntPrefs[] =
 {
-  { "ui.caretBlinkTime", eMetric_CaretBlinkTime, PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.caretWidth", eMetric_CaretWidth, PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.caretVisibleWithSelection", eMetric_ShowCaretDuringSelection, PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.submenuDelay", eMetric_SubmenuDelay, PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.dragThresholdX", eMetric_DragThresholdX, PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.dragThresholdY", eMetric_DragThresholdY, PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.useAccessibilityTheme", eMetric_UseAccessibilityTheme, PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.scrollbarsCanOverlapContent", eMetric_ScrollbarsCanOverlapContent,
-    PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.menusCanOverlapOSBar", eMetric_MenusCanOverlapOSBar,
-    PR_FALSE, nsLookAndFeelTypeInt, 0 },
-  { "ui.skipNavigatingDisabledMenuItem", eMetric_SkipNavigatingDisabledMenuItem, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+  { "ui.caretBlinkTime",
+    eIntID_CaretBlinkTime,
+    false, 0 },
+  { "ui.caretWidth",
+    eIntID_CaretWidth,
+    false, 0 },
+  { "ui.caretVisibleWithSelection",
+    eIntID_ShowCaretDuringSelection,
+    false, 0 },
+  { "ui.submenuDelay",
+    eIntID_SubmenuDelay,
+    false, 0 },
+  { "ui.dragThresholdX",
+    eIntID_DragThresholdX,
+    false, 0 },
+  { "ui.dragThresholdY",
+    eIntID_DragThresholdY,
+    false, 0 },
+  { "ui.useAccessibilityTheme",
+    eIntID_UseAccessibilityTheme,
+    false, 0 },
+  { "ui.scrollbarsCanOverlapContent",
+    eIntID_ScrollbarsCanOverlapContent,
+    false, 0 },
+  { "ui.menusCanOverlapOSBar",
+    eIntID_MenusCanOverlapOSBar,
+    false, 0 },
+  { "ui.skipNavigatingDisabledMenuItem",
+    eIntID_SkipNavigatingDisabledMenuItem,
+    false, 0 },
   { "ui.treeOpenDelay",
-    eMetric_TreeOpenDelay, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_TreeOpenDelay,
+    false, 0 },
   { "ui.treeCloseDelay",
-    eMetric_TreeCloseDelay, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_TreeCloseDelay,
+    false, 0 },
   { "ui.treeLazyScrollDelay",
-    eMetric_TreeLazyScrollDelay, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_TreeLazyScrollDelay,
+    false, 0 },
   { "ui.treeScrollDelay",
-    eMetric_TreeScrollDelay, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_TreeScrollDelay,
+    false, 0 },
   { "ui.treeScrollLinesMax",
-    eMetric_TreeScrollLinesMax, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_TreeScrollLinesMax,
+    false, 0 },
   { "accessibility.tabfocus",
-    eMetric_TabFocusModel, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_TabFocusModel,
+    false, 0 },
   { "ui.alertNotificationOrigin",
-    eMetric_AlertNotificationOrigin, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_AlertNotificationOrigin,
+    false, 0 },
   { "ui.scrollToClick",
-    eMetric_ScrollToClick, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_ScrollToClick,
+    false, 0 },
   { "ui.IMERawInputUnderlineStyle",
-    eMetric_IMERawInputUnderlineStyle, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_IMERawInputUnderlineStyle,
+    false, 0 },
   { "ui.IMESelectedRawTextUnderlineStyle",
-    eMetric_IMESelectedRawTextUnderlineStyle, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_IMESelectedRawTextUnderlineStyle,
+    false, 0 },
   { "ui.IMEConvertedTextUnderlineStyle",
-    eMetric_IMEConvertedTextUnderlineStyle, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_IMEConvertedTextUnderlineStyle,
+    false, 0 },
   { "ui.IMESelectedConvertedTextUnderlineStyle",
-    eMetric_IMESelectedConvertedTextUnderline, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_IMESelectedConvertedTextUnderline,
+    false, 0 },
   { "ui.SpellCheckerUnderlineStyle",
-    eMetric_SpellCheckerUnderlineStyle, PR_FALSE, nsLookAndFeelTypeInt, 0 },
+    eIntID_SpellCheckerUnderlineStyle,
+    false, 0 },
 };
 
 nsLookAndFeelFloatPref nsXPLookAndFeel::sFloatPrefs[] =
 {
-  { "ui.IMEUnderlineRelativeSize", eMetricFloat_IMEUnderlineRelativeSize,
-    PR_FALSE, nsLookAndFeelTypeFloat, 0 },
+  { "ui.IMEUnderlineRelativeSize",
+    eFloatID_IMEUnderlineRelativeSize,
+    false, 0 },
   { "ui.SpellCheckerUnderlineRelativeSize",
-    eMetricFloat_SpellCheckerUnderlineRelativeSize, PR_FALSE,
-    nsLookAndFeelTypeFloat, 0 },
-  { "ui.caretAspectRatio", eMetricFloat_CaretAspectRatio, PR_FALSE,
-    nsLookAndFeelTypeFloat, 0 },
+    eFloatID_SpellCheckerUnderlineRelativeSize,
+    false, 0 },
+  { "ui.caretAspectRatio",
+    eFloatID_CaretAspectRatio,
+    false, 0 },
 };
 
 
-// This array MUST be kept in the same order as the color list in nsILookAndFeel.h.
+// This array MUST be kept in the same order as the color list in LookAndFeel.h.
 /* XXX If you add any strings longer than
  * "ui.IMESelectedConvertedTextBackground"
  * to the following array then you MUST update the
@@ -209,171 +241,190 @@ const char nsXPLookAndFeel::sColorPrefs[][38] =
   "ui.-moz-combobox"
 };
 
-PRInt32 nsXPLookAndFeel::sCachedColors[nsILookAndFeel::eColor_LAST_COLOR] = {0};
+PRInt32 nsXPLookAndFeel::sCachedColors[LookAndFeel::eColorID_LAST_COLOR] = {0};
 PRInt32 nsXPLookAndFeel::sCachedColorBits[COLOR_CACHE_SIZE] = {0};
 
-PRBool nsXPLookAndFeel::sInitialized = PR_FALSE;
-PRBool nsXPLookAndFeel::sUseNativeColors = PR_TRUE;
+bool nsXPLookAndFeel::sInitialized = false;
+bool nsXPLookAndFeel::sUseNativeColors = true;
 
-nsXPLookAndFeel::nsXPLookAndFeel() : nsILookAndFeel()
-{
-}
+nsLookAndFeel* nsXPLookAndFeel::sInstance = nsnull;
+bool nsXPLookAndFeel::sShutdown = false;
 
-void
-nsXPLookAndFeel::IntPrefChanged (nsLookAndFeelIntPref *data)
+// static
+nsLookAndFeel*
+nsXPLookAndFeel::GetInstance()
 {
-  if (data)
-  {
-    nsCOMPtr<nsIPrefBranch> prefService(do_GetService(NS_PREFSERVICE_CONTRACTID));
-    if (prefService)
-    {
-      PRInt32 intpref;
-      nsresult rv = prefService->GetIntPref(data->name, &intpref);
-      if (NS_SUCCEEDED(rv))
-      {
-        data->intVar = intpref;
-        data->isSet = PR_TRUE;
-#ifdef DEBUG_akkana
-        printf("====== Changed int pref %s to %d\n", data->name, data->intVar);
-#endif
-      }
-    }
+  if (sInstance) {
+    return sInstance;
   }
+
+  NS_ENSURE_TRUE(!sShutdown, nsnull);
+
+  sInstance = new nsLookAndFeel();
+  return sInstance;
 }
 
+// static
 void
-nsXPLookAndFeel::FloatPrefChanged (nsLookAndFeelFloatPref *data)
+nsXPLookAndFeel::Shutdown()
 {
-  if (data)
-  {
-    nsCOMPtr<nsIPrefBranch> prefService(do_GetService(NS_PREFSERVICE_CONTRACTID));
-    if (prefService)
-    {
-      PRInt32 intpref;
-      nsresult rv = prefService->GetIntPref(data->name, &intpref);
-      if (NS_SUCCEEDED(rv))
-      {
-        data->floatVar = (float)intpref / 100.;
-        data->isSet = PR_TRUE;
-#ifdef DEBUG_akkana
-        printf("====== Changed float pref %s to %f\n", data->name, data->floatVar);
-#endif
-      }
-    }
+  if (sShutdown) {
+    return;
   }
+  sShutdown = true;
+  delete sInstance;
+  sInstance = nsnull;
 }
 
+nsXPLookAndFeel::nsXPLookAndFeel() : LookAndFeel()
+{
+}
+
+// static
+void
+nsXPLookAndFeel::IntPrefChanged(nsLookAndFeelIntPref *data)
+{
+  if (!data) {
+    return;
+  }
+
+  PRInt32 intpref;
+  nsresult rv = Preferences::GetInt(data->name, &intpref);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+  data->intVar = intpref;
+  data->isSet = true;
+#ifdef DEBUG_akkana
+  printf("====== Changed int pref %s to %d\n", data->name, data->intVar);
+#endif
+}
+
+// static
+void
+nsXPLookAndFeel::FloatPrefChanged(nsLookAndFeelFloatPref *data)
+{
+  if (!data) {
+    return;
+  }
+
+  PRInt32 intpref;
+  nsresult rv = Preferences::GetInt(data->name, &intpref);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+  data->floatVar = (float)intpref / 100.0f;
+  data->isSet = true;
+#ifdef DEBUG_akkana
+  printf("====== Changed float pref %s to %f\n", data->name, data->floatVar);
+#endif
+}
+
+// static
 void
 nsXPLookAndFeel::ColorPrefChanged (unsigned int index, const char *prefName)
 {
-  nsCOMPtr<nsIPrefBranch> prefService(do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (prefService) {
-    nsXPIDLCString colorStr;
-    nsresult rv = prefService->GetCharPref(prefName, getter_Copies(colorStr));
-    if (NS_SUCCEEDED(rv) && !colorStr.IsEmpty()) {
-      nscolor thecolor;
-      if (colorStr[0] == '#') {
-        if (NS_HexToRGB(NS_ConvertASCIItoUTF16(Substring(colorStr, 1, colorStr.Length() - 1)),
-                        &thecolor)) {
-          PRInt32 id = NS_PTR_TO_INT32(index);
-          CACHE_COLOR(id, thecolor);
-        }
-      }
-      else if (NS_ColorNameToRGB(NS_ConvertASCIItoUTF16(colorStr), &thecolor)) {
+  nsAutoString colorStr;
+  nsresult rv = Preferences::GetString(prefName, &colorStr);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+  if (!colorStr.IsEmpty()) {
+    nscolor thecolor;
+    if (colorStr[0] == PRUnichar('#')) {
+      if (NS_HexToRGB(nsDependentString(colorStr, 1), &thecolor)) {
         PRInt32 id = NS_PTR_TO_INT32(index);
         CACHE_COLOR(id, thecolor);
-#ifdef DEBUG_akkana
-        printf("====== Changed color pref %s to 0x%lx\n",
-               prefName, thecolor);
-#endif
       }
-    } else if (colorStr.IsEmpty()) {
-      // Reset to the default color, by clearing the cache
-      // to force lookup when the color is next used
+    } else if (NS_ColorNameToRGB(colorStr, &thecolor)) {
       PRInt32 id = NS_PTR_TO_INT32(index);
-      CLEAR_COLOR_CACHE(id);
+      CACHE_COLOR(id, thecolor);
+#ifdef DEBUG_akkana
+      printf("====== Changed color pref %s to 0x%lx\n",
+             prefName, thecolor);
+#endif
     }
+  } else {
+    // Reset to the default color, by clearing the cache
+    // to force lookup when the color is next used
+    PRInt32 id = NS_PTR_TO_INT32(index);
+    CLEAR_COLOR_CACHE(id);
   }
 }
 
 void
-nsXPLookAndFeel::InitFromPref(nsLookAndFeelIntPref* aPref, nsIPrefBranch* aPrefBranch)
+nsXPLookAndFeel::InitFromPref(nsLookAndFeelIntPref* aPref)
 {
   PRInt32 intpref;
-  nsresult rv = aPrefBranch->GetIntPref(aPref->name, &intpref);
-  if (NS_SUCCEEDED(rv))
-  {
-    aPref->isSet = PR_TRUE;
+  nsresult rv = Preferences::GetInt(aPref->name, &intpref);
+  if (NS_SUCCEEDED(rv)) {
+    aPref->isSet = true;
     aPref->intVar = intpref;
   }
 }
 
 void
-nsXPLookAndFeel::InitFromPref(nsLookAndFeelFloatPref* aPref, nsIPrefBranch* aPrefBranch)
+nsXPLookAndFeel::InitFromPref(nsLookAndFeelFloatPref* aPref)
 {
   PRInt32 intpref;
-  nsresult rv = aPrefBranch->GetIntPref(aPref->name, &intpref);
-  if (NS_SUCCEEDED(rv))
-  {
-    aPref->isSet = PR_TRUE;
-    aPref->floatVar = (float)intpref / 100.;
+  nsresult rv = Preferences::GetInt(aPref->name, &intpref);
+  if (NS_SUCCEEDED(rv)) {
+    aPref->isSet = true;
+    aPref->floatVar = (float)intpref / 100.0f;
   }
 }
 
 void
-nsXPLookAndFeel::InitColorFromPref(PRInt32 i, nsIPrefBranch* aPrefBranch)
+nsXPLookAndFeel::InitColorFromPref(PRInt32 i)
 {
-  nsXPIDLCString colorStr;
-  nsresult rv = aPrefBranch->GetCharPref(sColorPrefs[i], getter_Copies(colorStr));
-  if (NS_SUCCEEDED(rv) && !colorStr.IsEmpty())
-  {
-    nsAutoString colorNSStr; colorNSStr.AssignWithConversion(colorStr);
-    nscolor thecolor;
-    if (colorNSStr[0] == '#') {
-      nsAutoString hexString;
-      colorNSStr.Right(hexString, colorNSStr.Length() - 1);
-      if (NS_HexToRGB(hexString, &thecolor)) {
-        CACHE_COLOR(i, thecolor);
-      }
-    }
-    else if (NS_ColorNameToRGB(colorNSStr, &thecolor))
-    {
+  nsAutoString colorStr;
+  nsresult rv = Preferences::GetString(sColorPrefs[i], &colorStr);
+  if (NS_FAILED(rv) || colorStr.IsEmpty()) {
+    return;
+  }
+  nscolor thecolor;
+  if (colorStr[0] == PRUnichar('#')) {
+    nsAutoString hexString;
+    colorStr.Right(hexString, colorStr.Length() - 1);
+    if (NS_HexToRGB(hexString, &thecolor)) {
       CACHE_COLOR(i, thecolor);
     }
+  } else if (NS_ColorNameToRGB(colorStr, &thecolor)) {
+    CACHE_COLOR(i, thecolor);
   }
 }
 
-NS_IMETHODIMP
-nsXPLookAndFeel::Observe(nsISupports*     aSubject,
-                         const char*      aTopic,
-                         const PRUnichar* aData)
+// static
+int
+nsXPLookAndFeel::OnPrefChanged(const char* aPref, void* aClosure)
 {
 
   // looping in the same order as in ::Init
 
+  nsDependentCString prefName(aPref);
   unsigned int i;
-  for (i = 0; i < NS_ARRAY_LENGTH(sIntPrefs); ++i) {
-    if (nsDependentString(aData).EqualsASCII(sIntPrefs[i].name)) {
+  for (i = 0; i < ArrayLength(sIntPrefs); ++i) {
+    if (prefName.Equals(sIntPrefs[i].name)) {
       IntPrefChanged(&sIntPrefs[i]);
-      return NS_OK;
+      return 0;
     }
   }
 
-  for (i = 0; i < NS_ARRAY_LENGTH(sFloatPrefs); ++i) {
-    if (nsDependentString(aData).EqualsASCII(sFloatPrefs[i].name)) {
+  for (i = 0; i < ArrayLength(sFloatPrefs); ++i) {
+    if (prefName.Equals(sFloatPrefs[i].name)) {
       FloatPrefChanged(&sFloatPrefs[i]);
-      return NS_OK;
+      return 0;
     }
   }
 
-  for (i = 0; i < NS_ARRAY_LENGTH(sColorPrefs); ++i) {
-    if (nsDependentString(aData).EqualsASCII(sColorPrefs[i])) {
+  for (i = 0; i < ArrayLength(sColorPrefs); ++i) {
+    if (prefName.Equals(sColorPrefs[i])) {
       ColorPrefChanged(i, sColorPrefs[i]);
-      return NS_OK;
+      return 0;
     }
   }
 
-  return NS_OK;
+  return 0;
 }
 
 //
@@ -387,69 +438,68 @@ nsXPLookAndFeel::Init()
 {
   // Say we're already initialized, and take the chance that it might fail;
   // protects against some other process writing to our static variables.
-  sInitialized = PR_TRUE;
+  sInitialized = true;
 
-  nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (!prefs)
-    return;
-  nsCOMPtr<nsIPrefBranch2> prefBranchInternal(do_QueryInterface(prefs));
-  if (!prefBranchInternal)
-    return;
+  // XXX If we could reorganize the pref names, we should separate the branch
+  //     for each types.  Then, we could reduce the unnecessary loop from
+  //     nsXPLookAndFeel::OnPrefChanged().
+  Preferences::RegisterCallback(OnPrefChanged, "ui.");
+  Preferences::RegisterCallback(OnPrefChanged, "accessibility.tabfocus");
 
   unsigned int i;
-  for (i = 0; i < NS_ARRAY_LENGTH(sIntPrefs); ++i) {
-    InitFromPref(&sIntPrefs[i], prefs);
-    prefBranchInternal->AddObserver(sIntPrefs[i].name, this, PR_FALSE);
+  for (i = 0; i < ArrayLength(sIntPrefs); ++i) {
+    InitFromPref(&sIntPrefs[i]);
   }
 
-  for (i = 0; i < NS_ARRAY_LENGTH(sFloatPrefs); ++i) {
-    InitFromPref(&sFloatPrefs[i], prefs);
-    prefBranchInternal->AddObserver(sFloatPrefs[i].name, this, PR_FALSE);
+  for (i = 0; i < ArrayLength(sFloatPrefs); ++i) {
+    InitFromPref(&sFloatPrefs[i]);
   }
 
-  for (i = 0; i < NS_ARRAY_LENGTH(sColorPrefs); ++i) {
-    InitColorFromPref(i, prefs);
-    prefBranchInternal->AddObserver(sColorPrefs[i], this, PR_FALSE);
+  for (i = 0; i < ArrayLength(sColorPrefs); ++i) {
+    InitColorFromPref(i);
   }
 
-  PRBool val;
-  if (NS_SUCCEEDED(prefs->GetBoolPref("ui.use_native_colors", &val))) {
+  bool val;
+  if (NS_SUCCEEDED(Preferences::GetBool("ui.use_native_colors", &val))) {
     sUseNativeColors = val;
   }
 }
 
 nsXPLookAndFeel::~nsXPLookAndFeel()
 {
+  NS_ASSERTION(sInstance == this,
+               "This destroying instance isn't the singleton instance");
+  sInstance = nsnull;
 }
 
-PRBool
-nsXPLookAndFeel::IsSpecialColor(const nsColorID aID, nscolor &aColor)
+bool
+nsXPLookAndFeel::IsSpecialColor(ColorID aID, nscolor &aColor)
 {
   switch (aID) {
-    case eColor_TextSelectForeground:
+    case eColorID_TextSelectForeground:
       return (aColor == NS_DONT_CHANGE_COLOR);
-    case eColor_IMESelectedRawTextBackground:
-    case eColor_IMESelectedConvertedTextBackground:
-    case eColor_IMERawInputBackground:
-    case eColor_IMEConvertedTextBackground:
-    case eColor_IMESelectedRawTextForeground:
-    case eColor_IMESelectedConvertedTextForeground:
-    case eColor_IMERawInputForeground:
-    case eColor_IMEConvertedTextForeground:
-    case eColor_IMERawInputUnderline:
-    case eColor_IMEConvertedTextUnderline:
-    case eColor_IMESelectedRawTextUnderline:
-    case eColor_IMESelectedConvertedTextUnderline:
-    case eColor_SpellCheckerUnderline:
+    case eColorID_IMESelectedRawTextBackground:
+    case eColorID_IMESelectedConvertedTextBackground:
+    case eColorID_IMERawInputBackground:
+    case eColorID_IMEConvertedTextBackground:
+    case eColorID_IMESelectedRawTextForeground:
+    case eColorID_IMESelectedConvertedTextForeground:
+    case eColorID_IMERawInputForeground:
+    case eColorID_IMEConvertedTextForeground:
+    case eColorID_IMERawInputUnderline:
+    case eColorID_IMEConvertedTextUnderline:
+    case eColorID_IMESelectedRawTextUnderline:
+    case eColorID_IMESelectedConvertedTextUnderline:
+    case eColorID_SpellCheckerUnderline:
       return NS_IS_SELECTION_SPECIAL_COLOR(aColor);
     default:
       /*
        * In GetColor(), every color that is not a special color is color
-       * corrected. Use PR_FALSE to make other colors color corrected.
+       * corrected. Use false to make other colors color corrected.
        */
-      return PR_FALSE;
+      return false;
   }
-  return PR_FALSE;
+  return false;
 }
 
 //
@@ -458,8 +508,8 @@ nsXPLookAndFeel::IsSpecialColor(const nsColorID aID, nscolor &aColor)
 // otherwise we'll return NS_ERROR_NOT_AVAILABLE, in which case, the
 // platform-specific nsLookAndFeel should use its own values instead.
 //
-NS_IMETHODIMP
-nsXPLookAndFeel::GetColor(const nsColorID aID, nscolor &aColor)
+nsresult
+nsXPLookAndFeel::GetColorImpl(ColorID aID, nscolor &aResult)
 {
   if (!sInitialized)
     Init();
@@ -476,65 +526,65 @@ nsXPLookAndFeel::GetColor(const nsColorID aID, nscolor &aColor)
     nsresult rv = NS_OK;
     switch (aID) {
         // css2  http://www.w3.org/TR/REC-CSS2/ui.html#system-colors
-      case eColor_activecaption:
+      case eColorID_activecaption:
           // active window caption background
-      case eColor_captiontext:
+      case eColorID_captiontext:
           // text in active window caption
-        aColor = NS_RGB(0xff, 0x00, 0x00);
+        aResult = NS_RGB(0xff, 0x00, 0x00);
         break;
 
-      case eColor_highlight:
+      case eColorID_highlight:
           // background of selected item
-      case eColor_highlighttext:
+      case eColorID_highlighttext:
           // text of selected item
-        aColor = NS_RGB(0xff, 0xff, 0x00);
+        aResult = NS_RGB(0xff, 0xff, 0x00);
         break;
 
-      case eColor_inactivecaption:
+      case eColorID_inactivecaption:
           // inactive window caption
-      case eColor_inactivecaptiontext:
+      case eColorID_inactivecaptiontext:
           // text in inactive window caption
-        aColor = NS_RGB(0x66, 0x66, 0x00);
+        aResult = NS_RGB(0x66, 0x66, 0x00);
         break;
 
-      case eColor_infobackground:
+      case eColorID_infobackground:
           // tooltip background color
-      case eColor_infotext:
+      case eColorID_infotext:
           // tooltip text color
-        aColor = NS_RGB(0x00, 0xff, 0x00);
+        aResult = NS_RGB(0x00, 0xff, 0x00);
         break;
 
-      case eColor_menu:
+      case eColorID_menu:
           // menu background
-      case eColor_menutext:
+      case eColorID_menutext:
           // menu text
-        aColor = NS_RGB(0x00, 0xff, 0xff);
+        aResult = NS_RGB(0x00, 0xff, 0xff);
         break;
 
-      case eColor_threedface:
-      case eColor_buttonface:
+      case eColorID_threedface:
+      case eColorID_buttonface:
           // 3-D face color
-      case eColor_buttontext:
+      case eColorID_buttontext:
           // text on push buttons
-        aColor = NS_RGB(0x00, 0x66, 0x66);
+        aResult = NS_RGB(0x00, 0x66, 0x66);
         break;
 
-      case eColor_window:
-      case eColor_windowtext:
-        aColor = NS_RGB(0x00, 0x00, 0xff);
+      case eColorID_window:
+      case eColorID_windowtext:
+        aResult = NS_RGB(0x00, 0x00, 0xff);
         break;
 
       // from the CSS3 working draft (not yet finalized)
       // http://www.w3.org/tr/2000/wd-css3-userint-20000216.html#color
 
-      case eColor__moz_field:
-      case eColor__moz_fieldtext:
-        aColor = NS_RGB(0xff, 0x00, 0xff);
+      case eColorID__moz_field:
+      case eColorID__moz_fieldtext:
+        aResult = NS_RGB(0xff, 0x00, 0xff);
         break;
 
-      case eColor__moz_dialog:
-      case eColor__moz_dialogtext:
-        aColor = NS_RGB(0x66, 0x00, 0x66);
+      case eColorID__moz_dialog:
+      case eColorID__moz_dialogtext:
+        aResult = NS_RGB(0x66, 0x00, 0x66);
         break;
 
       default:
@@ -546,61 +596,62 @@ nsXPLookAndFeel::GetColor(const nsColorID aID, nscolor &aColor)
 #endif // DEBUG_SYSTEM_COLOR_USE
 
   if (IS_COLOR_CACHED(aID)) {
-    aColor = sCachedColors[aID];
+    aResult = sCachedColors[aID];
     return NS_OK;
   }
 
   // There are no system color settings for these, so set them manually
-  if (aID == eColor_TextSelectBackgroundDisabled) {
+  if (aID == eColorID_TextSelectBackgroundDisabled) {
     // This is used to gray out the selection when it's not focused
     // Used with nsISelectionController::SELECTION_DISABLED
-    aColor = NS_RGB(0xb0, 0xb0, 0xb0);
+    aResult = NS_RGB(0xb0, 0xb0, 0xb0);
     return NS_OK;
   }
 
-  if (aID == eColor_TextSelectBackgroundAttention) {
+  if (aID == eColorID_TextSelectBackgroundAttention) {
     // This makes the selection stand out when typeaheadfind is on
     // Used with nsISelectionController::SELECTION_ATTENTION
-    aColor = NS_RGB(0x38, 0xd8, 0x78);
+    aResult = NS_RGB(0x38, 0xd8, 0x78);
     return NS_OK;
   }
 
-  if (aID == eColor_TextHighlightBackground) {
+  if (aID == eColorID_TextHighlightBackground) {
     // This makes the matched text stand out when findbar highlighting is on
     // Used with nsISelectionController::SELECTION_FIND
-    aColor = NS_RGB(0xef, 0x0f, 0xff);
+    aResult = NS_RGB(0xef, 0x0f, 0xff);
     return NS_OK;
   }
 
-  if (aID == eColor_TextHighlightForeground) {
+  if (aID == eColorID_TextHighlightForeground) {
     // The foreground color for the matched text in findbar highlighting
     // Used with nsISelectionController::SELECTION_FIND
-    aColor = NS_RGB(0xff, 0xff, 0xff);
+    aResult = NS_RGB(0xff, 0xff, 0xff);
     return NS_OK;
   }
 
-  if (sUseNativeColors && NS_SUCCEEDED(NativeGetColor(aID, aColor))) {
-    if ((gfxPlatform::GetCMSMode() == eCMSMode_All) && !IsSpecialColor(aID, aColor)) {
+  if (sUseNativeColors && NS_SUCCEEDED(NativeGetColor(aID, aResult))) {
+    if ((gfxPlatform::GetCMSMode() == eCMSMode_All) &&
+         !IsSpecialColor(aID, aResult)) {
       qcms_transform *transform = gfxPlatform::GetCMSInverseRGBTransform();
       if (transform) {
         PRUint8 color[3];
-        color[0] = NS_GET_R(aColor);
-        color[1] = NS_GET_G(aColor);
-        color[2] = NS_GET_B(aColor);
+        color[0] = NS_GET_R(aResult);
+        color[1] = NS_GET_G(aResult);
+        color[2] = NS_GET_B(aResult);
         qcms_transform_data(transform, color, color, 1);
-        aColor = NS_RGB(color[0], color[1], color[2]);
+        aResult = NS_RGB(color[0], color[1], color[2]);
       }
     }
 
-    CACHE_COLOR(aID, aColor);
+    CACHE_COLOR(aID, aResult);
     return NS_OK;
   }
 
   return NS_ERROR_NOT_AVAILABLE;
 }
   
-NS_IMETHODIMP
-nsXPLookAndFeel::GetMetric(const nsMetricID aID, PRInt32& aMetric)
+nsresult
+nsXPLookAndFeel::GetIntImpl(IntID aID, PRInt32 &aResult)
 {
   if (!sInitialized)
     Init();
@@ -608,14 +659,14 @@ nsXPLookAndFeel::GetMetric(const nsMetricID aID, PRInt32& aMetric)
   // Set the default values for these prefs. but allow different platforms
   // to override them in their nsLookAndFeel if desired.
   switch (aID) {
-    case eMetric_ScrollButtonLeftMouseButtonAction:
-      aMetric = 0;
+    case eIntID_ScrollButtonLeftMouseButtonAction:
+      aResult = 0;
       return NS_OK;
-    case eMetric_ScrollButtonMiddleMouseButtonAction:
-      aMetric = 3;
+    case eIntID_ScrollButtonMiddleMouseButtonAction:
+      aResult = 3;
       return NS_OK;
-    case eMetric_ScrollButtonRightMouseButtonAction:
-      aMetric = 3;
+    case eIntID_ScrollButtonRightMouseButtonAction:
+      aResult = 3;
       return NS_OK;
     default:
       /*
@@ -625,58 +676,85 @@ nsXPLookAndFeel::GetMetric(const nsMetricID aID, PRInt32& aMetric)
     break;
   }
 
-  for (unsigned int i = 0; i < ((sizeof (sIntPrefs) / sizeof (*sIntPrefs))); ++i)
-    if (sIntPrefs[i].isSet && (sIntPrefs[i].id == aID))
-    {
-      aMetric = sIntPrefs[i].intVar;
+  for (unsigned int i = 0; i < ArrayLength(sIntPrefs); ++i) {
+    if (sIntPrefs[i].isSet && (sIntPrefs[i].id == aID)) {
+      aResult = sIntPrefs[i].intVar;
       return NS_OK;
     }
+  }
 
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-NS_IMETHODIMP
-nsXPLookAndFeel::GetMetric(const nsMetricFloatID aID, float& aMetric)
+nsresult
+nsXPLookAndFeel::GetFloatImpl(FloatID aID, float &aResult)
 {
   if (!sInitialized)
     Init();
 
-  for (unsigned int i = 0; i < ((sizeof (sFloatPrefs) / sizeof (*sFloatPrefs))); ++i)
-    if (sFloatPrefs[i].isSet && sFloatPrefs[i].id == aID)
-    {
-      aMetric = sFloatPrefs[i].floatVar;
+  for (unsigned int i = 0; i < ArrayLength(sFloatPrefs); ++i) {
+    if (sFloatPrefs[i].isSet && sFloatPrefs[i].id == aID) {
+      aResult = sFloatPrefs[i].floatVar;
       return NS_OK;
     }
+  }
 
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-NS_IMETHODIMP
-nsXPLookAndFeel::LookAndFeelChanged()
+void
+nsXPLookAndFeel::RefreshImpl()
 {
   // Wipe out our color cache.
   PRUint32 i;
-  for (i = 0; i < nsILookAndFeel::eColor_LAST_COLOR; i++)
+  for (i = 0; i < eColorID_LAST_COLOR; i++)
     sCachedColors[i] = 0;
   for (i = 0; i < COLOR_CACHE_SIZE; i++)
     sCachedColorBits[i] = 0;
-  return NS_OK;
 }
 
+namespace mozilla {
 
-#ifdef DEBUG
-  // This method returns the actual (or nearest estimate) 
-  // of the Navigator size for a given form control for a given font
-  // and font size. This is used in NavQuirks mode to see how closely
-  // we match its size
-NS_IMETHODIMP
-nsXPLookAndFeel::GetNavSize(const nsMetricNavWidgetID aWidgetID,
-                            const nsMetricNavFontID   aFontID, 
-                            const PRInt32             aFontSize, 
-                            nsSize &aSize)
+// static
+nsresult
+LookAndFeel::GetColor(ColorID aID, nscolor* aResult)
 {
-  aSize.width  = 0;
-  aSize.height = 0;
-  return NS_ERROR_NOT_IMPLEMENTED;
+  return nsLookAndFeel::GetInstance()->GetColorImpl(aID, *aResult);
 }
-#endif
+
+// static
+nsresult
+LookAndFeel::GetInt(IntID aID, PRInt32* aResult)
+{
+  return nsLookAndFeel::GetInstance()->GetIntImpl(aID, *aResult);
+}
+
+// static
+nsresult
+LookAndFeel::GetFloat(FloatID aID, float* aResult)
+{
+  return nsLookAndFeel::GetInstance()->GetFloatImpl(aID, *aResult);
+}
+
+// static
+PRUnichar
+LookAndFeel::GetPasswordCharacter()
+{
+  return nsLookAndFeel::GetInstance()->GetPasswordCharacterImpl();
+}
+
+// static
+bool
+LookAndFeel::GetEchoPassword()
+{
+  return nsLookAndFeel::GetInstance()->GetEchoPasswordImpl();
+}
+
+// static
+void
+LookAndFeel::Refresh()
+{
+  nsLookAndFeel::GetInstance()->RefreshImpl();
+}
+
+} // namespace mozilla

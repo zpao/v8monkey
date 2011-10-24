@@ -331,7 +331,7 @@ ElementAnimations::EnsureStyleRuleFor(TimeStamp aRefreshTime,
           mStyleRule->AddEmptyValue(prop.mProperty);
 
 #ifdef DEBUG
-        PRBool result =
+        bool result =
 #endif
           nsStyleAnimation::Interpolate(prop.mProperty,
                                         segment->mFromValue, segment->mToValue,
@@ -345,7 +345,7 @@ ElementAnimations::EnsureStyleRuleFor(TimeStamp aRefreshTime,
 ElementAnimations*
 nsAnimationManager::GetElementAnimations(dom::Element *aElement,
                                          nsCSSPseudoElements::Type aPseudoType,
-                                         PRBool aCreateIfNeeded)
+                                         bool aCreateIfNeeded)
 {
   if (!aCreateIfNeeded && PR_CLIST_IS_EMPTY(&mElementData)) {
     // Early return for the most common case.
@@ -444,7 +444,7 @@ nsAnimationManager::CheckAnimationRule(nsStyleContext* aStyleContext,
 
     const nsStyleDisplay *disp = aStyleContext->GetStyleDisplay();
     ElementAnimations *ea =
-      GetElementAnimations(aElement, aStyleContext->GetPseudoType(), PR_FALSE);
+      GetElementAnimations(aElement, aStyleContext->GetPseudoType(), false);
     if (!ea &&
         disp->mAnimations.Length() == 1 &&
         disp->mAnimations[0].GetName().IsEmpty()) {
@@ -521,7 +521,7 @@ nsAnimationManager::CheckAnimationRule(nsStyleContext* aStyleContext,
       }
     } else {
       ea = GetElementAnimations(aElement, aStyleContext->GetPseudoType(),
-                                PR_TRUE);
+                                true);
     }
     ea->mAnimations.SwapElements(newAnimations);
     ea->mNeedsRefreshes = true;
@@ -547,7 +547,7 @@ public:
   ~PercentageHashKey() { }
 
   KeyType GetKey() const { return mValue; }
-  PRBool KeyEquals(KeyTypePointer aKey) const { return *aKey == mValue; }
+  bool KeyEquals(KeyTypePointer aKey) const { return *aKey == mValue; }
 
   static KeyTypePointer KeyToPointer(KeyType aKey) { return &aKey; }
   static PLDHashNumber HashKey(KeyTypePointer aKey) {
@@ -557,7 +557,7 @@ public:
     NS_ABORT_IF_FALSE(0.0f <= key && key <= 1.0f, "out of range");
     return PLDHashNumber(key * PR_UINT32_MAX);
   }
-  enum { ALLOW_MEMMOVE = PR_TRUE };
+  enum { ALLOW_MEMMOVE = true };
 
 private:
   const float mValue;
@@ -581,10 +581,10 @@ AppendKeyframeData(const float &aKey, nsCSSKeyframeRule *aRule, void *aData)
 }
 
 struct KeyframeDataComparator {
-  PRBool Equals(const KeyframeData& A, const KeyframeData& B) const {
+  bool Equals(const KeyframeData& A, const KeyframeData& B) const {
     return A.mKey == B.mKey;
   }
-  PRBool LessThan(const KeyframeData& A, const KeyframeData& B) const {
+  bool LessThan(const KeyframeData& A, const KeyframeData& B) const {
     return A.mKey < B.mKey;
   }
 };
@@ -829,14 +829,14 @@ nsAnimationManager::GetAnimationRule(mozilla::dom::Element* aElement,
     "forbidden pseudo type");
 
   ElementAnimations *ea =
-    GetElementAnimations(aElement, aPseudoType, PR_FALSE);
+    GetElementAnimations(aElement, aPseudoType, false);
   if (!ea) {
     return nsnull;
   }
 
-  NS_ABORT_IF_FALSE(ea->mStyleRuleRefreshTime ==
-                      mPresContext->RefreshDriver()->MostRecentRefresh(),
-                    "should already have refreshed style rule");
+  NS_WARN_IF_FALSE(ea->mStyleRuleRefreshTime ==
+                     mPresContext->RefreshDriver()->MostRecentRefresh(),
+                   "should already have refreshed style rule");
 
   if (mPresContext->IsProcessingRestyles() &&
       !mPresContext->IsProcessingAnimationStyleChange()) {

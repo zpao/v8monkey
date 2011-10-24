@@ -217,7 +217,9 @@ FormHistory.prototype = {
                 this.log("addEntry (modify) failed: " + e);
                 throw e;
             } finally {
-                stmt.reset();
+                if (stmt) {
+                    stmt.reset();
+                }
             }
 
         } else {
@@ -243,7 +245,9 @@ FormHistory.prototype = {
                 this.log("addEntry (create) failed: " + e);
                 throw e;
             } finally {
-                stmt.reset();
+                if (stmt) {
+                    stmt.reset();
+                }
             }
         }
     },
@@ -267,7 +271,9 @@ FormHistory.prototype = {
             this.log("removeEntry failed: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
     },
 
@@ -289,7 +295,9 @@ FormHistory.prototype = {
             this.log("removeEntriesForName failed: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
     },
 
@@ -310,14 +318,10 @@ FormHistory.prototype = {
             this.log("removeEntriesForName failed: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
-
-        // privacy cleanup, if there's an old mork formhistory around, just delete it
-        let oldFile = Services.dirsvc.get("ProfD", Ci.nsIFile);
-        oldFile.append("formhistory.dat");
-        if (oldFile.exists())
-            oldFile.remove(false);
     },
 
 
@@ -334,7 +338,9 @@ FormHistory.prototype = {
             this.log("nameExists failed: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
     },
 
@@ -364,7 +370,9 @@ FormHistory.prototype = {
             this.log("removeEntriesByTimeframe failed: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
 
     },
@@ -476,7 +484,9 @@ FormHistory.prototype = {
             this.log("getExistingEntryID failed: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
 
         return [id, guid];
@@ -495,7 +505,9 @@ FormHistory.prototype = {
             this.log("countAllEntries failed: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
 
         this.log("countAllEntries: counted entries: " + numEntries);
@@ -531,7 +543,9 @@ FormHistory.prototype = {
             this.log("expireOldEntries failed: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
 
         let endingCount = this.countAllEntries();
@@ -700,7 +714,9 @@ FormHistory.prototype = {
             this.log("Failed setting timestamps: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
     },
 
@@ -749,7 +765,9 @@ FormHistory.prototype = {
             this.log("Failed getting IDs: " + e);
             throw e;
         } finally {
-            stmt.reset();
+            if (stmt) {
+                stmt.reset();
+            }
         }
 
         // Generate a GUID for each login and update the DB.
@@ -767,7 +785,9 @@ FormHistory.prototype = {
                 this.log("Failed setting GUID: " + e);
                 throw e;
             } finally {
-                stmt.reset();
+                if (stmt) {
+                    stmt.reset();
+                }
             }
         }
     },

@@ -35,7 +35,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 #ifdef DEBUG
-static const char CVS_ID[] = "@(#) $RCSfile: ckhelper.c,v $ $Revision: 1.40 $ $Date: 2010/01/08 02:00:58 $";
+static const char CVS_ID[] = "@(#) $RCSfile: ckhelper.c,v $ $Revision: 1.42 $ $Date: 2011/09/14 00:28:48 $";
 #endif /* DEBUG */
 
 #include "pkcs11.h"
@@ -78,7 +78,7 @@ is_string_attribute (
     PRBool isString;
     switch (aType) {
     case CKA_LABEL:
-    case CKA_NETSCAPE_EMAIL:
+    case CKA_NSS_EMAIL:
 	isString = PR_TRUE;
 	break;
     default:
@@ -401,14 +401,13 @@ get_nss_trust (
 {
     nssTrustLevel t;
     switch (ckt) {
-    case CKT_NETSCAPE_UNTRUSTED: t = nssTrustLevel_NotTrusted; break;
-    case CKT_NETSCAPE_TRUSTED_DELEGATOR: t = nssTrustLevel_TrustedDelegator; 
+    case CKT_NSS_NOT_TRUSTED: t = nssTrustLevel_NotTrusted; break;
+    case CKT_NSS_TRUSTED_DELEGATOR: t = nssTrustLevel_TrustedDelegator; 
 	break;
-    case CKT_NETSCAPE_VALID_DELEGATOR: t = nssTrustLevel_ValidDelegator; break;
-    case CKT_NETSCAPE_TRUSTED: t = nssTrustLevel_Trusted; break;
-    case CKT_NETSCAPE_VALID: t = nssTrustLevel_Valid; break;
-    case CKT_NETSCAPE_MUST_VERIFY:
-    case CKT_NETSCAPE_TRUST_UNKNOWN:
+    case CKT_NSS_VALID_DELEGATOR: t = nssTrustLevel_ValidDelegator; break;
+    case CKT_NSS_TRUSTED: t = nssTrustLevel_Trusted; break;
+    case CKT_NSS_MUST_VERIFY_TRUST: t = nssTrustLevel_MustVerify; break;
+    case CKT_NSS_TRUST_UNKNOWN:
     default:
 	t = nssTrustLevel_Unknown; break;
     }
@@ -432,12 +431,13 @@ nssCryptokiTrust_GetAttributes (
     nssSession *session;
     CK_BBOOL isToken = PR_FALSE;
     CK_BBOOL stepUp = PR_FALSE;
-    CK_TRUST saTrust = CKT_NETSCAPE_TRUST_UNKNOWN;
-    CK_TRUST caTrust = CKT_NETSCAPE_TRUST_UNKNOWN;
-    CK_TRUST epTrust = CKT_NETSCAPE_TRUST_UNKNOWN;
-    CK_TRUST csTrust = CKT_NETSCAPE_TRUST_UNKNOWN;
+    CK_TRUST saTrust = CKT_NSS_TRUST_UNKNOWN;
+    CK_TRUST caTrust = CKT_NSS_TRUST_UNKNOWN;
+    CK_TRUST epTrust = CKT_NSS_TRUST_UNKNOWN;
+    CK_TRUST csTrust = CKT_NSS_TRUST_UNKNOWN;
     CK_ATTRIBUTE_PTR attr;
     CK_ATTRIBUTE trust_template[7];
+    CK_ATTRIBUTE_PTR sha1_hash_attr;
     CK_ULONG trust_size;
 
     /* Use the trust object to find the trust settings */
@@ -448,12 +448,13 @@ nssCryptokiTrust_GetAttributes (
     NSS_CK_SET_ATTRIBUTE_VAR(attr, CKA_TRUST_EMAIL_PROTECTION, epTrust);
     NSS_CK_SET_ATTRIBUTE_VAR(attr, CKA_TRUST_CODE_SIGNING,     csTrust);
     NSS_CK_SET_ATTRIBUTE_VAR(attr, CKA_TRUST_STEP_UP_APPROVED, stepUp);
+    sha1_hash_attr = attr;
     NSS_CK_SET_ATTRIBUTE_ITEM(attr, CKA_CERT_SHA1_HASH,     sha1_hash);
     NSS_CK_TEMPLATE_FINISH(trust_template, attr, trust_size);
 
     status = nssToken_GetCachedObjectAttributes(trustObject->token, NULL,
                                                 trustObject, 
-                                                CKO_NETSCAPE_TRUST,
+                                                CKO_NSS_TRUST,
                                                 trust_template, trust_size);
     if (status != PR_SUCCESS) {
 	session = sessionOpt ? 
@@ -474,6 +475,11 @@ nssCryptokiTrust_GetAttributes (
 	}
     }
 
+    if (sha1_hash_attr->ulValueLen == -1) {
+	/* The trust object does not have the CKA_CERT_SHA1_HASH attribute. */
+	sha1_hash_attr->ulValueLen = 0;
+    }
+    sha1_hash->size = sha1_hash_attr->ulValueLen;
     *serverAuth = get_nss_trust(saTrust);
     *clientAuth = get_nss_trust(caTrust);
     *emailProtection = get_nss_trust(epTrust);
@@ -510,10 +516,10 @@ nssCryptokiCRL_GetAttributes (
 	NSS_CK_SET_ATTRIBUTE_NULL(attr, CKA_VALUE);
     }
     if (urlOpt) {
-	NSS_CK_SET_ATTRIBUTE_NULL(attr, CKA_NETSCAPE_URL);
+	NSS_CK_SET_ATTRIBUTE_NULL(attr, CKA_NSS_URL);
     }
     if (isKRLOpt) {
-	NSS_CK_SET_ATTRIBUTE_NULL(attr, CKA_NETSCAPE_KRL);
+	NSS_CK_SET_ATTRIBUTE_NULL(attr, CKA_NSS_KRL);
     }
     if (subjectOpt) {
 	NSS_CK_SET_ATTRIBUTE_NULL(attr, CKA_SUBJECT);
@@ -522,7 +528,7 @@ nssCryptokiCRL_GetAttributes (
 
     status = nssToken_GetCachedObjectAttributes(crlObject->token, NULL,
                                                 crlObject, 
-                                                CKO_NETSCAPE_CRL,
+                                                CKO_NSS_CRL,
                                                 crl_template, crl_size);
     if (status != PR_SUCCESS) {
 	session = sessionOpt ? 

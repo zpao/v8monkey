@@ -37,17 +37,13 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsXMLElement.h"
+#include "nsContentUtils.h" // nsAutoScriptBlocker
 
 nsresult
 NS_NewXMLElement(nsIContent** aInstancePtrResult, already_AddRefed<nsINodeInfo> aNodeInfo)
 {
   nsXMLElement* it = new nsXMLElement(aNodeInfo);
-  if (!it) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
   NS_ADDREF(*aInstancePtrResult = it);
-
   return NS_OK;
 }
 
@@ -70,15 +66,15 @@ NS_IMPL_ELEMENT_CLONE(nsXMLElement)
 
 nsresult
 nsXMLElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttribute,
-                        PRBool aNotify)
+                        bool aNotify)
 {
-  nsAutoRemovableScriptBlocker scriptBlocker;
-  PRBool isId = PR_FALSE;
+  nsAutoScriptBlocker scriptBlocker;
+  bool isId = false;
   if (aAttribute == GetIDAttributeName() &&
       aNameSpaceID == kNameSpaceID_None) {
     // Have to do this before clearing flag. See RemoveFromIdTable
     RemoveFromIdTable();
-    isId = PR_TRUE;
+    isId = true;
   }
 
   nsMutationGuard guard;
@@ -148,7 +144,7 @@ nsXMLElement::NodeInfoChanged(nsINodeInfo* aOldNodeInfo)
   }
 }
 
-PRBool
+bool
 nsXMLElement::ParseAttribute(PRInt32 aNamespaceID,
                              nsIAtom* aAttribute,
                              const nsAString& aValue,
@@ -161,21 +157,21 @@ nsXMLElement::ParseAttribute(PRInt32 aNamespaceID,
     RemoveFromIdTable();
     if (aValue.IsEmpty()) {
       ClearHasID();
-      return PR_FALSE;
+      return false;
     }
     aResult.ParseAtom(aValue);
     SetHasID();
     AddToIdTable(aResult.GetAtomValue());
-    return PR_TRUE;
+    return true;
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 nsresult
 nsXMLElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                          nsIContent* aBindingParent,
-                         PRBool aCompileEventHandlers)
+                         bool aCompileEventHandlers)
 {
   nsresult rv = nsGenericElement::BindToTree(aDocument, aParent,
                                              aBindingParent,
@@ -190,7 +186,7 @@ nsXMLElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 }
 
 void
-nsXMLElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+nsXMLElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
   RemoveFromIdTable();
 

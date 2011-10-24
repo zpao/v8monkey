@@ -71,7 +71,7 @@
 class nsITimer;
 class nsIMemory;
 
-class NS_COM nsRecyclingAllocator {
+class nsRecyclingAllocator {
  protected:
     struct Block {
       PRSize bytes;
@@ -105,7 +105,7 @@ class NS_COM nsRecyclingAllocator {
     // mTouched:
     //  says if the allocator touched the freelist. If allocator didn't touch
     //  the freelist over a time time interval, timer will call ClearFreeList()
-    PRBool mTouched;
+    bool mTouched;
 
 #ifdef DEBUG
     // mId:
@@ -129,12 +129,12 @@ class NS_COM nsRecyclingAllocator {
     nsresult Init(PRUint32 nbucket, PRUint32 recycleAfter, const char *id);
 
     // Allocation and free routines
-    void* Malloc(PRSize size, PRBool zeroit = PR_FALSE);
+    void* Malloc(PRSize size, bool zeroit = false);
     void  Free(void *ptr);
 
     void* Calloc(PRUint32 items, PRSize size)
     {
-        return Malloc(items * size, PR_TRUE);
+        return Malloc(items * size, true);
     }
 
     // ClearFreeList - Frees all blocks kept by mFreelist, and stops the timer

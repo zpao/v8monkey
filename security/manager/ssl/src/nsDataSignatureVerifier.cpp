@@ -60,7 +60,7 @@ NS_IMETHODIMP
 nsDataSignatureVerifier::VerifyData(const nsACString & aData,
                                     const nsACString & aSignature,
                                     const nsACString & aPublicKey,
-                                    PRBool *_retval)
+                                    bool *_retval)
 {
     // Allocate an arena to handle the majority of the allocations
     PRArenaPool *arena;
@@ -74,14 +74,14 @@ nsDataSignatureVerifier::VerifyData(const nsACString & aData,
     if (!NSSBase64_DecodeBuffer(arena, &keyItem,
                                 nsPromiseFlatCString(aPublicKey).get(),
                                 aPublicKey.Length())) {
-        PORT_FreeArena(arena, PR_FALSE);
+        PORT_FreeArena(arena, false);
         return NS_ERROR_FAILURE;
     }
     
     // Extract the public key from the data
     CERTSubjectPublicKeyInfo *pki = SECKEY_DecodeDERSubjectPublicKeyInfo(&keyItem);
     if (!pki) {
-        PORT_FreeArena(arena, PR_FALSE);
+        PORT_FreeArena(arena, false);
         return NS_ERROR_FAILURE;
     }
     SECKEYPublicKey *publicKey = SECKEY_ExtractPublicKey(pki);
@@ -89,7 +89,7 @@ nsDataSignatureVerifier::VerifyData(const nsACString & aData,
     pki = nsnull;
     
     if (!publicKey) {
-        PORT_FreeArena(arena, PR_FALSE);
+        PORT_FreeArena(arena, false);
         return NS_ERROR_FAILURE;
     }
     
@@ -100,7 +100,7 @@ nsDataSignatureVerifier::VerifyData(const nsACString & aData,
                                 nsPromiseFlatCString(aSignature).get(),
                                 aSignature.Length())) {
         SECKEY_DestroyPublicKey(publicKey);
-        PORT_FreeArena(arena, PR_FALSE);
+        PORT_FreeArena(arena, false);
         return NS_ERROR_FAILURE;
     }
     
@@ -112,7 +112,7 @@ nsDataSignatureVerifier::VerifyData(const nsACString & aData,
                                           &signatureItem);
     if (ss != SECSuccess) {
         SECKEY_DestroyPublicKey(publicKey);
-        PORT_FreeArena(arena, PR_FALSE);
+        PORT_FreeArena(arena, false);
         return NS_ERROR_FAILURE;
     }
     
@@ -126,7 +126,7 @@ nsDataSignatureVerifier::VerifyData(const nsACString & aData,
     
     // Clean up remaining objects
     SECKEY_DestroyPublicKey(publicKey);
-    PORT_FreeArena(arena, PR_FALSE);
+    PORT_FreeArena(arena, false);
     
     *_retval = (ss == SECSuccess);
 

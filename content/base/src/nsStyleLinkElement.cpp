@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * 
+ *
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -52,9 +52,6 @@
 #include "nsIDOMComment.h"
 #include "nsIDOMNode.h"
 #include "nsIDOMStyleSheet.h"
-#include "nsIDOMText.h"
-#include "nsIUnicharInputStream.h"
-#include "nsISimpleUnicharStreamFactory.h"
 #include "nsNetUtil.h"
 #include "nsUnicharUtils.h"
 #include "nsCRT.h"
@@ -63,8 +60,8 @@
 #include "nsContentUtils.h"
 
 nsStyleLinkElement::nsStyleLinkElement()
-  : mDontLoadStyle(PR_FALSE)
-  , mUpdatesEnabled(PR_TRUE)
+  : mDontLoadStyle(false)
+  , mUpdatesEnabled(true)
   , mLineNumber(1)
 {
 }
@@ -106,7 +103,7 @@ nsStyleLinkElement::GetStyleSheet(nsIStyleSheet*& aStyleSheet)
 }
 
 NS_IMETHODIMP 
-nsStyleLinkElement::InitStyleLinkElement(PRBool aDontLoadStyle)
+nsStyleLinkElement::InitStyleLinkElement(bool aDontLoadStyle)
 {
   mDontLoadStyle = aDontLoadStyle;
 
@@ -129,7 +126,7 @@ nsStyleLinkElement::GetSheet(nsIDOMStyleSheet** aSheet)
 }
 
 NS_IMETHODIMP
-nsStyleLinkElement::SetEnableUpdates(PRBool aEnableUpdates)
+nsStyleLinkElement::SetEnableUpdates(bool aEnableUpdates)
 {
   mUpdatesEnabled = aEnableUpdates;
 
@@ -166,7 +163,7 @@ void nsStyleLinkElement::ParseLinkTypes(const nsAString& aTypes,
     return;
 
   nsAString::const_iterator current(start);
-  PRBool inString = !nsCRT::IsAsciiSpace(*current);
+  bool inString = !nsCRT::IsAsciiSpace(*current);
   nsAutoString subString;
 
   while (current != done) {
@@ -174,13 +171,13 @@ void nsStyleLinkElement::ParseLinkTypes(const nsAString& aTypes,
       if (inString) {
         ToLowerCase(Substring(start, current), subString);
         aResult.AppendElement(subString);
-        inString = PR_FALSE;
+        inString = false;
       }
     }
     else {
       if (!inString) {
         start = current;
-        inString = PR_TRUE;
+        inString = true;
       }
     }
     ++current;
@@ -193,18 +190,18 @@ void nsStyleLinkElement::ParseLinkTypes(const nsAString& aTypes,
 
 NS_IMETHODIMP
 nsStyleLinkElement::UpdateStyleSheet(nsICSSLoaderObserver* aObserver,
-                                     PRBool* aWillNotify,
-                                     PRBool* aIsAlternate)
+                                     bool* aWillNotify,
+                                     bool* aIsAlternate)
 {
   return DoUpdateStyleSheet(nsnull, aObserver, aWillNotify, aIsAlternate,
-                            PR_FALSE);
+                            false);
 }
 
 nsresult
 nsStyleLinkElement::UpdateStyleSheetInternal(nsIDocument *aOldDocument,
-                                             PRBool aForceUpdate)
+                                             bool aForceUpdate)
 {
-  PRBool notify, alternate;
+  bool notify, alternate;
   return DoUpdateStyleSheet(aOldDocument, nsnull, &notify, &alternate,
                             aForceUpdate);
 }
@@ -212,11 +209,11 @@ nsStyleLinkElement::UpdateStyleSheetInternal(nsIDocument *aOldDocument,
 nsresult
 nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument *aOldDocument,
                                        nsICSSLoaderObserver* aObserver,
-                                       PRBool* aWillNotify,
-                                       PRBool* aIsAlternate,
-                                       PRBool aForceUpdate)
+                                       bool* aWillNotify,
+                                       bool* aIsAlternate,
+                                       bool aForceUpdate)
 {
-  *aWillNotify = PR_FALSE;
+  *aWillNotify = false;
 
   if (mStyleSheet && aOldDocument) {
     // We're removing the link element from the document, unload the
@@ -244,13 +241,13 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument *aOldDocument,
     return NS_OK;
   }
 
-  PRBool isInline;
+  bool isInline;
   nsCOMPtr<nsIURI> uri = GetStyleSheetURL(&isInline);
 
   if (!aForceUpdate && mStyleSheet && !isInline && uri) {
     nsIURI* oldURI = mStyleSheet->GetSheetURI();
     if (oldURI) {
-      PRBool equal;
+      bool equal;
       nsresult rv = oldURI->Equals(uri, &equal);
       if (NS_SUCCEEDED(rv) && equal) {
         return NS_OK; // We already loaded this stylesheet
@@ -270,7 +267,7 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument *aOldDocument,
   }
 
   nsAutoString title, type, media;
-  PRBool isAlternate;
+  bool isAlternate;
 
   GetStyleSheetInfo(title, type, media, &isAlternate);
 
@@ -278,35 +275,31 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument *aOldDocument,
     return NS_OK;
   }
 
-  PRBool doneLoading = PR_FALSE;
+  bool doneLoading = false;
   nsresult rv = NS_OK;
   if (isInline) {
-    nsAutoString content;
-    nsContentUtils::GetNodeTextContent(thisContent, PR_FALSE, content);
+    nsAutoString text;
+    nsContentUtils::GetNodeTextContent(thisContent, false, text);
 
-    nsCOMPtr<nsIUnicharInputStream> uin;
-    rv = nsSimpleUnicharStreamFactory::GetInstance()->
-      CreateInstanceFromString(content, getter_AddRefs(uin));
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-
-    // Now that we have a url and a unicode input stream, parse the
-    // style sheet.
+    // Parse the style sheet.
     rv = doc->CSSLoader()->
-      LoadInlineStyle(thisContent, uin, mLineNumber, title, media,
+      LoadInlineStyle(thisContent, text, mLineNumber, title, media,
                       aObserver, &doneLoading, &isAlternate);
   }
   else {
+    // XXXbz clone the URI here to work around content policies modifying URIs.
+    nsCOMPtr<nsIURI> clonedURI;
+    uri->Clone(getter_AddRefs(clonedURI));
+    NS_ENSURE_TRUE(clonedURI, NS_ERROR_OUT_OF_MEMORY);
     rv = doc->CSSLoader()->
-      LoadStyleLink(thisContent, uri, title, media, isAlternate, aObserver,
+      LoadStyleLink(thisContent, clonedURI, title, media, isAlternate, aObserver,
                     &isAlternate);
     if (NS_FAILED(rv)) {
       // Don't propagate LoadStyleLink() errors further than this, since some
       // consumers (e.g. nsXMLContentSink) will completely abort on innocuous
       // things like a stylesheet load being blocked by the security system.
-      doneLoading = PR_TRUE;
-      isAlternate = PR_FALSE;
+      doneLoading = true;
+      isAlternate = false;
       rv = NS_OK;
     }
   }
@@ -318,4 +311,3 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument *aOldDocument,
 
   return NS_OK;
 }
-

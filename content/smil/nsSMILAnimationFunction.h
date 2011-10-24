@@ -86,19 +86,19 @@ public:
    *                   parsed result.
    * @param aParseResult  Outparam used for reporting parse errors. Will be set
    *                      to NS_OK if everything succeeds.
-   * @return  PR_TRUE if aAttribute is a recognized animation-related
-   *          attribute; PR_FALSE otherwise.
+   * @return  true if aAttribute is a recognized animation-related
+   *          attribute; false otherwise.
    */
-  virtual PRBool SetAttr(nsIAtom* aAttribute, const nsAString& aValue,
+  virtual bool SetAttr(nsIAtom* aAttribute, const nsAString& aValue,
                          nsAttrValue& aResult, nsresult* aParseResult = nsnull);
 
   /*
    * Unsets the given attribute.
    *
-   * @returns PR_TRUE if aAttribute is a recognized animation-related
-   *          attribute; PR_FALSE otherwise.
+   * @returns true if aAttribute is a recognized animation-related
+   *          attribute; false otherwise.
    */
-  virtual PRBool UnsetAttr(nsIAtom* aAttribute);
+  virtual bool UnsetAttr(nsIAtom* aAttribute);
 
   /**
    * Indicate a new sample has occurred.
@@ -140,11 +140,11 @@ public:
    * the animation function that it should no longer add its result to the
    * animation sandwich.
    *
-   * @param aIsFrozen PR_TRUE if this animation should continue to contribute
+   * @param aIsFrozen true if this animation should continue to contribute
    *                  to the animation sandwich using the most recent sample
    *                  parameters.
    */
-  void Inactivate(PRBool aIsFrozen);
+  void Inactivate(bool aIsFrozen);
 
   /**
    * Combines the result of this animation function for the last sample with the
@@ -180,9 +180,9 @@ public:
    * Indicates if the animation is currently active or frozen. Inactive
    * animations will not contribute to the composed result.
    *
-   * @return  PR_TRUE if the animation is active or frozen, PR_FALSE otherwise.
+   * @return  true if the animation is active or frozen, false otherwise.
    */
-  PRBool IsActiveOrFrozen() const
+  bool IsActiveOrFrozen() const
   {
     /*
      * - Frozen animations should be considered active for the purposes of
@@ -201,7 +201,7 @@ public:
    * @return  True if the animation will replace, false if it will add or
    *          otherwise build on the passed in value.
    */
-  virtual PRBool WillReplace() const;
+  virtual bool WillReplace() const;
 
   /**
    * Indicates if the parameters for this animation have changed since the last
@@ -211,10 +211,10 @@ public:
    * Note that the caller is responsible for determining if the animation
    * target has changed (with help from my UpdateCachedTarget() method).
    *
-   * @return  PR_TRUE if the animation parameters have changed, PR_FALSE
+   * @return  true if the animation parameters have changed, false
    *          otherwise.
    */
-  PRBool HasChanged() const;
+  bool HasChanged() const;
 
   /**
    * This method lets us clear the 'HasChanged' flag for inactive animations
@@ -222,15 +222,15 @@ public:
    * won't needlessly recompose their targets in every sample.
    *
    * This should only be called on an animation function that is inactive and
-   * that returns PR_TRUE from HasChanged().
+   * that returns true from HasChanged().
    */
   void ClearHasChanged()
   {
     NS_ABORT_IF_FALSE(HasChanged(),
-                      "clearing mHasChanged flag, when it's already PR_FALSE");
+                      "clearing mHasChanged flag, when it's already false");
     NS_ABORT_IF_FALSE(!IsActiveOrFrozen(),
                       "clearing mHasChanged flag for active animation");
-    mHasChanged = PR_FALSE;
+    mHasChanged = false;
   }
 
   /**
@@ -242,19 +242,19 @@ public:
    *
    * @param aNewTarget A nsSMILTargetIdentifier representing the animation
    *                   target of this function for this sample.
-   * @return  PR_TRUE if |aNewTarget| is different from the old cached value;
-   *          otherwise, PR_FALSE.
+   * @return  true if |aNewTarget| is different from the old cached value;
+   *          otherwise, false.
    */
-  PRBool UpdateCachedTarget(const nsSMILTargetIdentifier& aNewTarget);
+  bool UpdateCachedTarget(const nsSMILTargetIdentifier& aNewTarget);
 
   // Comparator utility class, used for sorting nsSMILAnimationFunctions
   class Comparator {
     public:
-      PRBool Equals(const nsSMILAnimationFunction* aElem1,
+      bool Equals(const nsSMILAnimationFunction* aElem1,
                     const nsSMILAnimationFunction* aElem2) const {
         return (aElem1->CompareTo(aElem2) == 0);
       }
-      PRBool LessThan(const nsSMILAnimationFunction* aElem1,
+      bool LessThan(const nsSMILAnimationFunction* aElem1,
                       const nsSMILAnimationFunction* aElem2) const {
         return (aElem1->CompareTo(aElem2) < 0);
       }
@@ -277,8 +277,8 @@ protected:
   nsSMILTime GetBeginTime() const { return mBeginTime; }
 
   // Property getters
-  PRBool                 GetAccumulate() const;
-  PRBool                 GetAdditive() const;
+  bool                   GetAccumulate() const;
+  bool                   GetAdditive() const;
   virtual nsSMILCalcMode GetCalcMode() const;
 
   // Property setters
@@ -322,14 +322,14 @@ protected:
 
   // Convenience attribute getters -- use these instead of querying
   // mAnimationElement as these may need to be overridden by subclasses
-  virtual PRBool             HasAttr(nsIAtom* aAttName) const;
+  virtual bool               HasAttr(nsIAtom* aAttName) const;
   virtual const nsAttrValue* GetAttr(nsIAtom* aAttName) const;
-  virtual PRBool             GetAttr(nsIAtom* aAttName,
+  virtual bool               GetAttr(nsIAtom* aAttName,
                                      nsAString& aResult) const;
 
-  PRBool   ParseAttr(nsIAtom* aAttName, const nsISMILAttr& aSMILAttr,
+  bool     ParseAttr(nsIAtom* aAttName, const nsISMILAttr& aSMILAttr,
                      nsSMILValue& aResult,
-                     PRBool& aPreventCachingOfSandwich) const;
+                     bool& aPreventCachingOfSandwich) const;
 
   virtual nsresult GetValues(const nsISMILAttr& aSMILAttr,
                              nsSMILValueArray& aResult);
@@ -338,17 +338,17 @@ protected:
   void         CheckKeyTimes(PRUint32 aNumValues);
   void         CheckKeySplines(PRUint32 aNumValues);
 
-  virtual PRBool IsToAnimation() const {
+  virtual bool IsToAnimation() const {
     return !HasAttr(nsGkAtoms::values) &&
             HasAttr(nsGkAtoms::to) &&
            !HasAttr(nsGkAtoms::from);
   }
 
-  // Returns PR_TRUE if we know our composited value won't change over the
+  // Returns true if we know our composited value won't change over the
   // simple duration of this animation (for a fixed base value).
-  virtual PRBool IsValueFixedForSimpleDuration() const;
+  virtual bool IsValueFixedForSimpleDuration() const;
 
-  inline PRBool IsAdditive() const {
+  inline bool IsAdditive() const {
     /*
      * Animation is additive if:
      *
@@ -357,7 +357,7 @@ protected:
      *
      * Although animation is not additive if it is 'to animation'
      */
-    PRBool isByAnimation = (!HasAttr(nsGkAtoms::values) &&
+    bool isByAnimation = (!HasAttr(nsGkAtoms::values) &&
                              HasAttr(nsGkAtoms::by) &&
                             !HasAttr(nsGkAtoms::from));
     return !IsToAnimation() && (GetAdditive() || isByAnimation);
@@ -376,26 +376,26 @@ protected:
     BF_KEY_POINTS  = 5 // <animateMotion> only
   };
 
-  inline void SetAccumulateErrorFlag(PRBool aNewValue) {
+  inline void SetAccumulateErrorFlag(bool aNewValue) {
     SetErrorFlag(BF_ACCUMULATE, aNewValue);
   }
-  inline void SetAdditiveErrorFlag(PRBool aNewValue) {
+  inline void SetAdditiveErrorFlag(bool aNewValue) {
     SetErrorFlag(BF_ADDITIVE, aNewValue);
   }
-  inline void SetCalcModeErrorFlag(PRBool aNewValue) {
+  inline void SetCalcModeErrorFlag(bool aNewValue) {
     SetErrorFlag(BF_CALC_MODE, aNewValue);
   }
-  inline void SetKeyTimesErrorFlag(PRBool aNewValue) {
+  inline void SetKeyTimesErrorFlag(bool aNewValue) {
     SetErrorFlag(BF_KEY_TIMES, aNewValue);
   }
-  inline void SetKeySplinesErrorFlag(PRBool aNewValue) {
+  inline void SetKeySplinesErrorFlag(bool aNewValue) {
     SetErrorFlag(BF_KEY_SPLINES, aNewValue);
   }
-  inline void SetKeyPointsErrorFlag(PRBool aNewValue) {
+  inline void SetKeyPointsErrorFlag(bool aNewValue) {
     SetErrorFlag(BF_KEY_POINTS, aNewValue);
   }
   // Helper method -- based on SET_BOOLBIT in nsHTMLInputElement.cpp
-  inline void SetErrorFlag(AnimationAttributeIdx aField, PRBool aValue) {
+  inline void SetErrorFlag(AnimationAttributeIdx aField, bool aValue) {
     if (aValue) {
       mErrorFlags |=  (0x01 << aField);
     } else {
@@ -466,12 +466,12 @@ protected:
   nsSMILWeakTargetIdentifier    mLastTarget;
 
   // Boolean flags
-  PRPackedBool                  mIsActive:1;
-  PRPackedBool                  mIsFrozen:1;
-  PRPackedBool                  mLastValue:1;
-  PRPackedBool                  mHasChanged:1;
-  PRPackedBool                  mValueNeedsReparsingEverySample:1;
-  PRPackedBool                  mPrevSampleWasSingleValueAnimation:1;
+  bool                          mIsActive:1;
+  bool                          mIsFrozen:1;
+  bool                          mLastValue:1;
+  bool                          mHasChanged:1;
+  bool                          mValueNeedsReparsingEverySample:1;
+  bool                          mPrevSampleWasSingleValueAnimation:1;
 };
 
 #endif // NS_SMILANIMATIONFUNCTION_H_

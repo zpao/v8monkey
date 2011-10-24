@@ -42,7 +42,6 @@
 #include "nsIDOMEventListener.h"
 #include "nsIDOMEventTarget.h"
 #include "nsString.h"
-#include "nsPIDOMEventTarget.h"
 #include "nsCycleCollectionParticipant.h"
 #include "jsapi.h"
 
@@ -51,8 +50,8 @@ class nsEventListenerInfo : public nsIEventListenerInfo
 {
 public:
   nsEventListenerInfo(const nsAString& aType, nsIDOMEventListener* aListener,
-                      PRBool aCapturing, PRBool aAllowsUntrusted,
-                      PRBool aInSystemEventGroup)
+                      bool aCapturing, bool aAllowsUntrusted,
+                      bool aInSystemEventGroup)
   : mType(aType), mListener(aListener), mCapturing(aCapturing),
     mAllowsUntrusted(aAllowsUntrusted),
     mInSystemEventGroup(aInSystemEventGroup) {}
@@ -61,14 +60,14 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS(nsEventListenerInfo)
   NS_DECL_NSIEVENTLISTENERINFO
 protected:
-  PRBool GetJSVal(jsval* aJSVal);
+  bool GetJSVal(JSContext* aCx, JSAutoEnterCompartment& aAc, jsval* aJSVal);
 
   nsString                      mType;
   // nsReftPtr because that is what nsListenerStruct uses too.
   nsRefPtr<nsIDOMEventListener> mListener;
-  PRPackedBool                  mCapturing;
-  PRPackedBool                  mAllowsUntrusted;
-  PRPackedBool                  mInSystemEventGroup;
+  bool                          mCapturing;
+  bool                          mAllowsUntrusted;
+  bool                          mInSystemEventGroup;
 };
 
 class nsEventListenerService : public nsIEventListenerService

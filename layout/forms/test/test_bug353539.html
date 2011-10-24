@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=353539
 -->
 <head>
   <title>Test for Bug 353539</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
@@ -41,7 +40,7 @@ addLoadEvent(function() {
   is(area.scrollTop, 0, "The textarea should not be scrolled initially");
   area.focus();
   setTimeout(function() {
-    isnot(area.scrollTop, 0, "The textarea's insertion point should be scrolled into view");
+    is(area.scrollTop, 0, "The textarea's insertion point should not be scrolled into view");
 
     SimpleTest.finish();
   }, 0);

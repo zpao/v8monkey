@@ -129,6 +129,8 @@ var PlacesUtils = {
   TYPE_HTML: "text/html",
   // Place entries as raw URL text
   TYPE_UNICODE: "text/unicode",
+  // Used to track the action that populated the clipboard.
+  TYPE_X_MOZ_PLACE_ACTION: "text/x-moz-place-action",
 
   EXCLUDE_FROM_BACKUP_ANNO: "places/excludeFromBackup",
   GUID_ANNO: "placesInternal/GUID",
@@ -163,6 +165,19 @@ var PlacesUtils = {
    */
   _uri: function PU__uri(aSpec) {
     return NetUtil.newURI(aSpec);
+  },
+
+  /**
+   * Wraps a string in a nsISupportsString wrapper.
+   * @param   aString
+   *          The string to wrap.
+   * @returns A nsISupportsString object containing a string.
+   */
+  toISupportsString: function PU_toISupportsString(aString) {
+    let s = Cc["@mozilla.org/supports-string;1"].
+            createInstance(Ci.nsISupportsString);
+    s.data = aString;
+    return s;
   },
 
   getFormattedString: function PU_getFormattedString(key, params) {
@@ -596,8 +611,9 @@ var PlacesUtils = {
       case this.TYPE_X_MOZ_URL: {
         function gatherDataUrl(bNode) {
           if (PlacesUtils.nodeIsLivemarkContainer(bNode)) {
-            let siteURI = PlacesUtils.livemarks.getSiteURI(bNode.itemId).spec;
-            return siteURI + NEWLINE + bNode.title;
+            let uri = PlacesUtils.livemarks.getSiteURI(bNode.itemId) ||
+                      PlacesUtils.livemarks.getFeedURI(bNode.itemId);
+            return uri.spec + NEWLINE + bNode.title;
           }
           if (PlacesUtils.nodeIsURI(bNode))
             return (aOverrideURI || bNode.uri) + NEWLINE + bNode.title;
@@ -625,8 +641,9 @@ var PlacesUtils = {
           // escape out potential HTML in the title
           let escapedTitle = bNode.title ? htmlEscape(bNode.title) : "";
           if (PlacesUtils.nodeIsLivemarkContainer(bNode)) {
-            let siteURI = PlacesUtils.livemarks.getSiteURI(bNode.itemId).spec;
-            return "<A HREF=\"" + siteURI + "\">" + escapedTitle + "</A>" + NEWLINE;
+            let uri = PlacesUtils.livemarks.getSiteURI(bNode.itemId) ||
+                      PlacesUtils.livemarks.getFeedURI(bNode.itemId);
+            return "<A HREF=\"" + uri.spec + "\">" + escapedTitle + "</A>" + NEWLINE;
           }
           if (PlacesUtils.nodeIsContainer(bNode)) {
             asContainer(bNode);
@@ -664,7 +681,8 @@ var PlacesUtils = {
     // Otherwise, we wrap as TYPE_UNICODE.
     function gatherDataText(bNode) {
       if (PlacesUtils.nodeIsLivemarkContainer(bNode))
-        return PlacesUtils.livemarks.getSiteURI(bNode.itemId).spec;
+        return PlacesUtils.livemarks.getSiteURI(bNode.itemId) ||
+               PlacesUtils.livemarks.getFeedURI(bNode.itemId);
       if (PlacesUtils.nodeIsContainer(bNode)) {
         asContainer(bNode);
         let wasOpen = bNode.containerOpen;
@@ -1704,8 +1722,7 @@ var PlacesUtils = {
    * Serialize a JS object to JSON
    */
   toJSONString: function PU_toJSONString(aObj) {
-    var JSON = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
-    return JSON.encode(aObj);
+    return JSON.stringify(aObj);
   },
 
   /**
@@ -2149,10 +2166,6 @@ XPCOMUtils.defineLazyGetter(PlacesUtils, "ghistory2", function() {
   return PlacesUtils.history.QueryInterface(Ci.nsIGlobalHistory2);
 });
 
-XPCOMUtils.defineLazyGetter(PlacesUtils, "ghistory3", function() {
-  return PlacesUtils.history.QueryInterface(Ci.nsIGlobalHistory3);
-});
-
 XPCOMUtils.defineLazyServiceGetter(PlacesUtils, "favicons",
                                    "@mozilla.org/browser/favicon-service;1",
                                    "nsIFaviconService");
@@ -2207,7 +2220,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "focusManager",
 function updateCommandsOnActiveWindow()
 {
   let win = focusManager.activeWindow;
-  if (win && win instanceof Ci.nsIDOMWindowInternal) {
+  if (win && win instanceof Ci.nsIDOMWindow) {
     // Updating "undo" will cause a group update including "redo".
     win.updateCommands("undo");
   }
@@ -2246,7 +2259,9 @@ BaseTransaction.prototype = {
 
 function PlacesAggregatedTransaction(aName, aTransactions)
 {
-  this._transactions = aTransactions;
+  // Copy the transactions array to decouple it from its prototype, which
+  // otherwise keeps alive its associated global object.
+  this._transactions = Array.slice(aTransactions);
   this._name = aName;
   this.container = -1;
 
@@ -2333,9 +2348,12 @@ function PlacesCreateFolderTransaction(aName, aContainer, aIndex, aAnnotations,
   this._name = aName;
   this._container = aContainer;
   this._index = typeof(aIndex) == "number" ? aIndex : -1;
-  this._annotations = aAnnotations;
   this._id = null;
-  this.childTransactions = aChildItemsTransactions || [];
+  // Copy the array to decouple it from its prototype, which otherwise keeps
+  // alive its associated global object.
+  this._annotations = aAnnotations ? Array.slice(aAnnotations) : [];
+  this.childTransactions = aChildItemsTransactions ?
+                             Array.slice(aChildItemsTransactions) : [];
 }
 
 PlacesCreateFolderTransaction.prototype = {
@@ -2420,8 +2438,10 @@ function PlacesCreateBookmarkTransaction(aURI, aContainer, aIndex, aTitle,
   this._index = typeof(aIndex) == "number" ? aIndex : -1;
   this._title = aTitle;
   this._keyword = aKeyword;
-  this._annotations = aAnnotations;
-  this.childTransactions = aChildTransactions || [];
+  // Copy the array to decouple it from its prototype, which otherwise keeps
+  // alive its associated global object.
+  this._annotations = aAnnotations ? Array.slice(aAnnotations) : [];
+  this.childTransactions = aChildTransactions ? Array.slice(aChildTransactions) : [];
 }
 
 PlacesCreateBookmarkTransaction.prototype = {
@@ -2542,7 +2562,9 @@ function PlacesCreateLivemarkTransaction(aFeedURI, aSiteURI, aName, aContainer,
   this._name = aName;
   this._container = aContainer;
   this._index = typeof(aIndex) == "number" ? aIndex : -1;
-  this._annotations = aAnnotations;
+  // Copy the array to decouple it from its prototype, which otherwise keeps
+  // alive its associated global object.
+  this._annotations = aAnnotations ? Array.slice(aAnnotations) : [];
 }
 
 PlacesCreateLivemarkTransaction.prototype = {
@@ -2590,11 +2612,11 @@ function PlacesRemoveLivemarkTransaction(aFolderId)
   this._container = PlacesUtils.bookmarks.getFolderIdForItem(this._id);
   let annos = PlacesUtils.getAnnotationsForItem(this._id);
   // Exclude livemark service annotations, those will be recreated automatically
-  let annosToExclude = ["livemark/feedURI",
-                        "livemark/siteURI",
-                        "livemark/expiration",
-                        "livemark/loadfailed",
-                        "livemark/loading"];
+  let annosToExclude = [PlacesUtils.LMANNO_FEEDURI,
+                        PlacesUtils.LMANNO_SITEURI,
+                        PlacesUtils.LMANNO_EXPIRATION,
+                        PlacesUtils.LMANNO_LOADFAILED,
+                        PlacesUtils.LMANNO_LOADING];
   this._annotations = annos.filter(function(aValue, aIndex, aArray) {
       return annosToExclude.indexOf(aValue.name) == -1;
     });
@@ -3237,7 +3259,7 @@ PlacesSortFolderByNameTransaction.prototype = {
         if (preSep.length > 0) {
           preSep.sort(sortingMethod);
           newOrder = newOrder.concat(preSep);
-          preSep.splice(0);
+          preSep.splice(0, preSep.length);
         }
         newOrder.push(item);
       }
@@ -3291,8 +3313,10 @@ PlacesSortFolderByNameTransaction.prototype = {
 function PlacesTagURITransaction(aURI, aTags)
 {
   this._uri = aURI;
-  this._tags = aTags;
   this._unfiledItemId = -1;
+  // Copy the array to decouple it from its prototype, which otherwise keeps
+  // alive its associated global object.
+  this._tags = Array.slice(aTags);
 }
 
 PlacesTagURITransaction.prototype = {
@@ -3345,11 +3369,14 @@ function PlacesUntagURITransaction(aURI, aTags)
 {
   this._uri = aURI;
   if (aTags) {    
+    // Copy the array to decouple it from its prototype, which otherwise keeps
+    // alive its associated global object.
+    this._tags = Array.slice(aTags);
+
     // Within this transaction, we cannot rely on tags given by itemId
     // since the tag containers may be gone after we call untagURI.
     // Thus, we convert each tag given by its itemId to name.
-    this._tags = aTags;
-    for (let i = 0; i < aTags.length; ++i) {
+    for (let i = 0; i < this._tags.length; ++i) {
       if (typeof(this._tags[i]) == "number")
         this._tags[i] = PlacesUtils.bookmarks.getItemTitle(this._tags[i]);
     }

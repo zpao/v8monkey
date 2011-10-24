@@ -77,18 +77,21 @@ public:
 
     void           CloseOutput(void)
     {
-      if (mOutput) {
-        nsCOMPtr<nsIDiskCacheStreamInternal> tmp (do_QueryInterface(mOutput));
-        if (tmp)
-          tmp->CloseInternal();
-        else
-          mOutput->Close();
-
-        mOutput = nsnull;
-      }
+      InternalCleanup(mOutput);
+      mOutput = nsnull;
     }
 
 private:
+    void           InternalCleanup(nsIOutputStream *stream)
+    {
+      if (stream) {
+        nsCOMPtr<nsIDiskCacheStreamInternal> tmp (do_QueryInterface(stream));
+        if (tmp)
+          tmp->CloseInternal();
+        else
+          stream->Close();
+      }
+    }
 
 
      /*************************************************************************
@@ -102,7 +105,7 @@ private:
          nsCacheEntryDescriptor    * mDescriptor;
          nsCOMPtr<nsIInputStream>    mInput;
          PRUint32                    mStartOffset;
-         PRBool                      mInitialized;
+         bool                        mInitialized;
      public:
          NS_DECL_ISUPPORTS
          NS_DECL_NSIINPUTSTREAM
@@ -110,7 +113,7 @@ private:
          nsInputStreamWrapper(nsCacheEntryDescriptor * desc, PRUint32 off)
              : mDescriptor(desc)
              , mStartOffset(off)
-             , mInitialized(PR_FALSE)
+             , mInitialized(false)
          {
              NS_ADDREF(mDescriptor);
          }
@@ -137,7 +140,7 @@ private:
          nsCacheEntryDescriptor *    mDescriptor;
          nsCOMPtr<nsIOutputStream>   mOutput;
          PRUint32                    mStartOffset;
-         PRBool                      mInitialized;
+         bool                        mInitialized;
      public:
          NS_DECL_ISUPPORTS
          NS_DECL_NSIOUTPUTSTREAM
@@ -145,7 +148,7 @@ private:
          nsOutputStreamWrapper(nsCacheEntryDescriptor * desc, PRUint32 off)
              : mDescriptor(desc)
              , mStartOffset(off)
-             , mInitialized(PR_FALSE)
+             , mInitialized(false)
          {
              NS_ADDREF(mDescriptor); // owning ref
          }

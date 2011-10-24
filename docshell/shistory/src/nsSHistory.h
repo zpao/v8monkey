@@ -53,7 +53,6 @@
 #include "nsISHistoryListener.h"
 #include "nsIHistoryEntry.h"
 #include "nsIObserver.h"
-#include "nsIPrefBranch2.h"
 
 // Needed to maintain global list of all SHistory objects
 #include "prclist.h"
@@ -62,7 +61,7 @@ class nsIDocShell;
 class nsSHEnumerator;
 class nsSHistoryObserver;
 class nsSHistory: public PRCList,
-                  public nsISHistory_2_0_BRANCH,
+                  public nsISHistory,
                   public nsISHistoryInternal,
                   public nsIWebNavigation
 {
@@ -73,11 +72,11 @@ public:
   NS_DECL_NSISHISTORY
   NS_DECL_NSISHISTORYINTERNAL
   NS_DECL_NSIWEBNAVIGATION
-  NS_DECL_NSISHISTORY_2_0_BRANCH
 
   // One time initialization method called upon docshell module construction
   static nsresult Startup();
-  static void UpdatePrefs(nsIPrefBranch *aPrefBranch);
+  static void Shutdown();
+  static void UpdatePrefs();
 
   // Max number of total cached content viewers.  If the pref
   // browser.sessionhistory.max_total_viewers is negative, then
@@ -91,9 +90,9 @@ protected:
   friend class nsSHistoryObserver;
 
    // Could become part of nsIWebNavigation
-   NS_IMETHOD GetEntryAtIndex(PRInt32 aIndex, PRBool aModifyIndex, nsISHEntry** aResult);
+   NS_IMETHOD GetEntryAtIndex(PRInt32 aIndex, bool aModifyIndex, nsISHEntry** aResult);
    NS_IMETHOD GetTransactionAtIndex(PRInt32 aIndex, nsISHTransaction ** aResult);
-   nsresult CompareFrames(nsISHEntry * prevEntry, nsISHEntry * nextEntry, nsIDocShell * rootDocShell, long aLoadType, PRBool * aIsFrameFound);
+   nsresult CompareFrames(nsISHEntry * prevEntry, nsISHEntry * nextEntry, nsIDocShell * rootDocShell, long aLoadType, bool * aIsFrameFound);
    nsresult InitiateLoad(nsISHEntry * aFrameEntry, nsIDocShell * aFrameDS, long aLoadType);
 
    NS_IMETHOD LoadEntry(PRInt32 aIndex, long aLoadType, PRUint32 histCmd);
@@ -118,9 +117,9 @@ protected:
   nsresult LoadNextPossibleEntry(PRInt32 aNewIndex, long aLoadType, PRUint32 aHistCmd);
 protected:
   // aIndex is the index of the transaction which may be removed.
-  // If aKeepNext is PR_TRUE, aIndex is compared to aIndex + 1,
+  // If aKeepNext is true, aIndex is compared to aIndex + 1,
   // otherwise comparison is done to aIndex - 1.
-  PRBool RemoveDuplicate(PRInt32 aIndex, PRBool aKeepNext);
+  bool RemoveDuplicate(PRInt32 aIndex, bool aKeepNext);
 
   nsCOMPtr<nsISHTransaction> mListRoot;
   PRInt32 mIndex;

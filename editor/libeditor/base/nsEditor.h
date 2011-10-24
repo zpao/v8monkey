@@ -62,10 +62,11 @@
 #include "nsSelectionState.h"
 #include "nsIEditorSpellCheck.h"
 #include "nsIInlineSpellChecker.h"
-#include "nsPIDOMEventTarget.h"
+#include "nsIDOMEventTarget.h"
 #include "nsStubMutationObserver.h"
 #include "nsIViewManager.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsIObserver.h"
 
 class nsIDOMCharacterData;
 class nsIDOMRange;
@@ -100,6 +101,7 @@ class nsIDOMNSEvent;
 class nsEditor : public nsIEditor,
                  public nsIEditorIMESupport,
                  public nsSupportsWeakReference,
+                 public nsIObserver,
                  public nsIPhonetic
 {
 public:
@@ -145,14 +147,17 @@ public:
                                            nsIEditor)
 
   /* ------------ utility methods   -------------- */
-  NS_IMETHOD GetPresShell(nsIPresShell **aPS);
-  void NotifyEditorObservers(void);
+  already_AddRefed<nsIPresShell> GetPresShell();
+  void NotifyEditorObservers();
 
   /* ------------ nsIEditor methods -------------- */
   NS_DECL_NSIEDITOR
   /* ------------ nsIEditorIMESupport methods -------------- */
   NS_DECL_NSIEDITORIMESUPPORT
   
+  /* ------------ nsIObserver methods -------------- */
+  NS_DECL_NSIOBSERVER
+
   // nsIPhonetic
   NS_DECL_NSIPHONETIC
 
@@ -166,7 +171,7 @@ public:
   nsresult InsertTextIntoTextNodeImpl(const nsAString& aStringToInsert, 
                                       nsIDOMCharacterData *aTextNode, 
                                       PRInt32 aOffset,
-                                      PRBool aSuppressIME = PR_FALSE);
+                                      bool aSuppressIME = false);
   NS_IMETHOD DeleteSelectionImpl(EDirection aAction);
   NS_IMETHOD DeleteSelectionAndCreateNode(const nsAString& aTag,
                                            nsIDOMNode ** aNewNode);
@@ -177,7 +182,7 @@ public:
                             const nsAString &aNodeType,
                             const nsAString *aAttribute = nsnull,
                             const nsAString *aValue = nsnull,
-                            PRBool aCloneAttributes = PR_FALSE);
+                            bool aCloneAttributes = false);
 
   nsresult RemoveContainer(nsIDOMNode *inNode);
   nsresult InsertContainerAbove(nsIDOMNode *inNode, 
@@ -200,13 +205,15 @@ public:
                                         nsIPrivateTextRangeList *aTextRange)=0;
   nsresult EndIMEComposition();
 
+  void SwitchTextDirectionTo(PRUint32 aDirection);
+
   void BeginKeypressHandling() { mLastKeypressEventWasTrusted = eTriTrue; }
   void BeginKeypressHandling(nsIDOMNSEvent* aEvent);
   void EndKeypressHandling() { mLastKeypressEventWasTrusted = eTriUnset; }
 
   class FireTrustedInputEvent {
   public:
-    explicit FireTrustedInputEvent(nsEditor* aSelf, PRBool aActive = PR_TRUE)
+    explicit FireTrustedInputEvent(nsEditor* aSelf, bool aActive = true)
       : mEditor(aSelf)
       , mShouldAct(aActive && mEditor->mLastKeypressEventWasTrusted == eTriUnset) {
       if (mShouldAct) {
@@ -220,11 +227,13 @@ public:
     }
   private:
     nsEditor* mEditor;
-    PRBool mShouldAct;
+    bool mShouldAct;
   };
 
 protected:
   nsCString mContentMIMEType;       // MIME type of the doc we are editing.
+
+  nsresult DetermineCurrentDirection();
 
   /** create a transaction for setting aAttribute to aValue on aElement
     */
@@ -339,31 +348,31 @@ protected:
   NS_IMETHOD SelectEntireDocument(nsISelection *aSelection);
 
   /** helper method for scrolling the selection into view after
-   *  an edit operation. aScrollToAnchor should be PR_TRUE if you
+   *  an edit operation. aScrollToAnchor should be true if you
    *  want to scroll to the point where the selection was started.
-   *  If PR_FALSE, it attempts to scroll the end of the selection into view.
+   *  If false, it attempts to scroll the end of the selection into view.
    *
    *  Editor methods *should* call this method instead of the versions
    *  in the various selection interfaces, since this version makes sure
    *  that the editor's sync/async settings for reflowing, painting, and
    *  scrolling match.
    */
-  NS_IMETHOD ScrollSelectionIntoView(PRBool aScrollToAnchor);
+  NS_IMETHOD ScrollSelectionIntoView(bool aScrollToAnchor);
 
   // stub.  see comment in source.                     
-  virtual PRBool IsBlockNode(nsIDOMNode *aNode);
+  virtual bool IsBlockNode(nsIDOMNode *aNode);
   
   // helper for GetPriorNode
   nsresult GetPriorNodeImpl(nsIDOMNode  *aCurrentNode, 
-                            PRBool       aEditableNode,
+                            bool         aEditableNode,
                             nsCOMPtr<nsIDOMNode> *aResultNode,
-                            PRBool       bNoBlockCrossing = PR_FALSE);
+                            bool         bNoBlockCrossing = false);
 
   // helper for GetNextNode
   nsresult GetNextNodeImpl(nsIDOMNode  *aCurrentNode, 
-                           PRBool       aEditableNode,
+                           bool         aEditableNode,
                            nsCOMPtr<nsIDOMNode> *aResultNode,
-                           PRBool       bNoBlockCrossing = PR_FALSE);
+                           bool         bNoBlockCrossing = false);
 
   // Get nsIWidget interface
   nsresult GetWidget(nsIWidget **aWidget);
@@ -372,7 +381,7 @@ protected:
   // install the event listeners for the editor 
   virtual nsresult InstallEventListeners();
 
-  virtual nsresult CreateEventListeners();
+  virtual void CreateEventListeners();
 
   // unregister and release our event listeners
   virtual void RemoveEventListeners();
@@ -380,15 +389,15 @@ protected:
   /**
    * Return true if spellchecking should be enabled for this editor.
    */
-  PRBool GetDesiredSpellCheckState();
+  bool GetDesiredSpellCheckState();
 
   nsKeyEvent* GetNativeKeyEvent(nsIDOMKeyEvent* aDOMKeyEvent);
 
-  PRBool CanEnableSpellCheck()
+  bool CanEnableSpellCheck()
   {
     // Check for password/readonly/disabled, which are not spellchecked
-    // regardless of DOM
-    return !IsPasswordEditor() && !IsReadonly() && !IsDisabled();
+    // regardless of DOM. Also, check to see if spell check should be skipped or not.
+    return !IsPasswordEditor() && !IsReadonly() && !IsDisabled() && !ShouldSkipSpellCheck();
   }
 
 public:
@@ -403,7 +412,7 @@ public:
 
   /** routines for managing the preservation of selection across 
    *  various editor actions */
-  PRBool   ArePreservingSelection();
+  bool     ArePreservingSelection();
   nsresult PreserveSelectionAcrossActions(nsISelection *aSel);
   nsresult RestorePreservedSelection(nsISelection *aSel);
   void     StopPreservingSelection();
@@ -426,13 +435,13 @@ public:
    * @param aNodeToJoin   The node that will be joined with aNodeToKeep.
    *                      There is no requirement that the two nodes be of the same type.
    * @param aParent       The parent of aNodeToKeep
-   * @param aNodeToKeepIsFirst  if PR_TRUE, the contents|children of aNodeToKeep come before the
+   * @param aNodeToKeepIsFirst  if true, the contents|children of aNodeToKeep come before the
    *                            contents|children of aNodeToJoin, otherwise their positions are switched.
    */
   nsresult JoinNodesImpl(nsIDOMNode *aNodeToKeep,
                          nsIDOMNode *aNodeToJoin,
                          nsIDOMNode *aParent,
-                         PRBool      aNodeToKeepIsFirst);
+                         bool        aNodeToKeepIsFirst);
 
   /**
    *  Set aOffset to the offset of aChild in aParent.  
@@ -460,89 +469,91 @@ public:
 
   /** get the node immediately prior to aCurrentNode
     * @param aCurrentNode   the node from which we start the search
-    * @param aEditableNode  if PR_TRUE, only return an editable node
+    * @param aEditableNode  if true, only return an editable node
     * @param aResultNode    [OUT] the node that occurs before aCurrentNode in the tree,
-    *                       skipping non-editable nodes if aEditableNode is PR_TRUE.
+    *                       skipping non-editable nodes if aEditableNode is true.
     *                       If there is no prior node, aResultNode will be nsnull.
     */
   nsresult GetPriorNode(nsIDOMNode  *aCurrentNode, 
-                        PRBool       aEditableNode,
+                        bool         aEditableNode,
                         nsCOMPtr<nsIDOMNode> *aResultNode,
-                        PRBool       bNoBlockCrossing = PR_FALSE);
+                        bool         bNoBlockCrossing = false);
 
   // and another version that takes a {parent,offset} pair rather than a node
   nsresult GetPriorNode(nsIDOMNode  *aParentNode, 
                         PRInt32      aOffset, 
-                        PRBool       aEditableNode, 
+                        bool         aEditableNode, 
                         nsCOMPtr<nsIDOMNode> *aResultNode,
-                        PRBool       bNoBlockCrossing = PR_FALSE);
+                        bool         bNoBlockCrossing = false);
                        
   /** get the node immediately after to aCurrentNode
     * @param aCurrentNode   the node from which we start the search
-    * @param aEditableNode  if PR_TRUE, only return an editable node
+    * @param aEditableNode  if true, only return an editable node
     * @param aResultNode    [OUT] the node that occurs after aCurrentNode in the tree,
-    *                       skipping non-editable nodes if aEditableNode is PR_TRUE.
+    *                       skipping non-editable nodes if aEditableNode is true.
     *                       If there is no prior node, aResultNode will be nsnull.
     */
   nsresult GetNextNode(nsIDOMNode  *aCurrentNode, 
-                       PRBool       aEditableNode,
+                       bool         aEditableNode,
                        nsCOMPtr<nsIDOMNode> *aResultNode,
-                       PRBool       bNoBlockCrossing = PR_FALSE);
+                       bool         bNoBlockCrossing = false);
 
   // and another version that takes a {parent,offset} pair rather than a node
   nsresult GetNextNode(nsIDOMNode  *aParentNode, 
                        PRInt32      aOffset, 
-                       PRBool       aEditableNode, 
+                       bool         aEditableNode, 
                        nsCOMPtr<nsIDOMNode> *aResultNode,
-                       PRBool       bNoBlockCrossing = PR_FALSE);
+                       bool         bNoBlockCrossing = false);
 
-  /** Get the rightmost child of aCurrentNode;
-    * return nsnull if aCurrentNode has no children.
-    */
-  nsCOMPtr<nsIDOMNode> GetRightmostChild(nsIDOMNode *aCurrentNode, 
-                                         PRBool      bNoBlockCrossing = PR_FALSE);
+  /**
+   * Get the rightmost child of aCurrentNode;
+   * return nsnull if aCurrentNode has no children.
+   */
+  already_AddRefed<nsIDOMNode> GetRightmostChild(nsIDOMNode *aCurrentNode, 
+                                                 bool        bNoBlockCrossing = false);
 
-  /** Get the leftmost child of aCurrentNode;
-    * return nsnull if aCurrentNode has no children.
-    */
-  nsCOMPtr<nsIDOMNode> GetLeftmostChild(nsIDOMNode  *aCurrentNode, 
-                                         PRBool      bNoBlockCrossing = PR_FALSE);
+  /**
+   * Get the leftmost child of aCurrentNode;
+   * return nsnull if aCurrentNode has no children.
+   */
+  already_AddRefed<nsIDOMNode> GetLeftmostChild(nsIDOMNode  *aCurrentNode, 
+                                                bool        bNoBlockCrossing = false);
 
-  /** returns PR_TRUE if aNode is of the type implied by aTag */
-  static inline PRBool NodeIsType(nsIDOMNode *aNode, nsIAtom *aTag)
+  /** returns true if aNode is of the type implied by aTag */
+  static inline bool NodeIsType(nsIDOMNode *aNode, nsIAtom *aTag)
   {
     return GetTag(aNode) == aTag;
   }
 
   // we should get rid of this method if we can
-  static inline PRBool NodeIsTypeString(nsIDOMNode *aNode, const nsAString &aTag)
+  static inline bool NodeIsTypeString(nsIDOMNode *aNode, const nsAString &aTag)
   {
     nsIAtom *nodeAtom = GetTag(aNode);
     return nodeAtom && nodeAtom->Equals(aTag);
   }
 
 
-  /** returns PR_TRUE if aParent can contain a child of type aTag */
-  PRBool CanContainTag(nsIDOMNode* aParent, const nsAString &aTag);
-  PRBool TagCanContain(const nsAString &aParentTag, nsIDOMNode* aChild);
-  virtual PRBool TagCanContainTag(const nsAString &aParentTag, const nsAString &aChildTag);
+  /** returns true if aParent can contain a child of type aTag */
+  bool CanContainTag(nsIDOMNode* aParent, const nsAString &aTag);
+  bool TagCanContain(const nsAString &aParentTag, nsIDOMNode* aChild);
+  virtual bool TagCanContainTag(const nsAString &aParentTag, const nsAString &aChildTag);
 
-  /** returns PR_TRUE if aNode is our root node */
-  PRBool IsRootNode(nsIDOMNode *inNode);
+  /** returns true if aNode is our root node */
+  bool IsRootNode(nsIDOMNode *inNode);
 
-  /** returns PR_TRUE if aNode is a descendant of our root node */
-  PRBool IsDescendantOfBody(nsIDOMNode *inNode);
+  /** returns true if aNode is a descendant of our root node */
+  bool IsDescendantOfBody(nsIDOMNode *inNode);
 
-  /** returns PR_TRUE if aNode is a container */
-  virtual PRBool IsContainer(nsIDOMNode *aNode);
+  /** returns true if aNode is a container */
+  virtual bool IsContainer(nsIDOMNode *aNode);
 
-  /** returns PR_TRUE if aNode is an editable node */
-  PRBool IsEditable(nsIDOMNode *aNode);
+  /** returns true if aNode is an editable node */
+  bool IsEditable(nsIDOMNode *aNode);
 
-  virtual PRBool IsTextInDirtyFrameVisible(nsIDOMNode *aNode);
+  virtual bool IsTextInDirtyFrameVisible(nsIDOMNode *aNode);
 
-  /** returns PR_TRUE if aNode is a MozEditorBogus node */
-  PRBool IsMozEditorBogusNode(nsIDOMNode *aNode);
+  /** returns true if aNode is a MozEditorBogus node */
+  bool IsMozEditorBogusNode(nsIDOMNode *aNode);
 
   /** counts number of editable child nodes */
   nsresult CountEditableChildren(nsIDOMNode *aNode, PRUint32 &outCount);
@@ -554,19 +565,20 @@ public:
 #endif
 
   nsresult GetIMEBufferLength(PRInt32* length);
-  PRBool   IsIMEComposing();    /* test if IME is in composition state */
+  bool     IsIMEComposing();    /* test if IME is in composition state */
   void     SetIsIMEComposing(); /* call this before |IsIMEComposing()| */
 
   /** from html rules code - migration in progress */
   static nsresult GetTagString(nsIDOMNode *aNode, nsAString& outString);
   static nsIAtom *GetTag(nsIDOMNode *aNode);
-  virtual PRBool NodesSameType(nsIDOMNode *aNode1, nsIDOMNode *aNode2);
-  static PRBool IsTextOrElementNode(nsIDOMNode *aNode);
-  static PRBool IsTextNode(nsIDOMNode *aNode);
+  virtual bool NodesSameType(nsIDOMNode *aNode1, nsIDOMNode *aNode2);
+  static bool IsTextOrElementNode(nsIDOMNode *aNode);
+  static bool IsTextNode(nsIDOMNode *aNode);
   
   static PRInt32 GetIndexOf(nsIDOMNode *aParent, nsIDOMNode *aChild);
   static nsCOMPtr<nsIDOMNode> GetChildAt(nsIDOMNode *aParent, PRInt32 aOffset);
-  
+  static nsCOMPtr<nsIDOMNode> GetNodeAtRangeOffsetPoint(nsIDOMNode* aParentOrNode, PRInt32 aOffset);
+
   static nsresult GetStartNodeAndOffset(nsISelection *aSelection, nsIDOMNode **outStartNode, PRInt32 *outStartOffset);
   static nsresult GetEndNodeAndOffset(nsISelection *aSelection, nsIDOMNode **outEndNode, PRInt32 *outEndOffset);
 #if DEBUG_JOE
@@ -584,13 +596,13 @@ public:
   // When you are using AppendNodeToSelectionAsRange, call this first to start a new selection
   nsresult ClearSelection();
 
-  nsresult IsPreformatted(nsIDOMNode *aNode, PRBool *aResult);
+  nsresult IsPreformatted(nsIDOMNode *aNode, bool *aResult);
 
   nsresult SplitNodeDeep(nsIDOMNode *aNode, 
                          nsIDOMNode *aSplitPointParent, 
                          PRInt32 aSplitPointOffset,
                          PRInt32 *outOffset,
-                         PRBool  aNoEmptyContainers = PR_FALSE,
+                         bool    aNoEmptyContainers = false,
                          nsCOMPtr<nsIDOMNode> *outLeftNode = 0,
                          nsCOMPtr<nsIDOMNode> *outRightNode = 0);
   nsresult JoinNodeDeep(nsIDOMNode *aLeftNode, nsIDOMNode *aRightNode, nsCOMPtr<nsIDOMNode> *aOutJoinNode, PRInt32 *outOffset); 
@@ -600,7 +612,7 @@ public:
   nsresult BeginUpdateViewBatch(void);
   virtual nsresult EndUpdateViewBatch(void);
 
-  PRBool GetShouldTxnSetSelection();
+  bool GetShouldTxnSetSelection();
 
   virtual nsresult HandleKeyPressEvent(nsIDOMKeyEvent* aKeyEvent);
 
@@ -613,78 +625,83 @@ public:
                                     nsIDOMNode *aEndNode,
                                     PRInt32 aEndOffset);
 
-  virtual already_AddRefed<nsPIDOMEventTarget> GetPIDOMEventTarget() = 0;
+  virtual already_AddRefed<nsIDOMEventTarget> GetDOMEventTarget() = 0;
 
   // Fast non-refcounting editor root element accessor
   nsIDOMElement *GetRoot();
 
   // Accessor methods to flags
-  PRBool IsPlaintextEditor() const
+  bool IsPlaintextEditor() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorPlaintextMask) != 0;
   }
 
-  PRBool IsSingleLineEditor() const
+  bool IsSingleLineEditor() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorSingleLineMask) != 0;
   }
 
-  PRBool IsPasswordEditor() const
+  bool IsPasswordEditor() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorPasswordMask) != 0;
   }
 
-  PRBool IsReadonly() const
+  bool IsReadonly() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorReadonlyMask) != 0;
   }
 
-  PRBool IsDisabled() const
+  bool IsDisabled() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorDisabledMask) != 0;
   }
 
-  PRBool IsInputFiltered() const
+  bool IsInputFiltered() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorFilterInputMask) != 0;
   }
 
-  PRBool IsMailEditor() const
+  bool IsMailEditor() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorMailMask) != 0;
   }
 
-  PRBool UseAsyncUpdate() const
+  bool UseAsyncUpdate() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorUseAsyncUpdatesMask) != 0;
   }
 
-  PRBool IsWrapHackEnabled() const
+  bool IsWrapHackEnabled() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorEnableWrapHackMask) != 0;
   }
 
-  PRBool IsFormWidget() const
+  bool IsFormWidget() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorWidgetMask) != 0;
   }
 
-  PRBool NoCSS() const
+  bool NoCSS() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorNoCSSMask) != 0;
   }
 
-  PRBool IsInteractionAllowed() const
+  bool IsInteractionAllowed() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorAllowInteraction) != 0;
   }
 
-  PRBool DontEchoPassword() const
+  bool DontEchoPassword() const
   {
     return (mFlags & nsIPlaintextEditor::eEditorDontEchoPassword) != 0;
   }
+  
+  PRBool ShouldSkipSpellCheck() const
+  {
+    return (mFlags & nsIPlaintextEditor::eEditorSkipSpellCheck) != 0;
+  }
 
-  PRBool IsTabbable() const
+  bool IsTabbable() const
   {
     return IsSingleLineEditor() || IsPasswordEditor() || IsFormWidget() ||
            IsInteractionAllowed();
@@ -696,13 +713,13 @@ public:
   // Whether the editor is active on the DOM window.  Note that when this
   // returns true but GetFocusedContent() returns null, it means that this editor was
   // focused when the DOM window was active.
-  virtual PRBool IsActiveInDOMWindow();
+  virtual bool IsActiveInDOMWindow();
 
   // Whether the aEvent should be handled by this editor or not.  When this
   // returns FALSE, The aEvent shouldn't be handled on this editor,
   // i.e., The aEvent should be handled by another inner editor or ancestor
   // elements.
-  virtual PRBool IsAcceptableInputEvent(nsIDOMEvent* aEvent);
+  virtual bool IsAcceptableInputEvent(nsIDOMEvent* aEvent);
 
   // FindSelectionRoot() returns a selection root of this editor when aNode
   // gets focus.  aNode must be a content node or a document node.  When the
@@ -715,6 +732,11 @@ public:
   // a host of the editor, i.e., the editor doesn't get focus, this does
   // nothing.
   nsresult InitializeSelection(nsIDOMEventTarget* aFocusEventTarget);
+
+  // This method has to be called by nsEditorEventListener::Focus.
+  // All actions that have to be done when the editor is focused needs to be
+  // added here.
+  void OnFocus(nsIDOMEventTarget* aFocusEventTarget);
 
 protected:
 
@@ -749,13 +771,13 @@ protected:
   nsCOMPtr<nsIDOMCharacterData>     mIMETextNode;      // current IME text node
   PRUint32                          mIMETextOffset;    // offset in text node where IME comp string begins
   PRUint32                          mIMEBufferLength;  // current length of IME comp string
-  PRPackedBool                      mInIMEMode;        // are we inside an IME composition?
-  PRPackedBool                      mIsIMEComposing;   // is IME in composition state?
+  bool                              mInIMEMode;        // are we inside an IME composition?
+  bool                              mIsIMEComposing;   // is IME in composition state?
                                                        // This is different from mInIMEMode. see Bug 98434.
 
-  PRPackedBool                  mShouldTxnSetSelection;  // turn off for conservative selection adjustment by txns
-  PRPackedBool                  mDidPreDestroy;    // whether PreDestroy has been called
-  PRPackedBool                  mDidPostCreate;    // whether PostCreate has been called
+  bool                          mShouldTxnSetSelection;  // turn off for conservative selection adjustment by txns
+  bool                          mDidPreDestroy;    // whether PreDestroy has been called
+  bool                          mDidPostCreate;    // whether PostCreate has been called
    // various listeners
   nsCOMArray<nsIEditActionListener> mActionListeners;  // listens to all low level actions on the doc
   nsCOMArray<nsIEditorObserver> mEditorObservers;  // just notify once per high level change
@@ -764,7 +786,7 @@ protected:
   PRInt8                        mDocDirtyState;		// -1 = not initialized
   nsWeakPtr        mDocWeak;  // weak reference to the nsIDOMDocument
   // The form field as an event receiver
-  nsCOMPtr<nsPIDOMEventTarget> mEventTarget;
+  nsCOMPtr<nsIDOMEventTarget> mEventTarget;
 
   nsString* mPhonetic;
 
@@ -772,7 +794,7 @@ protected:
 
   Tristate mLastKeypressEventWasTrusted;
 
-  friend PRBool NSCanUnload(nsISupports* serviceMgr);
+  friend bool NSCanUnload(nsISupports* serviceMgr);
   friend class nsAutoTxnsConserveSelection;
   friend class nsAutoSelectionReset;
   friend class nsAutoRules;

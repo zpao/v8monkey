@@ -137,8 +137,9 @@ nsresult writeoutto(const char* i_pURL, char** o_Result, PRInt32 urlFactory = UR
         rv = tURL->GetFileExtension(temp);
         output += RESULT();
         output += ',';
-        rv = tURL->GetParam(temp);
-        output += RESULT();
+        // removed with https://bugzilla.mozilla.org/show_bug.cgi?id=665706
+        // rv = tURL->GetParam(temp); 
+        // output += RESULT();
         output += ',';
         rv = tURL->GetQuery(temp);
         output += RESULT();
@@ -426,7 +427,7 @@ int main(int argc, char **argv)
         printf("------------------\n\n");
 
         PRInt32 urlFactory = URL_FACTORY_DEFAULT;
-        PRBool bMakeAbs= PR_FALSE;
+        bool bMakeAbs= false;
         char* relativePath = 0;
         char* url = 0;
         for (int i=1; i<argc; i++) {
@@ -446,7 +447,7 @@ int main(int argc, char **argv)
                     relativePath = argv[i+1];
                     i++;
                 }
-                bMakeAbs = PR_TRUE;
+                bMakeAbs = true;
             }
             else if (PL_strcasecmp(argv[i], "-file") == 0)
             {

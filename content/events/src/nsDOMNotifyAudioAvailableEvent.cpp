@@ -38,6 +38,8 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsDOMNotifyAudioAvailableEvent.h"
+#include "nsDOMClassInfoID.h" // DOMCI_DATA, NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO
+#include "nsContentUtils.h" // NS_DROP_JS_OBJECTS
 #include "jstypedarray.h"
 
 nsDOMNotifyAudioAvailableEvent::nsDOMNotifyAudioAvailableEvent(nsPresContext* aPresContext,
@@ -51,7 +53,7 @@ nsDOMNotifyAudioAvailableEvent::nsDOMNotifyAudioAvailableEvent(nsPresContext* aP
     mFrameBufferLength(aFrameBufferLength),
     mTime(aTime),
     mCachedArray(nsnull),
-    mAllowAudioData(PR_FALSE)
+    mAllowAudioData(false)
 {
   MOZ_COUNT_CTOR(nsDOMNotifyAudioAvailableEvent);
   if (mEvent) {
@@ -118,8 +120,8 @@ nsDOMNotifyAudioAvailableEvent::GetFrameBuffer(JSContext* aCx, jsval* aResult)
     return NS_ERROR_FAILURE;
   }
 
-  js::TypedArray *tdest = js::TypedArray::fromJSObject(mCachedArray);
-  memcpy(tdest->data, mFrameBuffer.get(), mFrameBufferLength * sizeof(float));
+  JSObject *tdest = js::TypedArray::getTypedArray(mCachedArray);
+  memcpy(JS_GetTypedArrayData(tdest), mFrameBuffer.get(), mFrameBufferLength * sizeof(float));
 
   *aResult = OBJECT_TO_JSVAL(mCachedArray);
   return NS_OK;
@@ -134,12 +136,12 @@ nsDOMNotifyAudioAvailableEvent::GetTime(float *aRetVal)
 
 NS_IMETHODIMP
 nsDOMNotifyAudioAvailableEvent::InitAudioAvailableEvent(const nsAString& aType,
-                                                        PRBool aCanBubble,
-                                                        PRBool aCancelable,
+                                                        bool aCanBubble,
+                                                        bool aCancelable,
                                                         float* aFrameBuffer,
                                                         PRUint32 aFrameBufferLength,
                                                         float aTime,
-                                                        PRBool aAllowAudioData)
+                                                        bool aAllowAudioData)
 {
   // Auto manage the memory which stores the frame buffer. This ensures
   // that if we exit due to some error, the memory will be freed. Otherwise,

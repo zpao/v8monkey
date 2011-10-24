@@ -66,45 +66,45 @@
 class nsSMILMilestone
 {
 public:
-  nsSMILMilestone(nsSMILTime aTime, PRBool aIsEnd)
+  nsSMILMilestone(nsSMILTime aTime, bool aIsEnd)
     : mTime(aTime), mIsEnd(aIsEnd)
   { }
 
   nsSMILMilestone()
-    : mTime(0), mIsEnd(PR_FALSE)
+    : mTime(0), mIsEnd(false)
   { }
 
-  PRBool operator==(const nsSMILMilestone& aOther) const
+  bool operator==(const nsSMILMilestone& aOther) const
   {
     return mTime == aOther.mTime && mIsEnd == aOther.mIsEnd;
   }
 
-  PRBool operator!=(const nsSMILMilestone& aOther) const
+  bool operator!=(const nsSMILMilestone& aOther) const
   {
     return !(*this == aOther);
   }
 
-  PRBool operator<(const nsSMILMilestone& aOther) const
+  bool operator<(const nsSMILMilestone& aOther) const
   {
     // Earlier times sort first, and for equal times end milestones sort first
     return mTime < aOther.mTime ||
           (mTime == aOther.mTime && mIsEnd && !aOther.mIsEnd);
   }
 
-  PRBool operator<=(const nsSMILMilestone& aOther) const
+  bool operator<=(const nsSMILMilestone& aOther) const
   {
     return *this == aOther || *this < aOther;
   }
 
-  PRBool operator>=(const nsSMILMilestone& aOther) const
+  bool operator>=(const nsSMILMilestone& aOther) const
   {
     return !(*this < aOther);
   }
 
   nsSMILTime   mTime;  // The milestone time. This may be in container time or
                        // parent container time depending on where it is used.
-  PRPackedBool mIsEnd; // PR_TRUE if this milestone corresponds to an interval
-                       // end, PR_FALSE otherwise.
+  bool mIsEnd; // true if this milestone corresponds to an interval
+                       // end, false otherwise.
 };
 
 #endif // NS_SMILMILESTONE_H_

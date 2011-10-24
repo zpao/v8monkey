@@ -36,6 +36,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "inDOMView.h"
 #include "inIDOMUtils.h"
 
@@ -64,7 +66,7 @@
 #include "nsIAccessibilityService.h"
 #endif
 
-namespace dom = mozilla::dom;
+using namespace mozilla;
 
 ////////////////////////////////////////////////////////////////////////
 // inDOMViewNode
@@ -83,10 +85,10 @@ public:
   inDOMViewNode* previous;
 
   PRInt32 level;
-  PRBool isOpen;
-  PRBool isContainer;
-  PRBool hasAnonymous;
-  PRBool hasSubDocument;
+  bool isOpen;
+  bool isContainer;
+  bool hasAnonymous;
+  bool hasSubDocument;
 };
 
 inDOMViewNode::inDOMViewNode(nsIDOMNode* aNode) :
@@ -95,10 +97,10 @@ inDOMViewNode::inDOMViewNode(nsIDOMNode* aNode) :
   next(nsnull),
   previous(nsnull),
   level(0),
-  isOpen(PR_FALSE),
-  isContainer(PR_FALSE),
-  hasAnonymous(PR_FALSE),
-  hasSubDocument(PR_FALSE)
+  isOpen(false),
+  isContainer(false),
+  hasAnonymous(false),
+  hasSubDocument(false)
 {
 
 }
@@ -110,10 +112,10 @@ inDOMViewNode::~inDOMViewNode()
 ////////////////////////////////////////////////////////////////////////
 
 inDOMView::inDOMView() :
-  mShowAnonymous(PR_FALSE),
-  mShowSubDocuments(PR_FALSE),
-  mShowWhitespaceNodes(PR_TRUE),
-  mShowAccessibleNodes(PR_FALSE),
+  mShowAnonymous(false),
+  mShowSubDocuments(false),
+  mShowWhitespaceNodes(true),
+  mShowAccessibleNodes(false),
   mWhatToShow(nsIDOMNodeFilter::SHOW_ALL)
 {
 }
@@ -140,7 +142,7 @@ inDOMView::~inDOMView()
 /* static */ void
 inDOMView::InitAtoms()
 {
-  NS_RegisterStaticAtoms(Atoms_info, NS_ARRAY_LENGTH(Atoms_info));
+  NS_RegisterStaticAtoms(Atoms_info, ArrayLength(Atoms_info));
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -232,56 +234,56 @@ inDOMView::GetRowIndexFromNode(nsIDOMNode *node, PRInt32 *_retval)
 
 
 NS_IMETHODIMP
-inDOMView::GetShowAnonymousContent(PRBool *aShowAnonymousContent)
+inDOMView::GetShowAnonymousContent(bool *aShowAnonymousContent)
 {
   *aShowAnonymousContent = mShowAnonymous;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::SetShowAnonymousContent(PRBool aShowAnonymousContent)
+inDOMView::SetShowAnonymousContent(bool aShowAnonymousContent)
 {
   mShowAnonymous = aShowAnonymousContent;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::GetShowSubDocuments(PRBool *aShowSubDocuments)
+inDOMView::GetShowSubDocuments(bool *aShowSubDocuments)
 {
   *aShowSubDocuments = mShowSubDocuments;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::SetShowSubDocuments(PRBool aShowSubDocuments)
+inDOMView::SetShowSubDocuments(bool aShowSubDocuments)
 {
   mShowSubDocuments = aShowSubDocuments;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::GetShowWhitespaceNodes(PRBool *aShowWhitespaceNodes)
+inDOMView::GetShowWhitespaceNodes(bool *aShowWhitespaceNodes)
 {
   *aShowWhitespaceNodes = mShowWhitespaceNodes;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::SetShowWhitespaceNodes(PRBool aShowWhitespaceNodes)
+inDOMView::SetShowWhitespaceNodes(bool aShowWhitespaceNodes)
 {
   mShowWhitespaceNodes = aShowWhitespaceNodes;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::GetShowAccessibleNodes(PRBool *aShowAccessibleNodes)
+inDOMView::GetShowAccessibleNodes(bool *aShowAccessibleNodes)
 {
   *aShowAccessibleNodes = mShowAccessibleNodes;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::SetShowAccessibleNodes(PRBool aShowAccessibleNodes)
+inDOMView::SetShowAccessibleNodes(bool aShowAccessibleNodes)
 {
   mShowAccessibleNodes = aShowAccessibleNodes;
   return NS_OK;
@@ -462,7 +464,7 @@ inDOMView::GetCellText(PRInt32 row, nsITreeColumn* col, nsAString& _retval)
 }
 
 NS_IMETHODIMP
-inDOMView::IsContainer(PRInt32 index, PRBool *_retval)
+inDOMView::IsContainer(PRInt32 index, bool *_retval)
 {
   inDOMViewNode* node = nsnull;
   RowToNode(index, &node);
@@ -473,7 +475,7 @@ inDOMView::IsContainer(PRInt32 index, PRBool *_retval)
 }
 
 NS_IMETHODIMP
-inDOMView::IsContainerOpen(PRInt32 index, PRBool *_retval)
+inDOMView::IsContainerOpen(PRInt32 index, bool *_retval)
 {
   inDOMViewNode* node = nsnull;
   RowToNode(index, &node);
@@ -484,13 +486,13 @@ inDOMView::IsContainerOpen(PRInt32 index, PRBool *_retval)
 }
 
 NS_IMETHODIMP
-inDOMView::IsContainerEmpty(PRInt32 index, PRBool *_retval)
+inDOMView::IsContainerEmpty(PRInt32 index, bool *_retval)
 {
   inDOMViewNode* node = nsnull;
   RowToNode(index, &node);
   if (!node) return NS_ERROR_FAILURE;
 
-  *_retval = node->isContainer ? PR_FALSE : PR_TRUE;
+  *_retval = node->isContainer ? false : true;
   return NS_OK;
 }
 
@@ -535,7 +537,7 @@ inDOMView::GetParentIndex(PRInt32 rowIndex, PRInt32 *_retval)
 }
 
 NS_IMETHODIMP
-inDOMView::HasNextSibling(PRInt32 rowIndex, PRInt32 afterIndex, PRBool *_retval)
+inDOMView::HasNextSibling(PRInt32 rowIndex, PRInt32 afterIndex, bool *_retval)
 {
   inDOMViewNode* node = nsnull;
   RowToNode(rowIndex, &node);
@@ -619,35 +621,35 @@ inDOMView::CycleCell(PRInt32 row, nsITreeColumn* col)
 }
 
 NS_IMETHODIMP
-inDOMView::IsEditable(PRInt32 row, nsITreeColumn* col, PRBool *_retval)
+inDOMView::IsEditable(PRInt32 row, nsITreeColumn* col, bool *_retval)
 {
   return NS_OK;
 }
 
 
 NS_IMETHODIMP
-inDOMView::IsSelectable(PRInt32 row, nsITreeColumn* col, PRBool *_retval)
+inDOMView::IsSelectable(PRInt32 row, nsITreeColumn* col, bool *_retval)
 {
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::IsSeparator(PRInt32 index, PRBool *_retval)
+inDOMView::IsSeparator(PRInt32 index, bool *_retval)
 {
   return NS_OK;
 }
 
 NS_IMETHODIMP
-inDOMView::IsSorted(PRBool *_retval)
+inDOMView::IsSorted(bool *_retval)
 {
   return NS_OK;
 }
 
 NS_IMETHODIMP
 inDOMView::CanDrop(PRInt32 index, PRInt32 orientation,
-                   nsIDOMDataTransfer* aDataTransfer, PRBool *_retval)
+                   nsIDOMDataTransfer* aDataTransfer, bool *_retval)
 {
-  *_retval = PR_FALSE;
+  *_retval = false;
   return NS_OK;
 }
 
@@ -866,7 +868,7 @@ inDOMView::ContentInserted(nsIDocument *aDocument, nsIContent* aContainer,
     // Parent is not open, so don't bother creating tree rows for the
     // kids.  But do indicate that it's now a container, if needed.
     if (!parentNode->isContainer) {
-      parentNode->isContainer = PR_TRUE;
+      parentNode->isContainer = true;
       mTree->InvalidateRow(parentRow);
     }
     return;
@@ -938,7 +940,7 @@ inDOMView::ContentRemoved(nsIDocument *aDocument, nsIContent* aContainer,
   // The parent may no longer be a container.  Note that we don't want
   // to access oldNode after calling RemoveNode, so do this now.
   inDOMViewNode* parentNode = oldNode->parent;
-  PRBool isOnlyChild = oldNode->previous == nsnull && oldNode->next == nsnull;
+  bool isOnlyChild = oldNode->previous == nsnull && oldNode->next == nsnull;
   
   // Keep track of how many rows we are removing.  It's at least one,
   // but if we're open it's more.
@@ -952,8 +954,8 @@ inDOMView::ContentRemoved(nsIDocument *aDocument, nsIContent* aContainer,
 
   if (isOnlyChild) {
     // Fix up the parent
-    parentNode->isContainer = PR_FALSE;
-    parentNode->isOpen = PR_FALSE;
+    parentNode->isContainer = false;
+    parentNode->isOpen = false;
     mTree->InvalidateRow(NodeToRow(parentNode));
   }
     
@@ -996,7 +998,7 @@ inDOMView::CreateNode(nsIDOMNode* aNode, inDOMViewNode* aParent)
   return viewNode;
 }
 
-PRBool
+bool
 inDOMView::RowOutOfBounds(PRInt32 aRow, PRInt32 aCount)
 {
   return aRow < 0 || aRow >= GetRowCount() || aCount+aRow > GetRowCount();
@@ -1100,7 +1102,7 @@ inDOMView::ExpandNode(PRInt32 aRow)
   InsertNodes(list, aRow+1);
 
   if (node)
-    node->isOpen = PR_TRUE;
+    node->isOpen = true;
 }
 
 void
@@ -1117,7 +1119,7 @@ inDOMView::CollapseNode(PRInt32 aRow)
 
   RemoveNodes(aRow+1, row-aRow);
 
-  node->isOpen = PR_FALSE;
+  node->isOpen = false;
 }
 
 //////// NODE AND ROW CONVERSION
@@ -1242,24 +1244,17 @@ inDOMView::GetChildNodesFor(nsIDOMNode* aNode, nsCOMArray<nsIDOMNode>& aResult)
     }
 
     if (mWhatToShow & nsIDOMNodeFilter::SHOW_ELEMENT) {
-      // try to get the anonymous content
       nsCOMPtr<nsIDOMNodeList> kids;
-      if (mShowAnonymous) {
-        nsCOMPtr<nsIContent> content = do_QueryInterface(aNode);
-        if (content) {
-          nsRefPtr<nsBindingManager> bindingManager = inLayoutUtils::GetBindingManagerFor(aNode);
-          if (bindingManager) {
-            bindingManager->GetAnonymousNodesFor(content, getter_AddRefs(kids));
-            if (!kids) {
-              bindingManager->GetContentListFor(content, getter_AddRefs(kids));
-            }
-          }
+      if (!mDOMUtils) {
+        mDOMUtils = do_GetService("@mozilla.org/inspector/dom-utils;1");
+        if (!mDOMUtils) {
+          return NS_ERROR_FAILURE;
         }
       }
 
-      if (!kids) {
-        aNode->GetChildNodes(getter_AddRefs(kids));
-      }
+      mDOMUtils->GetChildrenForNode(aNode, mShowAnonymous,
+                                    getter_AddRefs(kids));
+
       if (kids) {
         AppendKidsToArray(kids, aResult);
       }
@@ -1320,7 +1315,7 @@ inDOMView::AppendKidsToArray(nsIDOMNodeList* aKids,
           !mShowWhitespaceNodes && mDOMUtils) {
         nsCOMPtr<nsIDOMCharacterData> data = do_QueryInterface(kid);
         NS_ASSERTION(data, "Does not implement nsIDOMCharacterData!");
-        PRBool ignore;
+        bool ignore;
         mDOMUtils->IsIgnorableWhitespace(data, &ignore);
         if (ignore) {
           continue;

@@ -2,6 +2,7 @@ toolkit.jar:
 +  skin/classic/global/autocomplete.css
 +  skin/classic/global/button.css
 +  skin/classic/global/checkbox.css
++  skin/classic/global/colorpicker.css
 +  skin/classic/global/commonDialog.css
 +  skin/classic/global/dropmarker.css
 +  skin/classic/global/filefield.css
@@ -10,6 +11,7 @@ toolkit.jar:
 +  skin/classic/global/findBar.css
 +  skin/classic/global/global.css
 +  skin/classic/global/groupbox.css
++  skin/classic/global/inContentUI.css
 +  skin/classic/global/listbox.css
 +  skin/classic/global/menu.css
 +  skin/classic/global/menulist.css

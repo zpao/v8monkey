@@ -45,6 +45,7 @@
 #include "nsITheme.h"
 #include "nsThemeConstants.h"
 #include "nsEventStates.h"
+#include "mozilla/dom/Element.h"
 
 #define ACTIVE   "active"
 #define HOVER    "hover"
@@ -74,7 +75,7 @@ nsButtonFrameRenderer::GetFrame()
 }
 
 void
-nsButtonFrameRenderer::SetDisabled(PRBool aDisabled, PRBool notify)
+nsButtonFrameRenderer::SetDisabled(bool aDisabled, bool notify)
 {
   if (aDisabled)
     mFrame->GetContent()->SetAttr(kNameSpaceID_None, nsGkAtoms::disabled, EmptyString(),
@@ -83,12 +84,11 @@ nsButtonFrameRenderer::SetDisabled(PRBool aDisabled, PRBool notify)
     mFrame->GetContent()->UnsetAttr(kNameSpaceID_None, nsGkAtoms::disabled, notify);
 }
 
-PRBool
+bool
 nsButtonFrameRenderer::isDisabled() 
 {
-  // NOTE: we might want to remove this method to prevent calling too often
-  // IntrinsicState().
-  return mFrame->GetContent()->IntrinsicState().HasState(NS_EVENT_STATE_DISABLED);
+  return mFrame->GetContent()->AsElement()->
+    State().HasState(NS_EVENT_STATE_DISABLED);
 }
 
 class nsDisplayButtonBoxShadowOuter : public nsDisplayItem {

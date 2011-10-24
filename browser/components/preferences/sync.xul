@@ -74,14 +74,17 @@
       <deck id="weavePrefsDeck">
         <vbox id="noAccount" align="center">
           <spacer flex="1"/>
-          <button id="setupButton"
-                  label="&setupButton.label;"
-                  accesskey="&setupButton.accesskey;"
-                  oncommand="gSyncPane.openSetup();"/>
-          <separator/>
-          <description id="syncDesc" flex="1">
+          <description id="syncDesc">
             &weaveDesc.label;
           </description>
+          <separator/>
+          <label class="text-link"
+                 onclick="event.stopPropagation(); gSyncPane.openSetup(null);"
+                 value="&setupButton.label;"/>
+          <separator/>
+          <label class="text-link"
+                 onclick="event.stopPropagation(); gSyncPane.openSetup('pair');"
+                 value="&pairDevice.label;"/>
           <spacer flex="3"/>
         </vbox>
 
@@ -101,12 +104,12 @@
                   <menuitem label="&viewQuota.label;"
                             oncommand="gSyncPane.openQuotaDialog();"/>
                   <menuseparator/>
-                  <menuitem label="&changePassword.label;"
+                  <menuitem label="&changePassword2.label;"
                             oncommand="gSyncUtils.changePassword();"/>
-                  <menuitem label="&mySyncKey.label;"
+                  <menuitem label="&myRecoveryKey.label;"
                             oncommand="gSyncUtils.resetPassphrase();"/>
                   <menuseparator/>
-                  <menuitem label="&resetSync.label;"
+                  <menuitem label="&resetSync2.label;"
                             oncommand="gSyncPane.resetSync();"/>
                 </menupopup>
               </button>
@@ -116,7 +119,7 @@
               <label id="syncAddDeviceLabel"
                      class="text-link"
                      onclick="gSyncPane.openAddDevice(); return false;"
-                     value="&addDevice.label;"/>
+                     value="&pairDevice.label;"/>
             </hbox>
 
             <vbox>
@@ -172,7 +175,7 @@
             <hbox>
               <label class="text-link"
                      onclick="gSyncPane.startOver(true); return false;"
-                     value="&deactivateDevice.label;"/>
+                     value="&unlinkDevice.label;"/>
             </hbox>
           </groupbox>
           <hbox id="tosPP" pack="center">
@@ -197,7 +200,7 @@
           </hbox>
           <label class="text-link"
                  onclick="gSyncPane.startOver(true); return false;"
-                 value="&deactivateDevice.label;"/>
+                 value="&unlinkDevice.label;"/>
         </vbox>
       </deck>
   </prefpane>

@@ -47,33 +47,20 @@ LIBRARY_NAME	= pref
 EXPORT_LIBRARY = 1
 IS_COMPONENT	= 1
 MODULE_NAME	= nsPrefModule
-ifeq ($(OS_ARCH)$(MOZ_ENABLE_LIBXUL),WINNT)
-LIBRARY_NAME	= xppref32
-endif
 GRE_MODULE	= 1
 LIBXUL_LIBRARY = 1
 
 CPPSRCS		= \
 			  nsPrefBranch.cpp	\
-			  nsPrefService.cpp	\
 			  nsPrefsFactory.cpp	\
 			  prefapi.cpp \
 			  prefread.cpp \
+			  Preferences.cpp	\
 			 $(NULL)
 
 DEFINES += -DOS_ARCH=$(OS_ARCH) \
            -DMOZ_WIDGET_TOOLKIT=$(MOZ_WIDGET_TOOLKIT) \
            $(NULL)
-
-# this comes from a system header; we should probably be using XP_WINCE or something
-ifdef WINCE
-DEFINES += -DWINCE=1
-endif
-
-EXTRA_DSO_LDOPTS = \
-		$(LIBS_DIR) \
-		$(MOZ_COMPONENT_LIBS) \
-		$(NULL)
 
 include $(topsrcdir)/config/config.mk
 include $(topsrcdir)/ipc/chromium/chromium-config.mk

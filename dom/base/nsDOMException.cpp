@@ -38,20 +38,17 @@
 
 #include "nsCOMPtr.h"
 #include "nsCRTGlue.h"
-#include "nsDOMClassInfo.h"
+#include "nsDOMClassInfoID.h"
 #include "nsDOMError.h"
 #include "nsDOMException.h"
 #include "nsIDOMDOMException.h"
 #include "nsIDOMRangeException.h"
 #include "nsIDOMFileException.h"
-#ifdef MOZ_SVG
 #include "nsIDOMSVGException.h"
-#endif
 #include "nsIDOMXPathException.h"
 #include "nsIIDBDatabaseException.h"
 #include "nsString.h"
 #include "prprf.h"
-#include "nsIDOMEventException.h"
 
 #define DOM_MSG_DEF(val, message) {(val), #val, message},
 
@@ -117,6 +114,8 @@ NSResultToNameAndMessage(nsresult aNSResult,
                          const char** aName,
                          const char** aMessage)
 {
+  *aName = nsnull;
+  *aMessage = nsnull;
   ResultStruct* result_struct = gDOMErrorMsgMap;
 
   while (result_struct->mName) {
@@ -185,7 +184,6 @@ nsRangeException::GetCode(PRUint16* aCode)
   return NS_OK;
 }
 
-#ifdef MOZ_SVG
 IMPL_INTERNAL_DOM_EXCEPTION_HEAD(nsSVGException, nsIDOMSVGException)
   NS_DECL_NSIDOMSVGEXCEPTION
 IMPL_INTERNAL_DOM_EXCEPTION_TAIL(nsSVGException, nsIDOMSVGException,
@@ -202,7 +200,6 @@ nsSVGException::GetCode(PRUint16* aCode)
 
   return NS_OK;
 }
-#endif // MOZ_SVG
 
 IMPL_INTERNAL_DOM_EXCEPTION_HEAD(nsXPathException, nsIDOMXPathException)
   NS_DECL_NSIDOMXPATHEXCEPTION
@@ -229,23 +226,6 @@ IMPL_INTERNAL_DOM_EXCEPTION_TAIL(nsDOMFileException, nsIDOMFileException,
 
 NS_IMETHODIMP
 nsDOMFileException::GetCode(PRUint16* aCode)
-{
-  NS_ENSURE_ARG_POINTER(aCode);
-  nsresult result;
-  GetResult(&result);
-  *aCode = NS_ERROR_GET_CODE(result);
-
-  return NS_OK;
-}
-
-IMPL_INTERNAL_DOM_EXCEPTION_HEAD(nsDOMEventException, nsIDOMEventException)
-  NS_DECL_NSIDOMEVENTEXCEPTION
-IMPL_INTERNAL_DOM_EXCEPTION_TAIL(nsDOMEventException, nsIDOMEventException,
-                                 EventException, NS_ERROR_MODULE_DOM_EVENTS,
-                                 NSResultToNameAndMessage)
-
-NS_IMETHODIMP
-nsDOMEventException::GetCode(PRUint16* aCode)
 {
   NS_ENSURE_ARG_POINTER(aCode);
   nsresult result;

@@ -96,7 +96,6 @@
 #define JS_HAS_FUN_EXPR_STMT    0       /* has function expression statement */
 #define JS_HAS_NO_SUCH_METHOD   0       /* has o.__noSuchMethod__ handler */
 #define JS_HAS_XML_SUPPORT      0       /* has ECMAScript for XML support */
-#define JS_HAS_ARRAY_EXTRAS     0       /* has indexOf and Lispy extras */
 #define JS_HAS_GENERATORS       0       /* has yield in generator function */
 #define JS_HAS_BLOCK_SCOPE      0       /* has block scope via let/arraycomp */
 #define JS_HAS_DESTRUCTURING    0       /* has [a,b] = ... or {p:a,q:b} = ... */
@@ -123,7 +122,6 @@
 #define JS_HAS_FUN_EXPR_STMT    1       /* has function expression statement */
 #define JS_HAS_NO_SUCH_METHOD   1       /* has o.__noSuchMethod__ handler */
 #define JS_HAS_XML_SUPPORT      0       /* has ECMAScript for XML support */
-#define JS_HAS_ARRAY_EXTRAS     0       /* has indexOf and Lispy extras */
 #define JS_HAS_GENERATORS       0       /* has yield in generator function */
 #define JS_HAS_BLOCK_SCOPE      0       /* has block scope via let/arraycomp */
 #define JS_HAS_DESTRUCTURING    0       /* has [a,b] = ... or {p:a,q:b} = ... */
@@ -146,7 +144,6 @@
 #define JS_HAS_FUN_EXPR_STMT    1       /* has function expression statement */
 #define JS_HAS_NO_SUCH_METHOD   1       /* has o.__noSuchMethod__ handler */
 #define JS_HAS_XML_SUPPORT      1       /* has ECMAScript for XML support */
-#define JS_HAS_ARRAY_EXTRAS     1       /* has indexOf and Lispy extras */
 #define JS_HAS_GENERATORS       0       /* has yield in generator function */
 #define JS_HAS_BLOCK_SCOPE      0       /* has block scope via let/arraycomp */
 #define JS_HAS_DESTRUCTURING    0       /* has [a,b] = ... or {p:a,q:b} = ... */
@@ -169,7 +166,6 @@
 #define JS_HAS_FUN_EXPR_STMT    1       /* has function expression statement */
 #define JS_HAS_NO_SUCH_METHOD   1       /* has o.__noSuchMethod__ handler */
 #define JS_HAS_XML_SUPPORT      1       /* has ECMAScript for XML support */
-#define JS_HAS_ARRAY_EXTRAS     1       /* has indexOf and Lispy extras */
 #define JS_HAS_GENERATORS       1       /* has yield in generator function */
 #define JS_HAS_BLOCK_SCOPE      1       /* has block scope via let/arraycomp */
 #define JS_HAS_DESTRUCTURING    1       /* has [a,b] = ... or {p:a,q:b} = ... */
@@ -192,7 +188,6 @@
 #define JS_HAS_FUN_EXPR_STMT    1       /* has function expression statement */
 #define JS_HAS_NO_SUCH_METHOD   1       /* has o.__noSuchMethod__ handler */
 #define JS_HAS_XML_SUPPORT      1       /* has ECMAScript for XML support */
-#define JS_HAS_ARRAY_EXTRAS     1       /* has indexOf and Lispy extras */
 #define JS_HAS_GENERATORS       1       /* has yield in generator function */
 #define JS_HAS_BLOCK_SCOPE      1       /* has block scope via let/arraycomp */
 #define JS_HAS_DESTRUCTURING    2       /* has [a,b] = ... or {p:a,q:b} = ... */
@@ -219,13 +214,3 @@
  * support likely to be made opt-in at some future time.
  */
 #define OLD_GETTER_SETTER_METHODS       1
-
-/*
- * Embedders: don't change this: it's a bake-until-ready hack only!
- *
- * NB: Changing this value requires adjusting the pass/fail state of a handful
- *     of tests in ecma_5/JSON/ which the old parser implemented incorrectly.
- *     Also make sure to rename JSONSourceParser to just JSONParser when the
- *     old parser is removed completely.
- */
-#define USE_OLD_AND_BUSTED_JSON_PARSER 0

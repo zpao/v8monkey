@@ -65,13 +65,11 @@ tier_base_dirs = \
 	$(NULL)
 
 ifndef LIBXUL_SDK
-tier_base_dirs += \
-	memory \
-	$(NULL)
 ifeq ($(OS_TARGET),Android)
 tier_base_dirs += other-licenses/android
 endif
 
+tier_base_dirs += memory
 endif
 
 ifdef COMPILE_ENVIRONMENT
@@ -162,7 +160,7 @@ ifdef MOZ_SYMBOLS_EXTRA_BUILDID
 EXTRA_BUILDID := -$(MOZ_SYMBOLS_EXTRA_BUILDID)
 endif
 
-export SYMBOL_INDEX_NAME = \
+SYMBOL_INDEX_NAME = \
   $(MOZ_APP_NAME)-$(MOZ_APP_VERSION)-$(OS_TARGET)-$(BUILDID)$(EXTRA_BUILDID)-symbols.txt
 
 buildsymbols:
@@ -174,6 +172,7 @@ endif
 	$(RM) -r $(DIST)/crashreporter-symbols
 	$(RM) "$(DIST)/$(SYMBOL_ARCHIVE_BASENAME).zip"
 	$(NSINSTALL) -D $(DIST)/crashreporter-symbols
+	OBJCOPY="$(OBJCOPY)" \
 	$(PYTHON) $(topsrcdir)/toolkit/crashreporter/tools/symbolstore.py \
 	  $(MAKE_SYM_STORE_ARGS)                                          \
 	  $(foreach dir,$(SYM_STORE_SOURCE_DIRS),-s $(dir))               \
@@ -194,8 +193,11 @@ endif # MOZ_CRASHREPORTER
 
 uploadsymbols:
 ifdef MOZ_CRASHREPORTER
-	$(SHELL) $(topsrcdir)/toolkit/crashreporter/tools/upload_symbols.sh "$(DIST)/$(PKG_PATH)$(SYMBOL_FULL_ARCHIVE_BASENAME).zip"
+	$(SHELL) $(topsrcdir)/toolkit/crashreporter/tools/upload_symbols.sh $(SYMBOL_INDEX_NAME) "$(DIST)/$(PKG_PATH)$(SYMBOL_FULL_ARCHIVE_BASENAME).zip"
 endif
+
+codesighs:
+	$(MAKE) -C $(MOZ_BUILD_APP)/installer codesighs
 
 # defined in package-name.mk
 export MOZ_SOURCE_STAMP

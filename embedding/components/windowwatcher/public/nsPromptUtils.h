@@ -87,7 +87,7 @@ NS_SetAuthInfo(nsIAuthInformation* aAuthInfo, const nsString& user,
  */
 inline void
 NS_GetAuthHostPort(nsIChannel* aChannel, nsIAuthInformation* aAuthInfo,
-                   PRBool machineProcessing, nsCString& host, PRInt32* port)
+                   bool machineProcessing, nsCString& host, PRInt32* port)
 {
   nsCOMPtr<nsIURI> uri;
   nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
@@ -154,7 +154,7 @@ NS_GetAuthKey(nsIChannel* aChannel, nsIAuthInformation* aAuthInfo,
   nsCString host;
   PRInt32 port = -1;
 
-  NS_GetAuthHostPort(aChannel, aAuthInfo, PR_TRUE, host, &port);
+  NS_GetAuthHostPort(aChannel, aAuthInfo, true, host, &port);
 
   nsAutoString realm;
   aAuthInfo->GetRealm(realm);

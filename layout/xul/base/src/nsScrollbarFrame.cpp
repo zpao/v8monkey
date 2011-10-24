@@ -62,7 +62,7 @@ NS_NewScrollbarFrame (nsIPresShell* aPresShell, nsStyleContext* aContext)
 NS_IMPL_FRAMEARENA_HELPERS(nsScrollbarFrame)
 
 NS_QUERYFRAME_HEAD(nsScrollbarFrame)
-  NS_QUERYFRAME_ENTRY(nsIScrollbarFrame)
+  NS_QUERYFRAME_ENTRY(nsScrollbarFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
 
 NS_IMETHODIMP
@@ -102,14 +102,6 @@ nsScrollbarFrame::Reflow(nsPresContext*          aPresContext,
   return NS_OK;
 }
 
-/* virtual */ PRBool
-nsScrollbarFrame::IsContainingBlock() const
-{
-  // Return true so that the nsHTMLReflowState code is happy with us
-  // being a reflow root.
-  return PR_TRUE;
-}
-
 nsIAtom*
 nsScrollbarFrame::GetType() const
 {
@@ -129,11 +121,7 @@ nsScrollbarFrame::AttributeChanged(PRInt32 aNameSpaceID,
   if (aAttribute != nsGkAtoms::curpos)
     return rv;
 
-  nsIFrame* parent = GetParent();
-  if (!parent)
-    return rv;
-
-  nsIScrollableFrame* scrollable = do_QueryFrame(parent);
+  nsIScrollableFrame* scrollable = do_QueryFrame(GetParent());
   if (!scrollable)
     return rv;
 
@@ -153,7 +141,7 @@ NS_IMETHODIMP
 nsScrollbarFrame::HandleMultiplePress(nsPresContext* aPresContext, 
                                       nsGUIEvent*     aEvent,
                                       nsEventStatus*  aEventStatus,
-                                      PRBool aControlHeld)
+                                      bool aControlHeld)
 {
   return NS_OK;
 }
@@ -186,16 +174,12 @@ nsScrollbarFrame::GetScrollbarMediator()
   if (!mScrollbarMediator)
     return nsnull;
   nsIFrame* f = mScrollbarMediator->GetPrimaryFrame();
-  if (!f)
-    return nsnull;
 
   // check if the frame is a scroll frame. If so, get the scrollable frame
   // inside it.
   nsIScrollableFrame* scrollFrame = do_QueryFrame(f);
   if (scrollFrame) {
     f = scrollFrame->GetScrolledFrame();
-    if (!f)
-      return nsnull;
   }
 
   nsIScrollbarMediator* sbm = do_QueryFrame(f);

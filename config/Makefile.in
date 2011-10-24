@@ -56,9 +56,7 @@ else
 HOST_CSRCS	= nsinstall.c pathsub.c
 endif
 
-PLSRCS		= nfspwd.pl
-
-TARGETS		= $(HOST_PROGRAM) $(PLSRCS:.pl=) $(SIMPLE_PROGRAMS)
+TARGETS		= $(HOST_PROGRAM) $(SIMPLE_PROGRAMS)
 
 ifndef CROSS_COMPILE
 ifdef USE_ELF_DYNSTR_GC
@@ -121,11 +119,9 @@ endif
 ifdef WRAP_SYSTEM_INCLUDES
 export::
 	if test ! -d system_wrappers; then mkdir system_wrappers; fi
-	$(PERL) $(topsrcdir)/config/preprocessor.pl $(DEFINES) $(ACDEFINES) \
-		-DBUILD_STATIC_LIBS=$(BUILD_STATIC_LIBS) \
+	$(PYTHON) $(topsrcdir)/config/Preprocessor.py $(DEFINES) $(ACDEFINES) \
 		-DMOZ_TREE_CAIRO=$(MOZ_TREE_CAIRO) \
 		-DMOZ_TREE_PIXMAN=$(MOZ_TREE_PIXMAN) \
-		-DMOZ_ENABLE_LIBXUL=$(MOZ_ENABLE_LIBXUL) \
 		-DMOZ_NATIVE_HUNSPELL=$(MOZ_NATIVE_HUNSPELL) \
 		-DMOZ_NATIVE_BZ2=$(MOZ_NATIVE_BZ2) \
 		-DMOZ_NATIVE_ZLIB=$(MOZ_NATIVE_ZLIB) \
@@ -191,6 +187,7 @@ PYUNITS := \
   unit-JarMaker.py \
   unit-buildlist.py \
   unit-expandlibs.py \
+  unit-writemozinfo.py \
   $(NULL)
 
 check:: check-python-modules check-jar-mn

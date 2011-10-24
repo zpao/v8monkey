@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2010 The ANGLE Project Authors. All rights reserved.
+// Copyright (c) 2002-2011 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -15,9 +15,16 @@
 #include "libGLESv2/Shader.h"
 #include "libGLESv2/utilities.h"
 
+#include <string>
+
+#if !defined(ANGLE_COMPILE_OPTIMIZATION_LEVEL)
+#define ANGLE_COMPILE_OPTIMIZATION_LEVEL D3DCOMPILE_OPTIMIZATION_LEVEL3
+#endif
+
 namespace gl
 {
 unsigned int Program::mCurrentSerial = 1;
+const char *fakepath = "C:\\fakepath";
 
 std::string str(int i)
 {
@@ -26,7 +33,8 @@ std::string str(int i)
     return buffer;
 }
 
-Uniform::Uniform(GLenum type, const std::string &name, unsigned int arraySize) : type(type), name(name), arraySize(arraySize)
+Uniform::Uniform(GLenum type, const std::string &_name, unsigned int arraySize)
+    : type(type), _name(_name), name(Program::undecorateUniform(_name)), arraySize(arraySize)
 {
     int bytes = UniformTypeSize(type) * arraySize;
     data = new unsigned char[bytes];
@@ -40,8 +48,13 @@ Uniform::~Uniform()
     delete[] data;
 }
 
-UniformLocation::UniformLocation(const std::string &name, unsigned int element, unsigned int index) 
-    : name(name), element(element), index(index)
+bool Uniform::isArray()
+{
+    return _name.compare(0, 3, "ar_") == 0;
+}
+
+UniformLocation::UniformLocation(const std::string &_name, unsigned int element, unsigned int index) 
+    : name(Program::undecorateUniform(_name)), element(element), index(index)
 {
 }
 
@@ -182,28 +195,39 @@ GLuint Program::getAttributeLocation(const char *name)
 
 int Program::getSemanticIndex(int attributeIndex)
 {
-    if (attributeIndex >= 0 && attributeIndex < MAX_VERTEX_ATTRIBS)
-    {
-        return mSemanticIndex[attributeIndex];
-    }
-
-    return -1;
+    ASSERT(attributeIndex >= 0 && attributeIndex < MAX_VERTEX_ATTRIBS);
+    
+    return mSemanticIndex[attributeIndex];
 }
 
-// Returns the index of the texture unit corresponding to a Direct3D 9 sampler
-// index referenced in the compiled HLSL shader
-GLint Program::getSamplerMapping(unsigned int samplerIndex)
+// Returns the index of the texture image unit (0-19) corresponding to a Direct3D 9 sampler
+// index (0-15 for the pixel shader and 0-3 for the vertex shader).
+GLint Program::getSamplerMapping(SamplerType type, unsigned int samplerIndex)
 {
-    assert(samplerIndex < sizeof(mSamplers)/sizeof(mSamplers[0]));
+    GLuint logicalTextureUnit = -1;
 
-    GLint logicalTextureUnit = -1;
-
-    if (mSamplers[samplerIndex].active)
+    switch (type)
     {
-        logicalTextureUnit = mSamplers[samplerIndex].logicalTextureUnit;
+      case SAMPLER_PIXEL:
+        ASSERT(samplerIndex < sizeof(mSamplersPS)/sizeof(mSamplersPS[0]));
+
+        if (mSamplersPS[samplerIndex].active)
+        {
+            logicalTextureUnit = mSamplersPS[samplerIndex].logicalTextureUnit;
+        }
+        break;
+      case SAMPLER_VERTEX:
+        ASSERT(samplerIndex < sizeof(mSamplersVS)/sizeof(mSamplersVS[0]));
+
+        if (mSamplersVS[samplerIndex].active)
+        {
+            logicalTextureUnit = mSamplersVS[samplerIndex].logicalTextureUnit;
+        }
+        break;
+      default: UNREACHABLE();
     }
 
-    if (logicalTextureUnit >= 0 && logicalTextureUnit < MAX_TEXTURE_IMAGE_UNITS)
+    if (logicalTextureUnit >= 0 && logicalTextureUnit < getContext()->getMaximumCombinedTextureImageUnits())
     {
         return logicalTextureUnit;
     }
@@ -211,52 +235,43 @@ GLint Program::getSamplerMapping(unsigned int samplerIndex)
     return -1;
 }
 
-SamplerType Program::getSamplerType(unsigned int samplerIndex)
+// Returns the texture type for a given Direct3D 9 sampler type and
+// index (0-15 for the pixel shader and 0-3 for the vertex shader).
+TextureType Program::getSamplerTextureType(SamplerType type, unsigned int samplerIndex)
 {
-    assert(samplerIndex < sizeof(mSamplers)/sizeof(mSamplers[0]));
-    assert(mSamplers[samplerIndex].active);
-
-    return mSamplers[samplerIndex].type;
-}
-
-bool Program::isSamplerDirty(unsigned int samplerIndex) const
-{
-    if (samplerIndex < sizeof(mSamplers)/sizeof(mSamplers[0]))
+    switch (type)
     {
-        return mSamplers[samplerIndex].dirty;
+      case SAMPLER_PIXEL:
+        ASSERT(samplerIndex < sizeof(mSamplersPS)/sizeof(mSamplersPS[0]));
+        ASSERT(mSamplersPS[samplerIndex].active);
+        return mSamplersPS[samplerIndex].textureType;
+      case SAMPLER_VERTEX:
+        ASSERT(samplerIndex < sizeof(mSamplersVS)/sizeof(mSamplersVS[0]));
+        ASSERT(mSamplersVS[samplerIndex].active);
+        return mSamplersVS[samplerIndex].textureType;
+      default: UNREACHABLE();
     }
-    else UNREACHABLE();
 
-    return false;
+    return TEXTURE_2D;
 }
 
-void Program::setSamplerDirty(unsigned int samplerIndex, bool dirty)
+GLint Program::getUniformLocation(std::string name)
 {
-    if (samplerIndex < sizeof(mSamplers)/sizeof(mSamplers[0]))
-    {
-        mSamplers[samplerIndex].dirty = dirty;
-    }
-    else UNREACHABLE();
-}
-
-GLint Program::getUniformLocation(const char *name, bool decorated)
-{
-    std::string _name = decorated ? name : decorate(name);
     int subscript = 0;
 
     // Strip any trailing array operator and retrieve the subscript
-    size_t open = _name.find_last_of('[');
-    size_t close = _name.find_last_of(']');
-    if (open != std::string::npos && close == _name.length() - 1)
+    size_t open = name.find_last_of('[');
+    size_t close = name.find_last_of(']');
+    if (open != std::string::npos && close == name.length() - 1)
     {
-        subscript = atoi(_name.substr(open + 1).c_str());
-        _name.erase(open);
+        subscript = atoi(name.substr(open + 1).c_str());
+        name.erase(open);
     }
 
     unsigned int numUniforms = mUniformIndex.size();
     for (unsigned int location = 0; location < numUniforms; location++)
     {
-        if (mUniformIndex[location].name == _name &&
+        if (mUniformIndex[location].name == name &&
             mUniformIndex[location].element == subscript)
         {
             return location;
@@ -904,14 +919,6 @@ void Program::dirtyAllUniforms()
     }
 }
 
-void Program::dirtyAllSamplers()
-{
-    for (unsigned int index = 0; index < MAX_TEXTURE_IMAGE_UNITS; ++index)
-    {
-        mSamplers[index].dirty = true;
-    }
-}
-
 // Applies all the uniforms set for this program object to the Direct3D 9 device
 void Program::applyUniforms()
 {
@@ -961,55 +968,76 @@ void Program::applyUniforms()
 }
 
 // Compiles the HLSL code of the attached shaders into executable binaries
-ID3DXBuffer *Program::compileToBinary(const char *hlsl, const char *profile, ID3DXConstantTable **constantTable)
+ID3D10Blob *Program::compileToBinary(const char *hlsl, const char *profile, ID3DXConstantTable **constantTable)
 {
     if (!hlsl)
     {
         return NULL;
     }
 
-    ID3DXBuffer *binary = NULL;
-    ID3DXBuffer *errorMessage = NULL;
-
     DWORD result;
+    UINT flags = 0;
+    std::string sourceText;
     if (perfActive())
     {
-        DWORD flags = D3DXSHADER_DEBUG;
-#ifndef NDEBUG
-        flags |= D3DXSHADER_SKIPOPTIMIZATION;
+        flags |= D3DCOMPILE_DEBUG;
+#ifdef NDEBUG
+        flags |= ANGLE_COMPILE_OPTIMIZATION_LEVEL;
+#else
+        flags |= D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
 
         std::string sourcePath = getTempPath();
-        std::string sourceText = std::string("#line 2 \"") + sourcePath + std::string("\"\n\n") + std::string(hlsl);
+        sourceText = std::string("#line 2 \"") + sourcePath + std::string("\"\n\n") + std::string(hlsl);
         writeFile(sourcePath.c_str(), sourceText.c_str(), sourceText.size());
-        
-        result = D3DXCompileShader(sourceText.c_str(), sourceText.size(), NULL, NULL, "main", profile, flags, &binary, &errorMessage, constantTable);
     }
     else
     {
-        result = D3DXCompileShader(hlsl, (UINT)strlen(hlsl), NULL, NULL, "main", profile, 0, &binary, &errorMessage, constantTable);
+        flags |= ANGLE_COMPILE_OPTIMIZATION_LEVEL;
+        sourceText = hlsl;
     }
 
-    if (SUCCEEDED(result))
-    {
-        return binary;
-    }
-
-    if (result == D3DERR_OUTOFVIDEOMEMORY || result == E_OUTOFMEMORY)
-    {
-        return error(GL_OUT_OF_MEMORY, (ID3DXBuffer*)NULL);
-    }
+    ID3D10Blob *binary = NULL;
+    ID3D10Blob *errorMessage = NULL;
+    result = D3DCompile(hlsl, strlen(hlsl), fakepath, NULL, NULL, "main", profile, flags, 0, &binary, &errorMessage);
 
     if (errorMessage)
     {
         const char *message = (const char*)errorMessage->GetBufferPointer();
 
-        appendToInfoLog("%s\n", message);
+        appendToInfoLogSanitized(message);
         TRACE("\n%s", hlsl);
         TRACE("\n%s", message);
+
+        errorMessage->Release();
+        errorMessage = NULL;
     }
 
-    return NULL;
+    if (FAILED(result))
+    {
+        if (result == D3DERR_OUTOFVIDEOMEMORY || result == E_OUTOFMEMORY)
+        {
+            error(GL_OUT_OF_MEMORY);
+        }
+
+        return NULL;
+    }
+
+    result = D3DXGetShaderConstantTable(static_cast<const DWORD*>(binary->GetBufferPointer()), constantTable);
+
+    if (FAILED(result))
+    {
+        if (result == D3DERR_OUTOFVIDEOMEMORY || result == E_OUTOFMEMORY)
+        {
+            error(GL_OUT_OF_MEMORY);
+        }
+
+        binary->Release();
+
+        return NULL;
+    }
+
+    return binary;
 }
 
 // Packs varyings into generic varying registers, using the algorithm from [OpenGL ES Shading Language 1.00 rev. 17] appendix A section 7 page 111
@@ -1110,13 +1138,13 @@ int Program::packVaryings(const Varying *packing[][4])
 
             for (int x = 0; x < 4; x++)
             {
-                if (space[x] > n && space[x] < space[column])
+                if (space[x] >= n && space[x] < space[column])
                 {
                     column = x;
                 }
             }
 
-            if (space[column] > n)
+            if (space[column] >= n)
             {
                 for (int r = 0; r < maxVaryingVectors; r++)
                 {
@@ -1169,6 +1197,20 @@ bool Program::linkVaryings()
         return false;
     }
 
+    // Reset the varying register assignments
+    for (VaryingList::iterator fragVar = mFragmentShader->varyings.begin(); fragVar != mFragmentShader->varyings.end(); fragVar++)
+    {
+        fragVar->reg = -1;
+        fragVar->col = -1;
+    }
+
+    for (VaryingList::iterator vtxVar = mVertexShader->varyings.begin(); vtxVar != mVertexShader->varyings.end(); vtxVar++)
+    {
+        vtxVar->reg = -1;
+        vtxVar->col = -1;
+    }
+
+    // Map the varyings to the register file
     const Varying *packing[MAX_VARYING_VECTORS_SM3][4] = {NULL};
     int registers = packVaryings(packing);
 
@@ -1177,6 +1219,7 @@ bool Program::linkVaryings()
         return false;
     }
 
+    // Write the HLSL input/output declarations
     Context *context = getContext();
     const bool sm3 = context->supportsShaderModel3();
     const int maxVaryingVectors = context->getMaximumVaryingVectors();
@@ -1213,7 +1256,7 @@ bool Program::linkVaryings()
 
         if (!matched)
         {
-            appendToInfoLog("Fragment varying varying %s does not match any vertex varying", input->name.c_str());
+            appendToInfoLog("Fragment varying %s does not match any vertex varying", input->name.c_str());
 
             return false;
         }
@@ -1239,7 +1282,7 @@ bool Program::linkVaryings()
           default:  UNREACHABLE();
         }
 
-        mVertexHLSL += decorate(attribute->name) + " : TEXCOORD" + str(semanticIndex) + ";\n";
+        mVertexHLSL += decorateAttribute(attribute->name) + " : TEXCOORD" + str(semanticIndex) + ";\n";
 
         semanticIndex += VariableRowCount(attribute->type);
     }
@@ -1274,14 +1317,14 @@ bool Program::linkVaryings()
 
     for (AttributeArray::iterator attribute = mVertexShader->mAttributes.begin(); attribute != mVertexShader->mAttributes.end(); attribute++)
     {
-        mVertexHLSL += "    " + decorate(attribute->name) + " = ";
+        mVertexHLSL += "    " + decorateAttribute(attribute->name) + " = ";
 
         if (VariableRowCount(attribute->type) > 1)   // Matrix
         {
             mVertexHLSL += "transpose";
         }
 
-        mVertexHLSL += "(input." + decorate(attribute->name) + ");\n";
+        mVertexHLSL += "(input." + decorateAttribute(attribute->name) + ");\n";
     }
 
     mVertexHLSL += "\n"
@@ -1420,8 +1463,8 @@ bool Program::linkVaryings()
     {
         mPixelHLSL += "    float rhw = 1.0 / input.gl_FragCoord.w;\n";
         if (sm3) {
-            mPixelHLSL += "    gl_FragCoord.x = input.dx_VPos.x;\n"
-                          "    gl_FragCoord.y = 2.0 * dx_Viewport.y - input.dx_VPos.y;\n";
+            mPixelHLSL += "    gl_FragCoord.x = input.dx_VPos.x + 0.5;\n"
+                          "    gl_FragCoord.y = 2.0 * dx_Viewport.y - input.dx_VPos.y - 0.5;\n";
         } else {
             mPixelHLSL += "    gl_FragCoord.x = (input.gl_FragCoord.x * rhw) * dx_Viewport.x + dx_Viewport.z;\n"
                           "    gl_FragCoord.y = -(input.gl_FragCoord.y * rhw) * dx_Viewport.y + dx_Viewport.w;\n";
@@ -1510,8 +1553,8 @@ void Program::link()
     const char *vertexProfile = context->supportsShaderModel3() ? "vs_3_0" : "vs_2_0";
     const char *pixelProfile = context->supportsShaderModel3() ? "ps_3_0" : "ps_2_0";
 
-    ID3DXBuffer *vertexBinary = compileToBinary(mVertexHLSL.c_str(), vertexProfile, &mConstantTableVS);
-    ID3DXBuffer *pixelBinary = compileToBinary(mPixelHLSL.c_str(), pixelProfile, &mConstantTablePS);
+    ID3D10Blob *vertexBinary = compileToBinary(mVertexHLSL.c_str(), vertexProfile, &mConstantTableVS);
+    ID3D10Blob *pixelBinary = compileToBinary(mPixelHLSL.c_str(), pixelProfile, &mConstantTablePS);
 
     if (vertexBinary && pixelBinary)
     {
@@ -1550,12 +1593,12 @@ void Program::link()
 
             // these uniforms are searched as already-decorated because gl_ and dx_
             // are reserved prefixes, and do not receive additional decoration
-            mDxDepthRangeLocation = getUniformLocation("dx_DepthRange", true);
-            mDxDepthLocation = getUniformLocation("dx_Depth", true);
-            mDxViewportLocation = getUniformLocation("dx_Viewport", true);
-            mDxHalfPixelSizeLocation = getUniformLocation("dx_HalfPixelSize", true);
-            mDxFrontCCWLocation = getUniformLocation("dx_FrontCCW", true);
-            mDxPointsOrLinesLocation = getUniformLocation("dx_PointsOrLines", true);
+            mDxDepthRangeLocation = getUniformLocation("dx_DepthRange");
+            mDxDepthLocation = getUniformLocation("dx_Depth");
+            mDxViewportLocation = getUniformLocation("dx_Viewport");
+            mDxHalfPixelSizeLocation = getUniformLocation("dx_HalfPixelSize");
+            mDxFrontCCWLocation = getUniformLocation("dx_FrontCCW");
+            mDxPointsOrLinesLocation = getUniformLocation("dx_PointsOrLines");
 
             mLinked = true;   // Success
         }
@@ -1656,7 +1699,8 @@ bool Program::linkUniforms(ID3DXConstantTable *constantTable)
     for (unsigned int constantIndex = 0; constantIndex < constantTableDescription.Constants; constantIndex++)
     {
         D3DXHANDLE constantHandle = constantTable->GetConstant(0, constantIndex);
-        constantTable->GetConstantDesc(constantHandle, &constantDescription, &descriptionCount);
+        HRESULT result = constantTable->GetConstantDesc(constantHandle, &constantDescription, &descriptionCount);
+        ASSERT(SUCCEEDED(result));
 
         if (!defineUniform(constantHandle, constantDescription))
         {
@@ -1675,12 +1719,35 @@ bool Program::defineUniform(const D3DXHANDLE &constantHandle, const D3DXCONSTANT
     {
         for (unsigned int samplerIndex = constantDescription.RegisterIndex; samplerIndex < constantDescription.RegisterIndex + constantDescription.RegisterCount; samplerIndex++)
         {
-            ASSERT(samplerIndex < sizeof(mSamplers)/sizeof(mSamplers[0]));
-
-            mSamplers[samplerIndex].active = true;
-            mSamplers[samplerIndex].type = (constantDescription.Type == D3DXPT_SAMPLERCUBE) ? SAMPLER_CUBE : SAMPLER_2D;
-            mSamplers[samplerIndex].logicalTextureUnit = 0;
-            mSamplers[samplerIndex].dirty = true;
+            if (mConstantTablePS->GetConstantByName(NULL, constantDescription.Name) != NULL)
+            {
+                if (samplerIndex < MAX_TEXTURE_IMAGE_UNITS)
+                {
+                    mSamplersPS[samplerIndex].active = true;
+                    mSamplersPS[samplerIndex].textureType = (constantDescription.Type == D3DXPT_SAMPLERCUBE) ? TEXTURE_CUBE : TEXTURE_2D;
+                    mSamplersPS[samplerIndex].logicalTextureUnit = 0;
+                }
+                else
+                {
+                    appendToInfoLog("Pixel shader sampler count exceeds MAX_TEXTURE_IMAGE_UNITS (%d).", MAX_TEXTURE_IMAGE_UNITS);
+                    return false;
+                }
+            }
+            
+            if (mConstantTableVS->GetConstantByName(NULL, constantDescription.Name) != NULL)
+            {
+                if (samplerIndex < getContext()->getMaximumVertexTextureImageUnits())
+                {
+                    mSamplersVS[samplerIndex].active = true;
+                    mSamplersVS[samplerIndex].textureType = (constantDescription.Type == D3DXPT_SAMPLERCUBE) ? TEXTURE_CUBE : TEXTURE_2D;
+                    mSamplersVS[samplerIndex].logicalTextureUnit = 0;
+                }
+                else
+                {
+                    appendToInfoLog("Vertex shader sampler count exceeds MAX_VERTEX_TEXTURE_IMAGE_UNITS (%d).", getContext()->getMaximumVertexTextureImageUnits());
+                    return false;
+                }
+            }
         }
     }
 
@@ -1697,7 +1764,8 @@ bool Program::defineUniform(const D3DXHANDLE &constantHandle, const D3DXCONSTANT
                     D3DXCONSTANT_DESC fieldDescription;
                     UINT descriptionCount = 1;
 
-                    mConstantTablePS->GetConstantDesc(fieldHandle, &fieldDescription, &descriptionCount);
+                    HRESULT result = mConstantTablePS->GetConstantDesc(fieldHandle, &fieldDescription, &descriptionCount);
+                    ASSERT(SUCCEEDED(result));
 
                     std::string structIndex = (constantDescription.Elements > 1) ? ("[" + str(arrayIndex) + "]") : "";
 
@@ -1721,9 +1789,9 @@ bool Program::defineUniform(const D3DXHANDLE &constantHandle, const D3DXCONSTANT
     }
 }
 
-bool Program::defineUniform(const D3DXCONSTANT_DESC &constantDescription, std::string &name)
+bool Program::defineUniform(const D3DXCONSTANT_DESC &constantDescription, std::string &_name)
 {
-    Uniform *uniform = createUniform(constantDescription, name);
+    Uniform *uniform = createUniform(constantDescription, _name);
 
     if(!uniform)
     {
@@ -1731,7 +1799,7 @@ bool Program::defineUniform(const D3DXCONSTANT_DESC &constantDescription, std::s
     }
 
     // Check if already defined
-    GLint location = getUniformLocation(name.c_str(), true);
+    GLint location = getUniformLocation(uniform->name);
     GLenum type = uniform->type;
 
     if (location >= 0)
@@ -1753,13 +1821,13 @@ bool Program::defineUniform(const D3DXCONSTANT_DESC &constantDescription, std::s
 
     for (unsigned int i = 0; i < uniform->arraySize; ++i)
     {
-        mUniformIndex.push_back(UniformLocation(name, i, uniformIndex));
+        mUniformIndex.push_back(UniformLocation(_name, i, uniformIndex));
     }
 
     return true;
 }
 
-Uniform *Program::createUniform(const D3DXCONSTANT_DESC &constantDescription, std::string &name)
+Uniform *Program::createUniform(const D3DXCONSTANT_DESC &constantDescription, std::string &_name)
 {
     if (constantDescription.Rows == 1)   // Vectors and scalars
     {
@@ -1768,44 +1836,44 @@ Uniform *Program::createUniform(const D3DXCONSTANT_DESC &constantDescription, st
           case D3DXPT_SAMPLER2D:
             switch (constantDescription.Columns)
             {
-              case 1: return new Uniform(GL_SAMPLER_2D, name, constantDescription.Elements);
+              case 1: return new Uniform(GL_SAMPLER_2D, _name, constantDescription.Elements);
               default: UNREACHABLE();
             }
             break;
           case D3DXPT_SAMPLERCUBE:
             switch (constantDescription.Columns)
             {
-              case 1: return new Uniform(GL_SAMPLER_CUBE, name, constantDescription.Elements);
+              case 1: return new Uniform(GL_SAMPLER_CUBE, _name, constantDescription.Elements);
               default: UNREACHABLE();
             }
             break;
           case D3DXPT_BOOL:
             switch (constantDescription.Columns)
             {
-              case 1: return new Uniform(GL_BOOL, name, constantDescription.Elements);
-              case 2: return new Uniform(GL_BOOL_VEC2, name, constantDescription.Elements);
-              case 3: return new Uniform(GL_BOOL_VEC3, name, constantDescription.Elements);
-              case 4: return new Uniform(GL_BOOL_VEC4, name, constantDescription.Elements);
+              case 1: return new Uniform(GL_BOOL, _name, constantDescription.Elements);
+              case 2: return new Uniform(GL_BOOL_VEC2, _name, constantDescription.Elements);
+              case 3: return new Uniform(GL_BOOL_VEC3, _name, constantDescription.Elements);
+              case 4: return new Uniform(GL_BOOL_VEC4, _name, constantDescription.Elements);
               default: UNREACHABLE();
             }
             break;
           case D3DXPT_INT:
             switch (constantDescription.Columns)
             {
-              case 1: return new Uniform(GL_INT, name, constantDescription.Elements);
-              case 2: return new Uniform(GL_INT_VEC2, name, constantDescription.Elements);
-              case 3: return new Uniform(GL_INT_VEC3, name, constantDescription.Elements);
-              case 4: return new Uniform(GL_INT_VEC4, name, constantDescription.Elements);
+              case 1: return new Uniform(GL_INT, _name, constantDescription.Elements);
+              case 2: return new Uniform(GL_INT_VEC2, _name, constantDescription.Elements);
+              case 3: return new Uniform(GL_INT_VEC3, _name, constantDescription.Elements);
+              case 4: return new Uniform(GL_INT_VEC4, _name, constantDescription.Elements);
               default: UNREACHABLE();
             }
             break;
           case D3DXPT_FLOAT:
             switch (constantDescription.Columns)
             {
-              case 1: return new Uniform(GL_FLOAT, name, constantDescription.Elements);
-              case 2: return new Uniform(GL_FLOAT_VEC2, name, constantDescription.Elements);
-              case 3: return new Uniform(GL_FLOAT_VEC3, name, constantDescription.Elements);
-              case 4: return new Uniform(GL_FLOAT_VEC4, name, constantDescription.Elements);
+              case 1: return new Uniform(GL_FLOAT, _name, constantDescription.Elements);
+              case 2: return new Uniform(GL_FLOAT_VEC2, _name, constantDescription.Elements);
+              case 3: return new Uniform(GL_FLOAT_VEC3, _name, constantDescription.Elements);
+              case 4: return new Uniform(GL_FLOAT_VEC4, _name, constantDescription.Elements);
               default: UNREACHABLE();
             }
             break;
@@ -1820,9 +1888,9 @@ Uniform *Program::createUniform(const D3DXCONSTANT_DESC &constantDescription, st
           case D3DXPT_FLOAT:
             switch (constantDescription.Rows)
             {
-              case 2: return new Uniform(GL_FLOAT_MAT2, name, constantDescription.Elements);
-              case 3: return new Uniform(GL_FLOAT_MAT3, name, constantDescription.Elements);
-              case 4: return new Uniform(GL_FLOAT_MAT4, name, constantDescription.Elements);
+              case 2: return new Uniform(GL_FLOAT_MAT2, _name, constantDescription.Elements);
+              case 3: return new Uniform(GL_FLOAT_MAT3, _name, constantDescription.Elements);
+              case 4: return new Uniform(GL_FLOAT_MAT4, _name, constantDescription.Elements);
               default: UNREACHABLE();
             }
             break;
@@ -1835,28 +1903,28 @@ Uniform *Program::createUniform(const D3DXCONSTANT_DESC &constantDescription, st
 }
 
 // This method needs to match OutputHLSL::decorate
-std::string Program::decorate(const std::string &string)
+std::string Program::decorateAttribute(const std::string &name)
 {
-    if (string.substr(0, 3) != "gl_" && string.substr(0, 3) != "dx_")
+    if (name.compare(0, 3, "gl_") != 0 && name.compare(0, 3, "dx_") != 0)
     {
-        return "_" + string;
+        return "_" + name;
     }
-    else
-    {
-        return string;
-    }
+    
+    return name;
 }
 
-std::string Program::undecorate(const std::string &string)
+std::string Program::undecorateUniform(const std::string &_name)
 {
-    if (string.substr(0, 1) == "_")
+    if (_name[0] == '_')
     {
-        return string.substr(1);
+        return _name.substr(1);
     }
-    else
+    else if (_name.compare(0, 3, "ar_") == 0)
     {
-        return string;
+        return _name.substr(3);
     }
+    
+    return _name;
 }
 
 bool Program::applyUniform1bv(GLint location, GLsizei count, const GLboolean *v)
@@ -2230,11 +2298,7 @@ bool Program::applyUniform1iv(GLint location, GLsizei count, const GLint *v)
         D3DXCONSTANT_DESC constantDescription;
         UINT descriptionCount = 1;
         HRESULT result = mConstantTablePS->GetConstantDesc(constantPS, &constantDescription, &descriptionCount);
-
-        if (FAILED(result))
-        {
-            return false;
-        }
+        ASSERT(SUCCEEDED(result));
 
         if (constantDescription.RegisterSet == D3DXRS_SAMPLER)
         {
@@ -2246,24 +2310,43 @@ bool Program::applyUniform1iv(GLint location, GLsizei count, const GLint *v)
 
                 if (samplerIndex < MAX_TEXTURE_IMAGE_UNITS)
                 {
-                    ASSERT(mSamplers[samplerIndex].active);
-                    mSamplers[samplerIndex].logicalTextureUnit = v[i];
-                    mSamplers[samplerIndex].dirty = true;
+                    ASSERT(mSamplersPS[samplerIndex].active);
+                    mSamplersPS[samplerIndex].logicalTextureUnit = v[i];
                 }
             }
-
-            return true;
         }
-    }
-
-    if (constantPS)
-    {
-        mConstantTablePS->SetIntArray(device, constantPS, v, count);
+        else
+        {
+            mConstantTablePS->SetIntArray(device, constantPS, v, count);
+        }
     }
 
     if (constantVS)
     {
-        mConstantTableVS->SetIntArray(device, constantVS, v, count);
+        D3DXCONSTANT_DESC constantDescription;
+        UINT descriptionCount = 1;
+        HRESULT result = mConstantTableVS->GetConstantDesc(constantVS, &constantDescription, &descriptionCount);
+        ASSERT(SUCCEEDED(result));
+
+        if (constantDescription.RegisterSet == D3DXRS_SAMPLER)
+        {
+            unsigned int firstIndex = mConstantTableVS->GetSamplerIndex(constantVS);
+
+            for (int i = 0; i < count; i++)
+            {
+                unsigned int samplerIndex = firstIndex + i;
+
+                if (samplerIndex < MAX_VERTEX_TEXTURE_IMAGE_UNITS_VTF)
+                {
+                    ASSERT(mSamplersVS[samplerIndex].active);
+                    mSamplersVS[samplerIndex].logicalTextureUnit = v[i];
+                }
+            }
+        }
+        else
+        {
+            mConstantTableVS->SetIntArray(device, constantVS, v, count);
+        }
     }
 
     return true;
@@ -2368,6 +2451,28 @@ bool Program::applyUniform4iv(GLint location, GLsizei count, const GLint *v)
     return true;
 }
 
+
+// append a santized message to the program info log.
+// The D3D compiler includes a fake file path in some of the warning or error 
+// messages, so lets remove all occurrences of this fake file path from the log.
+void Program::appendToInfoLogSanitized(const char *message)
+{
+    std::string msg(message);
+
+    size_t found;
+    do
+    {
+        found = msg.find(fakepath);
+        if (found != std::string::npos)
+        {
+            msg.erase(found, strlen(fakepath));
+        }
+    }
+    while (found != std::string::npos);
+
+    appendToInfoLog("%s\n", msg.c_str());
+}
+
 void Program::appendToInfoLog(const char *format, ...)
 {
     if (!format)
@@ -2460,8 +2565,12 @@ void Program::unlink(bool destroy)
 
     for (int index = 0; index < MAX_TEXTURE_IMAGE_UNITS; index++)
     {
-        mSamplers[index].active = false;
-        mSamplers[index].dirty = true;
+        mSamplersPS[index].active = false;
+    }
+
+    for (int index = 0; index < MAX_VERTEX_TEXTURE_IMAGE_UNITS_VTF; index++)
+    {
+        mSamplersVS[index].active = false;
     }
 
     while (!mUniforms.empty())
@@ -2669,7 +2778,7 @@ void Program::getActiveUniform(GLuint index, GLsizei bufsize, GLsizei *length, G
     unsigned int uniform;
     for (uniform = 0; uniform < mUniforms.size(); uniform++)
     {
-        if (mUniforms[uniform]->name.substr(0, 3) == "dx_")
+        if (mUniforms[uniform]->name.compare(0, 3, "dx_") == 0)
         {
             continue;
         }
@@ -2686,9 +2795,9 @@ void Program::getActiveUniform(GLuint index, GLsizei bufsize, GLsizei *length, G
 
     if (bufsize > 0)
     {
-        std::string string = undecorate(mUniforms[uniform]->name);
+        std::string string = mUniforms[uniform]->name;
 
-        if (mUniforms[uniform]->arraySize != 1)
+        if (mUniforms[uniform]->isArray())
         {
             string += "[0]";
         }
@@ -2714,7 +2823,7 @@ GLint Program::getActiveUniformCount()
     unsigned int numUniforms = mUniforms.size();
     for (unsigned int uniformIndex = 0; uniformIndex < numUniforms; uniformIndex++)
     {
-        if (mUniforms[uniformIndex]->name.substr(0, 3) != "dx_")
+        if (mUniforms[uniformIndex]->name.compare(0, 3, "dx_") != 0)
         {
             count++;
         }
@@ -2730,10 +2839,10 @@ GLint Program::getActiveUniformMaxLength()
     unsigned int numUniforms = mUniforms.size();
     for (unsigned int uniformIndex = 0; uniformIndex < numUniforms; uniformIndex++)
     {
-        if (!mUniforms[uniformIndex]->name.empty() && mUniforms[uniformIndex]->name.substr(0, 3) != "dx_")
+        if (!mUniforms[uniformIndex]->name.empty() && mUniforms[uniformIndex]->name.compare(0, 3, "dx_") != 0)
         {
-            int length = (int)(undecorate(mUniforms[uniformIndex]->name).length() + 1);
-            if (mUniforms[uniformIndex]->arraySize != 1)
+            int length = (int)(mUniforms[uniformIndex]->name.length() + 1);
+            if (mUniforms[uniformIndex]->isArray())
             {
                 length += 3;  // Counting in "[0]".
             }
@@ -2766,9 +2875,8 @@ void Program::validate()
     else
     {
         applyUniforms();
-        if (!validateSamplers())
+        if (!validateSamplers(true))
         {
-            appendToInfoLog("Samplers of conflicting types refer to the same texture image unit.");
             mValidated = false;
         }
         else
@@ -2778,24 +2886,86 @@ void Program::validate()
     }
 }
 
-bool Program::validateSamplers() const
+bool Program::validateSamplers(bool logErrors)
 {
     // if any two active samplers in a program are of different types, but refer to the same
     // texture image unit, and this is the current program, then ValidateProgram will fail, and
     // DrawArrays and DrawElements will issue the INVALID_OPERATION error.
-    std::map<int, SamplerType> samplerMap; 
+
+    const unsigned int maxCombinedTextureImageUnits = getContext()->getMaximumCombinedTextureImageUnits();
+    TextureType textureUnitType[MAX_COMBINED_TEXTURE_IMAGE_UNITS_VTF];
+
+    for (unsigned int i = 0; i < MAX_COMBINED_TEXTURE_IMAGE_UNITS_VTF; ++i)
+    {
+        textureUnitType[i] = TEXTURE_UNKNOWN;
+    }
+
     for (unsigned int i = 0; i < MAX_TEXTURE_IMAGE_UNITS; ++i)
     {
-        if (mSamplers[i].active)
+        if (mSamplersPS[i].active)
         {
-            if (samplerMap.find(mSamplers[i].logicalTextureUnit) != samplerMap.end())
+            unsigned int unit = mSamplersPS[i].logicalTextureUnit;
+            
+            if (unit >= maxCombinedTextureImageUnits)
             {
-                if (mSamplers[i].type != samplerMap[mSamplers[i].logicalTextureUnit])
+                if (logErrors)
+                {
+                    appendToInfoLog("Sampler uniform (%d) exceeds MAX_COMBINED_TEXTURE_IMAGE_UNITS (%d)", unit, maxCombinedTextureImageUnits);
+                }
+
+                return false;
+            }
+
+            if (textureUnitType[unit] != TEXTURE_UNKNOWN)
+            {
+                if (mSamplersPS[i].textureType != textureUnitType[unit])
+                {
+                    if (logErrors)
+                    {
+                        appendToInfoLog("Samplers of conflicting types refer to the same texture image unit (%d).", unit);
+                    }
+
                     return false;
+                }
             }
             else
             {
-                samplerMap[mSamplers[i].logicalTextureUnit] = mSamplers[i].type;
+                textureUnitType[unit] = mSamplersPS[i].textureType;
+            }
+        }
+    }
+
+    for (unsigned int i = 0; i < MAX_VERTEX_TEXTURE_IMAGE_UNITS_VTF; ++i)
+    {
+        if (mSamplersVS[i].active)
+        {
+            unsigned int unit = mSamplersVS[i].logicalTextureUnit;
+            
+            if (unit >= maxCombinedTextureImageUnits)
+            {
+                if (logErrors)
+                {
+                    appendToInfoLog("Sampler uniform (%d) exceeds MAX_COMBINED_TEXTURE_IMAGE_UNITS (%d)", unit, maxCombinedTextureImageUnits);
+                }
+
+                return false;
+            }
+
+            if (textureUnitType[unit] != TEXTURE_UNKNOWN)
+            {
+                if (mSamplersVS[i].textureType != textureUnitType[unit])
+                {
+                    if (logErrors)
+                    {
+                        appendToInfoLog("Samplers of conflicting types refer to the same texture image unit (%d).", unit);
+                    }
+
+                    return false;
+                }
+            }
+            else
+            {
+                textureUnitType[unit] = mSamplersVS[i].textureType;
             }
         }
     }
@@ -2807,8 +2977,8 @@ void Program::getConstantHandles(Uniform *targetUniform, D3DXHANDLE *constantPS,
 {
     if (!targetUniform->handlesSet)
     {
-        targetUniform->psHandle = mConstantTablePS->GetConstantByName(0, targetUniform->name.c_str());
-        targetUniform->vsHandle = mConstantTableVS->GetConstantByName(0, targetUniform->name.c_str());
+        targetUniform->psHandle = mConstantTablePS->GetConstantByName(0, targetUniform->_name.c_str());
+        targetUniform->vsHandle = mConstantTableVS->GetConstantByName(0, targetUniform->_name.c_str());
         targetUniform->handlesSet = true;
     }
 

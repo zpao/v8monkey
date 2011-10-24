@@ -51,7 +51,7 @@
 #include "nsReadableUtils.h"
 #include "nsUnicharUtils.h"
 #include "nsScanner.h"
-
+#include "nsParserConstants.h"
 
 static const PRUnichar sUserdefined[] = {'u', 's', 'e', 'r', 'd', 'e', 'f',
                                          'i', 'n', 'e', 'd', 0};
@@ -76,7 +76,7 @@ static void AppendNCR(nsSubstring& aString, PRInt32 aNCRValue);
 static nsresult
 ConsumeEntity(nsScannerSharedSubstring& aString,
               nsScanner& aScanner,
-              PRBool aIECompatible,
+              bool aIECompatible,
               PRInt32 aFlag)
 {
   nsresult result = NS_OK;
@@ -158,15 +158,15 @@ ConsumeUntil(nsScannerSharedSubstring& aString,
              PRInt32& aNewlineCount,
              nsScanner& aScanner,
              const nsReadEndCondition& aEndCondition,
-             PRBool aAllowNewlines,
-             PRBool aIECompatEntities,
+             bool aAllowNewlines,
+             bool aIECompatEntities,
              PRInt32 aFlag)
 {
   nsresult result = NS_OK;
-  PRBool   done = PR_FALSE;
+  bool     done = false;
 
   do {
-    result = aScanner.ReadUntil(aString, aEndCondition, PR_FALSE);
+    result = aScanner.ReadUntil(aString, aEndCondition, false);
     if (NS_SUCCEEDED(result)) {
       PRUnichar ch;
       aScanner.Peek(ch);
@@ -190,7 +190,7 @@ ConsumeUntil(nsScannerSharedSubstring& aString,
         aString.writable().Append(PRUnichar('\n'));
         ++aNewlineCount;
       } else {
-        done = PR_TRUE;
+        done = true;
       }
     }
   } while (NS_SUCCEEDED(result) && !done);
@@ -221,32 +221,32 @@ CHTMLToken::~CHTMLToken()
 CStartToken::CStartToken(eHTMLTags aTag)
   : CHTMLToken(aTag)
 {
-  mEmpty = PR_FALSE;
+  mEmpty = false;
   mContainerInfo = eFormUnknown;
 #ifdef DEBUG
-  mAttributed = PR_FALSE;
+  mAttributed = false;
 #endif
 }
 
 CStartToken::CStartToken(const nsAString& aName)
   : CHTMLToken(eHTMLTag_unknown)
 {
-  mEmpty = PR_FALSE;
+  mEmpty = false;
   mContainerInfo = eFormUnknown;
   mTextValue.Assign(aName);
 #ifdef DEBUG
-  mAttributed = PR_FALSE;
+  mAttributed = false;
 #endif
 }
 
 CStartToken::CStartToken(const nsAString& aName, eHTMLTags aTag)
   : CHTMLToken(aTag)
 {
-  mEmpty = PR_FALSE;
+  mEmpty = false;
   mContainerInfo = eFormUnknown;
   mTextValue.Assign(aName);
 #ifdef DEBUG
-  mAttributed = PR_FALSE;
+  mAttributed = false;
 #endif
 }
 
@@ -269,12 +269,12 @@ CStartToken::GetTokenType()
 }
 
 void
-CStartToken::SetEmpty(PRBool aValue)
+CStartToken::SetEmpty(bool aValue)
 {
   mEmpty = aValue;
 }
 
-PRBool
+bool
 CStartToken::IsEmpty()
 {
   return mEmpty;
@@ -499,7 +499,7 @@ CTextToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
       PRUnichar(0) };
   static const nsReadEndCondition theEndCondition(theTerminalsChars);
   nsresult  result = NS_OK;
-  PRBool    done = PR_FALSE;
+  bool      done = false;
   nsScannerIterator origin, start, end;
 
   // Start scanning after the first character, because we know it to
@@ -514,7 +514,7 @@ CTextToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
   aScanner.SetPosition(++start);
 
   while (NS_OK == result && !done) {
-    result = aScanner.ReadUntil(start, end, theEndCondition, PR_FALSE);
+    result = aScanner.ReadUntil(start, end, theEndCondition, false);
     if (NS_OK == result) {
       result = aScanner.Peek(aChar);
 
@@ -559,7 +559,7 @@ CTextToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
             break;
         }
       } else {
-        done = PR_TRUE;
+        done = true;
       }
     }
   }
@@ -584,21 +584,21 @@ CTextToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
  *  @param   aScanner -- controller of underlying input source
  *  @param   aEndTagname -- the terminal tag name.
  *  @param   aFlag -- dtd modes and such.
- *  @param   aFlushTokens -- PR_TRUE if we found the terminal tag.
+ *  @param   aFlushTokens -- true if we found the terminal tag.
  *  @return  error result
  */
 nsresult
-CTextToken::ConsumeCharacterData(PRBool aIgnoreComments,
+CTextToken::ConsumeCharacterData(bool aIgnoreComments,
                                  nsScanner& aScanner,
                                  const nsAString& aEndTagName,
                                  PRInt32 aFlag,
-                                 PRBool& aFlushTokens)
+                                 bool& aFlushTokens)
 {
   nsresult result = NS_OK;
   nsScannerIterator theStartOffset, theCurrOffset, theTermStrPos,
                     theStartCommentPos, theAltTermStrPos, endPos;
-  PRBool        done = PR_FALSE;
-  PRBool        theLastIteration = PR_FALSE;
+  bool          done = false;
+  bool          theLastIteration = false;
 
   aScanner.CurrentPosition(theStartOffset);
   theCurrOffset = theStartOffset;
@@ -638,7 +638,7 @@ CTextToken::ConsumeCharacterData(PRBool aIgnoreComments,
 
   PRUint32 termStrLen = theTerminalString.Length();
   while (result == NS_OK && !done) {
-    PRBool found = PR_FALSE;
+    bool found = false;
     nsScannerIterator gtOffset, ltOffset = theCurrOffset;
     while (FindCharInReadable(PRUnichar(kLessThan), ltOffset, endPos) &&
            ((PRUint32)ltOffset.size_forward() >= termStrLen ||
@@ -658,7 +658,7 @@ CTextToken::ConsumeCharacterData(PRBool aIgnoreComments,
         // want to execute scripts that aren't in the form of: <script\s.*>
         if ((end == endPos && aIgnoreComments) ||
             FindCharInReadable(PRUnichar(kGreaterThan), gtOffset, endPos)) {
-          found = PR_TRUE;
+          found = true;
           theTermStrPos = start;
         }
         break;
@@ -704,8 +704,8 @@ CTextToken::ConsumeCharacterData(PRBool aIgnoreComments,
       aScanner.SetPosition(ltOffset);
 
       // We found </SCRIPT> or </STYLE>...permit flushing -> Ref: Bug 22485
-      aFlushTokens = PR_TRUE;
-      done = PR_TRUE;
+      aFlushTokens = true;
+      done = true;
     } else {
       // We end up here if:
       // a) when the buffer runs out ot data.
@@ -715,10 +715,10 @@ CTextToken::ConsumeCharacterData(PRBool aIgnoreComments,
           // If you're here it means that we hit the rock bottom and therefore
           // switch to plan B, since we have an alternative terminating string.
           theCurrOffset = theAltTermStrPos;
-          theLastIteration = PR_TRUE;
+          theLastIteration = true;
         } else {
           // Oops, We fell all the way down to the end of the document.
-          done = PR_TRUE; // Do this to fix Bug. 35456
+          done = true; // Do this to fix Bug. 35456
           result = kFakeEndTag;
           aScanner.BindSubstring(mTextValue, theStartOffset, endPos);
           aScanner.SetPosition(endPos);
@@ -746,16 +746,16 @@ CTextToken::ConsumeCharacterData(PRBool aIgnoreComments,
  *  @param   aScanner -- controller of underlying input source
  *  @param   aEndTagname -- the terminal tag name.
  *  @param   aFlag -- dtd modes and such.
- *  @param   aFlushTokens -- PR_TRUE if we found the terminal tag.
+ *  @param   aFlushTokens -- true if we found the terminal tag.
  *  @return  error result
  */
 nsresult
-CTextToken::ConsumeParsedCharacterData(PRBool aDiscardFirstNewline,
-                                       PRBool aConservativeConsume,
+CTextToken::ConsumeParsedCharacterData(bool aDiscardFirstNewline,
+                                       bool aConservativeConsume,
                                        nsScanner& aScanner,
                                        const nsAString& aEndTagName,
                                        PRInt32 aFlag,
-                                       PRBool& aFound)
+                                       bool& aFound)
 {
   // This function is fairly straightforward except if there is no terminating
   // string. If there is, we simply loop through all of the entities, reducing
@@ -796,7 +796,7 @@ CTextToken::ConsumeParsedCharacterData(PRBool aDiscardFirstNewline,
   // will fail, and we'll do the right thing.
   do {
     result = ConsumeUntil(theContent, mNewlineCount, aScanner,
-                          theEndCondition, PR_TRUE, PR_FALSE, aFlag);
+                          theEndCondition, true, false, aFlag);
 
     if (aDiscardFirstNewline &&
         (NS_SUCCEEDED(result) || !aScanner.IsIncremental()) &&
@@ -829,11 +829,11 @@ CTextToken::ConsumeParsedCharacterData(PRBool aDiscardFirstNewline,
         }
       }
     }
-    aDiscardFirstNewline = PR_FALSE;
+    aDiscardFirstNewline = false;
 
     if (NS_FAILED(result)) {
       if (kEOF == result && !aScanner.IsIncremental()) {
-        aFound = PR_TRUE; // this is as good as it gets.
+        aFound = true; // this is as good as it gets.
         result = kFakeEndTag;
 
         if (aConservativeConsume && altEndPos != endPos) {
@@ -841,12 +841,12 @@ CTextToken::ConsumeParsedCharacterData(PRBool aDiscardFirstNewline,
           // place that looked like a tag and use that as our stopping point.
           theContent.writable().Truncate(truncPos);
           mNewlineCount = truncNewlineCount;
-          aScanner.SetPosition(altEndPos, PR_FALSE, PR_TRUE);
+          aScanner.SetPosition(altEndPos, false, true);
         }
         // else we take everything we consumed.
         mTextValue.Rebind(theContent.str());
       } else {
-        aFound = PR_FALSE;
+        aFound = false;
       }
 
       return result;
@@ -870,14 +870,14 @@ CTextToken::ConsumeParsedCharacterData(PRBool aDiscardFirstNewline,
         if (end != endPos && (*end == '>'  || *end == ' '  ||
                               *end == '\t' || *end == '\n' ||
                               *end == '\r')) {
-          aFound = PR_TRUE;
+          aFound = true;
           mTextValue.Rebind(theContent.str());
 
           // Note: This SetPosition() is actually going backwards from the
-          // scanner's mCurrentPosition (so we pass aReverse == PR_TRUE). This
+          // scanner's mCurrentPosition (so we pass aReverse == true). This
           // is because we call GetChar() above after we get the current
           // position.
-          aScanner.SetPosition(currPos, PR_FALSE, PR_TRUE);
+          aScanner.SetPosition(currPos, false, true);
           break;
         }
       }
@@ -982,10 +982,10 @@ CCDATASectionToken::Consume(PRUnichar aChar, nsScanner& aScanner,
   { PRUnichar('\r'), PRUnichar('\n'), PRUnichar(']'), PRUnichar(0) };
   static const nsReadEndCondition theEndCondition(theTerminalsChars);
   nsresult  result = NS_OK;
-  PRBool    done = PR_FALSE;
+  bool      done = false;
 
   while (NS_OK == result && !done) {
-    result = aScanner.ReadUntil(mTextValue, theEndCondition, PR_FALSE);
+    result = aScanner.ReadUntil(mTextValue, theEndCondition, false);
     if (NS_OK == result) {
       result = aScanner.Peek(aChar);
       if (kCR == aChar && NS_OK == result) {
@@ -1015,14 +1015,14 @@ CCDATASectionToken::Consume(PRUnichar aChar, nsScanner& aScanner,
         mTextValue.Append(aChar);
         ++mNewlineCount;
       } else if (kRightSquareBracket == aChar) {
-        PRBool canClose = PR_FALSE;
+        bool canClose = false;
         result = aScanner.GetChar(aChar); // Strip off the ]
         mTextValue.Append(aChar);
         result = aScanner.Peek(aChar);    // Then see what's next.
         if (NS_OK == result && kRightSquareBracket == aChar) {
           result = aScanner.GetChar(aChar); // Strip off the second ]
           mTextValue.Append(aChar);
-          canClose = PR_TRUE;
+          canClose = true;
         }
 
         // The goal here is to not lose data from the page when encountering
@@ -1034,7 +1034,7 @@ CCDATASectionToken::Consume(PRUnichar aChar, nsScanner& aScanner,
         // terminator for marked sections.  So make the tokenization somewhat
         // different when in view-source _and_ dealing with a CDATA section.
         // XXX We should remember this StringBeginsWith test.
-        PRBool inCDATA = (aFlag & NS_IPARSER_FLAG_VIEW_SOURCE) &&
+        bool inCDATA = (aFlag & NS_IPARSER_FLAG_VIEW_SOURCE) &&
           StringBeginsWith(mTextValue, NS_LITERAL_STRING("[CDATA["));
         if (inCDATA) {
           // Consume all right square brackets to catch cases such as:
@@ -1050,15 +1050,15 @@ CCDATASectionToken::Consume(PRUnichar aChar, nsScanner& aScanner,
           }
         } else {
           nsAutoString dummy; // Skip any bad data
-          result = aScanner.ReadUntil(dummy, kGreaterThan, PR_FALSE);
+          result = aScanner.ReadUntil(dummy, kGreaterThan, false);
         }
         if (NS_OK == result &&
             (!inCDATA || (canClose && kGreaterThan == aChar))) {
           result = aScanner.GetChar(aChar); // Strip off the >
-          done = PR_TRUE;
+          done = true;
         }
       } else {
-        done = PR_TRUE;
+        done = true;
       }
     }
   }
@@ -1068,7 +1068,7 @@ CCDATASectionToken::Consume(PRUnichar aChar, nsScanner& aScanner,
     // In order to not completely lose the entire section, treat everything
     // until the end of the document as part of the CDATA section and let
     // the DTD handle it.
-    mInError = PR_TRUE;
+    mInError = true;
     result = NS_OK;
   }
 
@@ -1118,7 +1118,7 @@ CMarkupDeclToken::Consume(PRUnichar aChar, nsScanner& aScanner,
       PRUnichar(0) };
   static const nsReadEndCondition theEndCondition(theTerminalsChars);
   nsresult  result = NS_OK;
-  PRBool    done = PR_FALSE;
+  bool      done = false;
   PRUnichar quote = 0;
 
   nsScannerIterator origin, start, end;
@@ -1127,7 +1127,7 @@ CMarkupDeclToken::Consume(PRUnichar aChar, nsScanner& aScanner,
 
   while (NS_OK == result && !done) {
     aScanner.SetPosition(start);
-    result = aScanner.ReadUntil(start, end, theEndCondition, PR_FALSE);
+    result = aScanner.ReadUntil(start, end, theEndCondition, false);
     if (NS_OK == result) {
       result = aScanner.Peek(aChar);
 
@@ -1176,7 +1176,7 @@ CMarkupDeclToken::Consume(PRUnichar aChar, nsScanner& aScanner,
               // Note that start is wrong after this, we just avoid temp var
               ++start;
               aScanner.SetPosition(start); // Skip the >
-              done = PR_TRUE;
+              done = true;
             }
             break;
           default:
@@ -1185,14 +1185,14 @@ CMarkupDeclToken::Consume(PRUnichar aChar, nsScanner& aScanner,
         }
         start = end;
       } else {
-        done = PR_TRUE;
+        done = true;
       }
     }
   }
   aScanner.BindSubstring(mTextValue, origin, end);
 
   if (kEOF == result) {
-    mInError = PR_TRUE;
+    mInError = true;
     if (!aScanner.IsIncremental()) {
       // Hide this EOF.
       result = NS_OK;
@@ -1226,7 +1226,7 @@ CCommentToken::AppendSourceTo(nsAString& anOutputString)
   AppendUnicodeTo(mCommentDecl, anOutputString);
 }
 
-static PRBool
+static bool
 IsCommentEnd(const nsScannerIterator& aCurrent, const nsScannerIterator& aEnd,
              nsScannerIterator& aGt)
 {
@@ -1236,7 +1236,7 @@ IsCommentEnd(const nsScannerIterator& aCurrent, const nsScannerIterator& aEnd,
   while (current != aEnd && dashes != 2) {
     if (*current == kGreaterThan) {
       aGt = current;
-      return PR_TRUE;
+      return true;
     }
     if (*current == PRUnichar('-')) {
       ++dashes;
@@ -1246,7 +1246,7 @@ IsCommentEnd(const nsScannerIterator& aCurrent, const nsScannerIterator& aEnd,
     ++current;
   }
 
-  return PR_FALSE;
+  return false;
 }
 
 nsresult
@@ -1275,7 +1275,7 @@ CCommentToken::ConsumeStrictComment(nsScanner& aScanner)
       ++current != end && *current == kMinus &&
       ++current != end) {
     nsScannerIterator currentEnd = end;
-    PRBool balancedComment = PR_FALSE;
+    bool balancedComment = false;
     NS_NAMED_LITERAL_STRING(dashes, "--");
     beginData = current;
 
@@ -1326,7 +1326,7 @@ CCommentToken::ConsumeStrictComment(nsScanner& aScanner)
   }
 
   // There was no terminating string, parse this comment as text.
-  aScanner.SetPosition(lt, PR_FALSE, PR_TRUE);
+  aScanner.SetPosition(lt, false, true);
   return kNotAComment;
 }
 
@@ -1369,11 +1369,11 @@ CCommentToken::ConsumeQuirksComment(nsScanner& aScanner)
           bestAltCommentEnd = gt;
         }
         --current;
-        PRBool goodComment = PR_FALSE;
+        bool goodComment = false;
         if (current != beginLastMinus && *current == kMinus) { // ->
           --current;
           if (current != beginLastMinus && *current == kMinus) { // -->
-            goodComment = PR_TRUE;
+            goodComment = true;
             --current;
           }
         } else if (current != beginLastMinus && *current == '!') {
@@ -1382,11 +1382,11 @@ CCommentToken::ConsumeQuirksComment(nsScanner& aScanner)
             --current;
             if (current != beginLastMinus && *current == kMinus) { // --!>
               --current;
-              goodComment = PR_TRUE;
+              goodComment = true;
             }
           }
         } else if (current == beginLastMinus) {
-          goodComment = PR_TRUE;
+          goodComment = true;
         }
 
         if (goodComment) {
@@ -1467,7 +1467,7 @@ CCommentToken::ConsumeQuirksComment(nsScanner& aScanner)
 
   if (!aScanner.IsIncremental()) {
     // This isn't a comment at all, go back to the < and consume as text.
-    aScanner.SetPosition(lt, PR_FALSE, PR_TRUE);
+    aScanner.SetPosition(lt, false, true);
     return kNotAComment;
   }
 
@@ -1486,7 +1486,7 @@ CCommentToken::ConsumeQuirksComment(nsScanner& aScanner)
 nsresult
 CCommentToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
 {
-  nsresult result = PR_TRUE;
+  nsresult result = true;
 
   if (aFlag & NS_IPARSER_FLAG_STRICT_MODE) {
     // Enabling strict comment parsing for Bug 53011 and 2749 contradicts!
@@ -1589,7 +1589,7 @@ CNewlineToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
 CAttributeToken::CAttributeToken()
   : CHTMLToken(eHTMLTag_unknown)
 {
-  mHasEqualWithoutValue = PR_FALSE;
+  mHasEqualWithoutValue = false;
 }
 
 /*
@@ -1599,7 +1599,7 @@ CAttributeToken::CAttributeToken(const nsAString& aName)
   : CHTMLToken(eHTMLTag_unknown)
 {
   mTextValue.writable().Assign(aName);
-  mHasEqualWithoutValue = PR_FALSE;
+  mHasEqualWithoutValue = false;
 }
 
 /*
@@ -1610,7 +1610,7 @@ CAttributeToken::CAttributeToken(const nsAString& aKey, const nsAString& aName)
 {
   mTextValue.writable().Assign(aName);
   mTextKey.Rebind(aKey);
-  mHasEqualWithoutValue = PR_FALSE;
+  mHasEqualWithoutValue = false;
 }
 
 PRInt32
@@ -1681,7 +1681,7 @@ ConsumeQuotedString(PRUnichar aChar,
   aScanner.CurrentPosition(theOffset);
 
   result = ConsumeUntil(aString, aNewlineCount, aScanner,
-                      *terminateCondition, PR_TRUE, PR_TRUE, aFlag);
+                      *terminateCondition, true, true, aFlag);
 
   if (NS_SUCCEEDED(result)) {
     result = aScanner.GetChar(aChar); // aChar should be " or '
@@ -1695,9 +1695,9 @@ ConsumeQuotedString(PRUnichar aChar,
     static const nsReadEndCondition
       theAttributeTerminator(kAttributeTerminalChars);
     aString.writable().Truncate(origLen);
-    aScanner.SetPosition(theOffset, PR_FALSE, PR_TRUE);
+    aScanner.SetPosition(theOffset, false, true);
     result = ConsumeUntil(aString, aNewlineCount, aScanner,
-                          theAttributeTerminator, PR_FALSE, PR_TRUE, aFlag);
+                          theAttributeTerminator, false, true, aFlag);
     if (NS_SUCCEEDED(result) && (aFlag & NS_IPARSER_FLAG_VIEW_SOURCE)) {
       // Remember that this string literal was unterminated.
       result = NS_ERROR_HTMLPARSER_UNTERMINATEDSTRINGLITERAL;
@@ -1768,7 +1768,7 @@ CAttributeToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
     static const nsReadEndCondition theEndCondition(theTerminalsChars);
 
     nsScannerIterator start, end;
-    result = aScanner.ReadUntil(start, end, theEndCondition, PR_FALSE);
+    result = aScanner.ReadUntil(start, end, theEndCondition, false);
 
     if (!(aFlag & NS_IPARSER_FLAG_VIEW_SOURCE)) {
       aScanner.BindSubstring(mTextKey, start, end);
@@ -1795,7 +1795,7 @@ CAttributeToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
             result = aScanner.GetChar(aChar);  // Skip the equal sign...
             if (NS_OK == result) {
               if (aFlag & NS_IPARSER_FLAG_VIEW_SOURCE) {
-                PRBool haveCR;
+                bool haveCR;
                 result = aScanner.ReadWhitespace(mTextValue, mNewlineCount,
                                                  haveCR);
               } else {
@@ -1820,7 +1820,7 @@ CAttributeToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
                     } else if (result ==
                                 NS_ERROR_HTMLPARSER_UNTERMINATEDSTRINGLITERAL) {
                       result = NS_OK;
-                      mInError = PR_TRUE;
+                      mInError = true;
                     }
                     // According to spec. we ( who? ) should ignore linefeeds.
                     // But look, even the carriage return was getting stripped
@@ -1829,8 +1829,8 @@ CAttributeToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
                     // bug 47535 ? Should we preserve everything then?  Well,
                     // let's make it so!
                   } else if (kGreaterThan == aChar) {
-                    mHasEqualWithoutValue = PR_TRUE;
-                    mInError = PR_TRUE;
+                    mHasEqualWithoutValue = true;
+                    mInError = true;
                   } else {
                     static const nsReadEndCondition
                       theAttributeTerminator(kAttributeTerminalChars);
@@ -1839,14 +1839,14 @@ CAttributeToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
                                    mNewlineCount,
                                    aScanner,
                                    theAttributeTerminator,
-                                   PR_FALSE,
-                                   PR_TRUE,
+                                   false,
+                                   true,
                                    aFlag);
                   }
                 }
                 if (NS_OK == result) {
                   if (aFlag & NS_IPARSER_FLAG_VIEW_SOURCE) {
-                    PRBool haveCR;
+                    bool haveCR;
                     result = aScanner.ReadWhitespace(mTextValue, mNewlineCount,
                                                      haveCR);
                   } else {
@@ -1855,8 +1855,8 @@ CAttributeToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
                 }
               } else {
                 // We saw an equal sign but ran out of room looking for a value.
-                mHasEqualWithoutValue = PR_TRUE;
-                mInError = PR_TRUE;
+                mHasEqualWithoutValue = true;
+                mInError = true;
               }
             }
           } else {
@@ -1874,7 +1874,7 @@ CAttributeToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
                 kForwardSlash == aChar) {
               // In XML, a trailing slash isn't an error.
               if (kForwardSlash != aChar || !(aFlag & NS_IPARSER_FLAG_XML)) {
-                mInError = PR_TRUE;
+                mInError = true;
               }
 
               if (!(aFlag & NS_IPARSER_FLAG_VIEW_SOURCE)) {
@@ -1971,9 +1971,9 @@ CWhitespaceToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
 
   nsScannerIterator start;
   aScanner.CurrentPosition(start);
-  aScanner.SetPosition(--start, PR_FALSE, PR_TRUE);
+  aScanner.SetPosition(--start, false, true);
 
-  PRBool haveCR;
+  bool haveCR;
 
   nsresult result = aScanner.ReadWhitespace(mTextValue, mNewlineCount, haveCR);
 
@@ -2273,18 +2273,18 @@ CInstructionToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
 {
   mTextValue.AssignLiteral("<?");
   nsresult result = NS_OK;
-  PRBool done = PR_FALSE;
+  bool done = false;
 
   while (NS_OK == result && !done) {
     // Note, this call does *not* consume the >.
-    result = aScanner.ReadUntil(mTextValue, kGreaterThan, PR_FALSE);
+    result = aScanner.ReadUntil(mTextValue, kGreaterThan, false);
     if (NS_SUCCEEDED(result)) {
       // In HTML, PIs end with a '>', in XML, they end with a '?>'. Cover both
       // cases here.
       if (!(aFlag & NS_IPARSER_FLAG_XML) ||
           kQuestionMark == mTextValue.Last()) {
         // This really is the end of the PI.
-        done = PR_TRUE;
+        done = true;
       }
       // Need to append this character no matter what.
       aScanner.GetChar(aChar);
@@ -2294,7 +2294,7 @@ CInstructionToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
 
   if (kEOF == result && !aScanner.IsIncremental()) {
     // Hide the EOF result because there is no more text coming.
-    mInError = PR_TRUE;
+    mInError = true;
     result = NS_OK;
   }
 
@@ -2345,7 +2345,7 @@ CDoctypeDeclToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
   aScanner.CurrentPosition(start);
   aScanner.EndReading(end);
 
-  nsresult result = aScanner.ReadUntil(start, end, theEndCondition, PR_FALSE);
+  nsresult result = aScanner.ReadUntil(start, end, theEndCondition, false);
 
   if (NS_SUCCEEDED(result)) {
     PRUnichar ch;
@@ -2358,13 +2358,13 @@ CDoctypeDeclToken::Consume(PRUnichar aChar, nsScanner& aScanner, PRInt32 aFlag)
     } else {
       NS_ASSERTION(kLessThan == ch,
                    "Make sure this doctype decl. is really in error.");
-      mInError = PR_TRUE;
+      mInError = true;
     }
   } else if (!aScanner.IsIncremental()) {
     // We have reached the document end but haven't
     // found either a '<' or a '>'. Therefore use
     // whatever we have.
-    mInError = PR_TRUE;
+    mInError = true;
     result = NS_OK;
   }
 

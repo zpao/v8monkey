@@ -1,5 +1,6 @@
 Cu.import("resource://services-sync/engines/prefs.js");
 Cu.import("resource://services-sync/util.js");
+Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/ext/Preferences.js");
 
 function run_test() {
@@ -19,15 +20,15 @@ function run_test() {
 
     _("Engine's getChangedID() just returns the one GUID we have.");
     let changedIDs = engine.getChangedIDs();
-    let ids = [id for (id in changedIDs)];
+    let ids = Object.keys(changedIDs);
     do_check_eq(ids.length, 1);
-    do_check_eq(ids[0], Utils.encodeBase64url(Svc.AppInfo.ID));
+    do_check_eq(ids[0], Utils.encodeBase64url(Services.appinfo.ID));
 
     Svc.Prefs.set("engine.prefs.modified", false);
     do_check_false(tracker.modified);
 
     _("No modified state, so no changed IDs.");
-    do_check_eq([id for (id in engine.getChangedIDs())].length, 0);
+    do_check_empty(engine.getChangedIDs());
 
     _("Initial score is 0");
     do_check_eq(tracker.score, 0);
@@ -41,7 +42,7 @@ function run_test() {
     _("Tell the tracker to start tracking changes.");
     Svc.Obs.notify("weave:engine:start-tracking");
     prefs.set("testing.int", 23);
-    do_check_eq(tracker.score, 25);
+    do_check_eq(tracker.score, SCORE_INCREMENT_XLARGE);
     do_check_eq(tracker.modified, true);
 
     _("Clearing changed IDs reset modified status.");
@@ -50,25 +51,25 @@ function run_test() {
 
     _("Resetting a pref ups the score, too.");
     prefs.reset("testing.int");
-    do_check_eq(tracker.score, 50);
+    do_check_eq(tracker.score, SCORE_INCREMENT_XLARGE * 2);
     do_check_eq(tracker.modified, true);
     tracker.clearChangedIDs();
 
     _("So does changing a pref sync pref.");
     Svc.Prefs.set("prefs.sync.testing.int", false);
-    do_check_eq(tracker.score, 150);
+    do_check_eq(tracker.score, SCORE_INCREMENT_XLARGE * 3);
     do_check_eq(tracker.modified, true);
     tracker.clearChangedIDs();
 
     _("Now that the pref sync pref has been flipped, changes to it won't be picked up.");
     prefs.set("testing.int", 42);
-    do_check_eq(tracker.score, 150);
+    do_check_eq(tracker.score, SCORE_INCREMENT_XLARGE * 3);
     do_check_eq(tracker.modified, false);
     tracker.clearChangedIDs();
 
     _("Changing some other random pref won't do anything.");
     prefs.set("testing.other", "blergh");
-    do_check_eq(tracker.score, 150);
+    do_check_eq(tracker.score, SCORE_INCREMENT_XLARGE * 3);
     do_check_eq(tracker.modified, false);
 
   } finally {

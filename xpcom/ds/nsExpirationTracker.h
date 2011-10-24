@@ -55,7 +55,7 @@ struct nsExpirationState {
          MAX_INDEX_IN_GENERATION = (1U << 28) - 1 };
 
   nsExpirationState() : mGeneration(NOT_TRACKED) {}
-  PRBool IsTracked() { return mGeneration != NOT_TRACKED; }
+  bool IsTracked() { return mGeneration != NOT_TRACKED; }
 
   /**
    * The generation that this object belongs to, or NOT_TRACKED.
@@ -105,7 +105,7 @@ template <class T, PRUint32 K> class nsExpirationTracker {
      */
     nsExpirationTracker(PRUint32 aTimerPeriod)
       : mTimerPeriod(aTimerPeriod), mNewestGeneration(0),
-        mInAgeOneGeneration(PR_FALSE) {
+        mInAgeOneGeneration(false) {
       PR_STATIC_ASSERT(K >= 2 && K <= nsExpirationState::NOT_TRACKED);
     }
     ~nsExpirationTracker() {
@@ -187,7 +187,7 @@ template <class T, PRUint32 K> class nsExpirationTracker {
         return;
       }
       
-      mInAgeOneGeneration = PR_TRUE;
+      mInAgeOneGeneration = true;
       PRUint32 reapGeneration = 
         mNewestGeneration > 0 ? mNewestGeneration - 1 : K - 1;
       nsTArray<T*>& generation = mGenerations[reapGeneration];
@@ -203,7 +203,7 @@ template <class T, PRUint32 K> class nsExpirationTracker {
       for (;;) {
         // Objects could have been removed so index could be outside
         // the array
-        index = PR_MIN(index, generation.Length());
+        index = NS_MIN(index, generation.Length());
         if (index == 0)
           break;
         --index;
@@ -218,7 +218,7 @@ template <class T, PRUint32 K> class nsExpirationTracker {
       // just removed most or all of its elements.
       generation.Compact();
       mNewestGeneration = reapGeneration;
-      mInAgeOneGeneration = PR_FALSE;
+      mInAgeOneGeneration = false;
     }
 
     /**
@@ -259,12 +259,12 @@ template <class T, PRUint32 K> class nsExpirationTracker {
     
     friend class Iterator;
 
-    PRBool IsEmpty() {
+    bool IsEmpty() {
       for (PRUint32 i = 0; i < K; ++i) {
         if (!mGenerations[i].IsEmpty())
-          return PR_FALSE;
+          return false;
       }
-      return PR_TRUE;
+      return true;
     }
 
   protected:
@@ -300,7 +300,7 @@ template <class T, PRUint32 K> class nsExpirationTracker {
     nsCOMPtr<nsITimer> mTimer;
     PRUint32           mTimerPeriod;
     PRUint32           mNewestGeneration;
-    PRPackedBool       mInAgeOneGeneration;
+    bool               mInAgeOneGeneration;
 
     static void TimerCallback(nsITimer* aTimer, void* aThis) {
       nsExpirationTracker* tracker = static_cast<nsExpirationTracker*>(aThis);

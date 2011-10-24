@@ -75,7 +75,7 @@ MyEventUnregister gEventUnregister = NULL;
 
 nsParentalControlsServiceWin::nsParentalControlsServiceWin() :
   mPC(nsnull)
-, mEnabled(PR_FALSE)
+, mEnabled(false)
 , mProvider(nsnull)
 {
   HRESULT hr;
@@ -104,7 +104,7 @@ nsParentalControlsServiceWin::nsParentalControlsServiceWin() :
       gEventRegister = (MyEventRegister) GetProcAddress(gAdvAPIDLLInst, "EventRegister");
       gEventUnregister = (MyEventUnregister) GetProcAddress(gAdvAPIDLLInst, "EventUnregister");
     }
-    mEnabled = PR_TRUE;
+    mEnabled = true;
   }
 }
 
@@ -123,20 +123,20 @@ nsParentalControlsServiceWin::~nsParentalControlsServiceWin()
 //------------------------------------------------------------------------
 
 NS_IMETHODIMP
-nsParentalControlsServiceWin::GetParentalControlsEnabled(PRBool *aResult)
+nsParentalControlsServiceWin::GetParentalControlsEnabled(bool *aResult)
 {
-  *aResult = PR_FALSE;
+  *aResult = false;
 
   if (mEnabled)
-    *aResult = PR_TRUE;
+    *aResult = true;
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsParentalControlsServiceWin::GetBlockFileDownloadsEnabled(PRBool *aResult)
+nsParentalControlsServiceWin::GetBlockFileDownloadsEnabled(bool *aResult)
 {
-  *aResult = PR_FALSE;
+  *aResult = false;
 
   if (!mEnabled)
     return NS_ERROR_NOT_AVAILABLE;
@@ -146,16 +146,16 @@ nsParentalControlsServiceWin::GetBlockFileDownloadsEnabled(PRBool *aResult)
     DWORD settings = 0;
     wpcws->GetSettings(&settings);
     if (settings == WPCFLAG_WEB_SETTING_DOWNLOADSBLOCKED)
-      *aResult = PR_TRUE;
+      *aResult = true;
   }
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsParentalControlsServiceWin::GetLoggingEnabled(PRBool *aResult)
+nsParentalControlsServiceWin::GetLoggingEnabled(bool *aResult)
 {
-  *aResult = PR_FALSE;
+  *aResult = false;
 
   if (!mEnabled)
     return NS_ERROR_NOT_AVAILABLE;
@@ -166,7 +166,7 @@ nsParentalControlsServiceWin::GetLoggingEnabled(PRBool *aResult)
     BOOL enabled = FALSE;
     wpcs->IsLoggingRequired(&enabled);
     if (enabled)
-      *aResult = PR_TRUE;
+      *aResult = true;
   }
 
   return NS_OK;
@@ -174,7 +174,7 @@ nsParentalControlsServiceWin::GetLoggingEnabled(PRBool *aResult)
 
 // Post a log event to the system
 NS_IMETHODIMP
-nsParentalControlsServiceWin::Log(PRInt16 aEntryType, PRBool blocked, nsIURI *aSource, nsIFile *aTarget)
+nsParentalControlsServiceWin::Log(PRInt16 aEntryType, bool blocked, nsIURI *aSource, nsIFile *aTarget)
 {
   if (!mEnabled)
     return NS_ERROR_NOT_AVAILABLE;
@@ -182,7 +182,7 @@ nsParentalControlsServiceWin::Log(PRInt16 aEntryType, PRBool blocked, nsIURI *aS
   NS_ENSURE_ARG_POINTER(aSource);
 
   // Confirm we should be logging
-  PRBool enabled;
+  bool enabled;
   GetLoggingEnabled(&enabled);
   if (!enabled)
     return NS_ERROR_NOT_AVAILABLE;
@@ -211,9 +211,9 @@ nsParentalControlsServiceWin::Log(PRInt16 aEntryType, PRBool blocked, nsIURI *aS
 
 // Override a single URI
 NS_IMETHODIMP
-nsParentalControlsServiceWin::RequestURIOverride(nsIURI *aTarget, nsIInterfaceRequestor *aWindowContext, PRBool *_retval)
+nsParentalControlsServiceWin::RequestURIOverride(nsIURI *aTarget, nsIInterfaceRequestor *aWindowContext, bool *_retval)
 {
-  *_retval = PR_FALSE;
+  *_retval = false;
 
   if (!mEnabled)
     return NS_ERROR_NOT_AVAILABLE;
@@ -233,19 +233,23 @@ nsParentalControlsServiceWin::RequestURIOverride(nsIURI *aTarget, nsIInterfaceRe
   if (hWnd == nsnull)
     hWnd = GetDesktopWindow();
 
+  BOOL ret;
   nsRefPtr<IWPCWebSettings> wpcws;
-  if (SUCCEEDED(mPC->GetWebSettings(NULL, getter_AddRefs(wpcws))))
+  if (SUCCEEDED(mPC->GetWebSettings(NULL, getter_AddRefs(wpcws)))) {
     wpcws->RequestURLOverride(hWnd, NS_ConvertUTF8toUTF16(spec).get(),
-                              0, NULL, _retval);
+                              0, NULL, &ret);
+    *_retval = ret;
+  }
+
 
   return NS_OK;
 }
 
 // Override a web page
 NS_IMETHODIMP
-nsParentalControlsServiceWin::RequestURIOverrides(nsIArray *aTargets, nsIInterfaceRequestor *aWindowContext, PRBool *_retval)
+nsParentalControlsServiceWin::RequestURIOverrides(nsIArray *aTargets, nsIInterfaceRequestor *aWindowContext, bool *_retval)
 {
-  *_retval = PR_FALSE;
+  *_retval = false;
 
   if (!mEnabled)
     return NS_ERROR_NOT_AVAILABLE;
@@ -308,11 +312,14 @@ nsParentalControlsServiceWin::RequestURIOverrides(nsIArray *aTargets, nsIInterfa
 
   if (!uriIdx)
     return NS_ERROR_INVALID_ARG;
- 
+
+  BOOL ret; 
   nsRefPtr<IWPCWebSettings> wpcws;
-  if (SUCCEEDED(mPC->GetWebSettings(NULL, getter_AddRefs(wpcws))))
+  if (SUCCEEDED(mPC->GetWebSettings(NULL, getter_AddRefs(wpcws)))) {
     wpcws->RequestURLOverride(hWnd, NS_ConvertUTF8toUTF16(rootSpec).get(),
-                             uriIdx, (LPCWSTR*)arrUrls.get(), _retval);
+                             uriIdx, (LPCWSTR*)arrUrls.get(), &ret);
+   *_retval = ret;
+  }
 
   // Free up the allocated strings in our array
   for (idx = 0; idx < uriIdx; idx++)
@@ -325,7 +332,7 @@ nsParentalControlsServiceWin::RequestURIOverrides(nsIArray *aTargets, nsIInterfa
 
 // Sends a file download event to the Vista Event Log 
 void
-nsParentalControlsServiceWin::LogFileDownload(PRBool blocked, nsIURI *aSource, nsIFile *aTarget)
+nsParentalControlsServiceWin::LogFileDownload(bool blocked, nsIURI *aSource, nsIFile *aTarget)
 {
   nsCAutoString curi;
 

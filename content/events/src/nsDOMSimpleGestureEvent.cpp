@@ -41,17 +41,17 @@
 
 
 nsDOMSimpleGestureEvent::nsDOMSimpleGestureEvent(nsPresContext* aPresContext, nsSimpleGestureEvent* aEvent)
-  : nsDOMMouseEvent(aPresContext, aEvent ? aEvent : new nsSimpleGestureEvent(PR_FALSE, 0, nsnull, 0, 0.0))
+  : nsDOMMouseEvent(aPresContext, aEvent ? aEvent : new nsSimpleGestureEvent(false, 0, nsnull, 0, 0.0))
 {
   NS_ASSERTION(mEvent->eventStructType == NS_SIMPLE_GESTURE_EVENT, "event type mismatch");
 
   if (aEvent) {
-    mEventIsInternal = PR_FALSE;
+    mEventIsInternal = false;
   } else {
-    mEventIsInternal = PR_TRUE;
+    mEventIsInternal = true;
     mEvent->time = PR_Now();
     mEvent->refPoint.x = mEvent->refPoint.y = 0;
-    static_cast<nsMouseEvent*>(mEvent)->inputSource = nsIDOMNSMouseEvent::MOZ_SOURCE_UNKNOWN;
+    static_cast<nsMouseEvent*>(mEvent)->inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
   }
 }
 
@@ -93,18 +93,18 @@ nsDOMSimpleGestureEvent::GetDelta(PRFloat64 *aDelta)
 
 NS_IMETHODIMP
 nsDOMSimpleGestureEvent::InitSimpleGestureEvent(const nsAString& aTypeArg,
-                                                PRBool aCanBubbleArg,
-                                                PRBool aCancelableArg,
+                                                bool aCanBubbleArg,
+                                                bool aCancelableArg,
                                                 nsIDOMWindow* aViewArg,
                                                 PRInt32 aDetailArg,
                                                 PRInt32 aScreenX, 
                                                 PRInt32 aScreenY,
                                                 PRInt32 aClientX,
                                                 PRInt32 aClientY,
-                                                PRBool aCtrlKeyArg,
-                                                PRBool aAltKeyArg,
-                                                PRBool aShiftKeyArg,
-                                                PRBool aMetaKeyArg,
+                                                bool aCtrlKeyArg,
+                                                bool aAltKeyArg,
+                                                bool aShiftKeyArg,
+                                                bool aMetaKeyArg,
                                                 PRUint16 aButton,
                                                 nsIDOMEventTarget* aRelatedTarget,
                                                 PRUint32 aDirectionArg,

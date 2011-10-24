@@ -41,6 +41,7 @@
 
 #include "AccEvent.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsRefreshDriver.h"
 
 class nsAccessible;
 class nsDocAccessible;
@@ -128,14 +129,6 @@ public:
   NS_DECL_CYCLE_COLLECTION_NATIVE_CLASS(NotificationController)
 
   /**
-   * Return true when tree is constructed.
-   */
-  inline bool IsTreeConstructed()
-  {
-    return mTreeConstructedState == eTreeConstructed;
-  }
-
-  /**
    * Shutdown the notification controller.
    */
   void Shutdown();
@@ -155,11 +148,8 @@ public:
    */
   inline void ScheduleTextUpdate(nsIContent* aTextNode)
   {
-    // Ignore the notification if initial tree construction hasn't been done yet.
-    if (mTreeConstructedState != eTreeConstructionPending &&
-        mTextHash.PutEntry(aTextNode)) {
+    if (mTextHash.PutEntry(aTextNode))
       ScheduleProcessing();
-    }
   }
 
   /**
@@ -212,6 +202,11 @@ public:
     if (notification && mNotifications.AppendElement(notification))
       ScheduleProcessing();
   }
+
+#ifdef DEBUG
+  bool IsUpdating() const
+    { return mObservingState == eRefreshProcessingForUpdate; }
+#endif
 
 protected:
   nsAutoRefCnt mRefCnt;
@@ -300,17 +295,6 @@ private:
   nsIPresShell* mPresShell;
 
   /**
-   * Indicate whether initial construction of the document's accessible tree
-   * performed or pending. When the document accessible is created then
-   * we construct its initial accessible tree.
-   */
-  enum eTreeConstructedState {
-    eTreeConstructed,
-    eTreeConstructionPending
-  };
-  eTreeConstructedState mTreeConstructedState;
-
-  /**
    * Child documents that needs to be bound to the tree.
    */
   nsTArray<nsRefPtr<nsDocAccessible> > mHangingChildDocuments;
@@ -365,13 +349,13 @@ private:
     ~nsCOMPtrHashKey() { }
 
     KeyType GetKey() const { return mKey; }
-    PRBool KeyEquals(KeyTypePointer aKey) const { return aKey == mKey; }
+    bool KeyEquals(KeyTypePointer aKey) const { return aKey == mKey; }
 
     static KeyTypePointer KeyToPointer(KeyType aKey) { return aKey; }
     static PLDHashNumber HashKey(KeyTypePointer aKey)
       { return NS_PTR_TO_INT32(aKey) >> 2; }
 
-    enum { ALLOW_MEMMOVE = PR_TRUE };
+    enum { ALLOW_MEMMOVE = true };
 
    protected:
      nsCOMPtr<T> mKey;

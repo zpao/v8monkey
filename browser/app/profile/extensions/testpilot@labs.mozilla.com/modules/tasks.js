@@ -597,7 +597,7 @@ TestPilotExperiment.prototype = {
         }
       }
     } catch(e) {
-      this._logger.warn("Error in getStudyMetadata: " + e);
+      this._dataStore.logException("getStudyMetadata: " + e);
     }
     return null;
   },
@@ -660,6 +660,7 @@ TestPilotExperiment.prototype = {
     // This method handles all date-related status changes and should be
     // called periodically.
     let currentDate = this._now();
+    let self = this;
 
     // Reset automatically recurring tests:
     if (this._recursAutomatically &&
@@ -703,7 +704,6 @@ TestPilotExperiment.prototype = {
         currentDate <= this._endDate) {
       this._logger.info("Study now starting.");
       // clear the data before starting.
-      let self = this;
       this._dataStore.wipeAllData(function() {
         // Experiment is now in progress.
         self.changeStatus(TaskConstants.STATUS_IN_PROGRESS, true);
@@ -714,7 +714,6 @@ TestPilotExperiment.prototype = {
     // What happens when a test finishes:
     if (this._status < TaskConstants.STATUS_FINISHED &&
 	currentDate > this._endDate) {
-      let self = this;
       let setDataDeletionDate = true;
       this._logger.info("Passed End Date - Switched Task Status to Finished");
       this.changeStatus(TaskConstants.STATUS_FINISHED);
@@ -847,7 +846,7 @@ TestPilotExperiment.prototype = {
       req.setRequestHeader("Content-type", "application/json");
       req.setRequestHeader("Content-length", dataString.length);
       req.setRequestHeader("Connection", "close");
-      req.onreadystatechange = function(aEvt) {
+      req.addEventListener("readystatechange", function(aEvt) {
         if (req.readyState == 4) {
           if (req.status == 200 || req.status == 201 || req.status == 202) {
             let location = req.getResponseHeader("Location");
@@ -888,7 +887,7 @@ TestPilotExperiment.prototype = {
             callback(false);
           }
         }
-      };
+      }, false);
       req.send(dataString);
     });
   },
@@ -896,7 +895,6 @@ TestPilotExperiment.prototype = {
   optOut: function TestPilotExperiment_optOut(reason, callback) {
     // Regardless of study ID, post the opt-out message to a special
     // database table of just opt-out messages; include study ID in metadata.
-    let url = Application.prefs.getValue(DATA_UPLOAD_PREF, "") + "opt-out";
     let logger = this._logger;
 
     this.onExperimentShutdown();
@@ -909,6 +907,7 @@ TestPilotExperiment.prototype = {
     if (reason) {
       // Send us the reason...
       // (TODO: include metadata?)
+      let url = Application.prefs.getValue(DATA_UPLOAD_PREF, "") + "opt-out";
       let answer = {id: this._id,
                     reason: reason};
       let dataString = JSON.stringify(answer);
@@ -920,21 +919,27 @@ TestPilotExperiment.prototype = {
       req.setRequestHeader("Content-type", "application/json");
       req.setRequestHeader("Content-length", dataString.length);
       req.setRequestHeader("Connection", "close");
-      req.onreadystatechange = function(aEvt) {
+      req.addEventListener("readystatechange", function(aEvt) {
         if (req.readyState == 4) {
           if (req.status == 200 || req.status == 201 || req.status == 202) {
 	    logger.info("Quit reason posted successfully " + req.responseText);
-    	    callback(true);
+            if (callback) {
+              callback(true);
+            }
 	  } else {
 	    logger.warn(req.status + " posting error " + req.responseText);
-	    callback(false);
+            if (callback) {
+              callback(false);
+            }
 	  }
 	}
-      };
+      }, false);
       logger.trace("Sending quit reason.");
       req.send(dataString);
     } else {
-      callback(false);
+      if (callback) {
+        callback(false);
+      }
     }
   },
 
@@ -961,6 +966,7 @@ TestPilotBuiltinSurvey.prototype = {
     this._versionNumber = surveyInfo.versionNumber;
     this._questions = surveyInfo.surveyQuestions;
     this._explanation = surveyInfo.surveyExplanation;
+    this._onPageLoad = surveyInfo.onPageLoad;
   },
 
   get taskType() {
@@ -986,6 +992,12 @@ TestPilotBuiltinSurvey.prototype = {
 
   get relatedStudyId() {
     return this._studyId;
+  },
+
+  onPageLoad: function(task, document) {
+    if (this._onPageLoad) {
+      this._onPageLoad(task, document);
+    }
   },
 
   onDetailPageOpened: function TPS_onDetailPageOpened() {
@@ -1057,7 +1069,7 @@ TestPilotBuiltinSurvey.prototype = {
       req.setRequestHeader("Content-type", "application/json");
       req.setRequestHeader("Content-length", params.length);
       req.setRequestHeader("Connection", "close");
-      req.onreadystatechange = function(aEvt) {
+      req.addEventListener("readystatechange", function(aEvt) {
         if (req.readyState == 4) {
           if (req.status == 200 || req.status == 201 ||
              req.status == 202) {
@@ -1087,7 +1099,7 @@ TestPilotBuiltinSurvey.prototype = {
 	    callback(false);
 	  }
         }
-      };
+      }, false);
       req.send(params);
     });
   }

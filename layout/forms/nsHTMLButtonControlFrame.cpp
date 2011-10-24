@@ -87,7 +87,8 @@ nsHTMLButtonControlFrame::~nsHTMLButtonControlFrame()
 void
 nsHTMLButtonControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
 {
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), PR_FALSE);
+  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  DestroyAbsoluteFrames(aDestructRoot);
   nsHTMLContainerFrame::DestroyFrom(aDestructRoot);
 }
 
@@ -130,7 +131,7 @@ nsHTMLButtonControlFrame::GetType() const
 }
 
 void 
-nsHTMLButtonControlFrame::SetFocus(PRBool aOn, PRBool aRepaint)
+nsHTMLButtonControlFrame::SetFocus(bool aOn, bool aRepaint)
 {
 }
 
@@ -239,7 +240,7 @@ nsHTMLButtonControlFrame::Reflow(nsPresContext* aPresContext,
                   "Should have real computed width by now");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), PR_TRUE);
+    nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), true);
   }
 
   // Reflow the child
@@ -281,7 +282,7 @@ nsHTMLButtonControlFrame::Reflow(nsPresContext* aPresContext,
 
   aDesiredSize.SetOverflowAreasToDesiredBounds();
   ConsiderChildOverflow(aDesiredSize.mOverflowAreas, firstKid);
-  FinishAndStoreOverflow(&aDesiredSize);
+  FinishReflowWithAbsoluteFrames(aPresContext, aDesiredSize, aReflowState, aStatus);
 
   aStatus = NS_FRAME_COMPLETE;
 
@@ -361,12 +362,6 @@ nsHTMLButtonControlFrame::ReflowButtonContents(nsPresContext* aPresContext,
   aDesiredSize.ascent += yoff;
 }
 
-/* virtual */ PRBool
-nsHTMLButtonControlFrame::IsContainingBlock() const
-{
-  return PR_TRUE;
-}
-
 PRIntn
 nsHTMLButtonControlFrame::GetSkipSides() const
 {
@@ -377,7 +372,7 @@ nsresult nsHTMLButtonControlFrame::SetFormProperty(nsIAtom* aName, const nsAStri
 {
   if (nsGkAtoms::value == aName) {
     return mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::value,
-                             aValue, PR_TRUE);
+                             aValue, true);
   }
   return NS_OK;
 }
@@ -404,7 +399,7 @@ nsHTMLButtonControlFrame::SetAdditionalStyleContext(PRInt32 aIndex,
 }
 
 NS_IMETHODIMP 
-nsHTMLButtonControlFrame::AppendFrames(nsIAtom*        aListName,
+nsHTMLButtonControlFrame::AppendFrames(ChildListID     aListID,
                                        nsFrameList&    aFrameList)
 {
   NS_NOTREACHED("unsupported operation");
@@ -412,7 +407,7 @@ nsHTMLButtonControlFrame::AppendFrames(nsIAtom*        aListName,
 }
 
 NS_IMETHODIMP
-nsHTMLButtonControlFrame::InsertFrames(nsIAtom*        aListName,
+nsHTMLButtonControlFrame::InsertFrames(ChildListID     aListID,
                                        nsIFrame*       aPrevFrame,
                                        nsFrameList&    aFrameList)
 {
@@ -421,7 +416,7 @@ nsHTMLButtonControlFrame::InsertFrames(nsIAtom*        aListName,
 }
 
 NS_IMETHODIMP
-nsHTMLButtonControlFrame::RemoveFrame(nsIAtom*        aListName,
+nsHTMLButtonControlFrame::RemoveFrame(ChildListID     aListID,
                                       nsIFrame*       aOldFrame)
 {
   NS_NOTREACHED("unsupported operation");

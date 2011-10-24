@@ -41,7 +41,6 @@
 #include "nsWifiMonitor.h"
 #include "nsWifiAccessPoint.h"
 
-#include "nsIProxyObjectManager.h"
 #include "nsServiceManagerUtils.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIMutableArray.h"
@@ -109,13 +108,13 @@ do_dladm(nsCOMArray<nsWifiAccessPoint> &accessPoints)
     PRUint32 section = 0;
     PRUint32 sout_scan = 0;
     PRUint32 wlan_put = 0;
-    PRBool escape = PR_FALSE;
+    bool escape = false;
     nsWifiAccessPoint* ap;
     char sout_char;
     do {
       sout_char = sout[sout_scan++];
       if (escape) {
-        escape = PR_FALSE;
+        escape = false;
         if (sout_char != '\0') {
           wlan[section][wlan_put++] = sout_char;
           continue;
@@ -123,7 +122,7 @@ do_dladm(nsCOMArray<nsWifiAccessPoint> &accessPoints)
       }
 
       if (sout_char =='\\') {
-        escape = PR_TRUE;
+        escape = true;
         continue;
       }
 
@@ -170,60 +169,15 @@ nsWifiMonitor::DoScan()
     accessPoints.Clear();
     do_dladm(accessPoints);
 
-    PRBool accessPointsChanged = !AccessPointsEqual(accessPoints, lastAccessPoints);
-    nsCOMArray<nsIWifiListener> currentListeners;
-
-    {
-      MonitorAutoEnter mon(mMonitor);
-
-      for (PRUint32 i = 0; i < mListeners.Length(); i++) {
-        if (!mListeners[i].mHasSentData || accessPointsChanged) {
-          mListeners[i].mHasSentData = PR_TRUE;
-          currentListeners.AppendObject(mListeners[i].mListener);
-        }
-      }
-    }
-
+    bool accessPointsChanged = !AccessPointsEqual(accessPoints, lastAccessPoints);
     ReplaceArray(lastAccessPoints, accessPoints);
 
-    if (currentListeners.Count() > 0)
-    {
-      PRUint32 resultCount = lastAccessPoints.Count();
-      nsIWifiAccessPoint** result = static_cast<nsIWifiAccessPoint**> (nsMemory::Alloc(sizeof(nsIWifiAccessPoint*) * resultCount));
-      if (!result) {
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
-
-      for (PRUint32 i = 0; i < resultCount; i++)
-        result[i] = lastAccessPoints[i];
-
-      for (PRInt32 i = 0; i < currentListeners.Count(); i++) {
-
-        LOG(("About to send data to the wifi listeners\n"));
-
-        nsCOMPtr<nsIWifiListener> proxy;
-        nsCOMPtr<nsIProxyObjectManager> proxyObjMgr = do_GetService("@mozilla.org/xpcomproxy;1");
-        proxyObjMgr->GetProxyForObject(NS_PROXY_TO_MAIN_THREAD,
-                                       NS_GET_IID(nsIWifiListener),
-                                       currentListeners[i],
-                                       NS_PROXY_SYNC | NS_PROXY_ALWAYS,
-                                       getter_AddRefs(proxy));
-        if (!proxy) {
-          LOG(("There is no proxy available.  this should never happen\n"));
-        }
-        else
-        {
-          nsresult rv = proxy->OnChange(result, resultCount);
-          LOG( ("... sent %d\n", rv));
-        }
-      }
-
-      nsMemory::Free(result);
-    }
+    nsresult rv = CallWifiListeners(lastAccessPoints, accessPointsChanged);
+    NS_ENSURE_SUCCESS(rv, rv);
 
     LOG(("waiting on monitor\n"));
 
-    MonitorAutoEnter mon(mMonitor);
+    ReentrantMonitorAutoEnter mon(mReentrantMonitor);
     mon.Wait(PR_SecondsToInterval(60));
   }
 

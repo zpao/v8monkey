@@ -42,7 +42,7 @@
 
 gfxQuartzImageSurface::gfxQuartzImageSurface(gfxImageSurface *imageSurface)
 {
-    if (imageSurface->CairoStatus() || imageSurface->CairoSurface() == NULL)
+    if (imageSurface->CairoSurface() == NULL)
         return;
 
     cairo_surface_t *surf = cairo_quartz_image_surface_create (imageSurface->CairoSurface());
@@ -51,11 +51,22 @@ gfxQuartzImageSurface::gfxQuartzImageSurface(gfxImageSurface *imageSurface)
 
 gfxQuartzImageSurface::gfxQuartzImageSurface(cairo_surface_t *csurf)
 {
-    Init (csurf, PR_TRUE);
+    Init (csurf, true);
 }
 
 gfxQuartzImageSurface::~gfxQuartzImageSurface()
 {
+}
+
+PRInt32
+gfxQuartzImageSurface::KnownMemoryUsed()
+{
+  // This surface doesn't own any memory itself, but we want to report here the
+  // amount of memory that the surface it wraps uses.
+  nsRefPtr<gfxImageSurface> imgSurface = GetAsImageSurface();
+  if (imgSurface)
+    return imgSurface->KnownMemoryUsed();
+  return 0;
 }
 
 already_AddRefed<gfxImageSurface>

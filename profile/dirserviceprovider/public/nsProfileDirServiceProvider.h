@@ -64,7 +64,7 @@ class nsProfileDirServiceProvider: public nsIDirectoryServiceProvider
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDIRECTORYSERVICEPROVIDER
 
-  friend nsresult NS_NewProfileDirServiceProvider(PRBool, nsProfileDirServiceProvider**);
+  friend nsresult NS_NewProfileDirServiceProvider(bool, nsProfileDirServiceProvider**);
 
 public:
 
@@ -97,14 +97,14 @@ public:
    * Shutdown
    *
    * This method must be called before shutting down XPCOM if this object
-   * was created with aNotifyObservers == PR_TRUE. If this object was
-   * created with aNotifyObservers == PR_FALSE, this method is a no-op.
+   * was created with aNotifyObservers == true. If this object was
+   * created with aNotifyObservers == false, this method is a no-op.
    */
 
   virtual nsresult         Shutdown();
 
 protected:
-                           nsProfileDirServiceProvider(PRBool aNotifyObservers = PR_TRUE);
+                           nsProfileDirServiceProvider(bool aNotifyObservers = true);
    virtual                 ~nsProfileDirServiceProvider();
 
   nsresult                 Initialize();
@@ -118,9 +118,9 @@ protected:
   nsCOMPtr<nsIFile>        mProfileDir;
   nsCOMPtr<nsIFile>        mLocalProfileDir;
   nsProfileLock*           mProfileDirLock;
-  PRPackedBool             mNotifyObservers;
+  bool                     mNotifyObservers;
 
-  PRPackedBool             mSharingEnabled;
+  bool                     mSharingEnabled;
 #ifndef MOZILLA_INTERNAL_API
   nsEmbedString            mNonSharedDirName;
 #else
@@ -140,6 +140,6 @@ protected:
  *                            See nsIProfileChangeStatus.
  */
  
-nsresult NS_NewProfileDirServiceProvider(PRBool aNotifyObservers,
+nsresult NS_NewProfileDirServiceProvider(bool aNotifyObservers,
                                          nsProfileDirServiceProvider** aProvider);
 

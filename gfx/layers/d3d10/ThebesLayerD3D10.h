@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -38,7 +38,6 @@
 #ifndef GFX_THEBESLAYERD3D10_H
 #define GFX_THEBESLAYERD3D10_H
 
-#include "Layers.h"
 #include "LayerManagerD3D10.h"
 
 namespace mozilla {
@@ -99,18 +98,33 @@ private:
   /* Copy a texture region */
   void CopyRegion(ID3D10Texture2D* aSrc, const nsIntPoint &aSrcOffset,
                   ID3D10Texture2D* aDest, const nsIntPoint &aDestOffset,
-                  const nsIntRegion &aCopyRegion, nsIntRegion* aValidRegion,
-                  float aXRes, float aYRes);
+                  const nsIntRegion &aCopyRegion, nsIntRegion* aValidRegion);
+};
 
-  /**
-   * Calculate the desired texture resolution based on
-   * the layer managers resolution, and the current
-   * transforms scale factor.
-   */
-  void GetDesiredResolutions(float& aXRes, float& aYRes);
+class ShadowThebesLayerD3D10 : public ShadowThebesLayer,
+                               public LayerD3D10
+{
+public:
+  ShadowThebesLayerD3D10(LayerManagerD3D10* aManager);
+  virtual ~ShadowThebesLayerD3D10();
 
-  /* Check if the current texture resolution matches the stored resolution. */
-  bool ResolutionChanged(float aXRes, float aYRes);
+  virtual void
+  Swap(const ThebesBuffer& aNewFront, const nsIntRegion& aUpdatedRegion,
+       OptionalThebesBuffer* aNewBack, nsIntRegion* aNewBackValidRegion,
+       OptionalThebesBuffer* aReadOnlyFront, nsIntRegion* aFrontUpdatedRegion);
+  virtual void DestroyFrontBuffer();
+
+  virtual void Disconnect();
+
+  /* LayerD3D10 implementation */
+  virtual Layer* GetLayer() { return this; }
+  virtual void RenderLayer();
+  virtual void Validate();
+  virtual void LayerManagerDestroyed();
+
+private:
+  /* Texture with our surface data */
+  nsRefPtr<ID3D10Texture2D> mTexture;
 };
 
 } /* layers */

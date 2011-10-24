@@ -1,8 +1,8 @@
-This is a local copy of the WebGL conformance suite, version 1.0.0.
+This is a local copy of the WebGL conformance suite, SVN revision 15815
 
 The canonical location for this testsuite is:
 
-  https://cvs.khronos.org/svn/repos/registry/trunk/public/webgl/conformance-suites/1.0.0/webgl-conformance-tests.html
+  https://cvs.khronos.org/svn/repos/registry/trunk/public/webgl/sdk/tests
 
 All files and directories in this directory, with the exceptions listed below, come from
 upstream and should not be modified without corresponding upstream fixes and/or a
@@ -11,3 +11,4 @@ patch file in this directory. The exceptions (the Mozilla-specific files) are:
  * failing_tests_*.txt
  * Makefile.in
  * *.patch files, if any
+

@@ -49,34 +49,37 @@ include $(topsrcdir)/config/rules.mk
 _BROWSER_FILES = \
   head.js \
   remote_autocomplete.js \
+  remote_contentpopup.js \
   remote_head.js \
+  remote_focus.js \
   remote_forms.js \
   remote_formsZoom.js \
   remote_vkb.js \
   browser_addons.js \
+  browser_addons_locales.js \
   browser_appmenu.js \
-  browser_autocomplete.html \
-  browser_autocomplete.js \
   browser_autocompletesearch.js\
   browser_awesomescreen.js \
   browser_blank_01.html \
   browser_blank_02.html \
+  browser_blank_03.html \
   browser_bookmarks.js \
-  browser_bookmarks_star.js \
-  browser_bookmarks_tags.js \
-  browser_click_content.html \
-  browser_click_content.js \
   browser_contacts.js \
   browser_dragger.js \
+  browser_escape.js \
   browser_find.js \
+  browser_focus.html \
+  browser_focus.js \
   browser_forms.html \
   $(warning browser_forms.js disabled due to failures) \
   browser_formsZoom.html \
   $(warning browser_formsZoom.js disabled due to failures) \
   browser_history.js \
+  $(info browser_localepicker.js is disabled because the localepicker is disabled (bug 694047)) \
+  browser_localepicker_escape.js \
   browser_mainui.js \
-  browser_navigation.js \
   browser_preferences_text.js \
+  browser_preferences_fulltoggle.js \
   browser_rect.js \
   browser_rememberPassword.js \
   browser_scroll.js \
@@ -88,19 +91,36 @@ _BROWSER_FILES = \
   browser_tabs.js \
   browser_tapping.js \
   browser_tap_content.html \
+  browser_tapping_edit.js \
+  browser_tap_contentedit.html \
   browser_test.js \
   browser_vkb.js \
-  browser_viewport.js \
+  $(warning browser_viewport.js disabled due to failures) \
   browser_viewport.sjs \
   browser_scrollbar.sjs \
   browser_title.sjs \
   browser_thumbnails.js \
   browser_install.xml \
   browser_upgrade.rdf\
+  browser_localerepository.js \
+  browser_localerepository_pref.js \
+  browser_localerepository_buildid.js \
+  locales_list.sjs \
   mock_autocomplete.json\
   $(NULL)
 
-ifndef ANDROID
+ifneq ($(OS_TARGET),Android)
+_BROWSER_FILES += \
+  browser_autocomplete.html \
+  browser_autocomplete.js \
+  browser_bookmarks_star.js \
+  browser_bookmarks_tags.js \
+  browser_click_content.html \
+  browser_click_content.js \
+  browser_contentpopup.html \
+  browser_contentpopup.js \
+  browser_navigation.js \
+  $(NULL)
 ifndef MOZ_PLATFORM_MAEMO
 _BROWSER_FILES +=  browser_sidebars.js
 endif

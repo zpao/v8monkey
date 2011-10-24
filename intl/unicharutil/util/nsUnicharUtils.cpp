@@ -510,11 +510,11 @@ PRInt32 CaseInsensitiveCompare(const char *aLeft,
   return 0;
 }
 
-PRBool
+bool
 CaseInsensitiveUTF8CharsEqual(const char* aLeft, const char* aRight,
                               const char* aLeftEnd, const char* aRightEnd,
                               const char** aLeftNext, const char** aRightNext,
-                              PRBool* aErr)
+                              bool* aErr)
 {
   NS_ASSERTION(aLeftNext, "Out pointer shouldn't be null.");
   NS_ASSERTION(aRightNext, "Out pointer shouldn't be null.");
@@ -524,18 +524,18 @@ CaseInsensitiveUTF8CharsEqual(const char* aLeft, const char* aRight,
 
   PRUint32 leftChar = GetLowerUTF8Codepoint(aLeft, aLeftEnd, aLeftNext);
   if (NS_UNLIKELY(leftChar == PRUint32(-1))) {
-    *aErr = PR_TRUE;
-    return PR_FALSE;
+    *aErr = true;
+    return false;
   }
 
   PRUint32 rightChar = GetLowerUTF8Codepoint(aRight, aRightEnd, aRightNext);
   if (NS_UNLIKELY(rightChar == PRUint32(-1))) {
-    *aErr = PR_TRUE;
-    return PR_FALSE;
+    *aErr = true;
+    return false;
   }
 
   // Can't have an error past this point.
-  *aErr = PR_FALSE;
+  *aErr = false;
 
   return leftChar == rightChar;
 }

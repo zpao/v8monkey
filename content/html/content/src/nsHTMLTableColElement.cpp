@@ -34,6 +34,9 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
+#include "mozilla/Util.h"
+
 #include "nsIDOMHTMLTableColElement.h"
 #include "nsIDOMEventTarget.h"
 #include "nsMappedAttributes.h"
@@ -41,6 +44,8 @@
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
 #include "nsRuleData.h"
+
+using namespace mozilla;
 
 // use the same protection as ancient code did 
 // http://lxr.mozilla.org/classic/source/lib/layout/laytable.c#46
@@ -68,12 +73,12 @@ public:
   // nsIDOMHTMLTableColElement
   NS_DECL_NSIDOMHTMLTABLECOLELEMENT
 
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
+  virtual bool ParseAttribute(PRInt32 aNamespaceID,
                                 nsIAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
   nsMapRuleToAttributesFunc GetAttributeMappingFunction() const;
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
 
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
 
@@ -111,15 +116,15 @@ NS_HTML_CONTENT_INTERFACE_TABLE_TAIL_CLASSINFO(HTMLTableColElement)
 NS_IMPL_ELEMENT_CLONE(nsHTMLTableColElement)
 
 
-NS_IMPL_STRING_ATTR_DEFAULT_VALUE(nsHTMLTableColElement, Align, align, "left")
-NS_IMPL_STRING_ATTR_DEFAULT_VALUE(nsHTMLTableColElement, Ch, _char, ".")
+NS_IMPL_STRING_ATTR(nsHTMLTableColElement, Align, align)
+NS_IMPL_STRING_ATTR(nsHTMLTableColElement, Ch, _char)
 NS_IMPL_STRING_ATTR(nsHTMLTableColElement, ChOff, charoff)
 NS_IMPL_INT_ATTR_DEFAULT_VALUE(nsHTMLTableColElement, Span, span, 1)
-NS_IMPL_STRING_ATTR_DEFAULT_VALUE(nsHTMLTableColElement, VAlign, valign, "middle")
+NS_IMPL_STRING_ATTR(nsHTMLTableColElement, VAlign, valign)
 NS_IMPL_STRING_ATTR(nsHTMLTableColElement, Width, width)
 
 
-PRBool
+bool
 nsHTMLTableColElement::ParseAttribute(PRInt32 aNamespaceID,
                                       nsIAtom* aAttribute,
                                       const nsAString& aValue,
@@ -211,7 +216,7 @@ void MapAttributesIntoRule(const nsMappedAttributes* aAttributes, nsRuleData* aD
   nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aData);
 }
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsHTMLTableColElement::IsAttributeMapped(const nsIAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
@@ -227,7 +232,7 @@ nsHTMLTableColElement::IsAttributeMapped(const nsIAtom* aAttribute) const
     sCommonAttributeMap,
   };
 
-  return FindAttributeDependence(aAttribute, map, NS_ARRAY_LENGTH(map));
+  return FindAttributeDependence(aAttribute, map, ArrayLength(map));
 }
 
 

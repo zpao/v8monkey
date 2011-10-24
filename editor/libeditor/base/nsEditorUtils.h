@@ -107,13 +107,13 @@ class NS_STACK_CLASS nsAutoRules
   public:
   
   nsAutoRules(nsEditor *ed, PRInt32 action, nsIEditor::EDirection aDirection) : 
-         mEd(ed), mDoNothing(PR_FALSE)
+         mEd(ed), mDoNothing(false)
   { 
     if (mEd && !mEd->mAction) // mAction will already be set if this is nested call
     {
       mEd->StartOperation(action, aDirection);
     }
-    else mDoNothing = PR_TRUE; // nested calls will end up here
+    else mDoNothing = true; // nested calls will end up here
   }
   ~nsAutoRules() 
   {
@@ -125,7 +125,7 @@ class NS_STACK_CLASS nsAutoRules
   
   protected:
   nsEditor *mEd;
-  PRBool mDoNothing;
+  bool mDoNothing;
 };
 
 
@@ -137,12 +137,12 @@ class NS_STACK_CLASS nsAutoTxnsConserveSelection
 {
   public:
   
-  nsAutoTxnsConserveSelection(nsEditor *ed) : mEd(ed), mOldState(PR_TRUE)
+  nsAutoTxnsConserveSelection(nsEditor *ed) : mEd(ed), mOldState(true)
   {
     if (mEd) 
     {
       mOldState = mEd->GetShouldTxnSetSelection();
-      mEd->SetShouldTxnSetSelection(PR_FALSE);
+      mEd->SetShouldTxnSetSelection(false);
     }
   }
   
@@ -156,7 +156,7 @@ class NS_STACK_CLASS nsAutoTxnsConserveSelection
   
   protected:
   nsEditor *mEd;
-  PRBool mOldState;
+  bool mOldState;
 };
 
 /***************************************************************************
@@ -197,7 +197,7 @@ class nsDomIterFunctor
 class nsBoolDomIterFunctor 
 {
   public:
-    virtual PRBool operator()(nsIDOMNode* aNode)=0;
+    virtual bool operator()(nsIDOMNode* aNode)=0;
 };
 
 class NS_STACK_CLASS nsDOMIterator
@@ -228,9 +228,9 @@ class nsDOMSubtreeIterator : public nsDOMIterator
 class nsTrivialFunctor : public nsBoolDomIterFunctor
 {
   public:
-    virtual PRBool operator()(nsIDOMNode* aNode)  // used to build list of all nodes iterator covers
+    virtual bool operator()(nsIDOMNode* aNode)  // used to build list of all nodes iterator covers
     {
-      return PR_TRUE;
+      return true;
     }
 };
 
@@ -260,8 +260,8 @@ struct NS_STACK_CLASS DOMPoint
 class nsEditorUtils
 {
   public:
-    static PRBool IsDescendantOf(nsIDOMNode *aNode, nsIDOMNode *aParent, PRInt32 *aOffset = 0);
-    static PRBool IsLeafNode(nsIDOMNode *aNode);
+    static bool IsDescendantOf(nsIDOMNode *aNode, nsIDOMNode *aParent, PRInt32 *aOffset = 0);
+    static bool IsLeafNode(nsIDOMNode *aNode);
 };
 
 
@@ -273,7 +273,7 @@ class nsISimpleEnumerator;
 class nsEditorHookUtils
 {
   public:
-    static PRBool   DoInsertionHook(nsIDOMDocument *aDoc, nsIDOMEvent *aEvent,
+    static bool     DoInsertionHook(nsIDOMDocument *aDoc, nsIDOMEvent *aEvent,
                                     nsITransferable *aTrans);
   private:
     static nsresult GetHookEnumeratorFromDocument(nsIDOMDocument *aDoc,

@@ -55,13 +55,13 @@ public:
     * @param aNode   the node whose attribute will be changed
     * @param aAttribute the name of the attribute to change
     * @param aValue     the new value for aAttribute, if aRemoveAttribute is false
-    * @param aRemoveAttribute if PR_TRUE, remove aAttribute from aNode
+    * @param aRemoveAttribute if true, remove aAttribute from aNode
     */
   NS_IMETHOD Init(nsIEditor      *aEditor,
                   nsIDOMElement  *aNode,
                   const nsAString& aAttribute,
                   const nsAString& aValue,
-                  PRBool aRemoveAttribute);
+                  bool aRemoveAttribute);
 
   ChangeAttributeTxn();
 
@@ -83,17 +83,17 @@ protected:
   /** the attribute to change */
   nsString mAttribute;
 
-  /** the value to set the attribute to (ignored if mRemoveAttribute==PR_TRUE) */
+  /** the value to set the attribute to (ignored if mRemoveAttribute==true) */
   nsString mValue;
 
   /** the value to set the attribute to for undo */
   nsString mUndoValue;
 
-  /** PR_TRUE if the mAttribute was set on mElement at the time of execution */
-  PRBool   mAttributeWasSet;
+  /** true if the mAttribute was set on mElement at the time of execution */
+  bool     mAttributeWasSet;
 
-  /** PR_TRUE if the operation is to remove mAttribute from mElement */
-  PRBool   mRemoveAttribute;
+  /** true if the operation is to remove mAttribute from mElement */
+  bool     mRemoveAttribute;
 };
 
 #endif

@@ -57,7 +57,7 @@
  *
  * we need to keep a "persistent value" (which will be written to the registry)
  * and a non-persistent value (for the current runtime): these are usually
- * the same, except when aPersist==PR_FALSE. The strings are permanently arena-
+ * the same, except when aPersist==false. The strings are permanently arena-
  * allocated, and will never go away.
  */
 class CategoryLeaf : public nsDepCharHashKey
@@ -136,7 +136,7 @@ public:
    * observer service. This is to be used by nsComponentManagerImpl
    * on startup while reading the stored category list.
    */
-  NS_METHOD SuppressNotifications(PRBool aSuppress);
+  NS_METHOD SuppressNotifications(bool aSuppress);
 
   void AddCategoryEntry(const char* aCategory,
                         const char* aKey,
@@ -163,7 +163,7 @@ private:
   PLArenaPool mArena;
   nsClassHashtable<nsDepCharHashKey, CategoryNode> mTable;
   mozilla::Mutex mLock;
-  PRBool mSuppressNotifications;
+  bool mSuppressNotifications;
 };
 
 #endif

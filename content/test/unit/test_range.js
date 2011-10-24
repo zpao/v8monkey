@@ -66,7 +66,6 @@ function isWhitespace(aNode) {
  */
 function getFragment(aNode) {
   var frag = aNode.ownerDocument.createDocumentFragment();
-  do_check_true(frag instanceof C_i.nsIDOM3Node);
   for (var i = 0; i < aNode.childNodes.length; i++) {
     frag.appendChild(aNode.childNodes.item(i).cloneNode(true));
   }
@@ -217,9 +216,8 @@ function getRange(aSourceNode, aFragment) {
 function getParsedDocument(aPath) {
   var doc = do_parse_document(aPath, "application/xml");
   do_check_true(doc.documentElement.localName != "parsererror");
-  do_check_true(doc instanceof C_i.nsIDOMDocumentTraversal);
   do_check_true(doc instanceof C_i.nsIDOMXPathEvaluator);
-  do_check_true(doc instanceof C_i.nsIDOMDocumentRange);
+  do_check_true(doc instanceof C_i.nsIDOMDocument);
 
   // Clean out whitespace.
   var walker = doc.createTreeWalker(doc,
@@ -281,7 +279,7 @@ function run_extract_test() {
        them.
 
        After the range's extraction or deletion is done, we use
-       nsIDOM3Node.isEqualNode() between the altered source fragment and the
+       nsIDOMNode.isEqualNode() between the altered source fragment and the
        result fragment.  We also run isEqualNode() between the extracted
        fragment and the fragment from the baseExtract node.  If they are not
        equal, we have failed a test.
@@ -322,8 +320,6 @@ function run_extract_test() {
     var foundStart = false;
     var foundEnd = false;
     do {
-      do_check_true(walker.currentNode instanceof C_i.nsIDOM3Node);
-
       if (walker.currentNode.isSameNode(startContainer)) {
         foundStart = true;
       }
@@ -358,8 +354,6 @@ function run_extract_test() {
     foundStart = false;
     foundEnd = false;
     do {
-      do_check_true(walker.currentNode instanceof C_i.nsIDOM3Node);
-
       if (walker.currentNode.isSameNode(startContainer)) {
         foundStart = true;
       }
@@ -517,7 +511,7 @@ function run_miscellaneous_tests() {
 
   // Requested by smaug:  A range involving a comment as a document child.
   doc = parser.parseFromString("<!-- foo --><foo/>", "application/xml");
-  do_check_true(doc instanceof C_i.nsIDOMDocumentRange);
+  do_check_true(doc instanceof C_i.nsIDOMDocument);
   do_check_eq(doc.childNodes.length, 2);
   baseRange = doc.createRange();
   baseRange.setStart(doc.firstChild, 1);

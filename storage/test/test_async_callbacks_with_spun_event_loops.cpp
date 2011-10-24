@@ -12,19 +12,6 @@
 //// Async Helpers
 
 /**
- * Invoke AsyncClose on the given connection, blocking the main thread until we
- * get the completion notification.
- */
-void
-blocking_async_close(mozIStorageConnection *db)
-{
-  nsRefPtr<AsyncStatementSpinner> spinner(new AsyncStatementSpinner());
-
-  db->AsyncClose(spinner);
-  spinner->SpinUntilCompleted();
-}
-
-/**
  * Spins the events loop for current thread until aCondition is true.
  */
 void
@@ -32,7 +19,7 @@ spin_events_loop_until_true(const bool* const aCondition)
 {
   nsCOMPtr<nsIThread> thread(::do_GetCurrentThread());
   nsresult rv = NS_OK;
-  PRBool processed = PR_TRUE;
+  bool processed = true;
   while (!(*aCondition) && NS_SUCCEEDED(rv)) {
     rv = thread->ProcessNextEvent(true, &processed);
   }

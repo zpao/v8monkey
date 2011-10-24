@@ -47,24 +47,23 @@ using namespace mozilla::dom;
 #include <math.h>
 #include "prlog.h"
 #include "prmem.h"
+#include "prdtoa.h"
 #include "nsAutoPtr.h"
 #include "nsAudioStream.h"
 #include "nsAlgorithm.h"
 #include "VideoUtils.h"
+#include "mozilla/Mutex.h"
 extern "C" {
 #include "sydneyaudio/sydney_audio.h"
 }
 #include "mozilla/TimeStamp.h"
 #include "nsThreadUtils.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 #if defined(XP_MACOSX)
 #define SA_PER_STREAM_VOLUME 1
-#endif
-
-// Android's audio backend is not available in content processes, so audio must
-// be remoted to the parent chrome process.
-#if defined(ANDROID)
-#define REMOTE_AUDIO 1
 #endif
 
 using mozilla::TimeStamp;
@@ -73,28 +72,31 @@ using mozilla::TimeStamp;
 PRLogModuleInfo* gAudioStreamLog = nsnull;
 #endif
 
-#define FAKE_BUFFER_SIZE 176400
+static const PRUint32 FAKE_BUFFER_SIZE = 176400;
 
-class nsAudioStreamLocal : public nsAudioStream
+// Number of milliseconds per second.
+static const PRInt64 MS_PER_S = 1000;
+
+class nsNativeAudioStream : public nsAudioStream
 {
  public:
   NS_DECL_ISUPPORTS
 
-  ~nsAudioStreamLocal();
-  nsAudioStreamLocal();
+  ~nsNativeAudioStream();
+  nsNativeAudioStream();
 
   nsresult Init(PRInt32 aNumChannels, PRInt32 aRate, SampleFormat aFormat);
   void Shutdown();
-  nsresult Write(const void* aBuf, PRUint32 aCount, PRBool aBlocking);
+  nsresult Write(const void* aBuf, PRUint32 aFrames);
   PRUint32 Available();
   void SetVolume(double aVolume);
   void Drain();
   void Pause();
   void Resume();
   PRInt64 GetPosition();
-  PRInt64 GetSampleOffset();
-  PRBool IsPaused();
-  PRInt32 GetMinWriteSamples();
+  PRInt64 GetPositionInFrames();
+  bool IsPaused();
+  PRInt32 GetMinWriteSize();
 
  private:
 
@@ -105,40 +107,34 @@ class nsAudioStreamLocal : public nsAudioStream
 
   SampleFormat mFormat;
 
-  // When a Write() request is made, and the number of samples
-  // requested to be written exceeds the buffer size of the audio
-  // backend, the remaining samples are stored in this variable. They
-  // will be written on the next Write() request.
-  nsTArray<short> mBufferOverflow;
+  // True if this audio stream is paused.
+  bool mPaused;
 
-  // PR_TRUE if this audio stream is paused.
-  PRPackedBool mPaused;
-
-  // PR_TRUE if this stream has encountered an error.
-  PRPackedBool mInError;
+  // True if this stream has encountered an error.
+  bool mInError;
 
 };
 
-class nsAudioStreamRemote : public nsAudioStream
+class nsRemotedAudioStream : public nsAudioStream
 {
  public:
   NS_DECL_ISUPPORTS
 
-  nsAudioStreamRemote();
-  ~nsAudioStreamRemote();
+  nsRemotedAudioStream();
+  ~nsRemotedAudioStream();
 
   nsresult Init(PRInt32 aNumChannels, PRInt32 aRate, SampleFormat aFormat);
   void Shutdown();
-  nsresult Write(const void* aBuf, PRUint32 aCount, PRBool aBlocking);
+  nsresult Write(const void* aBuf, PRUint32 aFrames);
   PRUint32 Available();
   void SetVolume(double aVolume);
   void Drain();
   void Pause();
   void Resume();
   PRInt64 GetPosition();
-  PRInt64 GetSampleOffset();
-  PRBool IsPaused();
-  PRInt32 GetMinWriteSamples();
+  PRInt64 GetPositionInFrames();
+  bool IsPaused();
+  PRInt32 GetMinWriteSize();
 
 private:
   nsRefPtr<AudioChild> mAudioChild;
@@ -147,10 +143,10 @@ private:
   int mRate;
   int mChannels;
 
-  PRInt32 mBytesPerSample;
+  PRInt32 mBytesPerFrame;
 
-  // PR_TRUE if this audio stream is paused.
-  PRPackedBool mPaused;
+  // True if this audio stream is paused.
+  bool mPaused;
 
   friend class AudioInitEvent;
 };
@@ -158,7 +154,7 @@ private:
 class AudioInitEvent : public nsRunnable
 {
  public:
-  AudioInitEvent(nsAudioStreamRemote* owner)
+  AudioInitEvent(nsRemotedAudioStream* owner)
   {
     mOwner = owner;
   }
@@ -172,8 +168,8 @@ class AudioInitEvent : public nsRunnable
                                                                                 mOwner->mFormat));
     return NS_OK;
   }
-  
-  nsRefPtr<nsAudioStreamRemote> mOwner;
+
+  nsRefPtr<nsRemotedAudioStream> mOwner;
 };
 
 class AudioWriteEvent : public nsRunnable
@@ -181,12 +177,12 @@ class AudioWriteEvent : public nsRunnable
  public:
   AudioWriteEvent(AudioChild* aChild,
                   const void* aBuf,
-                  PRUint32 aNumberOfSamples,
-                  PRUint32 aBytesPerSample)
-  {    
+                  PRUint32 aNumberOfFrames,
+                  PRUint32 aBytesPerFrame)
+  {
     mAudioChild = aChild;
-    mBytesPerSample = aBytesPerSample;
-    mBuffer.Assign((const char*)aBuf, aNumberOfSamples*aBytesPerSample);
+    mBytesPerFrame = aBytesPerFrame;
+    mBuffer.Assign((const char*)aBuf, aNumberOfFrames * aBytesPerFrame);
   }
 
   NS_IMETHOD Run()
@@ -194,14 +190,13 @@ class AudioWriteEvent : public nsRunnable
     if (!mAudioChild->IsIPCOpen())
       return NS_OK;
 
-    mAudioChild->SendWrite(mBuffer,
-                           mBuffer.Length() / mBytesPerSample);
+    mAudioChild->SendWrite(mBuffer, mBuffer.Length() / mBytesPerFrame);
     return NS_OK;
   }
 
   nsRefPtr<AudioChild> mAudioChild;
   nsCString mBuffer;
-  PRUint32 mBytesPerSample;
+  PRUint32 mBytesPerFrame;
 };
 
 class AudioSetVolumeEvent : public nsRunnable
@@ -221,9 +216,30 @@ class AudioSetVolumeEvent : public nsRunnable
     mAudioChild->SendSetVolume(mVolume);
     return NS_OK;
   }
-  
+
   nsRefPtr<AudioChild> mAudioChild;
   double mVolume;
+};
+
+
+class AudioMinWriteSizeEvent : public nsRunnable
+{
+ public:
+  AudioMinWriteSizeEvent(AudioChild* aChild)
+  {
+    mAudioChild = aChild;
+  }
+
+  NS_IMETHOD Run()
+  {
+    if (!mAudioChild->IsIPCOpen())
+      return NS_OK;
+
+    mAudioChild->SendMinWriteSize();
+    return NS_OK;
+  }
+
+  nsRefPtr<AudioChild> mAudioChild;
 };
 
 class AudioDrainEvent : public nsRunnable
@@ -242,7 +258,7 @@ class AudioDrainEvent : public nsRunnable
     mAudioChild->SendDrain();
     return NS_OK;
   }
-  
+
   nsRefPtr<AudioChild> mAudioChild;
 };
 
@@ -250,7 +266,7 @@ class AudioDrainEvent : public nsRunnable
 class AudioPauseEvent : public nsRunnable
 {
  public:
-  AudioPauseEvent(AudioChild* aChild, PRBool pause)
+  AudioPauseEvent(AudioChild* aChild, bool pause)
   {
     mAudioChild = aChild;
     mPause = pause;
@@ -268,9 +284,9 @@ class AudioPauseEvent : public nsRunnable
 
     return NS_OK;
   }
-  
+
   nsRefPtr<AudioChild> mAudioChild;
-  PRBool mPause;
+  bool mPause;
 };
 
 
@@ -288,27 +304,55 @@ class AudioShutdownEvent : public nsRunnable
       mAudioChild->SendShutdown();
     return NS_OK;
   }
-  
+
   nsRefPtr<AudioChild> mAudioChild;
 };
 
+static mozilla::Mutex* gVolumeScaleLock = nsnull;
+
+static double gVolumeScale = 1.0;
+
+static int VolumeScaleChanged(const char* aPref, void *aClosure) {
+  nsAdoptingString value = Preferences::GetString("media.volume_scale");
+  mozilla::MutexAutoLock lock(*gVolumeScaleLock);
+  if (value.IsEmpty()) {
+    gVolumeScale = 1.0;
+  } else {
+    NS_ConvertUTF16toUTF8 utf8(value);
+    gVolumeScale = NS_MAX<double>(0, PR_strtod(utf8.get(), nsnull));
+  }
+  return 0;
+}
+
+static double GetVolumeScale() {
+  mozilla::MutexAutoLock lock(*gVolumeScaleLock);
+  return gVolumeScale;
+}
 
 void nsAudioStream::InitLibrary()
 {
 #ifdef PR_LOGGING
   gAudioStreamLog = PR_NewLogModule("nsAudioStream");
 #endif
+  gVolumeScaleLock = new mozilla::Mutex("nsAudioStream::gVolumeScaleLock");
+  VolumeScaleChanged(nsnull, nsnull);
+  Preferences::RegisterCallback(VolumeScaleChanged, "media.volume_scale");
 }
 
 void nsAudioStream::ShutdownLibrary()
 {
+  Preferences::UnregisterCallback(VolumeScaleChanged, "media.volume_scale");
+  delete gVolumeScaleLock;
+  gVolumeScaleLock = nsnull;
 }
 
 nsIThread *
 nsAudioStream::GetThread()
 {
   if (!mAudioPlaybackThread) {
-    NS_NewThread(getter_AddRefs(mAudioPlaybackThread));
+    NS_NewThread(getter_AddRefs(mAudioPlaybackThread),
+                 nsnull,
+                 MEDIA_THREAD_STACK_SIZE);
   }
   return mAudioPlaybackThread;
 }
@@ -317,10 +361,10 @@ nsAudioStream* nsAudioStream::AllocateStream()
 {
 #if defined(REMOTE_AUDIO)
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    return new nsAudioStreamRemote();
+    return new nsRemotedAudioStream();
   }
 #endif
-  return new nsAudioStreamLocal();
+  return new nsNativeAudioStream();
 }
 
 class AsyncShutdownPlaybackThread : public nsRunnable
@@ -340,115 +384,107 @@ nsAudioStream::~nsAudioStream()
   }
 }
 
-nsAudioStreamLocal::nsAudioStreamLocal() :
+nsNativeAudioStream::nsNativeAudioStream() :
   mVolume(1.0),
   mAudioHandle(0),
   mRate(0),
   mChannels(0),
   mFormat(FORMAT_S16_LE),
-  mPaused(PR_FALSE),
-  mInError(PR_FALSE)
+  mPaused(false),
+  mInError(false)
 {
 }
 
-nsAudioStreamLocal::~nsAudioStreamLocal()
+nsNativeAudioStream::~nsNativeAudioStream()
 {
   Shutdown();
 }
 
-NS_IMPL_THREADSAFE_ISUPPORTS0(nsAudioStreamLocal)
+NS_IMPL_THREADSAFE_ISUPPORTS0(nsNativeAudioStream)
 
-nsresult nsAudioStreamLocal::Init(PRInt32 aNumChannels, PRInt32 aRate, SampleFormat aFormat)
+nsresult nsNativeAudioStream::Init(PRInt32 aNumChannels, PRInt32 aRate, SampleFormat aFormat)
 {
   mRate = aRate;
   mChannels = aNumChannels;
   mFormat = aFormat;
 
   if (sa_stream_create_pcm(reinterpret_cast<sa_stream_t**>(&mAudioHandle),
-                           NULL, 
-                           SA_MODE_WRONLY, 
+                           NULL,
+                           SA_MODE_WRONLY,
                            SA_PCM_FORMAT_S16_NE,
                            aRate,
                            aNumChannels) != SA_SUCCESS) {
     mAudioHandle = nsnull;
-    mInError = PR_TRUE;
-    PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsAudioStreamLocal: sa_stream_create_pcm error"));
+    mInError = true;
+    PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsNativeAudioStream: sa_stream_create_pcm error"));
     return NS_ERROR_FAILURE;
   }
-  
+
   if (sa_stream_open(static_cast<sa_stream_t*>(mAudioHandle)) != SA_SUCCESS) {
     sa_stream_destroy(static_cast<sa_stream_t*>(mAudioHandle));
     mAudioHandle = nsnull;
-    mInError = PR_TRUE;
-    PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsAudioStreamLocal: sa_stream_open error"));
+    mInError = true;
+    PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsNativeAudioStream: sa_stream_open error"));
     return NS_ERROR_FAILURE;
   }
-  mInError = PR_FALSE;
+  mInError = false;
 
   return NS_OK;
 }
 
-void nsAudioStreamLocal::Shutdown()
+void nsNativeAudioStream::Shutdown()
 {
   if (!mAudioHandle)
     return;
 
   sa_stream_destroy(static_cast<sa_stream_t*>(mAudioHandle));
   mAudioHandle = nsnull;
-  mInError = PR_TRUE;
+  mInError = true;
 }
 
-nsresult nsAudioStreamLocal::Write(const void* aBuf, PRUint32 aCount, PRBool aBlocking)
+nsresult nsNativeAudioStream::Write(const void* aBuf, PRUint32 aFrames)
 {
-  NS_ABORT_IF_FALSE(aCount % mChannels == 0,
-                    "Buffer size must be divisible by channel count");
   NS_ASSERTION(!mPaused, "Don't write audio when paused, you'll block");
 
   if (mInError)
     return NS_ERROR_FAILURE;
 
-  PRUint32 offset = mBufferOverflow.Length();
-  PRUint32 count = aCount + offset;
-
-  nsAutoArrayPtr<short> s_data(new short[count]);
+  PRUint32 samples = aFrames * mChannels;
+  nsAutoArrayPtr<short> s_data(new short[samples]);
 
   if (s_data) {
-    for (PRUint32 i=0; i < offset; ++i) {
-      s_data[i] = mBufferOverflow.ElementAt(i);
-    }
-    mBufferOverflow.Clear();
-
+    double scaled_volume = GetVolumeScale() * mVolume;
     switch (mFormat) {
       case FORMAT_U8: {
         const PRUint8* buf = static_cast<const PRUint8*>(aBuf);
-        PRInt32 volume = PRInt32((1 << 16) * mVolume);
-        for (PRUint32 i = 0; i < aCount; ++i) {
-          s_data[i + offset] = short(((PRInt32(buf[i]) - 128) * volume) >> 8);
+        PRInt32 volume = PRInt32((1 << 16) * scaled_volume);
+        for (PRUint32 i = 0; i < samples; ++i) {
+          s_data[i] = short(((PRInt32(buf[i]) - 128) * volume) >> 8);
         }
         break;
       }
       case FORMAT_S16_LE: {
         const short* buf = static_cast<const short*>(aBuf);
-        PRInt32 volume = PRInt32((1 << 16) * mVolume);
-        for (PRUint32 i = 0; i < aCount; ++i) {
+        PRInt32 volume = PRInt32((1 << 16) * scaled_volume);
+        for (PRUint32 i = 0; i < samples; ++i) {
           short s = buf[i];
 #if defined(IS_BIG_ENDIAN)
           s = ((s & 0x00ff) << 8) | ((s & 0xff00) >> 8);
 #endif
-          s_data[i + offset] = short((PRInt32(s) * volume) >> 16);
+          s_data[i] = short((PRInt32(s) * volume) >> 16);
         }
         break;
       }
       case FORMAT_FLOAT32: {
         const float* buf = static_cast<const float*>(aBuf);
-        for (PRUint32 i = 0; i <  aCount; ++i) {
-          float scaled_value = floorf(0.5 + 32768 * buf[i] * mVolume);
+        for (PRUint32 i = 0; i <  samples; ++i) {
+          float scaled_value = floorf(0.5 + 32768 * buf[i] * scaled_volume);
           if (buf[i] < 0.0) {
-            s_data[i + offset] = (scaled_value < -32768.0) ?
+            s_data[i] = (scaled_value < -32768.0) ?
               -32768 :
               short(scaled_value);
           } else {
-            s_data[i+offset] = (scaled_value > 32767.0) ?
+            s_data[i] = (scaled_value > 32767.0) ?
               32767 :
               short(scaled_value);
           }
@@ -457,111 +493,90 @@ nsresult nsAudioStreamLocal::Write(const void* aBuf, PRUint32 aCount, PRBool aBl
       }
     }
 
-    if (!aBlocking) {
-      // We're running in non-blocking mode, crop the data to the amount 
-      // which is available in the audio buffer, and save the rest for
-      // subsequent calls.
-      PRUint32 available = Available();
-      if (available < count) {
-        mBufferOverflow.AppendElements(s_data.get() + available, (count - available));
-        count = available;
-      }
-    }
-
     if (sa_stream_write(static_cast<sa_stream_t*>(mAudioHandle),
                         s_data.get(),
-                        count * sizeof(short)) != SA_SUCCESS)
+                        samples * sizeof(short)) != SA_SUCCESS)
     {
-      PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsAudioStreamLocal: sa_stream_write error"));
-      mInError = PR_TRUE;
+      PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsNativeAudioStream: sa_stream_write error"));
+      mInError = true;
       return NS_ERROR_FAILURE;
     }
   }
   return NS_OK;
 }
 
-PRUint32 nsAudioStreamLocal::Available()
+PRUint32 nsNativeAudioStream::Available()
 {
   // If the audio backend failed to open, lie and say we'll accept some
   // data.
   if (mInError)
     return FAKE_BUFFER_SIZE;
 
-  size_t s = 0; 
+  size_t s = 0;
   if (sa_stream_get_write_size(static_cast<sa_stream_t*>(mAudioHandle), &s) != SA_SUCCESS)
     return 0;
 
-  return s / sizeof(short);
+  return s / mChannels / sizeof(short);
 }
 
-void nsAudioStreamLocal::SetVolume(double aVolume)
+void nsNativeAudioStream::SetVolume(double aVolume)
 {
   NS_ASSERTION(aVolume >= 0.0 && aVolume <= 1.0, "Invalid volume");
 #if defined(SA_PER_STREAM_VOLUME)
   if (sa_stream_set_volume_abs(static_cast<sa_stream_t*>(mAudioHandle), aVolume) != SA_SUCCESS) {
-    PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsAudioStreamLocal: sa_stream_set_volume_abs error"));
-    mInError = PR_TRUE;
+    PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsNativeAudioStream: sa_stream_set_volume_abs error"));
+    mInError = true;
   }
 #else
   mVolume = aVolume;
 #endif
 }
 
-void nsAudioStreamLocal::Drain()
+void nsNativeAudioStream::Drain()
 {
   NS_ASSERTION(!mPaused, "Don't drain audio when paused, it won't finish!");
 
   if (mInError)
     return;
 
-  // Write any remaining unwritten sound data in the overflow buffer
-  if (!mBufferOverflow.IsEmpty()) {
-    if (sa_stream_write(static_cast<sa_stream_t*>(mAudioHandle),
-                        mBufferOverflow.Elements(),
-                        mBufferOverflow.Length() * sizeof(short)) != SA_SUCCESS)
-      PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsAudioStreamLocal: sa_stream_write error"));
-      mInError = PR_TRUE;
-      return;
-  }
-
   int r = sa_stream_drain(static_cast<sa_stream_t*>(mAudioHandle));
   if (r != SA_SUCCESS && r != SA_ERROR_INVALID) {
-    PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsAudioStreamLocal: sa_stream_drain error"));
-    mInError = PR_TRUE;
+    PR_LOG(gAudioStreamLog, PR_LOG_ERROR, ("nsNativeAudioStream: sa_stream_drain error"));
+    mInError = true;
   }
 }
 
-void nsAudioStreamLocal::Pause()
+void nsNativeAudioStream::Pause()
 {
   if (mInError)
     return;
-  mPaused = PR_TRUE;
+  mPaused = true;
   sa_stream_pause(static_cast<sa_stream_t*>(mAudioHandle));
 }
 
-void nsAudioStreamLocal::Resume()
+void nsNativeAudioStream::Resume()
 {
   if (mInError)
     return;
-  mPaused = PR_FALSE;
+  mPaused = false;
   sa_stream_resume(static_cast<sa_stream_t*>(mAudioHandle));
 }
 
-PRInt64 nsAudioStreamLocal::GetPosition()
+PRInt64 nsNativeAudioStream::GetPosition()
 {
-  PRInt64 sampleOffset = GetSampleOffset();
-  if (sampleOffset >= 0) {
-    return ((USECS_PER_S * sampleOffset) / mRate / mChannels);
+  PRInt64 position = GetPositionInFrames();
+  if (position >= 0) {
+    return ((USECS_PER_S * position) / mRate);
   }
   return -1;
 }
 
-PRInt64 nsAudioStreamLocal::GetSampleOffset()
+PRInt64 nsNativeAudioStream::GetPositionInFrames()
 {
   if (mInError) {
     return -1;
   }
- 
+
   sa_position_t positionType = SA_POSITION_WRITE_SOFTWARE;
 #if defined(XP_WIN)
   positionType = SA_POSITION_WRITE_HARDWARE;
@@ -569,50 +584,50 @@ PRInt64 nsAudioStreamLocal::GetSampleOffset()
   int64_t position = 0;
   if (sa_stream_get_position(static_cast<sa_stream_t*>(mAudioHandle),
                              positionType, &position) == SA_SUCCESS) {
-    return position / sizeof(short);
+    return position / mChannels / sizeof(short);
   }
 
   return -1;
 }
 
-PRBool nsAudioStreamLocal::IsPaused()
+bool nsNativeAudioStream::IsPaused()
 {
   return mPaused;
 }
 
-PRInt32 nsAudioStreamLocal::GetMinWriteSamples()
+PRInt32 nsNativeAudioStream::GetMinWriteSize()
 {
-  size_t samples;
+  size_t size;
   int r = sa_stream_get_min_write(static_cast<sa_stream_t*>(mAudioHandle),
-                                  &samples);
+                                  &size);
   if (r == SA_ERROR_NOT_SUPPORTED)
     return 1;
-  else if (r != SA_SUCCESS || samples > PR_INT32_MAX)
+  else if (r != SA_SUCCESS || size > PR_INT32_MAX)
     return -1;
 
-  return static_cast<PRInt32>(samples);
+  return static_cast<PRInt32>(size / mChannels / sizeof(short));
 }
 
-nsAudioStreamRemote::nsAudioStreamRemote()
- : mAudioChild(NULL),
+nsRemotedAudioStream::nsRemotedAudioStream()
+ : mAudioChild(nsnull),
    mFormat(FORMAT_S16_LE),
    mRate(0),
    mChannels(0),
-   mBytesPerSample(1),
-   mPaused(PR_FALSE)
+   mBytesPerFrame(0),
+   mPaused(false)
 {}
 
-nsAudioStreamRemote::~nsAudioStreamRemote()
+nsRemotedAudioStream::~nsRemotedAudioStream()
 {
   Shutdown();
 }
 
-NS_IMPL_THREADSAFE_ISUPPORTS0(nsAudioStreamRemote)
+NS_IMPL_THREADSAFE_ISUPPORTS0(nsRemotedAudioStream)
 
-nsresult 
-nsAudioStreamRemote::Init(PRInt32 aNumChannels,
-                          PRInt32 aRate,
-                          SampleFormat aFormat)
+nsresult
+nsRemotedAudioStream::Init(PRInt32 aNumChannels,
+                           PRInt32 aRate,
+                           SampleFormat aFormat)
 {
   mRate = aRate;
   mChannels = aNumChannels;
@@ -620,15 +635,15 @@ nsAudioStreamRemote::Init(PRInt32 aNumChannels,
 
   switch (mFormat) {
     case FORMAT_U8: {
-      mBytesPerSample = sizeof(PRUint8);
+      mBytesPerFrame = sizeof(PRUint8) * mChannels;
       break;
     }
     case FORMAT_S16_LE: {
-      mBytesPerSample = sizeof(short);
+      mBytesPerFrame = sizeof(short) * mChannels;
       break;
     }
     case FORMAT_FLOAT32: {
-      mBytesPerSample = sizeof(float);
+      mBytesPerFrame = sizeof(float) * mChannels;
     }
   }
 
@@ -638,7 +653,7 @@ nsAudioStreamRemote::Init(PRInt32 aNumChannels,
 }
 
 void
-nsAudioStreamRemote::Shutdown()
+nsRemotedAudioStream::Shutdown()
 {
   if (!mAudioChild)
     return;
@@ -648,35 +663,35 @@ nsAudioStreamRemote::Shutdown()
 }
 
 nsresult
-nsAudioStreamRemote::Write(const void* aBuf,
-                           PRUint32 aCount,
-                           PRBool aBlocking)
+nsRemotedAudioStream::Write(const void* aBuf, PRUint32 aFrames)
 {
   if (!mAudioChild)
     return NS_ERROR_FAILURE;
   nsCOMPtr<nsIRunnable> event = new AudioWriteEvent(mAudioChild,
                                                     aBuf,
-                                                    aCount,
-                                                    mBytesPerSample);
+                                                    aFrames,
+                                                    mBytesPerFrame);
   NS_DispatchToMainThread(event);
   return NS_OK;
 }
 
 PRUint32
-nsAudioStreamRemote::Available()
+nsRemotedAudioStream::Available()
 {
   return FAKE_BUFFER_SIZE;
 }
 
-PRInt32 nsAudioStreamRemote::GetMinWriteSamples()
+PRInt32 nsRemotedAudioStream::GetMinWriteSize()
 {
-  /** TODO: Implement this function for remoting. We could potentially remote
-            to a backend which has a start threshold... */
-  return 1;
+  if (!mAudioChild)
+    return -1;
+  nsCOMPtr<nsIRunnable> event = new AudioMinWriteSizeEvent(mAudioChild);
+  NS_DispatchToMainThread(event);
+  return mAudioChild->WaitForMinWriteSize();
 }
 
 void
-nsAudioStreamRemote::SetVolume(double aVolume)
+nsRemotedAudioStream::SetVolume(double aVolume)
 {
   if (!mAudioChild)
     return;
@@ -685,7 +700,7 @@ nsAudioStreamRemote::SetVolume(double aVolume)
 }
 
 void
-nsAudioStreamRemote::Drain()
+nsRemotedAudioStream::Drain()
 {
   if (!mAudioChild)
     return;
@@ -693,54 +708,54 @@ nsAudioStreamRemote::Drain()
   NS_DispatchToMainThread(event);
   mAudioChild->WaitForDrain();
 }
- 
+
 void
-nsAudioStreamRemote::Pause()
+nsRemotedAudioStream::Pause()
 {
-  mPaused = PR_TRUE;
+  mPaused = true;
   if (!mAudioChild)
     return;
-  nsCOMPtr<nsIRunnable> event = new AudioPauseEvent(mAudioChild, PR_TRUE);
+  nsCOMPtr<nsIRunnable> event = new AudioPauseEvent(mAudioChild, true);
   NS_DispatchToMainThread(event);
 }
 
 void
-nsAudioStreamRemote::Resume()
+nsRemotedAudioStream::Resume()
 {
-  mPaused = PR_FALSE;
+  mPaused = false;
   if (!mAudioChild)
     return;
-  nsCOMPtr<nsIRunnable> event = new AudioPauseEvent(mAudioChild, PR_FALSE);
+  nsCOMPtr<nsIRunnable> event = new AudioPauseEvent(mAudioChild, false);
   NS_DispatchToMainThread(event);
 }
 
-PRInt64 nsAudioStreamRemote::GetPosition()
+PRInt64 nsRemotedAudioStream::GetPosition()
 {
-  PRInt64 sampleOffset = GetSampleOffset();
-  if (sampleOffset >= 0) {
-    return ((USECS_PER_S * sampleOffset) / mRate / mChannels);
+  PRInt64 position = GetPositionInFrames();
+  if (position >= 0) {
+    return ((USECS_PER_S * position) / mRate);
   }
   return 0;
 }
 
 PRInt64
-nsAudioStreamRemote::GetSampleOffset()
+nsRemotedAudioStream::GetPositionInFrames()
 {
   if(!mAudioChild)
     return 0;
 
-  PRInt64 offset = mAudioChild->GetLastKnownSampleOffset();
-  if (offset == -1)
+  PRInt64 position = mAudioChild->GetLastKnownPosition();
+  if (position == -1)
     return 0;
 
-  PRInt64 time   = mAudioChild->GetLastKnownSampleOffsetTime();
-  PRInt64 result = offset + (mRate * mChannels * (PR_IntervalNow() - time) / USECS_PER_S);
+  PRInt64 time = mAudioChild->GetLastKnownPositionTimestamp();
+  PRInt64 dt = PR_IntervalToMilliseconds(PR_IntervalNow() - time);
 
-  return result;
+  return position + (mRate * dt / MS_PER_S);
 }
 
-PRBool
-nsAudioStreamRemote::IsPaused()
+bool
+nsRemotedAudioStream::IsPaused()
 {
   return mPaused;
 }

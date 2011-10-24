@@ -60,20 +60,20 @@ nsAccessibleWrap::~nsAccessibleWrap()
   }
 }
 
-PRBool
+bool
 nsAccessibleWrap::Init () 
 {
   if (!nsAccessible::Init())
-    return PR_FALSE;
+    return false;
 
   if (!mNativeWrapper && !AncestorIsFlat()) {
     // Create our native object using the class type specified in GetNativeType().
     mNativeWrapper = new AccessibleWrapper (this, GetNativeType());
     if (!mNativeWrapper)
-      return PR_FALSE;
+      return false;
   }
 
-  return PR_TRUE;
+  return true;
 }
 
 NS_IMETHODIMP
@@ -88,7 +88,7 @@ nsAccessibleWrap::GetNativeInterface (void **aOutInterface)
 
 // overridden in subclasses to create the right kind of object. by default we create a generic
 // 'mozAccessible' node.
-objc_class*
+Class
 nsAccessibleWrap::GetNativeType () 
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
@@ -211,7 +211,7 @@ nsAccessibleWrap::InvalidateChildren()
 }
 
 PRInt32
-nsAccessibleWrap::GetUnignoredChildCount(PRBool aDeepCount)
+nsAccessibleWrap::GetUnignoredChildCount(bool aDeepCount)
 {
   // if we're flat, we have no children.
   if (nsAccUtils::MustPrune(this))
@@ -234,12 +234,12 @@ nsAccessibleWrap::GetUnignoredChildCount(PRBool aDeepCount)
 
     if (aDeepCount) {
       // recursively count the unignored children of our children since it's a deep count.
-      resultChildCount += childAcc->GetUnignoredChildCount(PR_TRUE);
+      resultChildCount += childAcc->GetUnignoredChildCount(true);
     } else {
       // no deep counting, but if the child is ignored, we want to substitute it for its
       // children.
       if (childAcc->IsIgnored()) 
-        resultChildCount += childAcc->GetUnignoredChildCount(PR_FALSE);
+        resultChildCount += childAcc->GetUnignoredChildCount(false);
     }
   } 
   
@@ -248,7 +248,7 @@ nsAccessibleWrap::GetUnignoredChildCount(PRBool aDeepCount)
 
 // if we for some reason have no native accessible, we should be skipped over (and traversed)
 // when fetching all unignored children, etc.  when counting unignored children, we will not be counted.
-PRBool 
+bool 
 nsAccessibleWrap::IsIgnored() 
 {
   return (mNativeWrapper == nsnull) || mNativeWrapper->isIgnored();
@@ -285,7 +285,7 @@ nsAccessibleWrap::GetUnignoredChildren(nsTArray<nsRefPtr<nsAccessibleWrap> > &aC
 already_AddRefed<nsIAccessible>
 nsAccessibleWrap::GetUnignoredParent()
 {
-  nsAccessibleWrap *parentWrap = static_cast<nsAccessibleWrap*>(GetParent());
+  nsAccessibleWrap* parentWrap = static_cast<nsAccessibleWrap*>(Parent());
   if (!parentWrap)
     return nsnull;
     
@@ -302,7 +302,7 @@ nsAccessibleWrap::GetUnignoredParent()
 ////////////////////////////////////////////////////////////////////////////////
 // nsAccessibleWrap protected
 
-PRBool
+bool
 nsAccessibleWrap::AncestorIsFlat()
 {
   // We don't create a native object if we're child of a "flat" accessible;
@@ -313,13 +313,13 @@ nsAccessibleWrap::AncestorIsFlat()
   // look the same on all platforms, we still let the C++ objects be created
   // though.
 
-  nsAccessible* parent(GetParent());
+  nsAccessible* parent = Parent();
   while (parent) {
     if (nsAccUtils::MustPrune(parent))
-      return PR_TRUE;
+      return true;
 
-    parent = parent->GetParent();
+    parent = parent->Parent();
   }
   // no parent was flat
-  return PR_FALSE;
+  return false;
 }

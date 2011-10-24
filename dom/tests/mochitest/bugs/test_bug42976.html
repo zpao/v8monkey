@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=42976
 -->
 <head>
   <title>Test for Bug 42976</title>
-  <script type="text/javascript" src="/MochiKit/packed.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>        
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -36,12 +35,6 @@ function runTest() {
   
     // doc.contentType
     ok(doc.contentType == clonefalse.contentType, "contentType not preserved correctly; " + iframes[i].id);
-  
-    // doc.xmlStandalone
-    ok(doc.xmlStandalone == clonefalse.xmlStandalone, "xmlStandalone not preserved correctly; " + iframes[i].id);
-  
-    // doc.xmlEncoding
-    ok(doc.xmlEncoding == clonefalse.xmlEncoding, "xmlEncoding not preserved correctly; " + iframes[i].id);
   
     // doc.characterSet
     ok(doc.characterSet == clonefalse.characterSet, "charset not preserved correctly; " + iframes[i].id);

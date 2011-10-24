@@ -38,7 +38,7 @@
 
 #include "txExpr.h"
 #include "nsIAtom.h"
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txXPathTreeWalker.h"
 #include "txIXPathContext.h"
 
@@ -47,7 +47,7 @@ txNameTest::txNameTest(nsIAtom* aPrefix, nsIAtom* aLocalName, PRInt32 aNSID,
     :mPrefix(aPrefix), mLocalName(aLocalName), mNamespace(aNSID),
      mNodeType(aNodeType)
 {
-    if (aPrefix == txXMLAtoms::_empty)
+    if (aPrefix == nsGkAtoms::_empty)
         mPrefix = 0;
     NS_ASSERTION(aLocalName, "txNameTest without a local name?");
     NS_ASSERTION(aNodeType == txXPathNodeType::DOCUMENT_NODE ||
@@ -56,7 +56,7 @@ txNameTest::txNameTest(nsIAtom* aPrefix, nsIAtom* aLocalName, PRInt32 aNSID,
                  "Go fix txNameTest::matches");
 }
 
-PRBool txNameTest::matches(const txXPathNode& aNode, txIMatchContext* aContext)
+bool txNameTest::matches(const txXPathNode& aNode, txIMatchContext* aContext)
 {
     if ((mNodeType == txXPathNodeType::ELEMENT_NODE &&
          !txXPathNodeUtils::isElement(aNode)) ||
@@ -64,24 +64,22 @@ PRBool txNameTest::matches(const txXPathNode& aNode, txIMatchContext* aContext)
          !txXPathNodeUtils::isAttribute(aNode)) ||
         (mNodeType == txXPathNodeType::DOCUMENT_NODE &&
          !txXPathNodeUtils::isRoot(aNode))) {
-        return PR_FALSE;
+        return false;
     }
 
     // Totally wild?
-    if (mLocalName == txXPathAtoms::_asterix && !mPrefix)
+    if (mLocalName == nsGkAtoms::_asterix && !mPrefix)
         return MB_TRUE;
 
     // Compare namespaces
     if (mNamespace != txXPathNodeUtils::getNamespaceID(aNode) 
-#ifndef TX_EXE
         && !(mNamespace == kNameSpaceID_None &&
              txXPathNodeUtils::isHTMLElementInHTMLDocument(aNode))
-#endif
        )
         return MB_FALSE;
 
     // Name wild?
-    if (mLocalName == txXPathAtoms::_asterix)
+    if (mLocalName == nsGkAtoms::_asterix)
         return MB_TRUE;
 
     // Compare local-names
@@ -93,7 +91,7 @@ PRBool txNameTest::matches(const txXPathNode& aNode, txIMatchContext* aContext)
  */
 double txNameTest::getDefaultPriority()
 {
-    if (mLocalName == txXPathAtoms::_asterix) {
+    if (mLocalName == nsGkAtoms::_asterix) {
         if (!mPrefix)
             return -0.5;
         return -0.25;
@@ -107,7 +105,7 @@ txNameTest::getType()
     return NAME_TEST;
 }
 
-PRBool
+bool
 txNameTest::isSensitiveTo(Expr::ContextSensitivity aContext)
 {
     return !!(aContext & Expr::NODE_CONTEXT);

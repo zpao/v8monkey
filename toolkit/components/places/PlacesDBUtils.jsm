@@ -22,6 +22,7 @@
  *
  * Contributor(s):
  *   Marco Bonardo <mak77@bonardo.net> (Original Author)
+ *   Richard Newman <rnewman@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -52,6 +53,8 @@ let EXPORTED_SYMBOLS = [ "PlacesDBUtils" ];
 //// Constants
 
 const FINISHED_MAINTENANCE_TOPIC = "places-maintenance-finished";
+
+const BYTES_PER_MEBIBYTE = 1048576;
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Smart getters
@@ -302,7 +305,28 @@ let PlacesDBUtils = {
     let cleanupStatements = [];
 
     // MOZ_ANNO_ATTRIBUTES
-    // A.1 remove unused attributes
+    // A.1 remove obsolete annotations from moz_annos.
+    // The 'weave0' idiom exploits character ordering (0 follows /) to
+    // efficiently select all annos with a 'weave/' prefix.
+    let deleteObsoleteAnnos = DBConn.createAsyncStatement(
+      "DELETE FROM moz_annos "                      +
+      "WHERE anno_attribute_id IN ( "               +
+      "  SELECT id FROM moz_anno_attributes "       +
+      "  WHERE name BETWEEN 'weave/' AND 'weave0' " +
+      ")");
+    cleanupStatements.push(deleteObsoleteAnnos);
+
+    // A.2 remove obsolete annotations from moz_items_annos.
+    let deleteObsoleteItemsAnnos = DBConn.createAsyncStatement(
+      "DELETE FROM moz_items_annos "                +
+      "WHERE anno_attribute_id IN ( "               +
+      "  SELECT id FROM moz_anno_attributes "       +
+      "  WHERE name = 'sync/children' "             +
+      "     OR name BETWEEN 'weave/' AND 'weave0' " +
+      ")");
+    cleanupStatements.push(deleteObsoleteItemsAnnos);
+
+    // A.3 remove unused attributes.
     let deleteUnusedAnnoAttributes = DBConn.createAsyncStatement(
       "DELETE FROM moz_anno_attributes WHERE id IN ( " +
         "SELECT id FROM moz_anno_attributes n " +
@@ -681,24 +705,21 @@ let PlacesDBUtils = {
       ")");
     cleanupStatements.push(fixInvalidFaviconIds);
 
-/* XXX needs test
-    // L.2 recalculate visit_count
-    let detectWrongCountPlaces = DBConn.createStatement(
-      "SELECT id FROM moz_places h " +
-      "WHERE h.visit_count <> " +
-          "(SELECT count(*) FROM moz_historyvisits " +
-            "WHERE place_id = h.id AND visit_type NOT IN (0,4,7,8))");
-    while (detectWrongCountPlaces.executeStep()) {
-      let placeId = detectWrongCountPlaces.getInt64(0);
-      let fixCountForPlace = DBConn.createStatement(
-        "UPDATE moz_places SET visit_count = ( " +
-          "(SELECT count(*) FROM moz_historyvisits " +
-            "WHERE place_id = :place_id AND visit_type NOT IN (0,4,7,8)) + "
-        ") WHERE id = :place_id");
-      fixCountForPlace.params["place_id"] = placeId;
-      cleanupStatements.push(fixCountForPlace);
-    }
-*/
+    // L.2 recalculate visit_count and last_visit_date
+    let fixVisitStats = DBConn.createAsyncStatement(
+      "UPDATE moz_places " +
+      "SET visit_count = (SELECT count(*) FROM moz_historyvisits " +
+                         "WHERE place_id = moz_places.id AND visit_type NOT IN (0,4,7,8)), " +
+          "last_visit_date = (SELECT MAX(visit_date) FROM moz_historyvisits " +
+                             "WHERE place_id = moz_places.id) " +
+      "WHERE id IN ( " +
+        "SELECT h.id FROM moz_places h " +
+        "WHERE visit_count <> (SELECT count(*) FROM moz_historyvisits v " +
+                              "WHERE v.place_id = h.id AND visit_type NOT IN (0,4,7,8)) " +
+           "OR last_visit_date <> (SELECT MAX(visit_date) FROM moz_historyvisits v " +
+                                  "WHERE v.place_id = h.id) " +
+      ")");
+    cleanupStatements.push(fixVisitStats);
 
     // MAINTENANCE STATEMENTS SHOULD GO ABOVE THIS POINT!
 
@@ -766,8 +787,8 @@ let PlacesDBUtils = {
       PlacesDBUtils._executeTasks(tasks);
     }, PlacesUtils.TOPIC_EXPIRATION_FINISHED, false);
 
-    // Force a full expiration step.
-    expiration.observe(null, "places-debug-start-expiration", -1);
+    // Force an orphans expiration step.
+    expiration.observe(null, "places-debug-start-expiration", 0);
   },
 
   /**
@@ -830,7 +851,150 @@ let PlacesDBUtils = {
     stmt.finalize();
 
     PlacesDBUtils._executeTasks(tasks);
-  }
+  },
+
+  /**
+   * Collects telemetry data.
+   *
+   * @param [optional] aTasks
+   *        Tasks object to execute.
+   */
+  telemetry: function PDBU_telemetry(aTasks)
+  {
+    let tasks = new Tasks(aTasks);
+
+    // Hash of telemetry probes.  Each one uses the historygram name as key,
+    // and may be either a database query or an helper function.
+    let probes = {
+      PLACES_PAGES_COUNT: "SELECT count(*) FROM moz_places",
+
+      PLACES_BOOKMARKS_COUNT: "SELECT count(*) FROM moz_bookmarks b "
+                            + "JOIN moz_bookmarks t ON t.id = b.parent "
+                            + "AND t.parent <> :tags_folder "
+                            + "WHERE b.type = :type_bookmark ",
+
+      PLACES_TAGS_COUNT: "SELECT count(*) FROM moz_bookmarks "
+                       + "WHERE parent = :tags_folder ",
+
+      PLACES_FOLDERS_COUNT: "SELECT count(*) FROM moz_bookmarks "
+                          + "WHERE TYPE = :type_folder "
+                          + "AND parent NOT IN (0, :places_root, :tags_folder) ",
+
+      PLACES_KEYWORDS_COUNT: "SELECT count(*) FROM moz_keywords ",
+
+      PLACES_SORTED_BOOKMARKS_PERC: "SELECT ROUND(( "
+                                  +   "SELECT count(*) FROM moz_bookmarks b "
+                                  +   "JOIN moz_bookmarks t ON t.id = b.parent "
+                                  +   "AND t.parent <> :tags_folder AND t.parent > :places_root "
+                                  +   "WHERE b.type  = :type_bookmark "
+                                  +   ") * 100 / ( "
+                                  +   "SELECT count(*) FROM moz_bookmarks b "
+                                  +   "JOIN moz_bookmarks t ON t.id = b.parent "
+                                  +   "AND t.parent <> :tags_folder "
+                                  +   "WHERE b.type = :type_bookmark "
+                                  + ")) ",
+
+      PLACES_TAGGED_BOOKMARKS_PERC: "SELECT ROUND(( "
+                                  +   "SELECT count(*) FROM moz_bookmarks b "
+                                  +   "JOIN moz_bookmarks t ON t.id = b.parent "
+                                  +   "AND t.parent = :tags_folder "
+                                  +   ") * 100 / ( "
+                                  +   "SELECT count(*) FROM moz_bookmarks b "
+                                  +   "JOIN moz_bookmarks t ON t.id = b.parent "
+                                  +   "AND t.parent <> :tags_folder "
+                                  +   "WHERE b.type = :type_bookmark "
+                                  + ")) ",
+
+      PLACES_DATABASE_FILESIZE_MB: function () {
+        let DBFile = Services.dirsvc.get("ProfD", Ci.nsILocalFile);
+        DBFile.append("places.sqlite");
+        try {
+          return parseInt(DBFile.fileSize / BYTES_PER_MEBIBYTE);
+        } catch (ex) {
+          return 0;
+        }
+      },
+
+      PLACES_DATABASE_JOURNALSIZE_MB: function () {
+        let DBFile = Services.dirsvc.get("ProfD", Ci.nsILocalFile);
+        DBFile.append("places.sqlite-wal");
+        try {
+          return parseInt(DBFile.fileSize / BYTES_PER_MEBIBYTE);
+        } catch (ex) {
+          return 0;
+        }
+      },
+
+      PLACES_DATABASE_PAGESIZE_B: "PRAGMA page_size",
+
+      PLACES_DATABASE_SIZE_PER_PAGE_B: function() {
+        // Cannot use the filesize here, due to chunked growth.
+        let stmt = DBConn.createStatement("PRAGMA page_size");
+        stmt.executeStep();
+        let pageSize = stmt.row.page_size;
+        stmt.finalize();
+        stmt = DBConn.createStatement("PRAGMA page_count");
+        stmt.executeStep();
+        let pageCount = stmt.row.page_count;
+        stmt.finalize();
+        stmt = DBConn.createStatement("SELECT count(*) AS c FROM moz_places");
+        stmt.executeStep();
+        let count = stmt.row.c;
+        stmt.finalize();
+        return Math.round((pageSize * pageCount) / count);
+      }
+    };
+
+    let params = {
+      tags_folder: PlacesUtils.tagsFolderId,
+      type_folder: PlacesUtils.bookmarks.TYPE_FOLDER,
+      type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
+      places_root: PlacesUtils.placesRootId
+    };
+
+    for (let probename in probes) {
+      let probe = probes[probename];
+      let histogram = Services.telemetry.getHistogramById(probename);
+      if (typeof probe == "string") {
+        // Run it as a query.
+        let stmt = DBConn.createAsyncStatement(probe);
+        for (param in params) {
+          if (probe.indexOf(":" + param) > 0) {
+            stmt.params[param] = params[param];
+          }
+        }
+
+        try {
+          stmt.executeAsync({
+            handleError: PlacesDBUtils._handleError,
+            handleResult: function (aResultSet) {
+              let row = aResultSet.getNextRow();
+              try {
+                histogram.add(row.getResultByIndex(0));
+              } catch (ex) {
+                Components.utils.reportError("Unable to report telemetry.");
+              }
+            },
+            handleCompletion: function () {}
+          });
+        }
+        finally{
+          stmt.finalize();
+        }
+      }
+      else {
+        // Execute it as a function.
+        try {
+          histogram.add(probe());
+        } catch (ex) {
+          Components.utils.reportError("Unable to report telemetry.");
+        }
+      }
+    }
+
+    PlacesDBUtils._executeTasks(tasks);
+  },
+
 };
 
 /**

@@ -52,7 +52,11 @@
 #include "nsString.h"
 #include "nsNetCID.h"
 #include "nsIClassInfoImpl.h"
-#include "jsobj.h"
+#include "nsJSUtils.h"
+#include "nsPIDOMWindow.h"
+#include "nsIScriptGlobalObject.h"
+#include "nsIDocument.h"
+#include "jsfriendapi.h"
 
 ///////////////////////
 // nsSecurityNameSet //
@@ -124,7 +128,7 @@ netscape_security_isPrivilegeEnabled(JSContext *cx, uintN argc, jsval *vp)
     if (!obj)
         return JS_FALSE;
 
-    JSBool result = JS_FALSE;
+    bool result = false;
     if (JSString *str = getStringArgument(cx, obj, 0, argc, JS_ARGV(cx, vp))) {
         JSAutoByteString cap(cx, str);
         if (!cap)
@@ -156,6 +160,23 @@ netscape_security_enablePrivilege(JSContext *cx, uintN argc, jsval *vp)
     JSAutoByteString cap;
     if (!getBytesArgument(cx, obj, 0, argc, JS_ARGV(cx, vp), &cap))
         return JS_FALSE;
+
+    // Can't use nsContentUtils::GetDocumentFromCaller because that
+    // depends on various XPConnect stuff that's not set up here.
+    {
+        JSAutoEnterCompartment ac;
+        if (ac.enter(cx, obj)) {
+            nsCOMPtr<nsPIDOMWindow> win =
+                do_QueryInterface(nsJSUtils::GetStaticScriptGlobal(cx, obj));
+            if (win) {
+                nsCOMPtr<nsIDocument> doc =
+                    do_QueryInterface(win->GetExtantDocument());
+                if (doc) {
+                    doc->WarnOnceAbout(nsIDocument::eEnablePrivilege);
+                }
+            }
+        }
+    }
 
     nsresult rv;
     nsCOMPtr<nsIScriptSecurityManager> securityManager = 
@@ -299,14 +320,13 @@ static JSFunctionSpec PrivilegeManager_static_methods[] = {
 
 /*
  * "Steal" calls to netscape.security.PrivilegeManager.enablePrivilege,
- * et. al. so that code that worked with 4.0 can still work.
+ * et al. so that code that worked with 4.0 can still work.
  */
 NS_IMETHODIMP 
 nsSecurityNameSet::InitializeNameSet(nsIScriptContext* aScriptContext)
 {
-    JSContext *cx = (JSContext *) aScriptContext->GetNativeContext();
-    JSObject *global = JS_GetGlobalObject(cx);
-    OBJ_TO_INNER_OBJECT(cx, global);
+    JSContext* cx = aScriptContext->GetNativeContext();
+    JSObject *global = JS_ObjectToInnerObject(cx, JS_GetGlobalObject(cx));
 
     /*
      * Find Object.prototype's class by walking up the global object's

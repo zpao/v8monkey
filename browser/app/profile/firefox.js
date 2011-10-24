@@ -70,8 +70,14 @@ pref("extensions.blocklist.interval", 86400);
 pref("extensions.blocklist.level", 2);
 pref("extensions.blocklist.url", "https://addons.mozilla.org/blocklist/3/%APP_ID%/%APP_VERSION%/%PRODUCT%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/%PING_COUNT%/%TOTAL_PING_COUNT%/%DAYS_SINCE_LAST_PING%/");
 pref("extensions.blocklist.detailsURL", "https://www.mozilla.com/%LOCALE%/blocklist/");
+pref("extensions.blocklist.itemURL", "https://addons.mozilla.org/%LOCALE%/%APP%/blocked/%blockID%");
 
 pref("extensions.update.autoUpdateDefault", true);
+
+// Disable add-ons installed into the shared user and shared system areas by
+// default. This does not include the application directory. See the SCOPE
+// constants in AddonManager.jsm for values to use here
+pref("extensions.autoDisableScopes", 10);
 
 // Dictionary download preference
 pref("browser.dictionaries.download.url", "https://addons.mozilla.org/%LOCALE%/firefox/dictionaries/");
@@ -164,13 +170,8 @@ pref("app.update.url", "https://aus3.mozilla.org/update/3/%PRODUCT%/%VERSION%/%B
 //pref("app.update.url.override", "");
 
 // app.update.interval is in branding section
+// app.update.promptWaitTime is in branding section
 
-// Interval: Time before prompting the user again to restart to install the
-//           latest download (in seconds) default=1 day
-pref("app.update.nagTimer.restart", 86400);
-
-// Give the user x seconds to react before showing the big UI. default=12 hours
-pref("app.update.promptWaitTime", 43200);
 // Show the Update Checking/Ready UI when the user was idle for x seconds
 pref("app.update.idletime", 60);
 
@@ -252,7 +253,7 @@ pref("browser.warnOnRestart", false);
 pref("browser.showQuitWarning", false);
 pref("browser.fullscreen.autohide", true);
 pref("browser.fullscreen.animateUp", 1);
-pref("browser.overlink-delay", 70);
+pref("browser.overlink-delay", 80);
 
 #ifdef UNIX_BUT_NOT_MAC
 pref("browser.urlbar.clickSelectsAll", false);
@@ -300,12 +301,13 @@ pref("browser.urlbar.match.url", "@");
 pref("browser.urlbar.default.behavior", 0);
 
 pref("browser.urlbar.formatting.enabled", true);
+pref("browser.urlbar.trimURLs", true);
 
 // Number of milliseconds to wait for the http headers (and thus
 // the Content-Disposition filename) before giving up and falling back to 
 // picking a filename without that info in hand so that the user sees some
 // feedback from their action.
-pref("browser.download.saveLinkAsFilenameTimeout", 1000);
+pref("browser.download.saveLinkAsFilenameTimeout", 4000);
 
 pref("browser.download.useDownloadDir", true);
 
@@ -354,8 +356,13 @@ pref("browser.search.suggest.enabled", true);
 pref("browser.sessionhistory.max_entries", 50);
 
 // handle links targeting new windows
-// 0=default window, 1=current window/tab, 2=new window, 3=new tab in most recent window
+// 1=current window/tab, 2=new window, 3=new tab in most recent window
 pref("browser.link.open_newwindow", 3);
+
+// handle external links (i.e. links opened from a different application)
+// default: use browser.link.open_newwindow
+// 1-3: see browser.link.open_newwindow for interpretation
+pref("browser.link.open_newwindow.override.external", -1);
 
 // 0: no restrictions - divert everything
 // 1: don't divert window.open at all
@@ -569,6 +576,7 @@ pref("plugins.hide_infobar_for_missing_plugin", false);
 pref("plugins.hide_infobar_for_outdated_plugin", false);
 
 #ifdef XP_MACOSX
+pref("plugins.use_layers", true);
 pref("plugins.hide_infobar_for_carbon_failure_plugin", false);
 #endif
 
@@ -730,19 +738,11 @@ pref("urlclassifier.gethashtables", "goog-phish-shavar,goog-malware-shavar");
 // the database.
 pref("urlclassifier.confirm-age", 2700);
 
-#ifdef MOZ_WIDGET_GTK2
-#define RESTRICT_CACHEMAX
-#endif
-#ifdef XP_OS2
-#define RESTRICT_CACHEMAX
-#endif
-
 // Maximum size of the sqlite3 cache during an update, in bytes
-#ifdef RESTRICT_CACHEMAX
-pref("urlclassifier.updatecachemax", 104857600);
-#else
-pref("urlclassifier.updatecachemax", -1);
-#endif
+pref("urlclassifier.updatecachemax", 41943040);
+
+// Maximum size of the sqlite3 cache for lookups, in bytes
+pref("urlclassifier.lookupcachemax", 1048576);
 
 // URL for checking the reason for a malware warning.
 pref("browser.safebrowsing.malware.reportURL", "http://safebrowsing.clients.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");
@@ -779,24 +779,20 @@ pref("browser.sessionstore.max_windows_undo", 3);
 // number of crashes that can occur before the about:sessionrestore page is displayed
 // (this pref has no effect if more than 6 hours have passed since the last crash)
 pref("browser.sessionstore.max_resumed_crashes", 1);
-// The number of tabs that can restore concurrently:
-// < 0 = All tabs can restore at the same time
-//   0 = Only the selected tab in each window will be restored
-//       Other tabs won't be restored until they are selected
-//   N = The number of tabs to restore at the same time
-pref("browser.sessionstore.max_concurrent_tabs", 3);
+// restore_on_demand overrides MAX_CONCURRENT_TAB_RESTORES (sessionstore constant)
+// and restore_hidden_tabs. When true, tabs will not be restored until they are
+// focused (also applies to tabs that aren't visible). When false, the values
+// for MAX_CONCURRENT_TAB_RESTORES and restore_hidden_tabs are respected.
+// Selected tabs are always restored regardless of this pref.
+pref("browser.sessionstore.restore_on_demand", false);
+// Whether to automatically restore hidden tabs (i.e., tabs in other tab groups) or not
+pref("browser.sessionstore.restore_hidden_tabs", false);
 
 // allow META refresh by default
 pref("accessibility.blockautorefresh", false);
 
 // Whether history is enabled or not.
 pref("places.history.enabled", true);
-
-// The percentage of system memory that the Places database can use.  Out of the
-// allowed cache size it will at most use the size of the database file.
-// Changes to this value are effective after an application restart.
-// Acceptable values are between 0 and 50.
-pref("places.database.cache_to_memory_percentage", 6);
 
 // the (maximum) number of the recent visits to sample
 // when calculating frecency
@@ -874,10 +870,6 @@ pref("browser.privatebrowsing.dont_prompt_on_enter", false);
 // bookmarking dialog
 pref("browser.bookmarks.editDialog.firstEditField", "namePicker");
 
-// base url for the wifi geolocation network provider
-pref("geo.wifi.uri", "https://www.google.com/loc/json");
-pref("geo.wifi.protocol", 0);
-
 // Whether to use a panel that looks like an OS X sheet for customization
 #ifdef XP_MACOSX
 pref("toolbar.customization.usesheet", true);
@@ -897,6 +889,21 @@ pref("dom.ipc.plugins.enabled.i386.javaappletplugin.plugin", true);
 pref("dom.ipc.plugins.enabled.x86_64", true);
 #else
 pref("dom.ipc.plugins.enabled", true);
+#endif
+
+#ifdef MOZ_E10S_COMPAT
+pref("browser.tabs.remote", true);
+#endif
+
+// This pref governs whether we attempt to work around problems caused by
+// plugins using OS calls to manipulate the cursor while running out-of-
+// process.  These workarounds all involve intercepting (hooking) certain
+// OS calls in the plugin process, then arranging to make certain OS calls
+// in the browser process.  Eventually plugins will be required to use the
+// NPAPI to manipulate the cursor, and these workarounds will be removed.
+// See bug 621117.
+#ifdef XP_MACOSX
+pref("dom.ipc.plugins.nativeCursorSupport", true);
 #endif
 
 #ifdef XP_WIN
@@ -988,9 +995,14 @@ pref("services.sync.prefs.sync.spellchecker.dictionary", true);
 pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 #endif
 
-// Disable the error console and inspector
+// Disable the error console
 pref("devtools.errorconsole.enabled", false);
-pref("devtools.inspector.enabled", false);
+
+// Enable the Inspector
+pref("devtools.inspector.enabled", true);
+
+// Enable the style inspector
+pref("devtools.styleinspector.enabled", true);
 
 // Enable the Scratchpad tool.
 pref("devtools.scratchpad.enabled", true);
@@ -998,10 +1010,43 @@ pref("devtools.scratchpad.enabled", true);
 // Enable tools for Chrome development.
 pref("devtools.chrome.enabled", false);
 
+// Disable the GCLI enhanced command line.
+pref("devtools.gcli.enable", false);
+
 // The last Web Console height. This is initially 0 which means that the Web
 // Console will use the default height next time it shows.
 // Change to -1 if you do not want the Web Console to remember its last height.
 pref("devtools.hud.height", 0);
+
+// Remember the Web Console position. Possible values:
+//   above - above the web page,
+//   below - below the web page,
+//   window - in a separate window/popup panel.
+pref("devtools.webconsole.position", "above");
+
+// The number of lines that are displayed in the web console for the Net,
+// CSS, JS and Web Developer categories.
+pref("devtools.hud.loglimit.network", 200);
+pref("devtools.hud.loglimit.cssparser", 200);
+pref("devtools.hud.loglimit.exception", 200);
+pref("devtools.hud.loglimit.console", 200);
+
+// The developer tools editor configuration:
+// - tabsize: how many spaces to use when a Tab character is displayed.
+// - expandtab: expand Tab characters to spaces.
+pref("devtools.editor.tabsize", 4);
+pref("devtools.editor.expandtab", true);
+
+// Tells which component you want to use for source editing in developer tools.
+//
+// Available components:
+//   "textarea" - this is a basic text editor, like an HTML <textarea>.
+//
+//   "orion" - this is the Orion source code editor from the Eclipse project. It
+//   provides programmer-specific editor features such as syntax highlighting,
+//   indenting and bracket recognition. It may not be appropriate for all
+//   locales (esp. RTL) or a11y situations.
+pref("devtools.editor.component", "orion");
 
 // Whether the character encoding menu is under the main Firefox button. This
 // preference is a string so that localizers can alter it.

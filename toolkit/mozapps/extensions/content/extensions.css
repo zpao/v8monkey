@@ -88,6 +88,57 @@ xhtml|link {
   -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#detail-row");
 }
 
+setting, row[unsupported="true"] {
+  display: none;
+}
+
+setting[type="bool"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-bool");
+}
+
+setting[type="bool"][localized="true"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-localized-bool");
+}
+
+setting[type="boolint"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-boolint");
+}
+
+setting[type="integer"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-integer");
+}
+
+setting[type="control"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-control");
+}
+
+setting[type="string"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-string");
+}
+
+setting[type="color"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-color");
+}
+
+setting[type="file"],
+setting[type="directory"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-path");
+}
+
+setting[type="radio"],
+setting[type="menulist"] {
+  display: -moz-grid-line;
+  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-multi");
+}
+
 #addonitem-popup > menuitem[disabled="true"] {
   display: none;
 }
@@ -156,8 +207,12 @@ xhtml|link {
 
 /* Plugins aren't yet disabled by safemode (bug 342333),
    so don't show that warning when viewing plugins. */
-#addons-page[warning="safemode"] .view-pane[type="plugin"] .global-warning,
+#addons-page[warning="safemode"] .view-pane[type="plugin"] .global-warning-container,
 #addons-page[warning="safemode"] #detail-view[loading="true"] .global-warning {
+  display: none;
+}
+
+#addons-page .view-pane:not([type="plugin"]) .global-info-container {
   display: none;
 }
 

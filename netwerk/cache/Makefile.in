@@ -72,27 +72,15 @@ CPPSRCS = \
   nsCacheService.cpp \
   nsCacheSession.cpp \
   nsMemoryCacheDevice.cpp \
-  $(NULL)
-
-ifdef NECKO_DISK_CACHE
-CPPSRCS += \
   nsDiskCacheBinding.cpp \
   nsDiskCacheBlockFile.cpp \
   nsDiskCacheDevice.cpp \
+  nsDiskCacheDeviceSQL.cpp \
   nsDiskCacheEntry.cpp \
   nsDiskCacheMap.cpp \
   nsDiskCacheStreams.cpp \
   nsDeleteDir.cpp \
   $(NULL)
-endif
-
-ifdef MOZ_STORAGE
-CPPSRCS += \
-  nsDiskCacheDeviceSQL.cpp \
-  $(NULL)
-
-DEFINES += -DNECKO_OFFLINE_CACHE
-endif
 
 LOCAL_INCLUDES = \
   -I$(srcdir)/../base/src \

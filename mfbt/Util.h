@@ -18,7 +18,7 @@
  *
  * The Initial Developer of the Original Code is
  *   The Mozilla Foundation
- * Portions created by the Initial Developer are Copyrigght (C) 2011
+ * Portions created by the Initial Developer are Copyright (C) 2011
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
@@ -52,6 +52,9 @@
  *
  * Once mfbt needs object files, this unholy union with JS_Assert()
  * will be broken.
+ *
+ * JS_Assert is present even in release builds, for the benefit of applications
+ * that build DEBUG and link against a non-DEBUG SpiderMonkey library.
  */
 MOZ_BEGIN_EXTERN_C
 
@@ -75,6 +78,59 @@ MOZ_END_EXTERN_C
 # define MOZ_ASSERT(expr_) ((void)0)
 
 #endif  /* DEBUG */
+
+/*
+ * MOZ_INLINE is a macro which expands to tell the compiler that the method
+ * decorated with it should be inlined.  This macro is usable from C and C++
+ * code, even though C89 does not support the |inline| keyword.  The compiler
+ * may ignore this directive if it chooses.
+ */
+#ifndef MOZ_INLINE
+# if defined __cplusplus
+#  define MOZ_INLINE          inline
+# elif defined _MSC_VER
+#  define MOZ_INLINE          __inline
+# elif defined __GNUC__
+#  define MOZ_INLINE          __inline__
+# else
+#  define MOZ_INLINE          inline
+# endif
+#endif
+
+/*
+ * MOZ_ALWAYS_INLINE is a macro which expands to tell the compiler that the
+ * method decorated with it must be inlined, even if the compiler thinks
+ * otherwise.  This is only a (much) stronger version of the MOZ_INLINE hint:
+ * compilers are not guaranteed to respect it (although they're much more likely
+ * to do so).
+ */
+#ifndef MOZ_ALWAYS_INLINE
+# if defined DEBUG
+#  define MOZ_ALWAYS_INLINE   MOZ_INLINE
+# elif defined _MSC_VER
+#  define MOZ_ALWAYS_INLINE   __forceinline
+# elif defined __GNUC__
+#  define MOZ_ALWAYS_INLINE   __attribute__((always_inline)) MOZ_INLINE
+# else
+#  define MOZ_ALWAYS_INLINE   MOZ_INLINE
+# endif
+#endif
+
+/*
+ * MOZ_NEVER_INLINE is a macro which expands to tell the compiler that the
+ * method decorated with it must never be inlined, even if the compiler would
+ * otherwise choose to inline the method.  Compilers aren't absolutely
+ * guaranteed to support this, but most do.
+ */
+#ifndef MOZ_NEVER_INLINE
+# if defined _MSC_VER
+#  define MOZ_NEVER_INLINE __declspec(noinline)
+# elif defined __GNUC__
+#  define MOZ_NEVER_INLINE __attribute__((noinline))
+# else
+#  define MOZ_NEVER_INLINE
+# endif
+#endif
 
 #ifdef __cplusplus
 
@@ -109,14 +165,24 @@ struct DebugOnly
         value = rhs;
         return *this;
     }
+    void operator++(int) {
+        value++;
+    }
+    void operator--(int) {
+        value--;
+    }
 
     operator T&() { return value; }
     operator const T&() const { return value; }
 
+    T& operator->() { return value; }
+
 #else
     DebugOnly() {}
     DebugOnly(const T&) {}
-    DebugOnly& operator=(const T&) {}   
+    DebugOnly& operator=(const T&) { return *this; }
+    void operator++(int) {}
+    void operator--(int) {}
 #endif
 
     /*
@@ -127,10 +193,97 @@ struct DebugOnly
     ~DebugOnly() {}
 };
 
+/*
+ * This class, and the corresponding macro MOZ_ALIGNOF, figure out how many 
+ * bytes of alignment a given type needs.
+ */
+template<class T>
+struct AlignmentFinder
+{
+private:
+  struct Aligner
+  {
+    char c;
+    T t;
+  };
+
+public:
+  static const int alignment = sizeof(Aligner) - sizeof(T);
+};
+
+#define MOZ_ALIGNOF(T) mozilla::AlignmentFinder<T>::alignment
+
+/*
+ * Declare the MOZ_ALIGNED_DECL macro for declaring aligned types.
+ *
+ * For instance,
+ *
+ *   MOZ_ALIGNED_DECL(char arr[2], 8);
+ *
+ * will declare a two-character array |arr| aligned to 8 bytes.
+ */
+
+#if defined(__GNUC__)
+#define MOZ_ALIGNED_DECL(_type, _align) \
+  _type __attribute__((aligned(_align)))
+
+#elif defined(_MSC_VER)
+#define MOZ_ALIGNED_DECL(_type, _align) \
+  __declspec(align(_align)) _type
+
+#else
+
+#warning "We don't know how to align variables on this compiler."
+#define MOZ_ALIGNED_DECL(_type, _align) _type
+
+#endif
+
+/*
+ * AlignedElem<N> is a structure whose alignment is guaranteed to be at least N bytes.
+ *
+ * We support 1, 2, 4, 8, and 16-bit alignment.
+ */
+template<size_t align>
+struct AlignedElem;
+
+/*
+ * We have to specialize this template because GCC doesn't like __attribute__((aligned(foo))) where
+ * foo is a template parameter.
+ */
+
+template<>
+struct AlignedElem<1>
+{
+  MOZ_ALIGNED_DECL(uint8 elem, 1);
+};
+
+template<>
+struct AlignedElem<2>
+{
+  MOZ_ALIGNED_DECL(uint8 elem, 2);
+};
+
+template<>
+struct AlignedElem<4>
+{
+  MOZ_ALIGNED_DECL(uint8 elem, 4);
+};
+
+template<>
+struct AlignedElem<8>
+{
+  MOZ_ALIGNED_DECL(uint8 elem, 8);
+};
+
+template<>
+struct AlignedElem<16>
+{
+  MOZ_ALIGNED_DECL(uint8 elem, 16);
+};
 
 /*
  * This utility pales in comparison to Boost's aligned_storage. The utility
- * simply assumes that JSUint64 is enough alignment for anyone. This may need
+ * simply assumes that uint64 is enough alignment for anyone. This may need
  * to be extended one day...
  *
  * As an important side effect, pulling the storage into this template is
@@ -159,7 +312,7 @@ struct AlignedStorage2
     } u;
 
     const T *addr() const { return (const T *)u.bytes; }
-    T *addr() { return (T *)u.bytes; }
+    T *addr() { return (T *)(void *)u.bytes; }
 };
 
 /*
@@ -234,6 +387,11 @@ class Maybe
         return asT();
     }
 
+    const T &ref() const {
+        MOZ_ASSERT(constructed);
+        return const_cast<Maybe *>(this)->asT();
+    }
+
     void destroy() {
         ref().~T();
         constructed = false;
@@ -244,6 +402,45 @@ class Maybe
             destroy();
     }
 };
+
+/*
+ * Safely subtract two pointers when it is known that end >= begin.  This avoids
+ * the common compiler bug that if (size_t(end) - size_t(begin)) has the MSB
+ * set, the unsigned subtraction followed by right shift will produce -1, or
+ * size_t(-1), instead of the real difference.
+ */
+template <class T>
+MOZ_ALWAYS_INLINE size_t
+PointerRangeSize(T* begin, T* end)
+{
+    MOZ_ASSERT(end >= begin);
+    return (size_t(end) - size_t(begin)) / sizeof(T);
+}
+
+/*
+ * Compute the length of an array with constant length.  (Use of this method
+ * with a non-array pointer will not compile.)
+ *
+ * Beware of the implicit trailing '\0' when using this with string constants.
+ */
+template<typename T, size_t N>
+size_t
+ArrayLength(T (&arr)[N])
+{
+    return N;
+}
+
+/*
+ * Compute the address one past the last element of a constant-length array.
+ *
+ * Beware of the implicit trailing '\0' when using this with string constants.
+ */
+template<typename T, size_t N>
+T*
+ArrayEnd(T (&arr)[N])
+{
+    return arr + ArrayLength(arr);
+}
 
 } /* namespace mozilla */
 

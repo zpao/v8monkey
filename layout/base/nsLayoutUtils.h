@@ -22,7 +22,7 @@
  * Contributor(s):
  *   Boris Zbarsky <bzbarsky@mit.edu> (original author)
  *   L. David Baron <dbaron@dbaron.org>, Mozilla Corporation
- *   Mats Palmgren <mats.palmgren@bredband.net>
+ *   Mats Palmgren <matspal@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -52,6 +52,7 @@ class nsDisplayListBuilder;
 class nsDisplayItem;
 class nsFontMetrics;
 class nsClientRectList;
+class nsFontFaceList;
 
 #include "prtypes.h"
 #include "nsStyleContext.h"
@@ -101,10 +102,10 @@ public:
   static bool GetDisplayPort(nsIContent* aContent, nsRect *aResult);
 
   /**
-   * Use heuristics to figure out the name of the child list that
+   * Use heuristics to figure out the child list that
    * aChildFrame is currently in.
    */
-  static nsIAtom* GetChildListNameFor(nsIFrame* aChildFrame);
+  static nsIFrame::ChildListID GetChildListNameFor(nsIFrame* aChildFrame);
 
   /**
    * GetBeforeFrame returns the outermost :before frame of the given frame, if
@@ -160,7 +161,7 @@ public:
   static nsIFrame* GetStyleFrame(nsIFrame* aPrimaryFrame);
 
   /**
-   * IsGeneratedContentFor returns PR_TRUE if aFrame is the outermost
+   * IsGeneratedContentFor returns true if aFrame is the outermost
    * frame for generated content of type aPseudoElement for aContent.
    * aFrame *might not* have the aPseudoElement pseudo-style! For example
    * it might be a table outer frame and the inner table frame might
@@ -173,7 +174,7 @@ public:
    * @param aPseudoElement the pseudo type we're interested in
    * @return whether aFrame is the generated aPseudoElement frame for aContent
    */
-  static PRBool IsGeneratedContentFor(nsIContent* aContent, nsIFrame* aFrame,
+  static bool IsGeneratedContentFor(nsIContent* aContent, nsIFrame* aFrame,
                                       nsIAtom* aPseudoElement);
 
 #ifdef DEBUG
@@ -294,7 +295,7 @@ public:
    * aAncestorFrame. If non-null, this can bound the search and speed up
    * the function
    */
-  static PRBool IsProperAncestorFrame(nsIFrame* aAncestorFrame, nsIFrame* aFrame,
+  static bool IsProperAncestorFrame(nsIFrame* aAncestorFrame, nsIFrame* aFrame,
                                       nsIFrame* aCommonAncestor = nsnull);
 
   /**
@@ -303,7 +304,7 @@ public:
    * Just like IsAncestorFrameCrossDoc, except that it returns false when
    * aFrame == aAncestorFrame.
    */
-  static PRBool IsProperAncestorFrameCrossDoc(nsIFrame* aAncestorFrame, nsIFrame* aFrame,
+  static bool IsProperAncestorFrameCrossDoc(nsIFrame* aAncestorFrame, nsIFrame* aFrame,
                                               nsIFrame* aCommonAncestor = nsnull);
 
   /**
@@ -316,7 +317,7 @@ public:
    * Just like IsProperAncestorFrameCrossDoc, except that it returns true when
    * aFrame == aAncestorFrame.
    */
-  static PRBool IsAncestorFrameCrossDoc(nsIFrame* aAncestorFrame, nsIFrame* aFrame,
+  static bool IsAncestorFrameCrossDoc(nsIFrame* aAncestorFrame, nsIFrame* aFrame,
                                         nsIFrame* aCommonAncestor = nsnull);
 
   /**
@@ -330,9 +331,10 @@ public:
                                             nsIFrame* aStopAtAncestor);
 
   static nsIFrame* GetActiveScrolledRootFor(nsDisplayItem* aItem,
-                                            nsDisplayListBuilder* aBuilder);
+                                            nsDisplayListBuilder* aBuilder,
+                                            bool* aShouldFixToViewport = nsnull);
 
-  static PRBool ScrolledByViewportScrolling(nsIFrame* aActiveScrolledRoot,
+  static bool ScrolledByViewportScrolling(nsIFrame* aActiveScrolledRoot,
                                             nsDisplayListBuilder* aBuilder);
 
   /**
@@ -376,9 +378,9 @@ public:
   static nsIScrollableFrame* GetNearestScrollableFrame(nsIFrame* aFrame);
 
   /**
-   * HasPseudoStyle returns PR_TRUE if aContent (whose primary style
+   * HasPseudoStyle returns true if aContent (whose primary style
    * context is aStyleContext) has the aPseudoElement pseudo-style
-   * attached to it; returns PR_FALSE otherwise.
+   * attached to it; returns false otherwise.
    *
    * @param aContent the content node we're looking at
    * @param aStyleContext aContent's style context
@@ -386,7 +388,7 @@ public:
    * @param aPresContext the presentation context
    * @return whether aContent has aPseudoElement style attached to it
    */
-  static PRBool HasPseudoStyle(nsIContent* aContent,
+  static bool HasPseudoStyle(nsIContent* aContent,
                                nsStyleContext* aStyleContext,
                                nsCSSPseudoElements::Type aPseudoElement,
                                nsPresContext* aPresContext);
@@ -459,7 +461,7 @@ public:
    * @return A matrix equivalent to aMatrix, but operating in the coordinate system with
    *         origin aOrigin.
    */
-  static gfxMatrix ChangeMatrixBasis(const gfxPoint &aOrigin, const gfxMatrix &aMatrix);
+  static gfx3DMatrix ChangeMatrixBasis(const gfxPoint3D &aOrigin, const gfx3DMatrix &aMatrix);
 
   /**
    * Find IDs corresponding to a scrollable content element in the child process.
@@ -476,7 +478,7 @@ public:
   static nsresult GetRemoteContentIds(nsIFrame* aFrame,
                                      const nsRect& aTarget,
                                      nsTArray<ViewID> &aOutIDs,
-                                     PRBool aIgnoreRootScrollFrame);
+                                     bool aIgnoreRootScrollFrame);
 
   /**
    * Given aFrame, the root frame of a stacking context, find its descendant
@@ -489,8 +491,8 @@ public:
    * should ignore the root scroll frame.
    */
   static nsIFrame* GetFrameForPoint(nsIFrame* aFrame, nsPoint aPt,
-                                    PRBool aShouldIgnoreSuppression = PR_FALSE,
-                                    PRBool aIgnoreRootScrollFrame = PR_FALSE);
+                                    bool aShouldIgnoreSuppression = false,
+                                    bool aIgnoreRootScrollFrame = false);
 
   /**
    * Given aFrame, the root frame of a stacking context, find all descendant
@@ -505,8 +507,14 @@ public:
    */
   static nsresult GetFramesForArea(nsIFrame* aFrame, const nsRect& aRect,
                                    nsTArray<nsIFrame*> &aOutFrames,
-                                   PRBool aShouldIgnoreSuppression = PR_FALSE,
-                                   PRBool aIgnoreRootScrollFrame = PR_FALSE);
+                                   bool aShouldIgnoreSuppression = false,
+                                   bool aIgnoreRootScrollFrame = false);
+
+  
+
+  static nsRect TransformRectToBoundsInAncestor(nsIFrame* aFrame,
+                                                const nsRect& aRect,
+                                                nsIFrame* aStopAtAncestor);
 
   /**
    * Given a point in the global coordinate space, returns that point expressed
@@ -520,7 +528,6 @@ public:
   static nsPoint InvertTransformsToRoot(nsIFrame* aFrame,
                                         const nsPoint &aPt);
 
-
   /**
    * Helper function that, given a rectangle and a matrix, returns the smallest
    * rectangle containing the image of the source rectangle.
@@ -531,7 +538,7 @@ public:
    * @return The smallest rect that contains the image of aBounds.
    */
   static nsRect MatrixTransformRect(const nsRect &aBounds,
-                                    const gfxMatrix &aMatrix, float aFactor);
+                                    const gfx3DMatrix &aMatrix, float aFactor);
 
   /**
    * Helper function that, given a rectangle and a matrix, returns the smallest
@@ -544,7 +551,7 @@ public:
    * @return The smallest rect that contains the image of aBounds.
    */
   static nsRect MatrixTransformRectOut(const nsRect &aBounds,
-                                    const gfxMatrix &aMatrix, float aFactor);
+                                    const gfx3DMatrix &aMatrix, float aFactor);
   /**
    * Helper function that, given a point and a matrix, returns the image
    * of that point under the matrix transform.
@@ -555,7 +562,7 @@ public:
    * @return The image of the point under the transform.
    */
   static nsPoint MatrixTransformPoint(const nsPoint &aPoint,
-                                      const gfxMatrix &aMatrix, float aFactor);
+                                      const gfx3DMatrix &aMatrix, float aFactor);
 
   /**
    * Given a graphics rectangle in graphics space, return a rectangle in
@@ -652,7 +659,7 @@ public:
    * @param aTextWidth returns the (in twips) the length of the text that falls
    * before the cursor aIndex contains the index of the text where the cursor falls
    */
-  static PRBool
+  static bool
   BinarySearchForPosition(nsRenderingContext* acx,
                           const PRUnichar* aText,
                           PRInt32    aBaseWidth,
@@ -684,7 +691,7 @@ public:
   struct RectAccumulator : public RectCallback {
     nsRect       mResultRect;
     nsRect       mFirstRect;
-    PRPackedBool mSeenFirstRect;
+    bool mSeenFirstRect;
 
     RectAccumulator();
 
@@ -773,6 +780,13 @@ public:
    */
   static nsBlockFrame* GetAsBlock(nsIFrame* aFrame);
 
+  /*
+   * Whether the frame is an nsBlockFrame which is not a wrapper block.
+   */
+  static bool IsNonWrapperBlock(nsIFrame* aFrame) {
+    return GetAsBlock(aFrame) && !aFrame->IsBlockWrapper();
+  }
+
   /**
    * If aFrame is an out of flow frame, return its placeholder, otherwise
    * return its parent.
@@ -800,7 +814,7 @@ public:
    * @return if TRUE, the frame is a part of the scrollbar or scrollcorner of
    *         the root content.
    */
-  static PRBool IsViewportScrollbarFrame(nsIFrame* aFrame);
+  static bool IsViewportScrollbarFrame(nsIFrame* aFrame);
 
   /**
    * Get the contribution of aFrame to its containing block's intrinsic
@@ -867,7 +881,7 @@ public:
     return result;
   }
 
-  static PRBool IsAutoHeight(const nsStyleCoord &aCoord, nscoord aCBHeight)
+  static bool IsAutoHeight(const nsStyleCoord &aCoord, nscoord aCBHeight)
   {
     nsStyleUnit unit = aCoord.GetUnit();
     return unit == eStyleUnit_Auto ||  // only for 'height'
@@ -875,7 +889,7 @@ public:
            (aCBHeight == NS_AUTOHEIGHT && aCoord.HasPercent());
   }
 
-  static PRBool IsPaddingZero(const nsStyleCoord &aCoord)
+  static bool IsPaddingZero(const nsStyleCoord &aCoord)
   {
     return (aCoord.GetUnit() == eStyleUnit_Coord &&
             aCoord.GetCoordValue() == 0) ||
@@ -887,7 +901,7 @@ public:
             nsRuleNode::ComputeCoordPercentCalc(aCoord, 0) <= 0);
   }
 
-  static PRBool IsMarginZero(const nsStyleCoord &aCoord)
+  static bool IsMarginZero(const nsStyleCoord &aCoord)
   {
     return (aCoord.GetUnit() == eStyleUnit_Coord &&
             aCoord.GetCoordValue() == 0) ||
@@ -909,6 +923,16 @@ public:
                     nsSize aIntrinsicRatio, nsSize aCBSize,
                     nsSize aMargin, nsSize aBorder, nsSize aPadding);
 
+  /*
+   * Calculate the used values for 'width' and 'height' when width
+   * and height are 'auto'. The tentWidth and tentHeight arguments should be
+   * the result of applying the rules for computing intrinsic sizes and ratios.
+   * as specified by CSS 2.1 sections 10.3.2 and 10.6.2
+   */
+  static nsSize ComputeAutoSizeWithIntrinsicDimensions(nscoord minWidth, nscoord minHeight,
+                                                       nscoord maxWidth, nscoord maxHeight,
+                                                       nscoord tentWidth, nscoord tentHeight);
+
   // Implement nsIFrame::GetPrefWidth in terms of nsIFrame::AddInlinePrefWidth
   static nscoord PrefWidthFromInline(nsIFrame* aFrame,
                                      nsRenderingContext* aRenderingContext);
@@ -916,6 +940,13 @@ public:
   // Implement nsIFrame::GetMinWidth in terms of nsIFrame::AddInlineMinWidth
   static nscoord MinWidthFromInline(nsIFrame* aFrame,
                                     nsRenderingContext* aRenderingContext);
+
+  // Get a suitable foreground color for painting aProperty for aFrame.
+  static nscolor GetColor(nsIFrame* aFrame, nsCSSProperty aProperty);
+
+  // Get a baseline y position in app units that is snapped to device pixels.
+  static gfxFloat GetSnappedBaselineY(nsIFrame* aFrame, gfxContext* aContext,
+                                      nscoord aY, nscoord aAscent);
 
   static void DrawString(const nsIFrame*      aFrame,
                          nsRenderingContext* aContext,
@@ -928,6 +959,23 @@ public:
                                 nsRenderingContext* aContext,
                                 const PRUnichar*     aString,
                                 PRInt32              aLength);
+
+  /**
+   * Helper function for drawing text-shadow. The callback's job
+   * is to draw whatever needs to be blurred onto the given context.
+   */
+  typedef void (* TextShadowCallback)(nsRenderingContext* aCtx,
+                                      nsPoint aShadowOffset,
+                                      const nscolor& aShadowColor,
+                                      void* aData);
+
+  static void PaintTextShadow(const nsIFrame*     aFrame,
+                              nsRenderingContext* aContext,
+                              const nsRect&       aTextRect,
+                              const nsRect&       aDirtyRect,
+                              const nscolor&      aForegroundColor,
+                              TextShadowCallback  aCallback,
+                              void*               aCallbackData);
 
   /**
    * Gets the baseline to vertically center text from a font within a
@@ -946,7 +994,7 @@ public:
    * Returns true if a baseline was found (and fills in aResult).
    * Otherwise returns false.
    */
-  static PRBool GetFirstLineBaseline(const nsIFrame* aFrame, nscoord* aResult);
+  static bool GetFirstLineBaseline(const nsIFrame* aFrame, nscoord* aResult);
 
   /**
    * Just like GetFirstLineBaseline, except also returns the top and
@@ -966,7 +1014,7 @@ public:
       return result;
     }
   };
-  static PRBool GetFirstLinePosition(const nsIFrame* aFrame,
+  static bool GetFirstLinePosition(const nsIFrame* aFrame,
                                      LinePosition* aResult);
 
 
@@ -978,7 +1026,7 @@ public:
    * Returns true if a baseline was found (and fills in aResult).
    * Otherwise returns false.
    */
-  static PRBool GetLastLineBaseline(const nsIFrame* aFrame, nscoord* aResult);
+  static bool GetLastLineBaseline(const nsIFrame* aFrame, nscoord* aResult);
 
   /**
    * Returns a y coordinate relative to this frame's origin that represents
@@ -1006,6 +1054,38 @@ public:
   /* N.B. The only difference between variants of the Draw*Image
    * functions below is the type of the aImage argument.
    */
+
+  /**
+   * Draw a background image.  The image's dimensions are as specified in aDest;
+   * the image itself is not consulted to determine a size.
+   * See https://wiki.mozilla.org/Gecko:Image_Snapping_and_Rendering
+   *   @param aRenderingContext Where to draw the image, set up with an
+   *                            appropriate scale and transform for drawing in
+   *                            app units.
+   *   @param aImage            The image.
+   *   @param aImageSize        The unscaled size of the image being drawn.
+   *                            (This might be the image's size if no scaling
+   *                            occurs, or it might be the image's size if
+   *                            the image is a vector image being rendered at
+   *                            that size.)
+   *   @param aDest             The position and scaled area where one copy of
+   *                            the image should be drawn.
+   *   @param aFill             The area to be filled with copies of the
+   *                            image.
+   *   @param aAnchor           A point in aFill which we will ensure is
+   *                            pixel-aligned in the output.
+   *   @param aDirty            Pixels outside this area may be skipped.
+   *   @param aImageFlags       Image flags of the imgIContainer::FLAG_* variety
+   */
+  static nsresult DrawBackgroundImage(nsRenderingContext* aRenderingContext,
+                                      imgIContainer*      aImage,
+                                      const nsIntSize&    aImageSize,
+                                      GraphicsFilter      aGraphicsFilter,
+                                      const nsRect&       aDest,
+                                      const nsRect&       aFill,
+                                      const nsPoint&      aAnchor,
+                                      const nsRect&       aDirty,
+                                      PRUint32            aImageFlags);
 
   /**
    * Draw an image.
@@ -1111,7 +1191,9 @@ public:
    * Given an imgIContainer, this method attempts to obtain an intrinsic
    * px-valued height & width for it.  If the imgIContainer has a non-pixel
    * value for either height or width, this method tries to generate a pixel
-   * value for that dimension using the intrinsic ratio (if available).
+   * value for that dimension using the intrinsic ratio (if available).  The
+   * intrinsic ratio will be assigned to aIntrinsicRatio; if there's no
+   * intrinsic ratio then (0, 0) will be assigned.
    *
    * This method will always set aGotWidth and aGotHeight to indicate whether
    * we were able to successfully obtain (or compute) a value for each
@@ -1123,8 +1205,9 @@ public:
    */
   static void ComputeSizeForDrawing(imgIContainer* aImage,
                                     nsIntSize&     aImageSize,
-                                    PRBool&        aGotWidth,
-                                    PRBool&        aGotHeight);
+                                    nsSize&        aIntrinsicRatio,
+                                    bool&          aGotWidth,
+                                    bool&          aGotHeight);
 
   /**
    * Given a source area of an image (in appunits) and a destination area
@@ -1138,14 +1221,9 @@ public:
                                          const nsRect& aDestArea);
 
   /**
-   * Set the font on aRC based on the style in aSC
-   */
-  static void SetFontFromStyle(nsRenderingContext* aRC, nsStyleContext* aSC);
-
-  /**
    * Determine if any corner radius is of nonzero size
    *   @param aCorners the |nsStyleCorners| object to check
-   *   @return PR_TRUE unless all the coordinates are 0%, 0 or null.
+   *   @return true unless all the coordinates are 0%, 0 or null.
    *
    * A corner radius with one dimension zero and one nonzero is
    * treated as a nonzero-radius corner, even though it will end up
@@ -1153,13 +1231,13 @@ public:
    * corners are not expected to appear outside of test cases, and it's
    * simpler to implement the test this way.
    */
-  static PRBool HasNonZeroCorner(const nsStyleCorners& aCorners);
+  static bool HasNonZeroCorner(const nsStyleCorners& aCorners);
 
   /**
    * Determine if there is any corner radius on corners adjacent to the
    * given side.
    */
-  static PRBool HasNonZeroCornerOnSide(const nsStyleCorners& aCorners,
+  static bool HasNonZeroCornerOnSide(const nsStyleCorners& aCorners,
                                        mozilla::css::Side aSide);
 
   /**
@@ -1179,7 +1257,7 @@ public:
    * A frame is a popup if it has its own floating window. Menus, panels
    * and combobox dropdowns are popups.
    */
-  static PRBool IsPopup(nsIFrame* aFrame);
+  static bool IsPopup(nsIFrame* aFrame);
 
   /**
    * Find the nearest "display root". This is the nearest enclosing
@@ -1221,13 +1299,13 @@ public:
    * they're inside an element with -moz-transform.  This function says
    * whether such an element is a real fixed-pos element.
    */
-  static PRBool IsReallyFixedPos(nsIFrame* aFrame);
+  static bool IsReallyFixedPos(nsIFrame* aFrame);
 
   /**
    * Return true if aFrame is in an {ib} split and is NOT one of the
    * continuations of the first inline in it.
    */
-  static PRBool FrameIsNonFirstInIBSplit(const nsIFrame* aFrame) {
+  static bool FrameIsNonFirstInIBSplit(const nsIFrame* aFrame) {
     return (aFrame->GetStateBits() & NS_FRAME_IS_SPECIAL) &&
       aFrame->GetFirstContinuation()->
         Properties().Get(nsIFrame::IBSplitSpecialPrevSibling());
@@ -1237,7 +1315,7 @@ public:
    * Return true if aFrame is in an {ib} split and is NOT one of the
    * continuations of the last inline in it.
    */
-  static PRBool FrameIsNonLastInIBSplit(const nsIFrame* aFrame) {
+  static bool FrameIsNonLastInIBSplit(const nsIFrame* aFrame) {
     return (aFrame->GetStateBits() & NS_FRAME_IS_SPECIAL) &&
       aFrame->GetFirstContinuation()->
         Properties().Get(nsIFrame::IBSplitSpecialSibling());
@@ -1278,21 +1356,26 @@ public:
   };
 
   struct SurfaceFromElementResult {
-    SurfaceFromElementResult() : mIsWriteOnly(PR_TRUE), mIsStillLoading(PR_FALSE) {}
+    SurfaceFromElementResult() :
+      // Use safe default values here
+      mIsWriteOnly(true), mIsStillLoading(false), mCORSUsed(false) {}
 
     /* mSurface will contain the resulting surface, or will be NULL on error */
     nsRefPtr<gfxASurface> mSurface;
     /* The size of the surface */
     gfxIntSize mSize;
-    /* The principal associated with the element whose surface was returned */
+    /* The principal associated with the element whose surface was returned.
+       If there is a surface, this will never be null. */
     nsCOMPtr<nsIPrincipal> mPrincipal;
     /* The image request, if the element is an nsIImageLoadingContent */
     nsCOMPtr<imgIRequest> mImageRequest;
     /* Whether the element was "write only", that is, the bits should not be exposed to content */
-    PRPackedBool mIsWriteOnly;
+    bool mIsWriteOnly;
     /* Whether the element was still loading.  Some consumers need to handle
        this case specially. */
-    PRPackedBool mIsStillLoading;
+    bool mIsStillLoading;
+    /* Whether the element used CORS when loading. */
+    bool mCORSUsed;
   };
 
   static SurfaceFromElementResult SurfaceFromElement(nsIDOMElement *aElement,
@@ -1325,11 +1408,49 @@ public:
    * Returns true if the passed in prescontext needs the dark grey background
    * that goes behind the page of a print preview presentation.
    */
-  static PRBool NeedsPrintPreviewBackground(nsPresContext* aPresContext) {
+  static bool NeedsPrintPreviewBackground(nsPresContext* aPresContext) {
     return aPresContext->IsRootPaginatedDocument() &&
       (aPresContext->Type() == nsPresContext::eContext_PrintPreview ||
        aPresContext->Type() == nsPresContext::eContext_PageLayout);
   }
+
+  /**
+   * Adds all font faces used in the frame tree starting from aFrame
+   * to the list aFontFaceList.
+   */
+  static nsresult GetFontFacesForFrames(nsIFrame* aFrame,
+                                        nsFontFaceList* aFontFaceList);
+
+  /**
+   * Adds all font faces used within the specified range of text in aFrame,
+   * and optionally its continuations, to the list in aFontFaceList.
+   * Pass 0 and PR_INT32_MAX for aStartOffset and aEndOffset to specify the
+   * entire text is to be considered.
+   */
+  static nsresult GetFontFacesForText(nsIFrame* aFrame,
+                                      PRInt32 aStartOffset,
+                                      PRInt32 aEndOffset,
+                                      bool aFollowContinuations,
+                                      nsFontFaceList* aFontFaceList);
+
+  /**
+   * Walks the frame tree starting at aFrame looking for textRuns.
+   * If aTotal is NULL, just clears the TEXT_RUN_MEMORY_ACCOUNTED flag
+   * on each textRun found.
+   * If aTotal is non-NULL, adds the storage used for each textRun to the
+   * total, and sets the TEXT_RUN_MEMORY_ACCOUNTED flag to avoid double-
+   * accounting. (Runs with this flag already set will be skipped.)
+   * Expected usage pattern is therefore to call twice:
+   *    rv = GetTextRunMemoryForFrames(rootFrame, NULL);
+   *    rv = GetTextRunMemoryForFrames(rootFrame, &total);
+   */
+  static nsresult GetTextRunMemoryForFrames(nsIFrame* aFrame,
+                                            PRUint64* aTotal);
+
+  /**
+   * Checks if CSS 3D transforms are currently enabled.
+   */
+  static bool Are3DTransformsEnabled();
 
   static void Shutdown();
 

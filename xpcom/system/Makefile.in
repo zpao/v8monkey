@@ -52,7 +52,8 @@ XPIDLSRCS = \
         nsIGnomeVFSService.idl \
         nsIBlocklistService.idl \
         nsIGIOService.idl \
-        nsIAccelerometer.idl \
+        nsIGSettingsService.idl \
+        nsIDeviceMotion.idl \
         nsIGeolocationProvider.idl \
         nsIHapticFeedback.idl \
         $(NULL)

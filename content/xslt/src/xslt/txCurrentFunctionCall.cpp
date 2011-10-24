@@ -1,4 +1,4 @@
-#include "txAtoms.h"
+#include "nsGkAtoms.h"
 #include "txXSLTFunctions.h"
 #include "txExecutionState.h"
 
@@ -44,7 +44,7 @@ CurrentFunctionCall::getReturnType()
     return NODESET_RESULT;
 }
 
-PRBool
+bool
 CurrentFunctionCall::isSensitiveTo(ContextSensitivity aContext)
 {
     return !!(aContext & PRIVATE_CONTEXT);
@@ -54,7 +54,7 @@ CurrentFunctionCall::isSensitiveTo(ContextSensitivity aContext)
 nsresult
 CurrentFunctionCall::getNameAtom(nsIAtom** aAtom)
 {
-    *aAtom = txXSLTAtoms::current;
+    *aAtom = nsGkAtoms::current;
     NS_ADDREF(*aAtom);
     return NS_OK;
 }

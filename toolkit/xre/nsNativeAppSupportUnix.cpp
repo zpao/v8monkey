@@ -52,7 +52,6 @@
 #include "nsDirectoryServiceDefs.h"
 #include "nsICommandLineRunner.h"
 #include "nsIWindowMediator.h"
-#include "nsIDOMWindowInternal.h"
 #include "nsPIDOMWindow.h"
 #include "nsIDocShell.h"
 #include "nsIBaseWindow.h"
@@ -139,10 +138,10 @@ gboolean save_yourself_cb(GnomeClient *client, gint phase,
     return TRUE; // OOM
 
   // Notify observers to save the session state
-  didSaveSession->SetData(PR_FALSE);
+  didSaveSession->SetData(false);
   obsServ->NotifyObservers(didSaveSession, "session-save", nsnull);
 
-  PRBool status;
+  bool status;
   didSaveSession->GetData(&status);
 
   // If there was no session saved and the save_yourself request is
@@ -151,10 +150,10 @@ gboolean save_yourself_cb(GnomeClient *client, gint phase,
     nsCOMPtr<nsISupportsPRBool> cancelQuit =
       do_CreateInstance(NS_SUPPORTS_PRBOOL_CONTRACTID);
 
-    cancelQuit->SetData(PR_FALSE);
+    cancelQuit->SetData(false);
     obsServ->NotifyObservers(cancelQuit, "quit-application-requested", nsnull);
 
-    PRBool abortQuit;
+    bool abortQuit;
     cancelQuit->GetData(&abortQuit);
   }
 
@@ -173,8 +172,8 @@ void die_cb(GnomeClient *client, gpointer user_data)
 class nsNativeAppSupportUnix : public nsNativeAppSupportBase
 {
 public:
-  NS_IMETHOD Start(PRBool* aRetVal);
-  NS_IMETHOD Stop(PRBool *aResult);
+  NS_IMETHOD Start(bool* aRetVal);
+  NS_IMETHOD Stop(bool *aResult);
   NS_IMETHOD Enable();
 
 private:
@@ -191,7 +190,7 @@ private:
 
 #if (MOZ_PLATFORM_MAEMO == 5)
 static nsresult
-GetMostRecentWindow(const PRUnichar* aType, nsIDOMWindowInternal** aWindow)
+GetMostRecentWindow(const PRUnichar* aType, nsIDOMWindow** aWindow)
 {
   nsCOMPtr<nsIWindowMediator> wm = do_GetService("@mozilla.org/appshell/window-mediator;1");
   if (wm)
@@ -219,10 +218,10 @@ WidgetForDOMWindow(nsISupports *aWindow)
 }
 
 static void
-OssoSetWindowOrientation(PRBool aPortrait)
+OssoSetWindowOrientation(bool aPortrait)
 {
   // If we locked the screen, ignore any orientation changes
-  PRBool lockScreen = PR_FALSE;
+  bool lockScreen = false;
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
   if (prefs)
     prefs->GetBoolPref("toolkit.screen.lock", &lockScreen);
@@ -234,7 +233,7 @@ OssoSetWindowOrientation(PRBool aPortrait)
   // depending on the current rotation
   // NOTE: We only update the most recent top-level window so this is only
   //       suitable for apps with only one window.
-  nsCOMPtr<nsIDOMWindowInternal> window;
+  nsCOMPtr<nsIDOMWindow> window;
   GetMostRecentWindow(EmptyString().get(), getter_AddRefs(window));
   GtkWidget* widget = WidgetForDOMWindow(window);
   if (widget && widget->window) {
@@ -259,24 +258,24 @@ OssoSetWindowOrientation(PRBool aPortrait)
   }
 }
 
-static PRBool OssoIsScreenOn(osso_context_t* ctx)
+static bool OssoIsScreenOn(osso_context_t* ctx)
 {
   osso_return_t rv;
   osso_rpc_t ret;
-  PRBool result = PR_FALSE;
+  bool result = false;
 
   rv = osso_rpc_run_system(ctx, MCE_SERVICE, MCE_REQUEST_PATH, MCE_REQUEST_IF,
                            "get_display_status", &ret, DBUS_TYPE_INVALID);
   if (rv == OSSO_OK) {
       if (strcmp(ret.value.s, "on") == 0)
-          result = PR_TRUE;
+          result = true;
 
       osso_rpc_free_val(&ret);
   }
   return result;
 }
 
-static void OssoRequestAccelerometer(osso_context_t *ctx, PRBool aEnabled)
+static void OssoRequestAccelerometer(osso_context_t *ctx, bool aEnabled)
 {
   osso_return_t rv;
   osso_rpc_t ret;
@@ -306,10 +305,10 @@ static void OssoDisplayCallback(osso_display_state_t state, gpointer data)
 
   if (state == OSSO_DISPLAY_ON) {
       os->NotifyObservers(nsnull, "system-display-on", nsnull);
-      OssoRequestAccelerometer(context, PR_TRUE);
+      OssoRequestAccelerometer(context, true);
   } else {
       os->NotifyObservers(nsnull, "system-display-dimmed-or-off", nsnull);
-      OssoRequestAccelerometer(context, PR_FALSE);
+      OssoRequestAccelerometer(context, false);
   }
 }
 
@@ -355,7 +354,7 @@ OssoDbusCallback(const gchar *interface, const gchar *method,
 
   // The "top_application" method just wants us to focus the top-most window.
   if (!strcmp("top_application", method)) {
-    nsCOMPtr<nsIDOMWindowInternal> window;
+    nsCOMPtr<nsIDOMWindow> window;
     GetMostRecentWindow(NS_LITERAL_STRING("").get(), getter_AddRefs(window));
     if (window)
       window->Focus();
@@ -430,7 +429,7 @@ OssoModeControlCallback(DBusConnection *con, DBusMessage *msg, gpointer data)
 #endif
 
 NS_IMETHODIMP
-nsNativeAppSupportUnix::Start(PRBool *aRetVal)
+nsNativeAppSupportUnix::Start(bool *aRetVal)
 {
   NS_ASSERTION(gAppData, "gAppData must not be null.");
 
@@ -474,7 +473,7 @@ nsNativeAppSupportUnix::Start(PRBool *aRetVal)
 
   m_osso_context = osso_initialize(applicationName.get(), 
                                    gAppData->version ? gAppData->version : "1.0",
-                                   PR_TRUE,
+                                   true,
                                    nsnull);
 
   /* Check that initilialization was ok */
@@ -492,7 +491,7 @@ nsNativeAppSupportUnix::Start(PRBool *aRetVal)
   dbus_connection_add_filter(connnection, OssoModeControlCallback, nsnull, nsnull);
 #endif
 
-  *aRetVal = PR_TRUE;
+  *aRetVal = true;
 
 #ifdef MOZ_X11
 
@@ -569,7 +568,7 @@ nsNativeAppSupportUnix::Start(PRBool *aRetVal)
     nsCOMPtr<nsIFile> executablePath;
     nsresult rv;
 
-    PRBool dummy;
+    bool dummy;
     rv = gDirServiceProvider->GetFile(XRE_EXECUTABLE_FILE, &dummy, getter_AddRefs(executablePath));
 
     if (NS_SUCCEEDED(rv)) {
@@ -595,15 +594,15 @@ nsNativeAppSupportUnix::Start(PRBool *aRetVal)
 }
 
 NS_IMETHODIMP
-nsNativeAppSupportUnix::Stop(PRBool *aResult)
+nsNativeAppSupportUnix::Stop(bool *aResult)
 {
   NS_ENSURE_ARG(aResult);
-  *aResult = PR_TRUE;
+  *aResult = true;
 
 #if (MOZ_PLATFORM_MAEMO == 5)
   if (m_osso_context) {
     // Disable the accelerometer when closing
-    OssoRequestAccelerometer(m_osso_context, PR_FALSE);
+    OssoRequestAccelerometer(m_osso_context, false);
 
     // Remove the MCE callback filter
     DBusConnection *connnection = (DBusConnection*)osso_get_sys_dbus_connection(m_osso_context);
@@ -624,7 +623,7 @@ nsNativeAppSupportUnix::Enable()
 #if (MOZ_PLATFORM_MAEMO == 5)
   // Enable the accelerometer for orientation support
   if (OssoIsScreenOn(m_osso_context))
-      OssoRequestAccelerometer(m_osso_context, PR_TRUE);
+      OssoRequestAccelerometer(m_osso_context, true);
 #endif
   return NS_OK;
 }

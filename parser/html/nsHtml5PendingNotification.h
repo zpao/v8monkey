@@ -47,7 +47,7 @@ class nsHtml5PendingNotification {
 
     nsHtml5PendingNotification(nsIContent* aParent)
      : mParent(aParent),
-       mChildCount(aParent->GetChildCount())
+       mChildCount(aParent->GetChildCount() - 1)
     {
       MOZ_COUNT_CTOR(nsHtml5PendingNotification);
     }
@@ -61,11 +61,11 @@ class nsHtml5PendingNotification {
                                    mChildCount);
     }
 
-    inline PRBool Contains(nsIContent* aNode) {
+    inline bool Contains(nsIContent* aNode) {
       return !!(mParent == aNode);
     }
     
-    inline PRBool HaveNotifiedIndex(PRUint32 index) {
+    inline bool HaveNotifiedIndex(PRUint32 index) {
       return index < mChildCount;
     }
 

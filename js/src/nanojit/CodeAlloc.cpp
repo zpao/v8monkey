@@ -252,22 +252,18 @@ namespace nanojit
         }
     }
 
-#if defined NANOJIT_ARM && defined UNDER_CE
-    // Use a single flush for the whole CodeList, when we have no
-    // finer-granularity flush support, as on WinCE.
-    void CodeAlloc::flushICache(CodeList* &/*blocks*/) {
-        FlushInstructionCache(GetCurrentProcess(), NULL, NULL);
-    }
-#else
     void CodeAlloc::flushICache(CodeList* &blocks) {
         for (CodeList *b = blocks; b != 0; b = b->next)
             flushICache(b->start(), b->size());
     }
-#endif
 
 #if defined(AVMPLUS_UNIX) && defined(NANOJIT_ARM)
+#if defined(__APPLE__)
+#include <libkern/OSCacheControl.h>
+#else
 #include <asm/unistd.h>
 extern "C" void __clear_cache(char *BEG, char *END);
+#endif
 #endif
 
 #if defined(AVMPLUS_UNIX) && defined(NANOJIT_MIPS)
@@ -300,14 +296,6 @@ extern  "C" void sync_instruction_memory(caddr_t v, u_int len);
         (void)start;
         (void)len;
         VALGRIND_DISCARD_TRANSLATIONS(start, len);
-    }
-
-#elif defined NANOJIT_ARM && defined UNDER_CE
-    // On arm/winmo, just flush the whole icache. The
-    // WinCE docs indicate that this function actually ignores its
-    // 2nd and 3rd arguments, and wants them to be NULL.
-    void CodeAlloc::flushICache(void *, size_t) {
-        FlushInstructionCache(GetCurrentProcess(), NULL, NULL);
     }
 
 #elif defined NANOJIT_ARM && defined DARWIN
@@ -365,6 +353,10 @@ extern  "C" void sync_instruction_memory(caddr_t v, u_int len);
     #ifdef ANDROID
     void CodeAlloc::flushICache(void *start, size_t len) {
         cacheflush((int)start, (int)start + len, 0);
+    }
+    #elif defined(AVMPLUS_ARM) && defined(__APPLE__)
+    void CodeAlloc::flushICache(void *start, size_t len) {
+        sys_dcache_flush(start, len);
     }
     #else
     // fixme: __clear_cache is a libgcc feature, test for libgcc or gcc
@@ -514,6 +506,8 @@ extern  "C" void sync_instruction_memory(caddr_t v, u_int len);
             for (CodeList* b = hb->lower; b != 0; b = b->lower) {
                 NanoAssert(b->higher->lower == b);
             }
+            bool b = checkChunkMark(firstBlock(hb), bytesPerAlloc, hb->isExec);
+            NanoAssertMsg(b, "Chunk access mode differs from that expected");
         }
         for (CodeList* avail = this->availblocks; avail; avail = avail->next) {
             NanoAssert(avail->isFree && avail->size() >= minAllocSize);
@@ -570,6 +564,7 @@ extern  "C" void sync_instruction_memory(caddr_t v, u_int len);
             term->isExec = true;
             markCodeChunkExec(firstBlock(term), bytesPerAlloc);
         }
+        debug_only(sanity_check();)
     }
 }
 #endif // FEATURE_NANOJIT

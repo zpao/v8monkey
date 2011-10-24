@@ -51,7 +51,6 @@
 #define PREFS_FILE_50_NAME           NS_LITERAL_CSTRING("prefs.js")
 #define USER_CHROME_DIR_50_NAME      NS_LITERAL_CSTRING("chrome")
 #define LOCAL_STORE_FILE_50_NAME     NS_LITERAL_CSTRING("localstore.rdf")
-#define HISTORY_FILE_50_NAME         NS_LITERAL_CSTRING("history.dat")
 #define PANELS_FILE_50_NAME          NS_LITERAL_CSTRING("panels.rdf")
 #define MIME_TYPES_FILE_50_NAME      NS_LITERAL_CSTRING("mimeTypes.rdf")
 #define BOOKMARKS_FILE_50_NAME       NS_LITERAL_CSTRING("bookmarks.html")
@@ -63,12 +62,12 @@
 // nsProfileDirServiceProvider::nsProfileDirServiceProvider
 //*****************************************************************************
 
-nsProfileDirServiceProvider::nsProfileDirServiceProvider(PRBool aNotifyObservers) :
+nsProfileDirServiceProvider::nsProfileDirServiceProvider(bool aNotifyObservers) :
 #ifdef MOZ_PROFILELOCKING
   mProfileDirLock(nsnull),
 #endif
   mNotifyObservers(aNotifyObservers),
-  mSharingEnabled(PR_FALSE)
+  mSharingEnabled(false)
 {
 }
 
@@ -87,7 +86,7 @@ nsProfileDirServiceProvider::SetProfileDir(nsIFile* aProfileDir,
   if (!aLocalProfileDir)
     aLocalProfileDir = aProfileDir;
   if (mProfileDir) {
-    PRBool isEqual;
+    bool isEqual;
     if (aProfileDir &&
         NS_SUCCEEDED(aProfileDir->Equals(mProfileDir, &isEqual)) && isEqual) {
       NS_WARNING("Setting profile dir to same as current");
@@ -179,7 +178,7 @@ NS_IMPL_ISUPPORTS1(nsProfileDirServiceProvider,
 //*****************************************************************************
 
 NS_IMETHODIMP
-nsProfileDirServiceProvider::GetFile(const char *prop, PRBool *persistant, nsIFile **_retval)
+nsProfileDirServiceProvider::GetFile(const char *prop, bool *persistant, nsIFile **_retval)
 {
   NS_ENSURE_ARG(prop);
   NS_ENSURE_ARG_POINTER(persistant);
@@ -189,7 +188,7 @@ nsProfileDirServiceProvider::GetFile(const char *prop, PRBool *persistant, nsIFi
   if (!mProfileDir)
     return NS_ERROR_FAILURE;
 
-  *persistant = PR_TRUE;
+  *persistant = true;
   nsIFile* domainDir = mProfileDir;
 
   nsCOMPtr<nsIFile>  localFile;
@@ -224,11 +223,6 @@ nsProfileDirServiceProvider::GetFile(const char *prop, PRBool *persistant, nsIFi
         (void) EnsureProfileFileExists(localFile, domainDir);
       }
     }
-  }
-  else if (strcmp(prop, NS_APP_HISTORY_50_FILE) == 0) {
-    rv = domainDir->Clone(getter_AddRefs(localFile));
-    if (NS_SUCCEEDED(rv))
-      rv = localFile->AppendNative(HISTORY_FILE_50_NAME);
   }
   else if (strcmp(prop, NS_APP_USER_PANELS_50_FILE) == 0) {
     rv = domainDir->Clone(getter_AddRefs(localFile));
@@ -300,7 +294,7 @@ nsProfileDirServiceProvider::InitProfileDir(nsIFile *profileDir)
   // If it does not, copy the profile defaults to its location.
 
   nsresult rv;
-  PRBool exists;
+  bool exists;
   rv = profileDir->Exists(&exists);
   if (NS_FAILED(rv))
     return rv;
@@ -337,7 +331,7 @@ nsProfileDirServiceProvider::InitProfileDir(nsIFile *profileDir)
       return rv;
   }
   else {
-    PRBool isDir;
+    bool isDir;
     rv = profileDir->IsDirectory(&isDir);
 
     if (NS_FAILED(rv))
@@ -365,14 +359,14 @@ nsProfileDirServiceProvider::InitNonSharedProfileDir()
   if (NS_SUCCEEDED(rv)) {
     rv = localDir->Append(mNonSharedDirName);
     if (NS_SUCCEEDED(rv)) {
-      PRBool exists;
+      bool exists;
       rv = localDir->Exists(&exists);
       if (NS_SUCCEEDED(rv)) {
         if (!exists) {
           rv = localDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
         }
         else {
-          PRBool isDir;
+          bool isDir;
           rv = localDir->IsDirectory(&isDir);
           if (NS_SUCCEEDED(rv)) {
             if (!isDir)
@@ -391,7 +385,7 @@ nsresult
 nsProfileDirServiceProvider::EnsureProfileFileExists(nsIFile *aFile, nsIFile *destDir)
 {
   nsresult rv;
-  PRBool exists;
+  bool exists;
 
   rv = aFile->Exists(&exists);
   if (NS_FAILED(rv))
@@ -435,7 +429,6 @@ nsProfileDirServiceProvider::UndefineFileLocations()
   (void) directoryService->Undefine(NS_APP_USER_PROFILE_50_DIR);
   (void) directoryService->Undefine(NS_APP_USER_CHROME_DIR);
   (void) directoryService->Undefine(NS_APP_LOCALSTORE_50_FILE);
-  (void) directoryService->Undefine(NS_APP_HISTORY_50_FILE);
   (void) directoryService->Undefine(NS_APP_USER_PANELS_50_FILE);
   (void) directoryService->Undefine(NS_APP_USER_MIMETYPES_50_FILE);
   (void) directoryService->Undefine(NS_APP_BOOKMARKS_50_FILE);
@@ -449,7 +442,7 @@ nsProfileDirServiceProvider::UndefineFileLocations()
 // Global creation function
 //*****************************************************************************
 
-nsresult NS_NewProfileDirServiceProvider(PRBool aNotifyObservers,
+nsresult NS_NewProfileDirServiceProvider(bool aNotifyObservers,
                                          nsProfileDirServiceProvider** aProvider)
 {
   NS_ENSURE_ARG_POINTER(aProvider);

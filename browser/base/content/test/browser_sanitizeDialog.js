@@ -52,16 +52,10 @@
 
 Cc["@mozilla.org/moz/jssubscript-loader;1"].
   getService(Ci.mozIJSSubScriptLoader).
-  loadSubScript("chrome://mochikit/content/MochiKit/packed.js");
-
-Cc["@mozilla.org/moz/jssubscript-loader;1"].
-  getService(Ci.mozIJSSubScriptLoader).
   loadSubScript("chrome://browser/content/sanitize.js");
 
 const dm = Cc["@mozilla.org/download-manager;1"].
            getService(Ci.nsIDownloadManager);
-const bhist = Cc["@mozilla.org/browser/global-history;2"].
-              getService(Ci.nsIBrowserHistory);
 const formhist = Cc["@mozilla.org/satchel/form-history;1"].
                  getService(Ci.nsIFormHistory2);
 
@@ -293,6 +287,88 @@ var gAllTests = [
     };
     wh.open();
   },
+
+  /**
+   * The next three tests checks that when a certain history item cannot be
+   * cleared then the checkbox should be both disabled and unchecked.
+   * In addition, we ensure that this behavior does not modify the preferences.
+   */
+  function () {
+    // Add history.
+    let uris = [ addHistoryWithMinutesAgo(10) ];
+    let formEntries = [ addFormEntryWithMinutesAgo(10) ];
+
+    let wh = new WindowHelper();
+    wh.onload = function() {
+      // Check that the relevant checkboxes are enabled
+      var cb = this.win.document.querySelectorAll(
+                 "#itemList > [preference='privacy.cpd.formdata']");
+      ok(cb.length == 1 && !cb[0].disabled, "There is formdata, checkbox to " +
+         "clear formdata should be enabled.");
+
+      var cb = this.win.document.querySelectorAll(
+                 "#itemList > [preference='privacy.cpd.history']");
+      ok(cb.length == 1 && !cb[0].disabled, "There is history, checkbox to " +
+         "clear history should be enabled.");
+
+      this.checkAllCheckboxes();
+      this.acceptDialog();
+
+      ensureHistoryClearedState(uris, true);
+      ensureFormEntriesClearedState(formEntries, true);
+    };
+    wh.open();
+  },
+  function () {
+    let wh = new WindowHelper();
+    wh.onload = function() {
+      boolPrefIs("cpd.history", true,
+                 "history pref should be true after accepting dialog with " +
+                 "history checkbox checked");
+      boolPrefIs("cpd.formdata", true,
+                 "formdata pref should be true after accepting dialog with " +
+                 "formdata checkbox checked");
+
+
+      // Even though the formdata pref is true, because there is no history
+      // left to clear, the checkbox will be disabled.
+      var cb = this.win.document.querySelectorAll(
+                 "#itemList > [preference='privacy.cpd.formdata']");
+      ok(cb.length == 1 && cb[0].disabled && !cb[0].checked,
+         "There is no formdata history, checkbox should be disabled and be " +
+         "cleared to reduce user confusion (bug 497664).");
+
+      var cb = this.win.document.querySelectorAll(
+                 "#itemList > [preference='privacy.cpd.history']");
+      ok(cb.length == 1 && !cb[0].disabled && cb[0].checked,
+         "There is no history, but history checkbox should always be enabled " +
+         "and will be checked from previous preference.");
+
+      this.acceptDialog();
+    }
+    wh.open();
+  },
+  function () {
+    let formEntries = [ addFormEntryWithMinutesAgo(10) ];
+
+    let wh = new WindowHelper();
+    wh.onload = function() {
+      boolPrefIs("cpd.formdata", true,
+                 "formdata pref should persist previous value after accepting " +
+                 "dialog where you could not clear formdata.");
+
+      var cb = this.win.document.querySelectorAll(
+                 "#itemList > [preference='privacy.cpd.formdata']");
+      ok(cb.length == 1 && !cb[0].disabled && cb[0].checked,
+         "There exists formEntries so the checkbox should be in sync with " +
+         "the pref.");
+
+      this.acceptDialog();
+      ensureFormEntriesClearedState(formEntries, true);
+    };
+    wh.open();
+  },
+
 
   /**
    * These next six tests together ensure that toggling details persists
@@ -587,7 +663,7 @@ WindowHelper.prototype = {
           try {
             if (wh.onunload)
               wh.onunload();
-            doNextTest();
+            waitForAsyncUpdates(doNextTest);
           }
           catch (exc) {
             win.close();
@@ -702,10 +778,11 @@ function addFormEntryWithMinutesAgo(aMinutesAgo) {
  */
 function addHistoryWithMinutesAgo(aMinutesAgo) {
   let pURI = makeURI("http://" + aMinutesAgo + "-minutes-ago.com/");
-  bhist.addPageWithDetails(pURI,
-                           aMinutesAgo + " minutes ago",
-                           now_uSec - (aMinutesAgo * 60 * 1000 * 1000));
-  is(bhist.isVisited(pURI), true,
+  PlacesUtils.bhistory
+             .addPageWithDetails(pURI,
+                                 aMinutesAgo + " minutes ago",
+                                 now_uSec - (aMinutesAgo * 60 * 1000 * 1000));
+  is(PlacesUtils.bhistory.isVisited(pURI), true,
      "Sanity check: history visit " + pURI.spec +
      " should exist after creating it");
   return pURI;
@@ -715,9 +792,48 @@ function addHistoryWithMinutesAgo(aMinutesAgo) {
  * Removes all history visits, downloads, and form entries.
  */
 function blankSlate() {
-  bhist.removeAllPages();
+  PlacesUtils.bhistory.removeAllPages();
   dm.cleanUp();
   formhist.removeAllEntries();
+}
+
+/**
+ * Waits for all pending async statements on the default connection, before
+ * proceeding with aCallback.
+ *
+ * @param aCallback
+ *        Function to be called when done.
+ * @param aScope
+ *        Scope for the callback.
+ * @param aArguments
+ *        Arguments array for the callback.
+ *
+ * @note The result is achieved by asynchronously executing a query requiring
+ *       a write lock.  Since all statements on the same connection are
+ *       serialized, the end of this write operation means that all writes are
+ *       complete.  Note that WAL makes so that writers don't block readers, but
+ *       this is a problem only across different connections.
+ */
+function waitForAsyncUpdates(aCallback, aScope, aArguments)
+{
+  let scope = aScope || this;
+  let args = aArguments || [];
+  let db = PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
+                              .DBConnection;
+  let begin = db.createAsyncStatement("BEGIN EXCLUSIVE");
+  begin.executeAsync();
+  begin.finalize();
+
+  let commit = db.createAsyncStatement("COMMIT");
+  commit.executeAsync({
+    handleResult: function() {},
+    handleError: function() {},
+    handleCompletion: function(aReason)
+    {
+      aCallback.apply(scope, args);
+    }
+  });
+  commit.finalize();
 }
 
 /**
@@ -762,7 +878,7 @@ function downloadExists(aID)
 function doNextTest() {
   if (gAllTests.length <= gCurrTest) {
     blankSlate();
-    finish();
+    waitForAsyncUpdates(finish);
   }
   else {
     let ct = gCurrTest;
@@ -814,7 +930,7 @@ function ensureFormEntriesClearedState(aFormEntries, aShouldBeCleared) {
 function ensureHistoryClearedState(aURIs, aShouldBeCleared) {
   let niceStr = aShouldBeCleared ? "no longer" : "still";
   aURIs.forEach(function (aURI) {
-    is(bhist.isVisited(aURI), !aShouldBeCleared,
+    is(PlacesUtils.bhistory.isVisited(aURI), !aShouldBeCleared,
        "history visit " + aURI.spec + " should " + niceStr + " exist");
   });
 }
@@ -840,5 +956,5 @@ function test() {
   blankSlate();
   waitForExplicitFinish();
   // Kick off all the tests in the gAllTests array.
-  doNextTest();
+  waitForAsyncUpdates(doNextTest);
 }

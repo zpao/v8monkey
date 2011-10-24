@@ -36,13 +36,13 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "base/message_loop.h"
+
 #include "nsBaseAppShell.h"
 #include "nsThreadUtils.h"
 #include "nsIObserverService.h"
 #include "nsServiceManagerUtils.h"
 #include "mozilla/Services.h"
-
-#include "base/message_loop.h"
 
 // When processing the next thread event, the appshell may process native
 // events (if not in performance mode), which can result in suppressing the
@@ -62,9 +62,9 @@ nsBaseAppShell::nsBaseAppShell()
   , mSwitchTime(0)
   , mLastNativeEventTime(0)
   , mEventloopNestingState(eEventloopNone)
-  , mRunning(PR_FALSE)
-  , mExiting(PR_FALSE)
-  , mBlockNativeEvent(PR_FALSE)
+  , mRunning(false)
+  , mExiting(false)
+  , mBlockNativeEvent(false)
 {
 }
 
@@ -87,7 +87,7 @@ nsBaseAppShell::Init()
   nsCOMPtr<nsIObserverService> obsSvc =
     mozilla::services::GetObserverService();
   if (obsSvc)
-    obsSvc->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, PR_FALSE);
+    obsSvc->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
   return NS_OK;
 }
 
@@ -114,7 +114,7 @@ nsBaseAppShell::NativeEventCallback()
   // our only opportunity to process pending gecko events.
 
   nsIThread *thread = NS_GetCurrentThread();
-  PRBool prevBlockNativeEvent = mBlockNativeEvent;
+  bool prevBlockNativeEvent = mBlockNativeEvent;
   if (mEventloopNestingState == eEventloopOther) {
     if (!NS_HasPendingEvents(thread))
       return;
@@ -122,13 +122,13 @@ nsBaseAppShell::NativeEventCallback()
     // process.  While doing that we block processing native events from the
     // appshell - instead, we want to get back to the nested native event
     // loop ASAP (bug 420148).
-    mBlockNativeEvent = PR_TRUE;
+    mBlockNativeEvent = true;
   }
 
   ++mEventloopNestingLevel;
   EventloopNestingState prevVal = mEventloopNestingState;
   NS_ProcessPendingEvents(thread, THREAD_EVENT_STARVATION_LIMIT);
-  mProcessedGeckoEvents = PR_TRUE;
+  mProcessedGeckoEvents = true;
   mEventloopNestingState = prevVal;
   mBlockNativeEvent = prevBlockNativeEvent;
 
@@ -150,8 +150,8 @@ nsBaseAppShell::DoProcessMoreGeckoEvents()
 
 
 // Main thread via OnProcessNextEvent below
-PRBool
-nsBaseAppShell::DoProcessNextNativeEvent(PRBool mayWait)
+bool
+nsBaseAppShell::DoProcessNextNativeEvent(bool mayWait)
 {
   // The next native event to be processed may trigger our NativeEventCallback,
   // in which case we do not want it to process any thread events since we'll
@@ -168,7 +168,7 @@ nsBaseAppShell::DoProcessNextNativeEvent(PRBool mayWait)
   mEventloopNestingState = eEventloopXPCOM;
 
   ++mEventloopNestingLevel;
-  PRBool result = ProcessNextNativeEvent(mayWait);
+  bool result = ProcessNextNativeEvent(mayWait);
   --mEventloopNestingLevel;
 
   mEventloopNestingState = prevVal;
@@ -182,7 +182,7 @@ NS_IMETHODIMP
 nsBaseAppShell::Run(void)
 {
   NS_ENSURE_STATE(!mRunning);  // should not call Run twice
-  mRunning = PR_TRUE;
+  mRunning = true;
 
   nsIThread *thread = NS_GetCurrentThread();
 
@@ -190,7 +190,7 @@ nsBaseAppShell::Run(void)
 
   NS_ProcessPendingEvents(thread);
 
-  mRunning = PR_FALSE;
+  mRunning = false;
   return NS_OK;
 }
 
@@ -200,12 +200,12 @@ nsBaseAppShell::Exit(void)
   if (mRunning && !mExiting) {
     MessageLoop::current()->Quit();
   }
-  mExiting = PR_TRUE;
+  mExiting = true;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsBaseAppShell::FavorPerformanceHint(PRBool favorPerfOverStarvation,
+nsBaseAppShell::FavorPerformanceHint(bool favorPerfOverStarvation,
                                      PRUint32 starvationDelay)
 {
   mStarvationDelay = PR_MillisecondsToInterval(starvationDelay);
@@ -264,7 +264,7 @@ nsBaseAppShell::OnDispatchedEvent(nsIThreadInternal *thr)
 
 // Called from the main thread
 NS_IMETHODIMP
-nsBaseAppShell::OnProcessNextEvent(nsIThreadInternal *thr, PRBool mayWait,
+nsBaseAppShell::OnProcessNextEvent(nsIThreadInternal *thr, bool mayWait,
                                    PRUint32 recursionDepth)
 {
   if (mBlockNativeEvent) {
@@ -274,7 +274,7 @@ nsBaseAppShell::OnProcessNextEvent(nsIThreadInternal *thr, PRBool mayWait,
     // back to it ASAP, but it seems a gecko event has caused us to
     // spin up a nested XPCOM event loop (eg. modal window), so we
     // really must start processing native events here again.
-    mBlockNativeEvent = PR_FALSE;
+    mBlockNativeEvent = false;
     if (NS_HasPendingEvents(thr))
       OnDispatchedEvent(thr); // in case we blocked it earlier
   }
@@ -284,32 +284,32 @@ nsBaseAppShell::OnProcessNextEvent(nsIThreadInternal *thr, PRBool mayWait,
 
   // Unblock outer nested wait loop (below).
   if (mBlockedWait)
-    *mBlockedWait = PR_FALSE;
+    *mBlockedWait = false;
 
-  PRBool *oldBlockedWait = mBlockedWait;
+  bool *oldBlockedWait = mBlockedWait;
   mBlockedWait = &mayWait;
 
   // When mayWait is true, we need to make sure that there is an event in the
   // thread's event queue before we return.  Otherwise, the thread will block
   // on its event queue waiting for an event.
-  PRBool needEvent = mayWait;
+  bool needEvent = mayWait;
   // Reset prior to invoking DoProcessNextNativeEvent which might cause
   // NativeEventCallback to process gecko events.
-  mProcessedGeckoEvents = PR_FALSE;
+  mProcessedGeckoEvents = false;
 
   if (mFavorPerf <= 0 && start > mSwitchTime + mStarvationDelay) {
     // Favor pending native events
     PRIntervalTime now = start;
-    PRBool keepGoing;
+    bool keepGoing;
     do {
       mLastNativeEventTime = now;
-      keepGoing = DoProcessNextNativeEvent(PR_FALSE);
+      keepGoing = DoProcessNextNativeEvent(false);
     } while (keepGoing && ((now = PR_IntervalNow()) - start) < limit);
   } else {
     // Avoid starving native events completely when in performance mode
     if (start - mLastNativeEventTime > limit) {
       mLastNativeEventTime = start;
-      DoProcessNextNativeEvent(PR_FALSE);
+      DoProcessNextNativeEvent(false);
     }
   }
 
@@ -318,7 +318,7 @@ nsBaseAppShell::OnProcessNextEvent(nsIThreadInternal *thr, PRBool mayWait,
     // events to process.  Note that an inner nested event loop causes
     // 'mayWait' to become false too, through 'mBlockedWait'.
     if (mExiting)
-      mayWait = PR_FALSE;
+      mayWait = false;
 
     mLastNativeEventTime = PR_IntervalNow();
     if (!DoProcessNextNativeEvent(mayWait) || !mayWait)

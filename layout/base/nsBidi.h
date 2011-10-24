@@ -197,15 +197,15 @@ typedef enum nsBidiDirection nsBidiDirection;
 /* additional macros used by constructor - always allow allocation */
 #define GETINITIALDIRPROPSMEMORY(length) \
                                          GetMemory((void **)&mDirPropsMemory, &mDirPropsSize, \
-                                         PR_TRUE, (length))
+                                         true, (length))
 
 #define GETINITIALLEVELSMEMORY(length) \
                                        GetMemory((void **)&mLevelsMemory, &mLevelsSize, \
-                                       PR_TRUE, (length))
+                                       true, (length))
 
 #define GETINITIALRUNSMEMORY(length) \
                                      GetMemory((void **)&mRunsMemory, &mRunsSize, \
-                                     PR_TRUE, (length)*sizeof(Run))
+                                     true, (length)*sizeof(Run))
 
 /*
  * Sometimes, bit values are more appropriate
@@ -385,7 +385,7 @@ typedef PRUint8 DirProp;
 #define UTF_APPEND_CHAR_UNSAFE(s, i, c)              UTF16_APPEND_CHAR_UNSAFE(s, i, c)
 #define UTF_APPEND_CHAR_SAFE(s, i, length, c)        UTF16_APPEND_CHAR_SAFE(s, i, length, c)
 
-#define UTF_PREV_CHAR(s, start, i, c)                UTF_PREV_CHAR_SAFE(s, start, i, c, PR_FALSE)
+#define UTF_PREV_CHAR(s, start, i, c)                UTF_PREV_CHAR_SAFE(s, start, i, c, false)
 #define UTF_BACK_1(s, start, i)                      UTF_BACK_1_SAFE(s, start, i)
 #define UTF_BACK_N(s, start, i, n)                   UTF_BACK_N_SAFE(s, start, i, n)
 #define UTF_APPEND_CHAR(s, i, length, c)             UTF_APPEND_CHAR_SAFE(s, i, length, c)
@@ -521,6 +521,15 @@ public:
    */
   nsresult GetDirection(nsBidiDirection* aDirection);
 
+  /**
+   * Get the paragraph level of the text.
+   *
+   * @param aParaLevel receives a <code>NSBIDI_XXX</code> value indicating the paragraph level
+   *
+   * @see nsBidiLevel
+   */
+  nsresult GetParaLevel(nsBidiLevel* aParaLevel);
+
 #ifdef FULL_BIDI_ENGINE
   /**
    * <code>SetLine</code> sets an <code>nsBidi</code> to
@@ -563,15 +572,6 @@ public:
    * @param aLength receives the length of the text that the nsBidi object was created for.
    */
   nsresult GetLength(PRInt32* aLength);
-
-  /**
-   * Get the paragraph level of the text.
-   *
-   * @param aParaLevel receives a <code>NSBIDI_XXX</code> value indicating the paragraph level
-   *
-   * @see nsBidiLevel
-   */
-  nsresult GetParaLevel(nsBidiLevel* aParaLevel);
 
   /**
    * Get the level for one character.
@@ -773,7 +773,7 @@ public:
    *      The array does not need to be initialized.<p>
    *      The index map will result in <code>aIndexMap[aLogicalIndex]==aVisualIndex</code>.
    */
-  nsresult ReorderLogical(const nsBidiLevel *aLevels, PRInt32 aLength, PRInt32 *aIndexMap);
+  static nsresult ReorderLogical(const nsBidiLevel *aLevels, PRInt32 aLength, PRInt32 *aIndexMap);
 #endif // FULL_BIDI_ENGINE
   /**
    * This is a convenience function that does not use a nsBidi object.
@@ -794,7 +794,7 @@ public:
    *      The array does not need to be initialized.<p>
    *      The index map will result in <code>aIndexMap[aVisualIndex]==aLogicalIndex</code>.
    */
-  nsresult ReorderVisual(const nsBidiLevel *aLevels, PRInt32 aLength, PRInt32 *aIndexMap);
+  static nsresult ReorderVisual(const nsBidiLevel *aLevels, PRInt32 aLength, PRInt32 *aIndexMap);
 
 #ifdef FULL_BIDI_ENGINE
   /**
@@ -864,7 +864,7 @@ protected:
   Run* mRunsMemory;
 
   /** indicators for whether memory may be allocated after construction */
-  PRBool mMayAllocateText, mMayAllocateRuns;
+  bool mMayAllocateText, mMayAllocateRuns;
 
   const DirProp* mDirProps;
   nsBidiLevel* mLevels;
@@ -893,7 +893,7 @@ private:
 
   void Init();
 
-  PRBool GetMemory(void **aMemory, PRSize* aSize, PRBool aMayAllocate, PRSize aSizeNeeded);
+  bool GetMemory(void **aMemory, PRSize* aSize, bool aMayAllocate, PRSize aSizeNeeded);
 
   void Free();
 
@@ -911,13 +911,13 @@ private:
 
   void SetTrailingWSStart();
 
-  PRBool GetRuns();
+  bool GetRuns();
 
   void GetSingleRun(nsBidiLevel aLevel);
 
   void ReorderLine(nsBidiLevel aMinLevel, nsBidiLevel aMaxLevel);
 
-  PRBool PrepareReorder(const nsBidiLevel *aLevels, PRInt32 aLength, PRInt32 *aIndexMap, nsBidiLevel *aMinLevel, nsBidiLevel *aMaxLevel);
+  static bool PrepareReorder(const nsBidiLevel *aLevels, PRInt32 aLength, PRInt32 *aIndexMap, nsBidiLevel *aMinLevel, nsBidiLevel *aMaxLevel);
 
   PRInt32 doWriteReverse(const PRUnichar *src, PRInt32 srcLength,
                          PRUnichar *dest, PRUint16 options);

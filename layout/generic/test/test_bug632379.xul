@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <?xml-stylesheet href="chrome://global/skin" type="text/css"?>
-<?xml-stylesheet href="/tests/SimpleTest/test.css" type="text/css"?>
+<?xml-stylesheet href="chrome://mochikit/content/tests/SimpleTest/test.css" type="text/css"?>
 <!--
 https://bugzilla.mozilla.org/show_bug.cgi?id=632379
 -->
@@ -8,9 +8,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=632379
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
   <title>Test for Bug 632379</title>
-  <script type="application/javascript" src="/MochiKit/packed.js" />
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"/>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
 
 <toolbox flex="1">
   <menubar>
@@ -77,7 +76,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=632379
           </menupopup>
         </menu>
         <menu label="menu5" accesskey="5" id="menu5">
-	  <menupopup onpopupshown="snapshot(this)">
+          <menupopup onpopupshown="snapshot(this)">
             <menuitem label="item"/>
             <menuitem label="item"/>
             <menuitem label="item"/>
@@ -177,13 +176,12 @@ function snapshot(elem)
     pos[count] = elem.getBoundingClientRect().top;
     ++count;
     if (count <= 1) {
-	// close the submenu and open the bottom submenu
-	synthesizeKey("VK_LEFT", {});
-	synthesizeKey("9", {});
+        // close the submenu and open the bottom submenu
+        synthesizeKey("VK_LEFT", {});
+        synthesizeKey("9", {});
     } else {
-	is(pos[1], pos[0], "Popup should open in the same place when the menu is scrolled");
-
-	SimpleTest.finish();
+        is(pos[1], pos[0], "Popup should open in the same place when the menu is scrolled");
+        SimpleTest.finish();
     }
 }
 
@@ -198,8 +196,7 @@ function openSubmenu()
     synthesizeKey("5", {});
 }
 
-SimpleTest.waitForExplicitFinish();
-addLoadEvent(doTest);
+SimpleTest.waitForFocus(doTest);
 
 ]]></script>
 </window>

@@ -141,10 +141,12 @@
         </getter>
         <setter>
         <![CDATA[
-          if (val >= 0)
+          if (val >= 0) {
             this.selectItem(this.getItemAtIndex(val));
-          else
+          } else {
             this.clearSelection();
+            this.currentItem = null;
+          }
         ]]>
         </setter>
       </property>
@@ -910,12 +912,23 @@
 
         var listBox = this.parentNode.listBoxObject;
         var rows = event.detail;
-        if (rows == NSUIEvent.SCROLL_PAGE_UP)
+        if (rows == UIEvent.SCROLL_PAGE_UP)
           rows = -listBox.getNumberOfVisibleRows();
-        else if (rows == NSUIEvent.SCROLL_PAGE_DOWN)
+        else if (rows == UIEvent.SCROLL_PAGE_DOWN)
           rows = listBox.getNumberOfVisibleRows();
 
         listBox.scrollByLines(rows);
+        event.preventDefault();
+      ]]>
+      </handler>
+
+      <handler event="MozMousePixelScroll" phase="capturing">
+      <![CDATA[
+        if (event.axis == event.HORIZONTAL_AXIS)
+          return;
+
+        // shouldn't be scrolled by pixel scrolling events before a line/page
+        // scrolling event.
         event.preventDefault();
       ]]>
       </handler>

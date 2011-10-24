@@ -75,7 +75,7 @@ BasicTableLayoutStrategy::GetMinWidth(nsRenderingContext* aRenderingContext)
 
 /* virtual */ nscoord
 BasicTableLayoutStrategy::GetPrefWidth(nsRenderingContext* aRenderingContext,
-                                       PRBool aComputingSize)
+                                       bool aComputingSize)
 {
     DISPLAY_PREF_WIDTH(mTableFrame, mPrefWidth);
     NS_ASSERTION((mPrefWidth == NS_INTRINSIC_WIDTH_UNKNOWN) ==
@@ -88,7 +88,7 @@ BasicTableLayoutStrategy::GetPrefWidth(nsRenderingContext* aRenderingContext,
 
 struct CellWidthInfo {
     CellWidthInfo(nscoord aMinCoord, nscoord aPrefCoord,
-                  float aPrefPercent, PRBool aHasSpecifiedWidth)
+                  float aPrefPercent, bool aHasSpecifiedWidth)
         : hasSpecifiedWidth(aHasSpecifiedWidth)
         , minCoord(aMinCoord)
         , prefCoord(aPrefCoord)
@@ -96,7 +96,7 @@ struct CellWidthInfo {
     {
     }
 
-    PRBool hasSpecifiedWidth;
+    bool hasSpecifiedWidth;
     nscoord minCoord;
     nscoord prefCoord;
     float prefPercent;
@@ -106,7 +106,7 @@ struct CellWidthInfo {
 // for cells are skipped when aIsCell is false.
 static CellWidthInfo
 GetWidthInfo(nsRenderingContext *aRenderingContext,
-             nsIFrame *aFrame, PRBool aIsCell)
+             nsIFrame *aFrame, bool aIsCell)
 {
     nscoord minCoord, prefCoord;
     if (aIsCell) {
@@ -117,7 +117,7 @@ GetWidthInfo(nsRenderingContext *aRenderingContext,
         prefCoord = 0;
     }
     float prefPercent = 0.0f;
-    PRBool hasSpecifiedWidth = PR_FALSE;
+    bool hasSpecifiedWidth = false;
 
     // XXXldb Should we consider -moz-box-sizing?
 
@@ -128,7 +128,7 @@ GetWidthInfo(nsRenderingContext *aRenderingContext,
     // idea for what to do with them.  This means calc() is basically
     // handled like 'auto' for table cells and columns.
     if (unit == eStyleUnit_Coord) {
-        hasSpecifiedWidth = PR_TRUE;
+        hasSpecifiedWidth = true;
         nscoord w = nsLayoutUtils::ComputeWidthValue(aRenderingContext,
                                                      aFrame, 0, 0, 0, width);
         // Quirk: A cell with "nowrap" set and a coord value for the
@@ -235,14 +235,14 @@ static inline CellWidthInfo
 GetCellWidthInfo(nsRenderingContext *aRenderingContext,
                  nsTableCellFrame *aCellFrame)
 {
-    return GetWidthInfo(aRenderingContext, aCellFrame, PR_TRUE);
+    return GetWidthInfo(aRenderingContext, aCellFrame, true);
 }
 
 static inline CellWidthInfo
 GetColWidthInfo(nsRenderingContext *aRenderingContext,
                 nsIFrame *aFrame)
 {
-    return GetWidthInfo(aRenderingContext, aFrame, PR_FALSE);
+    return GetWidthInfo(aRenderingContext, aFrame, false);
 }
 
 
@@ -320,7 +320,7 @@ BasicTableLayoutStrategy::ComputeColumnIntrinsicWidths(nsRenderingContext* aRend
     }
 #ifdef DEBUG_TABLE_STRATEGY
     printf("ComputeColumnIntrinsicWidths single\n");
-    mTableFrame->Dump(PR_FALSE, PR_TRUE, PR_FALSE);
+    mTableFrame->Dump(false, true, false);
 #endif
 
     // Consider the cells with a colspan that we saved in the loop above
@@ -408,7 +408,7 @@ BasicTableLayoutStrategy::ComputeColumnIntrinsicWidths(nsRenderingContext* aRend
 
 #ifdef DEBUG_TABLE_STRATEGY
     printf("ComputeColumnIntrinsicWidths spanning\n");
-    mTableFrame->Dump(PR_FALSE, PR_TRUE, PR_FALSE);
+    mTableFrame->Dump(false, true, false);
 #endif
 }
 
@@ -529,11 +529,11 @@ BasicTableLayoutStrategy::ComputeColumnWidths(const nsHTMLReflowState& aReflowSt
     if (colCount <= 0)
         return; // nothing to do
 
-    DistributeWidthToColumns(width, 0, colCount, BTLS_FINAL_WIDTH, PR_FALSE);
+    DistributeWidthToColumns(width, 0, colCount, BTLS_FINAL_WIDTH, false);
 
 #ifdef DEBUG_TABLE_STRATEGY
     printf("ComputeColumnWidths final\n");
-    mTableFrame->Dump(PR_FALSE, PR_TRUE, PR_FALSE);
+    mTableFrame->Dump(false, true, false);
 #endif
 }
 
@@ -572,7 +572,7 @@ BasicTableLayoutStrategy::DistributePctWidthToColumns(float aSpanPrefPct,
 
     // Second loop, to distribute what remains of aSpanPrefPct
     // between the non-percent-width spanned columns
-    const PRBool spanHasNonPctPref = nonPctTotalPrefWidth > 0; // Loop invariant
+    const bool spanHasNonPctPref = nonPctTotalPrefWidth > 0; // Loop invariant
     for (scol = aFirstCol, scol_end = aFirstCol + aColCount;
          scol < scol_end; ++scol) {
         nsTableColFrame *scolFrame = mTableFrame->GetColFrame(scol);
@@ -626,7 +626,7 @@ BasicTableLayoutStrategy::DistributeWidthToColumns(nscoord aWidth,
                                                    PRInt32 aFirstCol, 
                                                    PRInt32 aColCount,
                                                    BtlsWidthType aWidthType,
-                                                   PRBool aSpanHasSpecifiedWidth)
+                                                   bool aSpanHasSpecifiedWidth)
 {
     NS_ASSERTION(aWidthType != BTLS_FINAL_WIDTH || 
                  (aFirstCol == 0 && 

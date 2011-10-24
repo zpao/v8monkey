@@ -53,8 +53,8 @@
 #include "nsAutoPtr.h"
 #include "nsFrameMessageManager.h"
 #include "Layers.h"
+#include "mozilla/dom/Element.h"
 
-class nsIContent;
 class nsIURI;
 class nsSubDocumentFrame;
 class nsIView;
@@ -104,7 +104,7 @@ public:
 
     // Default copy ctor and operator= are fine
 
-    PRBool operator==(const ViewConfig& aOther) const
+    bool operator==(const ViewConfig& aOther) const
     {
       return (mScrollOffset == aOther.mScrollOffset &&
               mXScale == aOther.mXScale &&
@@ -127,11 +127,11 @@ public:
     float mYScale;
   };
 
-  nsContentView(nsIContent* aOwnerContent, ViewID aScrollId,
+  nsContentView(nsFrameLoader* aFrameLoader, ViewID aScrollId,
                 ViewConfig aConfig = ViewConfig())
     : mViewportSize(0, 0)
     , mContentSize(0, 0)
-    , mOwnerContent(aOwnerContent)
+    , mFrameLoader(aFrameLoader)
     , mScrollId(aScrollId)
     , mConfig(aConfig)
   {}
@@ -151,7 +151,7 @@ public:
   nsSize mViewportSize;
   nsSize mContentSize;
 
-  nsIContent *mOwnerContent; // WEAK
+  nsFrameLoader* mFrameLoader;  // WEAK
 
 private:
   nsresult Update(const ViewConfig& aConfig);
@@ -170,23 +170,24 @@ class nsFrameLoader : public nsIFrameLoader,
   typedef mozilla::layout::RenderFrameParent RenderFrameParent;
 
 protected:
-  nsFrameLoader(nsIContent *aOwner, PRBool aNetworkCreated);
+  nsFrameLoader(mozilla::dom::Element* aOwner, bool aNetworkCreated);
 
 public:
   ~nsFrameLoader() {
-    mNeedsAsyncDestroy = PR_TRUE;
+    mNeedsAsyncDestroy = true;
     if (mMessageManager) {
       mMessageManager->Disconnect();
     }
     nsFrameLoader::Destroy();
   }
 
-  PRBool AsyncScrollEnabled() const
+  bool AsyncScrollEnabled() const
   {
     return !!(mRenderMode & RENDER_MODE_ASYNC_SCROLL);
   }
 
-  static nsFrameLoader* Create(nsIContent* aOwner, PRBool aNetworkCreated);
+  static nsFrameLoader* Create(mozilla::dom::Element* aOwner,
+                               bool aNetworkCreated);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsFrameLoader, nsIFrameLoader)
@@ -196,16 +197,21 @@ public:
   nsresult ReallyStartLoading();
   void Finalize();
   nsIDocShell* GetExistingDocShell() { return mDocShell; }
-  nsPIDOMEventTarget* GetTabChildGlobalAsEventTarget();
+  nsIDOMEventTarget* GetTabChildGlobalAsEventTarget();
   nsresult CreateStaticClone(nsIFrameLoader* aDest);
 
   /**
    * Called from the layout frame associated with this frame loader;
    * this notifies us to hook up with the widget and view.
    */
-  PRBool Show(PRInt32 marginWidth, PRInt32 marginHeight,
+  bool Show(PRInt32 marginWidth, PRInt32 marginHeight,
               PRInt32 scrollbarPrefX, PRInt32 scrollbarPrefY,
               nsSubDocumentFrame* frame);
+
+  /**
+   * Called when the margin properties of the containing frame are changed.
+   */
+  void MarginsChanged(PRUint32 aMarginWidth, PRUint32 aMarginHeight);
 
   /**
    * Called from the layout frame associated with this frame loader, when
@@ -239,8 +245,8 @@ public:
    * Return the document that owns this, or null if we don't have
    * an owner.
    */
-  nsIDocument* GetOwnerDoc() const
-  { return mOwnerContent ? mOwnerContent->GetOwnerDoc() : nsnull; }
+  nsIDocument* OwnerDoc() const
+  { return mOwnerContent ? mOwnerContent->OwnerDoc() : nsnull; }
 
   PBrowserParent* GetRemoteBrowser();
 
@@ -274,8 +280,8 @@ public:
   }
   nsFrameMessageManager* GetFrameMessageManager() { return mMessageManager; }
 
-  nsIContent* GetOwnerContent() { return mOwnerContent; }
-  void SetOwnerContent(nsIContent* aContent);
+  mozilla::dom::Element* GetOwnerContent() { return mOwnerContent; }
+  void SetOwnerContent(mozilla::dom::Element* aContent);
 
 private:
 
@@ -291,6 +297,7 @@ private:
 
   // Properly retrieves documentSize of any subdocument type.
   NS_HIDDEN_(nsIntSize) GetSubDocumentSize(const nsIFrame *aIFrame);
+  nsresult GetWindowDimensions(nsRect& aRect);
 
   // Updates the subdocument position and size. This gets called only
   // when we have our own in-process DocShell.
@@ -307,26 +314,26 @@ private:
 
   nsCOMPtr<nsIDocShell> mDocShell;
   nsCOMPtr<nsIURI> mURIToLoad;
-  nsIContent *mOwnerContent; // WEAK
+  mozilla::dom::Element* mOwnerContent; // WEAK
 public:
   // public because a callback needs these.
   nsRefPtr<nsFrameMessageManager> mMessageManager;
   nsCOMPtr<nsIInProcessContentFrameMessageManager> mChildMessageManager;
 private:
-  PRPackedBool mDepthTooGreat : 1;
-  PRPackedBool mIsTopLevelContent : 1;
-  PRPackedBool mDestroyCalled : 1;
-  PRPackedBool mNeedsAsyncDestroy : 1;
-  PRPackedBool mInSwap : 1;
-  PRPackedBool mInShow : 1;
-  PRPackedBool mHideCalled : 1;
+  bool mDepthTooGreat : 1;
+  bool mIsTopLevelContent : 1;
+  bool mDestroyCalled : 1;
+  bool mNeedsAsyncDestroy : 1;
+  bool mInSwap : 1;
+  bool mInShow : 1;
+  bool mHideCalled : 1;
   // True when the object is created for an element which the parser has
   // created using NS_FROM_PARSER_NETWORK flag. If the element is modified,
   // it may lose the flag.
-  PRPackedBool mNetworkCreated : 1;
+  bool mNetworkCreated : 1;
 
-  PRPackedBool mDelayRemoteDialogs : 1;
-  PRPackedBool mRemoteBrowserShown : 1;
+  bool mDelayRemoteDialogs : 1;
+  bool mRemoteBrowserShown : 1;
   bool mRemoteFrame;
   // XXX leaking
   nsCOMPtr<nsIObserver> mChildHost;
@@ -337,6 +344,10 @@ private:
   // RENDER_MODE_ASYNC_SCROLL), all the fields below are ignored in
   // favor of what content tells.
   PRUint32 mRenderMode;
+
+  // See nsIFrameLoader.idl. EVENT_MODE_NORMAL_DISPATCH automatically
+  // forwards some input events to out-of-process content.
+  PRUint32 mEventMode;
 };
 
 #endif

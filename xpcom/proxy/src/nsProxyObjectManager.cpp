@@ -75,7 +75,7 @@ public:
             NS_PTR_TO_INT32(mTargetKey) ^ mProxyType;
     }
 
-    PRBool Equals(const nsHashKey *aKey) const {
+    bool Equals(const nsHashKey *aKey) const {
         const nsProxyEventKey* other = (const nsProxyEventKey*)aKey;
         return mRootObjectKey == other->mRootObjectKey
             && mTargetKey == other->mTargetKey
@@ -113,7 +113,7 @@ nsProxyObjectManager::Release()
 }
 
 nsProxyObjectManager::nsProxyObjectManager()
-    : mProxyObjectMap(256, PR_FALSE)
+    : mProxyObjectMap(256, false)
     , mProxyCreationLock("nsProxyObjectManager.mProxyCreationLock")
 {
     mProxyClassMap.Init(256);
@@ -126,7 +126,7 @@ nsProxyObjectManager::~nsProxyObjectManager()
     nsProxyObjectManager::gInstance = nsnull;
 }
 
-PRBool
+bool
 nsProxyObjectManager::IsManagerShutdown()
 {
     return gInstance == nsnull;
@@ -213,7 +213,7 @@ nsProxyObjectManager::GetProxyForObject(nsIEventTarget* aTarget,
     
     if (!(proxyType & NS_PROXY_ASYNC) && !(proxyType & NS_PROXY_ALWAYS))
     {
-        PRBool result;
+        bool result;
         aTarget->IsOnCurrentThread(&result);
      
         if (result)
@@ -326,7 +326,7 @@ nsProxyObjectManager::GetClass(REFNSIID aIID, nsProxyEventClass **aResult)
  * themselves every single time, thus making the calling code more
  * readable.
  */
-NS_COM nsresult
+nsresult
 NS_GetProxyForObject(nsIEventTarget *target, 
                      REFNSIID aIID, 
                      nsISupports* aObj, 

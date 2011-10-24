@@ -130,16 +130,21 @@ public:
   NS_DECL_NSIACCESSIBLETABLE
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_TABLEACCESSIBLE_IMPL_CID)
 
-  // nsIAccessible
-  NS_IMETHOD GetRelationByType(PRUint32 aRelationType,
-                               nsIAccessibleRelation **aRelation);
-
   // nsAccessible
   virtual void Description(nsString& aDescription);
   virtual nsresult GetNameInternal(nsAString& aName);
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
   virtual nsresult GetAttributesInternal(nsIPersistentProperties *aAttributes);
+  virtual Relation RelationByType(PRUint32 aRelationType);
+
+  // TableAccessible
+  inline nsAccessible* Caption() const
+  {
+    nsAccessible* child = mChildren.SafeElementAt(0, nsnull);
+    return child && child->Role() == nsIAccessibleRole::ROLE_CAPTION ?
+      child : nsnull;
+  }
 
   // nsHTMLTableAccessible
 
@@ -181,7 +186,7 @@ protected:
    */
   nsresult RemoveRowsOrColumnsFromSelection(PRInt32 aIndex,
                                             PRUint32 aTarget,
-                                            PRBool aIsOuter);
+                                            bool aIsOuter);
 
   /**
    * Return true if table has an element with the given tag name.
@@ -190,7 +195,7 @@ protected:
    * @param  aAllowEmpty  [in, optional] points if found element can be empty
    *                       or contain whitespace text only.
    */
-  PRBool HasDescendant(const nsAString& aTagName, PRBool aAllowEmpty = PR_TRUE);
+  bool HasDescendant(const nsAString& aTagName, bool aAllowEmpty = true);
 
 #ifdef SHOW_LAYOUT_HEURISTIC
   nsString mLayoutHeuristic;
@@ -211,11 +216,10 @@ public:
     nsHyperTextAccessibleWrap(aContent, aShell) { }
 
   // nsIAccessible
-  NS_IMETHOD GetRelationByType(PRUint32 aRelationType,
-                               nsIAccessibleRelation **aRelation);
 
   // nsAccessible
   virtual PRUint32 NativeRole();
+  virtual Relation RelationByType(PRUint32 aRelationType);
 };
 
 #endif  

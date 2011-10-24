@@ -49,7 +49,6 @@
 #include "nsString.h"
 #include "nsStringBuffer.h"
 #include "nsTArray.h"
-#include "mozilla/mozalloc.h"
 #include "nsStyleConsts.h"
 
 class imgIRequest;
@@ -142,12 +141,13 @@ enum nsCSSUnit {
   eCSSUnit_Gradient     = 42,     // (nsCSSValueGradient*) value
 
   eCSSUnit_Pair         = 50,     // (nsCSSValuePair*) pair of values
-  eCSSUnit_Rect         = 51,     // (nsCSSRect*) rectangle (four values)
-  eCSSUnit_List         = 52,     // (nsCSSValueList*) list of values
-  eCSSUnit_ListDep      = 53,     // (nsCSSValueList*) same as List
+  eCSSUnit_Triplet      = 51,     // (nsCSSValueTriplet*) triplet of values
+  eCSSUnit_Rect         = 52,     // (nsCSSRect*) rectangle (four values)
+  eCSSUnit_List         = 53,     // (nsCSSValueList*) list of values
+  eCSSUnit_ListDep      = 54,     // (nsCSSValueList*) same as List
                                   //   but does not own the list
-  eCSSUnit_PairList     = 54,     // (nsCSSValuePairList*) list of value pairs
-  eCSSUnit_PairListDep  = 55,     // (nsCSSValuePairList*) same as PairList
+  eCSSUnit_PairList     = 55,     // (nsCSSValuePairList*) list of value pairs
+  eCSSUnit_PairListDep  = 56,     // (nsCSSValuePairList*) same as PairList
                                   //   but does not own the list
 
   eCSSUnit_Integer      = 70,     // (int) simple value
@@ -200,6 +200,8 @@ struct nsCSSValueList;
 struct nsCSSValueList_heap;
 struct nsCSSValuePairList;
 struct nsCSSValuePairList_heap;
+struct nsCSSValueTriplet;
+struct nsCSSValueTriplet_heap;
 
 class nsCSSValue {
 public:
@@ -230,9 +232,9 @@ public:
   ~nsCSSValue() { Reset(); }
 
   nsCSSValue&  operator=(const nsCSSValue& aCopy);
-  PRBool      operator==(const nsCSSValue& aOther) const;
+  bool        operator==(const nsCSSValue& aOther) const;
 
-  PRBool operator!=(const nsCSSValue& aOther) const
+  bool operator!=(const nsCSSValue& aOther) const
   {
     return !(*this == aOther);
   }
@@ -244,14 +246,14 @@ public:
   void AppendToString(nsCSSProperty aProperty, nsAString& aResult) const;
 
   nsCSSUnit GetUnit() const { return mUnit; }
-  PRBool    IsLengthUnit() const
+  bool      IsLengthUnit() const
     { return eCSSUnit_PhysicalMillimeter <= mUnit && mUnit <= eCSSUnit_Pixel; }
   /**
    * A "fixed" length unit is one that means a specific physical length
    * which we try to match based on the physical characteristics of an
    * output device.
    */
-  PRBool    IsFixedLengthUnit() const  
+  bool      IsFixedLengthUnit() const  
     { return mUnit == eCSSUnit_PhysicalMillimeter; }
   /**
    * What the spec calls relative length units is, for us, split
@@ -262,25 +264,25 @@ public:
    * length. Relative length units should not be scaled by zooming, since
    * the underlying CSS length would already have been scaled.
    */
-  PRBool    IsRelativeLengthUnit() const  
+  bool      IsRelativeLengthUnit() const  
     { return eCSSUnit_EM <= mUnit && mUnit <= eCSSUnit_RootEM; }
   /**
    * A "pixel" length unit is a some multiple of CSS pixels.
    */
-  PRBool    IsPixelLengthUnit() const
+  bool      IsPixelLengthUnit() const
     { return eCSSUnit_Point <= mUnit && mUnit <= eCSSUnit_Pixel; }
-  PRBool    IsAngularUnit() const  
+  bool      IsAngularUnit() const  
     { return eCSSUnit_Degree <= mUnit && mUnit <= eCSSUnit_Radian; }
-  PRBool    IsFrequencyUnit() const  
+  bool      IsFrequencyUnit() const  
     { return eCSSUnit_Hertz <= mUnit && mUnit <= eCSSUnit_Kilohertz; }
-  PRBool    IsTimeUnit() const  
+  bool      IsTimeUnit() const  
     { return eCSSUnit_Seconds <= mUnit && mUnit <= eCSSUnit_Milliseconds; }
-  PRBool    IsCalcUnit() const
+  bool      IsCalcUnit() const
     { return eCSSUnit_Calc <= mUnit && mUnit <= eCSSUnit_Calc_Divided; }
 
-  PRBool    UnitHasStringValue() const
+  bool      UnitHasStringValue() const
     { return eCSSUnit_String <= mUnit && mUnit <= eCSSUnit_Element; }
-  PRBool    UnitHasArrayValue() const
+  bool      UnitHasArrayValue() const
     { return eCSSUnit_Array <= mUnit && mUnit <= eCSSUnit_Calc_Divided; }
 
   PRInt32 GetIntValue() const
@@ -335,7 +337,7 @@ public:
     return mValue.mColor;
   }
 
-  PRBool IsNonTransparentColor() const;
+  bool IsNonTransparentColor() const;
 
   Array* GetArrayValue() const
   {
@@ -348,7 +350,7 @@ public:
     NS_ABORT_IF_FALSE(mUnit == eCSSUnit_URL || mUnit == eCSSUnit_Image,
                  "not a URL value");
     return mUnit == eCSSUnit_URL ?
-      mValue.mURL->mURI : mValue.mImage->mURI;
+      mValue.mURL->GetURI() : mValue.mImage->GetURI();
   }
 
   nsCSSValueGradient* GetGradientValue() const
@@ -369,6 +371,9 @@ public:
 
   inline nsCSSValuePairList* GetPairListValue();
   inline const nsCSSValuePairList* GetPairListValue() const;
+
+  inline nsCSSValueTriplet& GetTripletValue();
+  inline const nsCSSValueTriplet& GetTripletValue() const;
 
   URL* GetURLStructValue() const
   {
@@ -417,6 +422,8 @@ public:
   void SetPairValue(const nsCSSValue& xValue, const nsCSSValue& yValue);
   void SetDependentListValue(nsCSSValueList* aList);
   void SetDependentPairListValue(nsCSSValuePairList* aList);
+  void SetTripletValue(const nsCSSValueTriplet* aTriplet);
+  void SetTripletValue(const nsCSSValue& xValue, const nsCSSValue& yValue, const nsCSSValue& zValue);
   void SetAutoValue();
   void SetInheritValue();
   void SetInitialValue();
@@ -438,7 +445,7 @@ public:
   // Initializes as a function value with the specified function id.
   Array* InitFunction(nsCSSKeyword aFunctionId, PRUint32 aNumArgs);
   // Checks if this is a function value with the specified function id.
-  PRBool EqualsFunction(nsCSSKeyword aFunctionId) const;
+  bool EqualsFunction(nsCSSKeyword aFunctionId) const;
 
   // Returns an already addrefed buffer.  Can return null on allocation
   // failure.
@@ -450,22 +457,34 @@ public:
     // caps, which leads to REQUIRES hell, since this header is included all
     // over.
 
-    // aString must not be null.
-    // aOriginPrincipal must not be null.
+    // For both constructors aString must not be null.
+    // For both constructors aOriginPrincipal must not be null.
+    // Construct with a base URI; this will create the actual URI lazily from
+    // aString and aBaseURI.
+    URL(nsStringBuffer* aString, nsIURI* aBaseURI, nsIURI* aReferrer,
+        nsIPrincipal* aOriginPrincipal);
+    // Construct with the actual URI.
     URL(nsIURI* aURI, nsStringBuffer* aString, nsIURI* aReferrer,
         nsIPrincipal* aOriginPrincipal);
 
     ~URL();
 
-    PRBool operator==(const URL& aOther) const;
+    bool operator==(const URL& aOther) const;
 
     // URIEquals only compares URIs and principals (unlike operator==, which
     // also compares the original strings).  URIEquals also assumes that the
     // mURI member of both URL objects is non-null.  Do NOT call this method
     // unless you're sure this is the case.
-    PRBool URIEquals(const URL& aOther) const;
+    bool URIEquals(const URL& aOther) const;
 
-    nsCOMPtr<nsIURI> mURI; // null == invalid URL
+    nsIURI* GetURI() const;
+
+  private:
+    // If mURIResolved is false, mURI stores the base URI.
+    // If mURIResolved is true, mURI stores the URI we resolve to; this may be
+    // null if the URI is invalid.
+    mutable nsCOMPtr<nsIURI> mURI;
+  public:
     nsStringBuffer* mString; // Could use nsRefPtr, but it'd add useless
                              // null-checks; this is never null.
     nsCOMPtr<nsIURI> mReferrer;
@@ -473,7 +492,8 @@ public:
 
     NS_INLINE_DECL_REFCOUNTING(nsCSSValue::URL)
 
-  protected:
+  private:
+    mutable bool mURIResolved;
 
     // not to be implemented
     URL(const URL& aOther);
@@ -518,6 +538,7 @@ protected:
     nsCSSValueGradient* mGradient;
     nsCSSValuePair_heap* mPair;
     nsCSSRect_heap* mRect;
+    nsCSSValueTriplet_heap* mTriplet;
     nsCSSValueList_heap* mList;
     nsCSSValueList* mListDependent;
     nsCSSValuePairList_heap* mPairList;
@@ -530,11 +551,6 @@ struct nsCSSValue::Array {
   // return |Array| with reference count of zero
   static Array* Create(size_t aItemCount) {
     return new (aItemCount) Array(aItemCount);
-  }
-
-  static Array* Create(const mozilla::fallible_t& aFallible,
-                       size_t aItemCount) {
-    return new (aFallible, aItemCount) Array(aItemCount);
   }
 
   nsCSSValue& operator[](size_t aIndex) {
@@ -552,14 +568,14 @@ struct nsCSSValue::Array {
 
   size_t Count() const { return mCount; }
 
-  PRBool operator==(const Array& aOther) const
+  bool operator==(const Array& aOther) const
   {
     if (mCount != aOther.mCount)
-      return PR_FALSE;
+      return false;
     for (size_t i = 0; i < mCount; ++i)
       if ((*this)[i] != aOther[i])
-        return PR_FALSE;
-    return PR_TRUE;
+        return false;
+    return true;
   }
 
   // XXXdholbert This uses a size_t ref count. Should we use a variant
@@ -595,13 +611,6 @@ private:
   void* operator new(size_t aSelfSize, size_t aItemCount) CPP_THROW_NEW {
     NS_ABORT_IF_FALSE(aItemCount > 0, "cannot have a 0 item count");
     return ::operator new(aSelfSize + sizeof(nsCSSValue) * (aItemCount - 1));
-  }
-
-  void* operator new(size_t aSelfSize, const mozilla::fallible_t& aFallible,
-                     size_t aItemCount) CPP_THROW_NEW {
-    NS_ABORT_IF_FALSE(aItemCount > 0, "cannot have a 0 item count");
-    return ::operator new(aSelfSize + sizeof(nsCSSValue) * (aItemCount - 1),
-                          aFallible);
   }
 
   void operator delete(void* aPtr) { ::operator delete(aPtr); }
@@ -646,6 +655,7 @@ struct nsCSSValueList {
   ~nsCSSValueList();
 
   nsCSSValueList* Clone() const;  // makes a deep copy
+  void CloneInto(nsCSSValueList* aList) const; // makes a deep copy into aList
   void AppendToString(nsCSSProperty aProperty, nsAString& aResult) const;
 
   bool operator==(nsCSSValueList const& aOther) const;
@@ -701,14 +711,14 @@ struct nsCSSRect {
 
   void AppendToString(nsCSSProperty aProperty, nsAString& aResult) const;
 
-  PRBool operator==(const nsCSSRect& aOther) const {
+  bool operator==(const nsCSSRect& aOther) const {
     return mTop == aOther.mTop &&
            mRight == aOther.mRight &&
            mBottom == aOther.mBottom &&
            mLeft == aOther.mLeft;
   }
 
-  PRBool operator!=(const nsCSSRect& aOther) const {
+  bool operator!=(const nsCSSRect& aOther) const {
     return mTop != aOther.mTop ||
            mRight != aOther.mRight ||
            mBottom != aOther.mBottom ||
@@ -724,7 +734,7 @@ struct nsCSSRect {
     mLeft.Reset();
   }
 
-  PRBool HasValue() const {
+  bool HasValue() const {
     return
       mTop.GetUnit() != eCSSUnit_Null ||
       mRight.GetUnit() != eCSSUnit_Null ||
@@ -789,12 +799,12 @@ struct nsCSSValuePair {
     MOZ_COUNT_DTOR(nsCSSValuePair);
   }
 
-  PRBool operator==(const nsCSSValuePair& aOther) const {
+  bool operator==(const nsCSSValuePair& aOther) const {
     return mXValue == aOther.mXValue &&
            mYValue == aOther.mYValue;
   }
 
-  PRBool operator!=(const nsCSSValuePair& aOther) const {
+  bool operator!=(const nsCSSValuePair& aOther) const {
     return mXValue != aOther.mXValue ||
            mYValue != aOther.mYValue;
   }
@@ -809,7 +819,7 @@ struct nsCSSValuePair {
     mYValue.Reset();
   }
 
-  PRBool HasValue() const {
+  bool HasValue() const {
     return mXValue.GetUnit() != eCSSUnit_Null ||
            mYValue.GetUnit() != eCSSUnit_Null;
   }
@@ -824,12 +834,88 @@ struct nsCSSValuePair {
 // refcounted.  It should not be necessary to use this class directly;
 // it's an implementation detail of nsCSSValue.
 struct nsCSSValuePair_heap : public nsCSSValuePair {
+    // forward constructor
+    nsCSSValuePair_heap(const nsCSSValue& aXValue, const nsCSSValue& aYValue)
+        : nsCSSValuePair(aXValue, aYValue)
+    {}
+
+    NS_INLINE_DECL_REFCOUNTING(nsCSSValuePair_heap)
+};
+
+struct nsCSSValueTriplet {
+    nsCSSValueTriplet()
+    {
+        MOZ_COUNT_CTOR(nsCSSValueTriplet);
+    }
+    nsCSSValueTriplet(nsCSSUnit aUnit)
+        : mXValue(aUnit), mYValue(aUnit), mZValue(aUnit)
+    {
+        MOZ_COUNT_CTOR(nsCSSValueTriplet);
+    }
+    nsCSSValueTriplet(const nsCSSValue& aXValue, 
+                      const nsCSSValue& aYValue, 
+                      const nsCSSValue& aZValue)
+        : mXValue(aXValue), mYValue(aYValue), mZValue(aZValue)
+    {
+        MOZ_COUNT_CTOR(nsCSSValueTriplet);
+    }
+    nsCSSValueTriplet(const nsCSSValueTriplet& aCopy)
+        : mXValue(aCopy.mXValue), mYValue(aCopy.mYValue), mZValue(aCopy.mZValue)
+    {
+        MOZ_COUNT_CTOR(nsCSSValueTriplet);
+    }
+    ~nsCSSValueTriplet()
+    {
+        MOZ_COUNT_DTOR(nsCSSValueTriplet);
+    }
+
+    bool operator==(const nsCSSValueTriplet& aOther) const {
+        return mXValue == aOther.mXValue &&
+               mYValue == aOther.mYValue &&
+               mZValue == aOther.mZValue;
+    }
+
+    bool operator!=(const nsCSSValueTriplet& aOther) const {
+        return mXValue != aOther.mXValue ||
+               mYValue != aOther.mYValue ||
+               mZValue != aOther.mZValue;
+    }
+
+    void SetAllValuesTo(const nsCSSValue& aValue) {
+        mXValue = aValue;
+        mYValue = aValue;
+        mZValue = aValue;
+    }
+
+    void Reset() {
+        mXValue.Reset();
+        mYValue.Reset();
+        mZValue.Reset();
+    }
+
+    bool HasValue() const {
+        return mXValue.GetUnit() != eCSSUnit_Null ||
+               mYValue.GetUnit() != eCSSUnit_Null ||
+               mZValue.GetUnit() != eCSSUnit_Null;
+    }
+
+    void AppendToString(nsCSSProperty aProperty, nsAString& aResult) const;
+
+    nsCSSValue mXValue;
+    nsCSSValue mYValue;
+    nsCSSValue mZValue;
+};
+
+// nsCSSValueTriplet_heap differs from nsCSSValueTriplet only in being
+// refcounted.  It should not be necessary to use this class directly;
+// it's an implementation detail of nsCSSValue.
+struct nsCSSValueTriplet_heap : public nsCSSValueTriplet {
   // forward constructor
-  nsCSSValuePair_heap(const nsCSSValue& aXValue, const nsCSSValue& aYValue)
-    : nsCSSValuePair(aXValue, aYValue)
+  nsCSSValueTriplet_heap(const nsCSSValue& aXValue, const nsCSSValue& aYValue, const nsCSSValue& aZValue)
+    : nsCSSValueTriplet(aXValue, aYValue, aZValue)
   {}
 
-  NS_INLINE_DECL_REFCOUNTING(nsCSSValuePair_heap)
+  NS_INLINE_DECL_REFCOUNTING(nsCSSValueTriplet_heap)
 };
 
 // This has to be here so that the relationship between nsCSSValuePair
@@ -846,6 +932,20 @@ nsCSSValue::GetPairValue() const
 {
   NS_ABORT_IF_FALSE(mUnit == eCSSUnit_Pair, "not a pair value");
   return *mValue.mPair;
+}
+
+inline nsCSSValueTriplet&
+nsCSSValue::GetTripletValue()
+{
+    NS_ABORT_IF_FALSE(mUnit == eCSSUnit_Triplet, "not a triplet value");
+    return *mValue.mTriplet;
+}
+
+inline const nsCSSValueTriplet&
+nsCSSValue::GetTripletValue() const
+{
+    NS_ABORT_IF_FALSE(mUnit == eCSSUnit_Triplet, "not a triplet value");
+    return *mValue.mTriplet;
 }
 
 // Maybe should be replaced with nsCSSValueList and nsCSSValue::Array?
@@ -906,31 +1006,32 @@ nsCSSValue::GetPairListValue() const
 struct nsCSSValueGradientStop {
 public:
   nsCSSValueGradientStop();
-  // needed to keep bloat logs happy when we use the nsTArray in nsCSSValueGradient
+  // needed to keep bloat logs happy when we use the TArray
+  // in nsCSSValueGradient
   nsCSSValueGradientStop(const nsCSSValueGradientStop& aOther);
   ~nsCSSValueGradientStop();
 
   nsCSSValue mLocation;
   nsCSSValue mColor;
 
-  PRBool operator==(const nsCSSValueGradientStop& aOther) const
+  bool operator==(const nsCSSValueGradientStop& aOther) const
   {
     return (mLocation == aOther.mLocation &&
             mColor == aOther.mColor);
   }
 
-  PRBool operator!=(const nsCSSValueGradientStop& aOther) const
+  bool operator!=(const nsCSSValueGradientStop& aOther) const
   {
     return !(*this == aOther);
   }
 };
 
 struct nsCSSValueGradient {
-  nsCSSValueGradient(PRBool aIsRadial, PRBool aIsRepeating);
+  nsCSSValueGradient(bool aIsRadial, bool aIsRepeating);
 
   // true if gradient is radial, false if it is linear
-  PRPackedBool mIsRadial;
-  PRPackedBool mIsRepeating;
+  bool mIsRadial;
+  bool mIsRepeating;
   // line position and angle
   nsCSSValuePair mBgPos;
   nsCSSValue mAngle;
@@ -939,9 +1040,9 @@ struct nsCSSValueGradient {
   nsCSSValue mRadialShape;
   nsCSSValue mRadialSize;
 
-  nsTArray<nsCSSValueGradientStop> mStops;
+  InfallibleTArray<nsCSSValueGradientStop> mStops;
 
-  PRBool operator==(const nsCSSValueGradient& aOther) const
+  bool operator==(const nsCSSValueGradient& aOther) const
   {
     if (mIsRadial != aOther.mIsRadial ||
         mIsRepeating != aOther.mIsRepeating ||
@@ -949,20 +1050,20 @@ struct nsCSSValueGradient {
         mAngle != aOther.mAngle ||
         mRadialShape != aOther.mRadialShape ||
         mRadialSize != aOther.mRadialSize)
-      return PR_FALSE;
+      return false;
 
     if (mStops.Length() != aOther.mStops.Length())
-      return PR_FALSE;
+      return false;
 
     for (PRUint32 i = 0; i < mStops.Length(); i++) {
       if (mStops[i] != aOther.mStops[i])
-        return PR_FALSE;
+        return false;
     }
 
-    return PR_TRUE;
+    return true;
   }
 
-  PRBool operator!=(const nsCSSValueGradient& aOther) const
+  bool operator!=(const nsCSSValueGradient& aOther) const
   {
     return !(*this == aOther);
   }
@@ -988,28 +1089,28 @@ struct nsCSSCornerSizes {
     return this->*corners[aCorner];
   }
 
-  PRBool operator==(const nsCSSCornerSizes& aOther) const {
+  bool operator==(const nsCSSCornerSizes& aOther) const {
     NS_FOR_CSS_FULL_CORNERS(corner) {
       if (this->GetCorner(corner) != aOther.GetCorner(corner))
-        return PR_FALSE;
+        return false;
     }
-    return PR_TRUE;
+    return true;
   }
 
-  PRBool operator!=(const nsCSSCornerSizes& aOther) const {
+  bool operator!=(const nsCSSCornerSizes& aOther) const {
     NS_FOR_CSS_FULL_CORNERS(corner) {
       if (this->GetCorner(corner) != aOther.GetCorner(corner))
-        return PR_TRUE;
+        return true;
     }
-    return PR_FALSE;
+    return false;
   }
 
-  PRBool HasValue() const {
+  bool HasValue() const {
     NS_FOR_CSS_FULL_CORNERS(corner) {
       if (this->GetCorner(corner).GetUnit() != eCSSUnit_Null)
-        return PR_TRUE;
+        return true;
     }
-    return PR_FALSE;
+    return false;
   }
 
   void Reset();

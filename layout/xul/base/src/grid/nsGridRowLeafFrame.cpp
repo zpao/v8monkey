@@ -48,18 +48,18 @@
 #include "nsBoxLayoutState.h"
 #include "nsGridLayout2.h"
 
-already_AddRefed<nsIBoxLayout> NS_NewGridRowLeafLayout();
+already_AddRefed<nsBoxLayout> NS_NewGridRowLeafLayout();
 
 nsIFrame*
 NS_NewGridRowLeafFrame(nsIPresShell* aPresShell,
                        nsStyleContext* aContext)
 {
-  nsCOMPtr<nsIBoxLayout> layout = NS_NewGridRowLeafLayout();
+  nsCOMPtr<nsBoxLayout> layout = NS_NewGridRowLeafLayout();
   if (!layout) {
     return nsnull;
   }
   
-  return new (aPresShell) nsGridRowLeafFrame(aPresShell, aContext, PR_FALSE,
+  return new (aPresShell) nsGridRowLeafFrame(aPresShell, aContext, false,
                                              layout);
 }
 
@@ -75,12 +75,7 @@ nsGridRowLeafFrame::GetBorderAndPadding(nsMargin& aBorderAndPadding)
   // if our columns have made our padding larger add it in.
   nsresult rv = nsBoxFrame::GetBorderAndPadding(aBorderAndPadding);
 
-  nsCOMPtr<nsIBoxLayout> layout;
-  GetLayoutManager(getter_AddRefs(layout));
-  if (!layout)
-    return rv;
-
-  nsCOMPtr<nsIGridPart> part = do_QueryInterface(layout);
+  nsIGridPart* part = nsGrid::GetPartFromBox(this);
   if (!part)
     return rv;
     
@@ -90,7 +85,7 @@ nsGridRowLeafFrame::GetBorderAndPadding(nsMargin& aBorderAndPadding)
   if (!grid) 
     return rv;
 
-  PRBool isHorizontal = IsHorizontal();
+  bool isHorizontal = IsHorizontal();
 
   nsBoxLayoutState state(PresContext());
 

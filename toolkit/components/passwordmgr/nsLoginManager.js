@@ -206,7 +206,7 @@ LoginManager.prototype = {
     _observer : {
         _pwmgr : null,
 
-        QueryInterface : XPCOMUtils.generateQI([Ci.nsIObserver, 
+        QueryInterface : XPCOMUtils.generateQI([Ci.nsIObserver,
                                                 Ci.nsIFormSubmitObserver,
                                                 Ci.nsISupportsWeakReference]),
 
@@ -235,7 +235,7 @@ LoginManager.prototype = {
                 this._pwmgr.log("got change to " + prefName + " preference");
 
                 if (prefName == "debug") {
-                    this._pwmgr._debug = 
+                    this._pwmgr._debug =
                         this._pwmgr._prefBranch.getBoolPref("debug");
                 } else if (prefName == "rememberSignons") {
                     this._pwmgr._remember =
@@ -288,10 +288,18 @@ LoginManager.prototype = {
             // Only process things which might have HTML forms.
             if (!(domDoc instanceof Ci.nsIDOMHTMLDocument))
                 return;
-
-            this._pwmgr.log("onStateChange accepted: req = " +
-                            (aRequest ?  aRequest.name : "(null)") +
-                            ", flags = 0x" + aStateFlags.toString(16));
+            if (this._pwmgr._debug) {
+                let requestName = "(null)";
+                if (aRequest) {
+                    try {
+                        requestName = aRequest.name;
+                    } catch (ex if ex.result == Components.results.NS_ERROR_NOT_IMPLEMENTED) {
+                        // do nothing - leave requestName = "(null)"
+                    }
+                }
+                this._pwmgr.log("onStateChange accepted: req = " + requestName +
+                                ", flags = 0x" + aStateFlags.toString(16));
+            }
 
             // Fastback doesn't fire DOMContentLoaded, so process forms now.
             if (aStateFlags & Ci.nsIWebProgressListener.STATE_RESTORING) {
@@ -718,7 +726,7 @@ LoginManager.prototype = {
         // Locate the username field in the form by searching backwards
         // from the first passwordfield, assume the first text field is the
         // username. We might not find a username field if the user is
-        // already logged in to the site. 
+        // already logged in to the site.
         for (var i = pwFields[0].index - 1; i >= 0; i--) {
             var element = form.elements[i];
             var fieldType = (element.hasAttribute("type") ?
@@ -916,7 +924,7 @@ LoginManager.prototype = {
             // if the passwords differ.
             if (!login.username && formLogin.username) {
                 var restoreMe = formLogin.username;
-                formLogin.username = ""; 
+                formLogin.username = "";
                 same = formLogin.matches(login, false);
                 formLogin.username = restoreMe;
             } else if (!formLogin.username && login.username) {
@@ -1112,7 +1120,7 @@ LoginManager.prototype = {
 
         // Need to get a list of logins if we weren't given them
         if (foundLogins == null) {
-            var formOrigin = 
+            var formOrigin =
                 this._getPasswordOrigin(form.ownerDocument.documentURI);
             var actionOrigin = this._getActionOrigin(form);
             foundLogins = this.findLogins({}, formOrigin, actionOrigin, null);

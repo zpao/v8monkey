@@ -58,7 +58,6 @@
 #include "nsIPresShell.h"
 #include "nsRenderingContext.h"
 #include "nsPresContext.h"
-#include "nsILookAndFeel.h"
 #include "nsBlockFrame.h"
 #include "nsISelectionController.h"
 #include "nsDisplayList.h"
@@ -68,6 +67,8 @@
 #include "nsMenuPopupFrame.h"
 #include "nsTextFragment.h"
 #include "nsThemeConstants.h"
+#include "mozilla/Preferences.h"
+#include "mozilla/LookAndFeel.h"
 
 // The bidi indicator hangs off the caret to one side, to show which
 // direction the typing is in. It needs to be at least 2x2 to avoid looking like 
@@ -78,6 +79,8 @@ static const PRInt32 kMinBidiIndicatorPixels = 2;
 #include "nsIBidiKeyboard.h"
 #include "nsContentUtils.h"
 #endif //IBMBIDI
+
+using namespace mozilla;
 
 /**
  * Find the first frame in an in-order traversal of the frame subtree rooted
@@ -95,7 +98,7 @@ CheckForTrailingTextFrameRecursive(nsIFrame* aFrame, nsIFrame* aStopAtFrame)
   if (!aFrame->IsFrameOfType(nsIFrame::eLineParticipant))
     return nsnull;
 
-  for (nsIFrame* f = aFrame->GetFirstChild(nsnull); f; f = f->GetNextSibling())
+  for (nsIFrame* f = aFrame->GetFirstPrincipalChild(); f; f = f->GetNextSibling())
   {
     nsIFrame* r = CheckForTrailingTextFrameRecursive(f, aStopAtFrame);
     if (r)
@@ -113,7 +116,7 @@ FindContainingLine(nsIFrame* aFrame)
     nsBlockFrame* blockParent = nsLayoutUtils::GetAsBlock(parent);
     if (blockParent)
     {
-      PRBool isValid;
+      bool isValid;
       nsBlockInFlowLineIterator iter(blockParent, aFrame, &isValid);
       return isValid ? iter.GetLine().get() : nsnull;
     }
@@ -149,14 +152,14 @@ AdjustCaretFrameForLineEnd(nsIFrame** aFrame, PRInt32* aOffset)
 nsCaret::nsCaret()
 : mPresShell(nsnull)
 , mBlinkRate(500)
-, mVisible(PR_FALSE)
-, mDrawn(PR_FALSE)
-, mPendingDraw(PR_FALSE)
-, mReadOnly(PR_FALSE)
-, mShowDuringSelection(PR_FALSE)
-, mIgnoreUserModify(PR_TRUE)
+, mVisible(false)
+, mDrawn(false)
+, mPendingDraw(false)
+, mReadOnly(false)
+, mShowDuringSelection(false)
+, mIgnoreUserModify(true)
 #ifdef IBMBIDI
-, mKeyboardRTL(PR_FALSE)
+, mKeyboardRTL(false)
 , mLastBidiLevel(0)
 #endif
 , mLastContentOffset(0)
@@ -178,27 +181,18 @@ nsresult nsCaret::Init(nsIPresShell *inPresShell)
   mPresShell = do_GetWeakReference(inPresShell);    // the presshell owns us, so no addref
   NS_ASSERTION(mPresShell, "Hey, pres shell should support weak refs");
 
-  // get nsILookAndFeel from the pres context, which has one cached.
-  nsILookAndFeel *lookAndFeel = nsnull;
-  nsPresContext *presContext = inPresShell->GetPresContext();
-  
-  // XXX we should just do this nsILookAndFeel consultation every time
+  // XXX we should just do this LookAndFeel consultation every time
   // we need these values.
-  mCaretWidthCSSPx = 1;
-  mCaretAspectRatio = 0;
-  if (presContext && (lookAndFeel = presContext->LookAndFeel())) {
-    PRInt32 tempInt;
-    float tempFloat;
-    if (NS_SUCCEEDED(lookAndFeel->GetMetric(nsILookAndFeel::eMetric_CaretWidth, tempInt)))
-      mCaretWidthCSSPx = (nscoord)tempInt;
-    if (NS_SUCCEEDED(lookAndFeel->GetMetric(nsILookAndFeel::eMetricFloat_CaretAspectRatio, tempFloat)))
-      mCaretAspectRatio = tempFloat;
-    if (NS_SUCCEEDED(lookAndFeel->GetMetric(nsILookAndFeel::eMetric_CaretBlinkTime, tempInt)))
-      mBlinkRate = (PRUint32)tempInt;
-    if (NS_SUCCEEDED(lookAndFeel->GetMetric(nsILookAndFeel::eMetric_ShowCaretDuringSelection, tempInt)))
-      mShowDuringSelection = tempInt ? PR_TRUE : PR_FALSE;
-  }
-  
+  mCaretWidthCSSPx = LookAndFeel::GetInt(LookAndFeel::eIntID_CaretWidth, 1);
+  mCaretAspectRatio =
+    LookAndFeel::GetFloat(LookAndFeel::eFloatID_CaretAspectRatio, 0.0f);
+
+  mBlinkRate = static_cast<PRUint32>(
+    LookAndFeel::GetInt(LookAndFeel::eIntID_CaretBlinkTime, mBlinkRate));
+  mShowDuringSelection =
+    LookAndFeel::GetInt(LookAndFeel::eIntID_ShowCaretDuringSelection,
+                        mShowDuringSelection ? 1 : 0) != 0;
+
   // get the selection from the pres shell, and set ourselves up as a selection
   // listener
 
@@ -225,21 +219,21 @@ nsresult nsCaret::Init(nsIPresShell *inPresShell)
     StartBlinking();
   }
 #ifdef IBMBIDI
-  mBidiUI = nsContentUtils::GetBoolPref("bidi.browser.ui");
+  mBidiUI = Preferences::GetBool("bidi.browser.ui");
 #endif
 
   return NS_OK;
 }
 
-static PRBool
+static bool
 DrawCJKCaret(nsIFrame* aFrame, PRInt32 aOffset)
 {
   nsIContent* content = aFrame->GetContent();
   const nsTextFragment* frag = content->GetText();
   if (!frag)
-    return PR_FALSE;
+    return false;
   if (aOffset < 0 || PRUint32(aOffset) >= frag->GetLength())
-    return PR_FALSE;
+    return false;
   PRUnichar ch = frag->CharAt(aOffset);
   return 0x2e80 <= ch && ch <= 0xd7ff;
 }
@@ -312,30 +306,30 @@ nsresult nsCaret::SetCaretDOMSelection(nsISelection *aDOMSel)
 
 
 //-----------------------------------------------------------------------------
-void nsCaret::SetCaretVisible(PRBool inMakeVisible)
+void nsCaret::SetCaretVisible(bool inMakeVisible)
 {
   mVisible = inMakeVisible;
   if (mVisible) {
-    SetIgnoreUserModify(PR_TRUE);
+    SetIgnoreUserModify(true);
     StartBlinking();
   } else {
     StopBlinking();
-    SetIgnoreUserModify(PR_FALSE);
+    SetIgnoreUserModify(false);
   }
 }
 
 
 //-----------------------------------------------------------------------------
-nsresult nsCaret::GetCaretVisible(PRBool *outMakeVisible)
+nsresult nsCaret::GetCaretVisible(bool *outMakeVisible)
 {
   NS_ENSURE_ARG_POINTER(outMakeVisible);
-  *outMakeVisible = (mVisible && MustDrawCaret(PR_TRUE));
+  *outMakeVisible = (mVisible && MustDrawCaret(true));
   return NS_OK;
 }
 
 
 //-----------------------------------------------------------------------------
-void nsCaret::SetCaretReadOnly(PRBool inMakeReadonly)
+void nsCaret::SetCaretReadOnly(bool inMakeReadonly)
 {
   mReadOnly = inMakeReadonly;
 }
@@ -408,7 +402,7 @@ nsIFrame* nsCaret::GetGeometry(nsISelection* aSelection, nsRect* aRect,
   if (!contentNode)
     return nsnull;
 
-  nsCOMPtr<nsFrameSelection> frameSelection = GetFrameSelection();
+  nsRefPtr<nsFrameSelection> frameSelection = GetFrameSelection();
   if (!frameSelection)
     return nsnull;
   PRUint8 bidiLevel = frameSelection->GetCaretBidiLevel();
@@ -441,7 +435,7 @@ void nsCaret::DrawCaretAfterBriefDelay()
 void nsCaret::EraseCaret()
 {
   if (mDrawn) {
-    DrawCaret(PR_TRUE);
+    DrawCaret(true);
     if (mReadOnly && mBlinkRate) {
       // If readonly we don't have a blink timer set, so caret won't
       // be redrawn automatically. We need to force the caret to get
@@ -451,7 +445,7 @@ void nsCaret::EraseCaret()
   }
 }
 
-void nsCaret::SetVisibilityDuringSelection(PRBool aVisibility) 
+void nsCaret::SetVisibilityDuringSelection(bool aVisibility) 
 {
   mShowDuringSelection = aVisibility;
 }
@@ -461,7 +455,7 @@ nsresult nsCaret::DrawAtPosition(nsIDOMNode* aNode, PRInt32 aOffset)
   NS_ENSURE_ARG(aNode);
 
   PRUint8 bidiLevel;
-  nsCOMPtr<nsFrameSelection> frameSelection = GetFrameSelection();
+  nsRefPtr<nsFrameSelection> frameSelection = GetFrameSelection();
   if (!frameSelection)
     return NS_ERROR_FAILURE;
   bidiLevel = frameSelection->GetCaretBidiLevel();
@@ -474,7 +468,7 @@ nsresult nsCaret::DrawAtPosition(nsIDOMNode* aNode, PRInt32 aOffset)
   // XXX we need to do more work here to get the correct hint.
   nsresult rv = DrawAtPositionWithHint(aNode, aOffset,
                                        nsFrameSelection::HINTLEFT,
-                                       bidiLevel, PR_TRUE)
+                                       bidiLevel, true)
     ?  NS_OK : NS_ERROR_FAILURE;
   ToggleDrawnStatus();
   return rv;
@@ -519,8 +513,8 @@ void nsCaret::UpdateCaretPosition()
 
   // A trick! Make the DrawCaret code recalculate the caret's current
   // position.
-  mDrawn = PR_FALSE;
-  DrawCaret(PR_FALSE);
+  mDrawn = false;
+  DrawCaret(false);
 }
 
 void nsCaret::PaintCaret(nsDisplayListBuilder *aBuilder,
@@ -549,10 +543,10 @@ void nsCaret::PaintCaret(nsDisplayListBuilder *aBuilder,
   if (GetHookRect().IsEmpty() && presContext) {
     nsITheme *theme = presContext->GetTheme();
     if (theme && theme->ThemeSupportsWidget(presContext, aForFrame, NS_THEME_TEXTFIELD_CARET)) {
-      nsILookAndFeel* lookAndFeel = presContext->LookAndFeel();
       nscolor fieldText;
-      if (NS_SUCCEEDED(lookAndFeel->GetColor(nsILookAndFeel::eColor__moz_fieldtext, fieldText)) &&
-          fieldText == foregroundColor) {
+      nsresult rv = LookAndFeel::GetColor(LookAndFeel::eColorID__moz_fieldtext,
+                                          &fieldText);
+      if (NS_SUCCEEDED(rv) && fieldText == foregroundColor) {
         theme->DrawWidgetBackground(aCtx, aForFrame, NS_THEME_TEXTFIELD_CARET,
                                     drawCaretRect, drawCaretRect);
         return;
@@ -629,10 +623,31 @@ nsresult nsCaret::PrimeTimer()
   return NS_OK;
 }
 
+void nsCaret::InvalidateTextOverflowBlock()
+{
+  // If the nearest block has a potential 'text-overflow' marker then
+  // invalidate it.
+  if (mLastContent) {
+    nsIFrame* caretFrame = mLastContent->GetPrimaryFrame();
+    if (caretFrame) {
+      nsIFrame* block = nsLayoutUtils::GetAsBlock(caretFrame) ? caretFrame :
+        nsLayoutUtils::FindNearestBlockAncestor(caretFrame);
+      if (block) {
+        const nsStyleTextReset* style = block->GetStyleTextReset();
+        if (style->mTextOverflow.mLeft.mType != NS_STYLE_TEXT_OVERFLOW_CLIP ||
+            style->mTextOverflow.mRight.mType != NS_STYLE_TEXT_OVERFLOW_CLIP) {
+          block->InvalidateOverflowRect();
+        }
+      }
+    }
+  }
+}
 
 //-----------------------------------------------------------------------------
 void nsCaret::StartBlinking()
 {
+  InvalidateTextOverflowBlock();
+
   if (mReadOnly) {
     // Make sure the one draw command we use for a readonly caret isn't
     // done until the selection is set
@@ -647,32 +662,34 @@ void nsCaret::StartBlinking()
   // call to DrawCaret makes sure that the first cycle after a call to
   // StartBlinking is an "on" cycle.
   if (mDrawn)
-    DrawCaret(PR_TRUE);
+    DrawCaret(true);
 
-  DrawCaret(PR_TRUE);    // draw it right away
+  DrawCaret(true);    // draw it right away
 }
 
 
 //-----------------------------------------------------------------------------
 void nsCaret::StopBlinking()
 {
+  InvalidateTextOverflowBlock();
+
   if (mDrawn)     // erase the caret if necessary
-    DrawCaret(PR_TRUE);
+    DrawCaret(true);
 
   NS_ASSERTION(!mDrawn, "Caret still drawn after StopBlinking().");
   KillTimer();
 }
 
-PRBool
+bool
 nsCaret::DrawAtPositionWithHint(nsIDOMNode*             aNode,
                                 PRInt32                 aOffset,
                                 nsFrameSelection::HINT  aFrameHint,
                                 PRUint8                 aBidiLevel,
-                                PRBool                  aInvalidate)
+                                bool                    aInvalidate)
 {
   nsCOMPtr<nsIContent> contentNode = do_QueryInterface(aNode);
   if (!contentNode)
-    return PR_FALSE;
+    return false;
 
   nsIFrame* theFrame = nsnull;
   PRInt32   theFrameOffset = 0;
@@ -680,7 +697,7 @@ nsCaret::DrawAtPositionWithHint(nsIDOMNode*             aNode,
   nsresult rv = GetCaretFrameForNodeOffset(contentNode, aOffset, aFrameHint, aBidiLevel,
                                            &theFrame, &theFrameOffset);
   if (NS_FAILED(rv) || !theFrame)
-    return PR_FALSE;
+    return false;
 
   // now we have a frame, check whether it's appropriate to show the caret here
   const nsStyleUserInterface* userinterface = theFrame->GetStyleUserInterface();
@@ -689,7 +706,7 @@ nsCaret::DrawAtPositionWithHint(nsIDOMNode*             aNode,
       (userinterface->mUserInput == NS_STYLE_USER_INPUT_NONE) ||
       (userinterface->mUserInput == NS_STYLE_USER_INPUT_DISABLED))
   {
-    return PR_FALSE;
+    return false;
   }  
 
   if (!mDrawn)
@@ -702,21 +719,21 @@ nsCaret::DrawAtPositionWithHint(nsIDOMNode*             aNode,
 
     // If there has been a reflow, set the caret Bidi level to the level of the current frame
     if (aBidiLevel & BIDI_LEVEL_UNDEFINED) {
-      nsCOMPtr<nsFrameSelection> frameSelection = GetFrameSelection();
+      nsRefPtr<nsFrameSelection> frameSelection = GetFrameSelection();
       if (!frameSelection)
-        return PR_FALSE;
+        return false;
       frameSelection->SetCaretBidiLevel(NS_GET_EMBEDDING_LEVEL(theFrame));
     }
 
     // Only update the caret's rect when we're not currently drawn.
     if (!UpdateCaretRects(theFrame, theFrameOffset))
-      return PR_FALSE;
+      return false;
   }
 
   if (aInvalidate)
     InvalidateRects(mCaretRect, mHookRect, theFrame);
 
-  return PR_TRUE;
+  return true;
 }
 
 nsresult 
@@ -737,7 +754,7 @@ nsCaret::GetCaretFrameForNodeOffset(nsIContent*             aContentNode,
       presShell->GetDocument() != aContentNode->GetCurrentDoc())
     return NS_ERROR_FAILURE;
 
-  nsCOMPtr<nsFrameSelection> frameSelection = GetFrameSelection();
+  nsRefPtr<nsFrameSelection> frameSelection = GetFrameSelection();
   if (!frameSelection)
     return NS_ERROR_FAILURE;
 
@@ -780,7 +797,7 @@ nsCaret::GetCaretFrameForNodeOffset(nsIContent*             aContentNode,
     if (start == 0 || end == 0 || start == theFrameOffset || end == theFrameOffset)
     {
       nsPrevNextBidiLevels levels = frameSelection->
-        GetPrevNextBidiLevels(aContentNode, aOffset, PR_FALSE);
+        GetPrevNextBidiLevels(aContentNode, aOffset, false);
     
       /* Boundary condition, we need to know the Bidi levels of the characters before and after the caret */
       if (levels.mFrameBefore || levels.mFrameAfter)
@@ -816,7 +833,7 @@ nsCaret::GetCaretFrameForNodeOffset(nsIContent*             aContentNode,
                 if (baseLevel != levelAfter)
                 {
                   nsPeekOffsetStruct pos;
-                  pos.SetData(eSelectBeginLine, eDirPrevious, 0, 0, PR_FALSE, PR_TRUE, PR_FALSE, PR_TRUE);
+                  pos.SetData(eSelectBeginLine, eDirPrevious, 0, 0, false, true, false, true);
                   if (NS_SUCCEEDED(frameAfter->PeekOffset(&pos))) {
                     theFrame = pos.mResultFrame;
                     theFrameOffset = pos.mContentOffset;
@@ -848,7 +865,7 @@ nsCaret::GetCaretFrameForNodeOffset(nsIContent*             aContentNode,
                 if (baseLevel != levelBefore)
                 {
                   nsPeekOffsetStruct pos;
-                  pos.SetData(eSelectEndLine, eDirNext, 0, 0, PR_FALSE, PR_TRUE, PR_FALSE, PR_TRUE);
+                  pos.SetData(eSelectEndLine, eDirNext, 0, 0, false, true, false, true);
                   if (NS_SUCCEEDED(frameBefore->PeekOffset(&pos))) {
                     theFrame = pos.mResultFrame;
                     theFrameOffset = pos.mContentOffset;
@@ -901,14 +918,14 @@ nsresult nsCaret::CheckCaretDrawingState()
 {
   if (mDrawn) {
     // The caret is drawn; if it shouldn't be, erase it.
-    if (!mVisible || !MustDrawCaret(PR_TRUE))
+    if (!mVisible || !MustDrawCaret(true))
       EraseCaret();
   }
   else
   {
     // The caret is not drawn; if it should be, draw it.
-    if (mPendingDraw && (mVisible && MustDrawCaret(PR_TRUE)))
-      DrawCaret(PR_TRUE);
+    if (mPendingDraw && (mVisible && MustDrawCaret(true)))
+      DrawCaret(true);
   }
   return NS_OK;
 }
@@ -925,29 +942,29 @@ nsresult nsCaret::CheckCaretDrawingState()
      (see IsMenuPopupHidingCaret()).
   
 ----------------------------------------------------------------------------- */
-PRBool nsCaret::MustDrawCaret(PRBool aIgnoreDrawnState)
+bool nsCaret::MustDrawCaret(bool aIgnoreDrawnState)
 {
   if (!aIgnoreDrawnState && mDrawn)
-    return PR_TRUE;
+    return true;
 
   nsCOMPtr<nsISelection> domSelection = do_QueryReferent(mDomSelectionWeak);
   if (!domSelection)
-    return PR_FALSE;
+    return false;
 
-  PRBool isCollapsed;
+  bool isCollapsed;
   if (NS_FAILED(domSelection->GetIsCollapsed(&isCollapsed)))
-    return PR_FALSE;
+    return false;
 
   if (mShowDuringSelection)
-    return PR_TRUE;      // show the caret even in selections
+    return true;      // show the caret even in selections
 
   if (IsMenuPopupHidingCaret())
-    return PR_FALSE;
+    return false;
 
   return isCollapsed;
 }
 
-PRBool nsCaret::IsMenuPopupHidingCaret()
+bool nsCaret::IsMenuPopupHidingCaret()
 {
 #ifdef MOZ_XUL
   // Check if there are open popups.
@@ -955,20 +972,20 @@ PRBool nsCaret::IsMenuPopupHidingCaret()
   nsTArray<nsIFrame*> popups = popMgr->GetVisiblePopups();
 
   if (popups.Length() == 0)
-    return PR_FALSE; // No popups, so caret can't be hidden by them.
+    return false; // No popups, so caret can't be hidden by them.
 
   // Get the selection focus content, that's where the caret would 
   // go if it was drawn.
   nsCOMPtr<nsIDOMNode> node;
   nsCOMPtr<nsISelection> domSelection = do_QueryReferent(mDomSelectionWeak);
   if (!domSelection)
-    return PR_TRUE; // No selection/caret to draw.
+    return true; // No selection/caret to draw.
   domSelection->GetFocusNode(getter_AddRefs(node));
   if (!node)
-    return PR_TRUE; // No selection/caret to draw.
+    return true; // No selection/caret to draw.
   nsCOMPtr<nsIContent> caretContent = do_QueryInterface(node);
   if (!caretContent)
-    return PR_TRUE; // No selection/caret to draw.
+    return true; // No selection/caret to draw.
 
   // If there's a menu popup open before the popup with
   // the caret, don't show the caret.
@@ -979,26 +996,26 @@ PRBool nsCaret::IsMenuPopupHidingCaret()
     if (nsContentUtils::ContentIsDescendantOf(caretContent, popupContent)) {
       // The caret is in this popup. There were no menu popups before this
       // popup, so don't hide the caret.
-      return PR_FALSE;
+      return false;
     }
 
     if (popupFrame->PopupType() == ePopupTypeMenu && !popupFrame->IsContextMenu()) {
       // This is an open menu popup. It does not contain the caret (else we'd
       // have returned above). Even if the caret is in a subsequent popup,
       // or another document/frame, it should be hidden.
-      return PR_TRUE;
+      return true;
     }
   }
 #endif
 
   // There are no open menu popups, no need to hide the caret.
-  return PR_FALSE;
+  return false;
 }
 
-void nsCaret::DrawCaret(PRBool aInvalidate)
+void nsCaret::DrawCaret(bool aInvalidate)
 {
   // Do we need to draw the caret at all?
-  if (!MustDrawCaret(PR_FALSE))
+  if (!MustDrawCaret(false))
     return;
   
   // Can we draw the caret now?
@@ -1008,7 +1025,7 @@ void nsCaret::DrawCaret(PRBool aInvalidate)
     if (presShell->IsPaintingSuppressed())
     {
       if (!mDrawn)
-        mPendingDraw = PR_TRUE;
+        mPendingDraw = true;
 
       // PresShell::UnsuppressAndInvalidate() will call CheckCaretDrawingState()
       // to get us drawn.
@@ -1027,12 +1044,12 @@ void nsCaret::DrawCaret(PRBool aInvalidate)
     nsCOMPtr<nsISelectionPrivate> privateSelection(do_QueryInterface(domSelection));
     if (!privateSelection) return;
     
-    PRBool isCollapsed = PR_FALSE;
+    bool isCollapsed = false;
     domSelection->GetIsCollapsed(&isCollapsed);
     if (!mShowDuringSelection && !isCollapsed)
       return;
 
-    PRBool hintRight;
+    bool hintRight;
     privateSelection->GetInterlinePosition(&hintRight);//translate hint.
     hint = hintRight ? nsFrameSelection::HINTRIGHT : nsFrameSelection::HINTLEFT;
 
@@ -1044,25 +1061,25 @@ void nsCaret::DrawCaret(PRBool aInvalidate)
     if (NS_FAILED(domSelection->GetFocusOffset(&offset)))
       return;
 
-    nsCOMPtr<nsFrameSelection> frameSelection = GetFrameSelection();
+    nsRefPtr<nsFrameSelection> frameSelection = GetFrameSelection();
     if (!frameSelection)
       return;
 
     bidiLevel = frameSelection->GetCaretBidiLevel();
-    mPendingDraw = PR_FALSE;
+    mPendingDraw = false;
   }
   else
   {
     if (!mLastContent)
     {
-      mDrawn = PR_FALSE;
+      mDrawn = false;
       return;
     }
     if (!mLastContent->IsInDoc() ||
         presShell->GetDocument() != mLastContent->GetCurrentDoc())
     {
       mLastContent = nsnull;
-      mDrawn = PR_FALSE;
+      mDrawn = false;
       return;
     }
     node = do_QueryInterface(mLastContent);
@@ -1075,7 +1092,7 @@ void nsCaret::DrawCaret(PRBool aInvalidate)
   ToggleDrawnStatus();
 }
 
-PRBool
+bool
 nsCaret::UpdateCaretRects(nsIFrame* aFrame, PRInt32 aFrameOffset)
 {
   NS_ASSERTION(aFrame, "Should have a frame here");
@@ -1084,7 +1101,7 @@ nsCaret::UpdateCaretRects(nsIFrame* aFrame, PRInt32 aFrameOffset)
   nsresult rv =
     GetGeometryForFrame(aFrame, aFrameOffset, &mCaretRect, &bidiIndicatorSize);
   if (NS_FAILED(rv)) {
-    return PR_FALSE;
+    return false;
   }
 
   // on RTL frames the right edge of mCaretRect must be equal to framePos
@@ -1096,7 +1113,7 @@ nsCaret::UpdateCaretRects(nsIFrame* aFrame, PRInt32 aFrameOffset)
   mHookRect.SetEmpty();
 
   // Simon -- make a hook to draw to the left or right of the caret to show keyboard language direction
-  PRBool isCaretRTL = PR_FALSE;
+  bool isCaretRTL = false;
   nsIBidiKeyboard* bidiKeyboard = nsContentUtils::GetBidiKeyboard();
   // if bidiKeyboard->IsLangRTL() fails, there is no way to tell the
   // keyboard direction, or the user has no right-to-left keyboard
@@ -1116,7 +1133,7 @@ nsCaret::UpdateCaretRects(nsIFrame* aFrame, PRInt32 aFrameOffset)
       nsCOMPtr<nsISelection> domSelection = do_QueryReferent(mDomSelectionWeak);
       if (!domSelection ||
           NS_SUCCEEDED(domSelection->SelectionLanguageChange(mKeyboardRTL)))
-        return PR_FALSE;
+        return false;
     }
     // If keyboard language is RTL, draw the hook on the left; if LTR, to the right
     // The height of the hook rectangle is the same as the width of the caret
@@ -1129,7 +1146,7 @@ nsCaret::UpdateCaretRects(nsIFrame* aFrame, PRInt32 aFrameOffset)
                       mCaretRect.width);
   }
 #endif //IBMBIDI
-  return PR_TRUE;
+  return true;
 }
 
 // static
@@ -1149,7 +1166,7 @@ void nsCaret::CaretBlinkCallback(nsITimer *aTimer, void *aClosure)
   nsCaret   *theCaret = reinterpret_cast<nsCaret*>(aClosure);
   if (!theCaret) return;
   
-  theCaret->DrawCaret(PR_TRUE);
+  theCaret->DrawCaret(true);
 }
 
 
@@ -1166,7 +1183,7 @@ nsCaret::GetFrameSelection()
 }
 
 void
-nsCaret::SetIgnoreUserModify(PRBool aIgnoreUserModify)
+nsCaret::SetIgnoreUserModify(bool aIgnoreUserModify)
 {
   if (!aIgnoreUserModify && mIgnoreUserModify && mDrawn) {
     // We're turning off mIgnoreUserModify. If the caret's drawn
@@ -1183,17 +1200,3 @@ nsCaret::SetIgnoreUserModify(PRBool aIgnoreUserModify)
   }
   mIgnoreUserModify = aIgnoreUserModify;
 }
-
-//-----------------------------------------------------------------------------
-nsresult NS_NewCaret(nsCaret** aInstancePtrResult)
-{
-  NS_PRECONDITION(aInstancePtrResult, "null ptr");
-  
-  nsCaret* caret = new nsCaret();
-  if (nsnull == caret)
-      return NS_ERROR_OUT_OF_MEMORY;
-  NS_ADDREF(caret);
-  *aInstancePtrResult = caret;
-  return NS_OK;
-}
-

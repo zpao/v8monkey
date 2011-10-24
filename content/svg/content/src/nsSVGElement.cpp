@@ -36,6 +36,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGElement.h"
 #include "nsSVGSVGElement.h"
 #include "nsSVGSwitchElement.h"
@@ -62,39 +64,31 @@
 #include "nsGenericHTMLElement.h"
 #include "nsNodeInfoManager.h"
 #include "nsIScriptGlobalObject.h"
-#include "nsIEventListenerManager.h"
+#include "nsEventListenerManager.h"
 #include "nsSVGUtils.h"
 #include "nsSVGLength2.h"
 #include "nsSVGNumber2.h"
+#include "nsSVGNumberPair.h"
 #include "nsSVGInteger.h"
+#include "nsSVGIntegerPair.h"
 #include "nsSVGAngle.h"
 #include "nsSVGBoolean.h"
 #include "nsSVGEnum.h"
 #include "nsSVGViewBox.h"
 #include "nsSVGString.h"
-#include "nsSVGClass.h"
 #include "SVGAnimatedNumberList.h"
 #include "SVGAnimatedLengthList.h"
 #include "SVGAnimatedPointList.h"
 #include "SVGAnimatedPathSegList.h"
+#include "SVGAnimatedTransformList.h"
 #include "nsIDOMSVGUnitTypes.h"
-#include "nsIDOMSVGPointList.h"
-#include "nsIDOMSVGAnimatedPoints.h"
-#include "nsIDOMSVGTransformList.h"
-#include "nsIDOMSVGAnimTransformList.h"
-#include "nsIDOMSVGAnimatedRect.h"
-#include "nsIDOMSVGGradientElement.h"
-#include "nsIDOMSVGPatternElement.h"
 #include "nsSVGRect.h"
 #include "nsIFrame.h"
 #include "prdtoa.h"
 #include <stdarg.h>
 #ifdef MOZ_SMIL
 #include "nsSMILMappedAttribute.h"
-#include "nsSVGTransformSMILAttr.h"
-#include "nsSVGAnimatedTransformList.h"
 #include "SVGMotionSMILAttr.h"
-#include "nsIDOMSVGTransformable.h"
 #endif // MOZ_SMIL
 
 using namespace mozilla;
@@ -113,7 +107,7 @@ nsSVGEnumMapping nsSVGElement::sSVGUnitTypesMap[] = {
 };
 
 nsSVGElement::nsSVGElement(already_AddRefed<nsINodeInfo> aNodeInfo)
-  : nsSVGElementBase(aNodeInfo), mSuppressNotification(PR_FALSE)
+  : nsSVGElementBase(aNodeInfo)
 {
 }
 
@@ -136,10 +130,22 @@ nsSVGElement::Init()
     numberInfo.Reset(i);
   }
 
+  NumberPairAttributesInfo numberPairInfo = GetNumberPairInfo();
+
+  for (i = 0; i < numberPairInfo.mNumberPairCount; i++) {
+    numberPairInfo.Reset(i);
+  }
+
   IntegerAttributesInfo integerInfo = GetIntegerInfo();
 
   for (i = 0; i < integerInfo.mIntegerCount; i++) {
     integerInfo.Reset(i);
+  }
+
+  IntegerPairAttributesInfo integerPairInfo = GetIntegerPairInfo();
+
+  for (i = 0; i < integerPairInfo.mIntegerPairCount; i++) {
+    integerPairInfo.Reset(i);
   }
 
   AngleAttributesInfo angleInfo = GetAngleInfo();
@@ -200,14 +206,6 @@ nsSVGElement::Init()
   return NS_OK;
 }
 
-nsSVGElement::~nsSVGElement()
-{
-  PRUint32 i, count = mMappedAttributes.AttrCount();
-  for (i = 0; i < count; ++i) {
-    mMappedAttributes.AttrAt(i)->GetSVGValue()->RemoveObserver(this);
-  }
-}
-
 //----------------------------------------------------------------------
 // nsISupports methods
 
@@ -215,8 +213,6 @@ NS_IMPL_ADDREF_INHERITED(nsSVGElement, nsSVGElementBase)
 NS_IMPL_RELEASE_INHERITED(nsSVGElement, nsSVGElementBase)
 
 NS_INTERFACE_MAP_BEGIN(nsSVGElement)
-  NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
-  NS_INTERFACE_MAP_ENTRY(nsISVGValueObserver)
 // provided by nsGenericElement:
 //  NS_INTERFACE_MAP_ENTRY(nsIContent)
 NS_INTERFACE_MAP_END_INHERITING(nsSVGElementBase)
@@ -230,7 +226,7 @@ NS_INTERFACE_MAP_END_INHERITING(nsSVGElementBase)
 nsresult
 nsSVGElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                          nsIContent* aBindingParent,
-                         PRBool aCompileEventHandlers)
+                         bool aCompileEventHandlers)
 {
   nsresult rv = nsSVGElementBase::BindToTree(aDocument, aParent,
                                              aBindingParent,
@@ -253,7 +249,7 @@ nsSVGElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
     nsAutoString stringValue;
     oldVal->ToString(stringValue);
     // Force in data doc, since we already have a style rule
-    ParseStyleAttribute(stringValue, attrValue, PR_TRUE);
+    ParseStyleAttribute(stringValue, attrValue, true);
     // Don't bother going through SetInlineStyleRule, we don't want to fire off
     // mutation events or document notifications anyway
     rv = mAttrsAndChildren.SetAndTakeAttr(nsGkAtoms::style, attrValue);
@@ -265,7 +261,7 @@ nsSVGElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 
 nsresult
 nsSVGElement::AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                           const nsAString* aValue, PRBool aNotify)
+                           const nsAString* aValue, bool aNotify)
 {  
   // If this is an svg presentation attribute we need to map it into
   // the content stylerule.
@@ -297,61 +293,14 @@ nsSVGElement::AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
   return nsSVGElementBase::AfterSetAttr(aNamespaceID, aName, aValue, aNotify);
 }
 
-PRBool
+bool
 nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
                              nsIAtom* aAttribute,
                              const nsAString& aValue,
                              nsAttrValue& aResult)
 {
-  // Parse value
-  nsCOMPtr<nsISVGValue> svg_value;
-  const nsAttrValue* val = mAttrsAndChildren.GetAttr(aAttribute, aNamespaceID);
-  if (val) {
-    // Found the attr in the list.
-    if (val->Type() == nsAttrValue::eSVGValue) {
-      svg_value = val->GetSVGValue();
-    }
-  }
-  else {
-    // Could be a mapped attribute.
-    svg_value = GetMappedAttribute(aNamespaceID, aAttribute);
-  }
-  
-  if (svg_value) {
-    // We want to prevent DidModifySVGObservable from running if we
-    // come in this route, otherwise AttributeChanged() gets called
-    // twice (once through DidMOdifySVGObservable, once through SetAttr).
-    mSuppressNotification = PR_TRUE;
-
-    if (NS_FAILED(svg_value->SetValueString(aValue))) {
-      // The value was rejected. This happens e.g. in a XUL template
-      // when trying to set a value like "?x" on a value object that
-      // expects a length.
-      // To accommodate this "erroneous" value, we'll insert a proxy
-      // object between ourselves and the actual value object:
-      ReportAttributeParseFailure(GetOwnerDoc(), aAttribute, aValue);
-      nsCOMPtr<nsISVGValue> proxy;
-      nsresult rv =
-        NS_CreateSVGStringProxyValue(svg_value, getter_AddRefs(proxy));
-      // Failure means we'll store this attr as a string, not an SVGValue, but
-      // that's the best we can do short of throwing outright.
-      NS_ENSURE_SUCCESS(rv, PR_FALSE);
-
-      svg_value->RemoveObserver(this);
-      ResetOldStyleBaseType(svg_value);
-      proxy->SetValueString(aValue);
-      proxy->AddObserver(this);
-      aResult.SetTo(proxy);
-    }
-    else {
-      aResult.SetTo(svg_value);
-    }
-    mSuppressNotification = PR_FALSE;
-    return PR_TRUE;
-  }
-
   nsresult rv = NS_OK;
-  PRBool foundMatch = PR_FALSE;
+  bool foundMatch = false;
   if (aNamespaceID == kNameSpaceID_None) {
 
     // Check for nsSVGLength2 attribute
@@ -360,11 +309,11 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
     PRUint32 i;
     for (i = 0; i < lengthInfo.mLengthCount; i++) {
       if (aAttribute == *lengthInfo.mLengthInfo[i].mName) {
-        rv = lengthInfo.mLengths[i].SetBaseValueString(aValue, this, PR_FALSE);
+        rv = lengthInfo.mLengths[i].SetBaseValueString(aValue, this, false);
         if (NS_FAILED(rv)) {
           lengthInfo.Reset(i);
         }
-        foundMatch = PR_TRUE;
+        foundMatch = true;
         break;
       }
     }
@@ -376,10 +325,9 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
         if (aAttribute == *lengthListInfo.mLengthListInfo[i].mName) {
           rv = lengthListInfo.mLengthLists[i].SetBaseValueString(aValue);
           if (NS_FAILED(rv)) {
-            ReportAttributeParseFailure(GetOwnerDoc(), aAttribute, aValue);
             lengthListInfo.Reset(i);
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
           break;
         }
       }
@@ -392,10 +340,9 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
         if (aAttribute == *numberListInfo.mNumberListInfo[i].mName) {
           rv = numberListInfo.mNumberLists[i].SetBaseValueString(aValue);
           if (NS_FAILED(rv)) {
-            ReportAttributeParseFailure(GetOwnerDoc(), aAttribute, aValue);
             numberListInfo.Reset(i);
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
           break;
         }
       }
@@ -408,11 +355,10 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
         if (pointList) {
           rv = pointList->SetBaseValueString(aValue);
           if (NS_FAILED(rv)) {
-            ReportAttributeParseFailure(GetOwnerDoc(), aAttribute, aValue);
             // The spec says we parse everything up to the failure, so we don't
             // call pointList->ClearBaseValue()
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
         }
       }
     }
@@ -424,11 +370,10 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
         if (segList) {
           rv = segList->SetBaseValueString(aValue);
           if (NS_FAILED(rv)) {
-            ReportAttributeParseFailure(GetOwnerDoc(), aAttribute, aValue);
             // The spec says we parse everything up to the failure, so we don't
             // call segList->ClearBaseValue()
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
         }
       }
     }
@@ -438,19 +383,26 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
       NumberAttributesInfo numberInfo = GetNumberInfo();
       for (i = 0; i < numberInfo.mNumberCount; i++) {
         if (aAttribute == *numberInfo.mNumberInfo[i].mName) {
-          if (i + 1 < numberInfo.mNumberCount &&
-              aAttribute == *numberInfo.mNumberInfo[i + 1].mName) {
-            rv = ParseNumberOptionalNumber(aValue, i, i + 1);
-            if (NS_FAILED(rv)) {
-              numberInfo.Reset(i + 1);
-            }
-          } else {
-            rv = numberInfo.mNumbers[i].SetBaseValueString(aValue, this, PR_FALSE);
-          }
+          rv = numberInfo.mNumbers[i].SetBaseValueString(aValue, this);
           if (NS_FAILED(rv)) {
             numberInfo.Reset(i);
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
+          break;
+        }
+      }
+    }
+
+    if (!foundMatch) {
+      // Check for nsSVGNumberPair attribute
+      NumberPairAttributesInfo numberPairInfo = GetNumberPairInfo();
+      for (i = 0; i < numberPairInfo.mNumberPairCount; i++) {
+        if (aAttribute == *numberPairInfo.mNumberPairInfo[i].mName) {
+          rv = numberPairInfo.mNumberPairs[i].SetBaseValueString(aValue, this);
+          if (NS_FAILED(rv)) {
+            numberPairInfo.Reset(i);
+          }
+          foundMatch = true;
           break;
         }
       }
@@ -461,19 +413,26 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
       IntegerAttributesInfo integerInfo = GetIntegerInfo();
       for (i = 0; i < integerInfo.mIntegerCount; i++) {
         if (aAttribute == *integerInfo.mIntegerInfo[i].mName) {
-          if (i + 1 < integerInfo.mIntegerCount &&
-              aAttribute == *integerInfo.mIntegerInfo[i + 1].mName) {
-            rv = ParseIntegerOptionalInteger(aValue, i, i + 1);
-            if (NS_FAILED(rv)) {
-              integerInfo.Reset(i + 1);
-            }
-          } else {
-            rv = integerInfo.mIntegers[i].SetBaseValueString(aValue, this, PR_FALSE);
-          }
+          rv = integerInfo.mIntegers[i].SetBaseValueString(aValue, this);
           if (NS_FAILED(rv)) {
             integerInfo.Reset(i);
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
+          break;
+        }
+      }
+    }
+
+    if (!foundMatch) {
+      // Check for nsSVGIntegerPair attribute
+      IntegerPairAttributesInfo integerPairInfo = GetIntegerPairInfo();
+      for (i = 0; i < integerPairInfo.mIntegerPairCount; i++) {
+        if (aAttribute == *integerPairInfo.mIntegerPairInfo[i].mName) {
+          rv = integerPairInfo.mIntegerPairs[i].SetBaseValueString(aValue, this);
+          if (NS_FAILED(rv)) {
+            integerPairInfo.Reset(i);
+          }
+          foundMatch = true;
           break;
         }
       }
@@ -484,11 +443,11 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
       AngleAttributesInfo angleInfo = GetAngleInfo();
       for (i = 0; i < angleInfo.mAngleCount; i++) {
         if (aAttribute == *angleInfo.mAngleInfo[i].mName) {
-          rv = angleInfo.mAngles[i].SetBaseValueString(aValue, this, PR_FALSE);
+          rv = angleInfo.mAngles[i].SetBaseValueString(aValue, this, false);
           if (NS_FAILED(rv)) {
             angleInfo.Reset(i);
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
           break;
         }
       }
@@ -499,11 +458,11 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
       BooleanAttributesInfo booleanInfo = GetBooleanInfo();
       for (i = 0; i < booleanInfo.mBooleanCount; i++) {
         if (aAttribute == *booleanInfo.mBooleanInfo[i].mName) {
-          rv = booleanInfo.mBooleans[i].SetBaseValueString(aValue, this, PR_FALSE);
+          rv = booleanInfo.mBooleans[i].SetBaseValueString(aValue, this);
           if (NS_FAILED(rv)) {
             booleanInfo.Reset(i);
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
           break;
         }
       }
@@ -514,11 +473,11 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
       EnumAttributesInfo enumInfo = GetEnumInfo();
       for (i = 0; i < enumInfo.mEnumCount; i++) {
         if (aAttribute == *enumInfo.mEnumInfo[i].mName) {
-          rv = enumInfo.mEnums[i].SetBaseValueString(aValue, this, PR_FALSE);
+          rv = enumInfo.mEnums[i].SetBaseValueString(aValue, this);
           if (NS_FAILED(rv)) {
             enumInfo.Reset(i);
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
           break;
         }
       }
@@ -529,30 +488,32 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
       if (aAttribute == nsGkAtoms::viewBox) {
         nsSVGViewBox* viewBox = GetViewBox();
         if (viewBox) {
-          rv = viewBox->SetBaseValueString(aValue, this, PR_FALSE);
+          rv = viewBox->SetBaseValueString(aValue, this);
           if (NS_FAILED(rv)) {
             viewBox->Init();
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
         }
       // Check for SVGAnimatedPreserveAspectRatio attribute
       } else if (aAttribute == nsGkAtoms::preserveAspectRatio) {
         SVGAnimatedPreserveAspectRatio *preserveAspectRatio =
           GetPreserveAspectRatio();
         if (preserveAspectRatio) {
-          rv = preserveAspectRatio->SetBaseValueString(aValue, this, PR_FALSE);
+          rv = preserveAspectRatio->SetBaseValueString(aValue, this);
           if (NS_FAILED(rv)) {
             preserveAspectRatio->Init();
           }
-          foundMatch = PR_TRUE;
+          foundMatch = true;
         }
-      // Check for class attribute
-      } else if (aAttribute == nsGkAtoms::_class) {
-        nsSVGClass *svgClass = GetClass();
-        if (svgClass) {
-          svgClass->SetBaseValue(aValue, this, PR_FALSE);
-          aResult.ParseAtomArray(aValue);
-          return PR_TRUE;
+      // Check for SVGAnimatedTransformList attribute
+      } else if (GetTransformListAttrName() == aAttribute) {
+        SVGAnimatedTransformList *transformList = GetAnimatedTransformList();
+        if (transformList) {
+          rv = transformList->SetBaseValueString(aValue);
+          if (NS_FAILED(rv)) {
+            transformList->ClearBaseValue();
+          }
+          foundMatch = true;
         }
       }
     }
@@ -564,8 +525,8 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
     for (PRUint32 i = 0; i < stringInfo.mStringCount; i++) {
       if (aNamespaceID == stringInfo.mStringInfo[i].mNamespaceID &&
           aAttribute == *stringInfo.mStringInfo[i].mName) {
-        stringInfo.mStrings[i].SetBaseValue(aValue, this, PR_FALSE);
-        foundMatch = PR_TRUE;
+        stringInfo.mStrings[i].SetBaseValue(aValue, this, false);
+        foundMatch = true;
         break;
       }
     }
@@ -573,24 +534,23 @@ nsSVGElement::ParseAttribute(PRInt32 aNamespaceID,
 
   if (foundMatch) {
     if (NS_FAILED(rv)) {
-      ReportAttributeParseFailure(GetOwnerDoc(), aAttribute, aValue);
-      return PR_FALSE;
+      ReportAttributeParseFailure(OwnerDoc(), aAttribute, aValue);
+      return false;
     }
     aResult.SetTo(aValue);
-    return PR_TRUE;
+    return true;
   }
 
   return nsSVGElementBase::ParseAttribute(aNamespaceID, aAttribute, aValue,
                                           aResult);
 }
 
-nsresult
-nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                        PRBool aNotify)
+void
+nsSVGElement::UnsetAttrInternal(PRInt32 aNamespaceID, nsIAtom* aName,
+                                bool aNotify)
 {
   // XXXbz there's a bunch of redundancy here with AfterSetAttr.
   // Maybe consolidate?
-  nsresult rv = nsSVGElementBase::UnsetAttr(aNamespaceID, aName, aNotify);
 
   if (aNamespaceID == kNameSpaceID_None) {
     // If this is an svg presentation attribute, remove rule to force an update
@@ -598,12 +558,12 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
       mContentStyleRule = nsnull;
 
     if (IsEventName(aName)) {
-      nsIEventListenerManager* manager = GetListenerManager(PR_FALSE);
+      nsEventListenerManager* manager = GetListenerManager(false);
       if (manager) {
         nsIAtom* eventName = GetEventNameForAttr(aName);
         manager->RemoveScriptEventListener(eventName);
       }
-      return rv;
+      return;
     }
     
     // Check if this is a length attribute going away
@@ -612,8 +572,8 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
     for (PRUint32 i = 0; i < lenInfo.mLengthCount; i++) {
       if (aName == *lenInfo.mLengthInfo[i].mName) {
         lenInfo.Reset(i);
-        DidChangeLength(i, PR_FALSE);
-        return rv;
+        DidChangeLength(i, false);
+        return;
       }
     }
 
@@ -623,8 +583,8 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
     for (PRUint32 i = 0; i < lengthListInfo.mLengthListCount; i++) {
       if (aName == *lengthListInfo.mLengthListInfo[i].mName) {
         lengthListInfo.Reset(i);
-        DidChangeLengthList(i, PR_FALSE);
-        return rv;
+        DidChangeLengthList(i, false);
+        return;
       }
     }
 
@@ -634,8 +594,8 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
     for (PRUint32 i = 0; i < numberListInfo.mNumberListCount; i++) {
       if (aName == *numberListInfo.mNumberListInfo[i].mName) {
         numberListInfo.Reset(i);
-        DidChangeNumberList(i, PR_FALSE);
-        return rv;
+        DidChangeNumberList(i, false);
+        return;
       }
     }
 
@@ -644,7 +604,7 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
       SVGAnimatedPointList *pointList = GetAnimatedPointList();
       if (pointList) {
         pointList->ClearBaseValue();
-        return rv;
+        return;
       }
     }
 
@@ -653,8 +613,8 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
       SVGAnimatedPathSegList *segList = GetAnimPathSegList();
       if (segList) {
         segList->ClearBaseValue();
-        DidChangePathSegList(PR_FALSE);
-        return rv;
+        DidChangePathSegList(false);
+        return;
       }
     }
 
@@ -663,15 +623,20 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
 
     for (PRUint32 i = 0; i < numInfo.mNumberCount; i++) {
       if (aName == *numInfo.mNumberInfo[i].mName) {
-        if (i + 1 < numInfo.mNumberCount &&
-            aName == *numInfo.mNumberInfo[i + 1].mName) {
-          // found a number-optional-number
-          numInfo.Reset(i + 1);
-          DidChangeNumber(i + 1, PR_FALSE);
-        }
         numInfo.Reset(i);
-        DidChangeNumber(i, PR_FALSE);
-        return rv;
+        DidChangeNumber(i, false);
+        return;
+      }
+    }
+
+    // Check if this is a number pair attribute going away
+    NumberPairAttributesInfo numPairInfo = GetNumberPairInfo();
+
+    for (PRUint32 i = 0; i < numPairInfo.mNumberPairCount; i++) {
+      if (aName == *numPairInfo.mNumberPairInfo[i].mName) {
+        numPairInfo.Reset(i);
+        DidChangeNumberPair(i, false);
+        return;
       }
     }
 
@@ -680,15 +645,20 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
 
     for (PRUint32 i = 0; i < intInfo.mIntegerCount; i++) {
       if (aName == *intInfo.mIntegerInfo[i].mName) {
-        if (i + 1 < intInfo.mIntegerCount &&
-            aName == *intInfo.mIntegerInfo[i + 1].mName) {
-          // found a number-optional-number
-          intInfo.Reset(i + 1);
-          DidChangeNumber(i + 1, PR_FALSE);
-        }
         intInfo.Reset(i);
-        DidChangeInteger(i, PR_FALSE);
-        return rv;
+        DidChangeInteger(i, false);
+        return;
+      }
+    }
+
+    // Check if this is an integer pair attribute going away
+    IntegerPairAttributesInfo intPairInfo = GetIntegerPairInfo();
+
+    for (PRUint32 i = 0; i < intPairInfo.mIntegerPairCount; i++) {
+      if (aName == *intPairInfo.mIntegerPairInfo[i].mName) {
+        intPairInfo.Reset(i);
+        DidChangeIntegerPair(i, false);
+        return;
       }
     }
 
@@ -698,8 +668,8 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
     for (PRUint32 i = 0; i < angleInfo.mAngleCount; i++) {
       if (aName == *angleInfo.mAngleInfo[i].mName) {
         angleInfo.Reset(i);
-        DidChangeAngle(i, PR_FALSE);
-        return rv;
+        DidChangeAngle(i, false);
+        return;
       }
     }
 
@@ -709,8 +679,8 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
     for (PRUint32 i = 0; i < boolInfo.mBooleanCount; i++) {
       if (aName == *boolInfo.mBooleanInfo[i].mName) {
         boolInfo.Reset(i);
-        DidChangeBoolean(i, PR_FALSE);
-        return rv;
+        DidChangeBoolean(i, false);
+        return;
       }
     }
 
@@ -720,8 +690,8 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
     for (PRUint32 i = 0; i < enumInfo.mEnumCount; i++) {
       if (aName == *enumInfo.mEnumInfo[i].mName) {
         enumInfo.Reset(i);
-        DidChangeEnum(i, PR_FALSE);
-        return rv;
+        DidChangeEnum(i, false);
+        return;
       }
     }
 
@@ -730,10 +700,11 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
       nsSVGViewBox* viewBox = GetViewBox();
       if (viewBox) {
         viewBox->Init();
-        DidChangeViewBox(PR_FALSE);
-        return rv;
+        DidChangeViewBox(false);
+        return;
       }
     }
+
     // Check if this is a preserveAspectRatio attribute going away
     if (aName == nsGkAtoms::preserveAspectRatio) {
       SVGAnimatedPreserveAspectRatio *preserveAspectRatio =
@@ -741,17 +712,18 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
 
       if (preserveAspectRatio) {
         preserveAspectRatio->Init();
-        DidChangePreserveAspectRatio(PR_FALSE);
-        return rv;
+        DidChangePreserveAspectRatio(false);
+        return;
       }
     }
-    // Check if this is a class attribute going away
-    if (aName == nsGkAtoms::_class) {
-      nsSVGClass *svgClass = GetClass();
 
-      if (svgClass) {
-        svgClass->Init();
-        return rv;
+    // Check if this is a transform list attribute going away
+    if (GetTransformListAttrName() == aName) {
+      SVGAnimatedTransformList *transformList = GetAnimatedTransformList();
+      if (transformList) {
+        transformList->ClearBaseValue();
+        DidChangeTransformList(false);
+        return;
       }
     }
   }
@@ -764,31 +736,17 @@ nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
         aName == *stringInfo.mStringInfo[i].mName) {
       stringInfo.Reset(i);
       DidChangeString(i);
-      return rv;
+      return;
     }
   }
-
-  // Now check for one of the old style basetypes going away
-  nsCOMPtr<nsISVGValue> svg_value = GetMappedAttribute(aNamespaceID, aName);
-
-  if (svg_value) {
-    mSuppressNotification = PR_TRUE;
-    ResetOldStyleBaseType(svg_value);
-    mSuppressNotification = PR_FALSE;
-  }
-
-  return rv;
 }
 
-void
-nsSVGElement::ResetOldStyleBaseType(nsISVGValue *svg_value)
+nsresult
+nsSVGElement::UnsetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
+                        bool aNotify)
 {
-  nsCOMPtr<nsIDOMSVGAnimatedTransformList> tl = do_QueryInterface(svg_value);
-  if (tl) {
-    nsCOMPtr<nsIDOMSVGTransformList> transform;
-    tl->GetBaseVal(getter_AddRefs(transform));
-    transform->Clear();
-  }
+  UnsetAttrInternal(aNamespaceID, aName, aNotify);
+  return nsSVGElementBase::UnsetAttr(aNamespaceID, aName, aNotify);
 }
 
 nsChangeHint
@@ -809,7 +767,7 @@ nsSVGElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
   return retval;
 }
 
-PRBool
+bool
 nsSVGElement::IsNodeOfType(PRUint32 aFlags) const
 {
   return !(aFlags & ~(eCONTENT | eSVG));
@@ -835,30 +793,27 @@ nsSVGElement::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
   // whether this is a "no-animation restyle". (This should match the check
   // in nsHTMLCSSStyleSheet::RulesMatching(), where we determine whether to
   // apply the SMILOverrideStyle.)
-  nsIDocument* doc = GetOwnerDoc();
-  NS_ASSERTION(doc, "SVG element without doc");
-  if (doc) {
-    nsIPresShell* shell = doc->GetShell();
-    nsPresContext* context = shell ? shell->GetPresContext() : nsnull;
-    if (context && context->IsProcessingRestyles() &&
-        !context->IsProcessingAnimationStyleChange()) {
-      // Any style changes right now could trigger CSS Transitions. We don't
-      // want that to happen from SMIL-animated value of mapped attrs, so
-      // ignore animated value for now, and request an animation restyle to
-      // get our animated value noticed.
-      shell->RestyleForAnimation(this, eRestyle_Self);
-    } else {
-      // Ok, this is an animation restyle -- go ahead and update/walk the
-      // animated content style rule.
-      css::StyleRule* animContentStyleRule = GetAnimatedContentStyleRule();
-      if (!animContentStyleRule) {
-        UpdateAnimatedContentStyleRule();
-        animContentStyleRule = GetAnimatedContentStyleRule();
-      }
-      if (animContentStyleRule) {
-        animContentStyleRule->RuleMatched();
-        aRuleWalker->Forward(animContentStyleRule);
-      }
+  nsIDocument* doc = OwnerDoc();
+  nsIPresShell* shell = doc->GetShell();
+  nsPresContext* context = shell ? shell->GetPresContext() : nsnull;
+  if (context && context->IsProcessingRestyles() &&
+      !context->IsProcessingAnimationStyleChange()) {
+    // Any style changes right now could trigger CSS Transitions. We don't
+    // want that to happen from SMIL-animated value of mapped attrs, so
+    // ignore animated value for now, and request an animation restyle to
+    // get our animated value noticed.
+    shell->RestyleForAnimation(this, eRestyle_Self);
+  } else {
+    // Ok, this is an animation restyle -- go ahead and update/walk the
+    // animated content style rule.
+    css::StyleRule* animContentStyleRule = GetAnimatedContentStyleRule();
+    if (!animContentStyleRule) {
+      UpdateAnimatedContentStyleRule();
+      animContentStyleRule = GetAnimatedContentStyleRule();
+    }
+    if (animContentStyleRule) {
+      animContentStyleRule->RuleMatched();
+      aRuleWalker->Forward(animContentStyleRule);
     }
   }
 #endif // MOZ_SMIL
@@ -991,7 +946,7 @@ nsSVGElement::sLightingEffectsMap[] = {
 // nsIDOMNode methods
 
 NS_IMETHODIMP
-nsSVGElement::IsSupported(const nsAString& aFeature, const nsAString& aVersion, PRBool* aReturn)
+nsSVGElement::IsSupported(const nsAString& aFeature, const nsAString& aVersion, bool* aReturn)
 {
   return nsGenericElement::IsSupported(aFeature, aVersion, aReturn); 
 }
@@ -1015,7 +970,7 @@ NS_IMETHODIMP nsSVGElement::GetId(nsAString & aId)
 
 NS_IMETHODIMP nsSVGElement::SetId(const nsAString & aId)
 {
-  return SetAttr(kNameSpaceID_None, nsGkAtoms::id, aId, PR_TRUE);
+  return SetAttr(kNameSpaceID_None, nsGkAtoms::id, aId, true);
 }
 
 /* readonly attribute nsIDOMSVGSVGElement ownerSVGElement; */
@@ -1038,90 +993,6 @@ nsSVGElement::GetViewportElement(nsIDOMSVGElement * *aViewportElement)
 {
   *aViewportElement = nsSVGUtils::GetNearestViewportElement(this).get();
   return NS_OK;
-}
-
-//----------------------------------------------------------------------
-// nsISVGValueObserver methods:
-nsSVGElement::ObservableModificationData
-nsSVGElement::GetModificationDataForObservable(nsISVGValue* aObservable,
-                                               nsISVGValue::modificationType aModType)
-{
-  // Return without setting DOM attributes as markup attributes if the
-  // attribute's element is being inserted into an SVG document fragment,
-  // which provides a context which percentage lengths are relative to.
-  // Bug 274886
-  if (aModType == nsISVGValue::mod_context)
-    return ObservableModificationData(nsnull, 0);
-
-  // Return without setting DOM attribute 
-  if (mSuppressNotification)
-    return ObservableModificationData(nsnull, 0);
-
-  PRUint32 i, count = mMappedAttributes.AttrCount();
-  const nsAttrValue* attrValue = nsnull;
-  for (i = 0; i < count; ++i) {
-    attrValue = mMappedAttributes.AttrAt(i);
-    if (attrValue->GetSVGValue() == aObservable) {
-      break;
-    }
-  }
-
-  if (i == count) {
-    NS_NOTREACHED("unknown nsISVGValue");
-
-    return ObservableModificationData(nsnull, 1);
-  }
-  
-  const nsAttrName* attrName = mMappedAttributes.AttrNameAt(i);
-  PRBool modification = !!mAttrsAndChildren.GetAttr(attrName->LocalName(),
-                                                    attrName->NamespaceID());
-
-  PRUint8 modType = modification ?
-    static_cast<PRUint8>(nsIDOMMutationEvent::MODIFICATION) :
-    static_cast<PRUint8>(nsIDOMMutationEvent::ADDITION);
-
-  return ObservableModificationData(attrName, modType);
-}
-
-
-NS_IMETHODIMP
-nsSVGElement::WillModifySVGObservable(nsISVGValue* aObservable,
-                                      nsISVGValue::modificationType aModType)
-{
-  ObservableModificationData data =
-    GetModificationDataForObservable(aObservable, aModType);
-  const nsAttrName* attrName = data.name;
-  if (!attrName) {
-    return data.modType ? NS_ERROR_UNEXPECTED : NS_OK;
-  }
-
-  nsNodeUtils::AttributeWillChange(this, attrName->NamespaceID(),
-                                   attrName->LocalName(), data.modType);
-  return NS_OK;
-}
-
-
-NS_IMETHODIMP
-nsSVGElement::DidModifySVGObservable(nsISVGValue* aObservable,
-                                     nsISVGValue::modificationType aModType)
-{
-  ObservableModificationData data =
-    GetModificationDataForObservable(aObservable, aModType);
-  const nsAttrName* attrName = data.name;
-  if (!attrName) {
-    return data.modType ? NS_ERROR_UNEXPECTED : NS_OK;
-  }
-
-  PRBool hasListeners =
-    nsContentUtils::HasMutationListeners(this,
-                                         NS_EVENT_BITS_MUTATION_ATTRMODIFIED,
-                                         this);
-
-
-  nsAttrValue newValue(aObservable);
-  return SetAttrAndNotify(attrName->NamespaceID(), attrName->LocalName(),
-                          attrName->GetPrefix(), EmptyString(), newValue,
-                          data.modType, hasListeners, PR_TRUE, nsnull);
 }
 
 //------------------------------------------------------------------------
@@ -1175,7 +1046,7 @@ MappedAttrParser::MappedAttrParser(css::Loader* aLoader,
   // the CSS parser to parse the font-size attribute.  Note that this
   // does *not* affect the use of CSS stylesheets, which will still
   // require units.
-  mParser.SetSVGMode(PR_TRUE);
+  mParser.SetSVGMode(true);
 }
 
 MappedAttrParser::~MappedAttrParser()
@@ -1197,9 +1068,9 @@ MappedAttrParser::ParseMappedAttrValue(nsIAtom* aMappedAttrName,
   // Get the nsCSSProperty ID for our mapped attribute.
   nsCSSProperty propertyID =
     nsCSSProps::LookupProperty(nsDependentAtomString(aMappedAttrName));
-  PRBool changed; // outparam for ParseProperty. (ignored)
+  bool changed; // outparam for ParseProperty. (ignored)
   mParser.ParseProperty(propertyID, aMappedAttrValue, mDocURI, mBaseURI,
-                        mNodePrincipal, mDecl, &changed, PR_FALSE);
+                        mNodePrincipal, mDecl, &changed, false);
 }
 
 already_AddRefed<css::StyleRule>
@@ -1219,10 +1090,10 @@ MappedAttrParser::CreateStyleRule()
 //----------------------------------------------------------------------
 // Implementation Helpers:
 
-PRBool
+bool
 nsSVGElement::IsEventName(nsIAtom* aName)
 {
-  return PR_FALSE;
+  return false;
 }
 
 void
@@ -1236,12 +1107,7 @@ nsSVGElement::UpdateContentStyleRule()
     return;
   }
 
-  nsIDocument* doc = GetOwnerDoc();
-  if (!doc) {
-    NS_ERROR("SVG element without owner document");
-    return;
-  }
-
+  nsIDocument* doc = OwnerDoc();
   MappedAttrParser mappedAttrParser(doc->CSSLoader(), doc->GetDocumentURI(),
                                     GetBaseURI(), NodePrincipal());
 
@@ -1300,7 +1166,7 @@ nsSVGElement::UpdateAnimatedContentStyleRule()
   NS_ABORT_IF_FALSE(!GetAnimatedContentStyleRule(),
                     "Animated content style rule already set");
 
-  nsIDocument* doc = GetOwnerDoc();
+  nsIDocument* doc = OwnerDoc();
   if (!doc) {
     NS_ERROR("SVG element without owner document");
     return;
@@ -1338,42 +1204,6 @@ nsSVGElement::GetAnimatedContentStyleRule()
 }
 #endif // MOZ_SMIL
 
-nsISVGValue*
-nsSVGElement::GetMappedAttribute(PRInt32 aNamespaceID, nsIAtom* aName)
-{
-  const nsAttrValue* attrVal = mMappedAttributes.GetAttr(aName, aNamespaceID);
-  if (!attrVal)
-    return nsnull;
-
-  return attrVal->GetSVGValue();
-}
-
-nsresult
-nsSVGElement::AddMappedSVGValue(nsIAtom* aName, nsISupports* aValue,
-                                PRInt32 aNamespaceID)
-{
-  nsresult rv;
-  nsCOMPtr<nsISVGValue> svg_value = do_QueryInterface(aValue);
-  svg_value->AddObserver(this);
-  nsAttrValue attrVal(svg_value);
-
-  if (aNamespaceID == kNameSpaceID_None) {
-    rv = mMappedAttributes.SetAndTakeAttr(aName, attrVal);
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-  else {
-    nsCOMPtr<nsINodeInfo> ni;
-    ni = mNodeInfo->NodeInfoManager()->GetNodeInfo(aName, nsnull,
-                                                   aNamespaceID);
-    NS_ENSURE_TRUE(ni, NS_ERROR_OUT_OF_MEMORY);
-
-    rv = mMappedAttributes.SetAndTakeAttr(ni, attrVal);
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-
-  return NS_OK;
-}
-
 /* static */
 nsIAtom* nsSVGElement::GetEventNameForAttr(nsIAtom* aAttr)
 {
@@ -1404,7 +1234,7 @@ nsIAtom* nsSVGElement::GetEventNameForAttr(nsIAtom* aAttr)
 }
 
 nsSVGSVGElement *
-nsSVGElement::GetCtx()
+nsSVGElement::GetCtx() const
 {
   nsIContent* ancestor = GetFlattenedTreeParent();
 
@@ -1424,7 +1254,7 @@ nsSVGElement::GetCtx()
 }
 
 /* virtual */ gfxMatrix
-nsSVGElement::PrependLocalTransformTo(const gfxMatrix &aMatrix)
+nsSVGElement::PrependLocalTransformTo(const gfxMatrix &aMatrix) const
 {
   return aMatrix;
 }
@@ -1444,7 +1274,22 @@ void nsSVGElement::LengthAttributesInfo::Reset(PRUint8 aAttrEnum)
 }
 
 void
-nsSVGElement::DidChangeLength(PRUint8 aAttrEnum, PRBool aDoSetAttr)
+nsSVGElement::SetLength(nsIAtom* aName, const nsSVGLength2 &aLength)
+{
+  LengthAttributesInfo lengthInfo = GetLengthInfo();
+
+  for (PRUint32 i = 0; i < lengthInfo.mLengthCount; i++) {
+    if (aName == *lengthInfo.mLengthInfo[i].mName) {
+      lengthInfo.mLengths[i] = aLength;
+      DidAnimateLength(i);
+      return;
+    }
+  }
+  NS_ABORT_IF_FALSE(false, "no length found to set");
+}
+
+void
+nsSVGElement::DidChangeLength(PRUint8 aAttrEnum, bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1461,7 +1306,7 @@ nsSVGElement::DidChangeLength(PRUint8 aAttrEnum, PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, *info.mLengthInfo[aAttrEnum].mName, nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -1525,7 +1370,7 @@ nsSVGElement::LengthListAttributesInfo::Reset(PRUint8 aAttrEnum)
 }
 
 void
-nsSVGElement::DidChangeLengthList(PRUint8 aAttrEnum, PRBool aDoSetAttr)
+nsSVGElement::DidChangeLengthList(PRUint8 aAttrEnum, bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1541,7 +1386,7 @@ nsSVGElement::DidChangeLengthList(PRUint8 aAttrEnum, PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, *info.mLengthListInfo[aAttrEnum].mName,
-                nsnull, attrValue, PR_TRUE);
+                nsnull, attrValue, true);
 }
 
 void
@@ -1607,7 +1452,7 @@ nsSVGElement::NumberListAttributesInfo::Reset(PRUint8 aAttrEnum)
 }
 
 void
-nsSVGElement::DidChangeNumberList(PRUint8 aAttrEnum, PRBool aDoSetAttr)
+nsSVGElement::DidChangeNumberList(PRUint8 aAttrEnum, bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1623,7 +1468,7 @@ nsSVGElement::DidChangeNumberList(PRUint8 aAttrEnum, PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, *info.mNumberListInfo[aAttrEnum].mName,
-                nsnull, attrValue, PR_TRUE);
+                nsnull, attrValue, true);
 }
 
 void
@@ -1648,7 +1493,7 @@ nsSVGElement::GetAnimatedNumberList(PRUint8 aAttrEnum)
   if (aAttrEnum < info.mNumberListCount) {
     return &(info.mNumberLists[aAttrEnum]);
   }
-  NS_ABORT_IF_FALSE(PR_FALSE, "Bad attrEnum");
+  NS_ABORT_IF_FALSE(false, "Bad attrEnum");
   return nsnull;
 }
 
@@ -1661,12 +1506,12 @@ nsSVGElement::GetAnimatedNumberList(nsIAtom *aAttrName)
       return &info.mNumberLists[i];
     }
   }
-  NS_ABORT_IF_FALSE(PR_FALSE, "Bad caller");
+  NS_ABORT_IF_FALSE(false, "Bad caller");
   return nsnull;
 }
 
 void
-nsSVGElement::DidChangePointList(PRBool aDoSetAttr)
+nsSVGElement::DidChangePointList(bool aDoSetAttr)
 {
   NS_ABORT_IF_FALSE(GetPointListAttrName(), "Changing non-existent point list?");
 
@@ -1678,7 +1523,7 @@ nsSVGElement::DidChangePointList(PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, GetPointListAttrName(), nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -1697,7 +1542,7 @@ nsSVGElement::DidAnimatePointList()
 }
 
 void
-nsSVGElement::DidChangePathSegList(PRBool aDoSetAttr)
+nsSVGElement::DidChangePathSegList(bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1707,7 +1552,7 @@ nsSVGElement::DidChangePathSegList(PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, GetPathDataAttrName(), nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -1738,7 +1583,7 @@ void nsSVGElement::NumberAttributesInfo::Reset(PRUint8 aAttrEnum)
 }
 
 void
-nsSVGElement::DidChangeNumber(PRUint8 aAttrEnum, PRBool aDoSetAttr)
+nsSVGElement::DidChangeNumber(PRUint8 aAttrEnum, bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1755,7 +1600,7 @@ nsSVGElement::DidChangeNumber(PRUint8 aAttrEnum, PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, *info.mNumberInfo[aAttrEnum].mName, nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -1792,6 +1637,53 @@ nsSVGElement::GetAnimatedNumberValues(float *aFirst, ...)
   va_end(args);
 }
 
+nsSVGElement::NumberPairAttributesInfo
+nsSVGElement::GetNumberPairInfo()
+{
+  return NumberPairAttributesInfo(nsnull, nsnull, 0);
+}
+
+void nsSVGElement::NumberPairAttributesInfo::Reset(PRUint8 aAttrEnum)
+{
+  mNumberPairs[aAttrEnum].Init(aAttrEnum,
+                               mNumberPairInfo[aAttrEnum].mDefaultValue1,
+                               mNumberPairInfo[aAttrEnum].mDefaultValue2);
+}
+
+void
+nsSVGElement::DidChangeNumberPair(PRUint8 aAttrEnum, bool aDoSetAttr)
+{
+  if (!aDoSetAttr)
+    return;
+
+  NumberPairAttributesInfo info = GetNumberPairInfo();
+
+  NS_ASSERTION(info.mNumberPairCount > 0,
+               "DidChangePairNumber on element with no number pair attribs");
+
+  NS_ASSERTION(aAttrEnum < info.mNumberPairCount, "aAttrEnum out of range");
+
+  nsAutoString serializedValue;
+  info.mNumberPairs[aAttrEnum].GetBaseValueString(serializedValue);
+
+  nsAttrValue attrValue(serializedValue);
+  SetParsedAttr(kNameSpaceID_None, *info.mNumberPairInfo[aAttrEnum].mName, nsnull,
+                attrValue, true);
+}
+
+void
+nsSVGElement::DidAnimateNumberPair(PRUint8 aAttrEnum)
+{
+  nsIFrame* frame = GetPrimaryFrame();
+
+  if (frame) {
+    NumberPairAttributesInfo info = GetNumberPairInfo();
+    frame->AttributeChanged(kNameSpaceID_None,
+                            *info.mNumberPairInfo[aAttrEnum].mName,
+                            nsIDOMMutationEvent::MODIFICATION);
+  }
+}
+
 nsSVGElement::IntegerAttributesInfo
 nsSVGElement::GetIntegerInfo()
 {
@@ -1805,7 +1697,7 @@ void nsSVGElement::IntegerAttributesInfo::Reset(PRUint8 aAttrEnum)
 }
 
 void
-nsSVGElement::DidChangeInteger(PRUint8 aAttrEnum, PRBool aDoSetAttr)
+nsSVGElement::DidChangeInteger(PRUint8 aAttrEnum, bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1822,7 +1714,7 @@ nsSVGElement::DidChangeInteger(PRUint8 aAttrEnum, PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, *info.mIntegerInfo[aAttrEnum].mName, nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -1859,6 +1751,53 @@ nsSVGElement::GetAnimatedIntegerValues(PRInt32 *aFirst, ...)
   va_end(args);
 }
 
+nsSVGElement::IntegerPairAttributesInfo
+nsSVGElement::GetIntegerPairInfo()
+{
+  return IntegerPairAttributesInfo(nsnull, nsnull, 0);
+}
+
+void nsSVGElement::IntegerPairAttributesInfo::Reset(PRUint8 aAttrEnum)
+{
+  mIntegerPairs[aAttrEnum].Init(aAttrEnum,
+                                mIntegerPairInfo[aAttrEnum].mDefaultValue1,
+                                mIntegerPairInfo[aAttrEnum].mDefaultValue2);
+}
+
+void
+nsSVGElement::DidChangeIntegerPair(PRUint8 aAttrEnum, bool aDoSetAttr)
+{
+  if (!aDoSetAttr)
+    return;
+
+  IntegerPairAttributesInfo info = GetIntegerPairInfo();
+
+  NS_ASSERTION(info.mIntegerPairCount > 0,
+               "DidChangeIntegerPair on element with no integer pair attribs");
+
+  NS_ASSERTION(aAttrEnum < info.mIntegerPairCount, "aAttrEnum out of range");
+
+  nsAutoString serializedValue;
+  info.mIntegerPairs[aAttrEnum].GetBaseValueString(serializedValue);
+
+  nsAttrValue attrValue(serializedValue);
+  SetParsedAttr(kNameSpaceID_None, *info.mIntegerPairInfo[aAttrEnum].mName, nsnull,
+                attrValue, true);
+}
+
+void
+nsSVGElement::DidAnimateIntegerPair(PRUint8 aAttrEnum)
+{
+  nsIFrame* frame = GetPrimaryFrame();
+  
+  if (frame) {
+    IntegerPairAttributesInfo info = GetIntegerPairInfo();
+    frame->AttributeChanged(kNameSpaceID_None,
+                            *info.mIntegerPairInfo[aAttrEnum].mName,
+                            nsIDOMMutationEvent::MODIFICATION);
+  }
+}
+
 nsSVGElement::AngleAttributesInfo
 nsSVGElement::GetAngleInfo()
 {
@@ -1873,7 +1812,7 @@ void nsSVGElement::AngleAttributesInfo::Reset(PRUint8 aAttrEnum)
 }
 
 void
-nsSVGElement::DidChangeAngle(PRUint8 aAttrEnum, PRBool aDoSetAttr)
+nsSVGElement::DidChangeAngle(PRUint8 aAttrEnum, bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1890,7 +1829,7 @@ nsSVGElement::DidChangeAngle(PRUint8 aAttrEnum, PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, *info.mAngleInfo[aAttrEnum].mName, nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -1919,7 +1858,7 @@ void nsSVGElement::BooleanAttributesInfo::Reset(PRUint8 aAttrEnum)
 }
 
 void
-nsSVGElement::DidChangeBoolean(PRUint8 aAttrEnum, PRBool aDoSetAttr)
+nsSVGElement::DidChangeBoolean(PRUint8 aAttrEnum, bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1936,7 +1875,7 @@ nsSVGElement::DidChangeBoolean(PRUint8 aAttrEnum, PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, *info.mBooleanInfo[aAttrEnum].mName, nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -1965,7 +1904,7 @@ void nsSVGElement::EnumAttributesInfo::Reset(PRUint8 aAttrEnum)
 }
 
 void
-nsSVGElement::DidChangeEnum(PRUint8 aAttrEnum, PRBool aDoSetAttr)
+nsSVGElement::DidChangeEnum(PRUint8 aAttrEnum, bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -1982,7 +1921,7 @@ nsSVGElement::DidChangeEnum(PRUint8 aAttrEnum, PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, *info.mEnumInfo[aAttrEnum].mName, nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -2005,7 +1944,7 @@ nsSVGElement::GetViewBox()
 }
 
 void
-nsSVGElement::DidChangeViewBox(PRBool aDoSetAttr)
+nsSVGElement::DidChangeViewBox(bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -2019,7 +1958,7 @@ nsSVGElement::DidChangeViewBox(PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, nsGkAtoms::viewBox, nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -2041,7 +1980,7 @@ nsSVGElement::GetPreserveAspectRatio()
 }
 
 void
-nsSVGElement::DidChangePreserveAspectRatio(PRBool aDoSetAttr)
+nsSVGElement::DidChangePreserveAspectRatio(bool aDoSetAttr)
 {
   if (!aDoSetAttr)
     return;
@@ -2057,7 +1996,7 @@ nsSVGElement::DidChangePreserveAspectRatio(PRBool aDoSetAttr)
 
   nsAttrValue attrValue(serializedValue);
   SetParsedAttr(kNameSpaceID_None, nsGkAtoms::preserveAspectRatio, nsnull,
-                attrValue, PR_TRUE);
+                attrValue, true);
 }
 
 void
@@ -2073,13 +2012,34 @@ nsSVGElement::DidAnimatePreserveAspectRatio()
 }
 
 void
-nsSVGElement::DidAnimateTransform()
+nsSVGElement::DidChangeTransformList(bool aDoSetAttr)
 {
+  if (!aDoSetAttr)
+    return;
+
+  SVGAnimatedTransformList* transformList = GetAnimatedTransformList();
+  NS_ABORT_IF_FALSE(transformList,
+                    "DidChangeTransformList on element with no transform list");
+
+  nsAutoString serializedValue;
+  transformList->GetBaseValue().GetValueAsString(serializedValue);
+
+  nsAttrValue attrValue(serializedValue);
+  SetParsedAttr(kNameSpaceID_None, GetTransformListAttrName(), nsnull,
+                attrValue, true);
+}
+
+void
+nsSVGElement::DidAnimateTransformList()
+{
+  NS_ABORT_IF_FALSE(GetTransformListAttrName(),
+                    "Animating non-existent transform data?");
+
   nsIFrame* frame = GetPrimaryFrame();
-  
+
   if (frame) {
     frame->AttributeChanged(kNameSpaceID_None,
-                            nsGkAtoms::transform,
+                            GetTransformListAttrName(),
                             nsIDOMMutationEvent::MODIFICATION);
   }
 }
@@ -2118,7 +2078,7 @@ void nsSVGElement::SetStringBaseValue(PRUint8 aAttrEnum, const nsAString& aValue
   NS_ASSERTION(aAttrEnum < info.mStringCount, "aAttrEnum out of range");
 
   SetAttr(info.mStringInfo[aAttrEnum].mNamespaceID,
-          *info.mStringInfo[aAttrEnum].mName, aValue, PR_TRUE);
+          *info.mStringInfo[aAttrEnum].mName, aValue, true);
 }
 
 void
@@ -2134,106 +2094,6 @@ nsSVGElement::DidAnimateString(PRUint8 aAttrEnum)
   }
 }
 
-nsSVGClass *
-nsSVGElement::GetClass()
-{
-  return nsnull;
-}
-
-void
-nsSVGElement::DidAnimateClass()
-{
-  nsIFrame* frame = GetPrimaryFrame();
-
-  if (frame) {
-    frame->AttributeChanged(kNameSpaceID_None, nsGkAtoms::_class,
-                            nsIDOMMutationEvent::MODIFICATION);
-  }
-}
-
-nsresult
-nsSVGElement::ParseNumberOptionalNumber(const nsAString& aValue,
-                                        PRUint32 aIndex1, PRUint32 aIndex2)
-{
-  NS_ConvertUTF16toUTF8 value(aValue);
-  const char *str = value.get();
-
-  if (NS_IsAsciiWhitespace(*str))
-    return NS_ERROR_FAILURE;
-
-  char *rest;
-  float x = float(PR_strtod(str, &rest));
-  float y = x;
-
-  if (str == rest || !NS_FloatIsFinite(x)) {
-    //first value was illformed
-    return NS_ERROR_FAILURE;
-  }
-  
-  if (*rest != '\0') {
-    while (NS_IsAsciiWhitespace(*rest)) {
-      ++rest;
-    }
-    if (*rest == ',') {
-      ++rest;
-    }
-
-    y = float(PR_strtod(rest, &rest));
-    if (*rest != '\0' || !NS_FloatIsFinite(y)) {
-      //second value was illformed or there was trailing content
-      return NS_ERROR_FAILURE;
-    }
-  }
-
-  NumberAttributesInfo numberInfo = GetNumberInfo();
-
-  numberInfo.mNumbers[aIndex1].SetBaseValue(x, this, PR_FALSE);
-  numberInfo.mNumbers[aIndex2].SetBaseValue(y, this, PR_FALSE);
-  return NS_OK;
-}
-
-nsresult
-nsSVGElement::ParseIntegerOptionalInteger(const nsAString& aValue,
-                                          PRUint32 aIndex1, PRUint32 aIndex2)
-{
-  NS_ConvertUTF16toUTF8 value(aValue);
-  const char *str = value.get();
-
-  if (NS_IsAsciiWhitespace(*str))
-    return NS_ERROR_FAILURE;
-
-  char *rest;
-  PRInt32 x = strtol(str, &rest, 10);
-  PRInt32 y = x;
-
-  if (str == rest) {
-    //first value was illformed
-    return NS_ERROR_FAILURE;
-  }
-  
-  if (*rest != '\0') {
-    while (NS_IsAsciiWhitespace(*rest)) {
-      ++rest;
-    }
-    if (*rest == ',') {
-      ++rest;
-    }
-
-    y = strtol(rest, &rest, 10);
-    if (*rest != '\0') {
-      //second value was illformed or there was trailing content
-      return NS_ERROR_FAILURE;
-    }
-  }
-
-  IntegerAttributesInfo integerInfo = GetIntegerInfo();
-
-  integerInfo.mIntegers[aIndex1].SetBaseValue(x, this, PR_FALSE);
-  integerInfo.mIntegers[aIndex2].SetBaseValue(y, this, PR_FALSE);
-
-  return NS_OK;
-}
-
 nsresult
 nsSVGElement::ReportAttributeParseFailure(nsIDocument* aDocument,
                                           nsIAtom* aAttribute,
@@ -2244,7 +2104,7 @@ nsSVGElement::ReportAttributeParseFailure(nsIDocument* aDocument,
                                  attributeValue.get() };
   return nsSVGUtils::ReportToConsole(aDocument,
                                      "AttributeParseWarning",
-                                     strings, NS_ARRAY_LENGTH(strings));
+                                     strings, ArrayLength(strings));
 }
 
 void
@@ -2266,7 +2126,7 @@ nsSVGElement::RecompileScriptEventListeners()
 
     nsAutoString value;
     GetAttr(kNameSpaceID_None, attr, value);
-    AddScriptEventListener(GetEventNameForAttr(attr), value, PR_TRUE);
+    AddScriptEventListener(GetEventNameForAttr(attr), value, true);
   }
 }
 
@@ -2276,39 +2136,9 @@ nsSVGElement::GetAnimatedAttr(PRInt32 aNamespaceID, nsIAtom* aName)
 {
   if (aNamespaceID == kNameSpaceID_None) {
     // Transforms:
-    nsCOMPtr<nsIDOMSVGAnimatedTransformList> transformList;
-    if (aName == nsGkAtoms::transform) {
-      nsCOMPtr<nsIDOMSVGTransformable> transformable(
-              do_QueryInterface(static_cast<nsIContent*>(this)));
-      if (!transformable)
-        return nsnull;
-      nsresult rv = transformable->GetTransform(getter_AddRefs(transformList));
-      NS_ENSURE_SUCCESS(rv, nsnull);
-    }
-    if (aName == nsGkAtoms::gradientTransform) {
-      nsCOMPtr<nsIDOMSVGGradientElement> gradientElement(
-              do_QueryInterface(static_cast<nsIContent*>(this)));
-      if (!gradientElement)
-        return nsnull;
-
-      nsresult rv = gradientElement->GetGradientTransform(getter_AddRefs(transformList));
-      NS_ENSURE_SUCCESS(rv, nsnull);
-    }
-    if (aName == nsGkAtoms::patternTransform) {
-      nsCOMPtr<nsIDOMSVGPatternElement> patternElement(
-              do_QueryInterface(static_cast<nsIContent*>(this)));
-      if (!patternElement)
-        return nsnull;
-
-      nsresult rv = patternElement->GetPatternTransform(getter_AddRefs(transformList));
-      NS_ENSURE_SUCCESS(rv, nsnull);
-    }
-    if (transformList) {
-      nsSVGAnimatedTransformList* list
-        = static_cast<nsSVGAnimatedTransformList*>(transformList.get());
-      NS_ENSURE_TRUE(list, nsnull);
-
-      return new nsSVGTransformSMILAttr(list, this);
+    if (GetTransformListAttrName() == aName) {
+      SVGAnimatedTransformList* transformList = GetAnimatedTransformList();
+      return transformList ?  transformList->ToSMILAttr(this) : nsnull;
     }
 
     // Motion (fake 'attribute' for animateMotion)
@@ -2328,16 +2158,18 @@ nsSVGElement::GetAnimatedAttr(PRInt32 aNamespaceID, nsIAtom* aName)
     {
       NumberAttributesInfo info = GetNumberInfo();
       for (PRUint32 i = 0; i < info.mNumberCount; i++) {
-        // XXX this isn't valid for either of the two properties corresponding to
-        // attributes of type <number-optional-number> - see filter,
-        // feConvolveMatrix, feDiffuseLighting, feGaussianBlur, feMorphology and
-        // feTurbulence.
-        // The way to fix this is probably to handle them as 2-item number lists
-        // once we implement number list animation, and put the number list loop
-        // *above* this one at that time to catch those properties before we get
-        // here. The separate properties should then point into the list.
         if (aName == *info.mNumberInfo[i].mName) {
           return info.mNumbers[i].ToSMILAttr(this);
+        }
+      }
+    }
+
+    // Number Pairs:
+    {
+      NumberPairAttributesInfo info = GetNumberPairInfo();
+      for (PRUint32 i = 0; i < info.mNumberPairCount; i++) {
+        if (aName == *info.mNumberPairInfo[i].mName) {
+          return info.mNumberPairs[i].ToSMILAttr(this);
         }
       }
     }
@@ -2348,6 +2180,16 @@ nsSVGElement::GetAnimatedAttr(PRInt32 aNamespaceID, nsIAtom* aName)
       for (PRUint32 i = 0; i < info.mIntegerCount; i++) {
         if (aName == *info.mIntegerInfo[i].mName) {
           return info.mIntegers[i].ToSMILAttr(this);
+        }
+      }
+    }
+
+    // Integer Pairs:
+    {
+      IntegerPairAttributesInfo info = GetIntegerPairInfo();
+      for (PRUint32 i = 0; i < info.mIntegerPairCount; i++) {
+        if (aName == *info.mIntegerPairInfo[i].mName) {
+          return info.mIntegerPairs[i].ToSMILAttr(this);
         }
       }
     }
@@ -2394,11 +2236,6 @@ nsSVGElement::GetAnimatedAttr(PRInt32 aNamespaceID, nsIAtom* aName)
         GetPreserveAspectRatio();
       return preserveAspectRatio ?
         preserveAspectRatio->ToSMILAttr(this) : nsnull;
-    }
-
-    if (aName == nsGkAtoms::_class) {
-      nsSVGClass *svgClass = GetClass();
-      return svgClass ? svgClass->ToSMILAttr(this) : nsnull;
     }
 
     // NumberLists:

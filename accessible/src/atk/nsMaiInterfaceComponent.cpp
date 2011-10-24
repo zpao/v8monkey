@@ -1,6 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:expandtab:shiftwidth=2:tabstop=2:
- */
+/* vim: set ts=2 et sw=2 tw=80: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -43,11 +42,6 @@
 #include "nsAccessibleWrap.h"
 #include "nsAccUtils.h"
 #include "nsCoreUtils.h"
-
-#include "nsIDOMDocument.h"
-#include "nsIDOMWindowInternal.h"
-#include "nsIDocShellTreeItem.h"
-#include "nsIInterfaceRequestorUtils.h"
 
 void
 componentInterfaceInitCB(AtkComponentIface *aIface)
@@ -99,7 +93,7 @@ refAccessibleAtPointHelper(nsAccessibleWrap* aAccWrap, gint aX, gint aY,
   if (!aAccWrap || aAccWrap->IsDefunct() || nsAccUtils::MustPrune(aAccWrap))
     return nsnull;
 
-  // nsAccessible::GetChildAtPoint(x,y) is in screen pixels.
+  // nsAccessible::ChildAtPoint(x,y) is in screen pixels.
   if (aCoordType == ATK_XY_WINDOW) {
     nsIntPoint winCoords =
       nsCoreUtils::GetScreenCoordsForWindow(aAccWrap->GetNode());
@@ -107,8 +101,8 @@ refAccessibleAtPointHelper(nsAccessibleWrap* aAccWrap, gint aX, gint aY,
     aY += winCoords.y;
   }
 
-  nsAccessible* accAtPoint = aAccWrap->GetChildAtPoint(aX, aY,
-                                                       nsAccessible::eDirectChild);
+  nsAccessible* accAtPoint = aAccWrap->ChildAtPoint(aX, aY,
+                                                    nsAccessible::eDirectChild);
   if (!accAtPoint)
     return nsnull;
 

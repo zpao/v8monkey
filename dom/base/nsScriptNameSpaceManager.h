@@ -75,6 +75,7 @@ struct nsGlobalNameStruct
     eTypeNotInitialized,
     eTypeInterface,
     eTypeProperty,
+    eTypeNavigatorProperty,
     eTypeExternalConstructor,
     eTypeStaticNameSet,
     eTypeDynamicNameSet,
@@ -85,8 +86,8 @@ struct nsGlobalNameStruct
     eTypeExternalConstructorAlias
   } mType;
 
-  PRBool mChromeOnly;
-  PRBool mDisabled;
+  bool mChromeOnly;
+  bool mDisabled;
 
   union {
     PRInt32 mDOMClassInfoID; // eTypeClassConstructor
@@ -128,18 +129,24 @@ public:
   nsresult LookupName(const nsAString& aName,
                       const nsGlobalNameStruct **aNameStruct,
                       const PRUnichar **aClassName = nsnull);
+  // Returns a nsGlobalNameStruct for the navigator property aName, or
+  // null if one is not found. The returned nsGlobalNameStruct is only
+  // guaranteed to be valid until the next call to any of the methods
+  // in this class.
+  nsresult LookupNavigatorName(const nsAString& aName,
+                               const nsGlobalNameStruct **aNameStruct);
 
   nsresult RegisterClassName(const char *aClassName,
                              PRInt32 aDOMClassInfoID,
-                             PRBool aPrivileged,
-                             PRBool aDisabled,
+                             bool aPrivileged,
+                             bool aDisabled,
                              const PRUnichar **aResult);
 
   nsresult RegisterClassProto(const char *aClassName,
                               const nsIID *aConstructorProtoIID,
-                              PRBool *aFoundOld);
+                              bool *aFoundOld);
 
-  nsresult RegisterExternalInterfaces(PRBool aAsProto);
+  nsresult RegisterExternalInterfaces(bool aAsProto);
 
   nsresult RegisterExternalClassName(const char *aClassName,
                                      nsCID& aCID);
@@ -151,7 +158,7 @@ public:
                              const nsIID *aProtoChainInterface,
                              const nsIID **aInterfaces,
                              PRUint32 aScriptableFlags,
-                             PRBool aHasClassInterface,
+                             bool aHasClassInterface,
                              const nsCID *aConstructorCID);
 
   nsGlobalNameStruct* GetConstructorProto(const nsGlobalNameStruct* aStruct);
@@ -161,7 +168,7 @@ protected:
   // that aKey will be mapped to. If mType in the returned
   // nsGlobalNameStruct is != eTypeNotInitialized, an entry for aKey
   // already existed.
-  nsGlobalNameStruct *AddToHash(const char *aKey,
+  nsGlobalNameStruct *AddToHash(PLDHashTable *aTable, const char *aKey,
                                 const PRUnichar **aClassName = nsnull);
 
   nsresult FillHash(nsICategoryManager *aCategoryManager,
@@ -169,7 +176,7 @@ protected:
   nsresult FillHashWithDOMInterfaces();
   nsresult RegisterInterface(const char* aIfName,
                              const nsIID *aIfIID,
-                             PRBool* aFoundOld);
+                             bool* aFoundOld);
 
   /**
    * Add a new category entry into the hash table.
@@ -184,11 +191,10 @@ protected:
                                   const char* aCategory,
                                   nsISupports* aEntry);
 
-  // Inline PLDHashTable, init with PL_DHashTableInit() and delete
-  // with PL_DHashTableFinish().
   PLDHashTable mGlobalNames;
+  PLDHashTable mNavigatorNames;
 
-  PRPackedBool mIsInitialized;
+  bool mIsInitialized;
 };
 
 #endif /* nsScriptNameSpaceManager_h__ */

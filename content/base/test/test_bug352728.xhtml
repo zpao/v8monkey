@@ -4,7 +4,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=352728
 -->
 <head>
   <title>Test for Bug 352728</title>
-  <script type="text/javascript" src="/MochiKit/packed.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>        
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -77,7 +76,7 @@ function testComment(aText, aShouldSucceed)
     checkTypes(comment, "comment", types);
 
     var interfaces = [ "nsIDOMComment", "nsIDOMCharacterData", "nsIDOMNode",
-                       "nsIDOM3Node", "nsIDOMEventTarget" ];
+                       "nsIDOMEventTarget" ];
     checkInterfaces(comment, "comment", interfaces);
 
     testCharacterData(comment, aText);
@@ -105,7 +104,7 @@ function testCDATASection(aText, aShouldSucceed)
     checkTypes(cdataSection, "CDATA section", types);
 
     var interfaces = [ "nsIDOMCDATASection", "nsIDOMCharacterData",
-                       "nsIDOMNode", "nsIDOM3Node", "nsIDOMEventTarget" ];
+                       "nsIDOMNode", "nsIDOMEventTarget" ];
     checkInterfaces(cdataSection, "CDATA section", interfaces);
 
     testCharacterData(cdataSection, aText);
@@ -136,7 +135,7 @@ function testPI(aTarget, aData, aShouldSucceed, aReason)
     checkTypes(pi, "processing instruction", types);
 
     var interfaces = [ "nsIDOMProcessingInstruction", "nsIDOMNode",
-                       "nsIDOM3Node", "nsIDOMEventTarget" ];
+                       "nsIDOMEventTarget" ];
     checkInterfaces(pi, "processing instruction", interfaces);
 
     is(pi.target, aTarget, "Check target");

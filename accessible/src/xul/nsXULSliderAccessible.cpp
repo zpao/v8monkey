@@ -38,12 +38,14 @@
 
 #include "nsXULSliderAccessible.h"
 
-#include "nsAccessibilityAtoms.h"
+#include "nsAccessibilityService.h"
 #include "States.h"
 
 #include "nsIDOMDocument.h"
 #include "nsIDOMDocumentXBL.h"
 #include "nsIFrame.h"
+
+using namespace mozilla::a11y;
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsXULSliderAccessible
@@ -81,7 +83,7 @@ nsXULSliderAccessible::NativeState()
   if (frame && frame->IsFocusable())
     states |= states::FOCUSABLE;
 
-  if (gLastFocusedNode == mContent)
+  if (FocusMgr()->IsFocused(this))
     states |= states::FOCUSED;
 
   return states;
@@ -92,16 +94,13 @@ nsXULSliderAccessible::NativeState()
 NS_IMETHODIMP
 nsXULSliderAccessible::GetValue(nsAString& aValue)
 {
-  return GetSliderAttr(nsAccessibilityAtoms::curpos, aValue);
+  return GetSliderAttr(nsGkAtoms::curpos, aValue);
 }
 
-NS_IMETHODIMP
-nsXULSliderAccessible::GetNumActions(PRUint8 *aCount)
+PRUint8
+nsXULSliderAccessible::ActionCount()
 {
-  NS_ENSURE_ARG_POINTER(aCount);
-
-  *aCount = 1;
-  return NS_OK;
+  return 1;
 }
 
 NS_IMETHODIMP
@@ -138,7 +137,7 @@ nsXULSliderAccessible::GetMaximumValue(double *aValue)
   if (rv != NS_OK_NO_ARIA_VALUE)
     return rv;
 
-  return GetSliderAttr(nsAccessibilityAtoms::maxpos, aValue);
+  return GetSliderAttr(nsGkAtoms::maxpos, aValue);
 }
 
 NS_IMETHODIMP
@@ -150,7 +149,7 @@ nsXULSliderAccessible::GetMinimumValue(double *aValue)
   if (rv != NS_OK_NO_ARIA_VALUE)
     return rv;
 
-  return GetSliderAttr(nsAccessibilityAtoms::minpos, aValue);
+  return GetSliderAttr(nsGkAtoms::minpos, aValue);
 }
 
 NS_IMETHODIMP
@@ -162,7 +161,7 @@ nsXULSliderAccessible::GetMinimumIncrement(double *aValue)
   if (rv != NS_OK_NO_ARIA_VALUE)
     return rv;
 
-  return GetSliderAttr(nsAccessibilityAtoms::increment, aValue);
+  return GetSliderAttr(nsGkAtoms::increment, aValue);
 }
 
 NS_IMETHODIMP
@@ -174,7 +173,7 @@ nsXULSliderAccessible::GetCurrentValue(double *aValue)
   if (rv != NS_OK_NO_ARIA_VALUE)
     return rv;
 
-  return GetSliderAttr(nsAccessibilityAtoms::curpos, aValue);
+  return GetSliderAttr(nsGkAtoms::curpos, aValue);
 }
 
 NS_IMETHODIMP
@@ -186,14 +185,14 @@ nsXULSliderAccessible::SetCurrentValue(double aValue)
   if (rv != NS_OK_NO_ARIA_VALUE)
     return rv;
 
-  return SetSliderAttr(nsAccessibilityAtoms::curpos, aValue);
+  return SetSliderAttr(nsGkAtoms::curpos, aValue);
 }
 
-PRBool
+bool
 nsXULSliderAccessible::GetAllowsAnonChildAccessibles()
 {
   // Do not allow anonymous xul:slider be accessible.
-  return PR_FALSE;
+  return false;
 }
 
 // Utils
@@ -205,11 +204,7 @@ nsXULSliderAccessible::GetSliderNode()
     return nsnull;
 
   if (!mSliderNode) {
-    nsIDocument* document = mContent->GetOwnerDoc();
-    if (!document)
-      return nsnull;
-
-    nsCOMPtr<nsIDOMDocumentXBL> xblDoc(do_QueryInterface(document));
+    nsCOMPtr<nsIDOMDocumentXBL> xblDoc(do_QueryInterface(mContent->OwnerDoc()));
     if (!xblDoc)
       return nsnull;
 
@@ -252,7 +247,7 @@ nsXULSliderAccessible::SetSliderAttr(nsIAtom *aName, const nsAString& aValue)
   nsCOMPtr<nsIContent> sliderNode(GetSliderNode());
   NS_ENSURE_STATE(sliderNode);
 
-  sliderNode->SetAttr(kNameSpaceID_None, aName, aValue, PR_TRUE);
+  sliderNode->SetAttr(kNameSpaceID_None, aName, aValue, true);
   return NS_OK;
 }
 

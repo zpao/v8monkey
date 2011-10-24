@@ -64,6 +64,12 @@ public:
     ContentChild();
     virtual ~ContentChild();
 
+    struct AppInfo
+    {
+        nsCString version;
+        nsCString buildID;
+    };
+
     bool Init(MessageLoop* aIOLoop,
               base::ProcessHandle aParentHandle,
               IPC::Channel* aChannel);
@@ -74,14 +80,24 @@ public:
         return sSingleton;
     }
 
+    const AppInfo& GetAppInfo() {
+        return mAppInfo;
+    }
+
     /* if you remove this, please talk to cjones or dougt */
     virtual bool RecvDummy(Shmem& foo) { return true; }
 
     virtual PBrowserChild* AllocPBrowser(const PRUint32& aChromeFlags);
     virtual bool DeallocPBrowser(PBrowserChild*);
 
-    virtual PCrashReporterChild* AllocPCrashReporter();
-    virtual bool DeallocPCrashReporter(PCrashReporterChild*);
+    virtual PCrashReporterChild*
+    AllocPCrashReporter(const mozilla::dom::NativeThreadId& id,
+                        const PRUint32& processType);
+    virtual bool
+    DeallocPCrashReporter(PCrashReporterChild*);
+
+    NS_OVERRIDE virtual PHalChild* AllocPHal();
+    NS_OVERRIDE virtual bool DeallocPHal(PHalChild*);
 
     virtual PMemoryReportRequestChild*
     AllocPMemoryReportRequest();
@@ -121,7 +137,7 @@ public:
                                     const InfallibleTArray<OverrideMapping>& overrides,
                                     const nsCString& locale);
 
-    virtual bool RecvSetOffline(const PRBool& offline);
+    virtual bool RecvSetOffline(const bool& offline);
 
     virtual bool RecvNotifyVisited(const IPC::URI& aURI);
     // auto remove when alertfinished is received.
@@ -138,12 +154,20 @@ public:
 
     virtual bool RecvAddPermission(const IPC::Permission& permission);
 
-    virtual bool RecvAccelerationChanged(const double& x, const double& y,
+    virtual bool RecvDeviceMotionChanged(const long int& type,
+                                         const double& x, const double& y,
                                          const double& z);
 
     virtual bool RecvScreenSizeChanged(const gfxIntSize &size);
 
     virtual bool RecvFlushMemory(const nsString& reason);
+
+    virtual bool RecvActivateA11y();
+
+    virtual bool RecvGarbageCollect();
+    virtual bool RecvCycleCollect();
+
+    virtual bool RecvAppInfo(const nsCString& version, const nsCString& buildID);
 
 #ifdef ANDROID
     gfxIntSize GetScreenSize() { return mScreenSize; }
@@ -171,6 +195,8 @@ private:
 #ifdef ANDROID
     gfxIntSize mScreenSize;
 #endif
+
+    AppInfo mAppInfo;
 
     static ContentChild* sSingleton;
 

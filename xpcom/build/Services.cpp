@@ -40,6 +40,9 @@
 #include "nsComponentManager.h"
 #include "nsIIOService.h"
 #include "nsIDirectoryService.h"
+#ifdef ACCESSIBILITY
+#include "nsIAccessibilityService.h"
+#endif
 #include "nsIChromeRegistry.h"
 #include "nsIObserverService.h"
 #include "nsNetCID.h"
@@ -61,7 +64,7 @@ using namespace mozilla::services;
 #define MOZ_SERVICE(NAME, TYPE, CONTRACT_ID)                            \
   static TYPE* g##NAME = nsnull;                                        \
                                                                         \
-  NS_COM already_AddRefed<TYPE>                                         \
+  already_AddRefed<TYPE>                                         \
   mozilla::services::Get##NAME()                                        \
   {                                                                     \
     if (!g##NAME) {                                                     \
@@ -81,7 +84,7 @@ using namespace mozilla::services;
 void 
 mozilla::services::Shutdown()
 {
-  gXPCOMShuttingDown = PR_TRUE;
+  gXPCOMShuttingDown = true;
 #define MOZ_SERVICE(NAME, TYPE, CONTRACT_ID) NS_IF_RELEASE(g##NAME);
 #include "ServiceList.h"
 #undef MOZ_SERVICE

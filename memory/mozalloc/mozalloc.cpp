@@ -76,16 +76,19 @@
 #define UNLIKELY(x)  (x)
 #endif
 
-#if defined(MOZ_MEMORY_ANDROID) || defined(WRAP_MALLOC_WITH_JEMALLOC)
+#ifdef MOZ_MEMORY_DARWIN
 #include "jemalloc.h"
-#define malloc(a)     je_malloc(a)
-#define valloc(a)     je_valloc(a)
-#define calloc(a, b)  je_calloc(a, b)
-#define realloc(a, b) je_realloc(a, b)
-#define free(a)       je_free(a)
-#define strdup(a)     je_strdup(a)
-#define strndup(a, b) je_strndup(a, b)
-#define posix_memalign(a, b, c)  je_posix_memalign(a, b, c)
+#define malloc(a)               je_malloc(a)
+#define posix_memalign(a, b, c) je_posix_memalign(a, b, c)
+#define valloc(a)               je_valloc(a)
+#define calloc(a, b)            je_calloc(a, b)
+#define memalign(a, b)          je_memalign(a, b)
+#define strdup(a)               je_strdup(a)
+#define strndup(a, b)           je_strndup(a, b)
+/* We omit functions which could be passed a memory region that was not
+ * allocated by jemalloc (realloc, free and malloc_usable_size). Instead,
+ * we use the system-provided functions, which will in turn call the
+ * jemalloc versions when appropriate */
 #endif
 
 void
@@ -191,7 +194,23 @@ moz_xposix_memalign(void **ptr, size_t alignment, size_t size)
 int
 moz_posix_memalign(void **ptr, size_t alignment, size_t size)
 {
-    return posix_memalign(ptr, alignment, size);
+    int code = posix_memalign(ptr, alignment, size);
+    if (code)
+        return code;
+
+#if defined(XP_MACOSX)
+    // Workaround faulty OSX posix_memalign, which provides memory with the
+    // incorrect alignment sometimes, but returns 0 as if nothing was wrong.
+    size_t mask = alignment - 1;
+    if (((size_t)(*ptr) & mask) != 0) {
+        void* old = *ptr;
+        code = moz_posix_memalign(ptr, alignment, size);
+        free(old);
+    }
+#endif
+
+    return code;
+
 }
 #endif // if defined(HAVE_POSIX_MEMALIGN)
 
@@ -214,7 +233,7 @@ moz_memalign(size_t boundary, size_t size)
 }
 #endif // if defined(HAVE_MEMALIGN)
 
-#if defined(HAVE_VALLOC)
+#if defined(HAVE_VALLOC) || defined(HAVE_JEMALLOC_VALLOC)
 void*
 moz_xvalloc(size_t size)
 {
@@ -238,10 +257,10 @@ moz_malloc_usable_size(void *ptr)
     if (!ptr)
         return 0;
 
-#if defined(MOZ_MEMORY)
-    return malloc_usable_size(ptr);
-#elif defined(XP_MACOSX)
+#if defined(XP_MACOSX)
     return malloc_size(ptr);
+#elif defined(MOZ_MEMORY)
+    return malloc_usable_size(ptr);
 #elif defined(XP_WIN)
     return _msize(ptr);
 #else

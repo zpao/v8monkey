@@ -67,11 +67,11 @@ nsAutodial::DialDefault(const PRUnichar* hostName)
   return NS_ERROR_FAILURE;
 }
 
-PRBool
+bool
 nsAutodial::ShouldDialOnNetworkError()
 {
   if (nsMaemoNetworkManager::IsConnected())
-    return PR_FALSE;
+    return false;
 
-  return PR_TRUE;
+  return true;
 }

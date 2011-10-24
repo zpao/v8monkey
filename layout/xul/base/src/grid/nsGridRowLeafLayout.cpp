@@ -51,9 +51,9 @@
 #include "nsBoxFrame.h"
 #include "nsGridLayout2.h"
 
-already_AddRefed<nsIBoxLayout> NS_NewGridRowLeafLayout()
+already_AddRefed<nsBoxLayout> NS_NewGridRowLeafLayout()
 {
-  nsIBoxLayout* layout = new nsGridRowLeafLayout();
+  nsBoxLayout* layout = new nsGridRowLeafLayout();
   NS_IF_ADDREF(layout);
   return layout;
 } 
@@ -71,7 +71,7 @@ nsGridRowLeafLayout::GetPrefSize(nsIBox* aBox, nsBoxLayoutState& aState)
 {
   PRInt32 index = 0;
   nsGrid* grid = GetGrid(aBox, &index);
-  PRBool isHorizontal = IsHorizontal(aBox);
+  bool isHorizontal = IsHorizontal(aBox);
 
   // If we are not in a grid. Then we just work like a box. But if we are in a grid
   // ask the grid for our size.
@@ -89,7 +89,7 @@ nsGridRowLeafLayout::GetMinSize(nsIBox* aBox, nsBoxLayoutState& aState)
 {
   PRInt32 index = 0;
   nsGrid* grid = GetGrid(aBox, &index);
-  PRBool isHorizontal = IsHorizontal(aBox);
+  bool isHorizontal = IsHorizontal(aBox);
 
   if (!grid)
     return nsGridRowLayout::GetMinSize(aBox, aState); 
@@ -105,7 +105,7 @@ nsGridRowLeafLayout::GetMaxSize(nsIBox* aBox, nsBoxLayoutState& aState)
 {
   PRInt32 index = 0;
   nsGrid* grid = GetGrid(aBox, &index);
-  PRBool isHorizontal = IsHorizontal(aBox);
+  bool isHorizontal = IsHorizontal(aBox);
 
   if (!grid)
     return nsGridRowLayout::GetMaxSize(aBox, aState); 
@@ -124,7 +124,7 @@ nsGridRowLeafLayout::ChildAddedOrRemoved(nsIBox* aBox, nsBoxLayoutState& aState)
 {
   PRInt32 index = 0;
   nsGrid* grid = GetGrid(aBox, &index);
-  PRBool isHorizontal = IsHorizontal(aBox);
+  bool isHorizontal = IsHorizontal(aBox);
 
   if (grid)
     grid->CellAddedOrRemoved(aState, index, isHorizontal);
@@ -135,7 +135,7 @@ nsGridRowLeafLayout::PopulateBoxSizes(nsIBox* aBox, nsBoxLayoutState& aState, ns
 {
   PRInt32 index = 0;
   nsGrid* grid = GetGrid(aBox, &index);
-  PRBool isHorizontal = IsHorizontal(aBox);
+  bool isHorizontal = IsHorizontal(aBox);
 
   // Our base class SprocketLayout is giving us a chance to change the box sizes before layout
   // If we are a row lets change the sizes to match our columns. If we are a column then do the opposite
@@ -165,7 +165,7 @@ nsGridRowLeafLayout::PopulateBoxSizes(nsIBox* aBox, nsBoxLayoutState& aState, ns
       nscoord right  = 0;
       grid->GetRowOffsets(aState, i, left, right, !isHorizontal); // GetColumnOffsets
       nsIBox* box = column->GetBox();
-      PRBool collapsed = PR_FALSE;
+      bool collapsed = false;
       nscoord topMargin = column->mTopMargin;
       nscoord bottomMargin = column->mBottomMargin;
 
@@ -257,13 +257,12 @@ nsGridRowLeafLayout::ComputeChildSizes(nsIBox* aBox,
   // see if we are in a scrollable frame. If we are then there could be scrollbars present
   // if so we need to subtract them out to make sure our columns line up.
   if (aBox) {
-    PRBool isHorizontal = aBox->IsHorizontal();
+    bool isHorizontal = aBox->IsHorizontal();
 
     // go up the parent chain looking for scrollframes
     nscoord diff = 0;
-    nsCOMPtr<nsIGridPart> parent;
     nsIBox* parentBox;
-    GetParentGridPart(aBox, &parentBox, getter_AddRefs(parent));
+    nsIGridPart* parent = GetParentGridPart(aBox, &parentBox);
     while (parentBox) {
       nsIBox* scrollbox = nsGrid::GetScrollBox(parentBox);
       nsIScrollableFrame *scrollable = do_QueryFrame(scrollbox);
@@ -281,7 +280,7 @@ nsGridRowLeafLayout::ComputeChildSizes(nsIBox* aBox,
         }
       }
 
-      GetParentGridPart(parentBox, &parentBox, getter_AddRefs(parent));
+      parent = GetParentGridPart(parentBox, &parentBox);
     }
 
     if (diff > 0) {
@@ -353,7 +352,7 @@ PRInt32
 nsGridRowLeafLayout::BuildRows(nsIBox* aBox, nsGridRow* aRows)
 { 
   if (aBox) {
-      aRows[0].Init(aBox, PR_FALSE);
+      aRows[0].Init(aBox, false);
       return 1;
   }
 

@@ -23,6 +23,7 @@ alloc.h
 alsa/asoundlib.h
 alsa/pcm.h
 alsa/mixer.h
+android/log.h
 ansi_parms.h
 a.out.h
 app/Cursor.h
@@ -40,7 +41,6 @@ asm/signal.h
 ASRegistry.h
 assert.h
 atk/atk.h
-atlbase.h
 atlcom.h
 atlconv.h
 atlctl.cpp
@@ -70,9 +70,6 @@ bstring.h
 builtin.h
 Button.h
 byteswap.h
-#if MOZ_ENABLE_LIBXUL!=1
-#define WRAP_CAIRO_HEADERS
-#endif
 #if MOZ_TREE_CAIRO!=1
 #define WRAP_CAIRO_HEADERS
 #endif
@@ -207,7 +204,6 @@ ctime
 ctype.h
 curl/curl.h
 curl/easy.h
-curl/types.h
 curses.h
 cxxabi.h
 DateTimeUtils.h
@@ -313,7 +309,6 @@ hlink.h
 ia64/sys/inline.h
 Icons.h
 iconv.h
-IDL.h
 ieeefp.h
 ifaddrs.h
 image.h
@@ -339,6 +334,7 @@ jar.h
 JavaControl.h
 JavaEmbedding/JavaControl.h
 JavaVM/jni.h
+jemalloc.h
 JManager.h
 JNIEnvTests.h
 jni.h
@@ -409,7 +405,6 @@ libgnomevfs/gnome-vfs-mime-handlers.h
 libgnomevfs/gnome-vfs-mime-utils.h
 libgnomevfs/gnome-vfs-ops.h
 libgnomevfs/gnome-vfs-standard-callbacks.h
-libIDL/IDL.h
 lib$routines.h
 libnotify/notify.h
 limits
@@ -569,14 +564,6 @@ pcfs/pc_dir.h
 Pgenerr.h
 PGenErr.h
 Ph.h
-photon/Pg.h
-photon/PhProto.h
-photon/PhRender.h
-photon/PpProto.h
-photon/PtProgress.h
-photon/PtServer.h
-photon/PtWebClient.h
-photon/PxImage.h
 pk11func.h
 pk11pub.h
 pkcs11t.h
@@ -994,15 +981,6 @@ png.h
 #if MOZ_NATIVE_ZLIB==1
 zlib.h
 #endif
-#if MOZ_ENABLE_LIBXUL!=1
-#if BUILD_STATIC_LIBS!=1
-#define WRAP_LCMS_HEADERS
-#endif
-#endif
-#ifdef WRAP_LCMS_HEADERS
-icc34.h
-lcms.h
-#endif
 #ifdef MOZ_ENABLE_STARTUP_NOTIFICATION
 libsn/sn.h
 libsn/sn-common.h
@@ -1041,6 +1019,14 @@ proxy.h
 #if MOZ_PLATFORM_MAEMO==6
 contentaction/contentaction.h
 #endif
+#ifdef MOZ_ENABLE_CONTENTMANAGER
+SelectSingleContentItemPage.h
+SelectMultipleContentItemsPage.h
+QtSparql/qsparqlconnection.h
+QtSparql/qsparqlquery.h
+QtSparql/qsparqlresult.h
+#endif
+
 #if MOZ_TREE_PIXMAN!=1
 pixman.h
 #endif

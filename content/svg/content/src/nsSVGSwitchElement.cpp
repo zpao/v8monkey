@@ -34,11 +34,16 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGFeatures.h"
 #include "nsSVGSwitchElement.h"
 #include "nsIFrame.h"
 #include "nsISVGChildFrame.h"
 #include "nsSVGUtils.h"
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
 
 ////////////////////////////////////////////////////////////////////////
 // implementation
@@ -111,7 +116,7 @@ NS_IMPL_ELEMENT_CLONE_WITH_INIT(nsSVGSwitchElement)
 nsresult
 nsSVGSwitchElement::InsertChildAt(nsIContent* aKid,
                                   PRUint32 aIndex,
-                                  PRBool aNotify)
+                                  bool aNotify)
 {
   nsresult rv = nsSVGSwitchElementBase::InsertChildAt(aKid, aIndex, aNotify);
   if (NS_SUCCEEDED(rv)) {
@@ -121,10 +126,9 @@ nsSVGSwitchElement::InsertChildAt(nsIContent* aKid,
 }
 
 nsresult
-nsSVGSwitchElement::RemoveChildAt(PRUint32 aIndex, PRBool aNotify, PRBool aMutationEvent)
+nsSVGSwitchElement::RemoveChildAt(PRUint32 aIndex, bool aNotify)
 {
-  NS_ASSERTION(aMutationEvent, "Someone tried to inhibit mutations on switch child removal.");
-  nsresult rv = nsSVGSwitchElementBase::RemoveChildAt(aIndex, aNotify, aMutationEvent);
+  nsresult rv = nsSVGSwitchElementBase::RemoveChildAt(aIndex, aNotify);
   if (NS_SUCCEEDED(rv)) {
     MaybeInvalidate();
   }
@@ -134,7 +138,7 @@ nsSVGSwitchElement::RemoveChildAt(PRUint32 aIndex, PRBool aNotify, PRBool aMutat
 //----------------------------------------------------------------------
 // nsIContent methods
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGSwitchElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -148,7 +152,7 @@ nsSVGSwitchElement::IsAttributeMapped(const nsIAtom* name) const
     sViewportsMap
   };
 
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGSwitchElementBase::IsAttributeMapped(name);
 }
 
@@ -158,20 +162,19 @@ nsSVGSwitchElement::IsAttributeMapped(const nsIAtom* name) const
 nsIContent *
 nsSVGSwitchElement::FindActiveChild() const
 {
-  PRBool allowReorder = AttrValueIs(kNameSpaceID_None,
+  bool allowReorder = AttrValueIs(kNameSpaceID_None,
                                     nsGkAtoms::allowReorder,
                                     nsGkAtoms::yes, eCaseMatters);
 
   const nsAdoptingString& acceptLangs =
-    nsContentUtils::GetLocalizedStringPref("intl.accept_languages");
-
-  PRUint32 count = GetChildCount();
+    Preferences::GetLocalizedString("intl.accept_languages");
 
   if (allowReorder && !acceptLangs.IsEmpty()) {
     PRInt32 bestLanguagePreferenceRank = -1;
     nsIContent *bestChild = nsnull;
-    for (PRUint32 i = 0; i < count; i++) {
-      nsIContent *child = GetChildAt(i);
+    for (nsIContent* child = nsINode::GetFirstChild();
+         child;
+         child = child->GetNextSibling()) {
       if (nsSVGFeatures::PassesConditionalProcessingTests(
             child, nsSVGFeatures::kIgnoreSystemLanguage)) {
         nsAutoString value;
@@ -202,8 +205,9 @@ nsSVGSwitchElement::FindActiveChild() const
     return bestChild;
   }
 
-  for (PRUint32 i = 0; i < count; i++) {
-    nsIContent *child = GetChildAt(i);
+  for (nsIContent* child = nsINode::GetFirstChild();
+       child;
+       child = child->GetNextSibling()) {
     if (nsSVGFeatures::PassesConditionalProcessingTests(child, &acceptLangs)) {
       return child;
     }

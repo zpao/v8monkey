@@ -63,9 +63,11 @@ public:
         mNP_GetEntryPoints(nsnull),
 #endif
         mNPP_New(nsnull),
+        mNPP_GetValue(nsnull),
         mNPP_ClearSiteData(nsnull),
         mNPP_GetSitesWithData(nsnull),
-        mLibrary(aLibrary)
+        mLibrary(aLibrary),
+        mFilePath(aFilePath)
     {
         NS_ASSERTION(mLibrary, "need non-null lib");
         // addref here??
@@ -144,7 +146,7 @@ public:
     virtual nsresult GetImageSize(NPP instance, nsIntSize* aSize);
     NS_OVERRIDE virtual bool UseAsyncPainting() { return false; }
 #if defined(XP_MACOSX)
-    virtual nsresult IsRemoteDrawingCoreAnimation(NPP instance, PRBool *aDrawing);
+    virtual nsresult IsRemoteDrawingCoreAnimation(NPP instance, bool *aDrawing);
 #endif
     NS_OVERRIDE
     virtual nsresult SetBackgroundUnknown(NPP instance);
@@ -154,6 +156,12 @@ public:
     NS_OVERRIDE
     virtual nsresult EndUpdateBackground(NPP instance,
                                          gfxContext* aCtx, const nsIntRect&);
+#if defined(MOZ_WIDGET_QT) && (MOZ_PLATFORM_MAEMO == 6)
+    virtual nsresult HandleGUIEvent(NPP instance,
+                                    const nsGUIEvent& anEvent, bool* handled);
+#endif
+
+    virtual void GetLibraryPath(nsACString& aPath) { aPath.Assign(mFilePath); }
 
 private:
     NP_InitializeFunc mNP_Initialize;
@@ -166,9 +174,11 @@ private:
     NP_GetEntryPointsFunc mNP_GetEntryPoints;
 #endif
     NPP_NewProcPtr mNPP_New;
+    NPP_GetValueProcPtr mNPP_GetValue;
     NPP_ClearSiteDataPtr mNPP_ClearSiteData;
     NPP_GetSitesWithDataPtr mNPP_GetSitesWithData;
     PRLibrary* mLibrary;
+    nsCString mFilePath;
 };
 
 

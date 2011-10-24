@@ -66,7 +66,7 @@ class nsIObjectOutputStream;
 class nsHashtable;
 class nsStringKey;
 
-class NS_COM nsHashKey {
+class nsHashKey {
   protected:
     nsHashKey(void) {
 #ifdef DEBUG
@@ -82,7 +82,7 @@ class NS_COM nsHashKey {
 
     virtual ~nsHashKey(void);
     virtual PRUint32 HashCode(void) const = 0;
-    virtual PRBool Equals(const nsHashKey *aKey) const = 0;
+    virtual bool Equals(const nsHashKey *aKey) const = 0;
     virtual nsHashKey *Clone() const = 0;
     virtual nsresult Write(nsIObjectOutputStream* aStream) const;
 
@@ -108,12 +108,11 @@ class NS_COM nsHashKey {
 
 // Return values for nsHashtableEnumFunc
 enum {
-    kHashEnumerateStop      = PR_FALSE,
-    kHashEnumerateNext      = PR_TRUE,
-    kHashEnumerateRemove    = 2
+    kHashEnumerateStop      = false,
+    kHashEnumerateNext      = true
 };
 
-typedef PRIntn
+typedef bool
 (* nsHashtableEnumFunc)(nsHashKey *aKey, void *aData, void* aClosure);
 
 typedef nsresult
@@ -128,19 +127,19 @@ typedef void
 typedef nsresult
 (* nsHashtableWriteDataFunc)(nsIObjectOutputStream *aStream, void *aData);
 
-class NS_COM nsHashtable {
+class nsHashtable {
   protected:
     // members  
     PRLock*         mLock;
     PLDHashTable    mHashtable;
-    PRBool          mEnumerating;
+    bool            mEnumerating;
 
   public:
-    nsHashtable(PRUint32 aSize = 16, PRBool threadSafe = PR_FALSE);
+    nsHashtable(PRUint32 aSize = 16, bool threadSafe = false);
     virtual ~nsHashtable();
 
     PRInt32 Count(void) { return mHashtable.entryCount; }
-    PRBool Exists(nsHashKey *aKey);
+    bool Exists(nsHashKey *aKey);
     void *Put(nsHashKey *aKey, void *aData);
     void *Get(nsHashKey *aKey);
     void *Remove(nsHashKey *aKey);
@@ -163,18 +162,18 @@ class NS_COM nsHashtable {
 
 typedef void* (* nsHashtableCloneElementFunc)(nsHashKey *aKey, void *aData, void* aClosure);
 
-class NS_COM nsObjectHashtable : public nsHashtable {
+class nsObjectHashtable : public nsHashtable {
   public:
     nsObjectHashtable(nsHashtableCloneElementFunc cloneElementFun,
                       void* cloneElementClosure,
                       nsHashtableEnumFunc destroyElementFun,
                       void* destroyElementClosure,
-                      PRUint32 aSize = 16, PRBool threadSafe = PR_FALSE);
+                      PRUint32 aSize = 16, bool threadSafe = false);
     ~nsObjectHashtable();
 
     nsHashtable *Clone();
     void Reset();
-    PRBool RemoveAndDelete(nsHashKey *aKey);
+    bool RemoveAndDelete(nsHashKey *aKey);
 
   protected:
     static PLDHashOperator CopyElement(PLDHashTable* table,
@@ -192,35 +191,33 @@ class NS_COM nsObjectHashtable : public nsHashtable {
 
 class nsISupports;
 
-class NS_COM nsSupportsHashtable
+class nsSupportsHashtable
   : private nsHashtable
 {
   public:
-    typedef PRBool (* EnumFunc) (nsHashKey *aKey, void *aData, void* aClosure);
-
-    nsSupportsHashtable(PRUint32 aSize = 16, PRBool threadSafe = PR_FALSE)
+    nsSupportsHashtable(PRUint32 aSize = 16, bool threadSafe = false)
       : nsHashtable(aSize, threadSafe) {}
     ~nsSupportsHashtable();
 
     PRInt32 Count(void) {
         return nsHashtable::Count();
     }
-    PRBool Exists(nsHashKey *aKey) {
+    bool Exists(nsHashKey *aKey) {
         return nsHashtable::Exists (aKey);
     }
-    PRBool Put(nsHashKey *aKey,
+    bool Put(nsHashKey *aKey,
                nsISupports *aData,
                nsISupports **value = nsnull);
     nsISupports* Get(nsHashKey *aKey);
-    PRBool Remove(nsHashKey *aKey, nsISupports **value = nsnull);
+    bool Remove(nsHashKey *aKey, nsISupports **value = nsnull);
     nsHashtable *Clone();
-    void Enumerate(EnumFunc aEnumFunc, void* aClosure = NULL) {
+    void Enumerate(nsHashtableEnumFunc aEnumFunc, void* aClosure = NULL) {
         nsHashtable::Enumerate(aEnumFunc, aClosure);
     }
     void Reset();
 
   private:
-    static PRBool ReleaseElement(nsHashKey *, void *, void *);
+    static bool ReleaseElement(nsHashKey *, void *, void *);
     static PLDHashOperator EnumerateCopy(PLDHashTable*,
                                          PLDHashEntryHdr* hdr,
                                          PRUint32 i, void *arg);
@@ -231,7 +228,7 @@ class NS_COM nsSupportsHashtable
 
 #include "nsISupports.h"
 
-class NS_COM nsISupportsKey : public nsHashKey {
+class nsISupportsKey : public nsHashKey {
   protected:
     nsISupports* mKey;
     
@@ -259,7 +256,7 @@ class NS_COM nsISupportsKey : public nsHashKey {
         return NS_PTR_TO_INT32(mKey);
     }
 
-    PRBool Equals(const nsHashKey *aKey) const {
+    bool Equals(const nsHashKey *aKey) const {
         NS_ASSERTION(aKey->GetKeyType() == SupportsKey, "mismatched key types");
         return (mKey == ((nsISupportsKey *) aKey)->mKey);
     }
@@ -288,7 +285,7 @@ public:
         return mKey;
     }
 
-    PRBool Equals(const nsHashKey *aKey) const {
+    bool Equals(const nsHashKey *aKey) const {
         return mKey == ((const nsPRUint32Key *) aKey)->mKey;
     }
     nsHashKey *Clone() const {
@@ -322,7 +319,7 @@ class nsVoidKey : public nsHashKey {
         return NS_PTR_TO_INT32(mKey);
     }
 
-    PRBool Equals(const nsHashKey *aKey) const {
+    bool Equals(const nsHashKey *aKey) const {
         NS_ASSERTION(aKey->GetKeyType() == VoidKey, "mismatched key types");
         return (mKey == ((const nsVoidKey *) aKey)->mKey);
     }
@@ -337,7 +334,7 @@ class nsVoidKey : public nsHashKey {
 #include "nsString.h"
 
 // for null-terminated c-strings
-class NS_COM nsCStringKey : public nsHashKey {
+class nsCStringKey : public nsHashKey {
   public:
 
     // NB: when serializing, NEVER_OWN keys are deserialized as OWN.
@@ -354,7 +351,7 @@ class NS_COM nsCStringKey : public nsHashKey {
     ~nsCStringKey(void);
 
     PRUint32 HashCode(void) const;
-    PRBool Equals(const nsHashKey* aKey) const;
+    bool Equals(const nsHashKey* aKey) const;
     nsHashKey* Clone() const;
     nsCStringKey(nsIObjectInputStream* aStream, nsresult *aResult);
     nsresult Write(nsIObjectOutputStream* aStream) const;
@@ -371,7 +368,7 @@ class NS_COM nsCStringKey : public nsHashKey {
 };
 
 // for null-terminated unicode strings
-class NS_COM nsStringKey : public nsHashKey {
+class nsStringKey : public nsHashKey {
   public:
 
     // NB: when serializing, NEVER_OWN keys are deserialized as OWN.
@@ -388,7 +385,7 @@ class NS_COM nsStringKey : public nsHashKey {
     ~nsStringKey(void);
 
     PRUint32 HashCode(void) const;
-    PRBool Equals(const nsHashKey* aKey) const;
+    bool Equals(const nsHashKey* aKey) const;
     nsHashKey* Clone() const;
     nsStringKey(nsIObjectInputStream* aStream, nsresult *aResult);
     nsresult Write(nsIObjectOutputStream* aStream) const;

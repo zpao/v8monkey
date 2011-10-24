@@ -36,7 +36,7 @@
 /*
  * certi.h - private data structures for the certificate library
  *
- * $Id: certi.h,v 1.34 2010/05/21 00:43:51 wtc%google.com Exp $
+ * $Id: certi.h,v 1.36 2011/09/14 23:16:14 wtc%google.com Exp $
  */
 #ifndef _CERTI_H_
 #define _CERTI_H_
@@ -235,13 +235,20 @@ SECStatus ShutdownCRLCache(void);
 extern char * cert_GetCertificateEmailAddresses(CERTCertificate *cert);
 
 /*
- * These functions are used to map subjectKeyID extension values to certs.
+ * These functions are used to map subjectKeyID extension values to certs
+ * and to keep track of the checks for user certificates in each slot
  */
 SECStatus
 cert_CreateSubjectKeyIDHashTable(void);
 
 SECStatus
 cert_AddSubjectKeyIDMapping(SECItem *subjKeyID, CERTCertificate *cert);
+
+SECStatus
+cert_UpdateSubjectKeyIDSlotCheck(SECItem *slotid, int series);
+
+int
+cert_SubjectKeyIDSlotCheckSeries(SECItem *slotid);
 
 /*
  * Call this function to remove an entry from the mapping table.
@@ -389,6 +396,20 @@ cert_GetSubjectAltNameList(CERTCertificate *cert, PRArenaPool *arena);
 /* Count DNS names and IP addresses in a list of GeneralNames */
 PRUint32
 cert_CountDNSPatterns(CERTGeneralName *firstName);
+
+/*
+ * returns the trust status of the leaf certificate based on usage.
+ * If the leaf is explicitly untrusted, this function will fail and 
+ * failedFlags will be set to the trust bit value that lead to the failure.
+ * If the leaf is trusted, isTrusted is set to true and the function returns 
+ * SECSuccess. This function does not check if the cert is fit for a 
+ * particular usage.
+ */
+SECStatus
+cert_CheckLeafTrust(CERTCertificate *cert,
+                    SECCertUsage usage, 
+                    unsigned int *failedFlags,
+                    PRBool *isTrusted);
 
 #endif /* _CERTI_H_ */
 

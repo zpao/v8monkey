@@ -56,18 +56,18 @@ namespace mozilla {
 namespace scache {
 
 NS_IMPORT nsresult
-NS_NewObjectInputStreamFromBuffer(char* buffer, PRUint32 len, 
-                                  nsIObjectInputStream** stream);
+NewObjectInputStreamFromBuffer(char* buffer, PRUint32 len, 
+                               nsIObjectInputStream** stream);
 
 // We can't retrieve the wrapped stream from the objectOutputStream later,
 // so we return it here.
 NS_IMPORT nsresult
-NS_NewObjectOutputWrappedStorageStream(nsIObjectOutputStream **wrapperStream,
-                                       nsIStorageStream** stream);
+NewObjectOutputWrappedStorageStream(nsIObjectOutputStream **wrapperStream,
+                                    nsIStorageStream** stream);
 
 NS_IMPORT nsresult
-NS_NewBufferFromStorageStream(nsIStorageStream *storageStream, 
-                              char** buffer, PRUint32* len);
+NewBufferFromStorageStream(nsIStorageStream *storageStream, 
+                           char** buffer, PRUint32* len);
 }
 }
 
@@ -89,7 +89,7 @@ WaitForStartupTimer() {
     = do_GetService("@mozilla.org/startupcache/cache;1");
   PR_Sleep(10 * PR_TicksPerSecond());
   
-  PRBool complete;
+  bool complete;
   while (true) {
     NS_ProcessPendingEvents(nsnull);
     rv = sc->StartupWriteComplete(&complete);
@@ -188,7 +188,7 @@ TestWriteObject() {
   sc->InvalidateCache();
   
   // Create an object stream. Usually this is done with
-  // NS_NewObjectOutputWrappedStorageStream, but that uses
+  // NewObjectOutputWrappedStorageStream, but that uses
   // StartupCache::GetSingleton in debug builds, and we
   // don't have access to that here. Obviously.
   char* id = "id";
@@ -214,7 +214,7 @@ TestWriteObject() {
     return rv;
   }
   nsCOMPtr<nsISupports> objQI(do_QueryInterface(obj));
-  rv = objectOutput->WriteObject(objQI, PR_TRUE);
+  rv = objectOutput->WriteObject(objQI, true);
   if (NS_FAILED(rv)) {
     fail("failed to write object");
     return rv;
@@ -223,7 +223,7 @@ TestWriteObject() {
   char* bufPtr = NULL;
   nsAutoArrayPtr<char> buf;
   PRUint32 len;
-  NS_NewBufferFromStorageStream(storageStream, &bufPtr, &len);
+  NewBufferFromStorageStream(storageStream, &bufPtr, &len);
   buf = bufPtr;
 
   // Since this is a post-startup write, it should be written and
@@ -245,7 +245,7 @@ TestWriteObject() {
   }
   buf2 = buf2Ptr;
 
-  rv = NS_NewObjectInputStreamFromBuffer(buf2, len2, getter_AddRefs(objectInput));
+  rv = NewObjectInputStreamFromBuffer(buf2, len2, getter_AddRefs(objectInput));
   if (NS_FAILED(rv)) {
     fail("failed to created input stream");
     return rv;
@@ -253,13 +253,13 @@ TestWriteObject() {
   buf2.forget();
 
   nsCOMPtr<nsISupports> deserialized;
-  rv = objectInput->ReadObject(PR_TRUE, getter_AddRefs(deserialized));
+  rv = objectInput->ReadObject(true, getter_AddRefs(deserialized));
   if (NS_FAILED(rv)) {
     fail("failed to read object");
     return rv;
   }
   
-  PRBool match = false;
+  bool match = false;
   nsCOMPtr<nsIURI> uri(do_QueryInterface(deserialized));
   if (uri) {
     nsCString outSpec;

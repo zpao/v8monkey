@@ -100,7 +100,7 @@ public:
   ~nsAttrHashKey() {}
 
   KeyType GetKey() const { return mKey; }
-  PRBool KeyEquals(KeyTypePointer aKey) const
+  bool KeyEquals(KeyTypePointer aKey) const
     {
       return mKey.mLocalName == aKey->mLocalName &&
              mKey.mNamespaceID == aKey->mNamespaceID;
@@ -115,7 +115,7 @@ public:
       return PR_ROTATE_LEFT32(static_cast<PRUint32>(aKey->mNamespaceID), 4) ^
              NS_PTR_TO_INT32(aKey->mLocalName);
     }
-  enum { ALLOW_MEMMOVE = PR_TRUE };
+  enum { ALLOW_MEMMOVE = true };
 
 private:
   nsAttrKey mKey;
@@ -133,7 +133,7 @@ public:
   /**
    * Initialize the map. Must be called before the map is used.
    */
-  PRBool Init();
+  bool Init();
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
@@ -209,12 +209,12 @@ private:
   AttrCache mAttributeCache;
 
   /**
-   * SetNamedItem() (aWithNS = PR_FALSE) and SetNamedItemNS() (aWithNS =
-   * PR_TRUE) implementation.
+   * SetNamedItem() (aWithNS = false) and SetNamedItemNS() (aWithNS =
+   * true) implementation.
    */
   nsresult SetNamedItemInternal(nsIDOMNode *aNode,
                                 nsIDOMNode **aReturn,
-                                PRBool aWithNS);
+                                bool aWithNS);
 
   /**
    * GetNamedItemNS() implementation taking |aRemove| for GetAttribute(),
@@ -223,9 +223,9 @@ private:
   nsresult GetNamedItemNSInternal(const nsAString& aNamespaceURI,
                                   const nsAString& aLocalName,
                                   nsIDOMNode** aReturn,
-                                  PRBool aRemove = PR_FALSE);
+                                  bool aRemove = false);
 
-  nsDOMAttribute* GetAttribute(nsINodeInfo* aNodeInfo, PRBool aNsAware);
+  nsDOMAttribute* GetAttribute(nsINodeInfo* aNodeInfo, bool aNsAware);
 
   /**
    * Remove an attribute, returns the removed node.

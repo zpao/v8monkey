@@ -47,7 +47,7 @@
 
 interface nsIDOMSVGAnimatedEnumeration;
 
-[scriptable, uuid(3dd19de9-deee-4105-9c5c-c51c68b31326)]
+[scriptable, uuid(860d3dbd-c59e-446c-85b5-2b534ad70308)]
 interface nsIDOMSVGClipPathElement
   : nsIDOMSVGElement
 /*

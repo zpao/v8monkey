@@ -56,13 +56,13 @@
 
 // Check to see if the underlying request was not an error page in the case of
 // a HTTP request.  For other types of channels, just return true.
-static PRBool
+static bool
 HttpRequestSucceeded(nsIStreamLoader *loader)
 {
   nsCOMPtr<nsIRequest> request;
   loader->GetRequest(getter_AddRefs(request));
 
-  PRBool result = PR_TRUE;  // default to assuming success
+  bool result = true;  // default to assuming success
 
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(request);
   if (httpChannel)
@@ -172,8 +172,8 @@ PendingPACQuery::OnLookupComplete(nsICancelable *request,
 //-----------------------------------------------------------------------------
 
 nsPACMan::nsPACMan()
-  : mLoadPending(PR_FALSE)
-  , mShutdown(PR_FALSE)
+  : mLoadPending(false)
+  , mShutdown(false)
   , mScheduledReload(LL_MAXINT)
   , mLoadFailureCount(0)
 {
@@ -194,7 +194,7 @@ nsPACMan::Shutdown()
   ProcessPendingQ(NS_ERROR_ABORT);
 
   mPAC = nsnull;
-  mShutdown = PR_TRUE;
+  mShutdown = true;
 }
 
 nsresult
@@ -279,7 +279,7 @@ nsPACMan::LoadPACFromURI(nsIURI *pacURI)
     nsresult rv;
     if (NS_FAILED(rv = NS_DispatchToCurrentThread(event)))
       return rv;
-    mLoadPending = PR_TRUE;
+    mLoadPending = true;
   }
 
   CancelExistingLoad();
@@ -297,7 +297,7 @@ nsPACMan::LoadPACFromURI(nsIURI *pacURI)
 void
 nsPACMan::StartLoading()
 {
-  mLoadPending = PR_FALSE;
+  mLoadPending = false;
 
   // CancelExistingLoad was called...
   if (!mLoader) {

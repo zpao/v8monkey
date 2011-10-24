@@ -23,6 +23,7 @@
    -
    - Contributor(s):
    -      Gavin Sharp <gavin@gavinsharp.com> (original author)
+   -      Joel Maher <joel.maher@gmail.com> 
    -
    - Alternatively, the contents of this file may be used under the terms of
    - either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -40,5 +41,6 @@
 
 <overlay id="browserTestOverlay"
          xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+  <script type="application/javascript" src="chrome://mochikit/content/chrome-harness.js"/>
   <script type="application/javascript" src="chrome://mochikit/content/browser-test.js"/>
 </overlay>

@@ -35,61 +35,32 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-const EXPORTED_SYMBOLS = ['Utils', 'Svc', 'Str'];
+const EXPORTED_SYMBOLS = ["XPCOMUtils", "Services", "NetUtil", "PlacesUtils",
+                          "FileUtils", "Utils", "Async", "Svc", "Str"];
 
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cr = Components.results;
 const Cu = Components.utils;
 
+Cu.import("resource://services-sync/async.js");
 Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/ext/Observers.js");
 Cu.import("resource://services-sync/ext/Preferences.js");
 Cu.import("resource://services-sync/ext/StringBundle.js");
 Cu.import("resource://services-sync/log4moz.js");
+Cu.import("resource://services-sync/status.js");
+Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/PlacesUtils.jsm");
 Cu.import("resource://gre/modules/NetUtil.jsm");
-
-// Constants for makeSyncCallback, waitForSyncCallback
-const CB_READY = {};
-const CB_COMPLETE = {};
-const CB_FAIL = {};
-const REASON_ERROR = Ci.mozIStorageStatementCallback.REASON_ERROR;
+Cu.import("resource://gre/modules/FileUtils.jsm");
 
 /*
  * Utility functions
  */
 
 let Utils = {
-  /**
-   * Execute an arbitrary number of asynchronous functions one after the
-   * other, passing the callback arguments on to the next one.  All functions
-   * must take a callback function as their last argument.  The 'this' object
-   * will be whatever asyncChain's is.
-   * 
-   * @usage this._chain = Utils.asyncChain;
-   *        this._chain(this.foo, this.bar, this.baz)(args, for, foo)
-   * 
-   * This is equivalent to:
-   *
-   *   let self = this;
-   *   self.foo(args, for, foo, function (bars, args) {
-   *     self.bar(bars, args, function (baz, params) {
-   *       self.baz(baz, params);
-   *     });
-   *   });
-   */
-  asyncChain: function asyncChain() {
-    let funcs = Array.slice(arguments);
-    let thisObj = this;
-    return function callback() {
-      if (funcs.length) {
-        let args = Array.slice(arguments).concat(callback);
-        let f = funcs.shift();
-        f.apply(thisObj, args);
-      }
-    };
-  },
-
   /**
    * Wrap a function to catch all exceptions and log them
    *
@@ -142,57 +113,47 @@ let Utils = {
   },
 
   /**
-   * Wrap functions to notify when it starts and finishes executing or if it got
-   * an error. The message is a combination of a provided prefix and local name
-   * with the current state and the subject is the provided subject.
-   *
-   * @usage function MyObj() { this._notify = Utils.notify("prefix:"); }
-   *        MyObj.foo = function() { this._notify(name, subject, func)(); }
+   * Wrap functions to notify when it starts and finishes executing or if it
+   * threw an error.
+   * 
+   * The message is a combination of a provided prefix, the local name, and
+   * the event. Possible events are: "start", "finish", "error". The subject
+   * is the function's return value on "finish" or the caught exception on
+   * "error". The data argument is the predefined data value.
+   * 
+   * Example:
+   * 
+   * @usage function MyObj(name) {
+   *          this.name = name;
+   *          this._notify = Utils.notify("obj:");
+   *        }
+   *        MyObj.prototype = {
+   *          foo: function() this._notify("func", "data-arg", function () {
+   *            //...
+   *          }(),
+   *        };
    */
   notify: function Utils_notify(prefix) {
-    return function NotifyMaker(name, subject, func) {
+    return function NotifyMaker(name, data, func) {
       let thisArg = this;
-      let notify = function(state) {
+      let notify = function(state, subject) {
         let mesg = prefix + name + ":" + state;
         thisArg._log.trace("Event: " + mesg);
-        Observers.notify(mesg, subject);
+        Observers.notify(mesg, subject, data);
       };
 
       return function WrappedNotify() {
         try {
-          notify("start");
+          notify("start", null);
           let ret = func.call(thisArg);
-          notify("finish");
+          notify("finish", ret);
           return ret;
         }
         catch(ex) {
-          notify("error");
+          notify("error", ex);
           throw ex;
         }
       };
-    };
-  },
-
-  batchSync: function batchSync(service, engineType) {
-    return function batchedSync() {
-      let engine = this;
-      let batchEx = null;
-
-      // Try running sync in batch mode
-      Svc[service].runInBatchMode({
-        runBatched: function wrappedSync() {
-          try {
-            engineType.prototype._sync.call(engine);
-          }
-          catch(ex) {
-            batchEx = ex;
-          }
-        }
-      }, null);
-
-      // Expose the exception if something inside the batch failed
-      if (batchEx!= null)
-        throw batchEx;
     };
   },
 
@@ -210,61 +171,6 @@ let Utils = {
         db.commitTransaction();
       }
     }
-  },
-
-  // Prototype for mozIStorageCallback, used in queryAsync below.
-  // This allows us to define the handle* functions just once rather
-  // than on every queryAsync invocation.
-  _storageCallbackPrototype: {
-    results: null,
-
-    // These are set by queryAsync.
-    names: null,
-    syncCb: null,
-
-    handleResult: function handleResult(results) {
-      if (!this.names) {
-        return;
-      }
-      if (!this.results) {
-        this.results = [];
-      }
-      let row;
-      while ((row = results.getNextRow()) != null) {
-        let item = {};
-        for each (name in this.names) {
-          item[name] = row.getResultByName(name);
-        }
-        this.results.push(item);
-      }
-    },
-    handleError: function handleError(error) {
-      this.syncCb.throw(error);
-    },
-    handleCompletion: function handleCompletion(reason) {
-
-      // If we got an error, handleError will also have been called, so don't
-      // call the callback! We never cancel statements, so we don't need to
-      // address that quandary.
-      if (reason == REASON_ERROR)
-        return;
-
-      // If we were called with column names but didn't find any results,
-      // the calling code probably still expects an array as a return value.
-      if (this.names && !this.results) {
-        this.results = [];
-      }
-      this.syncCb(this.results);
-    }
-  },
-
-  queryAsync: function(query, names) {
-    // Synchronously asyncExecute fetching all results by name
-    let storageCallback = {names: names,
-                           syncCb: Utils.makeSyncCallback()};
-    storageCallback.__proto__ = Utils._storageCallbackPrototype;
-    query.executeAsync(storageCallback);
-    return Utils.waitForSyncCallback(storageCallback.syncCb);
   },
 
   byteArrayToString: function byteArrayToString(bytes) {
@@ -315,32 +221,12 @@ let Utils = {
     window.addEventListener("unload", function() windows[url] = null, false);
   },
 
-  // Returns a nsILocalFile representing a file relative to the
-  // current user's profile directory.  If the argument is a string,
-  // it should be a string with unix-style slashes for directory names
-  // (these slashes are automatically converted to platform-specific
-  // path separators).
-  //
-  // Alternatively, if the argument is an object, it should contain
-  // the following attributes:
-  //
-  //   path: the path to the file, relative to the current user's
-  //   profile dir.
-  //
-  //   autoCreate: whether or not the file should be created if it
-  //   doesn't already exist.
-  getProfileFile: function getProfileFile(arg) {
-    if (typeof arg == "string")
-      arg = {path: arg};
-
-    let pathParts = arg.path.split("/");
-    let file = Svc.Directory.get("ProfD", Ci.nsIFile);
-    file.QueryInterface(Ci.nsILocalFile);
-    for (let i = 0; i < pathParts.length; i++)
-      file.append(pathParts[i]);
-    if (arg.autoCreate && !file.exists())
-      file.create(file.NORMAL_FILE_TYPE, PERMS_FILE);
-    return file;
+  // Returns a nsILocalFile representing a file relative to the current
+  // user's profile directory.  The argument should be a string with
+  // unix-style slashes for directory names (these slashes are automatically
+  // converted to platform-specific path separators).
+  getProfileFile: function getProfileFile(path) {
+    return FileUtils.getFile("ProfD", path.split("/"), true);
   },
 
   /**
@@ -355,7 +241,7 @@ let Utils = {
    *        Property name to defer (or an array of property names)
    */
   deferGetSet: function Utils_deferGetSet(obj, defer, prop) {
-    if (Utils.isArray(prop))
+    if (Array.isArray(prop))
       return prop.map(function(prop) Utils.deferGetSet(obj, defer, prop));
 
     let prot = obj.prototype;
@@ -373,65 +259,6 @@ let Utils = {
         this[defer][prop] = val;
       });
     }
-  },
-
-  /**
-   * Determine if some value is an array
-   *
-   * @param val
-   *        Value to check (can be null, undefined, etc.)
-   * @return True if it's an array; false otherwise
-   */
-  isArray: function Utils_isArray(val) val != null && typeof val == "object" &&
-    val.constructor.name == "Array",
-
-  // lazy load objects from a constructor on first access.  It will
-  // work with the global object ('this' in the global context).
-  lazy: function Weave_lazy(dest, prop, ctr) {
-    delete dest[prop];
-    dest.__defineGetter__(prop, Utils.lazyCb(dest, prop, ctr));
-  },
-  lazyCb: function Weave_lazyCb(dest, prop, ctr) {
-    return function() {
-      delete dest[prop];
-      dest[prop] = new ctr();
-      return dest[prop];
-    };
-  },
-
-  // like lazy, but rather than new'ing the 3rd arg we use its return value
-  lazy2: function Weave_lazy2(dest, prop, fn) {
-    delete dest[prop];
-    dest.__defineGetter__(prop, Utils.lazyCb2(dest, prop, fn));
-  },
-  lazyCb2: function Weave_lazyCb2(dest, prop, fn) {
-    return function() {
-      delete dest[prop];
-      return dest[prop] = fn();
-    };
-  },
-
-  lazySvc: function Weave_lazySvc(dest, prop, cid, iface) {
-    let getter = function() {
-      delete dest[prop];
-      let svc = null;
-
-      // Use the platform's service if it exists
-      if (cid in Cc && iface in Ci)
-        svc = Cc[cid].getService(Ci[iface]);
-      else {
-        svc = FakeSvc[cid];
-
-        let log = Log4Moz.repository.getLogger("Service.Util");
-        if (svc == null)
-          log.warn("Component " + cid + " doesn't exist on this platform.");
-        else
-          log.debug("Using a fake svc object for " + cid);
-      }
-
-      return dest[prop] = svc;
-    };
-    dest.__defineGetter__(prop, getter);
   },
 
   lazyStrings: function Weave_lazyStrings(name) {
@@ -470,7 +297,7 @@ let Utils = {
       return thing;
     let ret;
 
-    if (Utils.isArray(thing)) {
+    if (Array.isArray(thing)) {
       ret = [];
       for (let i = 0; i < thing.length; i++)
         ret.push(Utils.deepCopy(thing[i], noSort));
@@ -545,32 +372,6 @@ let Utils = {
     return ex && ex.indexOf && (ex.indexOf(hmacFail) == 0);
   },
   
-  checkStatus: function Weave_checkStatus(code, msg, ranges) {
-    if (!ranges)
-      ranges = [[200,300]];
-
-    for (let i = 0; i < ranges.length; i++) {
-      var rng = ranges[i];
-      if (typeof(rng) == "object" && code >= rng[0] && code < rng[1])
-        return true;
-      else if (typeof(rng) == "number" && code == rng) {
-        return true;
-      }
-    }
-
-    if (msg) {
-      let log = Log4Moz.repository.getLogger("Service.Util");
-      log.error(msg + " Error code: " + code);
-    }
-
-    return false;
-  },
-
-  ensureStatus: function Weave_ensureStatus(args) {
-    if (!Utils.checkStatus.apply(Utils, arguments))
-      throw 'checkStatus failed';
-  },
-
   /**
    * UTF8-encode a message and hash it with the given hasher. Returns a
    * string containing bytes. The hasher is reset if it's an HMAC hasher.
@@ -609,21 +410,6 @@ let Utils = {
     return hex;
   },
 
-  _sha256: function _sha256(message) {
-    let hasher = Cc["@mozilla.org/security/hash;1"].
-      createInstance(Ci.nsICryptoHash);
-    hasher.init(hasher.SHA256);
-    return Utils.digestUTF8(message, hasher);
-  },
-
-  sha256: function sha256(message) {
-    return Utils.bytesAsHex(Utils._sha256(message));
-  },
-
-  sha256Base64: function (message) {
-    return btoa(Utils._sha256(message));
-  },
-
   _sha1: function _sha1(message) {
     let hasher = Cc["@mozilla.org/security/hash;1"].
       createInstance(Ci.nsICryptoHash);
@@ -639,10 +425,6 @@ let Utils = {
     return Utils.encodeBase32(Utils._sha1(message));
   },
   
-  sha1Base64: function (message) {
-    return btoa(Utils._sha1(message));
-  },
-
   /**
    * Produce an HMAC key object from a key string.
    */
@@ -658,26 +440,6 @@ let Utils = {
                    .createInstance(Ci.nsICryptoHMAC);
     hasher.init(type, key);
     return hasher;
-  },
-
-  /**
-   * Some HMAC convenience functions for tests and backwards compatibility:
-   * 
-   *   sha1HMACBytes: hashes byte string, returns bytes string
-   *   sha256HMAC: hashes UTF-8 encoded string, returns hex string
-   *   sha256HMACBytes: hashes byte string, returns bytes string
-   */
-  sha1HMACBytes: function sha1HMACBytes(message, key) {
-    let h = Utils.makeHMACHasher(Ci.nsICryptoHMAC.SHA1, key);
-    return Utils.digestBytes(message, h);
-  },
-  sha256HMAC: function sha256HMAC(message, key) {
-    let h = Utils.makeHMACHasher(Ci.nsICryptoHMAC.SHA256, key);
-    return Utils.bytesAsHex(Utils.digestUTF8(message, h));
-  },
-  sha256HMACBytes: function sha256HMACBytes(message, key) {
-    let h = Utils.makeHMACHasher(Ci.nsICryptoHMAC.SHA256, key);
-    return Utils.digestBytes(message, h);
   },
 
   /**
@@ -697,10 +459,6 @@ let Utils = {
     return T.slice(0, len);
   },
 
-  byteArrayToString: function byteArrayToString(bytes) {
-    return [String.fromCharCode(byte) for each (byte in bytes)].join("");
-  },
-  
   /**
    * PBKDF2 implementation in Javascript.
    * 
@@ -1001,9 +759,9 @@ let Utils = {
     if (!URIString)
       return null;
     try {
-      return Svc.IO.newURI(URIString, null, null);
+      return Services.io.newURI(URIString, null, null);
     } catch (e) {
-      let log = Log4Moz.repository.getLogger("Service.Util");
+      let log = Log4Moz.repository.getLogger("Sync.Utils");
       log.debug("Could not create URI: " + Utils.exceptionStr(e));
       return null;
     }
@@ -1013,30 +771,6 @@ let Utils = {
     let url = Utils.makeURI(URIString);
     url.QueryInterface(Ci.nsIURL);
     return url;
-  },
-
-  xpath: function Weave_xpath(xmlDoc, xpathString) {
-    let root = xmlDoc.ownerDocument == null ?
-      xmlDoc.documentElement : xmlDoc.ownerDocument.documentElement;
-    let nsResolver = xmlDoc.createNSResolver(root);
-
-    return xmlDoc.evaluate(xpathString, xmlDoc, nsResolver,
-                           Ci.nsIDOMXPathResult.ANY_TYPE, null);
-  },
-
-  getTmp: function Weave_getTmp(name) {
-    let tmp = Svc.Directory.get("ProfD", Ci.nsIFile);
-    tmp.QueryInterface(Ci.nsILocalFile);
-
-    tmp.append("weave");
-    tmp.append("tmp");
-    if (!tmp.exists())
-      tmp.create(tmp.DIRECTORY_TYPE, PERMS_DIRECTORY);
-
-    if (name)
-      tmp.append(name);
-
-    return tmp;
   },
 
   /**
@@ -1099,14 +833,11 @@ let Utils = {
     if (that._log)
       that._log.trace("Saving json to disk: " + filePath);
 
-    let file = Utils.getProfileFile({ autoCreate: true, path: filePath });
+    let file = Utils.getProfileFile(filePath);
     let json = typeof obj == "function" ? obj.call(that) : obj;
     let out = JSON.stringify(json);
 
-    let fos = Cc["@mozilla.org/network/safe-file-output-stream;1"]
-                .createInstance(Ci.nsIFileOutputStream);
-    fos.init(file, MODE_WRONLY | MODE_CREATE | MODE_TRUNCATE, PERMS_FILE,
-             fos.DEFER_OPEN);
+    let fos = FileUtils.openSafeFileOutputStream(file);
     let is = this._utf8Converter.convertToInputStream(out);
     NetUtil.asyncCopy(is, fos, function (result) {
       if (typeof callback == "function") {
@@ -1116,16 +847,29 @@ let Utils = {
   },
 
   /**
+   * Execute a function on the next event loop tick.
+   * 
+   * @param callback
+   *        Function to invoke.
+   * @param thisObj [optional]
+   *        Object to bind the callback to.
+   */
+  nextTick: function nextTick(callback, thisObj) {
+    if (thisObj) {
+      callback = callback.bind(thisObj);
+    }
+    Services.tm.currentThread.dispatch(callback, Ci.nsIThread.DISPATCH_NORMAL);
+  },
+
+  /**
    * Return a timer that is scheduled to call the callback after waiting the
    * provided time or as soon as possible. The timer will be set as a property
    * of the provided object with the given timer name.
    */
-  delay: function delay(callback, wait, thisObj, name) {
-    // Default to running right away
-    wait = wait || 0;
-
-    // Use a dummy object if one wasn't provided
-    thisObj = thisObj || {};
+  namedTimer: function delay(callback, wait, thisObj, name) {
+    if (!thisObj || !name) {
+      throw "You must provide both an object and a property name for the timer!";
+    }
 
     // Delay an existing timer if it exists
     if (name in thisObj && thisObj[name] instanceof Ci.nsITimer) {
@@ -1158,12 +902,12 @@ let Utils = {
   getIcon: function(iconUri, defaultIcon) {
     try {
       let iconURI = Utils.makeURI(iconUri);
-      return Svc.Favicon.getFaviconLinkForIcon(iconURI).spec;
+      return PlacesUtils.favicons.getFaviconLinkForIcon(iconURI).spec;
     }
     catch(ex) {}
 
     // Just give the provided default icon or the system's default
-    return defaultIcon || Svc.Favicon.defaultFavicon.spec;
+    return defaultIcon || PlacesUtils.favicons.defaultFavicon.spec;
   },
 
   getErrorString: function Utils_getErrorString(error, args) {
@@ -1302,49 +1046,24 @@ let Utils = {
     return over ? atob(b64.substr(0, len - over)) : atob(b64);
   },
 
-  /*
-   * Calculate the strength of a passphrase provided by the user
-   * according to the NIST algorithm (NIST 800-63 Appendix A.1).
-   */
-  passphraseStrength: function passphraseStrength(value) {
-    let bits = 0;
-
-    // The entropy of the first character is taken to be 4 bits.
-    if (value.length)
-      bits = 4;
-
-    // The entropy of the next 7 characters are 2 bits per character.
-    if (value.length > 1)
-      bits += Math.min(value.length - 1, 7) * 2;
-
-    // For the 9th through the 20th character the entropy is taken to
-    // be 1.5 bits per character.
-    if (value.length > 8)
-      bits += Math.min(value.length - 8, 12) * 1.5;
-
-    // For characters 21 and above the entropy is taken to be 1 bit per character.
-    if (value.length > 20)
-      bits += value.length - 20;
-
-    // Bonus of 6 bits if we find non-alphabetic characters
-    if ([char.charCodeAt() for each (char in value.toLowerCase())]
-        .some(function(chr) chr < 97 || chr > 122))
-      bits += 6;
-      
-    return bits;
-  },
-
   /**
-   * Create an array like the first but without elements of the second
+   * Create an array like the first but without elements of the second. Reuse
+   * arrays if possible.
    */
   arraySub: function arraySub(minuend, subtrahend) {
+    if (!minuend.length || !subtrahend.length)
+      return minuend;
     return minuend.filter(function(i) subtrahend.indexOf(i) == -1);
   },
 
   /**
-   * Build the union of two arrays.
+   * Build the union of two arrays. Reuse arrays if possible.
    */
   arrayUnion: function arrayUnion(foo, bar) {
+    if (!foo.length)
+      return bar;
+    if (!bar.length)
+      return foo;
     return foo.concat(Utils.arraySub(bar, foo));
   },
 
@@ -1382,152 +1101,20 @@ let Utils = {
     return false;
   },
   
-  __prefs: null,
-  get prefs() {
-    if (!this.__prefs) {
-      this.__prefs = Cc["@mozilla.org/preferences-service;1"]
-        .getService(Ci.nsIPrefService);
-      this.__prefs = this.__prefs.getBranch(PREFS_BRANCH);
-      this.__prefs.QueryInterface(Ci.nsIPrefBranch2);
-    }
-    return this.__prefs;
-  },
-
   /**
-   * Helpers for making asynchronous calls within a synchronous API possible.
-   * 
-   * If you value your sanity, do not look closely at the following functions.
+   * Return a value for a backoff interval.  Maximum is eight hours, unless
+   * Status.backoffInterval is higher.
+   *
    */
-
-  /**
-   * Check if the app is ready (not quitting)
-   */
-  checkAppReady: function checkAppReady() {
-    // Watch for app-quit notification to stop any sync calls
-    Svc.Obs.add("quit-application", function() {
-      Utils.checkAppReady = function() {
-        throw Components.Exception("App. Quitting", Cr.NS_ERROR_ABORT);
-      };
-    });
-    // In the common case, checkAppReady just returns true
-    return (Utils.checkAppReady = function() true)();
-  },
-
-  /**
-   * Create a sync callback that remembers state like whether it's been called
-   */
-  makeSyncCallback: function makeSyncCallback() {
-    // The main callback remembers the value it's passed and that it got data
-    let onComplete = function onComplete(data) {
-      onComplete.state = CB_COMPLETE;
-      onComplete.value = data;
-    };
-
-    // Initialize private callback data to prepare to be called
-    onComplete.state = CB_READY;
-    onComplete.value = null;
-
-    // Allow an alternate callback to trigger an exception to be thrown
-    onComplete.throw = function onComplete_throw(data) {
-      onComplete.state = CB_FAIL;
-      onComplete.value = data;
-
-      // Cause the caller to get an exception and stop execution
-      throw data;
-    };
-
-    return onComplete;
-  },
-
-  /**
-   * Wait for a sync callback to finish
-   */
-  waitForSyncCallback: function waitForSyncCallback(callback) {
-    // Grab the current thread so we can make it give up priority
-    let thread = Cc["@mozilla.org/thread-manager;1"].getService().currentThread;
-
-    // Keep waiting until our callback is triggered unless the app is quitting
-    while (Utils.checkAppReady() && callback.state == CB_READY) {
-      thread.processNextEvent(true);
-    }
-
-    // Reset the state of the callback to prepare for another call
-    let state = callback.state;
-    callback.state = CB_READY;
-
-    // Throw the value the callback decided to fail with
-    if (state == CB_FAIL) {
-      throw callback.value;
-    }
-
-    // Return the value passed to the callback
-    return callback.value;
+  calculateBackoff: function calculateBackoff(attempts, base_interval) {
+    let backoffInterval = attempts *
+                          (Math.floor(Math.random() * base_interval) +
+                           base_interval);
+    return Math.max(Math.min(backoffInterval, MAXIMUM_BACKOFF_INTERVAL), Status.backoffInterval);
   }
 };
 
-let FakeSvc = {
-  // Private Browsing
-  "@mozilla.org/privatebrowsing;1": {
-    autoStarted: false,
-    privateBrowsingEnabled: false
-  },
-  // Session Restore
-  "@mozilla.org/browser/sessionstore;1": {
-    setTabValue: function(tab, key, value) {
-      if (!tab.__SS_extdata)
-        tab.__SS_extdata = {};
-      tab.__SS_extData[key] = value;
-    },
-    getBrowserState: function() {
-      // Fennec should have only one window. Not more, not less.
-      let state = { windows: [{ tabs: [] }] };
-      let window = Svc.WinMediator.getMostRecentWindow("navigator:browser");
-
-      // Extract various pieces of tab data
-      window.Browser._tabs.forEach(function(tab) {
-        let tabState = { entries: [{}] };
-        let browser = tab.browser;
-
-        // Cases when we want to skip the tab. Could come up if we get
-        // state as a tab is opening or closing.
-        if (!browser || !browser.currentURI || !browser.sessionHistory)
-          return;
-
-        let history = browser.sessionHistory;
-        if (history.count > 0) {
-          // We're only grabbing the current history entry for now.
-          let entry = history.getEntryAtIndex(history.index, false);
-          tabState.entries[0].url = entry.URI.spec;
-          // Like SessionStore really does it...
-          if (entry.title && entry.title != entry.url)
-            tabState.entries[0].title = entry.title;
-        }
-        // index is 1-based
-        tabState.index = 1;
-
-        // Get the image for the tab. Fennec doesn't quite work the same
-        // way as Firefox, so we'll just get this from the browser object.
-        tabState.attributes = { image: browser.mIconURL };
-
-        // Collect the extdata
-        if (tab.__SS_extdata) {
-          tabState.extData = {};
-          for (let key in tab.__SS_extdata)
-            tabState.extData[key] = tab.__SS_extdata[key];
-        }
-
-        // Add the tab to the window
-        state.windows[0].tabs.push(tabState);
-      });
-      return JSON.stringify(state);
-    }
-  },
-  // A fake service only used for testing
-  "@labs.mozilla.com/Fake/Thing;1": {
-    isFake: true
-  }
-};
-Utils.lazy2(Utils, "_utf8Converter", function() {
+XPCOMUtils.defineLazyGetter(Utils, "_utf8Converter", function() {
   let converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
                     .createInstance(Ci.nsIScriptableUnicodeConverter);
   converter.charset = "UTF-8";
@@ -1542,35 +1129,27 @@ Svc.Prefs = new Preferences(PREFS_BRANCH);
 Svc.DefaultPrefs = new Preferences({branch: PREFS_BRANCH, defaultBranch: true});
 Svc.Obs = Observers;
 
-this.__defineGetter__("_sessionCID", function() {
-  //sets session CID based on browser type
-  let appInfo = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULAppInfo);
-  return appInfo.ID == SEAMONKEY_ID ? "@mozilla.org/suite/sessionstore;1"
-                                    : "@mozilla.org/browser/sessionstore;1";
-});
-[["Annos", "@mozilla.org/browser/annotation-service;1", "nsIAnnotationService"],
- ["AppInfo", "@mozilla.org/xre/app-info;1", "nsIXULAppInfo"],
- ["Bookmark", "@mozilla.org/browser/nav-bookmarks-service;1", "nsINavBookmarksService"],
- ["Directory", "@mozilla.org/file/directory_service;1", "nsIProperties"],
- ["Env", "@mozilla.org/process/environment;1", "nsIEnvironment"],
- ["Favicon", "@mozilla.org/browser/favicon-service;1", "nsIFaviconService"],
- ["Form", "@mozilla.org/satchel/form-history;1", "nsIFormHistory2"],
- ["History", "@mozilla.org/browser/nav-history-service;1", "nsPIPlacesDatabase"],
+let _sessionCID = Services.appinfo.ID == SEAMONKEY_ID ?
+  "@mozilla.org/suite/sessionstore;1" :
+  "@mozilla.org/browser/sessionstore;1";
+
+[["Form", "@mozilla.org/satchel/form-history;1", "nsIFormHistory2"],
  ["Idle", "@mozilla.org/widget/idleservice;1", "nsIIdleService"],
- ["IO", "@mozilla.org/network/io-service;1", "nsIIOService"],
  ["KeyFactory", "@mozilla.org/security/keyobjectfactory;1", "nsIKeyObjectFactory"],
- ["Login", "@mozilla.org/login-manager;1", "nsILoginManager"],
- ["Memory", "@mozilla.org/xpcom/memory-service;1", "nsIMemory"],
- ["Private", "@mozilla.org/privatebrowsing;1", "nsIPrivateBrowsingService"],
- ["Profiles", "@mozilla.org/toolkit/profile-service;1", "nsIToolkitProfileService"],
- ["Prompt", "@mozilla.org/embedcomp/prompt-service;1", "nsIPromptService"],
- ["Script", "@mozilla.org/moz/jssubscript-loader;1", "mozIJSSubScriptLoader"],
- ["SysInfo", "@mozilla.org/system-info;1", "nsIPropertyBag2"],
- ["Version", "@mozilla.org/xpcom/version-comparator;1", "nsIVersionComparator"],
- ["WinMediator", "@mozilla.org/appshell/window-mediator;1", "nsIWindowMediator"],
- ["WinWatcher", "@mozilla.org/embedcomp/window-watcher;1", "nsIWindowWatcher"],
- ["Session", this._sessionCID, "nsISessionStore"],
-].forEach(function(lazy) Utils.lazySvc(Svc, lazy[0], lazy[1], lazy[2]));
+ ["Session", _sessionCID, "nsISessionStore"]
+].forEach(function([name, contract, iface]) {
+  XPCOMUtils.defineLazyServiceGetter(Svc, name, contract, iface);
+});
+
+// nsIPrivateBrowsingService is not implemented in mobile Firefox.
+// Svc.Private should just return undefined in this case instead of throwing.
+XPCOMUtils.defineLazyGetter(Svc, "Private", function() {
+  try {
+    return Cc["@mozilla.org/privatebrowsing;1"].getService(Ci["nsIPrivateBrowsingService"]);
+  } catch (e) {
+    return undefined;
+  }
+});
 
 Svc.__defineGetter__("Crypto", function() {
   let cryptoSvc;
@@ -1582,8 +1161,9 @@ Svc.__defineGetter__("Crypto", function() {
 });
 
 let Str = {};
-["errors", "sync"]
-  .forEach(function(lazy) Utils.lazy2(Str, lazy, Utils.lazyStrings(lazy)));
+["errors", "sync"].forEach(function(lazy) {
+  XPCOMUtils.defineLazyGetter(Str, lazy, Utils.lazyStrings(lazy));
+});
 
 Svc.Obs.add("xpcom-shutdown", function () {
   for (let name in Svc)

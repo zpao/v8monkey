@@ -44,12 +44,12 @@ Cu.import("resource://gre/modules/Services.jsm");
 
 function openWindow(aParent, aURL, aTarget, aFeatures, aArgs) {
   let argString = null;
-  if (aArgs) {
+  if (aArgs && !(aArgs instanceof Ci.nsISupportsArray)) {
     argString = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
     argString.data = aArgs;
   }
 
-  return Services.ww.openWindow(aParent, aURL, aTarget, aFeatures, argString);
+  return Services.ww.openWindow(aParent, aURL, aTarget, aFeatures, argString || aArgs);
 }
 
 function resolveURIInternal(aCmdLine, aArgument) {
@@ -61,16 +61,14 @@ function resolveURIInternal(aCmdLine, aArgument) {
   try {
     if (uri.file.exists())
       return uri;
-  }
-  catch (e) {
+  } catch (e) {
     Cu.reportError(e);
   }
 
   try {
     let urifixup = Cc["@mozilla.org/docshell/urifixup;1"].getService(Ci.nsIURIFixup);
     uri = urifixup.createFixupURI(aArgument, 0);
-  }
-  catch (e) {
+  } catch (e) {
     Cu.reportError(e);
   }
 
@@ -120,6 +118,41 @@ function showPanelWhenReady(aWindow, aPage) {
   }, false);
 }
 
+function haveSystemLocale() {
+  let localeService = Cc["@mozilla.org/intl/nslocaleservice;1"].getService(Ci.nsILocaleService);
+  let systemLocale = localeService.getSystemLocale().getCategory("NSILOCALE_CTYPE");
+  return isLocaleAvailable(systemLocale);
+}
+
+function checkCurrentLocale() {
+  if (Services.prefs.prefHasUserValue("general.useragent.locale")) {
+    // if the user has a compatible locale from a different buildid, we need to update
+    var buildID = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULAppInfo).platformBuildID;
+    let localeBuildID = Services.prefs.getCharPref("extensions.compatability.locales.buildid");
+    if (buildID != localeBuildID)
+      return false;
+
+    let currentLocale = Services.prefs.getCharPref("general.useragent.locale");
+    return isLocaleAvailable(currentLocale);
+  }
+  return true;
+}
+
+function isLocaleAvailable(aLocale) {
+  let chrome = Cc["@mozilla.org/chrome/chrome-registry;1"].getService(Ci.nsIXULChromeRegistry);
+  chrome.QueryInterface(Ci.nsIToolkitChromeRegistry);
+  let availableLocales = chrome.getLocalesForPackage("browser");
+ 
+  let locale = aLocale.split("-")[0];
+  let localeRegEx = new RegExp("^" + locale);
+ 
+  while (availableLocales.hasMore()) {
+    let locale = availableLocales.getNext();
+    if (localeRegEx.test(locale))
+      return true;
+  }
+  return false;
+}
 
 function BrowserCLH() { }
 
@@ -155,8 +188,7 @@ BrowserCLH.prototype = {
           // Stop the normal commandline processing from continuing
           aCmdLine.preventDefault = true;
         }
-      }
-      catch (e) {
+      } catch (e) {
         Cu.reportError(e);
       }
       return;
@@ -164,6 +196,12 @@ BrowserCLH.prototype = {
 
     // Check and remove the alert flag here, but we'll handle it a bit later - see below
     let alertFlag = aCmdLine.handleFlagWithParam("alert", false);
+
+    // Check and remove the webapp param
+    let appFlag = aCmdLine.handleFlagWithParam("webapp", false);
+    let appURI;
+    if (appFlag)
+      appURI = resolveURIInternal(aCmdLine, appFlag);
 
     // Keep an array of possible URL arguments
     let uris = [];
@@ -187,16 +225,19 @@ BrowserCLH.prototype = {
     }
 
     // Open the main browser window, if we don't already have one
-    let win;
+    let browserWin;
     try {
-      win = Services.wm.getMostRecentWindow("navigator:browser");
-      if (!win) {
+      let localeWin = Services.wm.getMostRecentWindow("navigator:localepicker");
+      if (localeWin) {
+        localeWin.focus();
+        aCmdLine.preventDefault = true;
+        return;
+      }
+
+      browserWin = Services.wm.getMostRecentWindow("navigator:browser");
+      if (!browserWin) {
         // Default to the saved homepage
         let defaultURL = getHomePage();
-
-        // Override the default if we have a new profile
-        if (needHomepageOverride() == "new profile")
-            defaultURL = "about:firstrun";
 
         // Override the default if we have a URL passed on command line
         if (uris.length > 0) {
@@ -204,25 +245,38 @@ BrowserCLH.prototype = {
           uris = uris.slice(1);
         }
 
-        win = openWindow(null, "chrome://browser/content/browser.xul", "_blank", "chrome,dialog=no,all", defaultURL);
+        // Show the locale selector if we have a new profile, or if the selected locale is no longer compatible
+        let showLocalePicker = Services.prefs.getBoolPref("browser.firstrun.show.localepicker");
+        if ((needHomepageOverride() == "new profile" && showLocalePicker && !haveSystemLocale())) { // || !checkCurrentLocale()) {
+          browserWin = openWindow(null, "chrome://browser/content/localePicker.xul", "_blank", "chrome,dialog=no,all", defaultURL);
+          aCmdLine.preventDefault = true;
+          return;
+        }
+
+        browserWin = openWindow(null, "chrome://browser/content/browser.xul", "_blank", "chrome,dialog=no,all", defaultURL);
       }
 
-      win.focus();
+      browserWin.focus();
 
       // Stop the normal commandline processing from continuing. We just opened the main browser window
       aCmdLine.preventDefault = true;
-    } catch (e) { }
+    } catch (e) {
+      Cu.reportError(e);
+    }
 
     // Assumption: All remaining command line arguments have been sent remotely (browser is already running)
     // Action: Open any URLs we find into an existing browser window
 
     // First, get a browserDOMWindow object
-    while (!win.browserDOMWindow)
+    while (!browserWin.browserDOMWindow)
       Services.tm.currentThread.processNextEvent(true);
 
     // Open any URIs into new tabs
     for (let i = 0; i < uris.length; i++)
-      win.browserDOMWindow.openURI(uris[i], null, Ci.nsIBrowserDOMWindow.OPEN_NEWTAB, Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL);
+      browserWin.browserDOMWindow.openURI(uris[i], null, Ci.nsIBrowserDOMWindow.OPEN_NEWTAB, Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL);
+
+    if (appURI)
+      browserWin.browserDOMWindow.openURI(appURI, null, browserWin.OPEN_APPTAB, Ci.nsIBrowserDOMWindow.OPEN_NEW);
 
     // Handle the notification, if called from it
     if (alertFlag) {
@@ -234,9 +288,9 @@ BrowserCLH.prototype = {
         var updateTimerCallback = updateService.QueryInterface(Ci.nsITimerCallback);
         updateTimerCallback.notify(null);
       } else if (alertFlag.length >= 9 && alertFlag.substr(0, 9) == "download:") {
-        showPanelWhenReady(win, "downloads-container");
+        showPanelWhenReady(browserWin, "downloads-container");
       } else if (alertFlag == "addons") {
-        showPanelWhenReady(win, "addons-container");
+        showPanelWhenReady(browserWin, "addons-container");
       }
     }
   },

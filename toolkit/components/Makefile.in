@@ -65,13 +65,14 @@ PARALLEL_DIRS += \
   perf \
   places \
   prompts \
+  reflect \
   startup \
   statusfilter \
   typeaheadfind \
   urlformatter \
   viewconfig \
   viewsource \
-  webapps \
+  telemetry \
   $(NULL)
 
 ifdef BUILD_CTYPES

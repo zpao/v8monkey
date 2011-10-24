@@ -5,7 +5,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=501257
 -->
 <head>
   <title>Test for the classList element attribute</title>
-  <script type="application/javascript" src="/MochiKit/packed.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
@@ -165,22 +164,17 @@ function testClassList(e) {
 
   // item() method
 
-  // TODO out of bounds array indexing should return undefined according to the
-  // WebIDL spec. They are returning an empty string at the moment. (bug 529328)
-  var OOB_VALUE = "";
-  todo_is(OOB_VALUE, undefined, "Wrong out of bounds value");
-
   e.setAttribute("class", "a");
   is(e.classList.item(-1), null, "wrong classList.item() result");
-  is(e.classList[-1], OOB_VALUE, "wrong classList[] result");
+  is(e.classList[-1], undefined, "wrong classList[] result");
   is(e.classList.item(0), "a", "wrong classList.item() result");
-  is(e.classList[0], "a", "wrong classList.item() result");
+  is(e.classList[0], "a", "wrong classList[] result");
   is(e.classList.item(1), null, "wrong classList.item() result");
-  is(e.classList[1], OOB_VALUE, "wrong classList.item() result");
+  is(e.classList[1], undefined, "wrong classList[] result");
 
   e.setAttribute("class", "aa AA aa");
   is(e.classList.item(-1), null, "wrong classList.item() result");
-  is(e.classList[-1], OOB_VALUE, "wrong classList[] result");
+  is(e.classList[-1], undefined, "wrong classList[] result");
   is(e.classList.item(0), "aa", "wrong classList.item() result");
   is(e.classList[0], "aa", "wrong classList[] result");
   is(e.classList.item(1), "AA", "wrong classList.item() result");
@@ -188,22 +182,21 @@ function testClassList(e) {
   is(e.classList.item(2), "aa", "wrong classList.item() result");
   is(e.classList[2], "aa", "wrong classList[] result");
   is(e.classList.item(3), null, "wrong classList.item() result");
-  is(e.classList[3], OOB_VALUE, "wrong classList[] result");
+  is(e.classList[3], undefined, "wrong classList[] result");
   is(e.classList.item(0xffffffff), null, "wrong classList.item() result");
-  // XXX returns undefined for index >= 0xffffffff
-  todo_is(e.classList[0xffffffff], OOB_VALUE, "wrong classList[] result");
+  is(e.classList[0xffffffff], undefined, "wrong classList[] result");
   is(e.classList.item(0xfffffffe), null, "wrong classList.item() result");
-  is(e.classList[0xffffffe], OOB_VALUE, "wrong classList[] result");
+  is(e.classList[0xffffffe], undefined, "wrong classList[] result");
 
   e.setAttribute("class", "a b");
   is(e.classList.item(-1), null, "wrong classList.item() result");
-  is(e.classList[-1], OOB_VALUE, "wrong classList[] result");
+  is(e.classList[-1], undefined, "wrong classList[] result");
   is(e.classList.item(0), "a", "wrong classList.item() result");
   is(e.classList[0], "a", "wrong classList[] result");
   is(e.classList.item(1), "b", "wrong classList.item() result");
   is(e.classList[1], "b", "wrong classList[] result");
   is(e.classList.item(2), null, "wrong classList.item() result");
-  is(e.classList[2], OOB_VALUE, "wrong classList[] result");
+  is(e.classList[2], undefined, "wrong classList[] result");
 
   // contains() method
 

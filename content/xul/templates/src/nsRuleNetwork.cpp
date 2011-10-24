@@ -50,6 +50,8 @@
 
  */
 
+#include "mozilla/Util.h"
+
 #include "nscore.h"
 #include "nsCOMPtr.h"
 #include "nsCRT.h"
@@ -73,11 +75,13 @@ extern PRLogModuleInfo* gXULTemplateLog;
 #include "nsRDFConMemberTestNode.h"
 #include "nsRDFPropertyTestNode.h"
 
-PRBool MemoryElement::gPoolInited;
+using namespace mozilla;
+
+bool MemoryElement::gPoolInited;
 nsFixedSizeAllocator MemoryElement::gPool;
 
 // static
-PRBool
+bool
 MemoryElement::Init()
 {
     if (!gPoolInited) {
@@ -87,13 +91,13 @@ MemoryElement::Init()
         };
 
         if (NS_FAILED(gPool.Init("MemoryElement", bucketsizes,
-                                 NS_ARRAY_LENGTH(bucketsizes), 256)))
-            return PR_FALSE;
+                                 ArrayLength(bucketsizes), 256)))
+            return false;
 
-        gPoolInited = PR_TRUE;
+        gPoolInited = true;
     }
 
-    return PR_TRUE;
+    return true;
 }
 
 //----------------------------------------------------------------------
@@ -161,64 +165,64 @@ nsAssignmentSet::Count() const
     return count;
 }
 
-PRBool
+bool
 nsAssignmentSet::HasAssignment(nsIAtom* aVariable, nsIRDFNode* aValue) const
 {
     for (ConstIterator assignment = First(); assignment != Last(); ++assignment) {
         if (assignment->mVariable == aVariable && assignment->mValue == aValue)
-            return PR_TRUE;
+            return true;
     }
 
-    return PR_FALSE;
+    return false;
 }
 
-PRBool
+bool
 nsAssignmentSet::HasAssignmentFor(nsIAtom* aVariable) const
 {
     for (ConstIterator assignment = First(); assignment != Last(); ++assignment) {
         if (assignment->mVariable == aVariable)
-            return PR_TRUE;
+            return true;
     }
 
-    return PR_FALSE;
+    return false;
 }
 
-PRBool
+bool
 nsAssignmentSet::GetAssignmentFor(nsIAtom* aVariable, nsIRDFNode** aValue) const
 {
     for (ConstIterator assignment = First(); assignment != Last(); ++assignment) {
         if (assignment->mVariable == aVariable) {
             *aValue = assignment->mValue;
             NS_IF_ADDREF(*aValue);
-            return PR_TRUE;
+            return true;
         }
     }
 
     *aValue = nsnull;
-    return PR_FALSE;
+    return false;
 }
 
-PRBool
+bool
 nsAssignmentSet::Equals(const nsAssignmentSet& aSet) const
 {
     if (aSet.mAssignments == mAssignments)
-        return PR_TRUE;
+        return true;
 
     // If they have a different number of assignments, then they're different.
     if (Count() != aSet.Count())
-        return PR_FALSE;
+        return false;
 
     // XXX O(n^2)! Ugh!
     nsCOMPtr<nsIRDFNode> value;
     for (ConstIterator assignment = First(); assignment != Last(); ++assignment) {
         if (! aSet.GetAssignmentFor(assignment->mVariable, getter_AddRefs(value)))
-            return PR_FALSE;
+            return false;
 
         if (assignment->mValue != value)
-            return PR_FALSE;
+            return false;
     }
 
-    return PR_TRUE;
+    return true;
 }
 
 //----------------------------------------------------------------------
@@ -325,10 +329,10 @@ InstantiationSet::Erase(Iterator aIterator)
 }
 
 
-PRBool
+bool
 InstantiationSet::HasAssignmentFor(nsIAtom* aVariable) const
 {
-    return !Empty() ? First()->mAssignments.HasAssignmentFor(aVariable) : PR_FALSE;
+    return !Empty() ? First()->mAssignments.HasAssignmentFor(aVariable) : false;
 }
 
 //----------------------------------------------------------------------
@@ -354,12 +358,12 @@ TestNode::TestNode(TestNode* aParent)
 
 nsresult
 TestNode::Propagate(InstantiationSet& aInstantiations,
-                    PRBool aIsUpdate, PRBool& aTakenInstantiations)
+                    bool aIsUpdate, bool& aTakenInstantiations)
 {
     PR_LOG(gXULTemplateLog, PR_LOG_DEBUG,
            ("TestNode[%p]: Propagate() begin", this));
 
-    aTakenInstantiations = PR_FALSE;
+    aTakenInstantiations = false;
 
     nsresult rv = FilterInstantiations(aInstantiations, nsnull);
     if (NS_FAILED(rv))
@@ -369,7 +373,7 @@ TestNode::Propagate(InstantiationSet& aInstantiations,
     // original set of instantiations from this node, so create a copy in this
     // case. If there is only one child, optimize and just pass the
     // instantiations along to the child without copying
-    PRBool shouldCopy = (mKids.Count() > 1);
+    bool shouldCopy = (mKids.Count() > 1);
 
     // See the header file for details about how instantiation ownership works.
     if (! aInstantiations.Empty()) {
@@ -380,7 +384,7 @@ TestNode::Propagate(InstantiationSet& aInstantiations,
 
             // create a copy of the instantiations
             if (shouldCopy) {
-                PRBool owned = PR_FALSE;
+                bool owned = false;
                 InstantiationSet* instantiations =
                     new InstantiationSet(aInstantiations);
                 if (!instantiations)
@@ -419,7 +423,7 @@ TestNode::Constrain(InstantiationSet& aInstantiations)
     // For this, continue the constrain all the way to the top
     // and then call FilterInstantiations again afterwards. This
     // should fill in any missing information.
-    PRBool cantHandleYet = PR_FALSE;
+    bool cantHandleYet = false;
     rv = FilterInstantiations(aInstantiations, &cantHandleYet);
     if (NS_FAILED(rv)) return rv;
 
@@ -450,7 +454,7 @@ TestNode::Constrain(InstantiationSet& aInstantiations)
 }
 
 
-PRBool
+bool
 TestNode::HasAncestor(const ReteNode* aNode) const
 {
     return aNode == this || (mParent && mParent->HasAncestor(aNode));

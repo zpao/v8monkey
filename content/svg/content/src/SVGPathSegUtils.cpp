@@ -66,8 +66,8 @@ SVGPathSegUtils::GetValueAsString(const float* aSeg, nsAString& aValue)
 
   // Special case arcs:
   if (IsArcType(type)) {
-    PRBool largeArcFlag = aSeg[4] != 0.0f;
-    PRBool sweepFlag = aSeg[5] != 0.0f;
+    bool largeArcFlag = aSeg[4] != 0.0f;
+    bool sweepFlag = aSeg[5] != 0.0f;
     nsTextFormatter::ssprintf(aValue,
                               NS_LITERAL_STRING("%c%g,%g %g %d,%d %g,%g").get(),
                               typeAsChar, aSeg[1], aSeg[2], aSeg[3],
@@ -102,7 +102,7 @@ SVGPathSegUtils::GetValueAsString(const float* aSeg, nsAString& aValue)
       break;
 
     default:
-      NS_ABORT_IF_FALSE(PR_FALSE, "Unknown segment type");
+      NS_ABORT_IF_FALSE(false, "Unknown segment type");
       aValue = NS_LITERAL_STRING("<unknown-segment-type>").get();
       return;
     }

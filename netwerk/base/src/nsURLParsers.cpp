@@ -37,6 +37,9 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include <string.h>
+
+#include "mozilla/RangedPtr.h"
+
 #include "nsURLParsers.h"
 #include "nsURLHelper.h"
 #include "nsIURI.h"
@@ -45,13 +48,16 @@
 #include "nsCRT.h"
 #include "netCore.h"
 
+using namespace mozilla;
+
 //----------------------------------------------------------------------------
 
 static PRUint32
 CountConsecutiveSlashes(const char *str, PRInt32 len)
 {
+    RangedPtr<const char> p(str, len);
     PRUint32 count = 0;
-    while (len-- && *str++ == '/') ++count;
+    while (len-- && *p++ == '/') ++count;
     return count;
 }
 
@@ -111,7 +117,6 @@ nsBaseURLParser::ParseURL(const char *spec, PRInt32 specLen,
             case '/': // start of filepath
             case '?': // start of query
             case '#': // start of ref
-            case ';': // start of param
                 if (!slash)
                     slash = p;
                 break;
@@ -234,7 +239,6 @@ nsBaseURLParser::ParseServerInfo(const char *serverinfo, PRInt32 serverinfoLen,
 NS_IMETHODIMP
 nsBaseURLParser::ParsePath(const char *path, PRInt32 pathLen,
                            PRUint32 *filepathPos, PRInt32 *filepathLen,
-                           PRUint32 *paramPos, PRInt32 *paramLen,
                            PRUint32 *queryPos, PRInt32 *queryLen,
                            PRUint32 *refPos, PRInt32 *refLen)
 {
@@ -243,7 +247,7 @@ nsBaseURLParser::ParsePath(const char *path, PRInt32 pathLen,
     if (pathLen < 0)
         pathLen = strlen(path);
 
-    // path = [/]<segment1>/<segment2>/<...>/<segmentN>;<param>?<query>#<ref>
+    // path = [/]<segment1>/<segment2>/<...>/<segmentN>?<query>#<ref>
 
     // XXX PL_strnpbrk would be nice, but it's buggy
 
@@ -277,8 +281,6 @@ nsBaseURLParser::ParsePath(const char *path, PRInt32 pathLen,
     else
         SET_RESULT(ref, 0, -1);
 
-    // search backwards for param
-    const char *param_beg = 0;
     const char *end;
     if (query_beg)
         end = query_beg - 1;
@@ -286,20 +288,6 @@ nsBaseURLParser::ParsePath(const char *path, PRInt32 pathLen,
         end = ref_beg - 1;
     else
         end = path + pathLen;
-    for (p = end - 1; p >= path && *p != '/'; --p) {
-        if (*p == ';') {
-            // found param
-            param_beg = p + 1;
-        }
-    }
-
-    if (param_beg) {
-        // found <filepath>;<param>
-        SET_RESULT(param, param_beg - path, end - param_beg);
-        end = param_beg - 1;
-    }
-    else
-        SET_RESULT(param, 0, -1);
 
     // an empty file path is no file path
     if (end != path)
@@ -420,6 +408,8 @@ nsNoAuthURLParser::ParseAfterScheme(const char *spec, PRInt32 specLen,
 #if defined(XP_WIN) || defined(XP_OS2)
                 // if the authority looks like a drive number then we
                 // really want to treat it as part of the path
+                // [a-zA-Z][:|]{/\}
+                // i.e one of:   c:   c:\foo  c:/foo  c|  c|\foo  c|/foo
                 if ((specLen > 3) && (spec[3] == ':' || spec[3] == '|') &&
                     nsCRT::IsAsciiAlpha(spec[2]) &&
                     ((specLen == 4) || (spec[4] == '/') || (spec[4] == '\\'))) {
@@ -427,16 +417,17 @@ nsNoAuthURLParser::ParseAfterScheme(const char *spec, PRInt32 specLen,
                     break;  
                 } 
 #endif
-                p = (const char *) memchr(spec + 2, '/', specLen - 2);
+                // Ignore apparent authority; path is everything after it
+                for (p = spec + 2; p < spec + specLen; ++p) {
+                    if (*p == '/' || *p == '?' || *p == '#')
+                        break;
+                }
             }
-            if (p) {
-                SET_RESULT(auth, 0, -1);
+            SET_RESULT(auth, 0, -1);
+            if (p && p != spec+specLen)
                 SET_RESULT(path, p - spec, specLen - (p - spec));
-            }
-            else {
-                SET_RESULT(auth, 0, -1);
+            else
                 SET_RESULT(path, 0, -1);
-            }
             return;
         }
     default:
@@ -635,6 +626,13 @@ nsAuthURLParser::ParseServerInfo(const char *serverinfo, PRInt32 serverinfoLen,
         if (port)
            *port = -1;
     }
+
+    // In case of IPv6 address check its validity
+    if (*hostnameLen > 1 && *(serverinfo + *hostnamePos) == '[' &&
+        *(serverinfo + *hostnamePos + *hostnameLen - 1) == ']' &&
+        !net_IsValidIPv6Addr(serverinfo + *hostnamePos + 1, *hostnameLen - 2))
+            return NS_ERROR_MALFORMED_URI;
+
     return NS_OK;
 }
 
@@ -651,7 +649,7 @@ nsAuthURLParser::ParseAfterScheme(const char *spec, PRInt32 specLen,
     const char *end = spec + specLen;
     const char *p;
     for (p = spec + nslash; p < end; ++p) {
-        if (*p == '/' || *p == '?' || *p == '#' || *p == ';')
+        if (*p == '/' || *p == '?' || *p == '#')
             break;
     }
     if (p < end) {

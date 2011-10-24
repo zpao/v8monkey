@@ -58,7 +58,7 @@ interface nsIBinaryOutputStream : nsIOutputStream {
     /**
      * Write a boolean as an 8-bit char to the stream.
      */
-    void writeBoolean(in PRBool aBoolean);
+    void writeBoolean(in boolean aBoolean);
 
     void write8(in PRUint8 aByte);
     void write16(in PRUint16 a16);
@@ -104,7 +104,7 @@ interface nsIBinaryOutputStream : nsIOutputStream {
 inline nsresult
 NS_WriteOptionalStringZ(nsIBinaryOutputStream* aStream, const char* aString)
 {
-    PRBool nonnull = (aString != nsnull);
+    bool nonnull = (aString != nsnull);
     nsresult rv = aStream->WriteBoolean(nonnull);
     if (NS_SUCCEEDED(rv) && nonnull)
         rv = aStream->WriteStringZ(aString);
@@ -114,7 +114,7 @@ NS_WriteOptionalStringZ(nsIBinaryOutputStream* aStream, const char* aString)
 inline nsresult
 NS_WriteOptionalWStringZ(nsIBinaryOutputStream* aStream, const PRUnichar* aString)
 {
-    PRBool nonnull = (aString != nsnull);
+    bool nonnull = (aString != nsnull);
     nsresult rv = aStream->WriteBoolean(nonnull);
     if (NS_SUCCEEDED(rv) && nonnull)
         rv = aStream->WriteWStringZ(aString);

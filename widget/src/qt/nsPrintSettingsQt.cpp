@@ -160,19 +160,19 @@ nsPrintSettingsQt::SetEndPageRange(PRInt32 aEndPageRange)
 }
 
 NS_IMETHODIMP
-nsPrintSettingsQt::GetPrintReversed(PRBool* aPrintReversed)
+nsPrintSettingsQt::GetPrintReversed(bool* aPrintReversed)
 {
     NS_ENSURE_ARG_POINTER(aPrintReversed);
     if (mQPrinter->pageOrder() == QPrinter::LastPageFirst) {
-        *aPrintReversed = PR_TRUE;
+        *aPrintReversed = true;
     } else {
-        *aPrintReversed = PR_FALSE;
+        *aPrintReversed = false;
     }
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsPrintSettingsQt::SetPrintReversed(PRBool aPrintReversed)
+nsPrintSettingsQt::SetPrintReversed(bool aPrintReversed)
 {
     if (aPrintReversed) {
         mQPrinter->setPageOrder(QPrinter::LastPageFirst);
@@ -183,18 +183,18 @@ nsPrintSettingsQt::SetPrintReversed(PRBool aPrintReversed)
 }
 
 NS_IMETHODIMP
-nsPrintSettingsQt::GetPrintInColor(PRBool* aPrintInColor)
+nsPrintSettingsQt::GetPrintInColor(bool* aPrintInColor)
 {
     NS_ENSURE_ARG_POINTER(aPrintInColor);
     if (mQPrinter->colorMode() == QPrinter::Color) {
-        *aPrintInColor = PR_TRUE;
+        *aPrintInColor = true;
     } else {
-        *aPrintInColor = PR_FALSE;
+        *aPrintInColor = false;
     }
     return NS_OK;
 }
 NS_IMETHODIMP
-nsPrintSettingsQt::SetPrintInColor(PRBool aPrintInColor)
+nsPrintSettingsQt::SetPrintInColor(bool aPrintInColor)
 {
     if (aPrintInColor) {
         mQPrinter->setColorMode(QPrinter::Color);
@@ -243,7 +243,7 @@ NS_IMETHODIMP
 nsPrintSettingsQt::SetToFileName(const PRUnichar* aToFileName)
 {
     nsCOMPtr<nsILocalFile> file;
-    nsresult rv = NS_NewLocalFile(nsDependentString(aToFileName), PR_TRUE,
+    nsresult rv = NS_NewLocalFile(nsDependentString(aToFileName), true,
                                 getter_AddRefs(file));
     NS_ENSURE_SUCCESS(rv, rv);
 

@@ -34,6 +34,9 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
+#include "mozilla/Util.h"
+
 #include "nsIDOMHTMLTableRowElement.h"
 #include "nsIDOMHTMLTableElement.h"
 #include "nsIDOMHTMLTableSectionElem.h"
@@ -47,6 +50,9 @@
 #include "nsStyleConsts.h"
 #include "nsHTMLParts.h"
 #include "nsRuleData.h"
+#include "nsContentUtils.h"
+
+using namespace mozilla;
 
 class nsHTMLTableRowElement : public nsGenericHTMLElement,
                               public nsIDOMHTMLTableRowElement
@@ -69,12 +75,12 @@ public:
   // nsIDOMHTMLTableRowElement
   NS_DECL_NSIDOMHTMLTABLEROWELEMENT
 
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
+  virtual bool ParseAttribute(PRInt32 aNamespaceID,
                                 nsIAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const;
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
 
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
 
@@ -183,7 +189,7 @@ nsHTMLTableRowElement::GetRowIndex(PRInt32* aValue)
     PRUint32 numRows;
     rows->GetLength(&numRows);
 
-    PRBool found = PR_FALSE;
+    bool found = false;
 
     for (PRUint32 i = 0; (i < numRows) && !found; i++) {
       nsCOMPtr<nsIDOMNode> node;
@@ -192,7 +198,7 @@ nsHTMLTableRowElement::GetRowIndex(PRInt32* aValue)
 
       if (node.get() == static_cast<nsIDOMNode *>(this)) {
         *aValue = i;
-        found = PR_TRUE;
+        found = true;
       }
     }
   }
@@ -214,7 +220,7 @@ nsHTMLTableRowElement::GetSectionRowIndex(PRInt32* aValue)
 
     section->GetRows(getter_AddRefs(rows));
 
-    PRBool found = PR_FALSE;
+    bool found = false;
     PRUint32 numRows;
 
     rows->GetLength(&numRows);
@@ -225,7 +231,7 @@ nsHTMLTableRowElement::GetSectionRowIndex(PRInt32* aValue)
 
       if (node.get() == static_cast<nsIDOMNode *>(this)) {
         *aValue = i;
-        found = PR_TRUE;
+        found = true;
       }
     } 
   }
@@ -233,7 +239,7 @@ nsHTMLTableRowElement::GetSectionRowIndex(PRInt32* aValue)
   return NS_OK;
 }
 
-static PRBool
+static bool
 IsCell(nsIContent *aContent, PRInt32 aNamespaceID,
        nsIAtom* aAtom, void *aData)
 {
@@ -251,10 +257,10 @@ nsHTMLTableRowElement::GetCells(nsIDOMHTMLCollection** aValue)
                                IsCell,
                                nsnull, // destroy func
                                nsnull, // closure data
-                               PR_FALSE,
+                               false,
                                nsnull,
                                kNameSpaceID_XHTML,
-                               PR_FALSE);
+                               false);
 
     NS_ENSURE_TRUE(mCells, NS_ERROR_OUT_OF_MEMORY);
   }
@@ -359,14 +365,14 @@ nsHTMLTableRowElement::DeleteCell(PRInt32 aValue)
   return RemoveChild(cell, getter_AddRefs(retChild));
 }
 
-NS_IMPL_STRING_ATTR_DEFAULT_VALUE(nsHTMLTableRowElement, Align, align, "left")
+NS_IMPL_STRING_ATTR(nsHTMLTableRowElement, Align, align)
 NS_IMPL_STRING_ATTR(nsHTMLTableRowElement, BgColor, bgcolor)
-NS_IMPL_STRING_ATTR_DEFAULT_VALUE(nsHTMLTableRowElement, Ch, _char, ".")
+NS_IMPL_STRING_ATTR(nsHTMLTableRowElement, Ch, _char)
 NS_IMPL_STRING_ATTR(nsHTMLTableRowElement, ChOff, charoff)
-NS_IMPL_STRING_ATTR_DEFAULT_VALUE(nsHTMLTableRowElement, VAlign, valign, "middle")
+NS_IMPL_STRING_ATTR(nsHTMLTableRowElement, VAlign, valign)
 
 
-PRBool
+bool
 nsHTMLTableRowElement::ParseAttribute(PRInt32 aNamespaceID,
                                       nsIAtom* aAttribute,
                                       const nsAString& aValue,
@@ -440,7 +446,7 @@ void MapAttributesIntoRule(const nsMappedAttributes* aAttributes, nsRuleData* aD
   nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aData);
 }
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsHTMLTableRowElement::IsAttributeMapped(const nsIAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
@@ -456,7 +462,7 @@ nsHTMLTableRowElement::IsAttributeMapped(const nsIAtom* aAttribute) const
     sBackgroundAttributeMap,
   };
 
-  return FindAttributeDependence(aAttribute, map, NS_ARRAY_LENGTH(map));
+  return FindAttributeDependence(aAttribute, map, ArrayLength(map));
 }
 
 nsMapRuleToAttributesFunc

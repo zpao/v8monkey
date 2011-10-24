@@ -141,7 +141,7 @@ decode_pqg_params(char *aStr)
 
 loser:
     if (arena) {
-      PORT_FreeArena(arena, PR_FALSE);
+      PORT_FreeArena(arena, false);
     }
     if (buf) {
       PR_Free(buf);
@@ -401,14 +401,14 @@ GetSlotWithMechanism(PRUint32 aMechanism,
     PRUnichar *unicodeTokenChosen;
     PK11SlotListElement *slotElement, *tmpSlot;
     PRUint32 numSlots = 0, i = 0;
-    PRBool canceled;
+    bool canceled;
     nsresult rv = NS_OK;
 
     *aSlot = nsnull;
 
     // Get the slot
     slotList = PK11_GetAllTokens(MapGenMechToAlgoMech(aMechanism), 
-                                PR_TRUE, PR_TRUE, m_ctx);
+                                true, true, m_ctx);
     if (!slotList || !slotList->head) {
         rv = NS_ERROR_FAILURE;
         goto loser;
@@ -436,7 +436,7 @@ GetSlotWithMechanism(PRUint32 aMechanism,
         slotElement = PK11_GetFirstSafe(slotList);
         while (slotElement) {
             tokenNameList[i] = UTF8ToNewUnicode(nsDependentCString(PK11_GetTokenName(slotElement->slot)));
-            slotElement = PK11_GetNextSafe(slotList, slotElement, PR_FALSE);
+            slotElement = PK11_GetNextSafe(slotList, slotElement, false);
             if (tokenNameList[i])
                 i++;
             else {
@@ -481,7 +481,7 @@ GetSlotWithMechanism(PRUint32 aMechanism,
                 PK11_FreeSlotListElement(slotList, slotElement);
                 break;
             }
-            slotElement = PK11_GetNextSafe(slotList, slotElement, PR_FALSE);
+            slotElement = PK11_GetNextSafe(slotList, slotElement, false);
         }
         if(!(*aSlot)) {
             rv = NS_ERROR_FAILURE;
@@ -565,14 +565,14 @@ nsKeygenFormProcessor::GetPublicKey(nsAString& aValue, nsAString& aChallenge,
         if (strcmp(keyparamsString, "null") == 0)
             goto loser;
         str = keyparamsString;
-        PRBool found_match = PR_FALSE;
+        bool found_match = false;
         do {
             end = strchr(str, ',');
             if (end != nsnull)
                 *end = '\0';
             primeBits = pqg_prime_bits(str);
             if (keysize == primeBits) {
-                found_match = PR_TRUE;
+                found_match = true;
                 break;
             }
             str = end + 1;
@@ -660,7 +660,7 @@ nsKeygenFormProcessor::GetPublicKey(nsAString& aValue, nsAString& aChallenge,
     if (NS_FAILED(rv))
         goto loser;
 
-    sec_rv = PK11_Authenticate(slot, PR_TRUE, m_ctx);
+    sec_rv = PK11_Authenticate(slot, true, m_ctx);
     if (sec_rv != SECSuccess) {
         goto loser;
     }
@@ -677,9 +677,9 @@ nsKeygenFormProcessor::GetPublicKey(nsAString& aValue, nsAString& aChallenge,
     if (NS_FAILED(rv) || !KeygenRunnable) {
         rv = NS_OK;
         privateKey = PK11_GenerateKeyPair(slot, keyGenMechanism, params,
-                                          &publicKey, PR_TRUE, PR_TRUE, m_ctx);
+                                          &publicKey, true, true, m_ctx);
     } else {
-        KeygenRunnable->SetParams( slot, keyGenMechanism, params, PR_TRUE, PR_TRUE, m_ctx );
+        KeygenRunnable->SetParams( slot, keyGenMechanism, params, true, true, m_ctx );
 
         runnable = do_QueryInterface(KeygenRunnable);
         
@@ -783,7 +783,7 @@ loser:
         SECKEY_DestroyPrivateKey(privateKey);
     }
     if ( arena ) {
-        PORT_FreeArena(arena, PR_TRUE);
+        PORT_FreeArena(arena, true);
     }
     if (slot != nsnull) {
         PK11_FreeSlot(slot);

@@ -40,7 +40,7 @@
 #include "nsIDOMElement.idl"
 #include "nsIDOMXULControlElement.idl"
 
-[scriptable, uuid(bbdbd28d-dc31-4933-be99-de33569ed7d9)]
+[scriptable, uuid(a565ccec-2253-4429-9fd3-703a584c47c6)]
 interface nsIDOMXULLabeledControlElement : nsIDOMXULControlElement {
   attribute DOMString crop;
   attribute DOMString image;

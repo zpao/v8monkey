@@ -40,7 +40,6 @@
 #include "nsIDOMDocument.h"
 #include "nsIDOMNodeList.h"
 #include "nsISelection.h"
-#include "nsIDOMText.h"
 #include "nsIDOMElement.h"
 #include "nsReadableUtils.h"
 
@@ -48,7 +47,7 @@
 #include "nsIContent.h"
 
 #ifdef NS_DEBUG
-static PRBool gNoisy = PR_FALSE;
+static bool gNoisy = false;
 #endif
 
 CreateElementTxn::CreateElementTxn()
@@ -157,7 +156,7 @@ NS_IMETHODIMP CreateElementTxn::DoTransaction(void)
       NS_ENSURE_SUCCESS(result, result); 
 
       // only set selection to insertion point if editor gives permission
-      PRBool bAdjustSelection;
+      bool bAdjustSelection;
       mEditor->ShouldTxnSetSelection(&bAdjustSelection);
       if (bAdjustSelection)
       {

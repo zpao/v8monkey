@@ -43,17 +43,18 @@
 #define nsScrollbarFrame_h__
 
 #include "nsBoxFrame.h"
-#include "nsIScrollbarFrame.h"
 
 class nsIScrollbarMediator;
 
 nsIFrame* NS_NewScrollbarFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 
-class nsScrollbarFrame : public nsBoxFrame, public nsIScrollbarFrame
+class nsScrollbarFrame : public nsBoxFrame
 {
 public:
     nsScrollbarFrame(nsIPresShell* aShell, nsStyleContext* aContext):
       nsBoxFrame(aShell, aContext), mScrollbarMediator(nsnull) {}
+
+  NS_DECL_QUERYFRAME_TARGET(nsScrollbarFrame)
 
 #ifdef DEBUG
   NS_IMETHOD GetFrameName(nsAString& aResult) const {
@@ -76,7 +77,7 @@ public:
   NS_IMETHOD HandleMultiplePress(nsPresContext* aPresContext,
                                  nsGUIEvent *    aEvent,
                                  nsEventStatus*  aEventStatus,
-                                 PRBool aControlHeld);
+                                 bool aControlHeld);
 
   NS_IMETHOD HandleDrag(nsPresContext* aPresContext,
                         nsGUIEvent *    aEvent,
@@ -95,13 +96,10 @@ public:
                     const nsHTMLReflowState& aReflowState,
                     nsReflowStatus&          aStatus);
 
-  virtual PRBool IsContainingBlock() const;
-
   virtual nsIAtom* GetType() const;  
 
-  // nsIScrollbarFrame
-  virtual void SetScrollbarMediatorContent(nsIContent* aMediator);
-  virtual nsIScrollbarMediator* GetScrollbarMediator();
+  void SetScrollbarMediatorContent(nsIContent* aMediator);
+  nsIScrollbarMediator* GetScrollbarMediator();
 
   // nsBox methods
 
@@ -112,7 +110,7 @@ public:
    * scrollframe by setting its height or width to zero, that will
    * hide the children too.
    */
-  virtual PRBool DoesClipChildren() { return PR_TRUE; }
+  virtual bool DoesClipChildren() { return true; }
 
 private:
   nsCOMPtr<nsIContent> mScrollbarMediator;

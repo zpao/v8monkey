@@ -1,0 +1,9 @@
+ac_add_options --enable-debug
+ac_add_options --enable-trace-malloc
+ac_add_options --enable-accessibility
+
+# Enable parallel compiling
+mk_add_options MOZ_MAKE_FLAGS="-j4"
+
+# Needed to enable breakpad in application.ini
+export MOZILLA_OFFICIAL=1

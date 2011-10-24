@@ -54,8 +54,8 @@ public:
   nsPresState()
     : mContentData(nsnull)
     , mScrollState(0, 0)
-    , mDisabledSet(PR_FALSE)
-    , mDisabled(PR_FALSE)
+    , mDisabledSet(false)
+    , mDisabled(false)
   {}
 
   void SetScrollState(const nsPoint& aState)
@@ -71,21 +71,21 @@ public:
   void ClearNonScrollState()
   {
     mContentData = nsnull;
-    mDisabledSet = PR_FALSE;
+    mDisabledSet = false;
   }
 
-  PRBool GetDisabled()
+  bool GetDisabled()
   {
     return mDisabled;
   }
 
-  void SetDisabled(PRBool aDisabled)
+  void SetDisabled(bool aDisabled)
   {
     mDisabled = aDisabled;
-    mDisabledSet = PR_TRUE;
+    mDisabledSet = true;
   }
 
-  PRBool IsDisabledSet()
+  bool IsDisabledSet()
   {
     return mDisabledSet;
   }
@@ -104,8 +104,8 @@ public:
 protected:
   nsCOMPtr<nsISupports> mContentData;
   nsPoint mScrollState;
-  PRPackedBool mDisabledSet;
-  PRPackedBool mDisabled;
+  bool mDisabledSet;
+  bool mDisabled;
 };
 
 #endif /* nsPresState_h_ */

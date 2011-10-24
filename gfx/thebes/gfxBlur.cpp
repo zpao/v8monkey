@@ -69,13 +69,13 @@ gfxAlphaBoxBlur::Init(const gfxRect& aRect,
     if (aDirtyRect) {
         // If we get passed a dirty rect from layout, we can minimize the
         // shadow size and make painting faster.
-        mHasDirtyRect = PR_TRUE;
+        mHasDirtyRect = true;
         mDirtyRect = *aDirtyRect;
         gfxRect requiredBlurArea = mDirtyRect.Intersect(rect);
         requiredBlurArea.Inflate(aBlurRadius + aSpreadRadius);
         rect = requiredBlurArea.Intersect(rect);
     } else {
-        mHasDirtyRect = PR_FALSE;
+        mHasDirtyRect = false;
     }
 
     // Check rect empty after accounting for aDirtyRect, since that may have
@@ -144,21 +144,26 @@ BoxBlurHorizontal(unsigned char* aInput,
     NS_ASSERTION(aWidth > 0, "Can't handle zero width here");
 
     PRInt32 boxSize = aLeftLobe + aRightLobe + 1;
-    PRBool skipRectCoversWholeRow = 0 >= aSkipRect.x &&
+    bool skipRectCoversWholeRow = 0 >= aSkipRect.x &&
                                     aWidth <= aSkipRect.XMost();
+    if (boxSize == 1) {
+        memcpy(aOutput, aInput, aWidth*aRows);
+        return;
+    }
+    PRUint32 reciprocal = (PRUint64(1) << 32)/boxSize;
 
     for (PRInt32 y = 0; y < aRows; y++) {
         // Check whether the skip rect intersects this row. If the skip
         // rect covers the whole surface in this row, we can avoid
         // this row entirely (and any others along the skip rect).
-        PRBool inSkipRectY = y >= aSkipRect.y &&
+        bool inSkipRectY = y >= aSkipRect.y &&
                              y < aSkipRect.YMost();
         if (inSkipRectY && skipRectCoversWholeRow) {
             y = aSkipRect.YMost() - 1;
             continue;
         }
 
-        PRInt32 alphaSum = 0;
+        PRUint32 alphaSum = 0;
         for (PRInt32 i = 0; i < boxSize; i++) {
             PRInt32 pos = i - aLeftLobe;
             // See assertion above; if aWidth is zero, then we would have no
@@ -192,7 +197,7 @@ BoxBlurHorizontal(unsigned char* aInput,
             PRInt32 last = NS_MAX(tmp, 0);
             PRInt32 next = NS_MIN(tmp + boxSize, aWidth - 1);
 
-            aOutput[aWidth * y + x] = alphaSum/boxSize;
+            aOutput[aWidth * y + x] = (PRUint64(alphaSum)*reciprocal) >> 32;
 
             alphaSum += aInput[aWidth * y + next] -
                         aInput[aWidth * y + last];
@@ -217,18 +222,23 @@ BoxBlurVertical(unsigned char* aInput,
     NS_ASSERTION(aRows > 0, "Can't handle zero rows here");
 
     PRInt32 boxSize = aTopLobe + aBottomLobe + 1;
-    PRBool skipRectCoversWholeColumn = 0 >= aSkipRect.y &&
+    bool skipRectCoversWholeColumn = 0 >= aSkipRect.y &&
                                        aRows <= aSkipRect.YMost();
+    if (boxSize == 1) {
+        memcpy(aOutput, aInput, aWidth*aRows);
+        return;
+    }
+    PRUint32 reciprocal = (PRUint64(1) << 32)/boxSize;
 
     for (PRInt32 x = 0; x < aWidth; x++) {
-        PRBool inSkipRectX = x >= aSkipRect.x &&
+        bool inSkipRectX = x >= aSkipRect.x &&
                              x < aSkipRect.XMost();
         if (inSkipRectX && skipRectCoversWholeColumn) {
             x = aSkipRect.XMost() - 1;
             continue;
         }
 
-        PRInt32 alphaSum = 0;
+        PRUint32 alphaSum = 0;
         for (PRInt32 i = 0; i < boxSize; i++) {
             PRInt32 pos = i - aTopLobe;
             // See assertion above; if aRows is zero, then we would have no
@@ -258,7 +268,7 @@ BoxBlurVertical(unsigned char* aInput,
             PRInt32 last = NS_MAX(tmp, 0);
             PRInt32 next = NS_MIN(tmp + boxSize, aRows - 1);
 
-            aOutput[aWidth * y + x] = alphaSum/boxSize;
+            aOutput[aWidth * y + x] = (PRUint64(alphaSum)*reciprocal) >> 32;
 
             alphaSum += aInput[aWidth * next + x] -
                         aInput[aWidth * last + x];
@@ -325,13 +335,13 @@ SpreadHorizontal(unsigned char* aInput,
         return;
     }
 
-    PRBool skipRectCoversWholeRow = 0 >= aSkipRect.x &&
+    bool skipRectCoversWholeRow = 0 >= aSkipRect.x &&
                                     aWidth <= aSkipRect.XMost();
     for (PRInt32 y = 0; y < aRows; y++) {
         // Check whether the skip rect intersects this row. If the skip
         // rect covers the whole surface in this row, we can avoid
         // this row entirely (and any others along the skip rect).
-        PRBool inSkipRectY = y >= aSkipRect.y &&
+        bool inSkipRectY = y >= aSkipRect.y &&
                              y < aSkipRect.YMost();
         if (inSkipRectY && skipRectCoversWholeRow) {
             y = aSkipRect.YMost() - 1;
@@ -348,11 +358,11 @@ SpreadHorizontal(unsigned char* aInput,
                     break;
             }
 
-            PRInt32 sMin = PR_MAX(x - aRadius, 0);
-            PRInt32 sMax = PR_MIN(x + aRadius, aWidth - 1);
+            PRInt32 sMin = NS_MAX(x - aRadius, 0);
+            PRInt32 sMax = NS_MIN(x + aRadius, aWidth - 1);
             PRInt32 v = 0;
             for (PRInt32 s = sMin; s <= sMax; ++s) {
-                v = PR_MAX(v, aInput[aStride * y + s]);
+                v = NS_MAX<PRInt32>(v, aInput[aStride * y + s]);
             }
             aOutput[aStride * y + x] = v;
         }
@@ -373,10 +383,10 @@ SpreadVertical(unsigned char* aInput,
         return;
     }
 
-    PRBool skipRectCoversWholeColumn = 0 >= aSkipRect.y &&
+    bool skipRectCoversWholeColumn = 0 >= aSkipRect.y &&
                                        aRows <= aSkipRect.YMost();
     for (PRInt32 x = 0; x < aWidth; x++) {
-        PRBool inSkipRectX = x >= aSkipRect.x &&
+        bool inSkipRectX = x >= aSkipRect.x &&
                              x < aSkipRect.XMost();
         if (inSkipRectX && skipRectCoversWholeColumn) {
             x = aSkipRect.XMost() - 1;
@@ -393,11 +403,11 @@ SpreadVertical(unsigned char* aInput,
                     break;
             }
 
-            PRInt32 sMin = PR_MAX(y - aRadius, 0);
-            PRInt32 sMax = PR_MIN(y + aRadius, aRows - 1);
+            PRInt32 sMin = NS_MAX(y - aRadius, 0);
+            PRInt32 sMax = NS_MIN(y + aRadius, aRows - 1);
             PRInt32 v = 0;
             for (PRInt32 s = sMin; s <= sMax; ++s) {
-                v = PR_MAX(v, aInput[aStride * s + x]);
+                v = NS_MAX<PRInt32>(v, aInput[aStride * s + x]);
             }
             aOutput[aStride * y + x] = v;
         }

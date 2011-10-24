@@ -44,8 +44,6 @@
 #include "nsMIMEInfoImpl.h"
 #include "nsIPropertyBag.h"
 
-#include "nsIPrefService.h"
-#include "nsIPrefBranch.h"
 #include "nsNetCID.h"
 #include "nsEscape.h"
 
@@ -71,7 +69,7 @@ class nsMIMEInfoOS2 : public nsMIMEInfoBase, public nsIPropertyBag
 
     NS_IMETHOD LaunchWithFile(nsIFile *aFile);
 
-    NS_IMETHOD GetHasDefaultHandler(PRBool *_retval);
+    NS_IMETHOD GetHasDefaultHandler(bool *_retval);
     NS_IMETHOD GetDefaultDescription(nsAString& aDefaultDescription);
 
     void GetDefaultApplication(nsIFile **aDefaultAppHandler);

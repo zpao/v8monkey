@@ -62,8 +62,9 @@ public:
     static NS_HIDDEN_(nsresult) ParseURI(nsCString& spec,
                                          nsCString& contentType,
                                          nsCString& contentCharset,
-                                         PRBool&    isBase64,
-                                         nsCString& dataBuffer);
+                                         bool&    isBase64,
+                                         nsCString& dataBuffer,
+                                         nsCString& hashRef);
 };
 
 #endif /* nsDataHandler_h___ */

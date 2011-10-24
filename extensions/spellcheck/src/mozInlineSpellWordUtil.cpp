@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -57,7 +57,7 @@
 //
 //    These characters are ones that we should ignore in input.
 
-inline PRBool IsIgnorableCharacter(PRUnichar ch)
+inline bool IsIgnorableCharacter(PRUnichar ch)
 {
   return (ch == 0x200D || // ZERO-WIDTH JOINER
           ch == 0xAD ||   // SOFT HYPHEN
@@ -69,7 +69,7 @@ inline PRBool IsIgnorableCharacter(PRUnichar ch)
 //    Some characters (like apostrophes) require characters on each side to be
 //    part of a word, and are otherwise punctuation.
 
-inline PRBool IsConditionalPunctuation(PRUnichar ch)
+inline bool IsConditionalPunctuation(PRUnichar ch)
 {
   return (ch == '\'' ||
           ch == 0x2019); // RIGHT SINGLE QUOTATION MARK
@@ -95,12 +95,10 @@ mozInlineSpellWordUtil::Init(nsWeakPtr aWeakEditor)
   nsCOMPtr<nsIDOMDocument> domDoc;
   rv = editor->GetDocument(getter_AddRefs(domDoc));
   NS_ENSURE_SUCCESS(rv, rv);
+  NS_ENSURE_TRUE(domDoc, NS_ERROR_NULL_POINTER);
 
-  mDocument = do_QueryInterface(domDoc, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  mDOMDocumentRange = do_QueryInterface(domDoc, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
+  mDOMDocument = domDoc;
+  mDocument = do_QueryInterface(domDoc);
 
   // Window
   nsCOMPtr<nsIDOMWindow> window;
@@ -121,7 +119,7 @@ mozInlineSpellWordUtil::Init(nsWeakPtr aWeakEditor)
   return NS_OK;
 }
 
-static PRBool
+static bool
 IsTextNode(nsIDOMNode* aNode)
 {
   PRUint16 type = 0;
@@ -264,7 +262,7 @@ mozInlineSpellWordUtil::SetPosition(nsIDOMNode* aNode, PRInt32 aOffset)
   PRInt32 textOffset = MapDOMPositionToSoftTextOffset(mSoftBegin);
   if (textOffset < 0)
     return NS_OK;
-  mNextWordIndex = FindRealWordContaining(textOffset, HINT_END, PR_TRUE);
+  mNextWordIndex = FindRealWordContaining(textOffset, HINT_END, true);
   return NS_OK;
 }
 
@@ -275,7 +273,7 @@ mozInlineSpellWordUtil::EnsureWords()
     return;
   BuildSoftText();
   BuildRealWords();
-  mSoftTextValid = PR_TRUE;
+  mSoftTextValid = true;
 }
 
 nsresult
@@ -303,7 +301,7 @@ mozInlineSpellWordUtil::GetRangeForWord(nsIDOMNode* aWordNode,
   PRInt32 offset = MapDOMPositionToSoftTextOffset(pt);
   if (offset < 0)
     return MakeRange(pt, pt, aRange);
-  PRInt32 wordIndex = FindRealWordContaining(offset, HINT_BEGIN, PR_FALSE);
+  PRInt32 wordIndex = FindRealWordContaining(offset, HINT_BEGIN, false);
   if (wordIndex < 0)
     return MakeRange(pt, pt, aRange);
   return MakeRangeForWord(mRealWords[wordIndex], aRange);
@@ -338,7 +336,7 @@ NormalizeWord(const nsSubstring& aInput, PRInt32 aPos, PRInt32 aLen, nsAString& 
 
 nsresult
 mozInlineSpellWordUtil::GetNextWord(nsAString& aText, nsIDOMRange** aRange,
-                                    PRBool* aSkipChecking)
+                                    bool* aSkipChecking)
 {
 #ifdef DEBUG_SPELLCHECK
   printf("GetNextWord called; mNextWordIndex=%d\n", mNextWordIndex);
@@ -348,7 +346,7 @@ mozInlineSpellWordUtil::GetNextWord(nsAString& aText, nsIDOMRange** aRange,
       mNextWordIndex >= PRInt32(mRealWords.Length())) {
     mNextWordIndex = -1;
     *aRange = nsnull;
-    *aSkipChecking = PR_TRUE;
+    *aSkipChecking = true;
     return NS_OK;
   }
   
@@ -375,10 +373,10 @@ nsresult
 mozInlineSpellWordUtil::MakeRange(NodeOffset aBegin, NodeOffset aEnd,
                                   nsIDOMRange** aRange)
 {
-  if (! mDOMDocumentRange)
+  if (!mDOMDocument)
     return NS_ERROR_NOT_INITIALIZED;
 
-  nsresult rv = mDOMDocumentRange->CreateRange(aRange);
+  nsresult rv = mDOMDocument->CreateRange(aRange);
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = (*aRange)->SetStart(aBegin.mNode, aBegin.mOffset);
@@ -400,12 +398,12 @@ mozInlineSpellWordUtil::MakeRange(NodeOffset aBegin, NodeOffset aEnd,
 //    or email address in this, because those need to always fit into a single
 //    DOM word.
 
-static PRBool
+static bool
 IsDOMWordSeparator(PRUnichar ch)
 {
   // simple spaces
   if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r')
-    return PR_TRUE;
+    return true;
 
   // complex spaces - check only if char isn't ASCII (uncommon)
   if (ch >= 0xA0 &&
@@ -415,13 +413,13 @@ IsDOMWordSeparator(PRUnichar ch)
        ch == 0x2009 ||  // THIN SPACE
        ch == 0x200C ||  // ZERO WIDTH NON-JOINER
        ch == 0x3000))   // IDEOGRAPHIC SPACE
-    return PR_TRUE;
+    return true;
 
   // otherwise not a space
-  return PR_FALSE;
+  return false;
 }
 
-static PRBool
+static bool
 IsBRElement(nsIDOMNode* aNode)
 {
   nsresult rv;
@@ -457,23 +455,23 @@ FindPrevNode(nsIDOMNode* aNode, nsIDOMNode* aRoot)
 
 /**
  * Check if there's a DOM word separator before aBeforeOffset in this node.
- * Always returns PR_TRUE if it's a BR element.
+ * Always returns true if it's a BR element.
  * aSeparatorOffset is set to the index of the first character in the last
  * separator if any is found (0 for BR elements).
  *
  * This function does not modify aSeparatorOffset when it returns false.
  */
-static PRBool
+static bool
 ContainsDOMWordSeparator(nsIDOMNode* aNode, PRInt32 aBeforeOffset,
                          PRInt32* aSeparatorOffset)
 {
   if (IsBRElement(aNode)) {
     *aSeparatorOffset = 0;
-    return PR_TRUE;
+    return true;
   }
   
   if (!IsTextNode(aNode))
-    return PR_FALSE;
+    return false;
 
   nsCOMPtr<nsIContent> content = do_QueryInterface(aNode);
   NS_ASSERTION(content, "Where is our content?");
@@ -490,26 +488,26 @@ ContainsDOMWordSeparator(nsIDOMNode* aNode, PRInt32 aBeforeOffset,
         }
       }
       *aSeparatorOffset = i;
-      return PR_TRUE;
+      return true;
     }
   }
-  return PR_FALSE;
+  return false;
 }
 
-static PRBool
+static bool
 IsBreakElement(nsIDOMWindow* aDocView, nsIDOMNode* aNode)
 {
   nsCOMPtr<nsIDOMElement> element = do_QueryInterface(aNode);
   if (!element)
-    return PR_FALSE;
+    return false;
     
   if (IsBRElement(aNode))
-    return PR_TRUE;
+    return true;
   
   nsCOMPtr<nsIDOMCSSStyleDeclaration> style;
   aDocView->GetComputedStyle(element, EmptyString(), getter_AddRefs(style));
   if (!style)
-    return PR_FALSE;
+    return false;
 
 #ifdef DEBUG_SPELLCHECK
   printf("    searching element %p\n", (void*)aNode);
@@ -521,7 +519,7 @@ IsBreakElement(nsIDOMWindow* aDocView, nsIDOMNode* aNode)
   printf("      display=\"%s\"\n", NS_ConvertUTF16toUTF8(display).get());
 #endif
   if (!display.EqualsLiteral("inline"))
-    return PR_TRUE;
+    return true;
 
   nsAutoString position;
   style->GetPropertyValue(NS_LITERAL_STRING("position"), position);
@@ -529,15 +527,15 @@ IsBreakElement(nsIDOMWindow* aDocView, nsIDOMNode* aNode)
   printf("      position=%s\n", NS_ConvertUTF16toUTF8(position).get());
 #endif
   if (!position.EqualsLiteral("static"))
-    return PR_TRUE;
+    return true;
     
   // XXX What about floats? What else?
-  return PR_FALSE;
+  return false;
 }
 
 struct CheckLeavingBreakElementClosure {
   nsIDOMWindow* mDocView;
-  PRPackedBool  mLeftBreakElement;
+  bool          mLeftBreakElement;
 };
 
 static void
@@ -546,7 +544,7 @@ CheckLeavingBreakElement(nsIDOMNode* aNode, void* aClosure)
   CheckLeavingBreakElementClosure* cl =
     static_cast<CheckLeavingBreakElementClosure*>(aClosure);
   if (!cl->mLeftBreakElement && IsBreakElement(cl->mDocView, aNode)) {
-    cl->mLeftBreakElement = PR_TRUE;
+    cl->mLeftBreakElement = true;
   }
 }
 
@@ -603,15 +601,15 @@ mozInlineSpellWordUtil::BuildSoftText()
   // boundary, or the hard end node.
   mSoftText.Truncate();
   mSoftTextDOMMapping.Clear();
-  PRBool seenSoftEnd = PR_FALSE;
+  bool seenSoftEnd = false;
   // Leave this outside the loop so large heap string allocations can be reused
   // across iterations
   while (node) {
     if (node == mSoftEnd.mNode) {
-      seenSoftEnd = PR_TRUE;
+      seenSoftEnd = true;
     }
 
-    PRBool exit = PR_FALSE;
+    bool exit = false;
     if (IsTextNode(node)) {
       nsCOMPtr<nsIContent> content = do_QueryInterface(node);
       NS_ASSERTION(content, "Where is our content?");
@@ -624,7 +622,7 @@ mozInlineSpellWordUtil::BuildSoftText()
         for (PRInt32 i = node == mSoftEnd.mNode ? mSoftEnd.mOffset : 0;
              i < PRInt32(textFragment->GetLength()); ++i) {
           if (IsDOMWordSeparator(textFragment->CharAt(i))) {
-            exit = PR_TRUE;
+            exit = true;
             // stop at the first separator after the soft end point
             lastOffsetInNode = i;
             break;
@@ -645,7 +643,7 @@ mozInlineSpellWordUtil::BuildSoftText()
     if (exit)
       break;
 
-    CheckLeavingBreakElementClosure closure = { mCSSView, PR_FALSE };
+    CheckLeavingBreakElementClosure closure = { mCSSView, false };
     node = FindNextNode(node, mRootNode, CheckLeavingBreakElement, &closure);
     if (closure.mLeftBreakElement || (node && IsBreakElement(mCSSView, node))) {
       // We left, or are entering, a break element (e.g., block). Maybe we can
@@ -762,7 +760,7 @@ mozInlineSpellWordUtil::MapSoftTextOffsetToDOMPosition(PRInt32 aSoftTextOffset,
 
 PRInt32
 mozInlineSpellWordUtil::FindRealWordContaining(PRInt32 aSoftTextOffset,
-    DOMMapHint aHint, PRBool aSearchForward)
+    DOMMapHint aHint, bool aSearchForward)
 {
   NS_ASSERTION(mSoftTextValid, "Soft text must be valid if we're to map out of it");
   if (!mSoftTextValid)
@@ -839,7 +837,7 @@ struct WordSplitState
     : mWordUtil(aWordUtil), mDOMWordText(aString, aStart, aLen),
       mDOMWordOffset(0), mCurCharClass(CHAR_CLASS_END_OF_INPUT) {}
 
-  CharClass ClassifyCharacter(PRInt32 aIndex, PRBool aRecurse) const;
+  CharClass ClassifyCharacter(PRInt32 aIndex, bool aRecurse) const;
   void Advance();
   void AdvanceThroughSeparators();
   void AdvanceThroughWord();
@@ -853,13 +851,13 @@ struct WordSplitState
   // Similar to FindSpecialWord except that this takes a split word as
   // input. This checks for things that do not require special word-breaking
   // rules.
-  PRBool ShouldSkipWord(PRInt32 aStart, PRInt32 aLength);
+  bool ShouldSkipWord(PRInt32 aStart, PRInt32 aLength);
 };
 
 // WordSplitState::ClassifyCharacter
 
 CharClass
-WordSplitState::ClassifyCharacter(PRInt32 aIndex, PRBool aRecurse) const
+WordSplitState::ClassifyCharacter(PRInt32 aIndex, bool aRecurse) const
 {
   NS_ASSERTION(aIndex >= 0 && aIndex <= PRInt32(mDOMWordText.Length()),
                "Index out of range");
@@ -955,7 +953,7 @@ WordSplitState::Advance()
   if (mDOMWordOffset >= (PRInt32)mDOMWordText.Length())
     mCurCharClass = CHAR_CLASS_END_OF_INPUT;
   else
-    mCurCharClass = ClassifyCharacter(mDOMWordOffset, PR_TRUE);
+    mCurCharClass = ClassifyCharacter(mDOMWordOffset, true);
 }
 
 
@@ -990,7 +988,7 @@ WordSplitState::FindSpecialWord()
   // split on whitepace, so we know that everything to the end is the address
   //
   // Also look for periods, this tells us if we want to run the URL finder.
-  PRBool foundDot = PR_FALSE;
+  bool foundDot = false;
   PRInt32 firstColon = -1;
   for (i = mDOMWordOffset;
        i < PRInt32(mDOMWordText.Length()); i ++) {
@@ -1005,15 +1003,15 @@ WordSplitState::FindSpecialWord()
       // symbol, but when you type another letter "fhsgfh@g" that first word
       // need to be unmarked misspelled. It doesn't do this. it only checks the
       // current position for potentially removing a spelling range.
-      if (i > 0 && ClassifyCharacter(i - 1, PR_FALSE) == CHAR_CLASS_WORD &&
+      if (i > 0 && ClassifyCharacter(i - 1, false) == CHAR_CLASS_WORD &&
           i < (PRInt32)mDOMWordText.Length() - 1 &&
-          ClassifyCharacter(i + 1, PR_FALSE) == CHAR_CLASS_WORD)
+          ClassifyCharacter(i + 1, false) == CHAR_CLASS_WORD)
 
       return mDOMWordText.Length() - mDOMWordOffset;
     } else if (mDOMWordText[i] == '.' && ! foundDot &&
         i > 0 && i < (PRInt32)mDOMWordText.Length() - 1) {
       // we found a period not at the end, we should check harder for URLs
-      foundDot = PR_TRUE;
+      foundDot = true;
     } else if (mDOMWordText[i] == ':' && firstColon < 0) {
       firstColon = i;
     }
@@ -1050,7 +1048,7 @@ WordSplitState::FindSpecialWord()
 
 // WordSplitState::ShouldSkipWord
 
-PRBool
+bool
 WordSplitState::ShouldSkipWord(PRInt32 aStart, PRInt32 aLength)
 {
   PRInt32 last = aStart + aLength;
@@ -1060,11 +1058,11 @@ WordSplitState::ShouldSkipWord(PRInt32 aStart, PRInt32 aLength)
     PRUnichar ch = mDOMWordText[i];
     // XXX Shouldn't this be something a lot more complex, Unicode-based?
     if (ch >= '0' && ch <= '9')
-      return PR_TRUE;
+      return true;
   }
 
   // not special
-  return PR_FALSE;
+  return false;
 }
 
 // mozInlineSpellWordUtil::SplitDOMWord
@@ -1073,7 +1071,7 @@ void
 mozInlineSpellWordUtil::SplitDOMWord(PRInt32 aStart, PRInt32 aEnd)
 {
   WordSplitState state(this, mSoftText, aStart, aEnd - aStart);
-  state.mCurCharClass = state.ClassifyCharacter(0, PR_TRUE);
+  state.mCurCharClass = state.ClassifyCharacter(0, true);
 
   while (state.mCurCharClass != CHAR_CLASS_END_OF_INPUT) {
     state.AdvanceThroughSeparators();
@@ -1083,14 +1081,14 @@ mozInlineSpellWordUtil::SplitDOMWord(PRInt32 aStart, PRInt32 aEnd)
     PRInt32 specialWordLength = state.FindSpecialWord();
     if (specialWordLength > 0) {
       mRealWords.AppendElement(
-        RealWord(aStart + state.mDOMWordOffset, specialWordLength, PR_FALSE));
+        RealWord(aStart + state.mDOMWordOffset, specialWordLength, false));
 
       // skip the special word
       state.mDOMWordOffset += specialWordLength;
       if (state.mDOMWordOffset + aStart >= aEnd)
         state.mCurCharClass = CHAR_CLASS_END_OF_INPUT;
       else
-        state.mCurCharClass = state.ClassifyCharacter(state.mDOMWordOffset, PR_TRUE);
+        state.mCurCharClass = state.ClassifyCharacter(state.mDOMWordOffset, true);
       continue;
     }
 

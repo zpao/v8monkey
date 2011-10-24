@@ -55,7 +55,7 @@
 class nsXMLEventsManager;
 class nsXMLEventsListener : public nsIDOMEventListener {
 public:
-  static PRBool InitXMLEventsListener(nsIDocument * aDocument, 
+  static bool InitXMLEventsListener(nsIDocument * aDocument, 
                                       nsXMLEventsManager * aManager, 
                                       nsIContent * aContent);
   nsXMLEventsListener(nsXMLEventsManager * aManager,
@@ -63,17 +63,17 @@ public:
                       nsIContent* aObserver,
                       nsIContent * aHandler,
                       const nsAString& aEvent,
-                      PRBool aPhase,
-                      PRBool aStopPropagation,
-                      PRBool aCancelDefault,
+                      bool aPhase,
+                      bool aStopPropagation,
+                      bool aCancelDefault,
                       const nsAString& aTarget);
   ~nsXMLEventsListener();
   void Unregister();
   //Removes this event listener from observer and adds the element back to the
   //list of incomplete XML Events declarations in XMLEventsManager
   void SetIncomplete();
-  PRBool ObserverEquals(nsIContent * aTarget);
-  PRBool HandlerEquals(nsIContent * aTarget);
+  bool ObserverEquals(nsIContent * aTarget);
+  bool HandlerEquals(nsIContent * aTarget);
   
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
@@ -84,9 +84,9 @@ private:
   nsCOMPtr<nsIContent> mHandler;
   nsString mEvent;
   nsCOMPtr<nsIAtom> mTarget;
-  PRPackedBool mPhase;
-  PRPackedBool mStopPropagation;
-  PRPackedBool mCancelDefault;
+  bool mPhase;
+  bool mStopPropagation;
+  bool mCancelDefault;
   
 };
 
@@ -109,8 +109,8 @@ public:
   void AddXMLEventsContent(nsIContent * aContent);
   void RemoveXMLEventsContent(nsIContent * aContent);
   void AddListener(nsIContent * aContent, nsXMLEventsListener * aListener);
-  //Returns PR_TRUE if a listener was removed.
-  PRBool RemoveListener(nsIContent * aXMLElement);
+  //Returns true if a listener was removed.
+  bool RemoveListener(nsIContent * aXMLElement);
 private:
   void AddListeners(nsIDocument* aDocument);
   nsInterfaceHashtable<nsISupportsHashKey,nsXMLEventsListener> mListeners;

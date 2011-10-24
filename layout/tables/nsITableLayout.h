@@ -67,7 +67,7 @@ public:
    *  @param aColSpan        [OUT] the value of the COLSPAN attribute (may be 0 or actual number)
    *  @param aActualRowSpan  [OUT] the actual number of rows aCell spans
    *  @param aActualColSpan  [OUT] the acutal number of cols aCell spans
-   *  @param aIsSelected     [OUT] PR_TRUE if the frame that maps aCell is selected
+   *  @param aIsSelected     [OUT] true if the frame that maps aCell is selected
    *                               in the presentation shell that owns this.
    */
   NS_IMETHOD GetCellDataAt(PRInt32 aRowIndex, PRInt32 aColIndex,
@@ -75,7 +75,7 @@ public:
                            PRInt32& aStartRowIndex, PRInt32& aStartColIndex, 
                            PRInt32& aRowSpan, PRInt32& aColSpan,
                            PRInt32& aActualRowSpan, PRInt32& aActualColSpan,
-                           PRBool& aIsSelected)=0;
+                           bool& aIsSelected)=0;
 
   /** Get the number of rows and column for a table from the frame's cellmap 
    *  Some rows may not have enough cells (the number returned is the maximum possible),

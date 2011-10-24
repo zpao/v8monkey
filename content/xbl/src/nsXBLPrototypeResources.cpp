@@ -76,12 +76,12 @@ nsXBLPrototypeResources::AddResource(nsIAtom* aResourceType, const nsAString& aS
 }
  
 void
-nsXBLPrototypeResources::LoadResources(PRBool* aResult)
+nsXBLPrototypeResources::LoadResources(bool* aResult)
 {
   if (mLoader)
     mLoader->LoadResources(aResult);
   else
-    *aResult = PR_TRUE; // All resources loaded.
+    *aResult = true; // All resources loaded.
 }
 
 void
@@ -91,12 +91,12 @@ nsXBLPrototypeResources::AddResourceListener(nsIContent* aBoundElement)
     mLoader->AddResourceListener(aBoundElement);
 }
 
-static PRBool IsChromeURI(nsIURI* aURI)
+static bool IsChromeURI(nsIURI* aURI)
 {
-  PRBool isChrome=PR_FALSE;
+  bool isChrome=false;
   if (NS_SUCCEEDED(aURI->SchemeIs("chrome", &isChrome)) && isChrome)
-    return PR_TRUE;
-  return PR_FALSE;
+    return true;
+  return false;
 }
 
 nsresult

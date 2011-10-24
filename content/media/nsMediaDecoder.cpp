@@ -51,17 +51,16 @@
 #include "nsPresContext.h"
 #include "nsDOMError.h"
 #include "nsDisplayList.h"
-#ifdef MOZ_SVG
 #include "nsSVGEffects.h"
-#endif
+#include "VideoUtils.h"
 
 using namespace mozilla;
 
 // Number of milliseconds between progress events as defined by spec
-#define PROGRESS_MS 350
+static const PRUint32 PROGRESS_MS = 350;
 
 // Number of milliseconds of no data before a stall event is fired as defined by spec
-#define STALL_MS 3000
+static const PRUint32 STALL_MS = 3000;
 
 // Number of estimated seconds worth of data we need to have buffered 
 // ahead of the current playback position before we allow the media decoder
@@ -69,32 +68,33 @@ using namespace mozilla;
 // catching up with the download. Having this margin make the
 // nsMediaDecoder::CanPlayThrough() calculation more stable in the case of
 // fluctuating bitrates.
-#define CAN_PLAY_THROUGH_MARGIN 10
+static const PRInt64 CAN_PLAY_THROUGH_MARGIN = 10;
 
 nsMediaDecoder::nsMediaDecoder() :
-  mElement(0),
+  mElement(nsnull),
   mRGBWidth(-1),
   mRGBHeight(-1),
   mVideoUpdateLock("nsMediaDecoder.mVideoUpdateLock"),
-  mPixelAspectRatio(1.0),
   mFrameBufferLength(0),
-  mPinnedForSeek(PR_FALSE),
-  mSizeChanged(PR_FALSE),
-  mImageContainerSizeChanged(PR_FALSE),
-  mShuttingDown(PR_FALSE)
+  mPinnedForSeek(false),
+  mSizeChanged(false),
+  mImageContainerSizeChanged(false),
+  mShuttingDown(false)
 {
   MOZ_COUNT_CTOR(nsMediaDecoder);
+  MediaMemoryReporter::AddMediaDecoder(this);
 }
 
 nsMediaDecoder::~nsMediaDecoder()
 {
   MOZ_COUNT_DTOR(nsMediaDecoder);
+  MediaMemoryReporter::RemoveMediaDecoder(this);
 }
 
-PRBool nsMediaDecoder::Init(nsHTMLMediaElement* aElement)
+bool nsMediaDecoder::Init(nsHTMLMediaElement* aElement)
 {
   mElement = aElement;
-  return PR_TRUE;
+  return true;
 }
 
 void nsMediaDecoder::Shutdown()
@@ -118,46 +118,25 @@ nsresult nsMediaDecoder::RequestFrameBufferLength(PRUint32 aLength)
   return NS_OK;
 }
 
-
-static PRInt32 ConditionDimension(float aValue, PRInt32 aDefault)
-{
-  // This will exclude NaNs and infinities
-  if (aValue >= 1.0 && aValue <= 10000.0)
-    return PRInt32(NS_round(aValue));
-  return aDefault;
-}
-
 void nsMediaDecoder::Invalidate()
 {
   if (!mElement)
     return;
 
   nsIFrame* frame = mElement->GetPrimaryFrame();
-  PRBool invalidateFrame = PR_FALSE;
+  bool invalidateFrame = false;
 
   {
     MutexAutoLock lock(mVideoUpdateLock);
 
     // Get mImageContainerSizeChanged while holding the lock.
     invalidateFrame = mImageContainerSizeChanged;
-    mImageContainerSizeChanged = PR_FALSE;
+    mImageContainerSizeChanged = false;
 
     if (mSizeChanged) {
-      nsIntSize scaledSize(mRGBWidth, mRGBHeight);
-      // Apply the aspect ratio to produce the intrinsic size we report
-      // to the element.
-      if (mPixelAspectRatio > 1.0) {
-        // Increase the intrinsic width
-        scaledSize.width =
-          ConditionDimension(mPixelAspectRatio*scaledSize.width, scaledSize.width);
-      } else {
-        // Increase the intrinsic height
-        scaledSize.height =
-          ConditionDimension(scaledSize.height/mPixelAspectRatio, scaledSize.height);
-      }
-      mElement->UpdateMediaSize(scaledSize);
+      mElement->UpdateMediaSize(nsIntSize(mRGBWidth, mRGBHeight));
+      mSizeChanged = false;
 
-      mSizeChanged = PR_FALSE;
       if (frame) {
         nsPresContext* presContext = frame->PresContext();
         nsIPresShell *presShell = presContext->PresShell();
@@ -177,18 +156,16 @@ void nsMediaDecoder::Invalidate()
     }
   }
 
-#ifdef MOZ_SVG
   nsSVGEffects::InvalidateDirectRenderingObservers(mElement);
-#endif
 }
 
 static void ProgressCallback(nsITimer* aTimer, void* aClosure)
 {
   nsMediaDecoder* decoder = static_cast<nsMediaDecoder*>(aClosure);
-  decoder->Progress(PR_TRUE);
+  decoder->Progress(true);
 }
 
-void nsMediaDecoder::Progress(PRBool aTimer)
+void nsMediaDecoder::Progress(bool aTimer)
 {
   if (!mElement)
     return;
@@ -244,22 +221,19 @@ void nsMediaDecoder::FireTimeUpdate()
 {
   if (!mElement)
     return;
-  mElement->FireTimeUpdate(PR_TRUE);
+  mElement->FireTimeUpdate(true);
 }
 
 void nsMediaDecoder::SetVideoData(const gfxIntSize& aSize,
-                                  float aPixelAspectRatio,
                                   Image* aImage,
                                   TimeStamp aTarget)
 {
   MutexAutoLock lock(mVideoUpdateLock);
 
-  if (mRGBWidth != aSize.width || mRGBHeight != aSize.height ||
-      mPixelAspectRatio != aPixelAspectRatio) {
+  if (mRGBWidth != aSize.width || mRGBHeight != aSize.height) {
     mRGBWidth = aSize.width;
     mRGBHeight = aSize.height;
-    mPixelAspectRatio = aPixelAspectRatio;
-    mSizeChanged = PR_TRUE;
+    mSizeChanged = true;
   }
   if (mImageContainer && aImage) {
     gfxIntSize oldFrameSize = mImageContainer->GetCurrentSize();
@@ -272,7 +246,7 @@ void nsMediaDecoder::SetVideoData(const gfxIntSize& aSize,
     mImageContainer->SetCurrentImage(aImage);
     gfxIntSize newFrameSize = mImageContainer->GetCurrentSize();
     if (oldFrameSize != newFrameSize) {
-      mImageContainerSizeChanged = PR_TRUE;
+      mImageContainerSizeChanged = true;
     }
   }
 
@@ -291,7 +265,7 @@ void nsMediaDecoder::PinForSeek()
   if (!stream || mPinnedForSeek) {
     return;
   }
-  mPinnedForSeek = PR_TRUE;
+  mPinnedForSeek = true;
   stream->Pin();
 }
 
@@ -301,15 +275,15 @@ void nsMediaDecoder::UnpinForSeek()
   if (!stream || !mPinnedForSeek) {
     return;
   }
-  mPinnedForSeek = PR_FALSE;
+  mPinnedForSeek = false;
   stream->Unpin();
 }
 
-PRBool nsMediaDecoder::CanPlayThrough()
+bool nsMediaDecoder::CanPlayThrough()
 {
   Statistics stats = GetStatistics();
   if (!stats.mDownloadRateReliable || !stats.mPlaybackRateReliable) {
-    return PR_FALSE;
+    return false;
   }
   PRInt64 bytesToDownload = stats.mTotalBytes - stats.mDownloadPosition;
   PRInt64 bytesToPlayback = stats.mTotalBytes - stats.mPlaybackPosition;
@@ -319,7 +293,7 @@ PRBool nsMediaDecoder::CanPlayThrough()
   if (timeToDownload > timeToPlay) {
     // Estimated time to download is greater than the estimated time to play.
     // We probably can't play through without having to stop to buffer.
-    return PR_FALSE;
+    return false;
   }
 
   // Estimated time to download is less than the estimated time to play.
@@ -334,3 +308,37 @@ PRBool nsMediaDecoder::CanPlayThrough()
   return stats.mTotalBytes == stats.mDownloadPosition ||
          stats.mDownloadPosition > stats.mPlaybackPosition + readAheadMargin;
 }
+
+namespace mozilla {
+
+MediaMemoryReporter* MediaMemoryReporter::sUniqueInstance;
+
+NS_MEMORY_REPORTER_IMPLEMENT(MediaDecodedVideoMemory,
+                             "explicit/media/decoded-video",
+                             KIND_HEAP,
+                             UNITS_BYTES,
+                             MediaMemoryReporter::GetDecodedVideoMemory,
+                             "Memory used by decoded video frames.")
+
+NS_MEMORY_REPORTER_IMPLEMENT(MediaDecodedAudioMemory,
+                             "explicit/media/decoded-audio",
+                             KIND_HEAP,
+                             UNITS_BYTES,
+                             MediaMemoryReporter::GetDecodedAudioMemory,
+                             "Memory used by decoded audio chunks.")
+
+MediaMemoryReporter::MediaMemoryReporter()
+  : mMediaDecodedVideoMemory(new NS_MEMORY_REPORTER_NAME(MediaDecodedVideoMemory))
+  , mMediaDecodedAudioMemory(new NS_MEMORY_REPORTER_NAME(MediaDecodedAudioMemory))
+{
+  NS_RegisterMemoryReporter(mMediaDecodedVideoMemory);
+  NS_RegisterMemoryReporter(mMediaDecodedAudioMemory);
+}
+
+MediaMemoryReporter::~MediaMemoryReporter()
+{
+  NS_UnregisterMemoryReporter(mMediaDecodedVideoMemory);
+  NS_UnregisterMemoryReporter(mMediaDecodedAudioMemory);
+}
+
+} // namespace mozilla

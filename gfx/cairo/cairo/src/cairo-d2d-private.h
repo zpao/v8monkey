@@ -43,14 +43,13 @@
 #include <d3d10.h>
 #include <dxgi.h>
 
-extern "C" {
 #include "cairoint.h"
 #include "cairo-surface-clipper-private.h"
-}
 
 #include "cairo-win32-refptr.h"
 #include "cairo-d2d-private-fx.h"
 #include "cairo-win32.h"
+#include "cairo-list-private.h"
 
 /* describes the type of the currently applied clip so that we can pop it */
 struct d2d_clip;
@@ -80,10 +79,14 @@ typedef struct _cairo_d2d_device cairo_d2d_device_t;
 
 struct _cairo_d2d_surface {
     _cairo_d2d_surface() : d2d_clip(NULL), clipping(false), isDrawing(false),
-	textRenderingInit(false)
+            textRenderingState(TEXT_RENDERING_UNINITIALIZED)
     {
 	_cairo_clip_init (&this->clip);
+        cairo_list_init(&this->dependent_surfaces);
     }
+    
+    ~_cairo_d2d_surface();
+
 
     cairo_surface_t base;
     /* Device used by this surface 
@@ -130,15 +133,33 @@ struct _cairo_d2d_surface {
     /** Indicates if our render target is currently in drawing mode */
     bool isDrawing;
     /** Indicates if text rendering is initialized */
-    bool textRenderingInit;
+    enum TextRenderingState {
+        TEXT_RENDERING_UNINITIALIZED,
+        TEXT_RENDERING_NO_CLEARTYPE,
+        TEXT_RENDERING_NORMAL,
+        TEXT_RENDERING_GDI_CLASSIC
+    };
+    TextRenderingState textRenderingState;
 
     RefPtr<ID3D10RenderTargetView> buffer_rt_view;
     RefPtr<ID3D10ShaderResourceView> buffer_sr_view;
 
-
+    // Other d2d surfaces which depend on this one and need to be flushed if
+    // it is drawn to. This is required for situations where this surface is
+    // drawn to another surface, but may be modified before the other surface
+    // has flushed. When the flush of the other surface then happens and the
+    // drawing command is actually executed, the contents of this surface will
+    // no longer be what it was when the drawing command was issued.
+    cairo_list_t dependent_surfaces;
     //cairo_surface_clipper_t clipper;
 };
 typedef struct _cairo_d2d_surface cairo_d2d_surface_t;
+
+struct _cairo_d2d_surface_entry
+{
+    cairo_list_t link;
+    cairo_d2d_surface_t *surface;
+};
 
 typedef HRESULT (WINAPI*D2D1CreateFactoryFunc)(
     __in D2D1_FACTORY_TYPE factoryType,

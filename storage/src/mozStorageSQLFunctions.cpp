@@ -40,6 +40,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "mozStorageSQLFunctions.h"
 #include "nsUnicharUtils.h"
 
@@ -77,7 +79,7 @@ likeCompare(nsAString::const_iterator aPatternItr,
   const PRUnichar MATCH_ALL('%');
   const PRUnichar MATCH_ONE('_');
 
-  PRBool lastWasEscape = PR_FALSE;
+  bool lastWasEscape = false;
   while (aPatternItr != aPatternEnd) {
     /**
      * What we do in here is take a look at each character from the input
@@ -127,11 +129,11 @@ likeCompare(nsAString::const_iterator aPatternItr,
         return 0;
       }
       aStringItr++;
-      lastWasEscape = PR_FALSE;
+      lastWasEscape = false;
     }
     else if (!lastWasEscape && *aPatternItr == aEscapeChar) {
       // CASE 3
-      lastWasEscape = PR_TRUE;
+      lastWasEscape = true;
     }
     else {
       // CASE 4
@@ -140,7 +142,7 @@ likeCompare(nsAString::const_iterator aPatternItr,
         return 0;
       }
       aStringItr++;
-      lastWasEscape = PR_FALSE;
+      lastWasEscape = false;
     }
 
     aPatternItr++;
@@ -302,6 +304,16 @@ levenshteinDistance(const nsAString &aStringS,
     return SQLITE_OK;
 }
 
+// This struct is used only by registerFunctions below, but ISO C++98 forbids
+// instantiating a template dependent on a locally-defined type.  Boo-urns!
+struct Functions {
+  const char *zName;
+  int nArg;
+  int enc;
+  void *pContext;
+  void (*xFunc)(::sqlite3_context*, int, sqlite3_value**);
+};
+
 } // anonymous namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -310,14 +322,6 @@ levenshteinDistance(const nsAString &aStringS,
 int
 registerFunctions(sqlite3 *aDB)
 {
-  struct Functions {
-    const char *zName;
-    int nArg;
-    int enc;
-    void *pContext;
-    void (*xFunc)(::sqlite3_context*, int, sqlite3_value**);
-  };
-  
   Functions functions[] = {
     {"lower",               
       1, 
@@ -374,7 +378,7 @@ registerFunctions(sqlite3 *aDB)
   };
 
   int rv = SQLITE_OK;
-  for (size_t i = 0; SQLITE_OK == rv && i < NS_ARRAY_LENGTH(functions); ++i) {
+  for (size_t i = 0; SQLITE_OK == rv && i < ArrayLength(functions); ++i) {
     struct Functions *p = &functions[i];
     rv = ::sqlite3_create_function(aDB, p->zName, p->nArg, p->enc, p->pContext,
                                    p->xFunc, NULL, NULL);
@@ -394,7 +398,7 @@ caseFunction(sqlite3_context *aCtx,
   NS_ASSERTION(1 == aArgc, "Invalid number of arguments!");
 
   nsAutoString data(static_cast<const PRUnichar *>(::sqlite3_value_text16(aArgv[0])));
-  PRBool toUpper = ::sqlite3_user_data(aCtx) ? PR_TRUE : PR_FALSE;
+  bool toUpper = ::sqlite3_user_data(aCtx) ? true : false;
 
   if (toUpper)
     ::ToUpperCase(data);

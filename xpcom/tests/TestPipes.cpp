@@ -52,8 +52,8 @@ using namespace mozilla;
 /** NS_NewPipe2 reimplemented, because it's not exported by XPCOM */
 nsresult TP_NewPipe2(nsIAsyncInputStream** input,
                      nsIAsyncOutputStream** output,
-                     PRBool nonBlockingInput,
-                     PRBool nonBlockingOutput,
+                     bool nonBlockingInput,
+                     bool nonBlockingOutput,
                      PRUint32 segmentSize,
                      PRUint32 segmentCount,
                      nsIMemory* segmentAlloc)
@@ -82,15 +82,15 @@ nsresult TP_NewPipe(nsIInputStream **pipeIn,
                     nsIOutputStream **pipeOut,
                     PRUint32 segmentSize = 0,
                     PRUint32 maxSize = 0,
-                    PRBool nonBlockingInput = PR_FALSE,
-                    PRBool nonBlockingOutput = PR_FALSE,
+                    bool nonBlockingInput = false,
+                    bool nonBlockingOutput = false,
                     nsIMemory *segmentAlloc = nsnull);
 nsresult TP_NewPipe(nsIInputStream **pipeIn,
                     nsIOutputStream **pipeOut,
                     PRUint32 segmentSize,
                     PRUint32 maxSize,
-                    PRBool nonBlockingInput,
-                    PRBool nonBlockingOutput,
+                    bool nonBlockingInput,
+                    bool nonBlockingOutput,
                     nsIMemory *segmentAlloc)
 {
     if (segmentSize == 0)
@@ -119,7 +119,7 @@ nsresult TP_NewPipe(nsIInputStream **pipeIn,
 #define ITERATIONS      33333
 char kTestPattern[] = "My hovercraft is full of eels.\n";
 
-PRBool gTrace = PR_FALSE;
+bool gTrace = false;
 
 static nsresult
 WriteAll(nsIOutputStream *os, const char *buf, PRUint32 bufLen, PRUint32 *lenWritten)
@@ -146,7 +146,7 @@ public:
         char buf[101];
         PRUint32 count;
         PRIntervalTime start = PR_IntervalNow();
-        while (PR_TRUE) {
+        while (true) {
             rv = mIn->Read(buf, 100, &count);
             if (NS_FAILED(rv)) {
                 printf("read failed\n");
@@ -237,7 +237,7 @@ public:
         char buf[101];
         PRUint32 count;
         PRUint32 total = 0;
-        while (PR_TRUE) {
+        while (true) {
             //if (gTrace)
             //    printf("calling Read\n");
             rv = mIn->Read(buf, 100, &count);
@@ -315,7 +315,7 @@ TestShortWrites(nsIInputStream* in, nsIOutputStream* out)
         char* buf = PR_smprintf("%d %s", i, kTestPattern);
         PRUint32 len = strlen(buf);
         len = len * rand() / RAND_MAX;
-        len = PR_MAX(1, len);
+        len = NS_MAX(1, len);
         rv = WriteAll(out, buf, len, &writeCount);
         if (NS_FAILED(rv)) return rv;
         NS_ASSERTION(writeCount == len, "didn't write enough");
@@ -354,7 +354,7 @@ public:
     NS_IMETHOD Run() {
         nsresult rv;
         PRUint32 count;
-        while (PR_TRUE) {
+        while (true) {
             rv = mOut->WriteFrom(mIn, ~0U, &count);
             if (NS_FAILED(rv)) {
                 printf("Write failed\n");
@@ -424,7 +424,7 @@ TestChainedPipes()
         char* buf = PR_smprintf("%d %s", i, kTestPattern);
         PRUint32 len = strlen(buf);
         len = len * rand() / RAND_MAX;
-        len = PR_MAX(1, len);
+        len = NS_MAX(1, len);
         rv = WriteAll(out1, buf, len, &writeCount);
         if (NS_FAILED(rv)) return rv;
         NS_ASSERTION(writeCount == len, "didn't write enough");
@@ -471,8 +471,8 @@ RunTests(PRUint32 segSize, PRUint32 segCount)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#if !defined(MOZ_ENABLE_LIBXUL) && defined(DEBUG)
-extern NS_COM void
+#if 0
+extern void
 TestSegmentedBuffer();
 #endif
 
@@ -486,12 +486,7 @@ main(int argc, char* argv[])
     if (NS_FAILED(rv)) return rv;
 
     if (argc > 1 && nsCRT::strcmp(argv[1], "-trace") == 0)
-        gTrace = PR_TRUE;
-
-#if !defined(MOZ_ENABLE_LIBXUL) && defined(DEBUG)
-    printf("Testing segmented buffer...\n");
-    TestSegmentedBuffer();
-#endif
+        gTrace = true;
 
     rv = TestChainedPipes();
     NS_ASSERTION(NS_SUCCEEDED(rv), "TestChainedPipes failed");

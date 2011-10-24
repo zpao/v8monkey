@@ -125,55 +125,44 @@ nsPrintingPromptService::ShowPrintDialog(nsIDOMWindow *parent, nsIWebBrowserPrin
 
 /* void showProgress (in nsIDOMWindow parent, in nsIWebBrowserPrint webBrowserPrint, in nsIPrintSettings printSettings, in nsIObserver openDialogObserver, in boolean isForPrinting, out nsIWebProgressListener webProgressListener, out nsIPrintProgressParams printProgressParams, out boolean notifyOnOpen); */
 NS_IMETHODIMP 
-nsPrintingPromptService::ShowProgress(nsIDOMWindow*           parent, 
+nsPrintingPromptService::ShowProgress(nsIDOMWindow*            parent, 
                                       nsIWebBrowserPrint*      webBrowserPrint,    // ok to be null
                                       nsIPrintSettings*        printSettings,      // ok to be null
                                       nsIObserver*             openDialogObserver, // ok to be null
-                                      PRBool                   isForPrinting,
+                                      bool                     isForPrinting,
                                       nsIWebProgressListener** webProgressListener,
                                       nsIPrintProgressParams** printProgressParams,
-                                      PRBool*                  notifyOnOpen)
+                                      bool*                  notifyOnOpen)
 {
     NS_ENSURE_ARG(webProgressListener);
     NS_ENSURE_ARG(printProgressParams);
     NS_ENSURE_ARG(notifyOnOpen);
 
-    *notifyOnOpen = PR_FALSE;
+    *notifyOnOpen = false;
 
     nsPrintProgress* prtProgress = new nsPrintProgress();
-    nsresult rv = prtProgress->QueryInterface(NS_GET_IID(nsIPrintProgress), (void**)getter_AddRefs(mPrintProgress));
-    NS_ENSURE_SUCCESS(rv, rv);
+    mPrintProgress = prtProgress;
+    mWebProgressListener = prtProgress;
 
-    rv = prtProgress->QueryInterface(NS_GET_IID(nsIWebProgressListener), (void**)getter_AddRefs(mWebProgressListener));
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIPrintProgressParams> prtProgressParams = new nsPrintProgressParams();
+      
+    nsCOMPtr<nsIDOMWindow> parentWindow = parent;
 
-    nsPrintProgressParams* prtProgressParams = new nsPrintProgressParams();
-    rv = prtProgressParams->QueryInterface(NS_GET_IID(nsIPrintProgressParams), (void**)printProgressParams);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    if (printProgressParams) 
-    {
-        nsCOMPtr<nsIDOMWindowInternal> parentDOMIntl(do_QueryInterface(parent));
-
-        if (mWatcher && !parentDOMIntl) 
-        {
-            nsCOMPtr<nsIDOMWindow> active;
-            mWatcher->GetActiveWindow(getter_AddRefs(active));
-            parentDOMIntl = do_QueryInterface(active);
-        }
-
-        if (parentDOMIntl) 
-        {
-            mPrintProgress->OpenProgressDialog(parentDOMIntl, 
-                                               isForPrinting?kPrintProgressDialogURL:kPrtPrvProgressDialogURL, 
-                                               *printProgressParams, openDialogObserver, notifyOnOpen);
-        }
+    if (mWatcher && !parentWindow) {
+        mWatcher->GetActiveWindow(getter_AddRefs(parentWindow));
     }
 
-    *webProgressListener = static_cast<nsIWebProgressListener*>(this);
-    NS_ADDREF(*webProgressListener);
+    if (parentWindow) {
+        mPrintProgress->OpenProgressDialog(parentWindow,
+                                           isForPrinting ? kPrintProgressDialogURL : kPrtPrvProgressDialogURL,
+                                           prtProgressParams, openDialogObserver, notifyOnOpen);
+    }
 
-    return rv;
+    prtProgressParams.forget(printProgressParams);
+    nsCOMPtr<nsIWebProgressListener> myWebProgressListener = this;
+    myWebProgressListener.forget(webProgressListener);
+
+    return NS_OK;
 }
 
 /* void showPageSetup (in nsIDOMWindow parent, in nsIPrintSettings printSettings); */
@@ -198,7 +187,7 @@ nsPrintingPromptService::ShowPrinterProperties(nsIDOMWindow *parent, const PRUni
   nsresult rv = NS_ERROR_FAILURE;
   nsCOMPtr<nsIPrintOptions> printService = do_GetService(sPrintOptionsContractID, &rv);
   if (NS_SUCCEEDED(rv)) {
-    PRBool displayed;
+    bool displayed;
     rv = printService->DisplayJobProperties(printerName, printSettings, &displayed);
   }
   return rv;
@@ -282,7 +271,7 @@ nsPrintingPromptService::OnStateChange(nsIWebProgress *aWebProgress, nsIRequest 
   if ((aStateFlags & STATE_STOP) && mWebProgressListener) {
     mWebProgressListener->OnStateChange(aWebProgress, aRequest, aStateFlags, aStatus);
     if (mPrintProgress) {
-      mPrintProgress->CloseProgressDialog(PR_TRUE);
+      mPrintProgress->CloseProgressDialog(true);
     }
     mPrintProgress       = nsnull;
     mWebProgressListener = nsnull;

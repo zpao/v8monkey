@@ -47,7 +47,7 @@ SCRIPT_DIRECTORY = os.path.abspath(os.path.realpath(os.path.dirname(sys.argv[0])
 from runreftest import RefTest
 from runreftest import ReftestOptions
 from automation import Automation
-from devicemanager import DeviceManager
+import devicemanager, devicemanagerADB, devicemanagerSUT
 from remoteautomation import RemoteAutomation
 
 class RemoteOptions(ReftestOptions):
@@ -110,6 +110,11 @@ class RemoteOptions(ReftestOptions):
                     type = "string", dest = "pidFile",
                     help = "name of the pidfile to generate")
         defaults["pidFile"] = ""
+
+        self.add_option("--dm_trans", action="store",
+                    type = "string", dest = "dm_trans",
+                    help = "the transport to use to communicate with device: [adb|sut]; default=sut")
+        defaults["dm_trans"] = "sut"
 
         defaults["localLogName"] = None
 
@@ -188,6 +193,7 @@ class ReftestServer:
         self.webServer = options.remoteWebServer
         self.httpPort = options.httpPort
         self.scriptDir = scriptDir
+        self.pidFile = options.pidFile
         self.shutdownURL = "http://%(server)s:%(port)s/server/shutdown" % { "server" : self.webServer, "port" : self.httpPort }
 
     def start(self):
@@ -213,6 +219,11 @@ class ReftestServer:
             print "Error starting server."
             sys.exit(2)
         self._automation.log.info("INFO | remotereftests.py | Server pid: %d", pid)
+
+        if (self.pidFile != ""):
+            f = open(self.pidFile + ".xpcshell.pid", 'w')
+            f.write("%s" % pid)
+            f.close()
 
     def ensureReady(self, timeout):
         assert timeout >= 0
@@ -320,14 +331,22 @@ class RemoteReftest(RefTest):
     def createReftestProfile(self, options, profileDir):
         RefTest.createReftestProfile(self, options, profileDir, server=options.remoteWebServer)
 
+        # Turn off the locale picker screen
+        fhandle = open(os.path.join(profileDir, "user.js"), 'a')
+        fhandle.write("""
+user_pref("browser.firstrun.show.localepicker", false);
+""")
+
         #workaround for jsreftests.
         if options.enablePrivilege:
-          fhandle = open(os.path.join(profileDir, "user.js"), 'a')
           fhandle.write("""
 user_pref("capability.principal.codebase.p2.granted", "UniversalPreferencesWrite UniversalXPConnect UniversalBrowserWrite UniversalPreferencesRead UniversalBrowserRead");
 user_pref("capability.principal.codebase.p2.id", "http://%s:%s");
 """ % (options.remoteWebServer, options.httpPort))
-          fhandle.close()
+
+        # Close the file
+        fhandle.close()
+
 
         if (self._devicemanager.pushDir(profileDir, options.remoteProfile) == None):
             raise devicemanager.FileError("Failed to copy profiledir to device")
@@ -364,11 +383,12 @@ user_pref("capability.principal.codebase.p2.id", "http://%s:%s");
         if (self.pidFile != ""):
             try:
                 os.remove(self.pidFile)
+                os.remove(self.pidFile + ".xpcshell.pid")
             except:
                 print "Warning: cleaning up pidfile '%s' was unsuccessful from the test harness" % self.pidFile
 
 def main():
-    dm_none = DeviceManager(None, None)
+    dm_none = devicemanagerADB.DeviceManagerADB(None, None)
     automation = RemoteAutomation(dm_none)
     parser = RemoteOptions(automation)
     options, args = parser.parse_args()
@@ -377,7 +397,13 @@ def main():
         print "Error: you must provide a device IP to connect to via the --device option"
         sys.exit(1)
 
-    dm = DeviceManager(options.deviceIP, options.devicePort)
+    if (options.dm_trans == "adb"):
+        if (options.deviceIP):
+            dm = devicemanagerADB.DeviceManagerADB(options.deviceIP, options.devicePort)
+        else:
+            dm = dm_none
+    else:
+         dm = devicemanagerSUT.DeviceManagerSUT(options.deviceIP, options.devicePort)
     automation.setDeviceManager(dm)
 
     if (options.remoteProductName != None):
@@ -389,20 +415,18 @@ def main():
         print "ERROR: Invalid options specified, use --help for a list of valid options"
         sys.exit(1)
 
-    parts = dm.getInfo('screen')['screen'][0].split()
-    width = int(parts[0].split(':')[1])
-    height = int(parts[1].split(':')[1])
-    if (width < 1050 or height < 1050):
-        print "ERROR: Invalid screen resolution %sx%s, please adjust to 1366x1050 or higher" % (width, height)
-        sys.exit(1)
+    if not options.ignoreWindowSize:
+        parts = dm.getInfo('screen')['screen'][0].split()
+        width = int(parts[0].split(':')[1])
+        height = int(parts[1].split(':')[1])
+        if (width < 1050 or height < 1050):
+            print "ERROR: Invalid screen resolution %sx%s, please adjust to 1366x1050 or higher" % (width, height)
+            sys.exit(1)
 
     automation.setAppName(options.app)
     automation.setRemoteProfile(options.remoteProfile)
     automation.setRemoteLog(options.remoteLogFile)
     reftest = RemoteReftest(automation, dm, options, SCRIPT_DIRECTORY)
-
-    # Start the webserver
-    reftest.startWebServer(options)
 
     # Hack in a symbolic link for jsreftest
     os.system("ln -s ../jsreftest " + str(os.path.join(SCRIPT_DIRECTORY, "jsreftest")))
@@ -414,6 +438,12 @@ def main():
     elif os.path.exists(args[0]):
         manifestPath = os.path.abspath(args[0]).split(SCRIPT_DIRECTORY)[1].strip('/')
         manifest = "http://" + str(options.remoteWebServer) + ":" + str(options.httpPort) + "/" + manifestPath
+    else:
+        print "ERROR: Could not find test manifest '%s'" % manifest
+        sys.exit(1)
+
+    # Start the webserver
+    reftest.startWebServer(options)
 
     procName = options.app.split('/')[-1]
     if (dm.processExist(procName)):
@@ -421,7 +451,13 @@ def main():
 
 #an example manifest name to use on the cli
 #    manifest = "http://" + options.remoteWebServer + "/reftests/layout/reftests/reftest-sanity/reftest.list"
-    reftest.runTests(manifest, options)
+    try:
+      reftest.runTests(manifest, options)
+    except:
+      print "TEST-UNEXPECTED-FAIL | | exception while running reftests"
+      reftest.stopWebServer(options)
+      sys.exit(1)
+
     reftest.stopWebServer(options)
 
 if __name__ == "__main__":

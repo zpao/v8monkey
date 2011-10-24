@@ -184,7 +184,7 @@ class nsGIOInputStream : public nsIInputStream
       , mDirList(nsnull)
       , mDirListPtr(nsnull)
       , mDirBufCursor(0)
-      , mDirOpen(PR_FALSE)
+      , mDirOpen(false)
       , mMonitorMountInProgress("GIOInputStream::MountFinished") { }
 
    ~nsGIOInputStream() { Close(); }
@@ -224,7 +224,7 @@ class nsGIOInputStream : public nsIInputStream
     GList                *mDirListPtr;
     nsCString             mDirBuf;
     PRUint32              mDirBufCursor;
-    PRPackedBool          mDirOpen;
+    bool                  mDirOpen;
     MountOperationResult  mMountRes;
     mozilla::Monitor      mMonitorMountInProgress;
     gint                  mMountErrorCode;
@@ -311,7 +311,7 @@ nsGIOInputStream::DoOpenDirectory()
     g_error_free(error);
     return rv;
   }
-  mDirOpen = PR_TRUE;
+  mDirOpen = true;
 
   // Sort list of file infos by using FileInfoComparator function
   mDirList = g_list_sort(mDirList, FileInfoComparator);
@@ -481,7 +481,7 @@ nsGIOInputStream::DoRead(char *aBuf, PRUint32 aCount, PRUint32 *aCountRead)
       PRUint32 bufLen = mDirBuf.Length() - mDirBufCursor;
       if (bufLen)
       {
-        PRUint32 n = PR_MIN(bufLen, aCount);
+        PRUint32 n = NS_MIN(bufLen, aCount);
         memcpy(aBuf, mDirBuf.get() + mDirBufCursor, n);
         *aCountRead += n;
         aBuf += n;
@@ -726,9 +726,9 @@ nsGIOInputStream::ReadSegments(nsWriteSegmentFun aWriter,
 }
 
 NS_IMETHODIMP
-nsGIOInputStream::IsNonBlocking(PRBool *aResult)
+nsGIOInputStream::IsNonBlocking(bool *aResult)
 {
-  *aResult = PR_FALSE;
+  *aResult = false;
   return NS_OK;
 }
 
@@ -887,7 +887,7 @@ mount_operation_ask_password (GMountOperation   *mount_op,
   }
   // Prompt the user...
   nsresult rv;
-  PRBool retval = PR_FALSE;
+  bool retval = false;
   PRUnichar *user = nsnull, *pass = nsnull;
   if (default_user) {
     // user will be freed by PromptUsernameAndPassword
@@ -930,7 +930,7 @@ class nsGIOProtocolHandler : public nsIProtocolHandler
 
   private:
     void   InitSupportedProtocolsPref(nsIPrefBranch *prefs);
-    PRBool IsSupportedProtocol(const nsCString &spec);
+    bool IsSupportedProtocol(const nsCString &spec);
 
     nsCString mSupportedProtocols;
 };
@@ -948,7 +948,7 @@ nsGIOProtocolHandler::Init()
   if (prefs)
   {
     InitSupportedProtocolsPref(prefs);
-    prefs->AddObserver(MOZ_GIO_SUPPORTED_PROTOCOLS, this, PR_FALSE);
+    prefs->AddObserver(MOZ_GIO_SUPPORTED_PROTOCOLS, this, false);
   }
 
   return NS_OK;
@@ -974,13 +974,13 @@ nsGIOProtocolHandler::InitSupportedProtocolsPref(nsIPrefBranch *prefs)
   LOG(("gio: supported protocols \"%s\"\n", mSupportedProtocols.get()));
 }
 
-PRBool
+bool
 nsGIOProtocolHandler::IsSupportedProtocol(const nsCString &aSpec)
 {
   const char *specString = aSpec.get();
   const char *colon = strchr(specString, ':');
   if (!colon)
-    return PR_FALSE;
+    return false;
 
   PRUint32 length = colon - specString + 1;
 
@@ -989,12 +989,12 @@ nsGIOProtocolHandler::IsSupportedProtocol(const nsCString &aSpec)
 
   char *found = PL_strcasestr(mSupportedProtocols.get(), scheme.get());
   if (!found)
-    return PR_FALSE;
+    return false;
 
   if (found[length] != ',' && found[length] != '\0')
-    return PR_FALSE;
+    return false;
 
-  return PR_TRUE;
+  return true;
 }
 
 NS_IMETHODIMP
@@ -1039,7 +1039,7 @@ nsGIOProtocolHandler::NewURI(const nsACString &aSpec,
       return NS_ERROR_UNKNOWN_PROTOCOL;
 
     // Verify that GIO supports this URI scheme.
-    PRBool uri_scheme_supported = PR_FALSE;
+    bool uri_scheme_supported = false;
 
     GVfs *gvfs = g_vfs_get_default();
 
@@ -1054,7 +1054,7 @@ nsGIOProtocolHandler::NewURI(const nsACString &aSpec,
       // While flatSpec ends with ':' the uri_scheme does not. Therefore do not
       // compare last character.
       if (StringHead(flatSpec, colon_location).Equals(*uri_schemes)) {
-        uri_scheme_supported = PR_TRUE;
+        uri_scheme_supported = true;
         break;
       }
       uri_schemes++;
@@ -1112,10 +1112,10 @@ nsGIOProtocolHandler::NewChannel(nsIURI *aURI, nsIChannel **aResult)
 NS_IMETHODIMP
 nsGIOProtocolHandler::AllowPort(PRInt32 aPort,
                                 const char *aScheme,
-                                PRBool *aResult)
+                                bool *aResult)
 {
   // Don't override anything.
-  *aResult = PR_FALSE;
+  *aResult = false;
   return NS_OK;
 }
 

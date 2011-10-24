@@ -55,7 +55,7 @@ interface nsIDOMSVGTransform;
 #endif
 %}
 
-[scriptable, uuid(aecf2c1a-065e-432f-9aeb-c3715246281e)]
+[scriptable, uuid(e7ff88bd-26f8-4f2e-b01c-4e7b80d45117)]
 interface nsIDOMSVGSVGElement
   : nsIDOMSVGElement
 /*
@@ -74,9 +74,6 @@ interface nsIDOMSVGSVGElement
     nsIDOMSVGFitToViewBox,
     nsIDOMSVGZoomAndPan,
     events::nsIDOMEventTarget,
-    events::nsIDOMDocumentEvent,
-    css::nsIDOMViewCSS,
-    css::nsIDOMDocumentCSS
 */
 { 
   readonly attribute nsIDOMSVGAnimatedLength x;
@@ -125,8 +122,3 @@ interface nsIDOMSVGSVGElement
   nsIDOMSVGTransform    createSVGTransformFromMatrix(in nsIDOMSVGMatrix matrix);
   nsIDOMElement         getElementById(in DOMString elementId);
 };
-
-
-
-
-

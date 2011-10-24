@@ -59,22 +59,22 @@ nsGenConList::Clear()
   mSize = 0;
 }
 
-PRBool
+bool
 nsGenConList::DestroyNodesFor(nsIFrame* aFrame)
 {
   if (!mFirstNode)
-    return PR_FALSE; // list empty
+    return false; // list empty
   nsGenConNode* node;
-  PRBool destroyed = PR_FALSE;
+  bool destroyed = false;
   while (mFirstNode->mPseudoFrame == aFrame) {
-    destroyed = PR_TRUE;
+    destroyed = true;
     node = Next(mFirstNode);
-    PRBool isLastNode = node == mFirstNode; // before they're dangling
+    bool isLastNode = node == mFirstNode; // before they're dangling
     Remove(mFirstNode);
     delete mFirstNode;
     if (isLastNode) {
       mFirstNode = nsnull;
-      return PR_TRUE;
+      return true;
     }
     else {
       mFirstNode = node;
@@ -83,7 +83,7 @@ nsGenConList::DestroyNodesFor(nsIFrame* aFrame)
   node = Next(mFirstNode);
   while (node != mFirstNode) {
     if (node->mPseudoFrame == aFrame) {
-      destroyed = PR_TRUE;
+      destroyed = true;
       nsGenConNode *nextNode = Next(node);
       Remove(node);
       delete node;
@@ -118,7 +118,7 @@ inline PRInt32 PseudoCompareType(nsIFrame* aFrame, nsIContent** aContent)
   return 0;
 }
 
-/* static */ PRBool
+/* static */ bool
 nsGenConList::NodeAfter(const nsGenConNode* aNode1, const nsGenConNode* aNode2)
 {
   nsIFrame *frame1 = aNode1->mPseudoFrame;

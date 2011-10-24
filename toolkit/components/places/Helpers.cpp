@@ -341,9 +341,9 @@ IsValidGUID(const nsCString& aGUID)
 
   for (nsCString::size_type i = 0; i < len; i++ ) {
     char c = aGUID[i];
-    if (c >= 'a' && c <= 'z' || // a-z
-        c >= 'A' && c <= 'Z' || // A-Z
-        c >= '0' && c <= '9' || // 0-9
+    if ((c >= 'a' && c <= 'z') || // a-z
+        (c >= 'A' && c <= 'Z') || // A-Z
+        (c >= '0' && c <= '9') || // 0-9
         c == '-' || c == '_') { // - or _
       continue;
     }
@@ -377,14 +377,6 @@ GetHiddenState(bool aIsRedirect,
 
 PlacesEvent::PlacesEvent(const char* aTopic)
 : mTopic(aTopic)
-, mDoubleEnqueue(false)
-{
-}
-
-PlacesEvent::PlacesEvent(const char* aTopic,
-                         bool aDoubleEnqueue)
-: mTopic(aTopic)
-, mDoubleEnqueue(aDoubleEnqueue)
 {
 }
 
@@ -405,16 +397,10 @@ PlacesEvent::Complete()
 void
 PlacesEvent::Notify()
 {
-  if (mDoubleEnqueue) {
-    mDoubleEnqueue = false;
-    (void)NS_DispatchToMainThread(this);
-  }
-  else {
-    NS_ASSERTION(NS_IsMainThread(), "Must only be used on the main thread!");
-    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
-    if (obs) {
-      (void)obs->NotifyObservers(nsnull, mTopic, nsnull);
-    }
+  NS_ASSERTION(NS_IsMainThread(), "Must only be used on the main thread!");
+  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+  if (obs) {
+    (void)obs->NotifyObservers(nsnull, mTopic, nsnull);
   }
 }
 

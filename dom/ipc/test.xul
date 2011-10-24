@@ -61,8 +61,7 @@
     function randomClick() {
        // First focus the remote frame, then dispatch click. This way remote frame gets focus before
        // mouse event.
-       document.getElementById('page').QueryInterface(Components.interfaces.nsIFrameLoaderOwner)
-                                      .frameLoader.activateRemoteFrame();
+       document.getElementById('page').focus();
        var frameLoader = document.getElementById('page').QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
        var x = parseInt(Math.random() * 100);
        var y = parseInt(Math.random() * 100);
@@ -73,8 +72,7 @@
     function keyPress() {
        // First focus the remote frame, then dispatch click. This way remote frame gets focus before
        // mouse event.
-       document.getElementById('page').QueryInterface(Components.interfaces.nsIFrameLoaderOwner)
-                                      .frameLoader.activateRemoteFrame();
+       document.getElementById('page').focus();
        var frameLoader = document.getElementById('page').QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
 
        var keyCode = Components.interfaces.nsIDOMKeyEvent.DOM_VK_A;
@@ -98,24 +96,40 @@
                           .getService(Components.interfaces.nsIFrameMessageManager);
       var gm = Components.classes["@mozilla.org/globalmessagemanager;1"]
                          .getService(Components.interfaces.nsIChromeFrameMessageManager);
-      var didThrow = false;
-      try {
-        var cpm = Components.classes["@mozilla.org/childprocessmessagemanager;1"]
+      var cpm = Components.classes["@mozilla.org/childprocessmessagemanager;1"]
                             .getService(Components.interfaces.nsISyncMessageSender);  
-      } catch (ex) {
-        didThrow = true;
+
+      var tppm = ppm.QueryInterface(Components.interfaces.nsITreeItemFrameMessageManager);
+      if (tppm.childCount != 2) {
+        alert("Should have two child processes!");
       }
-      if (!didThrow) {
-        alert("One shouldn't be able to create content process message manager in chrome process!");
-      }
+      var childprocessmm = tppm.getChildAt(1); // 0 is the in-process child process mm
+      
+      childprocessmm.addMessageListener("ppm-sync",
+        function(m) {
+          if (m.target != childprocessmm) alert("Wrong target!");
+          document.getElementById("messageLog").value += "[SYNC1 PPM]"; 
+        }
+      );
+      
       ppm.addMessageListener("ppm-sync",
         function(m) {
-          document.getElementById("messageLog").value += "[SYNC PPM]"; 
+          // Check that global process message manager gets the per-process mm as target.
+          if (m.target != childprocessmm) alert("Wrong target!");
+          document.getElementById("messageLog").value += "[SYNC2 PPM]"; 
+        }
+      );
+      childprocessmm.addMessageListener("ppm-async",
+        function(m) {
+          if (m.target != childprocessmm) alert("Wrong target!");
+          document.getElementById("messageLog").value += "[ASYNC1 PPM]"; 
         }
       );
       ppm.addMessageListener("ppm-async",
         function(m) {
-          document.getElementById("messageLog").value += "[ASYNC PPM]"; 
+          // Check that global process message manager gets the per-process mm as target.
+          if (m.target != childprocessmm) alert("Wrong target!");
+          document.getElementById("messageLog").value += "[ASYNC2 PPM]"; 
         }
       );
       messageManager.loadFrameScript("chrome://global/content/remote-test-ipc.js", true);
@@ -280,7 +294,6 @@
                oncommand="document.getElementById('page').QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader.delayRemoteDialogs = this.checked;"/>
   </toolbar>
 
-  <browser type="content" src="http://www.google.com/" flex="1" id="page" remote="true"
-           onfocus="this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader.activateRemoteFrame();"/>
+  <browser type="content" src="http://www.google.com/" flex="1" id="page" remote="true"/>
   <label id="messageLog" value="" crop="center"/>
 </window>

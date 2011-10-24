@@ -34,18 +34,19 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "SVGPointList.h"
 #include "SVGAnimatedPointList.h"
 #include "nsSVGElement.h"
-#include "nsISVGValueUtils.h"
 #include "nsDOMError.h"
-#include "nsContentUtils.h"
 #include "nsString.h"
 #include "nsSVGUtils.h"
 #include "string.h"
 #include "prdtoa.h"
 #include "nsTextFormatter.h"
 #include "nsCharSeparatedTokenizer.h"
+#include "nsMathUtils.h"
 
 namespace mozilla {
 
@@ -69,7 +70,7 @@ SVGPointList::GetValueAsString(nsAString& aValue) const
   for (PRUint32 i = 0; i < mItems.Length(); ++i) {
     // Would like to use aValue.AppendPrintf("%f,%f", item.mX, item.mY),
     // but it's not possible to always avoid trailing zeros.
-    nsTextFormatter::snprintf(buf, NS_ARRAY_LENGTH(buf),
+    nsTextFormatter::snprintf(buf, ArrayLength(buf),
                               NS_LITERAL_STRING("%g,%g").get(),
                               double(mItems[i].mX), double(mItems[i].mY));
     // We ignore OOM, since it's not useful for us to return an error.
@@ -113,7 +114,7 @@ SVGPointList::SetValueFromString(const nsAString& aValue)
     }
     char *end;
     float x = float(PR_strtod(token1, &end));
-    if (end == token1 || !NS_FloatIsFinite(x)) {
+    if (end == token1 || !NS_finite(x)) {
       rv = NS_ERROR_DOM_SYNTAX_ERR;
       break;
     }
@@ -136,7 +137,7 @@ SVGPointList::SetValueFromString(const nsAString& aValue)
     }
 
     float y = float(PR_strtod(token2, &end));
-    if (*end != '\0' || !NS_FloatIsFinite(y)) {
+    if (*end != '\0' || !NS_finite(y)) {
       rv = NS_ERROR_DOM_SYNTAX_ERR;
       break;
     }

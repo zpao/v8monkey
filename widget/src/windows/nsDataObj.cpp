@@ -26,6 +26,7 @@
  *   Masayuki Nakano <masayuki@d-toybox.com>
  *   David Gardiner <david.gardiner@unisa.edu.au>
  *   Kyle Huey <me@kylehuey.com>
+ *   Jim Mathies <jmathies@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -40,6 +41,8 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
+#include "mozilla/Util.h"
 
 #include <ole2.h>
 #include <shlobj.h>
@@ -64,9 +67,13 @@
 #include "prtypes.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsITimer.h"
+#include "nsThreadUtils.h"
 
 // XXX Duped from profile/src/nsProfile.cpp.
 #include <stdlib.h>
+
+using namespace mozilla;
+
 #define TABLE_SIZE 36
 static const char table[] =
     { 'a','b','c','d','e','f','g','h','i','j',
@@ -88,18 +95,14 @@ MakeRandomString(char *buf, PRInt32 bufLen)
     }
     *buf = 0;
 }
-// XXX
 
-// XXX for older version of PSDK where IAsyncOperation and related stuff is not available
-// but this should be removed when parocles config is updated
-// IAsyncOperation interface GUID
-#ifndef __IAsyncOperation_INTERFACE_DEFINED__
-  const IID IID_IAsyncOperation = {0x3D8B0590, 0xF691, 0x11d2, {0x8E, 0xA9, 0x00, 0x60, 0x97, 0xDF, 0x5B, 0xD4}};
-#endif
+NS_IMPL_ISUPPORTS1(nsDataObj::CStream, nsIStreamListener)
 
 //-----------------------------------------------------------------------------
 // CStream implementation
-nsDataObj::CStream::CStream() : mRefCount(1)
+nsDataObj::CStream::CStream() :
+  mChannelRead(false),
+  mStreamRead(0)
 {
 }
 
@@ -113,17 +116,18 @@ nsDataObj::CStream::~CStream()
 nsresult nsDataObj::CStream::Init(nsIURI *pSourceURI)
 {
   nsresult rv;
-  rv = NS_NewChannel(getter_AddRefs(mChannel), pSourceURI);
+  rv = NS_NewChannel(getter_AddRefs(mChannel), pSourceURI,
+                     nsnull, nsnull, nsnull,
+                     nsIRequest::LOAD_FROM_CACHE);
   NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = mChannel->Open(getter_AddRefs(mInputStream));
+  rv = mChannel->AsyncOpen(this, nsnull);
   NS_ENSURE_SUCCESS(rv, rv);
-
   return NS_OK;
 }
 
 //-----------------------------------------------------------------------------
-// IUnknown
+// IUnknown's QueryInterface, nsISupport's AddRef and Release are shared by
+// IUnknown and nsIStreamListener.
 STDMETHODIMP nsDataObj::CStream::QueryInterface(REFIID refiid, void** ppvResult)
 {
   *ppvResult = NULL;
@@ -143,23 +147,64 @@ STDMETHODIMP nsDataObj::CStream::QueryInterface(REFIID refiid, void** ppvResult)
   return E_NOINTERFACE;
 }
 
-//-----------------------------------------------------------------------------
-STDMETHODIMP_(ULONG) nsDataObj::CStream::AddRef(void)
+// nsIStreamListener implementation
+NS_IMETHODIMP nsDataObj::CStream::OnDataAvailable(nsIRequest *aRequest,
+                                                  nsISupports *aContext,
+                                                  nsIInputStream *aInputStream,
+                                                  PRUint32 aOffset, // offset within the stream
+                                                  PRUint32 aCount) // bytes available on this call
 {
-  return ++mRefCount;
+    // Extend the write buffer for the incoming data.
+    PRUint8* buffer = mChannelData.AppendElements(aCount);
+    if (buffer == NULL)
+      return NS_ERROR_OUT_OF_MEMORY;
+    NS_ASSERTION((mChannelData.Length() == (aOffset + aCount)),
+      "stream length mismatch w/write buffer");
+
+    // Read() may not return aCount on a single call, so loop until we've
+    // accumulated all the data OnDataAvailable has promised.
+    nsresult rv;
+    PRUint32 odaBytesReadTotal = 0;
+    do {
+      PRUint32 bytesReadByCall = 0;
+      rv = aInputStream->Read((char*)(buffer + odaBytesReadTotal),
+                              aCount, &bytesReadByCall);
+      odaBytesReadTotal += bytesReadByCall;
+    } while (aCount < odaBytesReadTotal && NS_SUCCEEDED(rv));
+    return rv;
 }
 
-//-----------------------------------------------------------------------------
-STDMETHODIMP_(ULONG) nsDataObj::CStream::Release(void)
+NS_IMETHODIMP nsDataObj::CStream::OnStartRequest(nsIRequest *aRequest,
+                                                 nsISupports *aContext)
 {
-  ULONG nCount = --mRefCount;
-  if (nCount == 0)
-  {
-    delete this;
-    return (ULONG)0;
+    mChannelResult = NS_OK;
+    return NS_OK;
+}
+
+NS_IMETHODIMP nsDataObj::CStream::OnStopRequest(nsIRequest *aRequest,
+                                                nsISupports *aContext,
+                                                nsresult aStatusCode)
+{
+    mChannelRead = true;
+    mChannelResult = aStatusCode;
+    return NS_OK;
+}
+
+// Pumps thread messages while waiting for the async listener operation to
+// complete. Failing this call will fail the stream incall from Windows
+// and cancel the operation.
+nsresult nsDataObj::CStream::WaitForCompletion()
+{
+  // We are guaranteed OnStopRequest will get called, so this should be ok.
+  while (!mChannelRead) {
+    // Pump messages
+    NS_ProcessNextEvent(nsnull, true);
   }
 
-  return mRefCount;
+  if (!mChannelData.Length())
+    mChannelResult = NS_ERROR_FAILURE;
+
+  return mChannelResult;
 }
 
 //-----------------------------------------------------------------------------
@@ -197,20 +242,19 @@ STDMETHODIMP nsDataObj::CStream::Read(void* pvBuffer,
                                       ULONG nBytesToRead,
                                       ULONG* nBytesRead)
 {
-  NS_ENSURE_TRUE(mInputStream, E_FAIL);
+  // Wait for the write into our buffer to complete via the stream listener.
+  // We can't respond to this by saying "call us back later".
+  if (NS_FAILED(WaitForCompletion()))
+    return E_FAIL;
 
-  nsresult rv;
-  PRUint32 read;
-  *nBytesRead = 0;
-
-  do {
-    read = 0;
-    rv = mInputStream->Read((char*)pvBuffer + *nBytesRead, nBytesToRead - *nBytesRead, &read);
-    NS_ENSURE_SUCCESS(rv, S_FALSE);
-
-    *nBytesRead += read;
-  } while ((*nBytesRead < nBytesToRead) && read);
-
+  // Bytes left for Windows to read out of our buffer
+  ULONG bytesLeft = mChannelData.Length() - mStreamRead;
+  // Let Windows know what we will hand back, usually this is the entire buffer
+  *nBytesRead = NS_MIN(bytesLeft, nBytesToRead);
+  // Copy the buffer data over
+  memcpy(pvBuffer, ((char*)mChannelData.Elements() + mStreamRead), *nBytesRead);
+  // Update our bytes read tracking
+  mStreamRead += *nBytesRead;
   return S_OK;
 }
 
@@ -250,7 +294,7 @@ STDMETHODIMP nsDataObj::CStream::Stat(STATSTG* statstg, DWORD dwFlags)
   if (statstg == NULL)
     return STG_E_INVALIDPOINTER;
 
-  if (!mChannel)
+  if (!mChannel || NS_FAILED(WaitForCompletion()))
     return E_FAIL;
 
   memset((void*)statstg, 0, sizeof(STATSTG));
@@ -290,14 +334,7 @@ STDMETHODIMP nsDataObj::CStream::Stat(STATSTG* statstg, DWORD dwFlags)
   SystemTimeToFileTime((const SYSTEMTIME*)&st, (LPFILETIME)&statstg->mtime);
   statstg->ctime = statstg->atime = statstg->mtime;
 
-  PRInt32 nLength = 0;
-  if (mChannel)
-    mChannel->GetContentLength(&nLength);
-
-  if (nLength < 0) 
-    nLength = 0;
-
-  statstg->cbSize.LowPart = (DWORD)nLength;
+  statstg->cbSize.LowPart = (DWORD)mChannelData.Length();
   statstg->grfMode = STGM_READ;
   statstg->grfLocksSupported = LOCK_ONLYONCE;
   statstg->clsid = CLSID_NULL;
@@ -336,6 +373,8 @@ HRESULT nsDataObj::CreateStream(IStream **outStream)
 
   nsDataObj::CStream *pStream = new nsDataObj::CStream();
   NS_ENSURE_TRUE(pStream, E_OUTOFMEMORY);
+
+  pStream->AddRef();
 
   rv = pStream->Init(sourceURI);
   if (NS_FAILED(rv))
@@ -449,7 +488,7 @@ STDMETHODIMP_(ULONG) nsDataObj::Release()
                                    500, nsITimer::TYPE_ONE_SHOT);
       return AddRef();
     }
-    mCachedTempFile->Remove(PR_FALSE);
+    mCachedTempFile->Remove(false);
     mCachedTempFile = NULL;
   }
 
@@ -524,18 +563,19 @@ STDMETHODIMP nsDataObj::GetData(LPFORMATETC aFormat, LPSTGMEDIUM pSTM)
 
       default:
         if ( format == fileDescriptorFlavorA )
-          return GetFileDescriptor ( *aFormat, *pSTM, PR_FALSE );
+          return GetFileDescriptor ( *aFormat, *pSTM, false );
         if ( format == fileDescriptorFlavorW )
-          return GetFileDescriptor ( *aFormat, *pSTM, PR_TRUE);
+          return GetFileDescriptor ( *aFormat, *pSTM, true);
         if ( format == uniformResourceLocatorA )
-          return GetUniformResourceLocator( *aFormat, *pSTM, PR_FALSE);
+          return GetUniformResourceLocator( *aFormat, *pSTM, false);
         if ( format == uniformResourceLocatorW )
-          return GetUniformResourceLocator( *aFormat, *pSTM, PR_TRUE);
+          return GetUniformResourceLocator( *aFormat, *pSTM, true);
         if ( format == fileFlavor )
           return GetFileContents ( *aFormat, *pSTM );
         if ( format == PreferredDropEffect )
           return GetPreferredDropEffect( *aFormat, *pSTM );
-        //printf("***** nsDataObj::GetData - Unknown format %u\n", format);
+        //PR_LOG(gWindowsLog, PR_LOG_ALWAYS, 
+        //       ("***** nsDataObj::GetData - Unknown format %u\n", format));
         return GetText(df, *aFormat, *pSTM);
       } //switch
     } // if
@@ -600,7 +640,7 @@ STDMETHODIMP nsDataObj::SetData(LPFORMATETC aFormat, LPSTGMEDIUM aMedium, BOOL s
       memset(&pde->stgm, 0, sizeof(STGMEDIUM));
     }
 
-    PRBool result = PR_TRUE;
+    bool result = true;
     if (shouldRel) {
       // If shouldRel is TRUE, the data object called owns the storage medium
       // after the call returns. Store the incoming data in our data array for
@@ -623,13 +663,13 @@ STDMETHODIMP nsDataObj::SetData(LPFORMATETC aFormat, LPSTGMEDIUM aMedium, BOOL s
   return S_OK;
 }
 
-PRBool
+bool
 nsDataObj::LookupArbitraryFormat(FORMATETC *aFormat, LPDATAENTRY *aDataEntry, BOOL aAddorUpdate)
 {
   *aDataEntry = NULL;
 
   if (aFormat->ptd != NULL)
-    return PR_FALSE;
+    return false;
 
   // See if it's already in our list. If so return the data entry.
   for (PRUint32 idx = 0; idx < mDataEntryList.Length(); idx++) {
@@ -640,21 +680,21 @@ nsDataObj::LookupArbitraryFormat(FORMATETC *aFormat, LPDATAENTRY *aDataEntry, BO
         // If the caller requests we update, or if the 
         // medium type matches, return the entry. 
         *aDataEntry = mDataEntryList[idx];
-        return PR_TRUE;
+        return true;
       } else {
         // Medium does not match, not found.
-        return PR_FALSE;
+        return false;
       }
     }
   }
 
   if (!aAddorUpdate)
-    return PR_FALSE;
+    return false;
 
   // Add another entry to mDataEntryList
   LPDATAENTRY dataEntry = (LPDATAENTRY)CoTaskMemAlloc(sizeof(DATAENTRY));
   if (!dataEntry)
-    return PR_FALSE;
+    return false;
   
   dataEntry->fe = *aFormat;
   *aDataEntry = dataEntry;
@@ -667,10 +707,10 @@ nsDataObj::LookupArbitraryFormat(FORMATETC *aFormat, LPDATAENTRY *aDataEntry, BO
   // Store a copy internally in the arbitrary formats array.
   mDataEntryList.AppendElement(dataEntry);
 
-  return PR_TRUE;
+  return true;
 }
 
-PRBool
+bool
 nsDataObj::CopyMediumData(STGMEDIUM *aMediumDst, STGMEDIUM *aMediumSrc, LPFORMATETC aFormat, BOOL aSetData)
 {
   STGMEDIUM stgmOut = *aMediumSrc;
@@ -686,10 +726,10 @@ nsDataObj::CopyMediumData(STGMEDIUM *aMediumDst, STGMEDIUM *aMediumSrc, LPFORMAT
       if (!aMediumSrc->pUnkForRelease) {
         if (aSetData) {
           if (aMediumSrc->tymed != TYMED_HGLOBAL)
-            return PR_FALSE;
+            return false;
           stgmOut.hGlobal = OleDuplicateData(aMediumSrc->hGlobal, aFormat->cfFormat, 0);
           if (!stgmOut.hGlobal)
-            return PR_FALSE;
+            return false;
         } else {
           // We are returning this data from LookupArbitraryFormat, indicate to the
           // shell we hold it and will free it.
@@ -698,7 +738,7 @@ nsDataObj::CopyMediumData(STGMEDIUM *aMediumDst, STGMEDIUM *aMediumSrc, LPFORMAT
       }
     break;
     default:
-      return PR_FALSE;
+      return false;
   }
 
   if (stgmOut.pUnkForRelease)
@@ -706,7 +746,7 @@ nsDataObj::CopyMediumData(STGMEDIUM *aMediumDst, STGMEDIUM *aMediumSrc, LPFORMAT
 
   *aMediumDst = stgmOut;
 
-  return PR_TRUE;
+  return true;
 }
 
 //-----------------------------------------------------
@@ -846,7 +886,7 @@ nsDataObj :: GetDib ( const nsACString& inFlavor, FORMATETC &, STGMEDIUM & aSTG 
 //
 
 HRESULT 
-nsDataObj :: GetFileDescriptor ( FORMATETC& aFE, STGMEDIUM& aSTG, PRBool aIsUnicode )
+nsDataObj :: GetFileDescriptor ( FORMATETC& aFE, STGMEDIUM& aSTG, bool aIsUnicode )
 {
   HRESULT res = S_OK;
   
@@ -912,9 +952,9 @@ MangleTextToValidFilename(nsString & aText)
   };
 
   aText.StripChars(FILE_PATH_SEPARATOR  FILE_ILLEGAL_CHARACTERS);
-  aText.CompressWhitespace(PR_TRUE, PR_TRUE);
+  aText.CompressWhitespace(true, true);
   PRUint32 nameLen;
-  for (size_t n = 0; n < NS_ARRAY_LENGTH(forbiddenNames); ++n) {
+  for (size_t n = 0; n < ArrayLength(forbiddenNames); ++n) {
     nameLen = (PRUint32) strlen(forbiddenNames[n]);
     if (aText.EqualsIgnoreCase(forbiddenNames[n], nameLen)) {
       // invalid name is either the entire string, or a prefix with a period
@@ -933,7 +973,7 @@ MangleTextToValidFilename(nsString & aText)
 //
 // It would seem that this is more functionality suited to being in nsILocalFile.
 //
-static PRBool
+static bool
 CreateFilenameFromTextA(nsString & aText, const char * aExtension, 
                          char * aFilename, PRUint32 aFilenameLen)
 {
@@ -942,7 +982,7 @@ CreateFilenameFromTextA(nsString & aText, const char * aExtension,
   // text empty.
   MangleTextToValidFilename(aText);
   if (aText.IsEmpty())
-    return PR_FALSE;
+    return false;
 
   // repeatably call WideCharToMultiByte as long as the title doesn't fit in the buffer 
   // available to us. Continually reduce the length of the source title until the MBCS
@@ -960,15 +1000,15 @@ CreateFilenameFromTextA(nsString & aText, const char * aExtension,
   while (currLen == 0 && textLen > 0 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
   if (currLen > 0 && textLen > 0) {
     strcpy(&aFilename[currLen], aExtension);
-    return PR_TRUE;
+    return true;
   }
   else {
     // empty names aren't permitted
-    return PR_FALSE;
+    return false;
   }
 }
 
-static PRBool
+static bool
 CreateFilenameFromTextW(nsString & aText, const wchar_t * aExtension, 
                          wchar_t * aFilename, PRUint32 aFilenameLen)
 {
@@ -977,31 +1017,31 @@ CreateFilenameFromTextW(nsString & aText, const wchar_t * aExtension,
   // text empty.
   MangleTextToValidFilename(aText);
   if (aText.IsEmpty())
-    return PR_FALSE;
+    return false;
 
   const int extensionLen = wcslen(aExtension);
   if (aText.Length() + extensionLen + 1 > aFilenameLen)
     aText.Truncate(aFilenameLen - extensionLen - 1);
   wcscpy(&aFilename[0], aText.get());
   wcscpy(&aFilename[aText.Length()], aExtension);
-  return PR_TRUE;
+  return true;
 }
 
 #define PAGEINFO_PROPERTIES "chrome://navigator/locale/pageInfo.properties"
 
-static PRBool
+static bool
 GetLocalizedString(const PRUnichar * aName, nsXPIDLString & aString)
 {
   nsCOMPtr<nsIStringBundleService> stringService =
     mozilla::services::GetStringBundleService();
   if (!stringService)
-    return PR_FALSE;
+    return false;
 
   nsCOMPtr<nsIStringBundle> stringBundle;
   nsresult rv = stringService->CreateBundle(PAGEINFO_PROPERTIES,
                                             getter_AddRefs(stringBundle));
   if (NS_FAILED(rv))
-    return PR_FALSE;
+    return false;
 
   rv = stringBundle->GetStringFromName(aName, getter_Copies(aString));
   return NS_SUCCEEDED(rv);
@@ -1142,15 +1182,15 @@ nsDataObj :: GetFileContentsInternetShortcut ( FORMATETC& aFE, STGMEDIUM& aSTG )
 } // GetFileContentsInternetShortcut
 
 // check if specified flavour is present in the transferable
-PRBool nsDataObj :: IsFlavourPresent(const char *inFlavour)
+bool nsDataObj :: IsFlavourPresent(const char *inFlavour)
 {
-  PRBool retval = PR_FALSE;
-  NS_ENSURE_TRUE(mTransferable, PR_FALSE);
+  bool retval = false;
+  NS_ENSURE_TRUE(mTransferable, false);
   
   // get the list of flavors available in the transferable
   nsCOMPtr<nsISupportsArray> flavorList;
   mTransferable->FlavorsTransferableCanExport(getter_AddRefs(flavorList));
-  NS_ENSURE_TRUE(flavorList, PR_FALSE);
+  NS_ENSURE_TRUE(flavorList, false);
 
   // try to find requested flavour
   PRUint32 cnt;
@@ -1163,7 +1203,7 @@ PRBool nsDataObj :: IsFlavourPresent(const char *inFlavour)
       nsCAutoString flavorStr;
       currentFlavor->GetData(flavorStr);
       if (flavorStr.Equals(inFlavour)) {
-        retval = PR_TRUE;         // found it!
+        retval = true;         // found it!
         break;
       }
     }
@@ -1895,7 +1935,7 @@ nsDataObj :: BuildPlatformHTML ( const char* inOurHTML, char** outPlatformHTML )
 }
 
 HRESULT 
-nsDataObj :: GetUniformResourceLocator( FORMATETC& aFE, STGMEDIUM& aSTG, PRBool aIsUnicode )
+nsDataObj :: GetUniformResourceLocator( FORMATETC& aFE, STGMEDIUM& aSTG, bool aIsUnicode )
 {
   HRESULT res = S_OK;
   if (IsFlavourPresent(kURLMime)) {
@@ -2108,7 +2148,7 @@ void nsDataObj::RemoveTempFile(nsITimer* aTimer, void* aClosure)
 {
   nsDataObj *timedDataObj = static_cast<nsDataObj *>(aClosure);
   if (timedDataObj->mCachedTempFile) {
-    timedDataObj->mCachedTempFile->Remove(PR_FALSE);
+    timedDataObj->mCachedTempFile->Remove(false);
     timedDataObj->mCachedTempFile = NULL;
   }
   timedDataObj->Release();

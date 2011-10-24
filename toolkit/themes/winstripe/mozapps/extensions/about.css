@@ -15,6 +15,10 @@
     -moz-appearance: -moz-win-glass;
     background: transparent;
   }
+
+  #clientBox {
+    -moz-appearance: -moz-win-exclude-glass;
+  }
 }
 
 
@@ -39,6 +43,10 @@
 
 #genericAbout[addontype="plugin"] #extensionIcon {
   list-style-image: url("chrome://mozapps/skin/plugins/pluginGeneric.png");
+}
+
+#genericAbout[addontype="dictionary"] #extensionIcon {
+  list-style-image: url("chrome://mozapps/skin/extensions/dictionaryGeneric.png");
 }
 
 #extensionName {

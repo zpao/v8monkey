@@ -52,8 +52,9 @@
 <wizard xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
         id="wizard"
-        title="&addDevice.title.label;"
+        title="&pairDevice.title.label;"
         windowtype="Sync:AddDevice"
+        persist="screenX screenY"
         onwizardnext="return gSyncAddDevice.onWizardAdvance();"
         onwizardback="return gSyncAddDevice.onWizardBack();"
         onwizardcancel="gSyncAddDevice.onWizardCancel();"
@@ -69,10 +70,10 @@
           src="chrome://global/content/printUtils.js"/>
 
   <wizardpage id="addDevicePage"
-              label="&addDevice.title.label;"
+              label="&pairDevice.title.label;"
               onpageshow="gSyncAddDevice.onPageShow();">
     <description>
-      &addDevice.dialog.description.label;
+      &pairDevice.dialog.description.label;
       <label class="text-link"
              value="&addDevice.showMeHow.label;"
              href="https://services.mozilla.com/sync/help/add-device"/>
@@ -100,7 +101,7 @@
               />
     </vbox>
     <separator class="groove-thin"/>
-    <vbox id="add-device-throbber" align="center" hidden="true">
+    <vbox id="pairDeviceThrobber" align="center" hidden="true">
       <image/>
     </vbox>
     <hbox id="errorRow" pack="center" hidden="true">
@@ -119,20 +120,20 @@
               label=" "
               onpageshow="gSyncAddDevice.onPageShow();">
     <description>
-      &addDevice.dialog.syncKey.label;
+      &addDevice.dialog.recoveryKey.label;
     </description>
     <spacer/>
 
     <groupbox>
-      <label value="&syncKeyEntry.label;"
-             accesskey="&syncKeyEntry.accesskey;"
+      <label value="&recoveryKeyEntry.label;"
+             accesskey="&recoveryKeyEntry.accesskey;"
              control="weavePassphrase"/>
       <textbox id="weavePassphrase"
                readonly="true"/>
     </groupbox>
 
     <groupbox align="center">
-      <description>&syncKeyBackup.description;</description>
+      <description>&recoveryKeyBackup.description;</description>
       <hbox>
         <button id="printSyncKeyButton"
                 label="&button.syncKeyBackup.print.label;"

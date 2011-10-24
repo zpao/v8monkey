@@ -51,6 +51,9 @@ const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cr = Components.results;
 
+const UPDATESERVICE_CID = Components.ID("{B3C290A6-3943-4B89-8BBE-C01EB7B3B311}");
+const UPDATESERVICE_CONTRACTID = "@mozilla.org/updates/update-service;1";
+
 const PREF_APP_UPDATE_ALTWINDOWTYPE       = "app.update.altwindowtype";
 const PREF_APP_UPDATE_AUTO                = "app.update.auto";
 const PREF_APP_UPDATE_BACKGROUND_INTERVAL = "app.update.download.backgroundInterval";
@@ -175,6 +178,10 @@ XPCOMUtils.defineLazyGetter(this, "gABI", function aus_gABI() {
 
   if (macutils.isUniversalBinary)
     abi += "-u-" + macutils.architecturesInBinary;
+#ifdef MOZ_SHARK
+  // Disambiguate optimised and shark nightlies
+  abi += "-shark"
+#endif
 #endif
   return abi;
 });
@@ -495,7 +502,10 @@ function writeVersionFile(dir, version) {
 function createChannelChangeFile(dir) {
   var channelChangeFile = dir.clone();
   channelChangeFile.append(FILE_CHANNELCHANGE);
-  channelChangeFile.create(Ci.nsILocalFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);
+  if (!channelChangeFile.exists()) {
+    channelChangeFile.create(Ci.nsILocalFile.NORMAL_FILE_TYPE,
+                             FileUtils.PERMS_FILE);
+  }
 }
 
 /**
@@ -536,7 +546,7 @@ function cleanUpUpdatesDir() {
             dir.path + " and rename it to " + FILE_LAST_LOG);
       }
     }
-    // Now, recursively remove this file.  The recusive removal is really
+    // Now, recursively remove this file.  The recursive removal is really
     // only needed on Mac OSX because this directory will contain a copy of
     // updater.app, which is itself a directory.
     try {
@@ -1175,6 +1185,7 @@ UpdateService.prototype = {
     case "xpcom-shutdown":
       Services.obs.removeObserver(this, "xpcom-shutdown");
 
+      this.pauseDownload();
       // Prevent leaking the downloader (bug 454964)
       this._downloader = null;
       break;
@@ -1372,8 +1383,8 @@ UpdateService.prototype = {
       return null;
 
     if (getDesiredChannel()) {
-      LOG("Checker:selectUpdate - skipping version checks for change change " +
-          "request");
+      LOG("UpdateService:selectUpdate - skipping version checks for channel " +
+          "change request");
       return updates[0];
     }
 
@@ -1388,8 +1399,9 @@ UpdateService.prototype = {
       if (vc.compare(aUpdate.appVersion, Services.appinfo.version) < 0 ||
           vc.compare(aUpdate.appVersion, Services.appinfo.version) == 0 &&
           aUpdate.buildID == Services.appinfo.appBuildID) {
-        LOG("Checker:selectUpdate - skipping update because the update's " +
-            "application version is less than the current application version");
+        LOG("UpdateService:selectUpdate - skipping update because the " +
+            "update's application version is less than the current " +
+            "application version");
         return;
       }
 
@@ -1399,7 +1411,7 @@ UpdateService.prototype = {
       let neverPrefName = PREF_APP_UPDATE_NEVER_BRANCH + aUpdate.appVersion;
       if (aUpdate.showNeverForVersion &&
           getPref("getBoolPref", neverPrefName, false)) {
-        LOG("Checker:selectUpdate - skipping update because the " +
+        LOG("UpdateService:selectUpdate - skipping update because the " +
             "preference " + neverPrefName + " is true");
         return;
       }
@@ -1418,7 +1430,7 @@ UpdateService.prototype = {
             minorUpdate = aUpdate;
           break;
         default:
-          LOG("Checker:selectUpdate - skipping unknown update type: " +
+          LOG("UpdateService:selectUpdate - skipping unknown update type: " +
               aUpdate.type);
           break;
       }
@@ -1453,14 +1465,14 @@ UpdateService.prototype = {
 
     var updateEnabled = getPref("getBoolPref", PREF_APP_UPDATE_ENABLED, true);
     if (!updateEnabled) {
-      LOG("Checker:_selectAndInstallUpdate - not prompting because update is " +
-          "disabled");
+      LOG("UpdateService:_selectAndInstallUpdate - not prompting because " +
+          "update is disabled");
       return;
     }
 
     if (!gCanApplyUpdates) {
-      LOG("Checker:_selectAndInstallUpdate - the user is unable to apply " +
-          "updates... prompting");
+      LOG("UpdateService:_selectAndInstallUpdate - the user is unable to " +
+          "apply updates... prompting");
       this._showPrompt(update);
       return;
     }
@@ -1492,14 +1504,14 @@ UpdateService.prototype = {
 #      Minor         1      No                     Auto Install
      */
     if (update.showPrompt) {
-      LOG("Checker:_selectAndInstallUpdate - prompting because the update " +
-          "snippet specified showPrompt");
+      LOG("UpdateService:_selectAndInstallUpdate - prompting because the " +
+          "update snippet specified showPrompt");
       this._showPrompt(update);
       return;
     }
 
     if (!getPref("getBoolPref", PREF_APP_UPDATE_AUTO, true)) {
-      LOG("Checker:_selectAndInstallUpdate - prompting because silent " +
+      LOG("UpdateService:_selectAndInstallUpdate - prompting because silent " +
           "install is disabled");
       this._showPrompt(update);
       return;
@@ -1653,8 +1665,8 @@ UpdateService.prototype = {
       return;
 
     if (this._incompatibleAddons.length > 0 || !gCanApplyUpdates) {
-      LOG("Checker:onUpdateEnded - prompting because there are incompatible " +
-          "add-ons");
+      LOG("UpdateService:onUpdateEnded - prompting because there are " +
+          "incompatible add-ons");
       this._showPrompt(this._update);
     }
     else {
@@ -1742,6 +1754,7 @@ UpdateService.prototype = {
       return STATE_NONE;
     }
 
+    // If a download request is in progress vs. a download ready to resume
     if (this.isDownloading) {
       if (update.isCompleteUpdate == this._downloader.isCompleteUpdate &&
           background == this._downloader.background) {
@@ -1772,19 +1785,14 @@ UpdateService.prototype = {
     return this._downloader && this._downloader.isBusy;
   },
 
-  // nsIClassInfo
-  flags: Ci.nsIClassInfo.SINGLETON,
-  implementationLanguage: Ci.nsIProgrammingLanguage.JAVASCRIPT,
-  getHelperForLanguage: function(language) null,
-  getInterfaces: function AUS_getInterfaces(count) {
-    var interfaces = [Ci.nsIApplicationUpdateService,
-                      Ci.nsITimerCallback,
-                      Ci.nsIObserver];
-    count.value = interfaces.length;
-    return interfaces;
-  },
+  classID: UPDATESERVICE_CID,
+  classInfo: XPCOMUtils.generateCI({classID: UPDATESERVICE_CID,
+                                    contractID: UPDATESERVICE_CONTRACTID,
+                                    interfaces: [Ci.nsIApplicationUpdateService,
+                                                 Ci.nsITimerCallback,
+                                                 Ci.nsIObserver],
+                                    flags: Ci.nsIClassInfo.SINGLETON}),
 
-  classID: Components.ID("{B3C290A6-3943-4B89-8BBE-C01EB7B3B311}"),
   _xpcom_factory: UpdateServiceFactory,
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIApplicationUpdateService,
                                          Ci.nsIAddonUpdateCheckListener,
@@ -2128,8 +2136,17 @@ Checker.prototype = {
     if (!url || (!this.enabled && !force))
       return;
 
+    // If the user changes the update channel there can be leftover files from
+    // a previous download so clean the updates directory for manual checks.
+    if (force)
+      cleanUpUpdatesDir();
+
     this._request = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].
-                    createInstance(Ci.nsIXMLHttpRequest);
+                    createInstance(Ci.nsISupports);
+    // This is here to let unit test code override XHR
+    if (this._request.wrappedJSObject) {
+      this._request = this._request.wrappedJSObject;
+    }
     this._request.open("GET", url, true);
     var allowNonBuiltIn = !getPref("getBoolPref",
                                    PREF_APP_UPDATE_CERT_REQUIREBUILTIN, true);
@@ -2138,9 +2155,9 @@ Checker.prototype = {
     this._request.setRequestHeader("Cache-Control", "no-cache");
 
     var self = this;
-    this._request.onerror     = function(event) { self.onError(event);    };
-    this._request.onload      = function(event) { self.onLoad(event);     };
-    this._request.onprogress  = function(event) { self.onProgress(event); };
+    this._request.addEventListener("error", function(event) { self.onError(event); } ,false);
+    this._request.addEventListener("load", function(event) { self.onLoad(event); }, false);
+    this._request.addEventListener("progress", function(event) { self.onProgress(event); }, false);
 
     LOG("Checker:checkForUpdates - sending request to: " + url);
     this._request.send(null);
@@ -2730,7 +2747,8 @@ Downloader.prototype = {
       }
     }
     else if (status != Cr.NS_BINDING_ABORTED &&
-             status != Cr.NS_ERROR_ABORT) {
+             status != Cr.NS_ERROR_ABORT &&
+             status != Cr.NS_ERROR_DOCUMENT_NOT_CACHED) {
       LOG("Downloader:onStopRequest - non-verification failure");
       // Some sort of other failure, log this in the |statusText| property
       state = STATE_DOWNLOAD_FAILED;
@@ -2738,9 +2756,8 @@ Downloader.prototype = {
       // XXXben - if |request| (The Incremental Download) provided a means
       // for accessing the http channel we could do more here.
 
-      const NS_BINDING_FAILED = 2152398849;
       this._update.statusText = getStatusTextFromCode(status,
-        NS_BINDING_FAILED);
+                                                      Cr.NS_BINDING_FAILED);
 
       // Destroy the updates directory, since we're done with it.
       cleanUpUpdatesDir();

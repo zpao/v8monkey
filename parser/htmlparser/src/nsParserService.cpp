@@ -49,7 +49,7 @@ extern "C" int MOZ_XMLCheckQName(const char* ptr, const char* end,
 
 nsParserService::nsParserService() : mEntries(0)
 {
-  mHaveNotifiedCategoryObservers = PR_FALSE;
+  mHaveNotifiedCategoryObservers = false;
 }
 
 nsParserService::~nsParserService()
@@ -114,7 +114,7 @@ nsParserService::HTMLConvertUnicodeToEntity(PRInt32 aUnicode,
 }
 
 NS_IMETHODIMP
-nsParserService::IsContainer(PRInt32 aId, PRBool& aIsContainer) const
+nsParserService::IsContainer(PRInt32 aId, bool& aIsContainer) const
 {
   aIsContainer = nsHTMLElement::IsContainer((eHTMLTags)aId);
 
@@ -122,7 +122,7 @@ nsParserService::IsContainer(PRInt32 aId, PRBool& aIsContainer) const
 }
 
 NS_IMETHODIMP
-nsParserService::IsBlock(PRInt32 aId, PRBool& aIsBlock) const
+nsParserService::IsBlock(PRInt32 aId, bool& aIsBlock) const
 {
   if((aId>eHTMLTag_unknown) && (aId<eHTMLTag_userdefined)) {
     aIsBlock=((gHTMLElements[aId].IsMemberOf(kBlock))       ||
@@ -132,7 +132,7 @@ nsParserService::IsBlock(PRInt32 aId, PRBool& aIsBlock) const
               (gHTMLElements[aId].IsMemberOf(kList)));
   }
   else {
-    aIsBlock = PR_FALSE;
+    aIsBlock = false;
   }
 
   return NS_OK;
@@ -194,7 +194,7 @@ nsParserService::GetTopicObservers(const nsAString& aTopic,
 
 nsresult
 nsParserService::CheckQName(const nsAString& aQName,
-                            PRBool aNamespaceAware,
+                            bool aNamespaceAware,
                             const PRUnichar** aColon)
 {
   const char* colon;
@@ -221,9 +221,9 @@ nsParserService::CheckQName(const nsAString& aQName,
 class nsMatchesTopic : public nsDequeFunctor{
   const nsAString& mString;
 public:
-  PRBool matched;
+  bool matched;
   nsObserverEntry* entry;
-  nsMatchesTopic(const nsAString& aString):mString(aString),matched(PR_FALSE){}
+  nsMatchesTopic(const nsAString& aString):mString(aString),matched(false){}
   virtual void* operator()(void* anObject){
     entry=static_cast<nsObserverEntry*>(anObject);
     matched=mString.Equals(entry->mTopic);
@@ -236,7 +236,7 @@ nsObserverEntry*
 nsParserService::GetEntry(const nsAString& aTopic)
 {
   if (!mHaveNotifiedCategoryObservers) {
-    mHaveNotifiedCategoryObservers = PR_TRUE;
+    mHaveNotifiedCategoryObservers = true;
     NS_CreateServicesFromCategory("parser-service-category",
                                   static_cast<nsISupports*>(static_cast<void*>(this)),
                                   "parser-service-start"); 

@@ -69,6 +69,8 @@
 #include "nsFrame.h"
 #include "nsGkAtoms.h"
 
+class nsLineBox;
+
 nsIFrame* NS_NewPlaceholderFrame(nsIPresShell* aPresShell,
                                  nsStyleContext* aContext,
                                  nsFrameState aTypeBit);
@@ -160,10 +162,10 @@ public:
   NS_IMETHOD GetFrameName(nsAString& aResult) const;
 #endif
 
-  virtual PRBool IsEmpty() { return PR_TRUE; }
-  virtual PRBool IsSelfEmpty() { return PR_TRUE; }
+  virtual bool IsEmpty() { return true; }
+  virtual bool IsSelfEmpty() { return true; }
 
-  virtual PRBool CanContinueTextRun() const;
+  virtual bool CanContinueTextRun() const;
 
 #ifdef ACCESSIBILITY
   virtual already_AddRefed<nsAccessible> CreateAccessible()
@@ -174,9 +176,8 @@ public:
   }
 #endif
 
-  NS_IMETHOD GetParentStyleContextFrame(nsPresContext* aPresContext,
-                                        nsIFrame**      aProviderFrame,
-                                        PRBool*         aIsChild);
+  virtual nsIFrame* GetParentStyleContextFrame();
+
   /**
    * @return the out-of-flow for aFrame if aFrame is a placeholder; otherwise
    * aFrame
@@ -201,8 +202,17 @@ public:
     return outOfFlow;
   }
 
+  // GetCachedLineBox is only OK to call if you're sure this
+  // placeholder has has Reflow() called since any changes to the
+  // frame tree that could have affected which line box the
+  // placeholder is in.
+  const nsLineBox* GetCachedLineBox() const {
+    return mCachedLineBox;
+  }
+
 protected:
   nsIFrame* mOutOfFlowFrame;
+  nsLineBox* mCachedLineBox;
 };
 
 #endif /* nsPlaceholderFrame_h___ */

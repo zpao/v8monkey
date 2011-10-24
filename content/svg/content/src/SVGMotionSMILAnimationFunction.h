@@ -56,18 +56,18 @@ class SVGMotionSMILAnimationFunction : public nsSMILAnimationFunction
 {
 public:
   SVGMotionSMILAnimationFunction();
-  NS_OVERRIDE virtual PRBool SetAttr(nsIAtom* aAttribute,
+  NS_OVERRIDE virtual bool SetAttr(nsIAtom* aAttribute,
                                      const nsAString& aValue,
                                      nsAttrValue& aResult,
                                      nsresult* aParseResult = nsnull);
-  NS_OVERRIDE virtual PRBool UnsetAttr(nsIAtom* aAttribute);
+  NS_OVERRIDE virtual bool UnsetAttr(nsIAtom* aAttribute);
 
   // Method to allow our owner-element to signal us when our <mpath>
   // has changed or been added/removed.  When that happens, we need to
   // mark ourselves as changed so we'll get recomposed, and mark our path data
   // as stale so it'll get regenerated (regardless of mPathSourceType, since
   // <mpath> trumps all the other sources of path data)
-  void MpathChanged() { mIsPathStale = mHasChanged = PR_TRUE; }
+  void MpathChanged() { mIsPathStale = mHasChanged = true; }
 
 protected:
   enum PathSourceType {
@@ -85,7 +85,8 @@ protected:
   NS_OVERRIDE virtual nsresult GetValues(const nsISMILAttr& aSMILAttr,
                                          nsSMILValueArray& aResult);
   NS_OVERRIDE virtual void CheckValueListDependentAttrs(PRUint32 aNumValues);
-  NS_OVERRIDE virtual PRBool TreatSingleValueAsStatic() const;
+
+  NS_OVERRIDE virtual bool IsToAnimation() const;
 
   void     CheckKeyPoints();
   nsresult SetKeyPoints(const nsAString& aKeyPoints, nsAttrValue& aResult);
@@ -99,8 +100,8 @@ protected:
   void     RebuildPathAndVerticesFromMpathElem(nsSVGMpathElement* aMpathElem);
   void     RebuildPathAndVerticesFromPathAttr();
   void     RebuildPathAndVerticesFromBasicAttrs(const nsIContent* aContextElem);
-  PRBool   GenerateValuesForPathAndPoints(gfxFlattenedPath* aPath,
-                                          PRBool aIsKeyPoints,
+  bool     GenerateValuesForPathAndPoints(gfxFlattenedPath* aPath,
+                                          bool aIsKeyPoints,
                                           nsTArray<double>& aPointDistances,
                                           nsTArray<nsSMILValue>& aResult);
 
@@ -115,7 +116,7 @@ protected:
   nsRefPtr<gfxFlattenedPath> mPath;           // representation of motion path.
   nsTArray<double>           mPathVertices; // distances of vertices along path.
 
-  PRPackedBool               mIsPathStale;
+  bool                       mIsPathStale;
 };
 
 } // namespace mozilla

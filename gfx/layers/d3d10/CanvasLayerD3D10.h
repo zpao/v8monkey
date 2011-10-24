@@ -53,9 +53,9 @@ public:
   CanvasLayerD3D10(LayerManagerD3D10 *aManager)
     : CanvasLayer(aManager, NULL)
     , LayerD3D10(aManager)
-    , mDataIsPremultiplied(PR_FALSE)
-    , mNeedsYFlip(PR_FALSE)
-    , mHasAlpha(PR_TRUE)
+    , mDataIsPremultiplied(false)
+    , mNeedsYFlip(false)
+    , mHasAlpha(true)
   {
       mImplData = static_cast<LayerD3D10*>(this);
   }
@@ -75,17 +75,18 @@ private:
   void UpdateSurface();
 
   nsRefPtr<gfxASurface> mSurface;
+  mozilla::RefPtr<mozilla::gfx::DrawTarget> mDrawTarget;
   nsRefPtr<GLContext> mGLContext;
   nsRefPtr<ID3D10Texture2D> mTexture;
   nsRefPtr<ID3D10ShaderResourceView> mSRView;
 
   PRUint32 mCanvasFramebuffer;
 
-  PRPackedBool mDataIsPremultiplied;
-  PRPackedBool mNeedsYFlip;
-  PRPackedBool mIsD2DTexture;
-  PRPackedBool mUsingSharedTexture;
-  PRPackedBool mHasAlpha;
+  bool mDataIsPremultiplied;
+  bool mNeedsYFlip;
+  bool mIsD2DTexture;
+  bool mUsingSharedTexture;
+  bool mHasAlpha;
 };
 
 } /* layers */

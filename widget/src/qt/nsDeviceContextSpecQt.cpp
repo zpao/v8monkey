@@ -56,11 +56,8 @@
 
 #include "nsDeviceContextSpecQt.h"
 
-#include "nsIPrefService.h"
-#include "nsIPrefBranch.h"
 #include "prenv.h" /* for PR_GetEnv */
 
-#include "nsPrintfCString.h"
 #include "nsReadableUtils.h"
 #include "nsStringEnumerator.h"
 #include "nsIServiceManager.h"
@@ -74,9 +71,6 @@
 #include <sys/stat.h>
 
 #include "gfxPDFSurface.h"
- 
-/* Ensure that the result is always equal to either PR_TRUE or PR_FALSE */
-#define MAKE_PR_BOOL(val) ((val)?(PR_TRUE):(PR_FALSE))
 
 #ifdef PR_LOGGING
 static PRLogModuleInfo* DeviceContextSpecQtLM =
@@ -131,7 +125,7 @@ NS_IMETHODIMP nsDeviceContextSpecQt::GetSurfaceForPrinter(
 
     nsresult rv = NS_NewNativeLocalFile(
             nsDependentCString(file.fileName().toAscii().constData()),
-            PR_FALSE,
+            false,
             getter_AddRefs(mSpoolFile));
     if (NS_FAILED(rv)) {
         file.remove();
@@ -178,7 +172,7 @@ NS_IMETHODIMP nsDeviceContextSpecQt::GetSurfaceForPrinter(
 
 NS_IMETHODIMP nsDeviceContextSpecQt::Init(nsIWidget* aWidget,
         nsIPrintSettings* aPS,
-        PRBool aIsPrintPreview)
+        bool aIsPrintPreview)
 {
     DO_PR_DEBUG_LOG(("nsDeviceContextSpecQt::Init(aPS=%p)\n", aPS));
 
@@ -186,7 +180,7 @@ NS_IMETHODIMP nsDeviceContextSpecQt::Init(nsIWidget* aWidget,
     mIsPPreview = aIsPrintPreview;
 
     // This is only set by embedders
-    PRBool toFile;
+    bool toFile;
     aPS->GetPrintToFile(&toFile);
 
     mToPrinter = !toFile && !aIsPrintPreview;
@@ -226,7 +220,7 @@ NS_IMETHODIMP nsDeviceContextSpecQt::EndDocument()
     mPrintSettings->GetToFileName(getter_Copies(targetPath));
 
     nsresult rv = NS_NewNativeLocalFile(NS_ConvertUTF16toUTF8(targetPath),
-            PR_FALSE, getter_AddRefs(destFile));
+            false, getter_AddRefs(destFile));
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoString destLeafName;

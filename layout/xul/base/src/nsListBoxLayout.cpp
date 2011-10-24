@@ -53,7 +53,7 @@ nsListBoxLayout::nsListBoxLayout() : nsGridRowGroupLayout()
 {
 }
 
-////////// nsIBoxLayout //////////////
+////////// nsBoxLayout //////////////
 
 nsSize
 nsListBoxLayout::GetPrefSize(nsIBox* aBox, nsBoxLayoutState& aBoxLayoutState)
@@ -163,7 +163,7 @@ nsListBoxLayout::LayoutInternal(nsIBox* aBox, nsBoxLayoutState& aState)
   nscoord yOffset = body->GetYPosition();
   
   if (availableHeight <= 0) {
-    PRBool fixed = (body->GetFixedRowSize() != -1);
+    bool fixed = (body->GetFixedRowSize() != -1);
     if (fixed)
       availableHeight = 10;
     else
@@ -242,9 +242,9 @@ nsListBoxLayout::LayoutInternal(nsIBox* aBox, nsBoxLayoutState& aState)
 
 // Creation Routines ///////////////////////////////////////////////////////////////////////
 
-already_AddRefed<nsIBoxLayout> NS_NewListBoxLayout()
+already_AddRefed<nsBoxLayout> NS_NewListBoxLayout()
 {
-  nsIBoxLayout* layout = new nsListBoxLayout();
+  nsBoxLayout* layout = new nsListBoxLayout();
   NS_IF_ADDREF(layout);
   return layout;
 } 

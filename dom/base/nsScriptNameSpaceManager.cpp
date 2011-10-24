@@ -77,7 +77,7 @@ GlobalNameHashHashKey(PLDHashTable *table, const void *key)
   return HashString(*str);
 }
 
-static PRBool
+static bool
 GlobalNameHashMatchEntry(PLDHashTable *table, const PLDHashEntryHdr *entry,
                          const void *key)
 {
@@ -117,7 +117,7 @@ GlobalNameHashClearEntry(PLDHashTable *table, PLDHashEntryHdr *entry)
   memset(&e->mGlobalName, 0, sizeof(nsGlobalNameStruct));
 }
 
-static PRBool
+static bool
 GlobalNameHashInitEntry(PLDHashTable *table, PLDHashEntryHdr *entry,
                         const void *key)
 {
@@ -130,7 +130,7 @@ GlobalNameHashInitEntry(PLDHashTable *table, PLDHashEntryHdr *entry,
   // This will set e->mGlobalName.mType to
   // nsGlobalNameStruct::eTypeNotInitialized
   memset(&e->mGlobalName, 0, sizeof(nsGlobalNameStruct));
-  return PR_TRUE;
+  return true;
 }
 
 NS_IMPL_ISUPPORTS2(nsScriptNameSpaceManager,
@@ -138,7 +138,7 @@ NS_IMPL_ISUPPORTS2(nsScriptNameSpaceManager,
                    nsISupportsWeakReference)
 
 nsScriptNameSpaceManager::nsScriptNameSpaceManager()
-  : mIsInitialized(PR_FALSE)
+  : mIsInitialized(false)
 {
   MOZ_COUNT_CTOR(nsScriptNameSpaceManager);
 }
@@ -148,18 +148,19 @@ nsScriptNameSpaceManager::~nsScriptNameSpaceManager()
   if (mIsInitialized) {
     // Destroy the hash
     PL_DHashTableFinish(&mGlobalNames);
+    PL_DHashTableFinish(&mNavigatorNames);
   }
   MOZ_COUNT_DTOR(nsScriptNameSpaceManager);
 }
 
 nsGlobalNameStruct *
-nsScriptNameSpaceManager::AddToHash(const char *aKey,
+nsScriptNameSpaceManager::AddToHash(PLDHashTable *aTable, const char *aKey,
                                     const PRUnichar **aClassName)
 {
   NS_ConvertASCIItoUTF16 key(aKey);
   GlobalNameMapEntry *entry =
     static_cast<GlobalNameMapEntry *>
-               (PL_DHashTableOperate(&mGlobalNames, &key, PL_DHASH_ADD));
+               (PL_DHashTableOperate(aTable, &key, PL_DHASH_ADD));
 
   if (!entry) {
     return nsnull;
@@ -246,7 +247,7 @@ nsScriptNameSpaceManager::FillHashWithDOMInterfaces()
     return NS_OK;
   }
 
-  PRBool found_old;
+  bool found_old;
   nsCOMPtr<nsIInterfaceInfo> if_info;
   const char *if_name = nsnull;
   const nsIID *iid;
@@ -268,13 +269,13 @@ nsScriptNameSpaceManager::FillHashWithDOMInterfaces()
   }
 
   // Next, look for externally registered DOM interfaces
-  rv = RegisterExternalInterfaces(PR_FALSE);
+  rv = RegisterExternalInterfaces(false);
 
   return rv;
 }
 
 nsresult
-nsScriptNameSpaceManager::RegisterExternalInterfaces(PRBool aAsProto)
+nsScriptNameSpaceManager::RegisterExternalInterfaces(bool aAsProto)
 {
   nsresult rv;
   nsCOMPtr<nsICategoryManager> cm =
@@ -295,7 +296,7 @@ nsScriptNameSpaceManager::RegisterExternalInterfaces(PRBool aAsProto)
   const char* if_name;
   nsCOMPtr<nsISupports> entry;
   nsCOMPtr<nsIInterfaceInfo> if_info;
-  PRBool found_old, dom_prefix;
+  bool found_old, dom_prefix;
 
   while (NS_SUCCEEDED(enumerator->GetNext(getter_AddRefs(entry)))) {
     nsCOMPtr<nsISupportsCString> category(do_QueryInterface(entry));
@@ -367,15 +368,15 @@ nsScriptNameSpaceManager::RegisterExternalInterfaces(PRBool aAsProto)
 nsresult
 nsScriptNameSpaceManager::RegisterInterface(const char* aIfName,
                                             const nsIID *aIfIID,
-                                            PRBool* aFoundOld)
+                                            bool* aFoundOld)
 {
-  *aFoundOld = PR_FALSE;
+  *aFoundOld = false;
 
-  nsGlobalNameStruct *s = AddToHash(aIfName);
+  nsGlobalNameStruct *s = AddToHash(&mGlobalNames, aIfName);
   NS_ENSURE_TRUE(s, NS_ERROR_OUT_OF_MEMORY);
 
   if (s->mType != nsGlobalNameStruct::eTypeNotInitialized) {
-    *aFoundOld = PR_TRUE;
+    *aFoundOld = true;
 
     return NS_OK;
   }
@@ -408,6 +409,15 @@ nsScriptNameSpaceManager::Init()
                                      GLOBALNAME_HASHTABLE_INITIAL_SIZE);
   NS_ENSURE_TRUE(mIsInitialized, NS_ERROR_OUT_OF_MEMORY);
 
+  mIsInitialized = PL_DHashTableInit(&mNavigatorNames, &hash_table_ops, nsnull,
+                                     sizeof(GlobalNameMapEntry), 
+                                     GLOBALNAME_HASHTABLE_INITIAL_SIZE);
+  if (!mIsInitialized) {
+    PL_DHashTableFinish(&mGlobalNames);
+
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
   nsresult rv = NS_OK;
 
   rv = FillHashWithDOMInterfaces();
@@ -432,13 +442,16 @@ nsScriptNameSpaceManager::Init()
   rv = FillHash(cm, JAVASCRIPT_GLOBAL_DYNAMIC_NAMESET_CATEGORY);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  rv = FillHash(cm, JAVASCRIPT_NAVIGATOR_PROPERTY_CATEGORY);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   // Initial filling of the has table has been done.
   // Now, listen for changes.
   nsCOMPtr<nsIObserverService> serv = 
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
 
   if (serv) {
-    serv->AddObserver(this, NS_XPCOM_CATEGORY_ENTRY_ADDED_OBSERVER_ID, PR_TRUE);
+    serv->AddObserver(this, NS_XPCOM_CATEGORY_ENTRY_ADDED_OBSERVER_ID, true);
   }
 
   return NS_OK;
@@ -510,17 +523,36 @@ nsScriptNameSpaceManager::LookupName(const nsAString& aName,
 }
 
 nsresult
+nsScriptNameSpaceManager::LookupNavigatorName(const nsAString& aName,
+                                              const nsGlobalNameStruct **aNameStruct)
+{
+  GlobalNameMapEntry *entry =
+    static_cast<GlobalNameMapEntry *>
+               (PL_DHashTableOperate(&mNavigatorNames, &aName,
+                                     PL_DHASH_LOOKUP));
+
+  if (PL_DHASH_ENTRY_IS_BUSY(entry) &&
+      !((&entry->mGlobalName)->mDisabled)) {
+    *aNameStruct = &entry->mGlobalName;
+  } else {
+    *aNameStruct = nsnull;
+  }
+
+  return NS_OK;
+}
+
+nsresult
 nsScriptNameSpaceManager::RegisterClassName(const char *aClassName,
                                             PRInt32 aDOMClassInfoID,
-                                            PRBool aPrivileged,
-                                            PRBool aDisabled,
+                                            bool aPrivileged,
+                                            bool aDisabled,
                                             const PRUnichar **aResult)
 {
   if (!nsCRT::IsAscii(aClassName)) {
     NS_ERROR("Trying to register a non-ASCII class name");
     return NS_OK;
   }
-  nsGlobalNameStruct *s = AddToHash(aClassName, aResult);
+  nsGlobalNameStruct *s = AddToHash(&mGlobalNames, aClassName, aResult);
   NS_ENSURE_TRUE(s, NS_ERROR_OUT_OF_MEMORY);
 
   if (s->mType == nsGlobalNameStruct::eTypeClassConstructor) {
@@ -549,18 +581,18 @@ nsScriptNameSpaceManager::RegisterClassName(const char *aClassName,
 nsresult
 nsScriptNameSpaceManager::RegisterClassProto(const char *aClassName,
                                              const nsIID *aConstructorProtoIID,
-                                             PRBool *aFoundOld)
+                                             bool *aFoundOld)
 {
   NS_ENSURE_ARG_POINTER(aConstructorProtoIID);
 
-  *aFoundOld = PR_FALSE;
+  *aFoundOld = false;
 
-  nsGlobalNameStruct *s = AddToHash(aClassName);
+  nsGlobalNameStruct *s = AddToHash(&mGlobalNames, aClassName);
   NS_ENSURE_TRUE(s, NS_ERROR_OUT_OF_MEMORY);
 
   if (s->mType != nsGlobalNameStruct::eTypeNotInitialized &&
       s->mType != nsGlobalNameStruct::eTypeInterface) {
-    *aFoundOld = PR_TRUE;
+    *aFoundOld = true;
 
     return NS_OK;
   }
@@ -575,7 +607,7 @@ nsresult
 nsScriptNameSpaceManager::RegisterExternalClassName(const char *aClassName,
                                                     nsCID& aCID)
 {
-  nsGlobalNameStruct *s = AddToHash(aClassName);
+  nsGlobalNameStruct *s = AddToHash(&mGlobalNames, aClassName);
   NS_ENSURE_TRUE(s, NS_ERROR_OUT_OF_MEMORY);
 
   // If an external constructor is already defined with aClassName we
@@ -601,11 +633,11 @@ nsScriptNameSpaceManager::RegisterDOMCIData(const char *aName,
                                             const nsIID *aProtoChainInterface,
                                             const nsIID **aInterfaces,
                                             PRUint32 aScriptableFlags,
-                                            PRBool aHasClassInterface,
+                                            bool aHasClassInterface,
                                             const nsCID *aConstructorCID)
 {
   const PRUnichar* className;
-  nsGlobalNameStruct *s = AddToHash(aName, &className);
+  nsGlobalNameStruct *s = AddToHash(&mGlobalNames, aName, &className);
   NS_ENSURE_TRUE(s, NS_ERROR_OUT_OF_MEMORY);
 
   // If an external constructor is already defined with aClassName we
@@ -657,6 +689,8 @@ nsScriptNameSpaceManager::AddCategoryEntryToHash(nsICategoryManager* aCategoryMa
   } else if (strcmp(aCategory, JAVASCRIPT_GLOBAL_PROPERTY_CATEGORY) == 0 ||
              strcmp(aCategory, JAVASCRIPT_GLOBAL_PRIVILEGED_PROPERTY_CATEGORY) == 0) {
     type = nsGlobalNameStruct::eTypeProperty;
+  } else if (strcmp(aCategory, JAVASCRIPT_NAVIGATOR_PROPERTY_CATEGORY) == 0) {
+    type = nsGlobalNameStruct::eTypeNavigatorProperty;
   } else if (strcmp(aCategory, JAVASCRIPT_GLOBAL_STATIC_NAMESET_CATEGORY) == 0) {
     type = nsGlobalNameStruct::eTypeStaticNameSet;
   } else if (strcmp(aCategory, JAVASCRIPT_GLOBAL_DYNAMIC_NAMESET_CATEGORY) == 0) {
@@ -704,13 +738,13 @@ nsScriptNameSpaceManager::AddCategoryEntryToHash(nsICategoryManager* aCategoryMa
                                             categoryEntry.get(),
                                             getter_Copies(constructorProto));
     if (NS_SUCCEEDED(rv)) {
-      nsGlobalNameStruct *s = AddToHash(categoryEntry.get());
+      nsGlobalNameStruct *s = AddToHash(&mGlobalNames, categoryEntry.get());
       NS_ENSURE_TRUE(s, NS_ERROR_OUT_OF_MEMORY);
 
       if (s->mType == nsGlobalNameStruct::eTypeNotInitialized) {
         s->mAlias = new nsGlobalNameStruct::ConstructorAlias;
         s->mType = nsGlobalNameStruct::eTypeExternalConstructorAlias;
-        s->mChromeOnly = PR_FALSE;
+        s->mChromeOnly = false;
         s->mAlias->mCID = cid;
         AppendASCIItoUTF16(constructorProto, s->mAlias->mProtoName);
         s->mAlias->mProto = nsnull;
@@ -722,7 +756,14 @@ nsScriptNameSpaceManager::AddCategoryEntryToHash(nsICategoryManager* aCategoryMa
     }
   }
 
-  nsGlobalNameStruct *s = AddToHash(categoryEntry.get());
+  PLDHashTable *table;
+  if (type == nsGlobalNameStruct::eTypeNavigatorProperty) {
+    table = &mNavigatorNames;
+  } else {
+    table = &mGlobalNames;
+  }
+
+  nsGlobalNameStruct *s = AddToHash(table, categoryEntry.get());
   NS_ENSURE_TRUE(s, NS_ERROR_OUT_OF_MEMORY);
 
   if (s->mType == nsGlobalNameStruct::eTypeNotInitialized) {

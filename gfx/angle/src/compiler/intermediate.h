@@ -279,7 +279,8 @@ public:
             init(aInit),
             cond(aCond),
             expr(aExpr),
-            body(aBody) { }
+            body(aBody),
+            unrollFlag(false) { }
 
     virtual TIntermLoop* getAsLoopNode() { return this; }
     virtual void traverse(TIntermTraverser*);
@@ -290,12 +291,17 @@ public:
     TIntermTyped* getExpression() { return expr; }
     TIntermNode* getBody() { return body; }
 
+    void setUnrollFlag(bool flag) { unrollFlag = flag; }
+    bool getUnrollFlag() { return unrollFlag; }
+
 protected:
     TLoopType type;
     TIntermNode* init;  // for-loop initialization
     TIntermTyped* cond; // loop exit condition
     TIntermTyped* expr; // for-loop expression
     TIntermNode* body;  // loop body
+
+    bool unrollFlag; // Whether the loop should be unrolled or not.
 };
 
 //
@@ -326,10 +332,15 @@ public:
     // per process globalpoolallocator, then it causes increased memory usage per compile
     // it is essential to use "symbol = sym" to assign to symbol
     TIntermSymbol(int i, const TString& sym, const TType& t) : 
-            TIntermTyped(t), id(i)  { symbol = sym;} 
+            TIntermTyped(t), id(i)  { symbol = sym; originalSymbol = sym; } 
 
     int getId() const { return id; }
     const TString& getSymbol() const { return symbol; }
+
+    void setId(int newId) { id = newId; }
+    void setSymbol(const TString& sym) { symbol = sym; }
+
+    const TString& getOriginalSymbol() const { return originalSymbol; }
 
     virtual void traverse(TIntermTraverser*);
     virtual TIntermSymbol* getAsSymbolNode() { return this; }
@@ -337,6 +348,7 @@ public:
 protected:
     int id;
     TString symbol;
+    TString originalSymbol;
 };
 
 class TIntermConstantUnion : public TIntermTyped {
@@ -398,8 +410,8 @@ protected:
 //
 class TIntermUnary : public TIntermOperator {
 public:
-    TIntermUnary(TOperator o, TType& t) : TIntermOperator(o, t), operand(0) {}
-    TIntermUnary(TOperator o) : TIntermOperator(o), operand(0) {}
+    TIntermUnary(TOperator o, TType& t) : TIntermOperator(o, t), operand(0), useEmulatedFunction(false) {}
+    TIntermUnary(TOperator o) : TIntermOperator(o), operand(0), useEmulatedFunction(false) {}
 
     virtual void traverse(TIntermTraverser*);
     virtual TIntermUnary* getAsUnaryNode() { return this; }
@@ -408,8 +420,15 @@ public:
     TIntermTyped* getOperand() { return operand; }    
     bool promote(TInfoSink&);
 
+    void setUseEmulatedFunction() { useEmulatedFunction = true; }
+    bool getUseEmulatedFunction() { return useEmulatedFunction; }
+
 protected:
     TIntermTyped* operand;
+
+    // If set to true, replace the built-in function call with an emulated one
+    // to work around driver bugs.
+    bool useEmulatedFunction;
 };
 
 typedef TVector<TIntermNode*> TIntermSequence;
@@ -420,8 +439,8 @@ typedef TMap<TString, TString> TPragmaTable;
 //
 class TIntermAggregate : public TIntermOperator {
 public:
-    TIntermAggregate() : TIntermOperator(EOpNull), userDefined(false), pragmaTable(0), endLine(0) { }
-    TIntermAggregate(TOperator o) : TIntermOperator(o), pragmaTable(0) { }
+    TIntermAggregate() : TIntermOperator(EOpNull), userDefined(false), pragmaTable(0), endLine(0), useEmulatedFunction(false) { }
+    TIntermAggregate(TOperator o) : TIntermOperator(o), pragmaTable(0), useEmulatedFunction(false) { }
     ~TIntermAggregate() { delete pragmaTable; }
 
     virtual TIntermAggregate* getAsAggregate() { return this; }
@@ -444,6 +463,9 @@ public:
     void setEndLine(TSourceLoc line) { endLine = line; }
     TSourceLoc getEndLine() const { return endLine; }
 
+    void setUseEmulatedFunction() { useEmulatedFunction = true; }
+    bool getUseEmulatedFunction() { return useEmulatedFunction; }
+
 protected:
     TIntermAggregate(const TIntermAggregate&); // disallow copy constructor
     TIntermAggregate& operator=(const TIntermAggregate&); // disallow assignment operator
@@ -455,6 +477,10 @@ protected:
     bool debug;
     TPragmaTable *pragmaTable;
     TSourceLoc endLine;
+
+    // If set to true, replace the built-in function call with an emulated one
+    // to work around driver bugs.
+    bool useEmulatedFunction;
 };
 
 //

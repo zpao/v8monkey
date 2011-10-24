@@ -14,63 +14,199 @@
  *
 **/
 
-if (typeof(SimpleTest) == "undefined") {
-    var SimpleTest = {};
-}
+var SimpleTest = { };
 
 var parentRunner = null;
-if (typeof(parent) != "undefined" && parent.TestRunner) {
+if (parent) {
     parentRunner = parent.TestRunner;
-} else if (parent && parent.wrappedJSObject &&
-           parent.wrappedJSObject.TestRunner) {
-    parentRunner = parent.wrappedJSObject.TestRunner;
+    if (!parentRunner && parent.wrappedJSObject) {
+        parentRunner = parent.wrappedJSObject.TestRunner;
+    }
+
+    // This is the case where we have ChromePowers in harness.xul and we need it in the iframe
+    if (window.SpecialPowers == undefined && parent.SpecialPowers !== undefined) {
+        window.SpecialPowers = parent.SpecialPowers;
+    }
 }
 
-//Simple test to see if we are running in e10s IPC
-var ipcMode = false;
-if (parentRunner) {
-  ipcMode = parentRunner.ipcMode;
+// Workaround test_focus.xul where we open a window which opens another window which includes SimpleTest.js
+if (window.SpecialPowers == undefined && window.opener && window.opener.SpecialPowers !== undefined) {
+    window.SpecialPowers = window.opener.SpecialPowers;
+}
+
+/* Helper functions pulled out of various MochiKit modules */
+if (typeof(repr) == 'undefined') {
+    function repr(o) {
+        if (typeof(o) == "undefined") {
+            return "undefined";
+        } else if (o === null) {
+            return "null";
+        }
+        try {
+            if (typeof(o.__repr__) == 'function') {
+                return o.__repr__();
+            } else if (typeof(o.repr) == 'function' && o.repr != arguments.callee) {
+                return o.repr();
+            }
+       } catch (e) {
+       }
+       try {
+            if (typeof(o.NAME) == 'string' && (
+                    o.toString == Function.prototype.toString ||
+                    o.toString == Object.prototype.toString
+                )) {
+                return o.NAME;
+            }
+        } catch (e) {
+        }
+        try {
+            var ostring = (o + "");
+        } catch (e) {
+            return "[" + typeof(o) + "]";
+        }
+        if (typeof(o) == "function") {
+            o = ostring.replace(/^\s+/, "");
+            var idx = o.indexOf("{");
+            if (idx != -1) {
+                o = o.substr(0, idx) + "{...}";
+            }
+        }
+        return ostring;
+    };
+} 
+
+/* This returns a function that applies the previously given parameters.
+ * This is used by SimpleTest.showReport
+ */
+if (typeof(partial) == 'undefined') {
+    function partial(func) {
+        var args = [];
+        for (var i = 1; i < arguments.length; i++) {
+            args.push(arguments[i]);
+        }
+        return function() {
+            if (arguments.length > 0) {
+                for (var i = 1; i < arguments.length; i++) {
+                    args.push(arguments[i]);
+                }
+            }
+            func(args);
+        };
+    };
+}
+
+if (typeof(getElement) == 'undefined') {
+    function getElement(id) {
+        return ((typeof(id) == "string") ?
+            document.getElementById(id) : id); 
+    };
+    this.$ = this.getElement;
+}
+
+SimpleTest._newCallStack = function(path) {
+    var rval = function () {
+        var callStack = arguments.callee.callStack;
+        for (var i = 0; i < callStack.length; i++) {
+            if (callStack[i].apply(this, arguments) === false) {
+                break;
+            }
+        }
+        try {
+            this[path] = null;
+        } catch (e) {
+            // pass
+        }
+    };
+    rval.callStack = [];
+    return rval;
+};
+
+if (typeof(addLoadEvent) == 'undefined') {
+    function addLoadEvent(func) {
+        var existing = window["onload"];
+        var regfunc = existing;
+        if (!(typeof(existing) == 'function'
+                && typeof(existing.callStack) == "object"
+                && existing.callStack !== null)) {
+            regfunc = SimpleTest._newCallStack("onload");
+            if (typeof(existing) == 'function') {
+                regfunc.callStack.push(existing);
+            }
+            window["onload"] = regfunc;
+        }
+        regfunc.callStack.push(func);
+    };
+}
+
+function createEl(type, attrs, html) {
+    //use createElementNS so the xul/xhtml tests have no issues
+    var el;
+    if (!document.body) {
+        el = document.createElementNS("http://www.w3.org/1999/xhtml", type);
+    }
+    else {
+        el = document.createElement(type);
+    }
+    if (attrs !== null && attrs !== undefined) {
+        for (var k in attrs) {
+            el.setAttribute(k, attrs[k]);
+        }
+    }
+    if (html !== null && html !== undefined) {
+        el.appendChild(document.createTextNode(html));
+    }
+    return el;
+}
+
+/* lots of tests use this as a helper to get css properties */
+if (typeof(computedStyle) == 'undefined') {
+    function computedStyle(elem, cssProperty) {
+        elem = getElement(elem);
+        if (elem.currentStyle) {
+            return elem.currentStyle[cssProperty];
+        }
+        if (typeof(document.defaultView) == 'undefined' || document === null) {
+            return undefined;
+        }
+        var style = document.defaultView.getComputedStyle(elem, null);
+        if (typeof(style) == 'undefined' || style === null) {
+            return undefined;
+        }
+        
+        var selectorCase = cssProperty.replace(/([A-Z])/g, '-$1'
+            ).toLowerCase();
+            
+        return style.getPropertyValue(selectorCase);
+    };
 }
 
 /**
  * Check for OOP test plugin
 **/
 SimpleTest.testPluginIsOOP = function () {
-    netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-    var prefservice = Components.classes["@mozilla.org/preferences-service;1"]
-                                .getService(Components.interfaces.nsIPrefBranch);
-
     var testPluginIsOOP = false;
     if (navigator.platform.indexOf("Mac") == 0) {
-        var xulRuntime = Components.classes["@mozilla.org/xre/app-info;1"]
-                                   .getService(Components.interfaces.nsIXULAppInfo)
-                                   .QueryInterface(Components.interfaces.nsIXULRuntime);
-        if (xulRuntime.XPCOMABI.match(/x86-/)) {
+        if (SpecialPowers.XPCOMABI.match(/x86-/)) {
             try {
-                testPluginIsOOP = prefservice.getBoolPref("dom.ipc.plugins.enabled.i386.test.plugin");
+                testPluginIsOOP = SpecialPowers.getBoolPref("dom.ipc.plugins.enabled.i386.test.plugin");
             } catch (e) {
-                testPluginIsOOP = prefservice.getBoolPref("dom.ipc.plugins.enabled.i386");
+                testPluginIsOOP = SpecialPowers.getBoolPref("dom.ipc.plugins.enabled.i386");
             }
         }
-        else if (xulRuntime.XPCOMABI.match(/x86_64-/)) {
+        else if (SpecialPowers.XPCOMABI.match(/x86_64-/)) {
             try {
-                testPluginIsOOP = prefservice.getBoolPref("dom.ipc.plugins.enabled.x86_64.test.plugin");
+                testPluginIsOOP = SpecialPowers.getBoolPref("dom.ipc.plugins.enabled.x86_64.test.plugin");
             } catch (e) {
-                testPluginIsOOP = prefservice.getBoolPref("dom.ipc.plugins.enabled.x86_64");
+                testPluginIsOOP = SpecialPowers.getBoolPref("dom.ipc.plugins.enabled.x86_64");
             }
         }
     }
     else {
-        testPluginIsOOP = prefservice.getBoolPref("dom.ipc.plugins.enabled");
+        testPluginIsOOP = SpecialPowers.getBoolPref("dom.ipc.plugins.enabled");
     }
 
     return testPluginIsOOP;
 };
-
-// Check to see if the TestRunner is present and has logging
-if (parentRunner) {
-    SimpleTest._logEnabled = parentRunner.logEnabled;
-}
 
 SimpleTest._tests = [];
 SimpleTest._stopOnLoad = true;
@@ -80,8 +216,7 @@ SimpleTest._stopOnLoad = true;
 **/
 SimpleTest.ok = function (condition, name, diag) {
     var test = {'result': !!condition, 'name': name, 'diag': diag};
-    if (SimpleTest._logEnabled)
-        SimpleTest._logResult(test, "TEST-PASS", "TEST-UNEXPECTED-FAIL");
+    SimpleTest._logResult(test, "TEST-PASS", "TEST-UNEXPECTED-FAIL");
     SimpleTest._tests.push(test);
 };
 
@@ -89,7 +224,6 @@ SimpleTest.ok = function (condition, name, diag) {
  * Roughly equivalent to ok(a==b, name)
 **/
 SimpleTest.is = function (a, b, name) {
-    var repr = MochiKit.Base.repr;
     var pass = (a == b);
     var diag = pass ? repr(a) + " should equal " + repr(b)
                     : "got " + repr(a) + ", expected " + repr(b)
@@ -97,7 +231,6 @@ SimpleTest.is = function (a, b, name) {
 };
 
 SimpleTest.isnot = function (a, b, name) {
-    var repr = MochiKit.Base.repr;
     var pass = (a != b);
     var diag = pass ? repr(a) + " should not equal " + repr(b)
                     : "didn't expect " + repr(a) + ", but got it";
@@ -107,31 +240,36 @@ SimpleTest.isnot = function (a, b, name) {
 //  --------------- Test.Builder/Test.More todo() -----------------
 
 SimpleTest.todo = function(condition, name, diag) {
-  var test = {'result': !!condition, 'name': name, 'diag': diag, todo: true};
-  if (SimpleTest._logEnabled)
-      SimpleTest._logResult(test, "TEST-UNEXPECTED-PASS", "TEST-KNOWN-FAIL");
-  SimpleTest._tests.push(test);
+    var test = {'result': !!condition, 'name': name, 'diag': diag, todo: true};
+    SimpleTest._logResult(test, "TEST-UNEXPECTED-PASS", "TEST-KNOWN-FAIL");
+    SimpleTest._tests.push(test);
+};
+
+SimpleTest._getCurrentTestURL = function() {
+    return parentRunner && parentRunner.currentTestURL ||
+           typeof gTestPath == "string" && gTestPath ||
+           "unknown test url";
 };
 
 SimpleTest._logResult = function(test, passString, failString) {
-  var msg = test.result ? passString : failString;
-  msg += " | ";
-  if (parentRunner.currentTestURL)
-    msg += parentRunner.currentTestURL;
-  msg += " | " + test.name;
-  if (test.diag)
-    msg += " - " + test.diag;
-  if (test.result) {
-      if (test.todo)
-          parentRunner.logger.error(msg);
-      else
-          parentRunner.logger.log(msg);
-  } else {
-      if (test.todo)
-          parentRunner.logger.log(msg);
-      else
-          parentRunner.logger.error(msg);
-  }
+    var isError = !test.result == !test.todo;
+    var resultString = test.result ? passString : failString;
+    var url = SimpleTest._getCurrentTestURL();
+    var diagnostic = test.name + (test.diag ? " - " + test.diag : "");
+    var msg = [resultString, url, diagnostic].join(" | ");
+    if (parentRunner) {
+        if (isError) {
+            parentRunner.error(msg);
+        } else {
+            parentRunner.log(msg);
+        }
+    } else {
+        dump(msg + "\n");
+    }
+};
+
+SimpleTest.info = function(name, message) {
+    this._logResult({result:true, name:name, diag:message}, "TEST-INFO");
 };
 
 /**
@@ -139,7 +277,6 @@ SimpleTest._logResult = function(test, passString, failString) {
 **/
 
 SimpleTest.todo_is = function (a, b, name) {
-    var repr = MochiKit.Base.repr;
     var pass = (a == b);
     var diag = pass ? repr(a) + " should equal " + repr(b)
                     : "got " + repr(a) + ", expected " + repr(b);
@@ -147,7 +284,6 @@ SimpleTest.todo_is = function (a, b, name) {
 };
 
 SimpleTest.todo_isnot = function (a, b, name) {
-    var repr = MochiKit.Base.repr;
     var pass = (a != b);
     var diag = pass ? repr(a) + " should not equal " + repr(b)
                     : "didn't expect " + repr(a) + ", but got it";
@@ -159,7 +295,6 @@ SimpleTest.todo_isnot = function (a, b, name) {
  * Makes a test report, returns it as a DIV element.
 **/
 SimpleTest.report = function () {
-    var DIV = MochiKit.DOM.DIV;
     var passed = 0;
     var failed = 0;
     var todo = 0;
@@ -169,9 +304,8 @@ SimpleTest.report = function () {
       // ToDo: Do s/todo/ok/ when all the tests are fixed. (Bug 483407)
       SimpleTest.todo(false, "[SimpleTest.report()] No checks actually run.");
 
-    var results = MochiKit.Base.map(
-        function (test) {
-            var cls, msg;
+    var tallyAndCreateDiv = function (test) {
+            var cls, msg, div;
             var diag = test.diag ? " - " + test.diag : "";
             if (test.todo && !test.result) {
                 todo++;
@@ -186,28 +320,38 @@ SimpleTest.report = function () {
                 cls = "test_not_ok";
                 msg = "failed | " + test.name + diag;
             }
-            return DIV({"class": cls}, msg);
-        },
-        SimpleTest._tests
-    );
+          div = createEl('div', {'class': cls}, msg);
+          return div;
+        };
+    var results = [];
+    for (var d=0; d<SimpleTest._tests.length; d++) {
+        results.push(tallyAndCreateDiv(SimpleTest._tests[d]));
+    }
 
     var summary_class = failed != 0 ? 'some_fail' :
                           passed == 0 ? 'todo_only' : 'all_pass';
 
-    return DIV({'class': 'tests_report'},
-        DIV({'class': 'tests_summary ' + summary_class},
-            DIV({'class': 'tests_passed'}, "Passed: " + passed),
-            DIV({'class': 'tests_failed'}, "Failed: " + failed),
-            DIV({'class': 'tests_todo'}, "Todo: " + todo)),
-        results
-    );
+    var div1 = createEl('div', {'class': 'tests_report'});
+    var div2 = createEl('div', {'class': 'tests_summary ' + summary_class});
+    var div3 = createEl('div', {'class': 'tests_passed'}, 'Passed: ' + passed);
+    var div4 = createEl('div', {'class': 'tests_failed'}, 'Failed: ' + failed);
+    var div5 = createEl('div', {'class': 'tests_todo'}, 'Todo: ' + todo);
+    div2.appendChild(div3);
+    div2.appendChild(div4);
+    div2.appendChild(div5);
+    div1.appendChild(div2);
+    for (var t=0; t<results.length; t++) {
+        //iterate in order
+        div1.appendChild(results[t]);
+    }
+    return div1;
 };
 
 /**
  * Toggle element visibility
 **/
 SimpleTest.toggle = function(el) {
-    if (MochiKit.Style.computedStyle(el, 'display') == 'block') {
+    if (computedStyle(el, 'display') == 'block') {
         el.style.display = 'none';
     } else {
         el.style.display = 'block';
@@ -218,8 +362,26 @@ SimpleTest.toggle = function(el) {
  * Toggle visibility for divs with a specific class.
 **/
 SimpleTest.toggleByClass = function (cls, evt) {
-    var elems = getElementsByTagAndClassName('div', cls);
-    MochiKit.Base.map(SimpleTest.toggle, elems);
+    var children = document.getElementsByTagName('div');
+    var elements = [];
+    for (var i=0; i<children.length; i++) {
+        var child = children[i];
+        var clsName = child.className;
+        if (!clsName) {
+            continue;
+        }    
+        var classNames = clsName.split(' ');
+        for (var j = 0; j < classNames.length; j++) {
+            if (classNames[j] == cls) {
+                elements.push(child);
+                break;
+            }    
+        }    
+    }
+    for (var t=0; t<elements.length; t++) {
+        //TODO: again, for-in loop over elems seems to break this
+        SimpleTest.toggle(elements[t]);
+    }
     if (evt)
         evt.preventDefault();
 };
@@ -227,11 +389,10 @@ SimpleTest.toggleByClass = function (cls, evt) {
 /**
  * Shows the report in the browser
 **/
-
 SimpleTest.showReport = function() {
-    var togglePassed = A({'href': '#'}, "Toggle passed checks");
-    var toggleFailed = A({'href': '#'}, "Toggle failed checks");
-    var toggleTodo = A({'href': '#'}, "Toggle todo checks");
+    var togglePassed = createEl('a', {'href': '#'}, "Toggle passed checks");
+    var toggleFailed = createEl('a', {'href': '#'}, "Toggle failed checks");
+    var toggleTodo = createEl('a',{'href': '#'}, "Toggle todo checks");
     togglePassed.onclick = partial(SimpleTest.toggleByClass, 'test_ok');
     toggleFailed.onclick = partial(SimpleTest.toggleByClass, 'test_not_ok');
     toggleTodo.onclick = partial(SimpleTest.toggleByClass, 'test_todo');
@@ -253,13 +414,13 @@ SimpleTest.showReport = function() {
         };
     }
     addNode(togglePassed);
-    addNode(SPAN(null, " "));
+    addNode(createEl('span', null, " "));
     addNode(toggleFailed);
-    addNode(SPAN(null, " "));
+    addNode(createEl('span', null, " "));
     addNode(toggleTodo);
     addNode(SimpleTest.report());
     // Add a separator from the test content.
-    addNode(HR());
+    addNode(createEl('hr'));
 };
 
 /**
@@ -313,49 +474,28 @@ SimpleTest.waitForFocus = function (callback, targetWindow, expectBlankPage) {
     if (!targetWindow)
       targetWindow = window;
 
-    if (ipcMode) {
-      var domutils = targetWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor).
-                     getInterface(Components.interfaces.nsIDOMWindowUtils);
-
-      //TODO: make this support scenarios where we run test standalone and not inside of TestRunner only
-      if (parent && parent.ipcWaitForFocus != undefined) {
-        parent.contentAsyncEvent("waitForFocus", {"callback":callback, "targetWindow":domutils.outerWindowID});
-      }
-      return;
-    }
-
     SimpleTest.waitForFocus_started = false;
     expectBlankPage = !!expectBlankPage;
 
-    netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-    var fm = Components.classes["@mozilla.org/focus-manager;1"].
-                        getService(Components.interfaces.nsIFocusManager);
-
-    var childTargetWindow = { };
-    fm.getFocusedElementForWindow(targetWindow, true, childTargetWindow);
+    var childTargetWindow = {};
+    SpecialPowers.getFocusedElementForWindow(targetWindow, true, childTargetWindow);
     childTargetWindow = childTargetWindow.value;
 
     function info(msg) {
-      if (SimpleTest._logEnabled)
-        SimpleTest._logResult({result: true, name: msg}, "TEST-INFO");
-      else
-        dump("TEST-INFO | " + msg + "\n");
+        SimpleTest.info(msg);
+    }
+    function getHref(aWindow) {
+      return SpecialPowers.getPrivilegedProps(aWindow, 'location.href');
     }
 
     function debugFocusLog(prefix) {
-        netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-
-        var baseWindow = targetWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                                     .getInterface(Components.interfaces.nsIWebNavigation)
-                                     .QueryInterface(Components.interfaces.nsIBaseWindow);
         info(prefix + " -- loaded: " + targetWindow.document.readyState +
-           " active window: " +
-               (fm.activeWindow ? "(" + fm.activeWindow + ") " + fm.activeWindow.location : "<no window active>") +
-           " focused window: " +
-               (fm.focusedWindow ? "(" + fm.focusedWindow + ") " + fm.focusedWindow.location : "<no window focused>") +
-           " desired window: (" + targetWindow + ") " + targetWindow.location +
-           " child window: (" + childTargetWindow + ") " + childTargetWindow.location +
-           " docshell visible: " + baseWindow.visibility);
+            " active window: " +
+                (SpecialPowers.activeWindow() ? "(" + SpecialPowers.activeWindow() + ") " + getHref(SpecialPowers.activeWindow()) : "<no window active>") +
+            " focused window: " +
+                (SpecialPowers.focusedWindow() ? "(" + SpecialPowers.focusedWindow() + ") " + getHref(SpecialPowers.focusedWindow()) : "<no window focused>") +
+            " desired window: (" + targetWindow + ") " + getHref(targetWindow) +
+            " child window: (" + childTargetWindow + ") " + getHref(childTargetWindow));
     }
 
     debugFocusLog("before wait for focus");
@@ -396,7 +536,7 @@ SimpleTest.waitForFocus = function (callback, targetWindow, expectBlankPage) {
     // to load its content, and we want to skip over any intermediate blank
     // pages that load. This issue is described in bug 554873.
     SimpleTest.waitForFocus_loaded =
-        (expectBlankPage == (targetWindow.location == "about:blank")) &&
+        (expectBlankPage == (getHref(targetWindow) == "about:blank")) &&
         targetWindow.document.readyState == "complete";
     if (!SimpleTest.waitForFocus_loaded) {
         info("must wait for load");
@@ -405,8 +545,8 @@ SimpleTest.waitForFocus = function (callback, targetWindow, expectBlankPage) {
 
     // Check if the desired window is already focused.
     var focusedChildWindow = { };
-    if (fm.activeWindow) {
-        fm.getFocusedElementForWindow(fm.activeWindow, true, focusedChildWindow);
+    if (SpecialPowers.activeWindow()) {
+        SpecialPowers.getFocusedElementForWindow(SpecialPowers.activeWindow(), true, focusedChildWindow);
         focusedChildWindow = focusedChildWindow.value;
     }
 
@@ -420,7 +560,7 @@ SimpleTest.waitForFocus = function (callback, targetWindow, expectBlankPage) {
     else {
         info("must wait for focus");
         childTargetWindow.addEventListener("focus", waitForEvent, true);
-        childTargetWindow.focus();
+        SpecialPowers.focus(childTargetWindow);
     }
 };
 
@@ -452,25 +592,11 @@ SimpleTest.__defineGetter__("_waitForClipboardMonotonicCounter", function () {
 });
 SimpleTest.waitForClipboard = function(aExpectedStringOrValidatorFn, aSetupFn,
                                        aSuccessFn, aFailureFn, aFlavor) {
-    if (ipcMode) {
-      //TODO: support waitForClipboard via events to chrome
-      dump("E10S_TODO: bug 573735 addresses adding support for this");
-      return;
-    }
-
-    netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-
-    var cbSvc = Components.classes["@mozilla.org/widget/clipboard;1"].
-                getService(Components.interfaces.nsIClipboard);
-
     var requestedFlavor = aFlavor || "text/unicode";
-
-    function dataToString(aData)
-      aData.QueryInterface(Components.interfaces.nsISupportsString).data;
 
     // Build a default validator function for common string input.
     var inputValidatorFn = typeof(aExpectedStringOrValidatorFn) == "string"
-        ? function(aData) aData && dataToString(aData) == aExpectedStringOrValidatorFn
+        ? function(aData) aData == aExpectedStringOrValidatorFn
         : aExpectedStringOrValidatorFn;
 
     // reset for the next use
@@ -479,8 +605,6 @@ SimpleTest.waitForClipboard = function(aExpectedStringOrValidatorFn, aSetupFn,
     }
 
     function wait(validatorFn, successFn, failureFn, flavor) {
-        netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-
         if (++SimpleTest.waitForClipboard_polls > 50) {
             // Log the failure.
             SimpleTest.ok(false, "Timed out while polling clipboard for pasted data.");
@@ -489,15 +613,7 @@ SimpleTest.waitForClipboard = function(aExpectedStringOrValidatorFn, aSetupFn,
             return;
         }
 
-        var xferable = Components.classes["@mozilla.org/widget/transferable;1"].
-                       createInstance(Components.interfaces.nsITransferable);
-        xferable.addDataFlavor(flavor);
-        cbSvc.getData(xferable, cbSvc.kGlobalClipboard);
-        var data = {};
-        try {
-            xferable.getTransferData(flavor, data, {});
-        } catch (e) {}
-        data = data.value || null;
+        data = SpecialPowers.getClipboardData(flavor);
 
         if (validatorFn(data)) {
             // Don't show the success message when waiting for preExpectedVal
@@ -515,10 +631,8 @@ SimpleTest.waitForClipboard = function(aExpectedStringOrValidatorFn, aSetupFn,
     // First we wait for a known value different from the expected one.
     var preExpectedVal = SimpleTest._waitForClipboardMonotonicCounter +
                          "-waitForClipboard-known-value";
-    var cbHelperSvc = Components.classes["@mozilla.org/widget/clipboardhelper;1"].
-                      getService(Components.interfaces.nsIClipboardHelper);
-    cbHelperSvc.copyString(preExpectedVal);
-    wait(function(aData) aData && dataToString(aData) == preExpectedVal,
+    SpecialPowers.clipboardCopyString(preExpectedVal);
+    wait(function(aData) aData  == preExpectedVal,
          function() {
            // Call the original setup fn
            aSetupFn();
@@ -531,6 +645,8 @@ SimpleTest.waitForClipboard = function(aExpectedStringOrValidatorFn, aSetupFn,
  * working (or finish).
  */
 SimpleTest.executeSoon = function(aFunc) {
+    // Once SpecialPowers is available in chrome mochitests, we can replace the
+    // body of this function with a call to SpecialPowers.executeSoon().
     if ("Components" in window && "classes" in window.Components) {
         try {
             netscape.security.PrivilegeManager
@@ -546,7 +662,7 @@ SimpleTest.executeSoon = function(aFunc) {
             return;
         } catch (ex) {
             // If the above fails (most likely because of enablePrivilege
-            // failing, fall through to the setTimeout path.
+            // failing), fall through to the setTimeout path.
         }
     }
     setTimeout(aFunc, 0);
@@ -557,12 +673,34 @@ SimpleTest.executeSoon = function(aFunc) {
  * SimpleTest.waitForExplicitFinish() has been invoked.
 **/
 SimpleTest.finish = function () {
+    if (SimpleTest._expectingUncaughtException) {
+        SimpleTest.ok(false, "expectUncaughtException was called but no uncaught exception was detected!");
+    }
     if (parentRunner) {
         /* We're running in an iframe, and the parent has a TestRunner */
         parentRunner.testFinished(SimpleTest._tests);
     } else {
         SimpleTest.showReport();
     }
+};
+
+/**
+ * Indicates to the test framework that the current test expects one or
+ * more crashes (from plugins or IPC documents), and that the minidumps from
+ * those crashes should be removed.
+ */
+SimpleTest.expectChildProcessCrash = function () {
+    if (parentRunner) {
+        parentRunner.expectChildProcessCrash();
+    }
+};
+
+/**
+ * Indicates to the test framework that the next uncaught exception during
+ * the test is expected, and should not cause a test failure.
+ */
+SimpleTest.expectUncaughtException = function () {
+    SimpleTest._expectingUncaughtException = true;
 };
 
 
@@ -603,7 +741,7 @@ SimpleTest._deepCheck = function (e1, e2, stack, seen) {
         ok = SimpleTest._eqAssoc(e1, e2, stack, seen);
     } else {
         // If we get here, they're not the same (function references must
-        // always simply rererence the same function).
+        // always simply reference the same function).
         stack.push({ vals: [e1, e2] });
         ok = false;
     }
@@ -639,7 +777,8 @@ SimpleTest._eqArray = function (a1, a2, stack, seen) {
         var e1 = i > a1.length - 1 ? SimpleTest.DNE : a1[i];
         var e2 = i > a2.length - 1 ? SimpleTest.DNE : a2[i];
         stack.push({ type: 'Array', idx: i, vals: [e1, e2] });
-        if (ok = SimpleTest._deepCheck(e1, e2, stack, seen)) {
+        ok = SimpleTest._deepCheck(e1, e2, stack, seen);
+        if (ok) {
             stack.pop();
         } else {
             break;
@@ -680,7 +819,8 @@ SimpleTest._eqAssoc = function (o1, o2, stack, seen) {
         var e1 = o1[i] == undefined ? SimpleTest.DNE : o1[i];
         var e2 = o2[i] == undefined ? SimpleTest.DNE : o2[i];
         stack.push({ type: 'Object', idx: i, vals: [e1, e2] });
-        if (ok = SimpleTest._deepCheck(e1, e2, stack, seen)) {
+        ok = SimpleTest._deepCheck(e1, e2, stack, seen)
+        if (ok) {
             stack.pop();
         } else {
             break;
@@ -776,31 +916,47 @@ var todo = SimpleTest.todo;
 var todo_is = SimpleTest.todo_is;
 var todo_isnot = SimpleTest.todo_isnot;
 var isDeeply = SimpleTest.isDeeply;
+var info = SimpleTest.info;
 
 var gOldOnError = window.onerror;
 window.onerror = function simpletestOnerror(errorMsg, url, lineNumber) {
-  var funcIdentifier = "[SimpleTest/SimpleTest.js, window.onerror] ";
+    var funcIdentifier = "[SimpleTest/SimpleTest.js, window.onerror]";
 
-  // Log the message.
-  ok(false, funcIdentifier + "An error occurred", errorMsg + " at " + url + ":" + lineNumber);
-  // There is no Components.stack.caller to log. (See bug 511888.)
-
-  // Call previous handler.
-  if (gOldOnError) {
-    try {
-      // Ignore return value: always run default handler.
-      gOldOnError(errorMsg, url, lineNumber);
-    } catch (e) {
-      // Log the error.
-      ok(false, funcIdentifier + "Exception thrown by gOldOnError()", e);
-      // Log its stack.
-      if (e.stack)
-        ok(false, funcIdentifier + "JavaScript error stack:\n" + e.stack);
+    // Log the message.
+    // XXX Chrome mochitests sometimes trigger this window.onerror handler,
+    // but there are a number of uncaught JS exceptions from those tests
+    // currently, so we can't log them as errors just yet.  For now, when
+    // not in a plain mochitest, just dump it so that the error is visible but
+    // doesn't cause a test failure.  See bug 652494.
+    var message = "An error occurred: " + errorMsg + " at " + url + ":" + lineNumber;
+    var href = SpecialPowers.getPrivilegedProps(window, 'location.href');
+    var isPlainMochitest = href.substring(0,7) != "chrome:";
+    var isExpected = !!SimpleTest._expectingUncaughtException;
+    if (isPlainMochitest) {
+        SimpleTest.ok(isExpected, funcIdentifier, message);
+        SimpleTest._expectingUncaughtException = false;
+    } else {
+        SimpleTest.info(funcIdentifier + " " + message);
     }
-  }
+    // There is no Components.stack.caller to log. (See bug 511888.)
 
-  if (!SimpleTest._stopOnLoad) {
-    // Need to finish() manually here, yet let the test actually end first.
-    SimpleTest.executeSoon(SimpleTest.finish);
-  }
-}
+    // Call previous handler.
+    if (gOldOnError) {
+        try {
+            // Ignore return value: always run default handler.
+            gOldOnError(errorMsg, url, lineNumber);
+        } catch (e) {
+            // Log the error.
+            SimpleTest.info("Exception thrown by gOldOnError(): " + e);
+            // Log its stack.
+            if (e.stack) {
+                SimpleTest.info("JavaScript error stack:\n" + e.stack);
+            }
+        }
+    }
+
+    if (!SimpleTest._stopOnLoad && !isExpected) {
+        // Need to finish() manually here, yet let the test actually end first.
+        SimpleTest.executeSoon(SimpleTest.finish);
+    }
+};

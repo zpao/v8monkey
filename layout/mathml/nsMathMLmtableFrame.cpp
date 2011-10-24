@@ -81,7 +81,7 @@ SplitString(nsString&             aString, // [IN/OUT]
     }
     end = start;
 
-    while ((kNullCh != *end) && (PR_FALSE == nsCRT::IsAsciiSpace(*end))) { // look for space or end
+    while ((kNullCh != *end) && (false == nsCRT::IsAsciiSpace(*end))) { // look for space or end
       end++;
     }
     *end = kNullCh; // end string here
@@ -163,13 +163,13 @@ GetValueAt(nsIFrame*                      aTableOrRowFrame,
 }
 
 #ifdef NS_DEBUG
-static PRBool
+static bool
 IsTable(PRUint8 aDisplay)
 {
   if ((aDisplay == NS_STYLE_DISPLAY_TABLE) ||
       (aDisplay == NS_STYLE_DISPLAY_INLINE_TABLE))
-    return PR_TRUE;
-  return PR_FALSE;
+    return true;
+  return false;
 }
 
 #define DEBUG_VERIFY_THAT_FRAME_IS(_frame, _expected) \
@@ -202,7 +202,7 @@ MapRowAttributesIntoCSS(nsIFrame* aTableFrame,
     if (attr) {
       // set our special _moz attribute on the row without notifying a reflow
       rowContent->SetAttr(kNameSpaceID_None, nsGkAtoms::_moz_math_rowalign_,
-                          nsDependentString(attr), PR_FALSE);
+                          nsDependentString(attr), false);
     }
   }
 
@@ -218,7 +218,7 @@ MapRowAttributesIntoCSS(nsIFrame* aTableFrame,
     if (attr) {
       // set our special _moz attribute on the row without notifying a reflow
       rowContent->SetAttr(kNameSpaceID_None, nsGkAtoms::_moz_math_rowline_,
-                          nsDependentString(attr), PR_FALSE);
+                          nsDependentString(attr), false);
     }
   }
 }
@@ -253,7 +253,7 @@ MapColAttributesIntoCSS(nsIFrame* aTableFrame,
     if (attr) {
       // set our special _moz attribute without notifying a reflow
       cellContent->SetAttr(kNameSpaceID_None, nsGkAtoms::_moz_math_columnalign_,
-                           nsDependentString(attr), PR_FALSE);
+                           nsDependentString(attr), false);
     }
   }
 
@@ -270,7 +270,7 @@ MapColAttributesIntoCSS(nsIFrame* aTableFrame,
     if (attr) {
       // set our special _moz attribute without notifying a reflow
       cellContent->SetAttr(kNameSpaceID_None, nsGkAtoms::_moz_math_columnline_,
-                           nsDependentString(attr), PR_FALSE);
+                           nsDependentString(attr), false);
     }
   }
 }
@@ -281,16 +281,16 @@ static void
 MapAllAttributesIntoCSS(nsIFrame* aTableFrame)
 {
   // mtable is simple and only has one (pseudo) row-group
-  nsIFrame* rgFrame = aTableFrame->GetFirstChild(nsnull);
+  nsIFrame* rgFrame = aTableFrame->GetFirstPrincipalChild();
   if (!rgFrame || rgFrame->GetType() != nsGkAtoms::tableRowGroupFrame)
     return;
 
-  nsIFrame* rowFrame = rgFrame->GetFirstChild(nsnull);
+  nsIFrame* rowFrame = rgFrame->GetFirstPrincipalChild();
   for ( ; rowFrame; rowFrame = rowFrame->GetNextSibling()) {
     DEBUG_VERIFY_THAT_FRAME_IS(rowFrame, TABLE_ROW);
     if (rowFrame->GetType() == nsGkAtoms::tableRowFrame) {
       MapRowAttributesIntoCSS(aTableFrame, rowFrame);
-      nsIFrame* cellFrame = rowFrame->GetFirstChild(nsnull);
+      nsIFrame* cellFrame = rowFrame->GetFirstPrincipalChild();
       for ( ; cellFrame; cellFrame = cellFrame->GetNextSibling()) {
         DEBUG_VERIFY_THAT_FRAME_IS(cellFrame, TABLE_CELL);
         if (IS_TABLE_CELL(cellFrame->GetType())) {
@@ -458,9 +458,9 @@ nsMathMLmtableOuterFrame::AttributeChanged(PRInt32  aNameSpaceID,
 
   // mtable is simple and only has one (pseudo) row-group inside our inner-table
   nsIFrame* tableFrame = mFrames.FirstChild();
-  if (!tableFrame || tableFrame->GetType() != nsGkAtoms::tableFrame)
-    return NS_OK;
-  nsIFrame* rgFrame = tableFrame->GetFirstChild(nsnull);
+  NS_ASSERTION(tableFrame && tableFrame->GetType() == nsGkAtoms::tableFrame,
+               "should always have an inner table frame");
+  nsIFrame* rgFrame = tableFrame->GetFirstPrincipalChild();
   if (!rgFrame || rgFrame->GetType() != nsGkAtoms::tableRowGroupFrame)
     return NS_OK;
 
@@ -504,17 +504,17 @@ nsMathMLmtableOuterFrame::AttributeChanged(PRInt32  aNameSpaceID,
     Delete(tableFrame, AttributeToProperty(aAttribute));
 
   // unset any _moz attribute that we may have set earlier, and re-sync
-  nsIFrame* rowFrame = rgFrame->GetFirstChild(nsnull);
+  nsIFrame* rowFrame = rgFrame->GetFirstPrincipalChild();
   for ( ; rowFrame; rowFrame = rowFrame->GetNextSibling()) {
     if (rowFrame->GetType() == nsGkAtoms::tableRowFrame) {
       if (MOZrowAtom) { // let rows do the work
-        rowFrame->GetContent()->UnsetAttr(kNameSpaceID_None, MOZrowAtom, PR_FALSE);
+        rowFrame->GetContent()->UnsetAttr(kNameSpaceID_None, MOZrowAtom, false);
         MapRowAttributesIntoCSS(tableFrame, rowFrame);    
       } else { // let cells do the work
-        nsIFrame* cellFrame = rowFrame->GetFirstChild(nsnull);
+        nsIFrame* cellFrame = rowFrame->GetFirstPrincipalChild();
         for ( ; cellFrame; cellFrame = cellFrame->GetNextSibling()) {
           if (IS_TABLE_CELL(cellFrame->GetType())) {
-            cellFrame->GetContent()->UnsetAttr(kNameSpaceID_None, MOZcolAtom, PR_FALSE);
+            cellFrame->GetContent()->UnsetAttr(kNameSpaceID_None, MOZcolAtom, false);
             MapColAttributesIntoCSS(tableFrame, rowFrame, cellFrame);
           }
         }
@@ -540,16 +540,17 @@ nsMathMLmtableOuterFrame::GetRowFrameAt(nsPresContext* aPresContext,
   // Negative indices mean to find upwards from the end.
   if (aRowIndex < 0) {
     aRowIndex = rowCount + aRowIndex;
+  } else {
+    // aRowIndex is 1-based, so convert it to a 0-based index
+    --aRowIndex;
   }
-  // aRowIndex is 1-based, so convert it to a 0-based index
-  --aRowIndex;
 
   // if our inner table says that the index is valid, find the row now
   if (0 <= aRowIndex && aRowIndex <= rowCount) {
     nsIFrame* tableFrame = mFrames.FirstChild();
-    if (!tableFrame || tableFrame->GetType() != nsGkAtoms::tableFrame)
-      return nsnull;
-    nsIFrame* rgFrame = tableFrame->GetFirstChild(nsnull);
+    NS_ASSERTION(tableFrame && tableFrame->GetType() == nsGkAtoms::tableFrame,
+                 "should always have an inner table frame");
+    nsIFrame* rgFrame = tableFrame->GetFirstPrincipalChild();
     if (!rgFrame || rgFrame->GetType() != nsGkAtoms::tableRowGroupFrame)
       return nsnull;
     nsTableIterator rowIter(*rgFrame);
@@ -636,8 +637,9 @@ nsMathMLmtableOuterFrame::Reflow(nsPresContext*          aPresContext,
     case eAlign_axis:
     default: {
       // XXX should instead use style data from the row of reference here ?
-      aReflowState.rendContext->SetFont(GetStyleFont()->mFont,
-                                        aPresContext->GetUserFontSet());
+      nsRefPtr<nsFontMetrics> fm;
+      nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm));
+      aReflowState.rendContext->SetFont(fm);
       nscoord axisHeight;
       GetAxisHeight(*aReflowState.rendContext,
                     aReflowState.rendContext->FontMetrics(),
@@ -687,10 +689,10 @@ nsMathMLmtableFrame::~nsMathMLmtableFrame()
 }
 
 NS_IMETHODIMP
-nsMathMLmtableFrame::SetInitialChildList(nsIAtom*  aListName,
+nsMathMLmtableFrame::SetInitialChildList(ChildListID  aListID,
                                          nsFrameList& aChildList)
 {
-  nsresult rv = nsTableFrame::SetInitialChildList(aListName, aChildList);
+  nsresult rv = nsTableFrame::SetInitialChildList(aListID, aChildList);
   if (NS_FAILED(rv)) return rv;
   MapAllAttributesIntoCSS(this);
   return rv;
@@ -737,7 +739,7 @@ nsMathMLmtrFrame::AttributeChanged(PRInt32  aNameSpaceID,
   if (aAttribute == nsGkAtoms::rowalign_) {
     // unset any _moz attribute that we may have set earlier, and re-sync
     mContent->UnsetAttr(kNameSpaceID_None, nsGkAtoms::_moz_math_rowalign_,
-                        PR_FALSE);
+                        false);
     MapRowAttributesIntoCSS(nsTableFrame::GetTableFrame(this), this);
     // That's all - see comment above.
     return NS_OK;
@@ -753,12 +755,12 @@ nsMathMLmtrFrame::AttributeChanged(PRInt32  aNameSpaceID,
   // Clear any internal _moz attribute that we may have set earlier
   // in our cells and re-sync their columnalign attribute
   nsTableFrame* tableFrame = nsTableFrame::GetTableFrame(this);
-  nsIFrame* cellFrame = GetFirstChild(nsnull);
+  nsIFrame* cellFrame = GetFirstPrincipalChild();
   for ( ; cellFrame; cellFrame = cellFrame->GetNextSibling()) {
     if (IS_TABLE_CELL(cellFrame->GetType())) {
       cellFrame->GetContent()->
         UnsetAttr(kNameSpaceID_None, nsGkAtoms::_moz_math_columnalign_,
-                  PR_FALSE);
+                  false);
       MapColAttributesIntoCSS(tableFrame, this, cellFrame);
     }
   }
@@ -840,7 +842,7 @@ nsMathMLmtdFrame::AttributeChanged(PRInt32  aNameSpaceID,
   if (aAttribute == nsGkAtoms::columnalign_) {
     // unset any _moz attribute that we may have set earlier, and re-sync
     mContent->UnsetAttr(kNameSpaceID_None, nsGkAtoms::_moz_math_columnalign_,
-                        PR_FALSE);
+                        false);
     MapColAttributesIntoCSS(nsTableFrame::GetTableFrame(this), mParent, this);
     return NS_OK;
   }

@@ -43,6 +43,7 @@
 #include "gfxPoint.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsAutoPtr.h"
+#include "nsMathUtils.h"
 
 class nsSVGElement;
 
@@ -86,10 +87,10 @@ public:
    */
   DOMSVGPoint(DOMSVGPointList *aList,
               PRUint32 aListIndex,
-              PRBool aIsAnimValItem)
+              bool aIsAnimValItem)
     : mList(aList)
     , mListIndex(aListIndex)
-    , mIsReadonly(PR_FALSE)
+    , mIsReadonly(false)
     , mIsAnimValItem(aIsAnimValItem)
   {
     // These shifts are in sync with the members.
@@ -102,8 +103,8 @@ public:
   DOMSVGPoint(const DOMSVGPoint *aPt = nsnull)
     : mList(nsnull)
     , mListIndex(0)
-    , mIsReadonly(PR_FALSE)
-    , mIsAnimValItem(PR_FALSE)
+    , mIsReadonly(false)
+    , mIsAnimValItem(false)
   {
     if (aPt) {
       mPt = aPt->ToSVGPoint();
@@ -113,8 +114,8 @@ public:
   DOMSVGPoint(float aX, float aY)
     : mList(nsnull)
     , mListIndex(0)
-    , mIsReadonly(PR_FALSE)
-    , mIsAnimValItem(PR_FALSE)
+    , mIsReadonly(false)
+    , mIsAnimValItem(false)
   {
     mPt.mX = aX;
     mPt.mY = aY;
@@ -123,12 +124,12 @@ public:
   DOMSVGPoint(const gfxPoint &aPt)
     : mList(nsnull)
     , mListIndex(0)
-    , mIsReadonly(PR_FALSE)
-    , mIsAnimValItem(PR_FALSE)
+    , mIsReadonly(false)
+    , mIsAnimValItem(false)
   {
     mPt.mX = float(aPt.x);
     mPt.mY = float(aPt.y);
-    NS_ASSERTION(NS_FloatIsFinite(mPt.mX) && NS_FloatIsFinite(mPt.mX),
+    NS_ASSERTION(NS_finite(mPt.mX) && NS_finite(mPt.mX),
                  "DOMSVGPoint coords are not finite");
   }
 
@@ -150,7 +151,7 @@ public:
     return new DOMSVGPoint(this);
   }
 
-  PRBool IsInList() const {
+  bool IsInList() const {
     return !!mList;
   }
 
@@ -160,7 +161,7 @@ public:
    * internal counterpart from which it gets its values. (A better name may
    * be HasWrappee().)
    */
-  PRBool HasOwner() const {
+  bool HasOwner() const {
     return !!mList;
   }
 
@@ -175,7 +176,7 @@ public:
    */
   void InsertingIntoList(DOMSVGPointList *aList,
                          PRUint32 aListIndex,
-                         PRBool aIsAnimValItem);
+                         bool aIsAnimValItem);
 
   static PRUint32 MaxListIndex() {
     return (1U << MOZ_SVG_LIST_INDEX_BIT_COUNT) - 1;
@@ -198,10 +199,10 @@ public:
     return HasOwner() ? const_cast<DOMSVGPoint*>(this)->InternalItem() : mPt;
   }
 
-  PRBool IsReadonly() const {
+  bool IsReadonly() const {
     return mIsReadonly;
   }
-  void SetReadonly(PRBool aReadonly) {
+  void SetReadonly(bool aReadonly) {
     mIsReadonly = aReadonly;
   }
 
@@ -223,7 +224,7 @@ protected:
   SVGPoint& InternalItem();
 
 #ifdef DEBUG
-  PRBool IndexIsValid();
+  bool IndexIsValid();
 #endif
 
   nsRefPtr<DOMSVGPointList> mList;

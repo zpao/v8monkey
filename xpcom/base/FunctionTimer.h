@@ -133,7 +133,7 @@
 
 namespace mozilla {
 
-class NS_COM FunctionTimerLog
+class FunctionTimerLog
 {
 public:
     FunctionTimerLog(const char *fname);
@@ -148,7 +148,7 @@ private:
     TimeStamp mLatest;
 };
 
-class NS_COM FunctionTimer
+class FunctionTimer
 {
     static nsAutoPtr<FunctionTimerLog> sLog;
     static char *sBuf1;
@@ -213,7 +213,7 @@ public:
     }
 
     FunctionTimer(double minms, const char *s, ...)
-        : mMinMs(minms), mHasMinMs(PR_TRUE),
+        : mMinMs(minms), mHasMinMs(true),
           mEnabled(sLog && s && *s), mDepth(++sDepth)
     {
         va_list ap;
@@ -225,7 +225,7 @@ public:
     }
 
     FunctionTimer(const char *s, ...)
-        : mMinMs(0.0), mHasMinMs(PR_FALSE),
+        : mMinMs(0.0), mHasMinMs(false),
           mEnabled(sLog && s && *s), mDepth(++sDepth)
     {
         va_list ap;
@@ -274,8 +274,8 @@ public:
     TimeStamp mStart, mLastMark;
     const double mMinMs;
     char mString[BUF_LOG_LENGTH+1];
-    const PRBool mHasMinMs;
-    const PRBool mEnabled;
+    const bool mHasMinMs;
+    const bool mEnabled;
     const unsigned mDepth;
 };
 

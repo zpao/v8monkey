@@ -61,6 +61,13 @@ RUN_MOCHITEST = \
 	  --console-level=INFO --log-file=./$@.log --file-level=INFO \
 	  $(SYMBOLS_PATH) $(TEST_PATH_ARG) $(EXTRA_TEST_ARGS)
 
+RUN_MOCHITEST_REMOTE = \
+	rm -f ./$@.log && \
+	$(PYTHON) _tests/testing/mochitest/runtestsremote.py --autorun --close-when-done \
+	  --console-level=INFO --log-file=./$@.log --file-level=INFO $(DM_FLAGS) --dm_trans=$(DM_TRANS) \
+	  --app=$(ANDROID_PACKAGE_NAME) --deviceIP=${TEST_DEVICE} --xre-path=${MOZ_HOST_BIN} \
+	  $(SYMBOLS_PATH) $(TEST_PATH_ARG) $(EXTRA_TEST_ARGS)
+
 ifndef NO_FAIL_ON_TEST_ERRORS
 define CHECK_TEST_ERROR
   @errors=`grep "TEST-UNEXPECTED-" $@.log` ;\
@@ -73,6 +80,14 @@ define CHECK_TEST_ERROR
   fi
 endef
 endif
+
+mochitest-remote: DM_TRANS?=adb
+mochitest-remote:
+	@if test -f ${MOZ_HOST_BIN}/xpcshell && [ "${TEST_DEVICE}" != "usb" -o "$(DM_TRANS)" = "adb" ]; \
+          then $(RUN_MOCHITEST_REMOTE); \
+        else \
+          echo "please prepare your host with environment variables for TEST_DEVICE and MOZ_HOST_BIN"; \
+        fi
 
 mochitest-plain:
 	$(RUN_MOCHITEST)
@@ -95,21 +110,26 @@ mochitest-a11y:
 mochitest-ipcplugins:
 ifeq (Darwin,$(OS_ARCH))
 ifeq (i386,$(TARGET_CPU))
-	$(RUN_MOCHITEST) --setpref=dom.ipc.plugins.enabled.i386.test.plugin=false --test-path=modules/plugin/test
+	$(RUN_MOCHITEST) --setpref=dom.ipc.plugins.enabled.i386.test.plugin=false --test-path=dom/plugins/test
 endif
 ifeq (x86_64,$(TARGET_CPU))
-	$(RUN_MOCHITEST) --setpref=dom.ipc.plugins.enabled.x86_64.test.plugin=false --test-path=modules/plugin/test
+	$(RUN_MOCHITEST) --setpref=dom.ipc.plugins.enabled.x86_64.test.plugin=false --test-path=dom/plugins/test
 endif
 ifeq (powerpc,$(TARGET_CPU))
-	$(RUN_MOCHITEST) --setpref=dom.ipc.plugins.enabled.ppc.test.plugin=false --test-path=modules/plugin/test
+	$(RUN_MOCHITEST) --setpref=dom.ipc.plugins.enabled.ppc.test.plugin=false --test-path=dom/plugins/test
 endif
 else
-	$(RUN_MOCHITEST) --setpref=dom.ipc.plugins.enabled=false --test-path=modules/plugin/test
+	$(RUN_MOCHITEST) --setpref=dom.ipc.plugins.enabled=false --test-path=dom/plugins/test
 endif
 	$(CHECK_TEST_ERROR)
 
 # Usage: |make [EXTRA_TEST_ARGS=...] *test|.
 RUN_REFTEST = rm -f ./$@.log && $(PYTHON) _tests/reftest/runreftest.py \
+  $(SYMBOLS_PATH) $(EXTRA_TEST_ARGS) $(1) | tee ./$@.log
+
+REMOTE_REFTEST = rm -f ./$@.log && $(PYTHON) _tests/reftest/remotereftest.py \
+  --dm_trans=$(DM_TRANS) --ignore-window-size \
+  --app=$(ANDROID_PACKAGE_NAME) --deviceIP=${TEST_DEVICE} --xre-path=${MOZ_HOST_BIN} \
   $(SYMBOLS_PATH) $(EXTRA_TEST_ARGS) $(1) | tee ./$@.log
 
 ifeq ($(OS_ARCH),WINNT) #{
@@ -125,6 +145,15 @@ reftest: TEST_PATH?=layout/reftests/reftest.list
 reftest:
 	$(call RUN_REFTEST,$(topsrcdir)/$(TEST_PATH))
 	$(CHECK_TEST_ERROR)
+
+reftest-remote: TEST_PATH?=layout/reftests/reftest.list
+reftest-remote: DM_TRANS?=adb
+reftest-remote:
+	@if test -f ${MOZ_HOST_BIN}/xpcshell && [ "${TEST_DEVICE}" != "" -o "$(DM_TRANS)" = "adb" ]; \
+	  then ln -s $(abspath $(topsrcdir)) _tests/reftest/tests;$(call REMOTE_REFTEST,tests/$(TEST_PATH)); $(CHECK_TEST_ERROR); \
+        else \
+          echo "please prepare your host with environment variables for TEST_DEVICE and MOZ_HOST_BIN"; \
+        fi
 
 reftest-ipc: TEST_PATH?=layout/reftests/reftest.list
 reftest-ipc:
@@ -165,41 +194,42 @@ xpcshell-tests:
 	$(PYTHON) -u $(topsrcdir)/config/pythonpath.py \
 	  -I$(topsrcdir)/build \
 	  $(topsrcdir)/testing/xpcshell/runxpcshelltests.py \
-	  --manifest=$(DEPTH)/_tests/xpcshell/all-test-dirs.list \
+	  --manifest=$(DEPTH)/_tests/xpcshell/xpcshell.ini \
+	  --build-info-json=$(DEPTH)/mozinfo.json \
 	  --no-logfiles \
           $(SYMBOLS_PATH) \
 	  $(TEST_PATH_ARG) $(EXTRA_TEST_ARGS) \
-	  $(DIST)/bin/xpcshell
+	  $(LIBXUL_DIST)/bin/xpcshell
 
-# install and run the mozmill tests
-$(DEPTH)/_tests/mozmill:
-	$(MAKE) -C $(DEPTH)/testing/mozmill install-develop PKG_STAGE=../../_tests
-	$(PYTHON) $(topsrcdir)/testing/mozmill/installmozmill.py --develop $(DEPTH)/_tests/mozmill
+REMOTE_XPCSHELL = \
+	rm -f ./$@.log && \
+	$(PYTHON) -u $(topsrcdir)/config/pythonpath.py \
+	  -I$(topsrcdir)/build \
+	  -I$(topsrcdir)/build/mobile \
+	  $(topsrcdir)/testing/xpcshell/remotexpcshelltests.py \
+	  --manifest=$(DEPTH)/_tests/xpcshell/xpcshell.ini \
+	  --build-info-json=$(DEPTH)/mozinfo.json \
+	  --no-logfiles \
+	  --dm_trans=$(DM_TRANS) \
+	  --deviceIP=${TEST_DEVICE} \
+	  --objdir=$(DEPTH) \
+	  $(SYMBOLS_PATH) \
+	  $(TEST_PATH_ARG) $(EXTRA_TEST_ARGS)
 
-MOZMILL_TEST_PATH = $(DEPTH)/_tests/mozmill/tests/firefox
-mozmill: TEST_PATH?=$(MOZMILL_TEST_PATH)
-mozmill: $(DEPTH)/_tests/mozmill
-	$(SHELL) $(DEPTH)/_tests/mozmill/mozmill.sh -t $(TEST_PATH) -b $(browser_path) --show-all
-
-MOZMILL_RESTART_TEST_PATH = $(DEPTH)/_tests/mozmill/tests/firefox/restartTests
-mozmill-restart: TEST_PATH?=$(MOZMILL_RESTART_TEST_PATH)
-mozmill-restart: $(DEPTH)/_tests/mozmill
-	$(SHELL) $(DEPTH)/_tests/mozmill/mozmill-restart.sh -t $(TEST_PATH) -b $(browser_path) --show-all
-
-# in order to have `mozmill-all` ignore TEST_PATH, if it is set, we shell out to call make
-# again, verbosely overriding the TEST_PATH
-# This isn't as neat as having mozmill and mozmill-restart be dependencies, but it 
-# seems to be the make idiom
-mozmill-all: 
-	$(MAKE) mozmill TEST_PATH=$(MOZMILL_TEST_PATH)
-	$(MAKE) mozmill-restart TEST_PATH=$(MOZMILL_RESTART_TEST_PATH)
+xpcshell-tests-remote: DM_TRANS?=adb
+xpcshell-tests-remote:
+	@if [ "${TEST_DEVICE}" != "" -o "$(DM_TRANS)" = "adb" ]; \
+          then $(call REMOTE_XPCSHELL); $(CHECK_TEST_ERROR); \
+        else \
+          echo "please prepare your host with environment variables for TEST_DEVICE"; \
+        fi
 
 # Package up the tests and test harnesses
 include $(topsrcdir)/toolkit/mozapps/installer/package-name.mk
 
 ifndef UNIVERSAL_BINARY
 PKG_STAGE = $(DIST)/test-package-stage
-package-tests: stage-mochitest stage-reftest stage-xpcshell stage-jstests stage-mozmill stage-jetpack stage-firebug
+package-tests: stage-mochitest stage-reftest stage-xpcshell stage-jstests stage-jetpack stage-firebug
 else
 # This staging area has been built for us by universal/flight.mk
 PKG_STAGE = $(DIST)/universal/test-package-stage
@@ -235,9 +265,6 @@ stage-xpcshell: make-stage-dir
 stage-jstests: make-stage-dir
 	$(MAKE) -C $(DEPTH)/js/src/tests stage-package
 
-stage-mozmill: make-stage-dir
-	$(MAKE) -C $(DEPTH)/testing/mozmill stage-package
-
 stage-android: make-stage-dir
 	$(NSINSTALL) $(DEPTH)/build/mobile/sutagent/android/sutAgentAndroid.apk $(PKG_STAGE)/bin
 	$(NSINSTALL) $(DEPTH)/build/mobile/sutagent/android/watcher/Watcher.apk $(PKG_STAGE)/bin
@@ -254,4 +281,4 @@ stage-firebug: make-stage-dir
   reftest crashtest \
   xpcshell-tests \
   jstestbrowser \
-  package-tests make-stage-dir stage-mochitest stage-reftest stage-xpcshell stage-jstests stage-mozmill stage-android stage-jetpack stage-firebug
+  package-tests make-stage-dir stage-mochitest stage-reftest stage-xpcshell stage-jstests stage-android stage-jetpack stage-firebug

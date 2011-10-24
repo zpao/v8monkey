@@ -59,7 +59,6 @@
 #include "nsSize.h"
 #include "nsTransform2D.h"
 #include "nsThemeConstants.h"
-#include "nsILookAndFeel.h"
 #include "nsIServiceManager.h"
 #include "nsIDOMHTMLInputElement.h"
 #include <malloc.h>
@@ -367,7 +366,7 @@ nsNativeThemeQt::GetWidgetBorder(nsDeviceContext* ,
     return NS_OK;
 }
 
-PRBool
+bool
 nsNativeThemeQt::GetWidgetPadding(nsDeviceContext* ,
                                   nsIFrame*, PRUint8 aWidgetType,
                                   nsIntMargin* aResult)
@@ -377,19 +376,19 @@ nsNativeThemeQt::GetWidgetPadding(nsDeviceContext* ,
         aWidgetType == NS_THEME_TEXTFIELD_MULTILINE ||
         aWidgetType == NS_THEME_DROPDOWN) {
         aResult->SizeTo(2, 2, 2, 2);
-        return PR_TRUE;
+        return true;
     }
 
-    return PR_FALSE;
+    return false;
 }
 
 NS_IMETHODIMP
 nsNativeThemeQt::GetMinimumWidgetSize(nsRenderingContext* aContext, nsIFrame* aFrame,
                                       PRUint8 aWidgetType,
-                                      nsIntSize* aResult, PRBool* aIsOverridable)
+                                      nsIntSize* aResult, bool* aIsOverridable)
 {
     (*aResult).width = (*aResult).height = 0;
-    *aIsOverridable = PR_TRUE;
+    *aIsOverridable = true;
 
     QStyle *s = qApp->style();
 
@@ -439,26 +438,26 @@ nsNativeThemeQt::GetMinimumWidgetSize(nsRenderingContext* aContext, nsIFrame* aF
     case NS_THEME_SCROLLBAR_BUTTON_DOWN: {
         (*aResult).width = s->pixelMetric(QStyle::PM_ScrollBarExtent);
         (*aResult).height = (*aResult).width;
-        //*aIsOverridable = PR_FALSE;
+        //*aIsOverridable = false;
         break;
     }
     case NS_THEME_SCROLLBAR_BUTTON_LEFT:
     case NS_THEME_SCROLLBAR_BUTTON_RIGHT: {
         (*aResult).height = s->pixelMetric(QStyle::PM_ScrollBarExtent);
         (*aResult).width = (*aResult).height;
-        //*aIsOverridable = PR_FALSE;
+        //*aIsOverridable = false;
         break;
         }
     case NS_THEME_SCROLLBAR_THUMB_VERTICAL: {
         (*aResult).width = s->pixelMetric(QStyle::PM_ScrollBarExtent);
         (*aResult).height = s->pixelMetric(QStyle::PM_ScrollBarSliderMin);
-        //*aIsOverridable = PR_FALSE;
+        //*aIsOverridable = false;
         break;
         }
     case NS_THEME_SCROLLBAR_THUMB_HORIZONTAL: {
         (*aResult).width = s->pixelMetric(QStyle::PM_ScrollBarSliderMin);
         (*aResult).height = s->pixelMetric(QStyle::PM_ScrollBarExtent);
-        //*aIsOverridable = PR_FALSE;
+        //*aIsOverridable = false;
         break;
         }
     case NS_THEME_SCROLLBAR_TRACK_VERTICAL: {
@@ -484,7 +483,7 @@ nsNativeThemeQt::GetMinimumWidgetSize(nsRenderingContext* aContext, nsIFrame* aF
   
         (*aResult).width = subRect.width();
         (*aResult).height = subRect.height();
-        //*aIsOverridable = PR_FALSE;
+        //*aIsOverridable = false;
         break;
     }
     case NS_THEME_DROPDOWN: {
@@ -503,7 +502,7 @@ nsNativeThemeQt::GetMinimumWidgetSize(nsRenderingContext* aContext, nsIFrame* aF
 
         (*aResult).width = subRect.width();
         (*aResult).height = subRect.height();
-        //*aIsOverridable = PR_FALSE;
+        //*aIsOverridable = false;
         break;
     }
     case NS_THEME_DROPDOWN_TEXT: {
@@ -519,7 +518,7 @@ nsNativeThemeQt::GetMinimumWidgetSize(nsRenderingContext* aContext, nsIFrame* aF
        
         (*aResult).width = subRect.width();
         (*aResult).height = subRect.height();
-        //*aIsOverridable = PR_FALSE;
+        //*aIsOverridable = false;
         break;
     }
     case NS_THEME_DROPDOWN_TEXTFIELD: {
@@ -536,7 +535,7 @@ nsNativeThemeQt::GetMinimumWidgetSize(nsRenderingContext* aContext, nsIFrame* aF
 
         (*aResult).width = subRect.width() + subRect2.width();
         (*aResult).height = std::max(subRect.height(), subRect2.height());
-        //*aIsOverridable = PR_FALSE;
+        //*aIsOverridable = false;
         break;
     }
     case NS_THEME_TEXTFIELD:
@@ -548,7 +547,7 @@ nsNativeThemeQt::GetMinimumWidgetSize(nsRenderingContext* aContext, nsIFrame* aF
 
 NS_IMETHODIMP
 nsNativeThemeQt::WidgetStateChanged(nsIFrame* aFrame, PRUint8 aWidgetType,
-                                    nsIAtom* aAttribute, PRBool* aShouldRepaint)
+                                    nsIAtom* aAttribute, bool* aShouldRepaint)
 {
     *aShouldRepaint = TRUE;
     return NS_OK;
@@ -564,7 +563,7 @@ nsNativeThemeQt::ThemeChanged()
     return NS_OK;
 }
 
-PRBool
+bool
 nsNativeThemeQt::ThemeSupportsWidget(nsPresContext* aPresContext,
                                      nsIFrame* aFrame,
                                      PRUint8 aWidgetType)
@@ -597,37 +596,37 @@ nsNativeThemeQt::ThemeSupportsWidget(nsPresContext* aPresContext,
     default:
         break;
     }
-    return PR_FALSE;
+    return false;
 }
 
-PRBool
+bool
 nsNativeThemeQt::WidgetIsContainer(PRUint8 aWidgetType)
 {
 //     if (aWidgetType == NS_THEME_DROPDOWN_BUTTON ||
 //         aWidgetType == NS_THEME_RADIO ||
 //         aWidgetType == NS_THEME_CHECKBOX) {
-//         return PR_FALSE;
+//         return false;
 //     }
 
-   return PR_TRUE;
+   return true;
 }
 
-PRBool
+bool
 nsNativeThemeQt::ThemeDrawsFocusForWidget(nsPresContext* aPresContext, nsIFrame* aFrame, PRUint8 aWidgetType)
 {
     if (aWidgetType == NS_THEME_DROPDOWN ||
         aWidgetType == NS_THEME_BUTTON || 
         aWidgetType == NS_THEME_TREEVIEW_HEADER_CELL) { 
-        return PR_TRUE;
+        return true;
     }
 
-    return PR_FALSE;
+    return false;
 }
 
-PRBool
+bool
 nsNativeThemeQt::ThemeNeedsComboboxDropmarker()
 {
-    return PR_TRUE;
+    return true;
 }
 
 void
@@ -641,7 +640,7 @@ nsNativeThemeQt::InitButtonStyle(PRUint8 aWidgetType,
     opt.rect = rect;
     opt.palette = mNoBackgroundPalette;
 
-    PRBool isDisabled = IsDisabled(aFrame, eventState);
+    bool isDisabled = IsDisabled(aFrame, eventState);
 
     if (!isDisabled)
         opt.state |= QStyle::State_Enabled;
@@ -697,7 +696,7 @@ nsNativeThemeQt::InitComboStyle(PRUint8 aWidgetType,
                                 QStyleOptionComboBox &opt)
 {
     nsEventStates eventState = GetContentState(aFrame, aWidgetType);
-    PRBool isDisabled = IsDisabled(aFrame, eventState);
+    bool isDisabled = IsDisabled(aFrame, eventState);
 
     if (!isDisabled)
         opt.state |= QStyle::State_Enabled;

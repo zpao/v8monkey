@@ -87,7 +87,7 @@ public:
     NS_DECL_NSICLASSINFO
     NS_DECL_NSIMUTABLE
 
-    nsStandardURL(PRBool aSupportsFileURL = PR_FALSE);
+    nsStandardURL(bool aSupportsFileURL = false);
     virtual ~nsStandardURL();
 
     static void InitGlobalObjects();
@@ -105,6 +105,17 @@ public: /* internal -- HPUX compiler can't handle this being private */
         URLSegment() : mPos(0), mLen(-1) {}
         URLSegment(PRUint32 pos, PRInt32 len) : mPos(pos), mLen(len) {}
         void Reset() { mPos = 0; mLen = -1; }
+        // Merge another segment following this one to it if they're contiguous
+        // Assumes we have something like "foo;bar" where this object is 'foo' and right
+        // is 'bar'.
+        void Merge(const nsCString &spec, const char separator, const URLSegment &right) {
+            if (mLen >= 0 && 
+                *(spec.get() + mPos + mLen) == separator &&
+                mPos + mLen + 1 == right.mPos) {
+                mLen += 1 + right.mLen;
+            }
+        }
+            
     };
 
     //
@@ -135,7 +146,8 @@ public: /* internal -- HPUX compiler can't handle this being private */
                                    const URLSegment &segment,
                                    PRInt16 mask,
                                    nsAFlatCString &buf,
-                                   PRBool& appended);
+                                   bool& appended,
+                                   PRUint32 extraLen = 0);
          
         // Encode the given string if necessary, and return a reference to
         // the encoded string.  Returns a reference to |buf| if encoding
@@ -144,7 +156,7 @@ public: /* internal -- HPUX compiler can't handle this being private */
                                         PRInt16 mask,
                                         nsAFlatCString &buf);
     private:
-        PRBool InitUnicodeEncoder();
+        bool InitUnicodeEncoder();
         
         const char* mCharset;  // Caller should keep this alive for
                                // the life of the segment encoder
@@ -153,7 +165,23 @@ public: /* internal -- HPUX compiler can't handle this being private */
     friend class nsSegmentEncoder;
 
 protected:
+    // enum used in a few places to specify how .ref attribute should be handled
+    enum RefHandlingEnum {
+        eIgnoreRef,
+        eHonorRef
+    };
+
+    // Helper to share code between Equals and EqualsExceptRef
+    // NOTE: *not* virtual, because no one needs to override this so far...
+    nsresult EqualsInternal(nsIURI* unknownOther,
+                            RefHandlingEnum refHandlingMode,
+                            bool* result);
+
     virtual nsStandardURL* StartClone();
+
+    // Helper to share code between Clone methods.
+    nsresult CloneInternal(RefHandlingEnum aRefHandlingMode,
+                           nsIURI** aClone);
 
     // Helper for subclass implementation of GetFile().  Subclasses that map
     // URIs to files in a special way should implement this method.  It should
@@ -165,20 +193,20 @@ private:
     PRInt32  Port() { return mPort == -1 ? mDefaultPort : mPort; }
 
     void     Clear();
-    void     InvalidateCache(PRBool invalidateCachedFile = PR_TRUE);
+    void     InvalidateCache(bool invalidateCachedFile = true);
 
-    PRBool   EscapeIPv6(const char *host, nsCString &result);
-    PRBool   NormalizeIDN(const nsCSubstring &host, nsCString &result);
+    bool     EscapeIPv6(const char *host, nsCString &result);
+    bool     NormalizeIDN(const nsCSubstring &host, nsCString &result);
     void     CoalescePath(netCoalesceFlags coalesceFlag, char *path);
 
-    PRUint32 AppendSegmentToBuf(char *, PRUint32, const char *, URLSegment &, const nsCString *esc=nsnull, PRBool useEsc = PR_FALSE);
+    PRUint32 AppendSegmentToBuf(char *, PRUint32, const char *, URLSegment &, const nsCString *esc=nsnull, bool useEsc = false);
     PRUint32 AppendToBuf(char *, PRUint32, const char *, PRUint32);
 
     nsresult BuildNormalizedSpec(const char *spec);
 
-    PRBool   SegmentIs(const URLSegment &s1, const char *val, PRBool ignoreCase = PR_FALSE);
-    PRBool   SegmentIs(const char* spec, const URLSegment &s1, const char *val, PRBool ignoreCase = PR_FALSE);
-    PRBool   SegmentIs(const URLSegment &s1, const char *val, const URLSegment &s2, PRBool ignoreCase = PR_FALSE);
+    bool     SegmentIs(const URLSegment &s1, const char *val, bool ignoreCase = false);
+    bool     SegmentIs(const char* spec, const URLSegment &s1, const char *val, bool ignoreCase = false);
+    bool     SegmentIs(const URLSegment &s1, const char *val, const URLSegment &s2, bool ignoreCase = false);
 
     PRInt32  ReplaceSegment(PRUint32 pos, PRUint32 len, const char *val, PRUint32 valLen);
     PRInt32  ReplaceSegment(PRUint32 pos, PRUint32 len, const nsACString &val);
@@ -186,7 +214,7 @@ private:
     nsresult ParseURL(const char *spec, PRInt32 specLen);
     nsresult ParsePath(const char *spec, PRUint32 pathPos, PRInt32 pathLen = -1);
 
-    char    *AppendToSubstring(PRUint32 pos, PRInt32 len, const char *tail, PRInt32 tailLen = -1);
+    char    *AppendToSubstring(PRUint32 pos, PRInt32 len, const char *tail);
 
     // dependent substring helpers
     const nsDependentCSubstring Segment(PRUint32 pos, PRInt32 len); // see below
@@ -195,7 +223,7 @@ private:
     // dependent substring getters
     const nsDependentCSubstring Prepath();  // see below
     const nsDependentCSubstring Scheme()    { return Segment(mScheme); }
-    const nsDependentCSubstring Userpass(PRBool includeDelim = PR_FALSE); // see below
+    const nsDependentCSubstring Userpass(bool includeDelim = false); // see below
     const nsDependentCSubstring Username()  { return Segment(mUsername); }
     const nsDependentCSubstring Password()  { return Segment(mPassword); }
     const nsDependentCSubstring Hostport(); // see below
@@ -206,7 +234,6 @@ private:
     const nsDependentCSubstring Filename(); // see below
     const nsDependentCSubstring Basename()  { return Segment(mBasename); }
     const nsDependentCSubstring Extension() { return Segment(mExtension); }
-    const nsDependentCSubstring Param()     { return Segment(mParam); }
     const nsDependentCSubstring Query()     { return Segment(mQuery); }
     const nsDependentCSubstring Ref()       { return Segment(mRef); }
 
@@ -219,8 +246,7 @@ private:
     void ShiftFromFilepath(PRInt32 diff)  { mFilepath.mPos += diff; ShiftFromDirectory(diff); }
     void ShiftFromDirectory(PRInt32 diff) { mDirectory.mPos += diff; ShiftFromBasename(diff); }
     void ShiftFromBasename(PRInt32 diff)  { mBasename.mPos += diff; ShiftFromExtension(diff); }
-    void ShiftFromExtension(PRInt32 diff) { mExtension.mPos += diff; ShiftFromParam(diff); }
-    void ShiftFromParam(PRInt32 diff)     { mParam.mPos += diff; ShiftFromQuery(diff); }
+    void ShiftFromExtension(PRInt32 diff) { mExtension.mPos += diff; ShiftFromQuery(diff); }
     void ShiftFromQuery(PRInt32 diff)     { mQuery.mPos += diff; ShiftFromRef(diff); }
     void ShiftFromRef(PRInt32 diff)       { mRef.mPos += diff; }
 
@@ -250,7 +276,6 @@ private:
     URLSegment mDirectory;
     URLSegment mBasename;
     URLSegment mExtension;
-    URLSegment mParam;
     URLSegment mQuery;
     URLSegment mRef;
 
@@ -280,10 +305,10 @@ private:
     // coredump if we leak it.
     static nsIIDNService               *gIDN;
     static nsICharsetConverterManager  *gCharsetMgr;
-    static PRBool                       gInitialized;
-    static PRBool                       gEscapeUTF8;
-    static PRBool                       gAlwaysEncodeInUTF8;
-    static PRBool                       gEncodeQueryInUTF8;
+    static bool                         gInitialized;
+    static bool                         gEscapeUTF8;
+    static bool                         gAlwaysEncodeInUTF8;
+    static bool                         gEncodeQueryInUTF8;
 
 public:
 #ifdef DEBUG_DUMP_URLS_AT_SHUTDOWN
@@ -324,7 +349,7 @@ nsStandardURL::Prepath()
 }
 
 inline const nsDependentCSubstring
-nsStandardURL::Userpass(int includeDelim)
+nsStandardURL::Userpass(bool includeDelim)
 {
     PRUint32 pos=0, len=0;
     // if there is no username, then there can be no password

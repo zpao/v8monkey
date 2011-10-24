@@ -40,6 +40,8 @@
 
 #include "Layers.h"
 
+#include "mozilla/layers/ShadowLayers.h"
+
 #include <windows.h>
 #include <d3d9.h>
 
@@ -88,7 +90,7 @@ struct ShaderConstantRect
  * This is the LayerManager used for Direct3D 9. For now this will render on
  * the main thread.
  */
-class THEBES_API LayerManagerD3D9 : public LayerManager {
+class THEBES_API LayerManagerD3D9 : public ShadowLayerManager {
 public:
   LayerManagerD3D9(nsIWidget *aWidget);
   virtual ~LayerManagerD3D9();
@@ -101,7 +103,7 @@ public:
    *
    * \return True is initialization was succesful, false when it was not.
    */
-  PRBool Initialize();
+  bool Initialize();
 
   /*
    * Sets the clipping region for this layer manager. This is important on
@@ -119,6 +121,9 @@ public:
    */
   virtual void Destroy();
 
+  virtual ShadowLayerManager* AsShadowManager()
+  { return this; }
+
   virtual void BeginTransaction();
 
   virtual void BeginTransactionWithTarget(gfxContext* aTarget);
@@ -133,11 +138,20 @@ public:
   };
 
   virtual void EndTransaction(DrawThebesLayerCallback aCallback,
-                              void* aCallbackData);
+                              void* aCallbackData,
+                              EndTransactionFlags aFlags = END_DEFAULT);
 
   const CallbackInfo &GetCallbackInfo() { return mCurrentCallbackInfo; }
 
   void SetRoot(Layer* aLayer);
+
+  virtual bool CanUseCanvasLayerForSize(const gfxIntSize &aSize)
+  {
+    if (!mDeviceManager)
+      return false;
+    PRInt32 maxSize = mDeviceManager->GetMaxTextureSize();
+    return aSize <= gfxIntSize(maxSize, maxSize);
+  }
 
   virtual already_AddRefed<ThebesLayer> CreateThebesLayer();
 
@@ -153,6 +167,12 @@ public:
 
   virtual already_AddRefed<ImageContainer> CreateImageContainer();
 
+  virtual already_AddRefed<ShadowThebesLayer> CreateShadowThebesLayer();
+  virtual already_AddRefed<ShadowContainerLayer> CreateShadowContainerLayer();
+  virtual already_AddRefed<ShadowImageLayer> CreateShadowImageLayer();
+  virtual already_AddRefed<ShadowColorLayer> CreateShadowColorLayer();
+  virtual already_AddRefed<ShadowCanvasLayer> CreateShadowCanvasLayer();
+
   virtual LayersBackend GetBackendType() { return LAYERS_D3D9; }
   virtual void GetBackendName(nsAString& name) { name.AssignLiteral("Direct3D 9"); }
   bool DeviceWasRemoved() { return deviceManager()->DeviceWasRemoved(); }
@@ -160,7 +180,7 @@ public:
   /*
    * Helper methods.
    */
-  void SetClippingEnabled(PRBool aEnabled);
+  void SetClippingEnabled(bool aEnabled);
 
   void SetShaderMode(DeviceManagerD3D9::ShaderMode aMode)
     { mDeviceManager->SetShaderMode(aMode); }
@@ -281,6 +301,40 @@ public:
 
 protected:
   LayerManagerD3D9 *mD3DManager;
+};
+
+/*
+ * RAII helper for locking D3D9 textures.
+ */
+class LockTextureRectD3D9 
+{
+public:
+  LockTextureRectD3D9(IDirect3DTexture9* aTexture) 
+    : mTexture(aTexture)
+  {
+    mLockResult = mTexture->LockRect(0, &mR, NULL, 0);
+  }
+
+  ~LockTextureRectD3D9()
+  {
+    mTexture->UnlockRect(0);
+  }
+
+  bool HasLock() {
+    return SUCCEEDED(mLockResult);
+  }
+
+  D3DLOCKED_RECT GetLockRect() 
+  {
+    return mR;
+  }
+private:
+  LockTextureRectD3D9 (const LockTextureRectD3D9&);
+  LockTextureRectD3D9& operator= (const LockTextureRectD3D9&);
+
+  IDirect3DTexture9* mTexture;
+  D3DLOCKED_RECT mR;
+  HRESULT mLockResult;
 };
 
 } /* layers */

@@ -82,8 +82,8 @@ nsXBLResourceLoader::nsXBLResourceLoader(nsXBLPrototypeBinding* aBinding,
  mResources(aResources),
  mResourceList(nsnull),
  mLastResource(nsnull),
- mLoadingResources(PR_FALSE),
- mInLoadResourcesFunc(PR_FALSE),
+ mLoadingResources(false),
+ mInLoadResourcesFunc(false),
  mPendingSheets(0)
 {
 }
@@ -94,18 +94,18 @@ nsXBLResourceLoader::~nsXBLResourceLoader()
 }
 
 void
-nsXBLResourceLoader::LoadResources(PRBool* aResult)
+nsXBLResourceLoader::LoadResources(bool* aResult)
 {
-  mInLoadResourcesFunc = PR_TRUE;
+  mInLoadResourcesFunc = true;
 
   if (mLoadingResources) {
     *aResult = (mPendingSheets == 0);
-    mInLoadResourcesFunc = PR_FALSE;
+    mInLoadResourcesFunc = false;
     return;
   }
 
-  mLoadingResources = PR_TRUE;
-  *aResult = PR_TRUE;
+  mLoadingResources = true;
+  *aResult = true;
 
   // Declare our loaders.
   nsCOMPtr<nsIDocument> doc = mBinding->XBLDocumentInfo()->GetDocument();
@@ -143,7 +143,7 @@ nsXBLResourceLoader::LoadResources(PRBool* aResult)
 
       // Always load chrome synchronously
       // XXXbz should that still do a content policy check?
-      PRBool chrome;
+      bool chrome;
       nsresult rv;
       if (NS_SUCCEEDED(url->SchemeIs("chrome", &chrome)) && chrome)
       {
@@ -156,7 +156,7 @@ nsXBLResourceLoader::LoadResources(PRBool* aResult)
           NS_ASSERTION(NS_SUCCEEDED(rv), "Load failed!!!");
           if (NS_SUCCEEDED(rv))
           {
-            rv = StyleSheetLoaded(sheet, PR_FALSE, NS_OK);
+            rv = StyleSheetLoaded(sheet, false, NS_OK);
             NS_ASSERTION(NS_SUCCEEDED(rv), "Processing the style sheet failed!!!");
           }
         }
@@ -171,7 +171,7 @@ nsXBLResourceLoader::LoadResources(PRBool* aResult)
   }
 
   *aResult = (mPendingSheets == 0);
-  mInLoadResourcesFunc = PR_FALSE;
+  mInLoadResourcesFunc = false;
   
   // Destroy our resource list.
   delete mResourceList;
@@ -181,7 +181,7 @@ nsXBLResourceLoader::LoadResources(PRBool* aResult)
 // nsICSSLoaderObserver
 NS_IMETHODIMP
 nsXBLResourceLoader::StyleSheetLoaded(nsCSSStyleSheet* aSheet,
-                                      PRBool aWasAlternate,
+                                      bool aWasAlternate,
                                       nsresult aStatus)
 {
   if (!mResources) {
@@ -240,7 +240,7 @@ nsXBLResourceLoader::NotifyBoundElements()
   for (PRUint32 j = 0; j < eltCount; j++) {
     nsCOMPtr<nsIContent> content = mBoundElements.ObjectAt(j);
     
-    PRBool ready = PR_FALSE;
+    bool ready = false;
     xblService->BindingReady(content, bindingURI, &ready);
 
     if (ready) {

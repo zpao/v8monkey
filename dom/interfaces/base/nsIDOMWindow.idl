@@ -22,6 +22,8 @@
  * Contributor(s):
  *   Vidur Apparao <vidur@netscape.com> (original author)
  *   Johnny Stenback <jst@netscape.com>
+ *   Neil Deakin <enndeakin@sympatico.ca>
+ *   Ms2ger <ms2ger@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -39,7 +41,25 @@
 
 #include "domstubs.idl"
 
+interface nsIAnimationFrameListener;
+interface nsIControllers;
+interface nsIDOMBlob;
+interface nsIDOMLocation;
+interface nsIDOMMediaQueryList;
+interface nsIDOMOfflineResourceList;
+interface nsIDOMPerformance;
+interface nsIDOMStorage;
+interface nsIDOMStorageList;
+interface nsIPrompt;
 interface nsISelection;
+interface nsIVariant;
+
+[scriptable, uuid(8fc58f56-f769-4368-a098-edd08550cf1a)]
+interface nsIDOMMozURLProperty : nsISupports
+{
+  DOMString createObjectURL(in nsIDOMBlob blob);
+  void revokeObjectURL(in DOMString URL);
+};
 
 /**
  * The nsIDOMWindow interface is the primary interface for a DOM
@@ -50,20 +70,68 @@ interface nsISelection;
  * @see <http://www.whatwg.org/html/#window>
  */
 
-[scriptable, uuid(ff7d278f-93db-4078-b89a-058c8e1270b4)]
+[scriptable, uuid(8f577294-d572-4473-94b1-d2c5a74a2a74)]
 interface nsIDOMWindow : nsISupports
 {
+  // the current browsing context
+  readonly attribute nsIDOMWindow                       window;
+
+  /* [replaceable] self */
+  readonly attribute nsIDOMWindow                       self;
+
   /**
    * Accessor for the document in this window.
    */
   readonly attribute nsIDOMDocument                     document;
 
   /**
-   * Accessor for this window's parent window, or the window itself if
-   * there is no parent, or if the parent is of different type
-   * (i.e. this does not cross chrome-content boundaries).
+   * Set/Get the name of this window.
+   *
+   * This attribute is "replaceable" in JavaScript
    */
-  readonly attribute nsIDOMWindow                       parent;
+           attribute DOMString                          name;
+
+  /* The setter that takes a string argument needs to be special cased! */
+  readonly attribute nsIDOMLocation                     location;
+
+  readonly attribute nsIDOMHistory                      history;
+
+
+  /* [replaceable] locationbar */
+  readonly attribute nsIDOMBarProp                      locationbar;
+
+  /* [replaceable] menubar */
+  readonly attribute nsIDOMBarProp                      menubar;
+
+  /* [replaceable] personalbar */
+  readonly attribute nsIDOMBarProp                      personalbar;
+
+  /**
+   * Accessor for the object that controls whether or not scrollbars
+   * are shown in this window.
+   *
+   * This attribute is "replaceable" in JavaScript
+   */
+  readonly attribute nsIDOMBarProp                      scrollbars;
+
+  /* [replaceable] statusbar */
+  readonly attribute nsIDOMBarProp                      statusbar;
+
+  /* [replaceable] toolbar */
+  readonly attribute nsIDOMBarProp                      toolbar;
+
+  /* [replaceable] */
+           attribute DOMString                          status;
+
+  void                      close();
+  void                      stop();
+  void                      focus();
+  void                      blur();
+
+
+  // other browsing contexts
+  /* [replaceable] length */
+  readonly attribute unsigned long                      length;
 
   /**
    * Accessor for the root of this hierarchy of windows. This root may
@@ -74,35 +142,103 @@ interface nsIDOMWindow : nsISupports
    * This property is "replaceable" in JavaScript */
   readonly attribute nsIDOMWindow                       top;
 
+           attribute nsIDOMWindow                       opener;
+
   /**
-   * Accessor for the object that controls whether or not scrollbars
-   * are shown in this window.
+   * Accessor for this window's parent window, or the window itself if
+   * there is no parent, or if the parent is of different type
+   * (i.e. this does not cross chrome-content boundaries).
+   */
+  readonly attribute nsIDOMWindow                       parent;
+
+  readonly attribute nsIDOMElement                      frameElement;
+
+
+  // the user agent
+  readonly attribute nsIDOMNavigator                    navigator;
+
+  /**
+   * Get the application cache object for this window.
+   */
+  readonly attribute nsIDOMOfflineResourceList          applicationCache;
+
+
+  // user prompts
+  void                      alert(in DOMString text);
+  boolean                   confirm(in DOMString text);
+
+  // prompt() should return a null string if cancel is pressed
+  DOMString                 prompt([optional] in DOMString aMessage,
+                                   [optional] in DOMString aInitial);
+
+  void                      print();
+
+  nsIVariant                showModalDialog(in DOMString aURI,
+                                            [optional] in nsIVariant aArgs,
+                                            [optional] in DOMString aOptions);
+
+
+  // cross-document messaging
+  /**
+   * Implements a safe message-passing system which can cross same-origin
+   * boundaries.
    *
-   * This attribute is "replaceable" in JavaScript
+   * This method, when called, causes a MessageEvent to be asynchronously
+   * dispatched at the primary document for the window upon which this method is
+   * called.  (Note that the postMessage property on windows is allAccess and
+   * thus is readable cross-origin.)  The dispatched event will have message as
+   * its data, the calling context's window as its source, and an origin
+   * determined by the calling context's main document URI.  The targetOrigin
+   * argument specifies a URI and is used to restrict the message to be sent
+   * only when the target window has the same origin as targetOrigin (since,
+   * when the sender and the target have different origins, neither can read the
+   * location of the other).
+   * 
+   * @see <http://www.whatwg.org/html/#dom-window-postmessage>
    */
-  readonly attribute nsIDOMBarProp                      scrollbars;
+  [implicit_jscontext, binaryname(PostMessageMoz)]
+    void postMessage(in jsval message, in DOMString targetOrigin);
 
-  /**
-   * Accessor for the child windows in this window.
-   */
-  [noscript] readonly attribute nsIDOMWindowCollection  frames;
 
-  /**
-   * Set/Get the name of this window.
-   *
-   * This attribute is "replaceable" in JavaScript
-   */
-           attribute DOMString                          name;
-  /**
-   * Set/Get the document scale factor as a multiplier on the default
-   * size. When setting this attribute, a NS_ERROR_NOT_IMPLEMENTED
-   * error may be returned by implementations not supporting
-   * zoom. Implementations not supporting zoom should return 1.0 all
-   * the time for the Get operation. 1.0 is equals normal size,
-   * i.e. no zoom.
-   */
-  [noscript] attribute float                            textZoom;
+  // WindowBase64
+  // Ascii base64 data to binary data and vice versa...
+  DOMString                 atob(in DOMString aAsciiString);
+  DOMString                 btoa(in DOMString aBase64Data);
 
+
+  // WindowSessionStorage
+  /**
+   * Session storage for the current browsing context.
+   */
+  readonly attribute nsIDOMStorage sessionStorage;
+
+
+  // WindowLocalStorage
+  /**
+   * Local storage for the current browsing context.
+   */
+  readonly attribute nsIDOMStorage localStorage;
+
+
+  // DOM Range
+  /**
+   * Method for accessing this window's selection object.
+   */
+  nsISelection              getSelection();
+
+
+  // CSSOM-View
+  // http://dev.w3.org/csswg/cssom-view/#extensions-to-the-window-interface
+  nsIDOMMediaQueryList      matchMedia(in DOMString media_query_list);
+
+  readonly attribute nsIDOMScreen                       screen;
+
+  // viewport
+           attribute long                               innerWidth;
+           attribute long                               innerHeight;
+
+
+  // viewport scrolling
   /**
    * Accessor for the current x scroll position in this window in
    * pixels.
@@ -111,6 +247,9 @@ interface nsIDOMWindow : nsISupports
    */
   readonly attribute long                               scrollX;
 
+  /* The offset in pixels by which the window is scrolled */
+  readonly attribute long                               pageXOffset;
+
   /**
    * Accessor for the current y scroll position in this window in
    * pixels.
@@ -118,6 +257,11 @@ interface nsIDOMWindow : nsISupports
    * This attribute is "replaceable" in JavaScript
    */
   readonly attribute long                               scrollY;
+
+  /* The offset in pixels by which the window is scrolled */
+  readonly attribute long                               pageYOffset;
+
+  void                      scroll(in long xScroll, in long yScroll);
 
   /**
    * Method for scrolling this window to an absolute pixel offset.
@@ -130,10 +274,44 @@ interface nsIDOMWindow : nsISupports
    */
   void                      scrollBy(in long xScrollDif, in long yScrollDif);
 
+
+  // client
+           attribute long                        screenX;
+           attribute long                        screenY;
+           attribute long                        outerWidth;
+           attribute long                        outerHeight;
+
+
+  // CSSOM
   /**
-   * Method for accessing this window's selection object.
+   * @see <http://dev.w3.org/csswg/cssom/#dom-window-getcomputedstyle>
    */
-  nsISelection              getSelection();
+  nsIDOMCSSStyleDeclaration getComputedStyle(in nsIDOMElement elt, 
+                                             [optional] in DOMString pseudoElt);
+
+
+  // Mozilla extensions
+  /**
+   * Get the window root for this window. This is useful for hooking
+   * up event listeners to this window and every other window nested
+   * in the window root.
+   */
+  [noscript] readonly attribute nsIDOMEventTarget windowRoot;
+
+  /**
+   * Accessor for the child windows in this window.
+   */
+  [noscript] readonly attribute nsIDOMWindowCollection  frames;
+
+  /**
+   * Set/Get the document scale factor as a multiplier on the default
+   * size. When setting this attribute, a NS_ERROR_NOT_IMPLEMENTED
+   * error may be returned by implementations not supporting
+   * zoom. Implementations not supporting zoom should return 1.0 all
+   * the time for the Get operation. 1.0 is equals normal size,
+   * i.e. no zoom.
+   */
+  [noscript] attribute float                            textZoom;
 
   /**
    * Method for scrolling this window by a number of lines.
@@ -150,9 +328,157 @@ interface nsIDOMWindow : nsISupports
    */
   void                      sizeToContent();
 
+  /* [replaceable] content */
+  readonly attribute nsIDOMWindow                       content;
+
+  /* [replaceable] prompter */
+  [noscript] readonly attribute nsIPrompt               prompter;
+
+  readonly attribute boolean                            closed;
+  // http://wiki.whatwg.org/wiki/Crypto
+  readonly attribute nsIDOMCrypto                       crypto;
+  readonly attribute nsIDOMPkcs11                       pkcs11;
+
+  // XXX Shouldn't this be in nsIDOMChromeWindow?
+  /* [replaceable] controllers */
+  readonly attribute nsIControllers                     controllers;
+
+           attribute DOMString                          defaultStatus;
+
+  readonly attribute float                              mozInnerScreenX;
+  readonly attribute float                              mozInnerScreenY;
+
+  /* The maximum offset that the window can be scrolled to
+     (i.e., the document width/height minus the scrollport width/height) */
+  readonly attribute long                               scrollMaxX;
+  readonly attribute long                               scrollMaxY;
+
+           attribute boolean                            fullScreen;
+
+  void                      back();
+  void                      forward();
+  void                      home();
+
+  void                      moveTo(in long xPos, in long yPos);
+  void                      moveBy(in long xDif, in long yDif);
+  void                      resizeTo(in long width, in long height);
+  void                      resizeBy(in long widthDif, in long heightDif);
+
   /**
-   * @see <http://dev.w3.org/csswg/cssom/#dom-window-getcomputedstyle>
+   * Open a new window with this one as the parent.  This method will
+   * NOT examine the JS stack for purposes of determining a caller.
+   * This window will be used for security checks during the search by
+   * name and the default character set on the newly opened window
+   * will just be the default character set of this window.
    */
-  nsIDOMCSSStyleDeclaration getComputedStyle(in nsIDOMElement elt, 
-                                             [optional] in DOMString pseudoElt);
+  [noscript] nsIDOMWindow   open(in DOMString url, in DOMString name,
+                                 in DOMString options);
+
+  /**
+   * This method works like open except that aExtraArgument gets
+   * converted into the array window.arguments in JS, if
+   * aExtraArgument is a nsISupportsArray then the individual items in
+   * the array are inserted into window.arguments, and primitive
+   * nsISupports (nsISupportsPrimitives) types are converted to native
+   * JS types when possible.
+   */
+  [noscript] nsIDOMWindow   openDialog(in DOMString url, in DOMString name,
+                                       in DOMString options,
+                                       in nsISupports aExtraArgument);
+
+  // XXX Should this be in nsIDOMChromeWindow?
+  void                      updateCommands(in DOMString action);
+
+  /* Find in page.
+   * @param str: the search pattern
+   * @param caseSensitive: is the search caseSensitive
+   * @param backwards: should we search backwards
+   * @param wrapAround: should we wrap the search
+   * @param wholeWord: should we search only for whole words
+   * @param searchInFrames: should we search through all frames
+   * @param showDialog: should we show the Find dialog
+   */
+  boolean                   find([optional] in DOMString str,
+                                 [optional] in boolean caseSensitive,
+                                 [optional] in boolean backwards,
+                                 [optional] in boolean wrapAround,
+                                 [optional] in boolean wholeWord,
+                                 [optional] in boolean searchInFrames,
+                                 [optional] in boolean showDialog);
+
+  /**
+   * Returns the number of times this document for this window has
+   * been painted to the screen.
+   */
+  readonly attribute unsigned long long mozPaintCount;
+
+  /**
+   * Request a refresh of this browser window.
+   *
+   * @see <http://dvcs.w3.org/hg/webperf/raw-file/tip/specs/RequestAnimationFrame/Overview.html>
+   */
+  void
+    mozRequestAnimationFrame([optional] in nsIAnimationFrameListener aListener);
+
+  /**
+   * The current animation start time in milliseconds since the epoch.
+   */
+  readonly attribute long long mozAnimationStartTime;
+
+  /**
+   * @see <http://dev.w3.org/2006/webapi/FileAPI/#creating-revoking>
+   */
+  readonly attribute nsIDOMMozURLProperty URL;
+
+  /**
+   * Global storage, accessible by domain.
+   */
+  readonly attribute nsIDOMStorageList globalStorage;
+
+  /**
+   * HTML5 event attributes that only apply to windows and <body>/<frameset>
+   */
+  [implicit_jscontext] attribute jsval onafterprint;
+  [implicit_jscontext] attribute jsval onbeforeprint;
+  [implicit_jscontext] attribute jsval onbeforeunload;
+  [implicit_jscontext] attribute jsval onhashchange;
+  [implicit_jscontext] attribute jsval onmessage;
+  [implicit_jscontext] attribute jsval onoffline;
+  [implicit_jscontext] attribute jsval ononline;
+  [implicit_jscontext] attribute jsval onpopstate;
+  [implicit_jscontext] attribute jsval onpagehide;
+  [implicit_jscontext] attribute jsval onpageshow;
+  // Not supported yet
+  // [implicit_jscontext] attribute jsval onredo;
+  [implicit_jscontext] attribute jsval onresize;
+  // Not supported yet
+  // [implicit_jscontext] attribute jsval onstorage;
+  // Not supported yet
+  // [implicit_jscontext] attribute jsval onundo;
+  [implicit_jscontext] attribute jsval onunload;
+
+  /**
+   * Non-HTML5 window-specific event attributes
+   */
+  [implicit_jscontext] attribute jsval ondevicemotion;
+  [implicit_jscontext] attribute jsval ondeviceorientation;
+
+  [implicit_jscontext] attribute jsval onmouseenter;
+  [implicit_jscontext] attribute jsval onmouseleave;
 };
+
+[scriptable, uuid(2146c906-57f7-486c-a1b4-8cdb57ef577f)]
+interface nsIDOMWindowPerformance : nsISupports
+{
+  /**
+   * A namespace to hold performance related data and statistics.
+   */
+  readonly attribute nsIDOMPerformance performance;
+};
+
+/**
+ * Empty interface for compatibility with older versions.
+ * @deprecated Use nsIDOMWindow instead
+ */
+[scriptable, uuid(8da641ab-906a-456e-97f2-b77df4ca2d95)]
+interface nsIDOMWindowInternal : nsIDOMWindow {};

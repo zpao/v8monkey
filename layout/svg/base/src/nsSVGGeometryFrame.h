@@ -46,9 +46,9 @@ class gfxContext;
 
 typedef nsFrame nsSVGGeometryFrameBase;
 
-#define HITTEST_MASK_FILL        0x01
-#define HITTEST_MASK_STROKE      0x02
-#define HITTEST_MASK_CHECK_MRECT 0x04
+#define SVG_HIT_TEST_FILL        0x01
+#define SVG_HIT_TEST_STROKE      0x02
+#define SVG_HIT_TEST_CHECK_MRECT 0x04
 
 /* nsSVGGeometryFrame is a base class for SVG objects that directly
  * have geometry (circle, ellipse, line, polyline, polygon, path, and
@@ -69,7 +69,7 @@ public:
                   nsIFrame* aParent,
                   nsIFrame* aPrevInFlow);
 
-  virtual PRBool IsFrameOfType(PRUint32 aFlags) const
+  virtual bool IsFrameOfType(PRUint32 aFlags) const
   {
     return nsSVGGeometryFrameBase::IsFrameOfType(aFlags & ~(nsIFrame::eSVG | nsIFrame::eSVGGeometry));
   }
@@ -82,13 +82,13 @@ public:
 
   /*
    * Set up a cairo context for filling a path
-   * @return PR_FALSE to skip rendering
+   * @return false to skip rendering
    */
-  PRBool SetupCairoFill(gfxContext *aContext);
+  bool SetupCairoFill(gfxContext *aContext);
   /*
-   * @return PR_FALSE if there is no stroke
+   * @return false if there is no stroke
    */
-  PRBool HasStroke();
+  bool HasStroke();
   /*
    * Set up a cairo context for measuring a stroked path
    */
@@ -99,14 +99,21 @@ public:
   void SetupCairoStrokeHitGeometry(gfxContext *aContext);
   /*
    * Set up a cairo context for stroking a path
-   * @return PR_FALSE to skip rendering
+   * @return false to skip rendering
    */
-  PRBool SetupCairoStroke(gfxContext *aContext);
+  bool SetupCairoStroke(gfxContext *aContext);
 
 protected:
   nsSVGPaintServerFrame *GetPaintServer(const nsStyleSVGPaint *aPaint,
                                         const FramePropertyDescriptor *aProperty);
-  virtual PRUint16 GetHittestMask();
+
+  /**
+   * This function returns a set of bit flags indicating which parts of the
+   * element (fill, stroke, bounds) should intercept pointer events. It takes
+   * into account the type of element and the value of the 'pointer-events'
+   * property on the element.
+   */
+  virtual PRUint16 GetHitTestFlags();
 
 private:
   nsresult GetStrokeDashArray(double **arr, PRUint32 *count);

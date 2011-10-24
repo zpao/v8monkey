@@ -44,9 +44,9 @@
 #include "nsObjCExceptions.h"
 #include "nsCocoaUtils.h"
 #include "nsCocoaWindow.h"
-#include "nsWidgetAtoms.h"
+#include "nsGkAtoms.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocumentEvent.h"
+#include "nsIDOMDocument.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIDOMXULCommandEvent.h"
 #include "nsIPrivateDOMEvent.h"
@@ -56,13 +56,13 @@ void nsMenuUtilsX::DispatchCommandTo(nsIContent* aTargetContent)
 {
   NS_PRECONDITION(aTargetContent, "null ptr");
 
-  nsIDocument* doc = aTargetContent->GetOwnerDoc();
-  nsCOMPtr<nsIDOMDocumentEvent> docEvent = do_QueryInterface(doc);
+  nsIDocument* doc = aTargetContent->OwnerDoc();
+  nsCOMPtr<nsIDOMDocument> domDoc = do_QueryInterface(doc);
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(aTargetContent);
-  if (docEvent && target) {
+  if (domDoc && target) {
     nsCOMPtr<nsIDOMEvent> event;
-    docEvent->CreateEvent(NS_LITERAL_STRING("xulcommandevent"),
-                          getter_AddRefs(event));
+    domDoc->CreateEvent(NS_LITERAL_STRING("xulcommandevent"),
+                        getter_AddRefs(event));
     nsCOMPtr<nsIDOMXULCommandEvent> command = do_QueryInterface(event);
     nsCOMPtr<nsIPrivateDOMEvent> pEvent = do_QueryInterface(command);
 
@@ -70,12 +70,12 @@ void nsMenuUtilsX::DispatchCommandTo(nsIContent* aTargetContent)
     // pressed keys, but this is a big old edge case anyway. -dwh
     if (pEvent &&
         NS_SUCCEEDED(command->InitCommandEvent(NS_LITERAL_STRING("command"),
-                                               PR_TRUE, PR_TRUE,
+                                               true, true,
                                                doc->GetWindow(), 0,
-                                               PR_FALSE, PR_FALSE, PR_FALSE,
-                                               PR_FALSE, nsnull))) {
-      pEvent->SetTrusted(PR_TRUE);
-      PRBool dummy;
+                                               false, false, false,
+                                               false, nsnull))) {
+      pEvent->SetTrusted(true);
+      bool dummy;
       target->DispatchEvent(event, &dummy);
     }
   }
@@ -202,12 +202,12 @@ NSMenuItem* nsMenuUtilsX::GetStandardEditMenuItem()
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-PRBool nsMenuUtilsX::NodeIsHiddenOrCollapsed(nsIContent* inContent)
+bool nsMenuUtilsX::NodeIsHiddenOrCollapsed(nsIContent* inContent)
 {
-  return (inContent->AttrValueIs(kNameSpaceID_None, nsWidgetAtoms::hidden,
-                                 nsWidgetAtoms::_true, eCaseMatters) ||
-          inContent->AttrValueIs(kNameSpaceID_None, nsWidgetAtoms::collapsed,
-                                 nsWidgetAtoms::_true, eCaseMatters));
+  return (inContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::hidden,
+                                 nsGkAtoms::_true, eCaseMatters) ||
+          inContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::collapsed,
+                                 nsGkAtoms::_true, eCaseMatters));
 }
 
 // Determines how many items are visible among the siblings in a menu that are

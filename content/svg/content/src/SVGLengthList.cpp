@@ -38,7 +38,6 @@
 #include "SVGAnimatedLengthList.h"
 #include "SVGLength.h"
 #include "nsSVGElement.h"
-#include "nsISVGValueUtils.h"
 #include "nsDOMError.h"
 #include "nsContentUtils.h"
 #include "nsString.h"
@@ -115,18 +114,18 @@ SVGLengthList::SetValueFromString(const nsAString& aValue)
   return CopyFrom(temp);
 }
 
-PRBool
+bool
 SVGLengthList::operator==(const SVGLengthList& rhs) const
 {
   if (Length() != rhs.Length()) {
-    return PR_FALSE;
+    return false;
   }
   for (PRUint32 i = 0; i < Length(); ++i) {
     if (!(mLengths[i] == rhs.mLengths[i])) {
-      return PR_FALSE;
+      return false;
     }
   }
-  return PR_TRUE;
+  return true;
 }
 
 } // namespace mozilla

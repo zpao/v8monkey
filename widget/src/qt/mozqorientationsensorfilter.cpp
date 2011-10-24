@@ -36,6 +36,12 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "mozqorientationsensorfilter.h"
+#ifdef MOZ_ENABLE_MEEGOTOUCH
+#include <MApplication>
+#include <MWindow>
+#include <MSceneManager>
+#endif
+#include "nsXULAppAPI.h"
 
 int MozQOrientationSensorFilter::mWindowRotationAngle = 0;
 QTransform MozQOrientationSensorFilter::mWindowRotationTransform;
@@ -73,7 +79,45 @@ MozQOrientationSensorFilter::filter(QOrientationReading* reading)
     mWindowRotationTransform = QTransform();
     mWindowRotationTransform.rotate(mWindowRotationAngle);
 
+#ifdef MOZ_ENABLE_MEEGOTOUCH
+    if (XRE_GetProcessType() == GeckoProcessType_Default) {
+        MWindow* window = MApplication::activeWindow();
+        if (window && window->sceneManager()) {
+            window->sceneManager()->
+                setOrientationAngle((M::OrientationAngle)mWindowRotationAngle,
+                                    MSceneManager::ImmediateTransition);
+        }
+    }
+#else
     emit orientationChanged();
+#endif
 
     return true; // don't store the reading in the sensor
 }
+
+int
+MozQOrientationSensorFilter::GetWindowRotationAngle()
+{
+#ifdef MOZ_ENABLE_MEEGOTOUCH
+    if (XRE_GetProcessType() == GeckoProcessType_Default) {
+        MWindow* window = MApplication::activeWindow();
+        if (window) {
+            M::OrientationAngle angle = window->orientationAngle();
+            if (mWindowRotationAngle != angle) {
+                mWindowRotationAngle = angle;
+                mWindowRotationTransform = QTransform();
+                mWindowRotationTransform.rotate(mWindowRotationAngle);
+            }
+        }
+    }
+#endif
+    return mWindowRotationAngle;
+}
+
+QTransform&
+MozQOrientationSensorFilter::GetRotationTransform()
+{
+    GetWindowRotationAngle();
+    return mWindowRotationTransform;
+}
+

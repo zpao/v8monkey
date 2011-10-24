@@ -73,6 +73,7 @@ CPPSRCS = \
   JumpListItem.cpp \
   GfxInfo.cpp \
   WidgetTraceEvent.cpp \
+  AudioSession.cpp \
   $(NULL)
 
 ifdef MOZ_CRASHREPORTER
@@ -114,17 +115,17 @@ ifdef MOZ_ENABLE_D3D10_LAYER
 DEFINES		+= -DMOZ_ENABLE_D3D10_LAYER
 endif
 
-ifdef BUILD_STATIC_LIBS
-DEFINES		+= -DMOZ_STATIC_COMPONENT_LIBS
-endif # BUILD_STATIC_LIBS
-
 
 EXPORTS		= nsdefs.h WindowHook.h
+EXPORTS_NAMESPACES = mozilla/widget
+EXPORTS_mozilla/widget = AudioSession.h
 
 LOCAL_INCLUDES	= \
 		-I. \
 		-I$(srcdir)/../xpwidgets \
 		-I$(srcdir) \
+		-I$(topsrcdir)/layout/generic \
+		-I$(topsrcdir)/layout/xul/base/src \
 		-I$(topsrcdir)/toolkit/xre \
 		-I$(topsrcdir)/xpcom/base \
 		$(NULL)

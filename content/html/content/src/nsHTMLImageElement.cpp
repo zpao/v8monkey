@@ -34,6 +34,9 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
+#include "mozilla/Util.h"
+
 #include "nsIDOMHTMLImageElement.h"
 #include "nsIDOMEventTarget.h"
 #include "nsGenericHTMLElement.h"
@@ -45,7 +48,6 @@
 #include "nsIJSNativeInitializer.h"
 #include "nsSize.h"
 #include "nsIDocument.h"
-#include "nsIDOMWindowInternal.h"
 #include "nsIDOMDocument.h"
 #include "nsIScriptContext.h"
 #include "nsIURL.h"
@@ -70,12 +72,13 @@
 #include "nsRuleData.h"
 
 #include "nsIJSContextStack.h"
-#include "nsImageMapUtils.h"
 #include "nsIDOMHTMLMapElement.h"
 #include "nsEventDispatcher.h"
 
 #include "nsLayoutUtils.h"
+#include "mozilla/Preferences.h"
 
+using namespace mozilla;
 using namespace mozilla::dom;
 
 // XXX nav attrs: suppress
@@ -105,42 +108,45 @@ public:
   NS_DECL_NSIDOMHTMLIMAGEELEMENT
 
   // override from nsGenericHTMLElement
-  NS_IMETHOD GetDraggable(PRBool* aDraggable);
+  NS_IMETHOD GetDraggable(bool* aDraggable);
+
+  // override from nsImageLoadingContent
+  nsImageLoadingContent::CORSMode GetCORSMode();
 
   // nsIJSNativeInitializer
   NS_IMETHOD Initialize(nsISupports* aOwner, JSContext* aContext,
                         JSObject* aObj, PRUint32 argc, jsval* argv);
 
   // nsIContent
-  virtual PRBool ParseAttribute(PRInt32 aNamespaceID,
+  virtual bool ParseAttribute(PRInt32 aNamespaceID,
                                 nsIAtom* aAttribute,
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
   virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
                                               PRInt32 aModType) const;
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const;
 
   virtual nsresult PreHandleEvent(nsEventChainPreVisitor& aVisitor);
 
-  PRBool IsHTMLFocusable(PRBool aWithMouse, PRBool *aIsFocusable, PRInt32 *aTabIndex);
+  bool IsHTMLFocusable(bool aWithMouse, bool *aIsFocusable, PRInt32 *aTabIndex);
 
   // SetAttr override.  C++ is stupid, so have to override both
   // overloaded methods.
   nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                   const nsAString& aValue, PRBool aNotify)
+                   const nsAString& aValue, bool aNotify)
   {
     return SetAttr(aNameSpaceID, aName, nsnull, aValue, aNotify);
   }
   virtual nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                            nsIAtom* aPrefix, const nsAString& aValue,
-                           PRBool aNotify);
+                           bool aNotify);
   virtual nsresult UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttribute,
-                             PRBool aNotify);
+                             bool aNotify);
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
-                              PRBool aCompileEventHandlers);
+                              bool aCompileEventHandlers);
 
   virtual nsEventStates IntrinsicState() const;
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
@@ -150,7 +156,6 @@ public:
   void MaybeLoadImage();
   virtual nsXPCClassInfo* GetClassInfo();
 protected:
-  nsPoint GetXY();
   nsSize GetWidthHeight();
 };
 
@@ -170,7 +175,8 @@ NS_NewHTMLImageElement(already_AddRefed<nsINodeInfo> aNodeInfo,
     NS_ENSURE_TRUE(doc, nsnull);
 
     nodeInfo = doc->NodeInfoManager()->GetNodeInfo(nsGkAtoms::img, nsnull,
-                                                   kNameSpaceID_XHTML);
+                                                   kNameSpaceID_XHTML,
+                                                   nsIDOMNode::ELEMENT_NODE);
     NS_ENSURE_TRUE(nodeInfo, nsnull);
   }
 
@@ -180,6 +186,8 @@ NS_NewHTMLImageElement(already_AddRefed<nsINodeInfo> aNodeInfo,
 nsHTMLImageElement::nsHTMLImageElement(already_AddRefed<nsINodeInfo> aNodeInfo)
   : nsGenericHTMLElement(aNodeInfo)
 {
+  // We start out broken
+  AddStatesSilently(NS_EVENT_STATE_BROKEN);
 }
 
 nsHTMLImageElement::~nsHTMLImageElement()
@@ -222,8 +230,19 @@ NS_IMPL_URI_ATTR(nsHTMLImageElement, Src, src)
 NS_IMPL_STRING_ATTR(nsHTMLImageElement, UseMap, usemap)
 NS_IMPL_INT_ATTR(nsHTMLImageElement, Vspace, vspace)
 
+static const nsAttrValue::EnumTable kCrossOriginTable[] = {
+  // Order matters here; see ParseAttribute
+  { "anonymous",       nsImageLoadingContent::CORS_ANONYMOUS },
+  { "use-credentials", nsImageLoadingContent::CORS_USE_CREDENTIALS },
+  { 0 }
+};
+
+// crossorigin is not "limited to only known values" per spec, so it's
+// just a string attr purposes of the DOM crossOrigin property.
+NS_IMPL_STRING_ATTR(nsHTMLImageElement, CrossOrigin, crossorigin)
+
 NS_IMETHODIMP
-nsHTMLImageElement::GetDraggable(PRBool* aDraggable)
+nsHTMLImageElement::GetDraggable(bool* aDraggable)
 {
   // images may be dragged unless the draggable attribute is false
   *aDraggable = !AttrValueIs(kNameSpaceID_None, nsGkAtoms::draggable,
@@ -232,10 +251,10 @@ nsHTMLImageElement::GetDraggable(PRBool* aDraggable)
 }
 
 NS_IMETHODIMP
-nsHTMLImageElement::GetComplete(PRBool* aComplete)
+nsHTMLImageElement::GetComplete(bool* aComplete)
 {
   NS_PRECONDITION(aComplete, "Null out param!");
-  *aComplete = PR_TRUE;
+  *aComplete = true;
 
   if (!mCurrentRequest) {
     return NS_OK;
@@ -246,42 +265,6 @@ nsHTMLImageElement::GetComplete(PRBool* aComplete)
   *aComplete =
     (status &
      (imgIRequest::STATUS_LOAD_COMPLETE | imgIRequest::STATUS_ERROR)) != 0;
-
-  return NS_OK;
-}
-
-nsPoint
-nsHTMLImageElement::GetXY()
-{
-  nsPoint point(0, 0);
-
-  nsIFrame* frame = GetPrimaryFrame(Flush_Layout);
-
-  if (!frame) {
-    return point;
-  }
-
-  nsIFrame* layer = nsLayoutUtils::GetClosestLayer(frame->GetParent());
-  nsPoint origin(frame->GetOffsetTo(layer));
-  // Convert to pixels using that scale
-  point.x = nsPresContext::AppUnitsToIntCSSPixels(origin.x);
-  point.y = nsPresContext::AppUnitsToIntCSSPixels(origin.y);
-
-  return point;
-}
-
-NS_IMETHODIMP
-nsHTMLImageElement::GetX(PRInt32* aX)
-{
-  *aX = GetXY().x;
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsHTMLImageElement::GetY(PRInt32* aY)
-{
-  *aY = GetXY().y;
 
   return NS_OK;
 }
@@ -320,11 +303,13 @@ nsHTMLImageElement::GetWidthHeight()
     }
   }
 
+  NS_ASSERTION(size.width >= 0, "negative width");
+  NS_ASSERTION(size.height >= 0, "negative height");
   return size;
 }
 
 NS_IMETHODIMP
-nsHTMLImageElement::GetHeight(PRInt32* aHeight)
+nsHTMLImageElement::GetHeight(PRUint32* aHeight)
 {
   *aHeight = GetWidthHeight().height;
 
@@ -332,17 +317,17 @@ nsHTMLImageElement::GetHeight(PRInt32* aHeight)
 }
 
 NS_IMETHODIMP
-nsHTMLImageElement::SetHeight(PRInt32 aHeight)
+nsHTMLImageElement::SetHeight(PRUint32 aHeight)
 {
   nsAutoString val;
   val.AppendInt(aHeight);
 
   return nsGenericHTMLElement::SetAttr(kNameSpaceID_None, nsGkAtoms::height,
-                                       val, PR_TRUE);
+                                       val, true);
 }
 
 NS_IMETHODIMP
-nsHTMLImageElement::GetWidth(PRInt32* aWidth)
+nsHTMLImageElement::GetWidth(PRUint32* aWidth)
 {
   *aWidth = GetWidthHeight().width;
 
@@ -350,16 +335,16 @@ nsHTMLImageElement::GetWidth(PRInt32* aWidth)
 }
 
 NS_IMETHODIMP
-nsHTMLImageElement::SetWidth(PRInt32 aWidth)
+nsHTMLImageElement::SetWidth(PRUint32 aWidth)
 {
   nsAutoString val;
   val.AppendInt(aWidth);
 
   return nsGenericHTMLElement::SetAttr(kNameSpaceID_None, nsGkAtoms::width,
-                                       val, PR_TRUE);
+                                       val, true);
 }
 
-PRBool
+bool
 nsHTMLImageElement::ParseAttribute(PRInt32 aNamespaceID,
                                    nsIAtom* aAttribute,
                                    const nsAString& aValue,
@@ -369,8 +354,14 @@ nsHTMLImageElement::ParseAttribute(PRInt32 aNamespaceID,
     if (aAttribute == nsGkAtoms::align) {
       return ParseAlignValue(aValue, aResult);
     }
+    if (aAttribute == nsGkAtoms::crossorigin) {
+      return aResult.ParseEnumValue(aValue, kCrossOriginTable, false,
+                                    // default value is anonymous if aValue is
+                                    // not a value we understand
+                                    &kCrossOriginTable[0]);
+    }
     if (ParseImageAttribute(aAttribute, aValue, aResult)) {
-      return PR_TRUE;
+      return true;
     }
   }
 
@@ -402,7 +393,7 @@ nsHTMLImageElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
   return retval;
 }
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsHTMLImageElement::IsAttributeMapped(const nsIAtom* aAttribute) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -412,7 +403,7 @@ nsHTMLImageElement::IsAttributeMapped(const nsIAtom* aAttribute) const
     sImageAlignAttributeMap
   };
 
-  return FindAttributeDependence(aAttribute, map, NS_ARRAY_LENGTH(map));
+  return FindAttributeDependence(aAttribute, map, ArrayLength(map));
 }
 
 
@@ -434,7 +425,7 @@ nsHTMLImageElement::PreHandleEvent(nsEventChainPreVisitor& aVisitor)
       aVisitor.mEvent->message == NS_MOUSE_CLICK &&
       static_cast<nsMouseEvent*>(aVisitor.mEvent)->button ==
         nsMouseEvent::eLeftButton) {
-    PRBool isMap = PR_FALSE;
+    bool isMap = false;
     GetIsMap(&isMap);
     if (isMap) {
       aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
@@ -443,9 +434,9 @@ nsHTMLImageElement::PreHandleEvent(nsEventChainPreVisitor& aVisitor)
   return nsGenericHTMLElement::PreHandleEvent(aVisitor);
 }
 
-PRBool
-nsHTMLImageElement::IsHTMLFocusable(PRBool aWithMouse,
-                                    PRBool *aIsFocusable, PRInt32 *aTabIndex)
+bool
+nsHTMLImageElement::IsHTMLFocusable(bool aWithMouse,
+                                    bool *aIsFocusable, PRInt32 *aTabIndex)
 {
   PRInt32 tabIndex;
   GetTabIndex(&tabIndex);
@@ -454,20 +445,18 @@ nsHTMLImageElement::IsHTMLFocusable(PRBool aWithMouse,
     nsAutoString usemap;
     GetUseMap(usemap);
     // XXXbz which document should this be using?  sXBL/XBL2 issue!  I
-    // think that GetOwnerDoc() is right, since we don't want to
+    // think that OwnerDoc() is right, since we don't want to
     // assume stuff about the document we're bound to.
-    nsCOMPtr<nsIDOMHTMLMapElement> imageMap =
-      nsImageMapUtils::FindImageMap(GetOwnerDoc(), usemap);
-    if (imageMap) {
+    if (OwnerDoc()->FindImageMap(usemap)) {
       if (aTabIndex) {
         // Use tab index on individual map areas
         *aTabIndex = (sTabFocusModel & eTabFocus_linksMask)? 0 : -1;
       }
       // Image map is not focusable itself, but flag as tabbable
       // so that image map areas get walked into.
-      *aIsFocusable = PR_FALSE;
+      *aIsFocusable = false;
 
-      return PR_FALSE;
+      return false;
     }
   }
 
@@ -482,13 +471,13 @@ nsHTMLImageElement::IsHTMLFocusable(PRBool aWithMouse,
 #endif
     (tabIndex >= 0 || HasAttr(kNameSpaceID_None, nsGkAtoms::tabindex));
 
-  return PR_FALSE;
+  return false;
 }
 
 nsresult
 nsHTMLImageElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                             nsIAtom* aPrefix, const nsAString& aValue,
-                            PRBool aNotify)
+                            bool aNotify)
 {
   // If we plan to call LoadImage, we want to do it first so that the
   // image load kicks off _before_ the reflow triggered by the SetAttr.  But if
@@ -500,22 +489,22 @@ nsHTMLImageElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 
     // If caller is not chrome and dom.disable_image_src_set is true,
     // prevent setting image.src by exiting early
-    if (nsContentUtils::GetBoolPref("dom.disable_image_src_set") &&
+    if (Preferences::GetBool("dom.disable_image_src_set") &&
         !nsContentUtils::IsCallerChrome()) {
       return NS_OK;
     }
 
     // A hack to get animations to reset. See bug 594771.
-    mNewRequestsWillNeedAnimationReset = PR_TRUE;
+    mNewRequestsWillNeedAnimationReset = true;
 
     // Force image loading here, so that we'll try to load the image from
     // network if it's set to be not cacheable...  If we change things so that
     // the state gets in nsGenericElement's attr-setting happen around this
-    // LoadImage call, we could start passing PR_FALSE instead of aNotify
+    // LoadImage call, we could start passing false instead of aNotify
     // here.
-    LoadImage(aValue, PR_TRUE, aNotify);
+    LoadImage(aValue, true, aNotify);
 
-    mNewRequestsWillNeedAnimationReset = PR_FALSE;
+    mNewRequestsWillNeedAnimationReset = false;
   }
     
   return nsGenericHTMLElement::SetAttr(aNameSpaceID, aName, aPrefix, aValue,
@@ -524,7 +513,7 @@ nsHTMLImageElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 
 nsresult
 nsHTMLImageElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttribute,
-                              PRBool aNotify)
+                              bool aNotify)
 {
   if (aNameSpaceID == kNameSpaceID_None && aAttribute == nsGkAtoms::src) {
     CancelImageRequests(aNotify);
@@ -536,7 +525,7 @@ nsHTMLImageElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttribute,
 nsresult
 nsHTMLImageElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                nsIContent* aBindingParent,
-                               PRBool aCompileEventHandlers)
+                               bool aCompileEventHandlers)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
                                                  aBindingParent,
@@ -544,7 +533,10 @@ nsHTMLImageElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (HasAttr(kNameSpaceID_None, nsGkAtoms::src)) {
+    // FIXME: Bug 660963 it would be nice if we could just have
+    // ClearBrokenState update our state and do it fast...
     ClearBrokenState();
+    RemoveStatesSilently(NS_EVENT_STATE_BROKEN);
     // If loading is temporarily disabled, don't even launch MaybeLoadImage.
     // Otherwise MaybeLoadImage may run later when someone has reenabled
     // loading.
@@ -565,9 +557,9 @@ nsHTMLImageElement::MaybeLoadImage()
   // Note, check LoadingEnabled() after LoadImage call.
   nsAutoString uri;
   if (GetAttr(kNameSpaceID_None, nsGkAtoms::src, uri) &&
-      (NS_FAILED(LoadImage(uri, PR_FALSE, PR_TRUE)) ||
+      (NS_FAILED(LoadImage(uri, false, true)) ||
        !LoadingEnabled())) {
-    CancelImageRequests(PR_TRUE);
+    CancelImageRequests(true);
   }
 }
 
@@ -608,7 +600,7 @@ nsHTMLImageElement::Initialize(nsISupports* aOwner, JSContext* aContext,
 }
 
 NS_IMETHODIMP
-nsHTMLImageElement::GetNaturalHeight(PRInt32* aNaturalHeight)
+nsHTMLImageElement::GetNaturalHeight(PRUint32* aNaturalHeight)
 {
   NS_ENSURE_ARG_POINTER(aNaturalHeight);
 
@@ -624,12 +616,15 @@ nsHTMLImageElement::GetNaturalHeight(PRInt32* aNaturalHeight)
     return NS_OK;
   }
 
-  image->GetHeight(aNaturalHeight);
+  PRInt32 height;
+  if (NS_SUCCEEDED(image->GetHeight(&height))) {
+    *aNaturalHeight = height;
+  }
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsHTMLImageElement::GetNaturalWidth(PRInt32* aNaturalWidth)
+nsHTMLImageElement::GetNaturalWidth(PRUint32* aNaturalWidth)
 {
   NS_ENSURE_ARG_POINTER(aNaturalWidth);
 
@@ -645,15 +640,33 @@ nsHTMLImageElement::GetNaturalWidth(PRInt32* aNaturalWidth)
     return NS_OK;
   }
 
-  image->GetWidth(aNaturalWidth);
+  PRInt32 width;
+  if (NS_SUCCEEDED(image->GetWidth(&width))) {
+    *aNaturalWidth = width;
+  }
   return NS_OK;
 }
 
 nsresult
 nsHTMLImageElement::CopyInnerTo(nsGenericElement* aDest) const
 {
-  if (aDest->GetOwnerDoc()->IsStaticDocument()) {
+  if (aDest->OwnerDoc()->IsStaticDocument()) {
     CreateStaticImageClone(static_cast<nsHTMLImageElement*>(aDest));
   }
   return nsGenericHTMLElement::CopyInnerTo(aDest);
+}
+
+nsImageLoadingContent::CORSMode
+nsHTMLImageElement::GetCORSMode()
+{
+  nsImageLoadingContent::CORSMode ret = nsImageLoadingContent::CORS_NONE;
+
+  const nsAttrValue* value = GetParsedAttr(nsGkAtoms::crossorigin);
+  if (value) {
+    NS_ASSERTION(value->Type() == nsAttrValue::eEnum,
+                 "Why is this not an enum value?");
+    ret = (nsImageLoadingContent::CORSMode) value->GetEnumValue();
+  }
+
+  return ret;
 }

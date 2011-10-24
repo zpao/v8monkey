@@ -44,6 +44,10 @@
 #include <math.h>
 #include <float.h>
 
+#ifdef SOLARIS
+#include <ieeefp.h>
+#endif
+
 /*
  * round
  */
@@ -102,30 +106,6 @@ inline NS_HIDDEN_(PRInt32) NS_lroundf(float x)
 }
 
 /*
- * ceil
- */
-inline NS_HIDDEN_(double) NS_ceil(double x)
-{
-    return ceil(x);
-}
-inline NS_HIDDEN_(float) NS_ceilf(float x)
-{
-    return ceilf(x);
-}
-
-/*
- * floor
- */
-inline NS_HIDDEN_(double) NS_floor(double x)
-{
-    return floor(x);
-}
-inline NS_HIDDEN_(float) NS_floorf(float x)
-{
-    return floorf(x);
-}
-
-/*
  * hypot.  We don't need a super accurate version of this, if a platform
  * turns up with none of the possibilities below it would be okay to fall
  * back to sqrt(x*x + y*y).
@@ -141,11 +121,19 @@ inline NS_HIDDEN_(double) NS_hypot(double x, double y)
 #endif
 }
 
+/**
+ * Check whether a floating point number is finite (not +/-infinity and not a
+ * NaN value).
+ */
 inline NS_HIDDEN_(bool) NS_finite(double d)
 {
 #ifdef WIN32
     // NOTE: '!!' casts an int to bool without spamming MSVC warning C4800.
     return !!_finite(d);
+#elif defined(XP_DARWIN)
+    // Darwin has deprecated |finite| and recommends |isfinite|. The former is
+    // not present in the iOS SDK.
+    return isfinite(d);
 #else
     return finite(d);
 #endif

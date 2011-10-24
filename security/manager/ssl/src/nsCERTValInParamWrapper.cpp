@@ -41,7 +41,7 @@ NS_IMPL_THREADSAFE_ADDREF(nsCERTValInParamWrapper)
 NS_IMPL_THREADSAFE_RELEASE(nsCERTValInParamWrapper)
 
 nsCERTValInParamWrapper::nsCERTValInParamWrapper()
-:mAlreadyConstructed(PR_FALSE)
+:mAlreadyConstructed(false)
 ,mCVIN(nsnull)
 ,mRev(nsnull)
 {
@@ -133,7 +133,7 @@ nsresult nsCERTValInParamWrapper::Construct(missing_cert_download_config mcdc,
     | CERT_REV_M_STOP_TESTING_ON_FRESH_INFO
     ;
 
-  PRBool wantsCrlFirst = (firstNetworkRevocationMethod != nsnull)
+  bool wantsCrlFirst = (firstNetworkRevocationMethod != nsnull)
                           && (strcmp("crl", firstNetworkRevocationMethod) == 0);
     
   rev->leafTests.preferred_methods[0] =
@@ -150,7 +150,7 @@ nsresult nsCERTValInParamWrapper::Construct(missing_cert_download_config mcdc,
         CERT_REV_MI_REQUIRE_SOME_FRESH_INFO_AVAILABLE : CERT_REV_MI_NO_OVERALL_INFO_REQUIREMENT)
     ;
 
-  mAlreadyConstructed = PR_TRUE;
+  mAlreadyConstructed = true;
   mCVIN = p;
   mRev = rev;
   return NS_OK;

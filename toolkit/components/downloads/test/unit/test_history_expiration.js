@@ -92,8 +92,9 @@ function run_test()
                 getService(Ci.nsINavHistoryService);
   // Add the download to places
   // Add the visit in the past to circumvent possible VM timing bugs
-  let yesterday = Date.now() - 24 * 60 * 60 * 1000;
-  histsvc.addVisit(theURI, yesterday * 1000, null,
+  // Go back by 8 days, since expiration ignores history in the last 7 days.
+  let expirableTime = Date.now() - 8 * 24 * 60 * 60 * 1000;
+  histsvc.addVisit(theURI, expirableTime * 1000, null,
                    histsvc.TRANSITION_DOWNLOAD, false, 0);
 
   // Get the download manager as history observer and batch expirations
@@ -126,7 +127,7 @@ function run_test()
 
   // Force a history expiration.
   let expire = Cc["@mozilla.org/places/expiration;1"].getService(Ci.nsIObserver);
-  expire.observe(null, "places-debug-start-expiration", null);
+  expire.observe(null, "places-debug-start-expiration", -1);
 
   // Expiration happens on a timeout, about 3.5s after we set the pref
   do_test_pending();

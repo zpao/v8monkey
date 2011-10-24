@@ -41,6 +41,7 @@
 #include <cstring>
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 #include <elf.h>
 #include <asm/byteorder.h>
 
@@ -190,6 +191,37 @@ class serializable: public T::Type32 {
 public:
     serializable() {};
     serializable(const typename T::Type32 &p): T::Type32(p) {};
+
+private:
+    template <typename R>
+    void init(const char *buf, size_t len, char ei_data)
+    {
+        R e;
+        assert(len <= sizeof(e));
+        memcpy(&e, buf, sizeof(e));
+        if (ei_data == ELFDATA2LSB) {
+            T::template swap<little_endian>(e, *this);
+            return;
+        } else if (ei_data == ELFDATA2MSB) {
+            T::template swap<big_endian>(e, *this);
+            return;
+        }
+        throw std::runtime_error("Unsupported ELF data encoding");
+    }
+
+public:
+    serializable(const char *buf, size_t len, char ei_class, char ei_data)
+    {
+        if (ei_class == ELFCLASS32) {
+            init<typename T::Type32>(buf, len, ei_data);
+            return;
+        } else if (ei_class == ELFCLASS64) {
+            init<typename T::Type64>(buf, len, ei_data);
+            return;
+        }
+        throw std::runtime_error("Unsupported ELF class");
+    }
+
     serializable(std::ifstream &file, char ei_class, char ei_data)
     {
         if (ei_class == ELFCLASS32) {
@@ -244,7 +276,7 @@ public:
         throw std::runtime_error("Unsupported ELF class or data encoding");
     }
 
-    static inline int size(char ei_class)
+    static inline unsigned int size(char ei_class)
     {
         if (ei_class == ELFCLASS32)
             return sizeof(typename T::Type32);
@@ -339,7 +371,8 @@ public:
                 (getType() == SHT_GNU_HASH) ||
                 (getType() == SHT_GNU_verdef) ||
                 (getType() == SHT_GNU_verneed) ||
-                (getType() == SHT_GNU_versym)) &&
+                (getType() == SHT_GNU_versym) ||
+                isInSegmentType(PT_INTERP)) &&
                 (getFlags() & SHF_ALLOC);
     }
 
@@ -379,6 +412,20 @@ public:
         file.seekp(getOffset());
         file.write(data, getSize());
     }
+
+private:
+    friend class ElfSegment;
+
+    void addToSegment(ElfSegment *segment) {
+        segments.push_back(segment);
+    }
+
+    void removeFromSegment(ElfSegment *segment) {
+        std::vector<ElfSegment *>::iterator i = std::find(segments.begin(), segments.end(), segment);
+        segments.erase(i, i + 1);
+    }
+
+    bool isInSegmentType(unsigned int type);
 protected:
     Elf_Shdr shdr;
     char *data;
@@ -388,6 +435,7 @@ private:
     SectionInfo info;
     ElfSection *next, *previous;
     int index;
+    std::vector<ElfSegment *> segments;
 };
 
 class ElfSegment {
@@ -448,6 +496,9 @@ public:
         // be better handled than special cases
         if ((p_type == PT_DYNAMIC) && (section->getType() != SHT_DYNAMIC))
             return false;
+        // Special case for PT_TLS.
+        if ((p_type == PT_TLS) && !(section->getFlags() & SHF_TLS))
+            return false;
         return (addr >= p_vaddr) &&
                (addr + size <= p_vaddr + p_memsz);
 
@@ -486,11 +537,15 @@ struct Elf_SymValue {
     bool defined;
 };
 
+#define STT(type) (1 << STT_ ##type)
+
 class ElfSymtab_Section: public ElfSection {
 public:
     ElfSymtab_Section(Elf_Shdr &s, std::ifstream *file, Elf *parent);
 
     void serialize(std::ofstream &file, char ei_class, char ei_data);
+
+    Elf_SymValue *lookup(const char *name, unsigned int type_filter = STT(OBJECT) | STT(FUNC));
 
 //private: // Until we have a real API
     std::vector<Elf_SymValue> syms;
@@ -596,6 +651,13 @@ inline unsigned int Elf::getSize() {
     for (section = shdr_section /* It's usually not far from the end */;
         section->getNext() != NULL; section = section->getNext());
     return section->getOffset() + section->getSize();
+}
+
+inline bool ElfSection::isInSegmentType(unsigned int type) {
+    for (std::vector<ElfSegment *>::iterator seg = segments.begin(); seg != segments.end(); seg++)
+        if ((*seg)->getType() == type)
+            return true;
+    return false;
 }
 
 inline ElfLocation::ElfLocation(ElfSection *section, unsigned int off, enum position pos)

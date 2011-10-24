@@ -39,7 +39,6 @@
 #include "nsIDOMEventTarget.h"
 #include "nsGenericHTMLElement.h"
 #include "nsStyleConsts.h"
-#include "nsIDOMText.h"
 #include "nsIDocument.h"
 #include "nsIDOMHTMLDocument.h"
 #include "nsContentUtils.h"
@@ -80,16 +79,16 @@ public:
 
   virtual nsresult BindToTree(nsIDocument *aDocument, nsIContent *aParent,
                               nsIContent *aBindingParent,
-                              PRBool aCompileEventHandlers);
+                              bool aCompileEventHandlers);
 
-  virtual void UnbindFromTree(PRBool aDeep = PR_TRUE,
-                              PRBool aNullParent = PR_TRUE);
+  virtual void UnbindFromTree(bool aDeep = true,
+                              bool aNullParent = true);
 
-  virtual nsresult DoneAddingChildren(PRBool aHaveNotified);
+  virtual nsresult DoneAddingChildren(bool aHaveNotified);
 
   virtual nsXPCClassInfo* GetClassInfo();
 private:
-  void SendTitleChangeEvent(PRBool aBound);
+  void SendTitleChangeEvent(bool aBound);
 };
 
 
@@ -129,14 +128,14 @@ NS_IMPL_ELEMENT_CLONE(nsHTMLTitleElement)
 NS_IMETHODIMP 
 nsHTMLTitleElement::GetText(nsAString& aTitle)
 {
-  nsContentUtils::GetNodeTextContent(this, PR_FALSE, aTitle);
+  nsContentUtils::GetNodeTextContent(this, false, aTitle);
   return NS_OK;
 }
 
 NS_IMETHODIMP 
 nsHTMLTitleElement::SetText(const nsAString& aTitle)
 {
-  return nsContentUtils::SetNodeTextContent(this, aTitle, PR_TRUE);
+  return nsContentUtils::SetNodeTextContent(this, aTitle, true);
 }
 
 void
@@ -144,7 +143,7 @@ nsHTMLTitleElement::CharacterDataChanged(nsIDocument *aDocument,
                                          nsIContent *aContent,
                                          CharacterDataChangeInfo *aInfo)
 {
-  SendTitleChangeEvent(PR_FALSE);
+  SendTitleChangeEvent(false);
 }
 
 void
@@ -153,7 +152,7 @@ nsHTMLTitleElement::ContentAppended(nsIDocument *aDocument,
                                     nsIContent *aFirstNewContent,
                                     PRInt32 aNewIndexInContainer)
 {
-  SendTitleChangeEvent(PR_FALSE);
+  SendTitleChangeEvent(false);
 }
 
 void
@@ -162,7 +161,7 @@ nsHTMLTitleElement::ContentInserted(nsIDocument *aDocument,
                                     nsIContent *aChild,
                                     PRInt32 aIndexInContainer)
 {
-  SendTitleChangeEvent(PR_FALSE);
+  SendTitleChangeEvent(false);
 }
 
 void
@@ -172,14 +171,14 @@ nsHTMLTitleElement::ContentRemoved(nsIDocument *aDocument,
                                    PRInt32 aIndexInContainer,
                                    nsIContent *aPreviousSibling)
 {
-  SendTitleChangeEvent(PR_FALSE);
+  SendTitleChangeEvent(false);
 }
 
 nsresult
 nsHTMLTitleElement::BindToTree(nsIDocument *aDocument,
                                nsIContent *aParent,
                                nsIContent *aBindingParent,
-                               PRBool aCompileEventHandlers)
+                               bool aCompileEventHandlers)
 {
   // Let this fall through.
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
@@ -187,31 +186,31 @@ nsHTMLTitleElement::BindToTree(nsIDocument *aDocument,
                                                  aCompileEventHandlers);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  SendTitleChangeEvent(PR_TRUE);
+  SendTitleChangeEvent(true);
 
   return NS_OK;
 }
 
 void
-nsHTMLTitleElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+nsHTMLTitleElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
-  SendTitleChangeEvent(PR_FALSE);
+  SendTitleChangeEvent(false);
 
   // Let this fall through.
   nsGenericHTMLElement::UnbindFromTree(aDeep, aNullParent);
 }
 
 nsresult
-nsHTMLTitleElement::DoneAddingChildren(PRBool aHaveNotified)
+nsHTMLTitleElement::DoneAddingChildren(bool aHaveNotified)
 {
   if (!aHaveNotified) {
-    SendTitleChangeEvent(PR_FALSE);
+    SendTitleChangeEvent(false);
   }
   return NS_OK;
 }
 
 void
-nsHTMLTitleElement::SendTitleChangeEvent(PRBool aBound)
+nsHTMLTitleElement::SendTitleChangeEvent(bool aBound)
 {
   nsIDocument* doc = GetCurrentDoc();
   if (doc) {

@@ -52,7 +52,7 @@ struct leaky;
 class FunctionCount : public IntCount
 {
 public:
-    void printReport(FILE *fp, leaky *lk);
+  void printReport(FILE *fp, leaky *lk, int parent, int total);
 };
 
 struct Symbol {
@@ -63,6 +63,7 @@ struct Symbol {
 
   int regChild(int id) {return cntC.countAdd(id, 1);}
   int regParrent(int id) {return cntP.countAdd(id, 1);}
+  void regClear() {cntC.clear(); cntP.clear();}
 
   Symbol() : timerHit(0) {}
   void Init(const char* aName, u_long aAddress) {
@@ -82,15 +83,20 @@ struct leaky {
   ~leaky();
 
   void initialize(int argc, char** argv);
-  void open();
+  void open(char *arg);
 
   char*  applicationName;
-  char*  logFile;
+  int    logFileIndex;
+  int    numLogFiles;
   char*  progFile;
+  FILE*  outputfd;
 
-  int   quiet;
-  int   showAddress;
-  u_int  stackDepth;
+  bool  quiet;
+  bool  showAddress;
+  bool  showThreads;
+  u_int stackDepth;
+  int   onlyThread;
+  char* output_dir;
 
   int   mappedLogFile;
   malloc_log_entry* firstLogEntry;
@@ -108,6 +114,10 @@ struct leaky {
 
   LoadMapEntry* loadMap;
 
+  bool collect_last;
+  int  collect_start;
+  int  collect_end;
+
   StrSet roots;
   StrSet includes;
 
@@ -115,7 +125,7 @@ struct leaky {
 
   void LoadMap();
 
-  void analyze();
+  void analyze(int thread);
 
   void dumpEntryToLog(malloc_log_entry* lep);
 
@@ -133,7 +143,7 @@ struct leaky {
   const char* indexToName(int idx) {return externalSymbols[idx].name;}
 
   private:
-  void generateReportHTML(FILE *fp, int *countArray, int count);
+  void generateReportHTML(FILE *fp, int *countArray, int count, int thread);
   int  findSymbolIndex(u_long address);
 };
 

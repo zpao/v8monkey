@@ -72,14 +72,14 @@ public:
   /** LayerOGL implementation */
   void Destroy();
   Layer* GetLayer();
-  virtual PRBool IsEmpty();
+  virtual bool IsEmpty();
   virtual void RenderLayer(int aPreviousFrameBuffer,
                            const nsIntPoint& aOffset);
 
 private:
   friend class BasicBufferOGL;
 
-  PRBool CreateSurface();
+  bool CreateSurface();
 
   nsRefPtr<Buffer> mBuffer;
 };
@@ -91,14 +91,9 @@ public:
   ShadowThebesLayerOGL(LayerManagerOGL *aManager);
   virtual ~ShadowThebesLayerOGL();
 
-  // ShadowThebesLayer impl
-  virtual void SetFrontBuffer(const OptionalThebesBuffer& aNewFront,
-                              const nsIntRegion& aValidRegion,
-                              float aXResolution, float aYResolution);
   virtual void
   Swap(const ThebesBuffer& aNewFront, const nsIntRegion& aUpdatedRegion,
-       ThebesBuffer* aNewBack, nsIntRegion* aNewBackValidRegion,
-       float* aNewXResolution, float* aNewYResolution,
+       OptionalThebesBuffer* aNewBack, nsIntRegion* aNewBackValidRegion,
        OptionalThebesBuffer* aReadOnlyFront, nsIntRegion* aFrontUpdatedRegion);
   virtual void DestroyFrontBuffer();
 
@@ -107,7 +102,7 @@ public:
   // LayerOGL impl
   void Destroy();
   Layer* GetLayer();
-  virtual PRBool IsEmpty();
+  virtual bool IsEmpty();
   virtual void RenderLayer(int aPreviousFrameBuffer,
                            const nsIntPoint& aOffset);
 

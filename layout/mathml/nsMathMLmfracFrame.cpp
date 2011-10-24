@@ -24,6 +24,7 @@
  *   David J. Fiddes <D.J.Fiddes@hw.ac.uk>
  *   Shyjan Mahamud <mahamud@cs.cmu.edu>
  *   Frederic Wang <fred.wang@free.fr>
+ *   Florian Scholz <elchi3@elchi3.de>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -60,11 +61,8 @@
 #define THIN_FRACTION_LINE                   0.5f
 #define THIN_FRACTION_LINE_MINIMUM_PIXELS    1  // minimum of 1 pixel
 
-#define MEDIUM_FRACTION_LINE                 1.5f
-#define MEDIUM_FRACTION_LINE_MINIMUM_PIXELS  2  // minimum of 2 pixels
-
 #define THICK_FRACTION_LINE                  2.0f
-#define THICK_FRACTION_LINE_MINIMUM_PIXELS   4  // minimum of 4 pixels
+#define THICK_FRACTION_LINE_MINIMUM_PIXELS   2  // minimum of 2 pixels
 
 nsIFrame*
 NS_NewMathMLmfracFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
@@ -76,27 +74,6 @@ NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmfracFrame)
 
 nsMathMLmfracFrame::~nsMathMLmfracFrame()
 {
-}
-
-PRBool
-nsMathMLmfracFrame::IsBevelled()
-{
-  nsAutoString value;
-  GetAttribute(mContent, mPresentationData.mstyle, nsGkAtoms::bevelled_,
-               value);
-  return value.EqualsLiteral("true");
-}
-
-NS_IMETHODIMP
-nsMathMLmfracFrame::Init(nsIContent*      aContent,
-                         nsIFrame*        aParent,
-                         nsIFrame*        aPrevInFlow)
-{
-  nsresult rv = nsMathMLContainerFrame::Init(aContent, aParent, aPrevInFlow);
-
-  mIsBevelled = IsBevelled();
-
-  return rv;
 }
 
 eMathMLFrameType
@@ -114,7 +91,7 @@ nsMathMLmfracFrame::TransmitAutomaticData()
   //    false increments scriptlevel by 1, within numerator and denominator.
   // 2. The TeXbook (Ch 17. p.141) says the numerator inherits the compression
   //    while the denominator is compressed
-  PRBool increment = !NS_MATHML_IS_DISPLAYSTYLE(mPresentationData.flags);
+  bool increment = !NS_MATHML_IS_DISPLAYSTYLE(mPresentationData.flags);
   SetIncrementScriptLevel(0, increment);
   SetIncrementScriptLevel(1, increment);
 
@@ -156,18 +133,14 @@ nsMathMLmfracFrame::CalcLineThickness(nsPresContext*  aPresContext,
         lineThickness = defaultThickness - onePixel;
     }
     else if (aThicknessAttribute.EqualsLiteral("medium")) {
-      lineThickness = NSToCoordRound(defaultThickness * MEDIUM_FRACTION_LINE);
-      minimumThickness = onePixel * MEDIUM_FRACTION_LINE_MINIMUM_PIXELS;
-      // should visually increase by at least one pixel
-      if (lineThickness < defaultThickness + onePixel)
-        lineThickness = defaultThickness + onePixel;
+      // medium is default
     }
     else if (aThicknessAttribute.EqualsLiteral("thick")) {
       lineThickness = NSToCoordCeil(defaultThickness * THICK_FRACTION_LINE);
       minimumThickness = onePixel * THICK_FRACTION_LINE_MINIMUM_PIXELS;
-      // should visually increase by at least two pixels
-      if (lineThickness < defaultThickness + 2*onePixel)
-        lineThickness = defaultThickness + 2*onePixel;
+      // should visually increase by at least one pixel
+      if (lineThickness < defaultThickness + onePixel)
+        lineThickness = defaultThickness + onePixel;
     }
     else { // see if it is a plain number, or a percentage, or a h/v-unit like 1ex, 2px, 1em
       nsCSSValue cssValue;
@@ -216,9 +189,9 @@ nsMathMLmfracFrame::MeasureForWidth(nsRenderingContext& aRenderingContext,
                                     nsHTMLReflowMetrics& aDesiredSize)
 {
   return PlaceInternal(aRenderingContext,
-                       PR_FALSE,
+                       false,
                        aDesiredSize,
-                       PR_TRUE);
+                       true);
 }
 
 nscoord
@@ -233,20 +206,20 @@ nsMathMLmfracFrame::FixInterFrameSpacing(nsHTMLReflowMetrics& aDesiredSize)
 
 /* virtual */ nsresult
 nsMathMLmfracFrame::Place(nsRenderingContext& aRenderingContext,
-                          PRBool               aPlaceOrigin,
+                          bool                 aPlaceOrigin,
                           nsHTMLReflowMetrics& aDesiredSize)
 {
   return PlaceInternal(aRenderingContext,
                        aPlaceOrigin,
                        aDesiredSize,
-                       PR_FALSE);
+                       false);
 }
 
 nsresult
 nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
-                                  PRBool               aPlaceOrigin,
+                                  bool                 aPlaceOrigin,
                                   nsHTMLReflowMetrics& aDesiredSize,
-                                  PRBool               aWidthOnly)
+                                  bool                 aWidthOnly)
 {
   ////////////////////////////////////
   // Get the children's desired sizes
@@ -267,9 +240,9 @@ nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
   nsPresContext* presContext = PresContext();
   nscoord onePixel = nsPresContext::CSSPixelsToAppUnits(1);
 
-  aRenderingContext.SetFont(GetStyleFont()->mFont,
-                            presContext->GetUserFontSet());
-  nsFontMetrics* fm = aRenderingContext.FontMetrics();
+  nsRefPtr<nsFontMetrics> fm;
+  nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm));
+  aRenderingContext.SetFont(fm);
 
   nscoord defaultRuleThickness, axisHeight;
   GetRuleThickness(aRenderingContext, fm, defaultRuleThickness);
@@ -285,6 +258,11 @@ nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
 
   mLineThickness = CalcLineThickness(presContext, mStyleContext, value,
                                      onePixel, defaultRuleThickness);
+
+  // bevelled attribute
+  GetAttribute(mContent, mPresentationData.mstyle, nsGkAtoms::bevelled_,
+               value);
+  mIsBevelled = value.EqualsLiteral("true");
 
   if (!mIsBevelled) {
     mLineRect.height = mLineThickness;
@@ -540,18 +518,6 @@ nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
   }
 
   return NS_OK;
-}
-
-NS_IMETHODIMP
-nsMathMLmfracFrame::AttributeChanged(PRInt32         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
-                                     PRInt32         aModType)
-{
-  if (nsGkAtoms::bevelled_ == aAttribute) {
-    mIsBevelled = IsBevelled();
-  }
-  return nsMathMLContainerFrame::
-         AttributeChanged(aNameSpaceID, aAttribute, aModType);
 }
 
 NS_IMETHODIMP

@@ -62,6 +62,7 @@ VPATH += $(srcdir)/src/compiler/preprocessor
 
 CPPSRCS = \
 	Compiler.cpp \
+        DetectRecursion.cpp \
         InfoSink.cpp \
         Initialize.cpp \
         InitializeDll.cpp \
@@ -76,25 +77,31 @@ CPPSRCS = \
         RemoveTree.cpp \
         ShaderLang.cpp \
         SymbolTable.cpp \
-	VariableInfo.cpp \
-	compilerdebug.cpp \
-	ossource_nspr.cpp \
-	util.cpp \
-	ValidateLimitations.cpp \
-	$(NULL)
+        VariableInfo.cpp \
+        compilerdebug.cpp \
+        ossource_nspr.cpp \
+        util.cpp \
+        ValidateLimitations.cpp \
+        ForLoopUnroll.cpp \
+        MapLongVariableNames.cpp \
+        BuiltInFunctionEmulator.cpp \
+        $(NULL)
 
 # flex/yacc generated files
 CPPSRCS += \
-	glslang_lex.cpp \
-	glslang_tab.cpp \
-	$(NULL)
+        glslang_lex.cpp \
+        glslang_tab.cpp \
+        $(NULL)
 
 # GLSL translator backend
 CPPSRCS += \
-	CodeGenGLSL.cpp \
-	OutputGLSL.cpp \
-	TranslatorGLSL.cpp \
-	VersionGLSL.cpp \
+        CodeGenGLSL.cpp \
+        OutputGLSL.cpp \
+        TranslatorGLSL.cpp \
+        VersionGLSL.cpp \
+        OutputESSL.cpp \
+        OutputGLSLBase.cpp \
+        TranslatorESSL.cpp \
 	$(NULL)
 
 # Currently, only one or the other
@@ -121,13 +128,12 @@ CSRCS   = \
 
 DEFINES += -DANGLE_USE_NSPR -DANGLE_BUILD
 
-ifndef MOZ_ENABLE_LIBXUL
-EXTRA_DSO_LDOPTS = $(MOZ_COMPONENT_LIBS)
-endif
+#these defines are from ANGLE's build_angle.gyp
+DEFINES += -DANGLE_DISABLE_TRACE
+DEFINES += -DANGLE_COMPILE_OPTIMIZATION_LEVEL=D3DCOMPILE_OPTIMIZATION_LEVEL0
 
-# ANGLE only on Win32 for now, the solution isn't set up
-# for 64-bit yet. This is handled by MOZ_ANGLE which the configure script
-# leaves undefined in the 64-bit case.
+EXTRA_DSO_LDOPTS = $(MOZALLOC_LIB)
+
 ifdef MOZ_ANGLE
 
 # libEGL depends on (links against!) libGLESv2!

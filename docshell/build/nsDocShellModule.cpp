@@ -72,9 +72,7 @@
 // download history
 #include "nsDownloadHistory.h"
 
-#include "nsStructuredCloneContainer.h"
-
-static PRBool gInitialized = PR_FALSE;
+static bool gInitialized = false;
 
 // The one time initialization for this module
 static nsresult
@@ -84,7 +82,7 @@ Initialize()
   if (gInitialized) {
     return NS_OK;
   }
-  gInitialized = PR_TRUE;
+  gInitialized = true;
 
   nsresult rv = nsSHistory::Startup();
   NS_ENSURE_SUCCESS(rv, rv);
@@ -96,8 +94,9 @@ Initialize()
 static void
 Shutdown()
 {
+  nsSHistory::Shutdown();
   nsSHEntry::Shutdown();
-  gInitialized = PR_FALSE;
+  gInitialized = false;
 }
 
 // docshell
@@ -133,8 +132,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsSHistory)
 // download history
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsDownloadHistory)
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsStructuredCloneContainer)
-
 NS_DEFINE_NAMED_CID(NS_DOCSHELL_CID);
 NS_DEFINE_NAMED_CID(NS_DEFAULTURIFIXUP_CID);
 NS_DEFINE_NAMED_CID(NS_WEBNAVIGATION_INFO_CID);
@@ -162,7 +159,6 @@ NS_DEFINE_NAMED_CID(NS_SHTRANSACTION_CID);
 NS_DEFINE_NAMED_CID(NS_SHISTORY_CID);
 NS_DEFINE_NAMED_CID(NS_SHISTORY_INTERNAL_CID);
 NS_DEFINE_NAMED_CID(NS_DOWNLOADHISTORY_CID);
-NS_DEFINE_NAMED_CID(NS_STRUCTUREDCLONECONTAINER_CID);
 
 
 const mozilla::Module::CIDEntry kDocShellCIDs[] = {
@@ -193,7 +189,6 @@ const mozilla::Module::CIDEntry kDocShellCIDs[] = {
   { &kNS_SHISTORY_CID, false, NULL, nsSHistoryConstructor },
   { &kNS_SHISTORY_INTERNAL_CID, false, NULL, nsSHistoryConstructor },
   { &kNS_DOWNLOADHISTORY_CID, false, NULL, nsDownloadHistoryConstructor },
-  { &kNS_STRUCTUREDCLONECONTAINER_CID, false, NULL, nsStructuredCloneContainerConstructor },
   { NULL }
 };
 
@@ -216,6 +211,7 @@ const mozilla::Module::ContractIDEntry kDocShellContracts[] = {
   { NS_ABOUT_MODULE_CONTRACTID_PREFIX "neterror", &kNS_ABOUT_REDIRECTOR_MODULE_CID },
   { NS_ABOUT_MODULE_CONTRACTID_PREFIX "memory", &kNS_ABOUT_REDIRECTOR_MODULE_CID },
   { NS_ABOUT_MODULE_CONTRACTID_PREFIX "addons", &kNS_ABOUT_REDIRECTOR_MODULE_CID },
+  { NS_ABOUT_MODULE_CONTRACTID_PREFIX "newaddon", &kNS_ABOUT_REDIRECTOR_MODULE_CID },
   { NS_ABOUT_MODULE_CONTRACTID_PREFIX "support", &kNS_ABOUT_REDIRECTOR_MODULE_CID },
   { NS_URI_LOADER_CONTRACTID, &kNS_URI_LOADER_CID },
   { NS_DOCUMENTLOADER_SERVICE_CONTRACTID, &kNS_DOCUMENTLOADER_SERVICE_CID },
@@ -242,7 +238,6 @@ const mozilla::Module::ContractIDEntry kDocShellContracts[] = {
   { NS_SHISTORY_CONTRACTID, &kNS_SHISTORY_CID },
   { NS_SHISTORY_INTERNAL_CONTRACTID, &kNS_SHISTORY_INTERNAL_CID },
   { NS_DOWNLOADHISTORY_CONTRACTID, &kNS_DOWNLOADHISTORY_CID },
-  { NS_STRUCTUREDCLONECONTAINER_CONTRACTID, &kNS_STRUCTUREDCLONECONTAINER_CID },
   { NULL }
 };
 

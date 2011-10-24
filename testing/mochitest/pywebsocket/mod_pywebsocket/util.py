@@ -1,4 +1,4 @@
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,14 +28,31 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Web Sockets utilities.
+"""WebSocket utilities.
 """
 
 
+import array
+
+# Import hash classes from a module available and recommended for each Python
+# version and re-export those symbol. Use sha and md5 module in Python 2.4, and
+# hashlib module in Python 2.6.
+try:
+    import hashlib
+    md5_hash = hashlib.md5
+    sha1_hash = hashlib.sha1
+except ImportError:
+    import md5
+    import sha
+    md5_hash = md5.md5
+    sha1_hash = sha.sha
+
 import StringIO
+import logging
 import os
 import re
 import traceback
+import zlib
 
 
 def get_stack_trace():
@@ -72,7 +89,7 @@ def __translate_interp(interp, cygwin_path):
     """
     if not cygwin_path:
         return interp
-    m = re.match("^[^ ]*/([^ ]+)( .*)?", interp)
+    m = re.match('^[^ ]*/([^ ]+)( .*)?', interp)
     if m:
         cmd = os.path.join(cygwin_path, m.group(1))
         return cmd + m.group(2)
@@ -96,10 +113,11 @@ def get_script_interp(script_path, cygwin_path=None):
     fp = open(script_path)
     line = fp.readline()
     fp.close()
-    m = re.match("^#!(.*)", line)
+    m = re.match('^#!(.*)', line)
     if m:
         return __translate_interp(m.group(1), cygwin_path)
     return None
+
 
 def wrap_popen3_for_win(cygwin_path):
     """Wrap popen3 to support #!-script on Windows.
@@ -108,14 +126,277 @@ def wrap_popen3_for_win(cygwin_path):
       cygwin_path:  path for cygwin binary if command path is needed to be
                     translated.  None if no translation required.
     """
+
     __orig_popen3 = os.popen3
+
     def __wrap_popen3(cmd, mode='t', bufsize=-1):
         cmdline = cmd.split(' ')
         interp = get_script_interp(cmdline[0], cygwin_path)
         if interp:
-            cmd = interp + " " + cmd
+            cmd = interp + ' ' + cmd
         return __orig_popen3(cmd, mode, bufsize)
+
     os.popen3 = __wrap_popen3
 
+
+def hexify(s):
+    return ' '.join(map(lambda x: '%02x' % ord(x), s))
+
+
+def get_class_logger(o):
+    return logging.getLogger(
+        '%s.%s' % (o.__class__.__module__, o.__class__.__name__))
+
+
+class NoopMasker(object):
+    """A masking object that has the same interface as RepeatedXorMasker but
+    just returns the string passed in without making any change.
+    """
+
+    def __init__(self):
+        pass
+
+    def mask(self, s):
+        return s
+
+
+class RepeatedXorMasker(object):
+    """A masking object that applies XOR on the string given to mask method
+    with the masking bytes given to the constructor repeatedly. This object
+    remembers the position in the masking bytes the last mask method call ended
+    and resumes from that point on the next mask method call.
+    """
+
+    def __init__(self, mask):
+        self._mask = map(ord, mask)
+        self._mask_size = len(self._mask)
+        self._count = 0
+
+    def mask(self, s):
+        result = array.array('B')
+        result.fromstring(s)
+        for i in xrange(len(result)):
+            result[i] ^= self._mask[self._count]
+            self._count = (self._count + 1) % self._mask_size
+        return result.tostring()
+
+
+class DeflateRequest(object):
+    """A wrapper class for request object to intercept send and recv to perform
+    deflate compression and decompression transparently.
+    """
+
+    def __init__(self, request):
+        self._request = request
+        self.connection = DeflateConnection(request.connection)
+
+    def __getattribute__(self, name):
+        if name in ('_request', 'connection'):
+            return object.__getattribute__(self, name)
+        return self._request.__getattribute__(name)
+
+    def __setattr__(self, name, value):
+        if name in ('_request', 'connection'):
+            return object.__setattr__(self, name, value)
+        return self._request.__setattr__(name, value)
+
+
+# By making wbits option negative, we can suppress CMF/FLG (2 octet) and
+# ADLER32 (4 octet) fields of zlib so that we can use zlib module just as
+# deflate library. DICTID won't be added as far as we don't set dictionary.
+# LZ77 window of 32K will be used for both compression and decompression.
+# For decompression, we can just use 32K to cover any windows size. For
+# compression, we use 32K so receivers must use 32K.
+#
+# Compression level is Z_DEFAULT_COMPRESSION. We don't have to match level
+# to decode.
+#
+# See zconf.h, deflate.cc, inflate.cc of zlib library, and zlibmodule.c of
+# Python. See also RFC1950 (ZLIB 3.3).
+
+
+class _Deflater(object):
+    def __init__(self):
+        self._logger = get_class_logger(self)
+
+        self._compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+    def compress_and_flush(self, bytes):
+        compressed_bytes = self._compress.compress(bytes)
+        compressed_bytes += self._compress.flush(zlib.Z_SYNC_FLUSH)
+        self._logger.debug('Compress input %r', bytes)
+        self._logger.debug('Compress result %r', compressed_bytes)
+        return compressed_bytes
+
+
+class _Inflater(object):
+    def __init__(self):
+        self._logger = get_class_logger(self)
+
+        self._unconsumed = ''
+
+        self.reset()
+
+    def decompress(self, size):
+        if not (size == -1 or size > 0):
+            raise Exception('size must be -1 or positive')
+
+        data = ''
+
+        while True:
+            if size == -1:
+                data += self._decompress.decompress(self._unconsumed)
+                # See Python bug http://bugs.python.org/issue12050 to
+                # understand why the same code cannot be used for updating
+                # self._unconsumed for here and else block.
+                self._unconsumed = ''
+            else:
+                data += self._decompress.decompress(
+                    self._unconsumed, size - len(data))
+                self._unconsumed = self._decompress.unconsumed_tail
+            if self._decompress.unused_data:
+                # Encountered a last block (i.e. a block with BFINAL = 1) and
+                # found a new stream (unused_data). We cannot use the same
+                # zlib.Decompress object for the new stream. Create a new
+                # Decompress object to decompress the new one.
+                #
+                # It's fine to ignore unconsumed_tail if unused_data is not
+                # empty.
+                self._unconsumed = self._decompress.unused_data
+                self.reset()
+                if size >= 0 and len(data) == size:
+                    # data is filled. Don't call decompress again.
+                    break
+                else:
+                    # Re-invoke Decompress.decompress to try to decompress all
+                    # available bytes before invoking read which blocks until
+                    # any new byte is available.
+                    continue
+            else:
+                # Here, since unused_data is empty, even if unconsumed_tail is
+                # not empty, bytes of requested length are already in data. We
+                # don't have to "continue" here.
+                break
+
+        if data:
+            self._logger.debug('Decompressed %r', data)
+        return data
+
+    def append(self, data):
+        self._logger.debug('Appended %r', data)
+        self._unconsumed += data
+
+    def reset(self):
+        self._logger.debug('Reset')
+        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
+
+
+class DeflateSocket(object):
+    """A wrapper class for socket object to intercept send and recv to perform
+    deflate compression and decompression transparently.
+    """
+
+    # Size of the buffer passed to recv to receive compressed data.
+    _RECV_SIZE = 4096
+
+    def __init__(self, socket):
+        self._socket = socket
+
+        self._logger = get_class_logger(self)
+
+        self._deflater = _Deflater()
+        self._inflater = _Inflater()
+
+    def recv(self, size):
+        """Receives data from the socket specified on the construction up
+        to the specified size. Once any data is available, returns it even if
+        it's smaller than the specified size.
+        """
+
+        # TODO(tyoshino): Allow call with size=0. It should block until any
+        # decompressed data is available.
+        if size <= 0:
+            raise Exception('Non-positive size passed')
+        while True:
+            data = self._inflater.decompress(size)
+            if len(data) != 0:
+                return data
+
+            read_data = self._socket.recv(DeflateSocket._RECV_SIZE)
+            if not read_data:
+                return ''
+            self._inflater.append(read_data)
+
+    def sendall(self, bytes):
+        self.send(bytes)
+
+    def send(self, bytes):
+        self._socket.sendall(self._deflater.compress_and_flush(bytes))
+        return len(bytes)
+
+
+class DeflateConnection(object):
+    """A wrapper class for request object to intercept write and read to
+    perform deflate compression and decompression transparently.
+    """
+
+    def __init__(self, connection):
+        self._connection = connection
+
+        self._logger = get_class_logger(self)
+
+        self._deflater = _Deflater()
+        self._inflater = _Inflater()
+
+    def put_bytes(self, bytes):
+        self.write(bytes)
+
+    def read(self, size=-1):
+        """Reads at most size bytes. Blocks until there's at least one byte
+        available.
+        """
+
+        # TODO(tyoshino): Allow call with size=0.
+        if not (size == -1 or size > 0):
+            raise Exception('size must be -1 or positive')
+
+        data = ''
+        while True:
+            if size == -1:
+                data += self._inflater.decompress(-1)
+            else:
+                data += self._inflater.decompress(size - len(data))
+
+            if size >= 0 and len(data) != 0:
+                break
+
+            # TODO(tyoshino): Make this read efficient by some workaround.
+            #
+            # In 3.0.3 and prior of mod_python, read blocks until length bytes
+            # was read. We don't know the exact size to read while using
+            # deflate, so read byte-by-byte.
+            #
+            # _StandaloneRequest.read that ultimately performs
+            # socket._fileobject.read also blocks until length bytes was read
+            read_data = self._connection.read(1)
+            if not read_data:
+                break
+            self._inflater.append(read_data)
+        return data
+
+    def write(self, bytes):
+        self._connection.write(self._deflater.compress_and_flush(bytes))
+
+    def flushread(self):
+        self._connection.setblocking(0)
+        while True:
+            try:
+              data = self._connection.read(1)
+              self._logger.debug('flushing unused byte %r', data)
+              if len(data) < 1:
+                break
+            except:
+              break
 
 # vi:sts=4 sw=4 et

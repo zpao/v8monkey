@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2010 The ANGLE Project Authors. All rights reserved.
+// Copyright (c) 2002-2011 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -11,6 +11,7 @@
 #define LIBGLESV2_PROGRAM_H_
 
 #include <d3dx9.h>
+#include <d3dcompiler.h>
 #include <string>
 #include <vector>
 #include <set>
@@ -27,12 +28,15 @@ class VertexShader;
 // Helper struct representing a single shader uniform
 struct Uniform
 {
-    Uniform(GLenum type, const std::string &name, unsigned int arraySize);
+    Uniform(GLenum type, const std::string &_name, unsigned int arraySize);
 
     ~Uniform();
 
+    bool isArray();
+
     const GLenum type;
-    const std::string name;
+    const std::string _name;   // Decorated name
+    const std::string name;    // Undecorated name
     const unsigned int arraySize;
 
     unsigned char *data;
@@ -46,7 +50,7 @@ struct Uniform
 // Struct used for correlating uniforms/elements of uniform arrays to handles
 struct UniformLocation
 {
-    UniformLocation(const std::string &name, unsigned int element, unsigned int index);
+    UniformLocation(const std::string &_name, unsigned int element, unsigned int index);
 
     std::string name;
     unsigned int element;
@@ -71,14 +75,10 @@ class Program
     GLuint getAttributeLocation(const char *name);
     int getSemanticIndex(int attributeIndex);
 
-    void dirtyAllSamplers();
+    GLint getSamplerMapping(SamplerType type, unsigned int samplerIndex);
+    TextureType getSamplerTextureType(SamplerType type, unsigned int samplerIndex);
 
-    GLint getSamplerMapping(unsigned int samplerIndex);
-    SamplerType getSamplerType(unsigned int samplerIndex);
-    bool isSamplerDirty(unsigned int samplerIndex) const;
-    void setSamplerDirty(unsigned int samplerIndex, bool dirty);
-
-    GLint getUniformLocation(const char *name, bool decorated);
+    GLint getUniformLocation(std::string name);
     bool setUniform1fv(GLint location, GLsizei count, const GLfloat *v);
     bool setUniform2fv(GLint location, GLsizei count, const GLfloat *v);
     bool setUniform3fv(GLint location, GLsizei count, const GLfloat *v);
@@ -125,15 +125,18 @@ class Program
     bool isFlaggedForDeletion() const;
 
     void validate();
-    bool validateSamplers() const;
+    bool validateSamplers(bool logErrors);
     bool isValidated() const;
 
     unsigned int getSerial() const;
 
+    static std::string decorateAttribute(const std::string &name);    // Prepend an underscore
+    static std::string undecorateUniform(const std::string &_name);   // Remove leading underscore
+
   private:
     DISALLOW_COPY_AND_ASSIGN(Program);
 
-    ID3DXBuffer *compileToBinary(const char *hlsl, const char *profile, ID3DXConstantTable **constantTable);
+    ID3D10Blob *compileToBinary(const char *hlsl, const char *profile, ID3DXConstantTable **constantTable);
     void unlink(bool destroy = false);
 
     int packVaryings(const Varying *packing[][4]);
@@ -164,11 +167,9 @@ class Program
 
     void getConstantHandles(Uniform *targetUniform, D3DXHANDLE *constantPS, D3DXHANDLE *constantVS);
 
+    void appendToInfoLogSanitized(const char *message);
     void appendToInfoLog(const char *info, ...);
     void resetInfoLog();
-
-    static std::string decorate(const std::string &string);     // Prepend an underscore
-    static std::string undecorate(const std::string &string);   // Remove leading underscore
 
     static unsigned int issueSerial();
 
@@ -191,11 +192,11 @@ class Program
     {
         bool active;
         GLint logicalTextureUnit;
-        SamplerType type;
-        bool dirty;
+        TextureType textureType;
     };
 
-    Sampler mSamplers[MAX_TEXTURE_IMAGE_UNITS];
+    Sampler mSamplersPS[MAX_TEXTURE_IMAGE_UNITS];
+    Sampler mSamplersVS[MAX_VERTEX_TEXTURE_IMAGE_UNITS_VTF];
 
     typedef std::vector<Uniform*> UniformArray;
     UniformArray mUniforms;

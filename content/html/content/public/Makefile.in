@@ -48,6 +48,8 @@ XPIDL_MODULE = content_html
 XPIDLSRCS = \
 		nsIFormSubmitObserver.idl \
 		nsIPhonetic.idl \
+		nsIHTMLMenu.idl \
+		nsIMenuBuilder.idl \
 		$(NULL)
 
 EXPORTS = \
@@ -60,7 +62,6 @@ EXPORTS = \
 		nsIRadioGroupContainer.h \
 		nsITextControlElement.h \
 		nsFormSubmission.h \
-		nsIFrameSetElement.h \
 		nsHTMLAudioElement.h \
 		nsHTMLCanvasElement.h \
 		nsHTMLMediaElement.h \

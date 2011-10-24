@@ -77,7 +77,7 @@ public:
   virtual nsIScriptContext *GetContext();
   virtual JSObject *GetGlobalJSObject();
   virtual void OnFinalize(JSObject* aObject);
-  virtual void SetScriptsEnabled(PRBool aEnabled, PRBool aFireTimeouts);
+  virtual void SetScriptsEnabled(bool aEnabled, bool aFireTimeouts);
 
   // nsIScriptObjectPrincipal methods
   virtual nsIPrincipal* GetPrincipal();
@@ -183,12 +183,13 @@ nsXBLDocGlobalObject_resolve(JSContext *cx, JSObject *obj, jsid id)
 
 JSClass nsXBLDocGlobalObject::gSharedGlobalClass = {
     "nsXBLPrototypeScript compilation scope",
-    JSCLASS_HAS_PRIVATE | JSCLASS_PRIVATE_IS_NSISUPPORTS | JSCLASS_GLOBAL_FLAGS,
+    XPCONNECT_GLOBAL_FLAGS,
     JS_PropertyStub,  JS_PropertyStub,
     nsXBLDocGlobalObject_getProperty, nsXBLDocGlobalObject_setProperty,
     JS_EnumerateStub, nsXBLDocGlobalObject_resolve,
     JS_ConvertStub, nsXBLDocGlobalObject_finalize,
-    NULL, nsXBLDocGlobalObject_checkAccess
+    NULL, nsXBLDocGlobalObject_checkAccess, NULL, NULL, NULL, NULL,
+    TraceXPCGlobal
 };
 
 //----------------------------------------------------------------------
@@ -266,7 +267,7 @@ nsXBLDocGlobalObject::SetContext(nsIScriptContext *aScriptContext)
   nsresult rv;
   rv = aScriptContext->InitContext();
   NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "Script Language's InitContext failed");
-  aScriptContext->SetGCOnDestruction(PR_FALSE);
+  aScriptContext->SetGCOnDestruction(false);
   aScriptContext->DidInitializeContext();
   // and we set up our global manually
   mScriptContext = aScriptContext;
@@ -318,7 +319,7 @@ nsXBLDocGlobalObject::EnsureScriptEnvironment(PRUint32 aLangID)
   NS_ENSURE_SUCCESS(rv, rv);
   rv = SetScriptContext(aLangID, newCtx);
 
-  JSContext *cx = (JSContext *)mScriptContext->GetNativeContext();
+  JSContext *cx = mScriptContext->GetNativeContext();
   JSAutoRequest ar(cx);
 
   // nsJSEnvironment set the error reporter to NS_ScriptErrorReporter so
@@ -372,8 +373,7 @@ nsXBLDocGlobalObject::GetGlobalJSObject()
   if (!mScriptContext)
     return nsnull;
 
-  JSContext* cx = static_cast<JSContext*>
-                             (mScriptContext->GetNativeContext());
+  JSContext* cx = mScriptContext->GetNativeContext();
   if (!cx)
     return nsnull;
 
@@ -390,7 +390,7 @@ nsXBLDocGlobalObject::OnFinalize(JSObject* aObject)
 }
 
 void
-nsXBLDocGlobalObject::SetScriptsEnabled(PRBool aEnabled, PRBool aFireTimeouts)
+nsXBLDocGlobalObject::SetScriptsEnabled(bool aEnabled, bool aFireTimeouts)
 {
     // We don't care...
 }
@@ -419,17 +419,17 @@ nsXBLDocGlobalObject::GetPrincipal()
   return document->NodePrincipal();
 }
 
-static PRBool IsChromeURI(nsIURI* aURI)
+static bool IsChromeURI(nsIURI* aURI)
 {
-  PRBool isChrome = PR_FALSE;
+  bool isChrome = false;
   if (NS_SUCCEEDED(aURI->SchemeIs("chrome", &isChrome)))
       return isChrome;
-  return PR_FALSE;
+  return false;
 }
 
 /* Implementation file */
 
-static PRIntn
+static bool
 TraverseProtos(nsHashKey *aKey, void *aData, void* aClosure)
 {
   nsCycleCollectionTraversalCallback *cb = 
@@ -439,7 +439,7 @@ TraverseProtos(nsHashKey *aKey, void *aData, void* aClosure)
   return kHashEnumerateNext;
 }
 
-static PRIntn
+static bool
 UnlinkProtoJSObjects(nsHashKey *aKey, void *aData, void* aClosure)
 {
   nsXBLPrototypeBinding *proto = static_cast<nsXBLPrototypeBinding*>(aData);
@@ -453,7 +453,7 @@ struct ProtoTracer
   void *mClosure;
 };
 
-static PRIntn
+static bool
 TraceProtos(nsHashKey *aKey, void *aData, void* aClosure)
 {
   ProtoTracer* closure = static_cast<ProtoTracer*>(aClosure);
@@ -496,8 +496,8 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsXBLDocumentInfo)
 
 nsXBLDocumentInfo::nsXBLDocumentInfo(nsIDocument* aDocument)
   : mDocument(aDocument),
-    mScriptAccess(PR_TRUE),
-    mIsChrome(PR_FALSE),
+    mScriptAccess(true),
+    mIsChrome(false),
     mBindingTable(nsnull),
     mFirstBinding(nsnull)
 {
@@ -507,11 +507,11 @@ nsXBLDocumentInfo::nsXBLDocumentInfo(nsIDocument* aDocument)
     nsCOMPtr<nsIXULChromeRegistry> reg =
       mozilla::services::GetXULChromeRegistryService();
     if (reg) {
-      PRBool allow = PR_TRUE;
+      bool allow = true;
       reg->AllowScriptsForPackage(uri, &allow);
       mScriptAccess = allow;
     }
-    mIsChrome = PR_TRUE;
+    mIsChrome = true;
   }
 }
 
@@ -545,12 +545,12 @@ nsXBLDocumentInfo::GetPrototypeBinding(const nsACString& aRef)
   return static_cast<nsXBLPrototypeBinding*>(mBindingTable->Get(&key));
 }
 
-static PRBool
+static bool
 DeletePrototypeBinding(nsHashKey* aKey, void* aData, void* aClosure)
 {
   nsXBLPrototypeBinding* binding = static_cast<nsXBLPrototypeBinding*>(aData);
   delete binding;
-  return PR_TRUE;
+  return true;
 }
 
 nsresult
@@ -576,11 +576,11 @@ nsXBLDocumentInfo::SetFirstPrototypeBinding(nsXBLPrototypeBinding* aBinding)
   mFirstBinding = aBinding;
 }
 
-PRBool FlushScopedSkinSheets(nsHashKey* aKey, void* aData, void* aClosure)
+bool FlushScopedSkinSheets(nsHashKey* aKey, void* aData, void* aClosure)
 {
   nsXBLPrototypeBinding* proto = (nsXBLPrototypeBinding*)aData;
   proto->FlushSkinSheets();
-  return PR_TRUE;
+  return true;
 }
 
 void

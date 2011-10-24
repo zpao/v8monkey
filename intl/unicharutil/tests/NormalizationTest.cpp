@@ -71,14 +71,14 @@ struct testcaseLine {
    normalizer->NormalizeUnicode##form(comparison, normalized);\
    DEBUG_NAMED_TESTCASE(#form "(" #comparison ")", normalized);\
    if (!base.Equals(normalized)) {\
-     rv = PR_FALSE;\
+     rv = false;\
      showError(description, #base " != " #form "(" #comparison ")\n");\
    }
 
 NS_DEFINE_CID(kUnicodeNormalizerCID, NS_UNICODE_NORMALIZER_CID);
 
 nsIUnicodeNormalizer *normalizer;
-PRBool verboseMode = PR_FALSE;
+bool verboseMode = false;
 
 #include "NormalizationData.h"
 
@@ -88,7 +88,7 @@ void showError(const char* description, const char* errorText)
     printf("%s failed: %s", description, errorText);
 }
 
-PRBool TestInvariants(testcaseLine* testLine)
+bool TestInvariants(testcaseLine* testLine)
 {
   nsAutoString c1, c2, c3, c4, c5, normalized;
   c1 = nsDependentString((PRUnichar*)testLine->c1);
@@ -96,7 +96,7 @@ PRBool TestInvariants(testcaseLine* testLine)
   c3 = nsDependentString((PRUnichar*)testLine->c3);
   c4 = nsDependentString((PRUnichar*)testLine->c4);
   c5 = nsDependentString((PRUnichar*)testLine->c5);
-  PRBool rv = PR_TRUE;
+  bool rv = true;
  
   /*
     1. The following invariants must be true for all conformant implementations
@@ -167,9 +167,9 @@ PRUint32 UTF32CodepointFromTestcase(testcaseLine* testLine)
   return SURROGATE_TO_UCS4(testLine->c1[0], testLine->c1[1]);
 }
 
-PRBool TestUnspecifiedCodepoint(PRUint32 codepoint)
+bool TestUnspecifiedCodepoint(PRUint32 codepoint)
 {
-  PRBool rv = PR_TRUE;
+  bool rv = true;
   PRUnichar unicharArray[3];
   nsAutoString X, normalized;
   char description[9];
@@ -295,9 +295,9 @@ int main(int argc, char** argv) {
   printf("NormalizationTest: test nsIUnicodeNormalizer. UCD version: %s\n", 
          versionText); 
   if (argc <= 1)
-    verboseMode = PR_FALSE;
+    verboseMode = false;
   else if ((argc == 2) && (!strcmp(argv[1], "-v")))
-    verboseMode = PR_TRUE;
+    verboseMode = true;
   else {
     printf("                   Usage: NormalizationTest [OPTION]..\n");
     printf("Options:\n");

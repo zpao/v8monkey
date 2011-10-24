@@ -163,7 +163,7 @@ nsBinHexDecoder::OnDataAvailable(nsIRequest* request,
     PRUint32 numBytesRead = 0;
     while (aCount > 0) // while we still have bytes to copy...
     {
-      aStream->Read(mDataBuffer, PR_MIN(aCount, nsIOService::gDefaultSegmentSize - 1), &numBytesRead);
+      aStream->Read(mDataBuffer, NS_MIN(aCount, nsIOService::gDefaultSegmentSize - 1), &numBytesRead);
       if (aCount >= numBytesRead)
         aCount -= numBytesRead; // subtract off the number of bytes we just read
       else
@@ -338,7 +338,7 @@ nsresult nsBinHexDecoder::ProcessNextState(nsIRequest * aRequest, nsISupports * 
 
 nsresult nsBinHexDecoder::ProcessNextChunk(nsIRequest * aRequest, nsISupports * aContext, PRUint32 numBytesInBuffer)
 {
-  PRBool foundStart;
+  bool foundStart;
   PRInt16 octetpos, c = 0;
   PRUint32 val;
   mPosInDataBuffer = 0; // use member variable.
@@ -348,7 +348,7 @@ nsresult nsBinHexDecoder::ProcessNextChunk(nsIRequest * aRequest, nsISupports * 
   //  if it is the first time, seek to the right start place.
   if (mState == BINHEX_STATE_START)
   {
-    foundStart = PR_FALSE;
+    foundStart = false;
     // go through the line, until we get a ':'
     while (mPosInDataBuffer < numBytesInBuffer)
     {
@@ -361,7 +361,7 @@ nsresult nsBinHexDecoder::ProcessNextChunk(nsIRequest * aRequest, nsISupports * 
         c = mDataBuffer[mPosInDataBuffer++];
         if (c == ':')
         {
-          foundStart = PR_TRUE;
+          foundStart = true;
           break;
         }
       }
@@ -487,7 +487,7 @@ nsBinHexDecoder::OnStartRequest(nsIRequest* request, nsISupports *aCtxt)
   rv = NS_NewPipe(getter_AddRefs(mInputStream), getter_AddRefs(mOutputStream),
                   nsIOService::gDefaultSegmentSize,
                   nsIOService::gDefaultSegmentSize,
-                  PR_TRUE, PR_TRUE);
+                  true, true);
 
   // don't propagate the on start request to mNextListener until we have determined the content type.
   return rv;

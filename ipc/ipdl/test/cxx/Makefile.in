@@ -59,6 +59,7 @@ EXPORT_LIBRARY = 1
 
 IPDLTESTS = \
   TestBlockChild \
+  TestBridgeMain \
   TestCrashCleanup \
   TestDataStructures \
   TestDesc \
@@ -69,6 +70,7 @@ IPDLTESTS = \
   TestManyChildAllocs  \
   TestMultiMgrs  \
   TestNestedLoops \
+  TestOpens \
   TestRPCErrorCleanup \
   TestRPCRaces \
   TestRPCShutdownRace \
@@ -81,13 +83,18 @@ IPDLTESTS = \
   TestShmem \
   TestShutdown \
   TestStackHooks \
-  TestSyncWakeup \
+  TestSyncError \
   TestSyncHang \
+  TestSyncWakeup \
   $(NULL)
 
 ifeq ($(OS_ARCH),Linux)
 IPDLTESTS += TestSysVShmem
 endif
+
+EXTRA_PROTOCOLS = \
+  TestBridgeSub \
+  $(NULL)
 
 IPDLTESTSRCS = $(addsuffix .cpp,$(IPDLTESTS))
 IPDLTESTHDRS = $(addprefix $(srcdir)/,$(addsuffix .h,$(IPDLTESTS)))
@@ -110,7 +117,7 @@ include $(topsrcdir)/config/rules.mk
 IPDLUNITTEST_BIN = $(DEPTH)/dist/bin/ipdlunittest$(BIN_SUFFIX)
 
 IPDLUnitTests.cpp : Makefile.in $(GENTESTER) $(TESTER_TEMPLATE) $(IPDLTESTHDRS)
-	$(PYTHON) $(GENTESTER) $(TESTER_TEMPLATE) $(IPDLTESTS) > $@
+	$(PYTHON) $(GENTESTER) $(TESTER_TEMPLATE) -t $(IPDLTESTS) -e $(EXTRA_PROTOCOLS) > $@
 
 check::
 	@$(EXIT_ON_ERROR)  \

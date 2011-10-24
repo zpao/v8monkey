@@ -37,12 +37,13 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGGraphicElement.h"
 #include "nsSVGSVGElement.h"
-#include "nsSVGTransformList.h"
-#include "nsSVGAnimatedTransformList.h"
+#include "DOMSVGAnimatedTransformList.h"
+#include "DOMSVGMatrix.h"
 #include "nsGkAtoms.h"
-#include "nsSVGMatrix.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIFrame.h"
 #include "nsISVGChildFrame.h"
@@ -50,6 +51,9 @@
 #include "nsSVGUtils.h"
 #include "nsDOMError.h"
 #include "nsSVGRect.h"
+#include "nsContentUtils.h"
+
+using namespace mozilla;
 
 //----------------------------------------------------------------------
 // nsISupports methods
@@ -107,16 +111,18 @@ NS_IMETHODIMP nsSVGGraphicElement::GetBBox(nsIDOMSVGRect **_retval)
 /* nsIDOMSVGMatrix getCTM (); */
 NS_IMETHODIMP nsSVGGraphicElement::GetCTM(nsIDOMSVGMatrix * *aCTM)
 {
-  gfxMatrix m = nsSVGUtils::GetCTM(this, PR_FALSE);
-  *aCTM = m.IsSingular() ? nsnull : NS_NewSVGMatrix(m).get();
+  gfxMatrix m = nsSVGUtils::GetCTM(this, false);
+  *aCTM = m.IsSingular() ? nsnull : new DOMSVGMatrix(m);
+  NS_IF_ADDREF(*aCTM);
   return NS_OK;
 }
 
 /* nsIDOMSVGMatrix getScreenCTM (); */
 NS_IMETHODIMP nsSVGGraphicElement::GetScreenCTM(nsIDOMSVGMatrix * *aCTM)
 {
-  gfxMatrix m = nsSVGUtils::GetCTM(this, PR_TRUE);
-  *aCTM = m.IsSingular() ? nsnull : NS_NewSVGMatrix(m).get();
+  gfxMatrix m = nsSVGUtils::GetCTM(this, true);
+  *aCTM = m.IsSingular() ? nsnull : new DOMSVGMatrix(m);
+  NS_IF_ADDREF(*aCTM);
   return NS_OK;
 }
 
@@ -148,20 +154,19 @@ NS_IMETHODIMP nsSVGGraphicElement::GetTransformToElement(nsIDOMSVGElement *eleme
 // nsIDOMSVGTransformable methods
 /* readonly attribute nsIDOMSVGAnimatedTransformList transform; */
 
-NS_IMETHODIMP nsSVGGraphicElement::GetTransform(nsIDOMSVGAnimatedTransformList * *aTransform)
+NS_IMETHODIMP nsSVGGraphicElement::GetTransform(
+    nsIDOMSVGAnimatedTransformList **aTransform)
 {
-  if (!mTransforms && NS_FAILED(CreateTransformList()))
-    return NS_ERROR_OUT_OF_MEMORY;
-      
-  *aTransform = mTransforms;
-  NS_ADDREF(*aTransform);
+  *aTransform =
+    DOMSVGAnimatedTransformList::GetDOMWrapper(GetAnimatedTransformList(), this)
+    .get();
   return NS_OK;
 }
 
 //----------------------------------------------------------------------
 // nsIContent methods
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGGraphicElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -170,21 +175,21 @@ nsSVGGraphicElement::IsAttributeMapped(const nsIAtom* name) const
     sGraphicsMap
   };
   
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGGraphicElementBase::IsAttributeMapped(name);
 }
 
 //----------------------------------------------------------------------
 // nsSVGElement overrides
 
-PRBool
+bool
 nsSVGGraphicElement::IsEventName(nsIAtom* aName)
 {
   return nsContentUtils::IsEventAttributeName(aName, EventNameType_SVGGraphic);
 }
 
 gfxMatrix
-nsSVGGraphicElement::PrependLocalTransformTo(const gfxMatrix &aMatrix)
+nsSVGGraphicElement::PrependLocalTransformTo(const gfxMatrix &aMatrix) const
 {
   gfxMatrix result(aMatrix);
 
@@ -196,17 +201,7 @@ nsSVGGraphicElement::PrependLocalTransformTo(const gfxMatrix &aMatrix)
   }
 
   if (mTransforms) {
-    nsresult rv;
-    nsCOMPtr<nsIDOMSVGTransformList> transforms;
-    rv = mTransforms->GetAnimVal(getter_AddRefs(transforms));
-    NS_ENSURE_SUCCESS(rv, aMatrix);
-    PRUint32 count;
-    transforms->GetNumberOfItems(&count);
-    if (count > 0) {
-      nsCOMPtr<nsIDOMSVGMatrix> matrix =
-        nsSVGTransformList::GetConsolidationMatrix(transforms);
-      result.PreMultiply(nsSVGUtils::ConvertSVGMatrixToThebes(matrix));
-    }
+    result.PreMultiply(mTransforms->GetAnimValue().GetConsolidationMatrix());
   }
 
   return result;
@@ -216,40 +211,14 @@ void
 nsSVGGraphicElement::SetAnimateMotionTransform(const gfxMatrix* aMatrix)
 {
   mAnimateMotionTransform = aMatrix ? new gfxMatrix(*aMatrix) : nsnull;
-  DidAnimateTransform();
+  DidAnimateTransformList();
 }
 
-nsresult
-nsSVGGraphicElement::BeforeSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                   const nsAString* aValue, PRBool aNotify)
+SVGAnimatedTransformList*
+nsSVGGraphicElement::GetAnimatedTransformList()
 {
-  if (aNamespaceID == kNameSpaceID_None &&
-      aName == nsGkAtoms::transform &&
-      !mTransforms &&
-      NS_FAILED(CreateTransformList()))
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  return nsSVGGraphicElementBase::BeforeSetAttr(aNamespaceID, aName,
-                                                aValue, aNotify);
-}
-
-nsresult
-nsSVGGraphicElement::CreateTransformList()
-{
-  nsresult rv;
-
-  // DOM property: transform, #IMPLIED attrib: transform
-  nsCOMPtr<nsIDOMSVGTransformList> transformList;
-  rv = nsSVGTransformList::Create(getter_AddRefs(transformList));
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = NS_NewSVGAnimatedTransformList(getter_AddRefs(mTransforms),
-                                      transformList);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = AddMappedSVGValue(nsGkAtoms::transform, mTransforms);
-  if (NS_FAILED(rv)) {
-    mTransforms = nsnull;
-    return rv;
+  if (!mTransforms) {
+    mTransforms = new SVGAnimatedTransformList();
   }
-
-  return NS_OK;
+  return mTransforms;
 }

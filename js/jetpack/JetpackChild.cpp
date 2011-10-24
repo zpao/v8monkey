@@ -37,14 +37,13 @@
 
 #include "base/basictypes.h"
 #include "jscntxt.h"
+#include "jswrapper.h"
 #include "nsXULAppAPI.h"
 #include "nsNativeCharsetUtils.h"
 
 #include "mozilla/jetpack/JetpackChild.h"
 #include "mozilla/jetpack/Handle.h"
 #include "mozilla/IntentionalCrash.h"
-
-#include "jsarray.h"
 
 #include <stdio.h>
 
@@ -488,7 +487,7 @@ JetpackChild::EvalInSandbox(JSContext* cx, uintN argc, jsval* vp)
   }
 
   // Unwrap, and switch compartments
-  obj = obj->unwrap();
+  obj = js::UnwrapObject(obj);
 
   JSAutoEnterCompartment ac;
   if (!ac.enter(cx, obj))
@@ -574,7 +573,7 @@ JetpackChild::GCZeal(JSContext* cx, uintN argc, jsval *vp)
   if (!JS_ValueToECMAUint32(cx, argv[0], &zeal))
     return JS_FALSE;
 
-  JS_SetGCZeal(cx, PRUint8(zeal));
+  JS_SetGCZeal(cx, PRUint8(zeal), JS_DEFAULT_ZEAL_FREQ, JS_FALSE);
   return JS_TRUE;
 }
 #endif

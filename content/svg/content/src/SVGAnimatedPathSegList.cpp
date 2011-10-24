@@ -186,7 +186,7 @@ SVGAnimatedPathSegList::
   SMILAnimatedPathSegList::ValueFromString(const nsAString& aStr,
                                const nsISMILAnimationElement* /*aSrcElement*/,
                                nsSMILValue& aValue,
-                               PRBool& aPreventCachingOfSandwich) const
+                               bool& aPreventCachingOfSandwich) const
 {
   nsSMILValue val(&SVGPathSegListSMILType::sSingleton);
   SVGPathDataAndOwner *list = static_cast<SVGPathDataAndOwner*>(val.mU.mPtr);
@@ -195,7 +195,7 @@ SVGAnimatedPathSegList::
     list->SetElement(mElement);
     aValue.Swap(val);
   }
-  aPreventCachingOfSandwich = PR_FALSE;
+  aPreventCachingOfSandwich = false;
   return rv;
 }
 

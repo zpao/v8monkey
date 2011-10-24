@@ -1,7 +1,7 @@
 // XXX Those constants are here because EventUtils.js need them
-const window = content.document.defaultView.wrappedJSObject;
-const Element = Components.interfaces.nsIDOMElement;
-const netscape = window.netscape;
+window = content.document.defaultView.wrappedJSObject;
+Element = Components.interfaces.nsIDOMElement;
+netscape = window.netscape;
 
 let AsyncTests = {
   _tests: [],

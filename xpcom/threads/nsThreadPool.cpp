@@ -76,7 +76,7 @@ nsThreadPool::nsThreadPool()
   , mIdleThreadLimit(DEFAULT_IDLE_THREAD_LIMIT)
   , mIdleThreadTimeout(DEFAULT_IDLE_THREAD_TIMEOUT)
   , mIdleCount(0)
-  , mShutdown(PR_FALSE)
+  , mShutdown(false)
 {
 }
 
@@ -90,7 +90,7 @@ nsThreadPool::PutEvent(nsIRunnable *event)
 {
   // Avoid spawning a new thread while holding the event queue lock...
  
-  PRBool spawnThread = PR_FALSE;
+  bool spawnThread = false;
   {
     ReentrantMonitorAutoEnter mon(mEvents.GetReentrantMonitor());
 
@@ -100,7 +100,7 @@ nsThreadPool::PutEvent(nsIRunnable *event)
 
     // Make sure we have a thread to service this event.
     if (mIdleCount == 0 && mThreads.Count() < (PRInt32) mThreadLimit)
-      spawnThread = PR_TRUE;
+      spawnThread = true;
 
     mEvents.PutEvent(event);
   }
@@ -110,16 +110,18 @@ nsThreadPool::PutEvent(nsIRunnable *event)
     return NS_OK;
 
   nsCOMPtr<nsIThread> thread;
-  nsThreadManager::get()->NewThread(0, getter_AddRefs(thread));
+  nsThreadManager::get()->NewThread(0,
+                                    nsIThreadManager::DEFAULT_STACK_SIZE,
+                                    getter_AddRefs(thread));
   NS_ENSURE_STATE(thread);
 
-  PRBool killThread = PR_FALSE;
+  bool killThread = false;
   {
     ReentrantMonitorAutoEnter mon(mEvents.GetReentrantMonitor());
     if (mThreads.Count() < (PRInt32) mThreadLimit) {
       mThreads.AppendObject(thread);
     } else {
-      killThread = PR_TRUE;  // okay, we don't need this thread anymore
+      killThread = true;  // okay, we don't need this thread anymore
     }
   }
   LOG(("THRD-P(%p) put [%p kill=%d]\n", this, thread.get(), killThread));
@@ -160,9 +162,9 @@ nsThreadPool::Run()
   nsCOMPtr<nsIThread> current;
   nsThreadManager::get()->GetCurrentThread(getter_AddRefs(current));
 
-  PRBool shutdownThreadOnExit = PR_FALSE;
-  PRBool exitThread = PR_FALSE;
-  PRBool wasIdle = PR_FALSE;
+  bool shutdownThreadOnExit = false;
+  bool exitThread = false;
+  bool wasIdle = false;
   PRIntervalTime idleSince;
 
   nsCOMPtr<nsIThreadPoolListener> listener;
@@ -185,20 +187,20 @@ nsThreadPool::Run()
 
         // If we are shutting down, then don't keep any idle threads
         if (mShutdown) {
-          exitThread = PR_TRUE;
+          exitThread = true;
         } else {
           if (wasIdle) {
             // if too many idle threads or idle for too long, then bail.
             if (mIdleCount > mIdleThreadLimit || (now - idleSince) >= timeout)
-              exitThread = PR_TRUE;
+              exitThread = true;
           } else {
             // if would be too many idle threads...
             if (mIdleCount == mIdleThreadLimit) {
-              exitThread = PR_TRUE;
+              exitThread = true;
             } else {
               ++mIdleCount;
               idleSince = now;
-              wasIdle = PR_TRUE;
+              wasIdle = true;
             }
           }
         }
@@ -213,7 +215,7 @@ nsThreadPool::Run()
           mon.Wait(delta);
         }
       } else if (wasIdle) {
-        wasIdle = PR_FALSE;
+        wasIdle = false;
         --mIdleCount;
       }
     }
@@ -261,13 +263,13 @@ nsThreadPool::Dispatch(nsIRunnable *event, PRUint32 flags)
 }
 
 NS_IMETHODIMP
-nsThreadPool::IsOnCurrentThread(PRBool *result)
+nsThreadPool::IsOnCurrentThread(bool *result)
 {
   // No one should be calling this method.  If this assertion gets hit, then we
   // need to think carefully about what this method should be returning.
   NS_NOTREACHED("implement me");
 
-  *result = PR_FALSE;
+  *result = false;
   return NS_OK;
 }
 
@@ -278,7 +280,7 @@ nsThreadPool::Shutdown()
   nsCOMPtr<nsIThreadPoolListener> listener;
   {
     ReentrantMonitorAutoEnter mon(mEvents.GetReentrantMonitor());
-    mShutdown = PR_TRUE;
+    mShutdown = true;
     mon.NotifyAll();
 
     threads.AppendObjects(mThreads);

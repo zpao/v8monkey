@@ -151,6 +151,19 @@ nsNullPrincipalURI::SetPath(const nsACString &aPath)
 }
 
 NS_IMETHODIMP
+nsNullPrincipalURI::GetRef(nsACString &_ref)
+{
+  _ref.Truncate();
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsNullPrincipalURI::SetRef(const nsACString &aRef)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
 nsNullPrincipalURI::GetPrePath(nsACString &_prePath)
 {
   _prePath = mScheme + NS_LITERAL_CSTRING(":");
@@ -189,6 +202,20 @@ nsNullPrincipalURI::GetSpec(nsACString &_spec)
   return NS_OK;
 }
 
+// result may contain unescaped UTF-8 characters
+NS_IMETHODIMP
+nsNullPrincipalURI::GetSpecIgnoringRef(nsACString &result)
+{
+  return GetSpec(result);
+}
+
+NS_IMETHODIMP
+nsNullPrincipalURI::GetHasRef(bool *result)
+{
+  *result = false;
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 nsNullPrincipalURI::SetSpec(const nsACString &aSpec)
 {
@@ -224,15 +251,22 @@ nsNullPrincipalURI::Clone(nsIURI **_newURI)
 {
   nsCOMPtr<nsIURI> uri =
     new nsNullPrincipalURI(mScheme + NS_LITERAL_CSTRING(":") + mPath);
-  NS_ENSURE_TRUE(uri, NS_ERROR_OUT_OF_MEMORY);
   uri.forget(_newURI);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsNullPrincipalURI::Equals(nsIURI *aOther, PRBool *_equals)
+nsNullPrincipalURI::CloneIgnoringRef(nsIURI **_newURI)
 {
-  *_equals = PR_FALSE;
+  // GetRef/SetRef not supported by nsNullPrincipalURI, so
+  // CloneIgnoringRef() is the same as Clone().
+  return Clone(_newURI);
+}
+
+NS_IMETHODIMP
+nsNullPrincipalURI::Equals(nsIURI *aOther, bool *_equals)
+{
+  *_equals = false;
   nsNullPrincipalURI *otherURI;
   nsresult rv = aOther->QueryInterface(kNullPrincipalURIImplementationCID,
                                        (void **)&otherURI);
@@ -244,6 +278,14 @@ nsNullPrincipalURI::Equals(nsIURI *aOther, PRBool *_equals)
 }
 
 NS_IMETHODIMP
+nsNullPrincipalURI::EqualsExceptRef(nsIURI *aOther, bool *_equals)
+{
+  // GetRef/SetRef not supported by nsNullPrincipalURI, so
+  // EqualsExceptRef() is the same as Equals().
+  return Equals(aOther, _equals);
+}
+
+NS_IMETHODIMP
 nsNullPrincipalURI::Resolve(const nsACString &aRelativePath,
                             nsACString &_resolvedURI)
 {
@@ -252,7 +294,7 @@ nsNullPrincipalURI::Resolve(const nsACString &aRelativePath,
 }
 
 NS_IMETHODIMP
-nsNullPrincipalURI::SchemeIs(const char *aScheme, PRBool *_schemeIs)
+nsNullPrincipalURI::SchemeIs(const char *aScheme, bool *_schemeIs)
 {
   *_schemeIs = (0 == nsCRT::strcasecmp(mScheme.get(), aScheme));
   return NS_OK;

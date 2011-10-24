@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
         strcpy(lastslash, "\\xulrunner");
 
         nsCOMPtr<nsILocalFile> xuldir;
-        rv = NS_NewNativeLocalFile(nsCString(path), PR_FALSE,
+        rv = NS_NewNativeLocalFile(nsCString(path), false,
                                    getter_AddRefs(xuldir));
         if (NS_FAILED(rv))
             return 6;
@@ -211,7 +211,7 @@ int main(int argc, char *argv[])
         *lastslash = '\0';
 
         nsCOMPtr<nsILocalFile> appdir;
-        rv = NS_NewNativeLocalFile(nsCString(path), PR_FALSE,
+        rv = NS_NewNativeLocalFile(nsCString(path), false,
                                    getter_AddRefs(appdir));
         if (NS_FAILED(rv))
             return 8;
@@ -233,7 +233,7 @@ int main(int argc, char *argv[])
             // Main message loop.
             // NOTE: We use a fake event and a timeout in order to process idle stuff for
             //       Mozilla every 1/10th of a second.
-            PRBool runCondition = PR_TRUE;
+            bool runCondition = true;
 
             rv = AppCallbacks::RunEventLoop(runCondition);
         }
@@ -358,8 +358,8 @@ nsresult ResizeEmbedding(nsIWebBrowserChrome* chrome)
                                    rect.top, 
                                    rect.right - rect.left, 
                                    rect.bottom - rect.top,
-                                   PR_TRUE);
-        webBrowserAsWin->SetVisibility(PR_TRUE);
+                                   true);
+        webBrowserAsWin->SetVisibility(true);
     }
 
     return NS_OK;
@@ -414,17 +414,17 @@ void UpdateUI(nsIWebBrowserChrome *aChrome)
     aChrome->GetWebBrowser(getter_AddRefs(webBrowser));
     webNavigation = do_QueryInterface(webBrowser);
 
-    PRBool canGoBack = PR_FALSE;
-    PRBool canGoForward = PR_FALSE;
+    bool canGoBack = false;
+    bool canGoForward = false;
     if (webNavigation)
     {
         webNavigation->GetCanGoBack(&canGoBack);
         webNavigation->GetCanGoForward(&canGoForward);
     }
 
-    PRBool canCutSelection = PR_FALSE;
-    PRBool canCopySelection = PR_FALSE;
-    PRBool canPaste = PR_FALSE;
+    bool canCutSelection = false;
+    bool canCopySelection = false;
+    bool canPaste = false;
 
     nsCOMPtr<nsIClipboardCommands> clipCmds = do_GetInterface(webBrowser);
     if (clipCmds)
@@ -712,7 +712,7 @@ INT_PTR CALLBACK BrowserDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM l
 
 
 //
-//  FUNCTION: BrowserWndProc(HWND, unsigned, WORD, LONG)
+//  FUNCTION: BrowserWndProc(HWND, UINT, WRAPAM, LPARAM)
 //
 //  PURPOSE:  Processes messages for the browser container window.
 //
@@ -749,7 +749,7 @@ nsresult StartupProfile()
 	nsCOMPtr<nsILocalFile> localAppDataDir(do_QueryInterface(appDataDir));
 
 	nsCOMPtr<nsProfileDirServiceProvider> locProvider;
-    NS_NewProfileDirServiceProvider(PR_TRUE, getter_AddRefs(locProvider));
+    NS_NewProfileDirServiceProvider(true, getter_AddRefs(locProvider));
     if (!locProvider)
       return NS_ERROR_FAILURE;
     
@@ -875,7 +875,7 @@ void WebBrowserChromeUI::Destroyed(nsIWebBrowserChrome* chrome)
 
     // Clear the window user data
     HWND hwndBrowser = GetDlgItem(hwndDlg, IDC_BROWSER);
-    SetWindowLong(hwndBrowser, GWL_USERDATA, nsnull);
+    SetWindowLongPtr(hwndBrowser, GWLP_USERDATA, nsnull);
     DestroyWindow(hwndBrowser);
     DestroyWindow(hwndDlg);
 
@@ -951,7 +951,7 @@ void WebBrowserChromeUI::UpdateCurrentURI(nsIWebBrowserChrome *aChrome)
 //
 //  PURPOSE: Refreshes the stop/go buttons in the browser dialog
 //
-void WebBrowserChromeUI::UpdateBusyState(nsIWebBrowserChrome *aChrome, PRBool aBusy)
+void WebBrowserChromeUI::UpdateBusyState(nsIWebBrowserChrome *aChrome, bool aBusy)
 {
     HWND hwndDlg = GetBrowserDlgFromChrome(aChrome);
     HWND button;
@@ -1019,7 +1019,7 @@ void WebBrowserChromeUI::HideTooltip(nsIWebBrowserChrome *aChrome)
     // TODO code to hide a tooltip should go here
 }
 
-void WebBrowserChromeUI::ShowWindow(nsIWebBrowserChrome *aChrome, PRBool aShow)
+void WebBrowserChromeUI::ShowWindow(nsIWebBrowserChrome *aChrome, bool aShow)
 {
   HWND win = GetBrowserDlgFromChrome(aChrome);
   ::ShowWindow(win, aShow ? SW_RESTORE : SW_HIDE);
@@ -1055,7 +1055,7 @@ void WebBrowserChromeUI::GetResourceStringById(PRInt32 aID, char ** aReturn)
     int retval = LoadString( ghInstanceApp, aID, (LPTSTR)resBuf, sizeof(resBuf) );
     if (retval != 0)
     {
-        int resLen = strlen(resBuf);
+        size_t resLen = strlen(resBuf);
         *aReturn = (char *)calloc(resLen+1, sizeof(char *));
         if (!*aReturn) return;
             strncpy(*aReturn, resBuf, resLen);
@@ -1097,19 +1097,19 @@ nsresult AppCallbacks::CreateBrowserWindow(PRUint32 aChromeFlags,
   // if opened as chrome, it'll be made visible after the chrome has loaded.
   // otherwise, go ahead and show it now.
   if (!(aChromeFlags & nsIWebBrowserChrome::CHROME_OPENAS_CHROME))
-    WebBrowserChromeUI::ShowWindow(*aNewWindow, PR_TRUE);
+    WebBrowserChromeUI::ShowWindow(*aNewWindow, true);
 
   return NS_OK;
 }
 
 void AppCallbacks::EnableChromeWindow(nsIWebBrowserChrome *aWindow,
-                      PRBool aEnabled)
+                      bool aEnabled)
 {
   HWND hwnd = GetBrowserDlgFromChrome(aWindow);
   ::EnableWindow(hwnd, aEnabled ? TRUE : FALSE);
 }
 
-PRUint32 AppCallbacks::RunEventLoop(PRBool &aRunCondition)
+PRUint32 AppCallbacks::RunEventLoop(bool &aRunCondition)
 {
   MSG msg;
   HANDLE hFakeEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -1119,7 +1119,7 @@ PRUint32 AppCallbacks::RunEventLoop(PRBool &aRunCondition)
     while (::PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) {
       if (!::GetMessage(&msg, NULL, 0, 0)) {
         // WM_QUIT
-        aRunCondition = PR_FALSE;
+        aRunCondition = false;
         break;
       }
 
@@ -1131,5 +1131,5 @@ PRUint32 AppCallbacks::RunEventLoop(PRBool &aRunCondition)
     ::MsgWaitForMultipleObjects(1, &hFakeEvent, FALSE, 100, QS_ALLEVENTS);
   }
   ::CloseHandle(hFakeEvent);
-  return msg.wParam;
+  return (PRUint32)msg.wParam;
 }

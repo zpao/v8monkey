@@ -37,7 +37,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsHttpConnectionInfo.h"
-#include "nsPrintfCString.h"
+#include "nsIProtocolProxyService.h"
 
 void
 nsHttpConnectionInfo::SetOriginServer(const nsACString &host, PRInt32 port)
@@ -98,4 +98,20 @@ nsHttpConnectionInfo::Clone() const
     clone->SetAnonymous(mHashKey.CharAt(2) == 'A');
     
     return clone;
+}
+
+bool
+nsHttpConnectionInfo::ShouldForceConnectMethod()
+{
+    if (!mProxyInfo)
+        return false;
+    
+    PRUint32 resolveFlags;
+    nsresult rv;
+    
+    rv = mProxyInfo->GetResolveFlags(&resolveFlags);
+    if (NS_FAILED(rv))
+        return false;
+
+    return resolveFlags & nsIProtocolProxyService::RESOLVE_ALWAYS_TUNNEL;
 }

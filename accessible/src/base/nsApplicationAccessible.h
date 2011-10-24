@@ -63,7 +63,6 @@ class nsApplicationAccessible: public nsAccessibleWrap,
                                public nsIAccessibleApplication
 {
 public:
-  using nsAccessible::GetChildAtPoint;
 
   nsApplicationAccessible();
 
@@ -77,7 +76,6 @@ public:
   NS_SCRIPTABLE NS_IMETHOD GetInnerHTML(nsAString& aInnerHTML);
   NS_SCRIPTABLE NS_IMETHOD ScrollTo(PRUint32 aScrollType);
   NS_SCRIPTABLE NS_IMETHOD ScrollToPoint(PRUint32 aCoordinateType, PRInt32 aX, PRInt32 aY);
-  NS_IMETHOD GetOwnerWindow(void **aOwnerWindow);
   NS_SCRIPTABLE NS_IMETHOD GetComputedStyleValue(const nsAString& aPseudoElt,
                                                  const nsAString& aPropertyName,
                                                  nsAString& aValue NS_OUTPARAM);
@@ -92,21 +90,14 @@ public:
   NS_IMETHOD GetPreviousSibling(nsIAccessible **aPreviousSibling);
   NS_IMETHOD GetName(nsAString &aName);
   NS_IMETHOD GetValue(nsAString &aValue);
-  NS_IMETHOD GetKeyboardShortcut(nsAString &aKeyboardShortcut);
   NS_IMETHOD GetAttributes(nsIPersistentProperties **aAttributes);
   NS_IMETHOD GroupPosition(PRInt32 *aGroupLevel, PRInt32 *aSimilarItemsInGroup,
                            PRInt32 *aPositionInGroup);
-  NS_IMETHOD GetRelationByType(PRUint32 aRelationType,
-                               nsIAccessibleRelation **aRelation);
-  NS_IMETHOD GetRelationsCount(PRUint32 *aRelationsCount);
-  NS_IMETHOD GetRelation(PRUint32 aIndex, nsIAccessibleRelation **aRelation);
-  NS_IMETHOD GetRelations(nsIArray **aRelations);
   NS_IMETHOD GetBounds(PRInt32 *aX, PRInt32 *aY,
                        PRInt32 *aWidth, PRInt32 *aHeight);
-  NS_IMETHOD SetSelected(PRBool aIsSelected);
+  NS_IMETHOD SetSelected(bool aIsSelected);
   NS_IMETHOD TakeSelection();
   NS_IMETHOD TakeFocus();
-  NS_IMETHOD GetNumActions(PRUint8 *aNumActions);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString &aName);
   NS_IMETHOD GetActionDescription(PRUint8 aIndex, nsAString &aDescription);
   NS_IMETHOD DoAction(PRUint8 aIndex);
@@ -115,8 +106,8 @@ public:
   NS_DECL_NSIACCESSIBLEAPPLICATION
 
   // nsAccessNode
-  virtual PRBool IsDefunct();
-  virtual PRBool Init();
+  virtual bool IsDefunct() const;
+  virtual bool Init();
   virtual void Shutdown();
   virtual bool IsPrimaryForNode() const;
 
@@ -126,17 +117,24 @@ public:
   virtual PRUint32 NativeRole();
   virtual PRUint64 State();
   virtual PRUint64 NativeState();
-  virtual nsAccessible* GetChildAtPoint(PRInt32 aX, PRInt32 aY,
-                                        EWhichChildAtPoint aWhichChild);
+  virtual Relation RelationByType(PRUint32 aRelType);
+
+  virtual nsAccessible* ChildAtPoint(PRInt32 aX, PRInt32 aY,
+                                     EWhichChildAtPoint aWhichChild);
+  virtual nsAccessible* FocusedChild();
 
   virtual void InvalidateChildren();
+
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
+  virtual KeyBinding AccessKey() const;
 
 protected:
 
   // nsAccessible
   virtual void CacheChildren();
   virtual nsAccessible* GetSiblingAtOffset(PRInt32 aOffset,
-                                           nsresult *aError = nsnull);
+                                           nsresult *aError = nsnull) const;
 
 private:
   nsCOMPtr<nsIXULAppInfo> mAppInfo;

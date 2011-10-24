@@ -60,7 +60,9 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #include <stdlib.h> // atoi
-#include <ucontext.h>
+#ifndef ANDROID // no Android impl
+#  include <ucontext.h>
+#endif
 #endif
 
 #if defined(SOLARIS)
@@ -188,7 +190,7 @@ static void fpehandler(int signum, siginfo_t *si, void *context)
   *mxcsr &= ~SSE_STATUS_FLAGS; /* clear all pending SSE exceptions */
 #endif
 #endif
-#ifdef LINUX
+#if defined(LINUX) && !defined(ANDROID)
   ucontext_t *uc = (ucontext_t *)context;
 
 #if defined(__i386__)

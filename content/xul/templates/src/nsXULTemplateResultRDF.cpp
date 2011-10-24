@@ -70,9 +70,9 @@ nsXULTemplateResultRDF::~nsXULTemplateResultRDF()
 }
 
 NS_IMETHODIMP
-nsXULTemplateResultRDF::GetIsContainer(PRBool* aIsContainer)
+nsXULTemplateResultRDF::GetIsContainer(bool* aIsContainer)
 {
-    *aIsContainer = PR_FALSE;
+    *aIsContainer = false;
 
     if (mNode) {
         nsXULTemplateQueryProcessorRDF* processor = GetProcessor();
@@ -84,9 +84,9 @@ nsXULTemplateResultRDF::GetIsContainer(PRBool* aIsContainer)
 }
 
 NS_IMETHODIMP
-nsXULTemplateResultRDF::GetIsEmpty(PRBool* aIsEmpty)
+nsXULTemplateResultRDF::GetIsEmpty(bool* aIsEmpty)
 {
-    *aIsEmpty = PR_TRUE;
+    *aIsEmpty = true;
 
     if (mNode) {
         nsXULTemplateQueryProcessorRDF* processor = GetProcessor();
@@ -98,10 +98,10 @@ nsXULTemplateResultRDF::GetIsEmpty(PRBool* aIsEmpty)
 }
 
 NS_IMETHODIMP
-nsXULTemplateResultRDF::GetMayProcessChildren(PRBool* aMayProcessChildren)
+nsXULTemplateResultRDF::GetMayProcessChildren(bool* aMayProcessChildren)
 {
     // RDF always allows recursion
-    *aMayProcessChildren = PR_TRUE;
+    *aMayProcessChildren = true;
     return NS_OK;
 }
 
@@ -136,7 +136,7 @@ nsXULTemplateResultRDF::GetType(nsAString& aType)
 
     nsXULTemplateQueryProcessorRDF* processor = GetProcessor();
     if (processor) {
-        PRBool found;
+        bool found;
         rv = processor->CheckIsSeparator(mNode, &found);
         if (NS_SUCCEEDED(rv) && found)
             aType.AssignLiteral("separator");
@@ -209,7 +209,7 @@ nsXULTemplateResultRDF::GetAssignment(nsIAtom* aVar, nsIRDFNode** aValue)
 }
 
 
-PRBool
+bool
 nsXULTemplateResultRDF::SyncAssignments(nsIRDFResource* aSubject,
                                         nsIRDFResource* aPredicate,
                                         nsIRDFNode* aTarget)
@@ -222,18 +222,18 @@ nsXULTemplateResultRDF::SyncAssignments(nsIRDFResource* aSubject,
             this, mBindingValues);
     }
 
-    return PR_FALSE;
+    return false;
 }
 
-PRBool
+bool
 nsXULTemplateResultRDF::HasMemoryElement(const MemoryElement& aMemoryElement)
 {
     MemoryElementSet::ConstIterator last = mInst.mSupport.Last();
     for (MemoryElementSet::ConstIterator element = mInst.mSupport.First();
                                          element != last; ++element) {
         if ((*element).Equals(aMemoryElement))
-            return PR_TRUE;
+            return true;
     }
 
-    return PR_FALSE;
+    return false;
 }

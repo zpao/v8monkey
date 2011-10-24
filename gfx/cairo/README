@@ -30,8 +30,6 @@ cairo-version-fixes.patch: fix up cairo-version.c/cairo-version.h for in-place b
 
 win32-ddb-dib.patch: fix for bug 455513; not upstream yet pending feebdack
 
-wince-fixes.patch: stubs out win32 functions we use but are not supported on win32.  Also implements ExtSelectClipRgn in terms of other functions available on wince.
-
 win32-vertically-offset-glyph.patch: bug 454098; vertical positioning errors when drawing glyph runs including delta-y offsets on screen via GDI
 
 ignore-rank0.patch: bug 474886; Not redrawing the background when changing page on flickr
@@ -167,6 +165,16 @@ missing-cairo-clip-init.diff: Missing cairo_clip_init call in cairo_gstate_show_
 fix-cairo-win32-print-gdi-error.diff: Don't use fwprintf with char* format.  Flush stderr so that all error messages appears before exit.
 
 pixman-image-transform.patch: Reset the transform on pixman images when using them as destinations.
+
+fix-cairo-surface-wrapper-flush-build-warning.patch: Ensures that _cairo_surface_wrapper_flush always returns a status, to silence the build warning
+
+fixup-unbounded.patch: Hack to work around bad assumption.
+
+quartz-get-image-performance: Make cairo_quartz_get_image faster in the failure case by not flushing unless we are going to succeed.
+
+lround-c99-only.patch: Only use lround in C99 programs.
+
+unicode-printing.patch: Print as unicode (bug 454532)
 
 ==== pixman patches ====
 

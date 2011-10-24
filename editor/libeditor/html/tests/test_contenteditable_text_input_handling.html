@@ -2,13 +2,12 @@
 <head>
   <title>Test for text input event handling on contenteditable editor</title>
   <script type="text/javascript"
-          src="/MochiKit/packed.js"></script>
+          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script type="text/javascript"
-          src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript"
-          src="/tests/SimpleTest/EventUtils.js"></script>
+          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/ChromeUtils.js"></script>
   <link rel="stylesheet" type="text/css"
-          href="/tests/SimpleTest/test.css" />
+          href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 </head>
 <body>
 <div id="display">
@@ -28,7 +27,6 @@ SimpleTest.waitForFocus(runTests);
 
 function runTests()
 {
-  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
   var fm = Components.classes["@mozilla.org/focus-manager;1"].
              getService(Components.interfaces.nsIFocusManager);
 
@@ -38,12 +36,9 @@ function runTests()
       aEvent.preventDefault(); // prevent the browser default behavior
     }
   };
-  var systemGroup =
-    Components.classes["@mozilla.org/eventlistenerservice;1"].
-      getService(Components.interfaces.nsIEventListenerService).
-      systemEventGroup;
-  window.QueryInterface(Components.interfaces.nsIDOM3EventTarget);
-  window.addGroupedEventListener("keypress", listener, false, systemGroup);
+  var els = Components.classes["@mozilla.org/eventlistenerservice;1"].
+    getService(Components.interfaces.nsIEventListenerService);
+  els.addSystemEventListener(window, "keypress", listener, false);
 
   var staticContent = document.getElementById("static");
   staticContent._defaultValue = getTextValue(staticContent);
@@ -226,8 +221,9 @@ function runTests()
     // IME
     const nsIDOMWindowUtils = Components.interfaces.nsIDOMWindowUtils;
     // start composition
-    synthesizeComposition(true);
+    synthesizeComposition({ type: "compositionstart" });
     // input first character
+    synthesizeComposition({ type: "compositionupdate", data: "\u3089" });
     synthesizeText(
       { "composition":
         { "string": "\u3089",
@@ -301,7 +297,7 @@ function runTests()
        "query selected text event returns wrong selected text after commit" +
          when);
     // end composition
-    synthesizeComposition(false);
+    synthesizeComposition({ type: "compositionend", data: "\u3089" });
 
     checkValue(staticContent, "\u3089");
     checkValue(inputInStatic, "\u3089");
@@ -325,7 +321,7 @@ function runTests()
   testTextInput(inputInEditor);
   testTextInput(textareaInEditor);
 
-  window.removeGroupedEventListener("keypress", listener, false, systemGroup);
+  els.removeSystemEventListener(window, "keypress", listener, false);
 
   SimpleTest.finish();
 }

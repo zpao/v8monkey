@@ -42,9 +42,11 @@
 
 #include "gfxPattern.h"
 #include "nsThreadUtils.h"
-#include "nsCoreAnimationSupport.h"
 #include "mozilla/ReentrantMonitor.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/mozalloc.h"
+
+class nsIOSurface;
 
 namespace mozilla {
 namespace layers {
@@ -136,7 +138,7 @@ public:
   ImageContainer() :
     mReentrantMonitor("ImageContainer.mReentrantMonitor"),
     mPaintCount(0),
-    mPreviousImagePainted(PR_FALSE)
+    mPreviousImagePainted(false)
   {}
 
   virtual ~ImageContainer() {}
@@ -161,6 +163,12 @@ public:
    * The Image data must not be modified after this method is called!
    */
   virtual void SetCurrentImage(Image* aImage) = 0;
+
+  /**
+   * Ask any PlanarYCbCr images created by this container to delay
+   * YUV -> RGB conversion until draw time. See PlanarYCbCrImage::SetDelayedConversion.
+   */
+  virtual void SetDelayedConversion(bool aDelayed) {}
 
   /**
    * Get the current Image.
@@ -214,7 +222,7 @@ public:
    * either of the same type as the container's current layer manager,
    * or null.  TRUE is returned on success. Main thread only.
    */
-  virtual PRBool SetLayerManager(LayerManager *aManager) = 0;
+  virtual bool SetLayerManager(LayerManager *aManager) = 0;
 
   /**
    * Sets a size that the image is expected to be rendered at.
@@ -270,7 +278,7 @@ public:
       // still must count it as painted, but can't set mPaintTime, since we're
       // no longer the current image.
       mPaintCount++;
-      mPreviousImagePainted = PR_TRUE;
+      mPreviousImagePainted = true;
     }
   }
 
@@ -286,7 +294,7 @@ protected:
     mManager(aManager),
     mReentrantMonitor("ImageContainer.mReentrantMonitor"),
     mPaintCount(0),
-    mPreviousImagePainted(PR_FALSE)
+    mPreviousImagePainted(false)
   {}
 
   // Performs necessary housekeeping to ensure the painted frame statistics
@@ -308,7 +316,7 @@ protected:
   TimeStamp mPaintTime;
 
   // Denotes whether the previous image was painted.
-  PRPackedBool mPreviousImagePainted;
+  bool mPreviousImagePainted;
 };
 
 /**
@@ -401,6 +409,12 @@ public:
     PRUint32 mPicY;
     gfxIntSize mPicSize;
     StereoMode mStereoMode;
+
+    nsIntRect GetPictureRect() const {
+      return nsIntRect(mPicX, mPicY,
+                       mPicSize.width,
+                       mPicSize.height);
+    }
   };
 
   enum {
@@ -414,6 +428,42 @@ public:
    * does YCbCr conversion here anyway.
    */
   virtual void SetData(const Data& aData) = 0;
+
+  /**
+   * Ask this Image to not convert YUV to RGB during SetData, and make
+   * the original data available through GetData. This is optional,
+   * and not all PlanarYCbCrImages will support it.
+   */
+  virtual void SetDelayedConversion(bool aDelayed) { }
+
+  /**
+   * Grab the original YUV data. This is optional.
+   */
+  virtual const Data* GetData() { return nsnull; }
+
+  /**
+   * Make a copy of the YCbCr data.
+   *
+   * @param aDest           Data object to store the plane data in.
+   * @param aDestSize       Size of the Y plane that was copied.
+   * @param aDestBufferSize Number of bytes allocated for storage.
+   * @param aData           Input image data.
+   * @return                Raw data pointer for the planes or nsnull on failure.
+   */
+  PRUint8 *CopyData(Data& aDest, gfxIntSize& aDestSize,
+                    PRUint32& aDestBufferSize, const Data& aData);
+
+  /**
+   * Return a buffer to store image data in.
+   * The default implementation returns memory that can
+   * be freed wit delete[]
+   */
+  virtual PRUint8* AllocateBuffer(PRUint32 aSize);
+
+  /**
+   * Return the number of bytes of heap memory used to store this image.
+   */
+  virtual PRUint32 GetDataSize() = 0;
 
 protected:
   PlanarYCbCrImage(void* aImplData) : Image(aImplData, PLANAR_YCBCR) {}

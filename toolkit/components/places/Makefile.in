@@ -58,6 +58,7 @@ IS_COMPONENT = 1
 
 XPIDLSRCS += \
   mozIAsyncHistory.idl \
+  mozIAsyncFavicons.idl \
   mozIPlacesAutoComplete.idl \
   nsIAnnotationService.idl \
   nsIBrowserHistory.idl \
@@ -86,7 +87,6 @@ CPPSRCS = \
   nsNavHistoryResult.cpp \
   nsNavBookmarks.cpp \
   nsMaybeWeakPtr.cpp \
-  nsMorkHistoryImporter.cpp \
   nsPlacesModule.cpp \
   SQLFunctions.cpp \
   Helpers.cpp \
@@ -96,18 +96,6 @@ CPPSRCS = \
   PlaceInfo.cpp \
   VisitInfo.cpp \
   $(NULL)
-
-EXTRA_DSO_LDOPTS += \
-  $(DEPTH)/db/morkreader/$(LIB_PREFIX)morkreader_s.$(LIB_SUFFIX) \
-  $(MOZ_UNICHARUTIL_LIBS) \
-  $(MOZ_COMPONENT_LIBS) \
-  $(NULL)
-
-ifndef MOZ_ENABLE_LIBXUL
-EXTRA_DSO_LDOPTS += \
-  $(MOZ_JS_LIBS) \
-  $(NULL)
-endif
 
 LOCAL_INCLUDES += -I$(srcdir)/../build
 

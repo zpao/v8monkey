@@ -200,18 +200,23 @@ GLsizei ComputeCompressedSize(GLsizei width, GLsizei height, GLenum format)
     {
       case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
       case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+        return 8 * (GLsizei)ceil((float)width / 4.0f) * (GLsizei)ceil((float)height / 4.0f);
         break;
+      case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
+      case GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE:
+        return 16 * (GLsizei)ceil((float)width / 4.0f) * (GLsizei)ceil((float)height / 4.0f);
       default:
         return 0;
     }
 
-    return 8 * (GLsizei)ceil((float)width / 4.0f) * (GLsizei)ceil((float)height / 4.0f);
 }
 
 bool IsCompressed(GLenum format)
 {
     if(format == GL_COMPRESSED_RGB_S3TC_DXT1_EXT ||
-       format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT)
+       format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT ||
+       format == GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE ||
+       format == GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE)
     {
         return true;
     }
@@ -608,137 +613,6 @@ void ConvertMinFilter(GLenum minFilter, D3DTEXTUREFILTERTYPE *d3dMinFilter, D3DT
     }
 }
 
-unsigned int GetStencilSize(D3DFORMAT stencilFormat)
-{
-    switch(stencilFormat)
-    {
-      case D3DFMT_D24FS8:
-      case D3DFMT_D24S8:
-        return 8;
-      case D3DFMT_D24X4S4:
-        return 4;
-      case D3DFMT_D15S1:
-        return 1;
-      case D3DFMT_D16_LOCKABLE:
-      case D3DFMT_D32:
-      case D3DFMT_D24X8:
-      case D3DFMT_D32F_LOCKABLE:
-      case D3DFMT_D16:
-        return 0;
-//      case D3DFMT_D32_LOCKABLE:  return 0;   // DirectX 9Ex only
-//      case D3DFMT_S8_LOCKABLE:   return 8;   // DirectX 9Ex only
-      default: UNREACHABLE();
-    }
-    return 0;
-}
-
-unsigned int GetAlphaSize(D3DFORMAT colorFormat)
-{
-    switch (colorFormat)
-    {
-      case D3DFMT_A16B16G16R16F:
-        return 16;
-      case D3DFMT_A32B32G32R32F:
-        return 32;
-      case D3DFMT_A2R10G10B10:
-        return 2;
-      case D3DFMT_A8R8G8B8:
-        return 8;
-      case D3DFMT_A1R5G5B5:
-        return 1;
-      case D3DFMT_X8R8G8B8:
-      case D3DFMT_R5G6B5:
-        return 0;
-      default: UNREACHABLE();
-    }
-    return 0;
-}
-
-unsigned int GetRedSize(D3DFORMAT colorFormat)
-{
-    switch (colorFormat)
-    {
-      case D3DFMT_A16B16G16R16F:
-        return 16;
-      case D3DFMT_A32B32G32R32F:
-        return 32;
-      case D3DFMT_A2R10G10B10:
-        return 10;
-      case D3DFMT_A8R8G8B8:
-      case D3DFMT_X8R8G8B8:
-        return 8;
-      case D3DFMT_A1R5G5B5:
-      case D3DFMT_R5G6B5:
-        return 5;
-      default: UNREACHABLE();
-    }
-    return 0;
-}
-
-unsigned int GetGreenSize(D3DFORMAT colorFormat)
-{
-    switch (colorFormat)
-    {
-      case D3DFMT_A16B16G16R16F:
-        return 16;
-      case D3DFMT_A32B32G32R32F:
-        return 32;
-      case D3DFMT_A2R10G10B10:
-        return 10;
-      case D3DFMT_A8R8G8B8:
-      case D3DFMT_X8R8G8B8:
-        return 8;
-      case D3DFMT_A1R5G5B5:
-        return 5;
-      case D3DFMT_R5G6B5:
-        return 6;
-      default: UNREACHABLE();
-    }
-    return 0;
-}
-
-unsigned int GetBlueSize(D3DFORMAT colorFormat)
-{
-    switch (colorFormat)
-    {
-      case D3DFMT_A16B16G16R16F:
-        return 16;
-      case D3DFMT_A32B32G32R32F:
-        return 32;
-      case D3DFMT_A2R10G10B10:
-        return 10;
-      case D3DFMT_A8R8G8B8:
-      case D3DFMT_X8R8G8B8:
-        return 8;
-      case D3DFMT_A1R5G5B5:
-      case D3DFMT_R5G6B5:
-        return 5;
-      default: UNREACHABLE();
-    }
-    return 0;
-}
-
-unsigned int GetDepthSize(D3DFORMAT depthFormat)
-{
-    switch (depthFormat)
-    {
-      case D3DFMT_D16_LOCKABLE:  return 16;
-      case D3DFMT_D32:           return 32;
-      case D3DFMT_D15S1:         return 15;
-      case D3DFMT_D24S8:         return 24;
-      case D3DFMT_D24X8:         return 24;
-      case D3DFMT_D24X4S4:       return 24;
-      case D3DFMT_D16:           return 16;
-      case D3DFMT_D32F_LOCKABLE: return 32;
-      case D3DFMT_D24FS8:        return 24;
-    //case D3DFMT_D32_LOCKABLE:  return 32;   // D3D9Ex only
-    //case D3DFMT_S8_LOCKABLE:   return 0;    // D3D9Ex only
-      default:
-        UNREACHABLE();
-    }
-    return 0;
-}
-
 bool ConvertPrimitiveType(GLenum primitiveType, GLsizei elementCount,
                           D3DPRIMITIVETYPE *d3dPrimitiveType, int *d3dPrimitiveCount)
 {
@@ -795,14 +669,6 @@ D3DFORMAT ConvertRenderbufferFormat(GLenum format)
     }
 }
 
-GLsizei GetSamplesFromMultisampleType(D3DMULTISAMPLE_TYPE type)
-{
-    if (type == D3DMULTISAMPLE_NONMASKABLE)
-        return 0;
-    else
-        return type;
-}
-
 D3DMULTISAMPLE_TYPE GetMultisampleTypeFromSamples(GLsizei samples)
 {
     if (samples <= 1)
@@ -815,6 +681,143 @@ D3DMULTISAMPLE_TYPE GetMultisampleTypeFromSamples(GLsizei samples)
 
 namespace dx2es
 {
+
+unsigned int GetStencilSize(D3DFORMAT stencilFormat)
+{
+    switch(stencilFormat)
+    {
+      case D3DFMT_D24FS8:
+      case D3DFMT_D24S8:
+        return 8;
+      case D3DFMT_D24X4S4:
+        return 4;
+      case D3DFMT_D15S1:
+        return 1;
+      case D3DFMT_D16_LOCKABLE:
+      case D3DFMT_D32:
+      case D3DFMT_D24X8:
+      case D3DFMT_D32F_LOCKABLE:
+      case D3DFMT_D16:
+        return 0;
+    //case D3DFMT_D32_LOCKABLE:  return 0;   // DirectX 9Ex only
+    //case D3DFMT_S8_LOCKABLE:   return 8;   // DirectX 9Ex only
+      default:
+        return 0;
+    }
+}
+
+unsigned int GetAlphaSize(D3DFORMAT colorFormat)
+{
+    switch (colorFormat)
+    {
+      case D3DFMT_A16B16G16R16F:
+        return 16;
+      case D3DFMT_A32B32G32R32F:
+        return 32;
+      case D3DFMT_A2R10G10B10:
+        return 2;
+      case D3DFMT_A8R8G8B8:
+        return 8;
+      case D3DFMT_A1R5G5B5:
+        return 1;
+      case D3DFMT_X8R8G8B8:
+      case D3DFMT_R5G6B5:
+        return 0;
+      default:
+        return 0;
+    }
+}
+
+unsigned int GetRedSize(D3DFORMAT colorFormat)
+{
+    switch (colorFormat)
+    {
+      case D3DFMT_A16B16G16R16F:
+        return 16;
+      case D3DFMT_A32B32G32R32F:
+        return 32;
+      case D3DFMT_A2R10G10B10:
+        return 10;
+      case D3DFMT_A8R8G8B8:
+      case D3DFMT_X8R8G8B8:
+        return 8;
+      case D3DFMT_A1R5G5B5:
+      case D3DFMT_R5G6B5:
+        return 5;
+      default:
+        return 0;
+    }
+}
+
+unsigned int GetGreenSize(D3DFORMAT colorFormat)
+{
+    switch (colorFormat)
+    {
+      case D3DFMT_A16B16G16R16F:
+        return 16;
+      case D3DFMT_A32B32G32R32F:
+        return 32;
+      case D3DFMT_A2R10G10B10:
+        return 10;
+      case D3DFMT_A8R8G8B8:
+      case D3DFMT_X8R8G8B8:
+        return 8;
+      case D3DFMT_A1R5G5B5:
+        return 5;
+      case D3DFMT_R5G6B5:
+        return 6;
+      default:
+        return 0;
+    }
+}
+
+unsigned int GetBlueSize(D3DFORMAT colorFormat)
+{
+    switch (colorFormat)
+    {
+      case D3DFMT_A16B16G16R16F:
+        return 16;
+      case D3DFMT_A32B32G32R32F:
+        return 32;
+      case D3DFMT_A2R10G10B10:
+        return 10;
+      case D3DFMT_A8R8G8B8:
+      case D3DFMT_X8R8G8B8:
+        return 8;
+      case D3DFMT_A1R5G5B5:
+      case D3DFMT_R5G6B5:
+        return 5;
+      default:
+        return 0;
+    }
+}
+
+unsigned int GetDepthSize(D3DFORMAT depthFormat)
+{
+    switch (depthFormat)
+    {
+      case D3DFMT_D16_LOCKABLE:  return 16;
+      case D3DFMT_D32:           return 32;
+      case D3DFMT_D15S1:         return 15;
+      case D3DFMT_D24S8:         return 24;
+      case D3DFMT_D24X8:         return 24;
+      case D3DFMT_D24X4S4:       return 24;
+      case D3DFMT_D16:           return 16;
+      case D3DFMT_D32F_LOCKABLE: return 32;
+      case D3DFMT_D24FS8:        return 24;
+    //case D3DFMT_D32_LOCKABLE:  return 32;   // D3D9Ex only
+    //case D3DFMT_S8_LOCKABLE:   return 0;    // D3D9Ex only
+      default:                   return 0;
+    }
+}
+
+GLsizei GetSamplesFromMultisampleType(D3DMULTISAMPLE_TYPE type)
+{
+    if (type == D3DMULTISAMPLE_NONMASKABLE)
+        return 0;
+    else
+        return type;
+}
 
 GLenum ConvertBackBufferFormat(D3DFORMAT format)
 {

@@ -42,6 +42,7 @@
 #include "nsSVGUtils.h"
 #include "nsSVGElement.h"
 #include "nsDOMError.h"
+#include "nsMathUtils.h"
 
 #ifdef MOZ_SMIL
 #include "nsISMILAttr.h"
@@ -63,13 +64,22 @@ public:
     mSpecifiedUnitType = aUnitType;
     mAttrEnum = aAttrEnum;
     mCtxType = aCtxType;
-    mIsAnimated = PR_FALSE;
-    mIsBaseSet = PR_FALSE;
+    mIsAnimated = false;
+    mIsBaseSet = false;
+  }
+
+  nsSVGLength2& operator=(const nsSVGLength2& aLength) {
+    mBaseVal = aLength.mBaseVal;
+    mAnimVal = aLength.mAnimVal;
+    mSpecifiedUnitType = aLength.mSpecifiedUnitType;
+    mIsAnimated = aLength.mIsAnimated;
+    mIsBaseSet = aLength.mIsBaseSet;
+    return *this;
   }
 
   nsresult SetBaseValueString(const nsAString& aValue,
                               nsSVGElement *aSVGElement,
-                              PRBool aDoSetAttr);
+                              bool aDoSetAttr);
   void GetBaseValueString(nsAString& aValue);
   void GetAnimValueString(nsAString& aValue);
 
@@ -82,7 +92,7 @@ public:
 
   PRUint8 GetCtxType() const { return mCtxType; }
   PRUint8 GetSpecifiedUnitType() const { return mSpecifiedUnitType; }
-  PRBool IsPercentage() const
+  bool IsPercentage() const
     { return mSpecifiedUnitType == nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE; }
   float GetAnimValInSpecifiedUnits() const { return mAnimVal; }
   float GetBaseValInSpecifiedUnits() const { return mBaseVal; }
@@ -92,12 +102,12 @@ public:
   float GetAnimValue(nsSVGSVGElement* aCtx) const
     { return mAnimVal / GetUnitScaleFactor(aCtx, mSpecifiedUnitType); }
 
-  // Returns PR_TRUE if the animated value of this length has been explicitly
+  // Returns true if the animated value of this length has been explicitly
   // set (either by animation, or by taking on the base value which has been
-  // explicitly set by markup or a DOM call), PR_FALSE otherwise.
-  // If this returns PR_FALSE, the animated value is still valid, that is,
+  // explicitly set by markup or a DOM call), false otherwise.
+  // If this returns false, the animated value is still valid, that is,
   // useable, and represents the default base value of the attribute.
-  PRBool IsExplicitlySet() const
+  bool IsExplicitlySet() const
     { return mIsAnimated || mIsBaseSet; }
   
   nsresult ToDOMAnimatedLength(nsIDOMSVGAnimatedLength **aResult,
@@ -114,8 +124,8 @@ private:
   PRUint8 mSpecifiedUnitType;
   PRUint8 mAttrEnum; // element specified tracking for attribute
   PRUint8 mCtxType; // X, Y or Unspecified
-  PRPackedBool mIsAnimated:1;
-  PRPackedBool mIsBaseSet:1;
+  bool mIsAnimated:1;
+  bool mIsBaseSet:1;
   
   static float GetMMPerPixel() { return MM_PER_INCH_FLOAT / 96; }
   float GetAxisLength(nsIFrame *aNonSVGFrame) const;
@@ -164,7 +174,9 @@ private:
       { *aResult = mVal->GetBaseValue(mSVGElement); return NS_OK; }
     NS_IMETHOD SetValue(float aValue)
       {
-        NS_ENSURE_FINITE(aValue, NS_ERROR_ILLEGAL_VALUE);
+        if (!NS_finite(aValue)) {
+          return NS_ERROR_ILLEGAL_VALUE;
+        }
         mVal->SetBaseValue(aValue, mSVGElement);
         return NS_OK;
       }
@@ -173,13 +185,15 @@ private:
       { *aResult = mVal->mBaseVal; return NS_OK; }
     NS_IMETHOD SetValueInSpecifiedUnits(float aValue)
       {
-        NS_ENSURE_FINITE(aValue, NS_ERROR_ILLEGAL_VALUE);
+        if (!NS_finite(aValue)) {
+          return NS_ERROR_ILLEGAL_VALUE;
+        }
         mVal->SetBaseValueInSpecifiedUnits(aValue, mSVGElement);
         return NS_OK;
       }
 
     NS_IMETHOD SetValueAsString(const nsAString& aValue)
-      { return mVal->SetBaseValueString(aValue, mSVGElement, PR_TRUE); }
+      { return mVal->SetBaseValueString(aValue, mSVGElement, true); }
     NS_IMETHOD GetValueAsString(nsAString& aValue)
       { mVal->GetBaseValueString(aValue); return NS_OK; }
 
@@ -294,7 +308,7 @@ public:
     virtual nsresult ValueFromString(const nsAString& aStr,
                                      const nsISMILAnimationElement* aSrcElement,
                                      nsSMILValue &aValue,
-                                     PRBool& aPreventCachingOfSandwich) const;
+                                     bool& aPreventCachingOfSandwich) const;
     virtual nsSMILValue GetBaseValue() const;
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);

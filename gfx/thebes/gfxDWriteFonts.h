@@ -55,7 +55,7 @@ class gfxDWriteFont : public gfxFont
 public:
     gfxDWriteFont(gfxFontEntry *aFontEntry,
                   const gfxFontStyle *aFontStyle,
-                  PRBool aNeedsBold = PR_FALSE,
+                  bool aNeedsBold = false,
                   AntialiasOption = kAntialiasDefault);
     ~gfxDWriteFont();
 
@@ -65,9 +65,9 @@ public:
 
     virtual PRUint32 GetSpaceGlyph();
 
-    virtual PRBool SetupCairoFont(gfxContext *aContext);
+    virtual bool SetupCairoFont(gfxContext *aContext);
 
-    virtual PRBool IsValid();
+    virtual bool IsValid();
 
     gfxFloat GetAdjustedSize() {
         return mAdjustedSize;
@@ -75,11 +75,18 @@ public:
 
     IDWriteFontFace *GetFontFace();
 
+    /* override Measure to add padding for antialiasing */
+    virtual RunMetrics Measure(gfxTextRun *aTextRun,
+                               PRUint32 aStart, PRUint32 aEnd,
+                               BoundingBoxType aBoundingBoxType,
+                               gfxContext *aContextForTightBoundingBox,
+                               Spacing *aSpacing);
+
     // override gfxFont table access function to bypass gfxFontEntry cache,
     // use DWrite API to get direct access to system font data
     virtual hb_blob_t *GetFontTable(PRUint32 aTag);
 
-    virtual PRBool ProvidesGlyphWidths();
+    virtual bool ProvidesGlyphWidths();
 
     virtual PRInt32 GetGlyphWidth(gfxContext *aCtx, PRUint16 aGID);
 
@@ -88,11 +95,11 @@ protected:
 
     virtual void CreatePlatformShaper();
 
-    PRBool GetFakeMetricsForArialBlack(DWRITE_FONT_METRICS *aFontMetrics);
+    bool GetFakeMetricsForArialBlack(DWRITE_FONT_METRICS *aFontMetrics);
 
-    void ComputeMetrics();
+    void ComputeMetrics(AntialiasOption anAAOption);
 
-    PRBool HasBitmapStrikeForSize(PRUint32 aSize);
+    bool HasBitmapStrikeForSize(PRUint32 aSize);
 
     cairo_font_face_t *CairoFontFace();
 
@@ -101,6 +108,9 @@ protected:
     gfxFloat MeasureGlyphWidth(PRUint16 aGlyph);
 
     static void DestroyBlobFunc(void* userArg);
+
+    DWRITE_MEASURING_MODE GetMeasuringMode();
+    bool GetForceGDIClassic();
 
     nsRefPtr<IDWriteFontFace> mFontFace;
     cairo_font_face_t *mCairoFontFace;
@@ -111,10 +121,10 @@ protected:
     // cache of glyph widths in 16.16 fixed-point pixels
     nsDataHashtable<nsUint32HashKey,PRInt32>    mGlyphWidths;
 
-    PRPackedBool mNeedsOblique;
-    PRPackedBool mNeedsBold;
-    PRPackedBool mUseSubpixelPositions;
-    PRPackedBool mAllowManualShowGlyphs;
+    bool mNeedsOblique;
+    bool mNeedsBold;
+    bool mUseSubpixelPositions;
+    bool mAllowManualShowGlyphs;
 };
 
 #endif

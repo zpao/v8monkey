@@ -46,6 +46,7 @@ const Ci = Components.interfaces;
 const Cr = Components.results;
 const Cu = Components.utils;
 
+Cu.import("resource://services-sync/async.js");
 Cu.import("resource://services-sync/record.js");
 Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/ext/Observers.js");
@@ -71,7 +72,7 @@ function Tracker(name) {
   name = name || "Unnamed";
   this.name = this.file = name.toLowerCase();
 
-  this._log = Log4Moz.repository.getLogger("Tracker." + name);
+  this._log = Log4Moz.repository.getLogger("Sync.Tracker." + name);
   let level = Svc.Prefs.get("log.logger.engine." + this.name, "Debug");
   this._log.level = Log4Moz.Level[level];
 
@@ -107,7 +108,7 @@ Tracker.prototype = {
   },
 
   saveChangedIDs: function T_saveChangedIDs() {
-    Utils.delay(function() {
+    Utils.namedTimer(function() {
       Utils.jsonSave("changes/" + this.file, this, this.changedIDs);
     }, 1000, this, "_lazySave");
   },
@@ -180,37 +181,71 @@ Tracker.prototype = {
 
 
 
-/*
- * Data Stores
- * These can wrap, serialize items and apply commands
+/**
+ * The Store serves as the interface between Sync and stored data.
+ *
+ * The name "store" is slightly a misnomer because it doesn't actually "store"
+ * anything. Instead, it serves as a gateway to something that actually does
+ * the "storing."
+ *
+ * The store is responsible for record management inside an engine. It tells
+ * Sync what items are available for Sync, converts items to and from Sync's
+ * record format, and applies records from Sync into changes on the underlying
+ * store.
+ *
+ * Store implementations require a number of functions to be implemented. These
+ * are all documented below.
+ *
+ * For stores that deal with many records or which have expensive store access
+ * routines, it is highly recommended to implement a custom applyIncomingBatch
+ * and/or applyIncoming function on top of the basic APIs.
  */
 
 function Store(name) {
   name = name || "Unnamed";
   this.name = name.toLowerCase();
 
-  this._log = Log4Moz.repository.getLogger("Store." + name);
+  this._log = Log4Moz.repository.getLogger("Sync.Store." + name);
   let level = Svc.Prefs.get("log.logger.engine." + this.name, "Debug");
   this._log.level = Log4Moz.Level[level];
 
-  Utils.lazy2(this, "_timer", function() {
+  XPCOMUtils.defineLazyGetter(this, "_timer", function() {
     return Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   });
 }
 Store.prototype = {
 
   _sleep: function _sleep(delay) {
-    let cb = Utils.makeSyncCallback();
-    this._timer.initWithCallback({notify: cb}, delay,
-                                 Ci.nsITimer.TYPE_ONE_SHOT);
-    Utils.waitForSyncCallback(cb);
+    let cb = Async.makeSyncCallback();
+    this._timer.initWithCallback(cb, delay, Ci.nsITimer.TYPE_ONE_SHOT);
+    Async.waitForSyncCallback(cb);
   },
 
+  /**
+   * Apply multiple incoming records against the store.
+   *
+   * This is called with a set of incoming records to process. The function
+   * should look at each record, reconcile with the current local state, and
+   * make the local changes required to bring its state in alignment with the
+   * record.
+   *
+   * The default implementation simply iterates over all records and calls
+   * applyIncoming(). Store implementations may overwrite this function
+   * if desired.
+   *
+   * @param  records Array of records to apply
+   * @return Array of record IDs which did not apply cleanly
+   */
   applyIncomingBatch: function applyIncomingBatch(records) {
     let failed = [];
     for each (let record in records) {
       try {
         this.applyIncoming(record);
+      } catch (ex if (ex.code == Engine.prototype.eEngineAbortApplyIncoming)) {
+        // This kind of exception should have a 'cause' attribute, which is an
+        // originating exception.
+        // ex.cause will carry its stack with it when rethrown.
+        throw ex.cause;
       } catch (ex) {
         this._log.warn("Failed to apply incoming record " + record.id);
         this._log.warn("Encountered exception: " + Utils.exceptionStr(ex));
@@ -220,6 +255,19 @@ Store.prototype = {
     return failed;
   },
 
+  /**
+   * Apply a single record against the store.
+   *
+   * This takes a single record and makes the local changes required so the
+   * local state matches what's in the record.
+   *
+   * The default implementation calls one of remove(), create(), or update()
+   * depending on the state obtained from the store itself. Store
+   * implementations may overwrite this function if desired.
+   *
+   * @param record
+   *        Record to apply
+   */
   applyIncoming: function Store_applyIncoming(record) {
     if (record.deleted)
       this.remove(record);
@@ -231,34 +279,109 @@ Store.prototype = {
 
   // override these in derived objects
 
+  /**
+   * Create an item in the store from a record.
+   *
+   * This is called by the default implementation of applyIncoming(). If using
+   * applyIncomingBatch(), this won't be called unless your store calls it.
+   *
+   * @param record
+   *        The store record to create an item from
+   */
   create: function Store_create(record) {
     throw "override create in a subclass";
   },
 
+  /**
+   * Remove an item in the store from a record.
+   *
+   * This is called by the default implementation of applyIncoming(). If using
+   * applyIncomingBatch(), this won't be called unless your store calls it.
+   *
+   * @param record
+   *        The store record to delete an item from
+   */
   remove: function Store_remove(record) {
     throw "override remove in a subclass";
   },
 
+  /**
+   * Update an item from a record.
+   *
+   * This is called by the default implementation of applyIncoming(). If using
+   * applyIncomingBatch(), this won't be called unless your store calls it.
+   *
+   * @param record
+   *        The record to use to update an item from
+   */
   update: function Store_update(record) {
     throw "override update in a subclass";
   },
 
+  /**
+   * Determine whether a record with the specified ID exists.
+   *
+   * Takes a string record ID and returns a booleans saying whether the record
+   * exists.
+   *
+   * @param  id
+   *         string record ID
+   * @return boolean indicating whether record exists locally
+   */
   itemExists: function Store_itemExists(id) {
     throw "override itemExists in a subclass";
   },
 
+  /**
+   * Create a record from the specified ID.
+   *
+   * If the ID is known, the record should be populated with metadata from
+   * the store. If the ID is not known, the record should be created with the
+   * delete field set to true.
+   *
+   * @param  id
+   *         string record ID
+   * @param  collection
+   *         Collection to add record to. This is typically passed into the
+   *         constructor for the newly-created record.
+   * @return record type for this engine
+   */
   createRecord: function Store_createRecord(id, collection) {
     throw "override createRecord in a subclass";
   },
 
+  /**
+   * Change the ID of a record.
+   *
+   * @param  oldID
+   *         string old/current record ID
+   * @param  newID
+   *         string new record ID
+   */
   changeItemID: function Store_changeItemID(oldID, newID) {
     throw "override changeItemID in a subclass";
   },
 
+  /**
+   * Obtain the set of all known record IDs.
+   *
+   * @return Object with ID strings as keys and values of true. The values
+   *         are ignored.
+   */
   getAllIDs: function Store_getAllIDs() {
     throw "override getAllIDs in a subclass";
   },
 
+  /**
+   * Wipe all data in the store.
+   *
+   * This function is called during remote wipes or when replacing local data
+   * with remote data.
+   *
+   * This function should delete all local data that the store is managing. It
+   * can be thought of as clearing out all state and restoring the "new
+   * browser" state.
+   */
   wipe: function Store_wipe() {
     throw "override wipe in a subclass";
   }
@@ -267,18 +390,20 @@ Store.prototype = {
 
 // Singleton service, holds registered engines
 
-Utils.lazy(this, 'Engines', EngineManagerSvc);
+XPCOMUtils.defineLazyGetter(this, "Engines", function() {
+  return new EngineManagerSvc();
+});
 
 function EngineManagerSvc() {
   this._engines = {};
-  this._log = Log4Moz.repository.getLogger("Service.Engines");
+  this._log = Log4Moz.repository.getLogger("Sync.EngineManager");
   this._log.level = Log4Moz.Level[Svc.Prefs.get(
     "log.logger.service.engines", "Debug")];
 }
 EngineManagerSvc.prototype = {
   get: function EngMgr_get(name) {
     // Return an array of engines if we have an array of names
-    if (Utils.isArray(name)) {
+    if (Array.isArray(name)) {
       let engines = [];
       name.forEach(function(name) {
         let engine = this.get(name);
@@ -312,7 +437,7 @@ EngineManagerSvc.prototype = {
    * @return The engine object if anything failed
    */
   register: function EngMgr_register(engineObject) {
-    if (Utils.isArray(engineObject))
+    if (Array.isArray(engineObject))
       return engineObject.map(this.register, this);
 
     try {
@@ -348,7 +473,7 @@ function Engine(name) {
   this.name = name.toLowerCase();
 
   this._notify = Utils.notify("weave:engine:");
-  this._log = Log4Moz.repository.getLogger("Engine." + this.Name);
+  this._log = Log4Moz.repository.getLogger("Sync.Engine." + this.Name);
   let level = Svc.Prefs.get("log.logger.engine." + this.name, "Debug");
   this._log.level = Log4Moz.Level[level];
 
@@ -359,6 +484,10 @@ Engine.prototype = {
   // _storeObj, and _trackerObj should to be overridden in subclasses
   _storeObj: Store,
   _trackerObj: Tracker,
+
+  // Local 'constant'.
+  // Signal to the engine that processing further records is pointless.
+  eEngineAbortApplyIncoming: "error.engine.abort.applyincoming",
 
   get prefName() this.name,
   get enabled() Svc.Prefs.get("engine." + this.prefName, false),
@@ -415,6 +544,7 @@ Engine.prototype = {
 function SyncEngine(name) {
   Engine.call(this, name || "SyncEngine");
   this.loadToFetch();
+  this.loadPreviousFailed();
 }
 
 // Enumeration to define approaches to handling bad records.
@@ -481,8 +611,12 @@ SyncEngine.prototype = {
 
   get toFetch() this._toFetch,
   set toFetch(val) {
+    // Coerce the array to a string for more efficient comparison.
+    if (val + "" == this._toFetch) {
+      return;
+    }
     this._toFetch = val;
-    Utils.delay(function () {
+    Utils.namedTimer(function () {
       Utils.jsonSave("toFetch/" + this.name, this, val);
     }, 0, this, "_toFetchDelay");
   },
@@ -493,6 +627,28 @@ SyncEngine.prototype = {
     Utils.jsonLoad("toFetch/" + this.name, this, function(toFetch) {
       if (toFetch) {
         this._toFetch = toFetch;
+      }
+    });
+  },
+
+  get previousFailed() this._previousFailed,
+  set previousFailed(val) {
+    // Coerce the array to a string for more efficient comparison.
+    if (val + "" == this._previousFailed) {
+      return;
+    }
+    this._previousFailed = val;
+    Utils.namedTimer(function () {
+      Utils.jsonSave("failed/" + this.name, this, val);
+    }, 0, this, "_previousFailedDelay");
+  },
+
+  loadPreviousFailed: function loadPreviousFailed() {
+    // Initialize to empty if there's no file
+    this._previousFailed = [];
+    Utils.jsonLoad("failed/" + this.name, this, function(previousFailed) {
+      if (previousFailed) {
+        this._previousFailed = previousFailed;
       }
     });
   },
@@ -584,8 +740,9 @@ SyncEngine.prototype = {
       // Mark all items to be uploaded, but treat them as changed from long ago
       this._log.debug("First sync, uploading all items");
       this._modified = {};
-      for (let id in this._store.getAllIDs())
+      for (let id in this._store.getAllIDs()) {
         this._modified[id] = 0;
+      }
     }
     // Clear the tracker now. If the sync fails we'll add the ones we failed
     // to upload back.
@@ -593,7 +750,7 @@ SyncEngine.prototype = {
  
     // Array of just the IDs from this._modified. This is what we iterate over
     // so we can modify this._modified during the iteration.
-    this._modifiedIDs = [id for (id in this._modified)];
+    this._modifiedIDs = Object.keys(this._modified);
     this._log.info(this._modifiedIDs.length +
                    " outgoing items pre-reconciliation");
 
@@ -614,18 +771,38 @@ SyncEngine.prototype = {
       batchSize = MOBILE_BATCH_SIZE;
     }
     newitems.newer = this.lastSync;
-    newitems.full = true;
+    newitems.full  = true;
     newitems.limit = batchSize;
-
-    let count = {applied: 0, failed: 0, reconciled: 0};
+    
+    // applied    => number of items that should be applied.
+    // failed     => number of items that failed in this sync.
+    // newFailed  => number of items that failed for the first time in this sync.
+    // reconciled => number of items that were reconciled.
+    let count = {applied: 0, failed: 0, newFailed: 0, reconciled: 0};
     let handled = [];
     let applyBatch = [];
     let failed = [];
-    let fetchBatch = this.toFetch;
+    let failedInPreviousSync = this.previousFailed;
+    let fetchBatch = Utils.arrayUnion(this.toFetch, failedInPreviousSync);
+    // Reset previousFailed for each sync since previously failed items may not fail again.
+    this.previousFailed = [];
+
+    // Used (via exceptions) to allow the record handler/reconciliation/etc.
+    // methods to signal that they would like processing of incoming records to
+    // cease.
+    let aborting = undefined;
 
     function doApplyBatch() {
       this._tracker.ignoreAll = true;
-      failed = failed.concat(this._store.applyIncomingBatch(applyBatch));
+      try {
+        failed = failed.concat(this._store.applyIncomingBatch(applyBatch));
+      } catch (ex) {
+        // Catch any error that escapes from applyIncomingBatch. At present
+        // those will all be abort events.
+        this._log.warn("Got exception " + Utils.exceptionStr(ex) +
+                       ", aborting processIncoming.");
+        aborting = ex;
+      }
       this._tracker.ignoreAll = false;
       applyBatch = [];
     }
@@ -637,7 +814,7 @@ SyncEngine.prototype = {
       }
       // Persist failed items so we refetch them.
       if (failed.length) {
-        this.toFetch = Utils.arrayUnion(failed, this.toFetch);
+        this.previousFailed = Utils.arrayUnion(failed, this.previousFailed);
         count.failed += failed.length;
         this._log.debug("Records that failed to apply: " + failed);
         failed = [];
@@ -648,6 +825,10 @@ SyncEngine.prototype = {
     // called for every incoming record.
     let self = this;
     newitems.recordHandler = function(item) {
+      if (aborting) {
+        return;
+      }
+
       // Grab a later last modified if possible
       if (self.lastModified == null || item.modified > self.lastModified)
         self.lastModified = item.modified;
@@ -701,6 +882,10 @@ SyncEngine.prototype = {
       let shouldApply;
       try {
         shouldApply = self._reconcile(item);
+      } catch (ex if (ex.code == Engine.prototype.eEngineAbortApplyIncoming)) {
+        self._log.warn("Reconciliation failed: aborting incoming processing.");
+        failed.push(item.id);
+        aborting = ex.cause;
       } catch (ex) {
         self._log.warn("Failed to reconcile incoming record " + item.id);
         self._log.warn("Encountered exception: " + Utils.exceptionStr(ex));
@@ -729,6 +914,10 @@ SyncEngine.prototype = {
       if (!resp.success) {
         resp.failureCode = ENGINE_DOWNLOAD_FAIL;
         throw resp;
+      }
+
+      if (aborting) {
+        throw aborting;
       }
     }
 
@@ -768,7 +957,7 @@ SyncEngine.prototype = {
     batchSize = isMobile ? this.mobileGUIDFetchBatchSize :
                            this.guidFetchBatchSize;
 
-    while (fetchBatch.length) {
+    while (fetchBatch.length && !aborting) {
       // Reuse the original query, but get rid of the restricting params
       // and batch remaining records.
       newitems.limit = 0;
@@ -785,11 +974,18 @@ SyncEngine.prototype = {
       // This batch was successfully applied. Not using
       // doApplyBatchAndPersistFailed() here to avoid writing toFetch twice.
       fetchBatch = fetchBatch.slice(batchSize);
-      let newToFetch = Utils.arraySub(this.toFetch, newitems.ids);
-      this.toFetch = Utils.arrayUnion(newToFetch, failed);
-      count.failed += failed.length;
-      this._log.debug("Records that failed to apply: " + failed);
+      this.toFetch = Utils.arraySub(this.toFetch, newitems.ids);
+      this.previousFailed = Utils.arrayUnion(this.previousFailed, failed);
+      if (failed.length) {
+        count.failed += failed.length;
+        this._log.debug("Records that failed to apply: " + failed);
+      }
       failed = [];
+
+      if (aborting) {
+        throw aborting;
+      }
+
       if (this.lastSync < this.lastModified) {
         this.lastSync = this.lastModified;
       }
@@ -798,15 +994,13 @@ SyncEngine.prototype = {
     // Apply remaining items.
     doApplyBatchAndPersistFailed.call(this);
 
-    if (count.failed) {
-      // Notify observers if records failed to apply. Pass the count object
-      // along so that they can make an informed decision on what to do.
-      Observers.notify("weave:engine:sync:apply-failed", count, this.name);
-    }
+    count.newFailed = Utils.arraySub(this.previousFailed, failedInPreviousSync).length;
     this._log.info(["Records:",
                     count.applied, "applied,",
                     count.failed, "failed to apply,",
+                    count.newFailed, "newly failed to apply,",
                     count.reconciled, "reconciled."].join(" "));
+    Observers.notify("weave:engine:sync:applied", count, this.name);
   },
 
   /**
@@ -875,7 +1069,7 @@ SyncEngine.prototype = {
       }
 
       // Records differ so figure out which to take
-      let recordAge = Resource.serverTime - item.modified;
+      let recordAge = AsyncResource.serverTime - item.modified;
       let localAge = Date.now() / 1000 - this._modified[item.id];
       this._log.trace("Record age vs local age: " + [recordAge, localAge]);
 
@@ -927,7 +1121,7 @@ SyncEngine.prototype = {
         if (modified > this.lastSync)
           this.lastSync = modified;
 
-        let failed_ids = [id for (id in resp.obj.failed)];
+        let failed_ids = Object.keys(resp.obj.failed);
         if (failed_ids.length)
           this._log.debug("Records that will be uploaded again because "
                           + "the server couldn't store them: "
@@ -1004,8 +1198,8 @@ SyncEngine.prototype = {
     for (let [id, when] in Iterator(this._modified)) {
       this._tracker.addChangedID(id, when);
     }
-    delete this._modified;
-    delete this._modifiedIDs;
+    this._modified    = {};
+    this._modifiedIDs = [];
   },
 
   _sync: function SyncEngine__sync() {
@@ -1049,6 +1243,7 @@ SyncEngine.prototype = {
 
   _resetClient: function SyncEngine__resetClient() {
     this.resetLastSync();
+    this.previousFailed = [];
     this.toFetch = [];
   },
 

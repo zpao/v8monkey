@@ -131,6 +131,8 @@ public:
            !AttrSlotIsTaken(ATTRCHILD_ARRAY_MAX_ATTR_COUNT - 1);
   }
 
+  PRInt64 SizeOf() const;
+
 private:
   nsAttrAndChildArray(const nsAttrAndChildArray& aOther); // Not to be implemented
   nsAttrAndChildArray& operator=(const nsAttrAndChildArray& aOther); // Not to be implemented
@@ -142,7 +144,7 @@ private:
 
   nsresult GetModifiableMapped(nsMappedAttributeElement* aContent,
                                nsHTMLStyleSheet* aSheet,
-                               PRBool aWillAddAttr,
+                               bool aWillAddAttr,
                                nsMappedAttributes** aModifiable);
   nsresult MakeMappedUnique(nsMappedAttributes* aAttributes);
 
@@ -182,8 +184,8 @@ private:
       (aChildCount << ATTRCHILD_ARRAY_ATTR_SLOTS_BITS);
   }
 
-  PRBool GrowBy(PRUint32 aGrowSize);
-  PRBool AddAttrSlot();
+  bool GrowBy(PRUint32 aGrowSize);
+  bool AddAttrSlot();
 
   /**
    * Set *aPos to aChild and update sibling pointers as needed.  aIndex is the

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 8; -*- */
+/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 2; -*- */
 /* vim: set sw=4 ts=8 et tw=80 : */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -65,7 +65,7 @@
 #include "nsNetUtil.h"
 #include "nsFrameMessageManager.h"
 #include "nsIScriptContext.h"
-#include "nsDOMEventTargetHelper.h"
+#include "nsDOMEventTargetWrapperCache.h"
 #include "nsIDialogCreator.h"
 #include "nsIDialogParamBlock.h"
 #include "nsIPresShell.h"
@@ -87,7 +87,7 @@ namespace dom {
 class TabChild;
 class PContentDialogChild;
 
-class TabChildGlobal : public nsDOMEventTargetHelper,
+class TabChildGlobal : public nsDOMEventTargetWrapperCache,
                        public nsIContentFrameMessageManager,
                        public nsIScriptObjectPrincipal,
                        public nsIScriptContextPrincipal
@@ -96,12 +96,17 @@ public:
   TabChildGlobal(TabChild* aTabChild);
   ~TabChildGlobal();
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TabChildGlobal, nsDOMEventTargetHelper)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TabChildGlobal, nsDOMEventTargetWrapperCache)
   NS_FORWARD_SAFE_NSIFRAMEMESSAGEMANAGER(mMessageManager)
-  NS_IMETHOD SendSyncMessage()
+  NS_IMETHOD SendSyncMessage(const nsAString& aMessageName,
+                             const jsval& aObject,
+                             JSContext* aCx,
+                             PRUint8 aArgc,
+                             jsval* aRetval)
   {
-    return mMessageManager ? mMessageManager->SendSyncMessage()
-                           : NS_ERROR_NULL_POINTER;
+    return mMessageManager
+      ? mMessageManager->SendSyncMessage(aMessageName, aObject, aCx, aArgc, aRetval)
+      : NS_ERROR_NULL_POINTER;
   }
   NS_IMETHOD GetContent(nsIDOMWindow** aContent);
   NS_IMETHOD GetDocShell(nsIDocShell** aDocShell);
@@ -110,18 +115,22 @@ public:
     return mMessageManager ? mMessageManager->Dump(aStr) : NS_OK;
   }
   NS_IMETHOD PrivateNoteIntentionalCrash();
+  NS_IMETHOD Btoa(const nsAString& aBinaryData,
+                  nsAString& aAsciiBase64String);
+  NS_IMETHOD Atob(const nsAString& aAsciiString,
+                  nsAString& aBinaryData);
 
   NS_IMETHOD AddEventListener(const nsAString& aType,
                               nsIDOMEventListener* aListener,
-                              PRBool aUseCapture)
+                              bool aUseCapture)
   {
     // By default add listeners only for trusted events!
     return nsDOMEventTargetHelper::AddEventListener(aType, aListener,
-                                                    aUseCapture, PR_FALSE, 2);
+                                                    aUseCapture, false, 2);
   }
   NS_IMETHOD AddEventListener(const nsAString& aType,
                               nsIDOMEventListener* aListener,
-                              PRBool aUseCapture, PRBool aWantsUntrusted,
+                              bool aUseCapture, bool aWantsUntrusted,
                               PRUint8 optional_argc)
   {
     return nsDOMEventTargetHelper::AddEventListener(aType, aListener,
@@ -178,8 +187,9 @@ public:
 
     virtual bool RecvLoadURL(const nsCString& uri);
     virtual bool RecvShow(const nsIntSize& size);
-    virtual bool RecvMove(const nsIntSize& size);
+    virtual bool RecvUpdateDimensions(const nsRect& rect, const nsIntSize& size);
     virtual bool RecvActivate();
+    virtual bool RecvDeactivate();
     virtual bool RecvMouseEvent(const nsString& aType,
                                 const float&    aX,
                                 const float&    aY,
@@ -187,6 +197,9 @@ public:
                                 const PRInt32&  aClickCount,
                                 const PRInt32&  aModifiers,
                                 const bool&     aIgnoreRootScrollFrame);
+    virtual bool RecvRealMouseEvent(const nsMouseEvent& event);
+    virtual bool RecvRealKeyEvent(const nsKeyEvent& event);
+    virtual bool RecvMouseScrollEvent(const nsMouseScrollEvent& event);
     virtual bool RecvKeyEvent(const nsString& aType,
                               const PRInt32&  aKeyCode,
                               const PRInt32&  aCharCode,
@@ -264,6 +277,7 @@ private:
     RenderFrameChild* mRemoteFrame;
     nsRefPtr<TabChildGlobal> mTabChildGlobal;
     PRUint32 mChromeFlags;
+    nsIntRect mOuterRect;
 
     DISALLOW_EVIL_CONSTRUCTORS(TabChild);
 };

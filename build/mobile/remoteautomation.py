@@ -40,6 +40,9 @@ import time
 import sys
 import os
 import socket
+import automationutils
+import tempfile
+import shutil
 
 from automation import Automation
 from devicemanager import DeviceManager, NetworkTools
@@ -79,6 +82,12 @@ class RemoteAutomation(Automation):
         if env is None:
             env = {}
 
+        # Except for the mochitest results table hiding option, which isn't
+        # passed to runtestsremote.py as an actual option, but through the
+        # MOZ_CRASHREPORTER_DISABLE environment variable.
+        if 'MOZ_HIDE_RESULTS_TABLE' in os.environ:
+            env['MOZ_HIDE_RESULTS_TABLE'] = os.environ['MOZ_HIDE_RESULTS_TABLE']
+
         if crashreporter:
             env['MOZ_CRASHREPORTER_NO_REPORT'] = '1'
             env['MOZ_CRASHREPORTER'] = '1'
@@ -98,6 +107,15 @@ class RemoteAutomation(Automation):
             proc.kill()
 
         return status
+
+    def checkForCrashes(self, directory, symbolsPath):
+        dumpDir = tempfile.mkdtemp()
+        self._devicemanager.getDirectory(self._remoteProfile + '/minidumps/', dumpDir)
+        automationutils.checkForCrashes(dumpDir, symbolsPath, self.lastTestSeen)
+        try:
+          shutil.rmtree(dumpDir)
+        except:
+          print "WARNING: unable to remove directory: %s" % (dumpDir)
 
     def buildCommandLine(self, app, debuggerInfo, profileDir, testURL, extraArgs):
         # If remote profile is specified, use that instead

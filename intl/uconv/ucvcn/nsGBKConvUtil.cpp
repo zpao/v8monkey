@@ -43,23 +43,23 @@
 // nsGBKConvUtil
 //--------------------------------------------------------------------
 
-static PRBool gInitToGBKTable = PR_FALSE;
+static bool gInitToGBKTable = false;
 static const PRUnichar gGBKToUnicodeTable[MAX_GBK_LENGTH] = {
 #include "cp936map.h"
 };
 static PRUint16 gUnicodeToGBKTable[0xA000-0x4e00];
 
-PRBool nsGBKConvUtil::UnicodeToGBKChar(
-  PRUnichar aChar, PRBool aToGL, char* 
+bool nsGBKConvUtil::UnicodeToGBKChar(
+  PRUnichar aChar, bool aToGL, char* 
   aOutByte1, char* aOutByte2)
 {
   NS_ASSERTION(gInitToGBKTable, "gGBKToUnicodeTable is not init yet. need to call InitToGBKTable first");
-  PRBool found=PR_FALSE;
+  bool found=false;
   *aOutByte1 = *aOutByte2 = 0;
   if(UNICHAR_IN_RANGE(0xd800, aChar, 0xdfff))
   {
     // surrogate is not in here
-    return PR_FALSE;
+    return false;
   }
   if(UNICHAR_IN_RANGE(0x4e00, aChar, 0x9FFF))
   {
@@ -68,9 +68,9 @@ PRBool nsGBKConvUtil::UnicodeToGBKChar(
     {
       *aOutByte1 = item >> 8;
       *aOutByte2 = item & 0x00FF;
-      found = PR_TRUE;
+      found = true;
     } else {
-      return PR_FALSE;
+      return false;
     }
   } else {
     // ugly linear search
@@ -80,13 +80,13 @@ PRBool nsGBKConvUtil::UnicodeToGBKChar(
       {
         *aOutByte1 = (i /  0x00BF + 0x0081) ;
         *aOutByte2 = (i %  0x00BF + 0x0040) ;
-        found = PR_TRUE;
+        found = true;
         break;
       }
     }
   }
   if(! found)
-    return PR_FALSE;
+    return false;
 
   if(aToGL) {
     // to GL, we only return if it is in the range 
@@ -101,10 +101,10 @@ PRBool nsGBKConvUtil::UnicodeToGBKChar(
       // it is not a GB2312 character, we cannot map to GL 
       *aOutByte1 = 0x00;
       *aOutByte2 = 0x00;
-      return PR_FALSE;
+      return false;
     }
   }
-  return PR_TRUE;
+  return true;
 }
 PRUnichar nsGBKConvUtil::GBKCharToUnicode(char aByte1, char aByte2)
 {
@@ -146,5 +146,5 @@ void nsGBKConvUtil::InitToGBKTable()
                                     ( i % 0x00BF+ 0x0040);
     }
   }
-  gInitToGBKTable = PR_TRUE;
+  gInitToGBKTable = true;
 }

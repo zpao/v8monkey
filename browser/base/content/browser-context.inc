@@ -21,6 +21,8 @@
 #
 # Contributor(s):
 #   Ehsan Akhgari <ehsan.akhgari@gmail.com>
+#   Rob Campbell <rcampbell@mozilla.com>
+#   Panagiotis Astithas <past@mozilla.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -36,6 +38,7 @@
 #
 # ***** END LICENSE BLOCK *****
 
+      <menuseparator id="page-menu-separator"/>
       <menuitem id="spell-no-suggestions"
                 disabled="true"
                 label="&spellNoSuggestions.label;"/>
@@ -102,6 +105,14 @@
                 label="&mediaHideControls.label;"
                 accesskey="&mediaHideControls.accesskey;"
                 oncommand="gContextMenu.mediaCommand('hidecontrols');"/>
+      <menuitem id="context-video-showstats"
+                accesskey="&videoShowStats.accesskey;"
+                label="&videoShowStats.label;"
+                oncommand="gContextMenu.mediaCommand('showstats');"/>
+      <menuitem id="context-video-hidestats"
+                accesskey="&videoHideStats.accesskey;"
+                label="&videoHideStats.label;"
+                oncommand="gContextMenu.mediaCommand('hidestats');"/>
       <menuitem id="context-video-fullscreen"
                 accesskey="&videoFullScreen.accesskey;"
                 label="&videoFullScreen.label;"
@@ -164,6 +175,10 @@
                 label="&saveAudioCmd.label;"
                 accesskey="&saveAudioCmd.accesskey;"
                 oncommand="gContextMenu.saveMedia();"/>
+      <menuitem id="context-video-saveimage"
+                accesskey="&videoSaveImage.accesskey;"
+                label="&videoSaveImage.label;"
+                oncommand="gContextMenu.saveVideoFrameAsImage();"/>
       <menuitem id="context-sendvideo"
                 label="&sendVideoCmd.label;"
                 accesskey="&sendVideoCmd.accesskey;"
@@ -339,3 +354,9 @@
                 label="&bidiSwitchPageDirectionItem.label;"
                 accesskey="&bidiSwitchPageDirectionItem.accesskey;"
                 oncommand="gContextMenu.switchPageDirection();"/>
+      <menuseparator id="inspect-separator" hidden="true"/>
+      <menuitem id="context-inspect"
+                hidden="true"
+                label="&inspectContextMenu.label;"
+                accesskey="&inspectContextMenu.accesskey;"
+                oncommand="gContextMenu.inspectNode();"/>

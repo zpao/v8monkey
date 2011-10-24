@@ -41,15 +41,15 @@
 #include "nsINIParser.h"
 #include "nsILocalFile.h"
 
-static PRBool
+static bool
 StringCB(const char *aKey, const char *aValue, void* aClosure)
 {
   printf("%s=%s\n", aKey, aValue);
 
-  return PR_TRUE;
+  return true;
 }
 
-static PRBool
+static bool
 SectionCB(const char *aSection, void* aClosure)
 {
   nsINIParser *ini = reinterpret_cast<nsINIParser*>(aClosure);
@@ -60,7 +60,7 @@ SectionCB(const char *aSection, void* aClosure)
 
   printf("\n");
 
-  return PR_TRUE;
+  return true;
 }
 
 int main(int argc, char **argv)
@@ -73,7 +73,7 @@ int main(int argc, char **argv)
   nsCOMPtr<nsILocalFile> lf;
 
   nsresult rv = NS_NewNativeLocalFile(nsDependentCString(argv[1]),
-                                      PR_TRUE,
+                                      true,
                                       getter_AddRefs(lf));
   if (NS_FAILED(rv)) {
     fprintf(stderr, "Error: NS_NewNativeLocalFile failed\n");

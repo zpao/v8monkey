@@ -53,7 +53,7 @@
 
 interface nsIDOMValidityState;
 
-[scriptable, uuid(58cd01b8-c3f2-4e58-b39d-8a0ba941717e)]
+[scriptable, uuid(8e9af124-c60a-481b-a203-e8c06ebaa592)]
 interface nsIDOMHTMLSelectElement : nsIDOMHTMLElement
 {
            attribute boolean                     autofocus;
@@ -69,8 +69,12 @@ interface nsIDOMHTMLSelectElement : nsIDOMHTMLElement
            attribute unsigned long               length;
   nsIDOMNode                item(in unsigned long index);
   nsIDOMNode                namedItem(in DOMString name);
+  // This add method implementation means the following
+  // since IDL doesn't support overfload.
+  //   void add(in nsIDOMHTMLElement, [optional] in nsIDOMHTMLElement)
+  //   void add(in nsIDOMHTMLElement, in long)
   void                      add(in nsIDOMHTMLElement element, 
-                                in nsIDOMHTMLElement before)
+                                [optional] in nsIVariant before)
                                                      raises(DOMException);   
   void                      remove(in long index);
 

@@ -57,7 +57,6 @@
 #include "nsDOMClassInfo.h"
 #include "nsEventListenerManager.h"
 #include "nsFrame.h"
-#include "nsGenericElement.h"  // for nsDOMEventRTTearoff
 #include "nsGlobalWindow.h"
 #include "nsGkAtoms.h"
 #include "nsImageFrame.h"
@@ -74,14 +73,13 @@
 #include "nsXBLWindowKeyHandler.h"
 #include "txMozillaXSLTProcessor.h"
 #include "nsDOMStorage.h"
+#include "nsTreeSanitizer.h"
 #include "nsCellMap.h"
 #include "nsTextFrameTextRunCache.h"
 #include "nsCCUncollectableMarker.h"
 #include "nsTextFragment.h"
 #include "nsCSSRuleProcessor.h"
 #include "nsCrossSiteListenerProxy.h"
-#include "nsWebSocket.h"
-#include "nsDOMThreadService.h"
 #include "nsHTMLDNSPrefetch.h"
 #include "nsHtml5Module.h"
 #include "nsCrossSiteListenerProxy.h"
@@ -89,9 +87,9 @@
 #include "nsFrameList.h"
 #include "nsListControlFrame.h"
 #include "nsHTMLInputElement.h"
-#ifdef MOZ_SVG
 #include "nsSVGUtils.h"
-#endif
+#include "nsMathMLAtoms.h"
+#include "nsMathMLOperators.h"
 
 #ifdef MOZ_XUL
 #include "nsXULPopupManager.h"
@@ -101,11 +99,6 @@
 #include "nsXULTooltipListener.h"
 
 #include "inDOMView.h"
-#endif
-
-#ifdef MOZ_MATHML
-#include "nsMathMLAtoms.h"
-#include "nsMathMLOperators.h"
 #endif
 
 #include "nsHTMLEditor.h"
@@ -127,9 +120,10 @@
 #include "nsContentSink.h"
 #include "nsFrameMessageManager.h"
 #include "nsRefreshDriver.h"
-#include "CanvasImageCache.h"
 
 #include "nsHyphenationManager.h"
+#include "nsEditorSpellCheck.h"
+#include "nsDOMMemoryReporter.h"
 
 extern void NS_ShutdownChainItemPool();
 
@@ -165,6 +159,8 @@ nsLayoutStatics::Initialize()
     return rv;
   }
 
+  nsGlobalWindow::Init();
+
   rv = nsContentUtils::Init();
   if (NS_FAILED(rv)) {
     NS_ERROR("Could not initialize nsContentUtils");
@@ -183,23 +179,11 @@ nsLayoutStatics::Initialize()
     return rv;
   }
 
-  rv = nsCellMap::Init();
-  if (NS_FAILED(rv)) {
-    NS_ERROR("Could not initialize nsCellMap");
-    return rv;
-  }
+  nsCellMap::Init();
 
-  rv = nsCSSRendering::Init();
-  if (NS_FAILED(rv)) {
-    NS_ERROR("Could not initialize nsCSSRendering");
-    return rv;
-  }
+  nsCSSRendering::Init();
 
-  rv = nsTextFrameTextRunCache::Init();
-  if (NS_FAILED(rv)) {
-    NS_ERROR("Could not initialize textframe textrun cache");
-    return rv;
-  }
+  nsTextFrameTextRunCache::Init();
 
   rv = nsHTMLDNSPrefetch::Initialize();
   if (NS_FAILED(rv)) {
@@ -218,9 +202,7 @@ nsLayoutStatics::Initialize()
 
 #endif
 
-#ifdef MOZ_MATHML
   nsMathMLOperators::AddRefTable();
-#endif
 
   nsEditProperty::RegisterAtoms();
   nsTextServicesDocument::RegisterAtoms();
@@ -279,13 +261,11 @@ nsLayoutStatics::Initialize()
 
   nsCORSListenerProxy::Startup();
 
-  rv = nsFrameList::Init();
-  if (NS_FAILED(rv)) {
-    NS_ERROR("Could not initialize nsFrameList");
-    return rv;
-  }
+  nsFrameList::Init();
 
   NS_SealStaticAtomTable();
+
+  nsDOMMemoryReporter::Init();
 
   return NS_OK;
 }
@@ -293,7 +273,9 @@ nsLayoutStatics::Initialize()
 void
 nsLayoutStatics::Shutdown()
 {
-  CanvasImageCache::Shutdown();
+  // Don't need to shutdown nsDOMMemoryReporter, that will be done by the memory
+  // reporter manager.
+
   nsFrameScriptExecutor::Shutdown();
   nsFocusManager::Shutdown();
 #ifdef MOZ_XUL
@@ -302,7 +284,6 @@ nsLayoutStatics::Shutdown()
   nsDOMStorageManager::Shutdown();
   txMozillaXSLTProcessor::Shutdown();
   nsDOMAttribute::Shutdown();
-  nsDOMEventRTTearoff::Shutdown();
   nsEventListenerManager::Shutdown();
   nsComputedDOMStyle::Shutdown();
   nsCSSParser::Shutdown();
@@ -331,17 +312,13 @@ nsLayoutStatics::Shutdown()
   nsSprocketLayout::Shutdown();
 #endif
 
-#ifdef MOZ_MATHML
   nsMathMLOperators::ReleaseTable();
-#endif
 
   nsCSSFrameConstructor::ReleaseGlobals();
   nsFloatManager::Shutdown();
   nsImageFrame::ReleaseGlobals();
 
   nsCSSScanner::ReleaseGlobals();
-
-  NS_IF_RELEASE(nsRuleNode::gLangService);
 
   nsTextFragment::Shutdown();
 
@@ -361,17 +338,15 @@ nsLayoutStatics::Shutdown()
   nsHTMLEditor::Shutdown();
   nsTextServicesDocument::Shutdown();
 
-  nsDOMThreadService::Shutdown();
-
 #ifdef MOZ_SYDNEYAUDIO
   nsAudioStream::ShutdownLibrary();
 #endif
 
   nsCORSListenerProxy::Shutdown();
   
-  nsWebSocket::ReleaseGlobals();
-  
   nsIPresShell::ReleaseStatics();
+
+  nsTreeSanitizer::ReleaseStatics();
 
   nsHtml5Module::ReleaseStatics();
 
@@ -386,4 +361,5 @@ nsLayoutStatics::Shutdown()
   nsLayoutUtils::Shutdown();
 
   nsHyphenationManager::Shutdown();
+  nsEditorSpellCheck::ShutDown();
 }

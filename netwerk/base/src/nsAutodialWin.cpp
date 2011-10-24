@@ -140,7 +140,7 @@ nsresult nsAutodial::Init()
 // Should we attempt to dial on a network error? Yes if the Internet Options
 // configured as such. Yes if the RAS autodial service is running (we'll try to
 // force it to dial in that case by adding the network address to its db.)
-PRBool nsAutodial::ShouldDialOnNetworkError()
+bool nsAutodial::ShouldDialOnNetworkError()
 {
     // Don't try to dial again within a few seconds of when user pressed cancel.
     if (mDontRetryUntil) 
@@ -149,7 +149,7 @@ PRBool nsAutodial::ShouldDialOnNetworkError()
         if (intervalNow < mDontRetryUntil) 
         {
             LOGD(("Autodial: Not dialing: too soon."));
-            return PR_FALSE;
+            return false;
         }
     }
      
@@ -310,7 +310,7 @@ nsresult nsAutodial::DialDefault(const PRUnichar* hostName)
             memset(&rasDialDlg, 0, sizeof(rasDialDlg));
             rasDialDlg.dwSize = sizeof(rasDialDlg);
 
-            PRBool dialed = 
+            bool dialed = 
              (*mpRasDialDlg)(nsnull, mDefaultEntryName, nsnull, &rasDialDlg);
 
             if (!dialed)
@@ -341,7 +341,7 @@ nsresult nsAutodial::DialDefault(const PRUnichar* hostName)
             memset(&rasPBDlg, 0, sizeof(rasPBDlg));
             rasPBDlg.dwSize = sizeof(rasPBDlg);
  
-            PRBool dialed = (*mpRasPhonebookDlg)(nsnull, nsnull, &rasPBDlg);
+            bool dialed = (*mpRasPhonebookDlg)(nsnull, nsnull, &rasPBDlg);
 
             if (!dialed)
             {
@@ -369,7 +369,7 @@ nsresult nsAutodial::DialDefault(const PRUnichar* hostName)
 
 
 // Check to see if RAS is already connected.
-PRBool nsAutodial::IsRASConnected()
+bool nsAutodial::IsRASConnected()
 {
     DWORD connections;
     RASCONN rasConn;
@@ -377,7 +377,7 @@ PRBool nsAutodial::IsRASConnected()
     DWORD structSize = sizeof(rasConn);
 
     if (!LoadRASapi32DLL())
-        return NS_ERROR_NULL_POINTER;
+        return false;
 
     DWORD result = (*mpRasEnumConnections)(&rasConn, &structSize, &connections);
 
@@ -388,7 +388,7 @@ PRBool nsAutodial::IsRASConnected()
     }
 
     LOGE(("Autodial: ::RasEnumConnections failed: Error = %d", result));
-    return PR_FALSE;
+    return false;
 }
 
 // Get the first RAS dial entry name from the phonebook.
@@ -545,7 +545,7 @@ nsresult nsAutodial::GetDefaultEntryName(PRUnichar* entryName, int bufferSize)
 
 
 // Determine if the autodial service is running on this PC.
-PRBool nsAutodial::IsAutodialServiceRunning()
+bool nsAutodial::IsAutodialServiceRunning()
 {
     SC_HANDLE hSCManager = 
       OpenSCManager(nsnull, SERVICES_ACTIVE_DATABASE, SERVICE_QUERY_STATUS);
@@ -555,7 +555,7 @@ PRBool nsAutodial::IsAutodialServiceRunning()
         LOGE(("Autodial: failed to open service control manager. Error %d.", 
           ::GetLastError()));
 
-        return PR_FALSE;
+        return false;
     }
 
     SC_HANDLE hService = 
@@ -564,7 +564,7 @@ PRBool nsAutodial::IsAutodialServiceRunning()
     if (hSCManager == nsnull)
     {
         LOGE(("Autodial: failed to open RasAuto service."));
-        return PR_FALSE;
+        return false;
     }
 
     SERVICE_STATUS status;
@@ -573,18 +573,18 @@ PRBool nsAutodial::IsAutodialServiceRunning()
         LOGE(("Autodial: ::QueryServiceStatus() failed. Error: %d", 
           ::GetLastError()));
 
-        return PR_FALSE;
+        return false;
     }
 
     return (status.dwCurrentState == SERVICE_RUNNING);
 }
 
 // Add the specified address to the autodial directory.
-PRBool nsAutodial::AddAddressToAutodialDirectory(const PRUnichar* hostName)
+bool nsAutodial::AddAddressToAutodialDirectory(const PRUnichar* hostName)
 {
     // Need to load the DLL if not loaded yet.
     if (!LoadRASapi32DLL())
-        return PR_FALSE;
+        return false;
 
     // First see if there is already a db entry for this address. 
     RASAUTODIALENTRYW autodialEntry;
@@ -602,7 +602,7 @@ PRBool nsAutodial::AddAddressToAutodialDirectory(const PRUnichar* hostName)
     if (result != ERROR_FILE_NOT_FOUND)
     {
         LOGD(("Autodial: Address %s already in autodial db.", hostName));
-        return PR_FALSE;
+        return false;
     }
 
     autodialEntry.dwSize = sizeof(autodialEntry);
@@ -619,13 +619,13 @@ PRBool nsAutodial::AddAddressToAutodialDirectory(const PRUnichar* hostName)
     if (result != ERROR_SUCCESS)
     {
         LOGE(("Autodial ::RasSetAutodialAddress failed result %d.", result));
-        return PR_FALSE;
+        return false;
     }
 
     LOGD(("Autodial: Added address %s to RAS autodial db for entry %s.",
          hostName, NS_ConvertUTF16toUTF8(autodialEntry.szEntry).get()));
 
-    return PR_TRUE;
+    return true;
 }
 
 // Get the current TAPI dialing location.
@@ -663,19 +663,19 @@ int nsAutodial::GetCurrentLocation()
 }
 
 // Check to see if autodial for the specified location is enabled. 
-PRBool nsAutodial::IsAutodialServiceEnabled(int location)
+bool nsAutodial::IsAutodialServiceEnabled(int location)
 {
     if (location < 0)
-        return PR_FALSE;
+        return false;
 
     if (!LoadRASapi32DLL())
-        return PR_FALSE;
+        return false;
 
-    PRBool enabled;
+    BOOL enabled;
     if ((*mpRasGetAutodialEnable)(location, &enabled) != ERROR_SUCCESS)
     {
         LOGE(("Autodial: Error calling RasGetAutodialEnable()"));
-        return PR_FALSE;
+        return false;
     }
 
     return enabled;
@@ -683,7 +683,7 @@ PRBool nsAutodial::IsAutodialServiceEnabled(int location)
 
 
 
-PRBool nsAutodial::LoadRASapi32DLL()
+bool nsAutodial::LoadRASapi32DLL()
 {
     if (!mhRASapi32)
     {
@@ -726,13 +726,13 @@ PRBool nsAutodial::LoadRASapi32DLL()
         || !mpRasGetAutodialParam)
     {
         LOGE(("Autodial: Error loading RASAPI32.DLL."));
-        return PR_FALSE;
+        return false;
     }
 
-    return PR_TRUE;
+    return true;
 }
 
-PRBool nsAutodial::LoadRASdlgDLL()
+bool nsAutodial::LoadRASdlgDLL()
 {
     if (!mhRASdlg)
     {
@@ -753,9 +753,9 @@ PRBool nsAutodial::LoadRASdlgDLL()
     if (!mhRASdlg || !mpRasPhonebookDlg || !mpRasDialDlg)
     {
         LOGE(("Autodial: Error loading RASDLG.DLL."));
-        return PR_FALSE;
+        return false;
     }
 
-    return PR_TRUE;
+    return true;
 }
 

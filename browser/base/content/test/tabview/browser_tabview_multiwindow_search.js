@@ -8,14 +8,14 @@ function test() {
   let windowOne = openDialog(location, "", "chrome,all,dialog=no", "data:text/html,");
   let windowTwo;
 
-  windowOne.addEventListener("load", function() {
-    windowOne.gBrowser.selectedBrowser.addEventListener("load", function() {
-      windowOne.gBrowser.selectedBrowser.removeEventListener("load", arguments.callee, true);
+  whenWindowLoaded(windowOne, function () {
+    windowOne.gBrowser.selectedBrowser.addEventListener("load", function onLoad() {
+      windowOne.gBrowser.selectedBrowser.removeEventListener("load", onLoad, true);
 
       windowTwo = openDialog(location, "", "chrome,all,dialog=no", "http://mochi.test:8888/");
-      windowTwo.addEventListener("load", function() {
-        windowTwo.gBrowser.selectedBrowser.addEventListener("load", function() {
-          windowTwo.gBrowser.selectedBrowser.removeEventListener("load", arguments.callee, true);
+      whenWindowLoaded(windowTwo, function () {
+        windowTwo.gBrowser.selectedBrowser.addEventListener("load", function onLoad() {
+          windowTwo.gBrowser.selectedBrowser.removeEventListener("load", onLoad, true);
 
           newWindows = [ windowOne, windowTwo ];
 
@@ -24,9 +24,9 @@ function test() {
           ok(!TabView.isVisible(), "Tab View is hidden");
           TabView.toggle();
         }, true);
-      }, false);
+      });
     }, true);
-  }, false);
+  });
 }
 
 function onTabViewWindowLoaded() {
@@ -100,7 +100,7 @@ function searchTest(contentWindow) {
 
   // part of titled
   searchBox.setAttribute("value", tabNames[0].substr(1));
-  contentWindow.performSearch();
+  contentWindow.Search.perform();
   matchResults = getMatchResults(contentWindow, searchBox.getAttribute("value"));
   is(matchResults.length, 1,
      "Match something when a part of title exists");
@@ -109,7 +109,7 @@ function searchTest(contentWindow) {
 }
 
 function cleanup(contentWindow) {
-  contentWindow.hideSearch(null);
+  contentWindow.Search.hide(null);
 
   let onTabViewHidden = function() {
       window.removeEventListener("tabviewhidden", onTabViewHidden, false);

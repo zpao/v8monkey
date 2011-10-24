@@ -152,22 +152,22 @@ nsRDFPropertyTestNode::nsRDFPropertyTestNode(TestNode* aParent,
 
 nsresult
 nsRDFPropertyTestNode::FilterInstantiations(InstantiationSet& aInstantiations,
-                                            PRBool* aCantHandleYet) const
+                                            bool* aCantHandleYet) const
 {
     nsresult rv;
 
     if (aCantHandleYet)
-        *aCantHandleYet = PR_FALSE;
+        *aCantHandleYet = false;
 
     nsIRDFDataSource* ds = mProcessor->GetDataSource();
 
     InstantiationSet::Iterator last = aInstantiations.Last();
     for (InstantiationSet::Iterator inst = aInstantiations.First(); inst != last; ++inst) {
-        PRBool hasSourceBinding;
+        bool hasSourceBinding;
         nsCOMPtr<nsIRDFResource> sourceRes;
 
         if (mSource) {
-            hasSourceBinding = PR_TRUE;
+            hasSourceBinding = true;
             sourceRes = mSource;
         }
         else {
@@ -177,11 +177,11 @@ nsRDFPropertyTestNode::FilterInstantiations(InstantiationSet& aInstantiations,
             sourceRes = do_QueryInterface(sourceValue);
         }
 
-        PRBool hasTargetBinding;
+        bool hasTargetBinding;
         nsCOMPtr<nsIRDFNode> targetValue;
 
         if (mTarget) {
-            hasTargetBinding = PR_TRUE;
+            hasTargetBinding = true;
             targetValue = mTarget;
         }
         else {
@@ -207,9 +207,9 @@ nsRDFPropertyTestNode::FilterInstantiations(InstantiationSet& aInstantiations,
 
         if (hasSourceBinding && hasTargetBinding) {
             // it's a consistency check. see if we have a assignment that is consistent
-            PRBool hasAssertion;
+            bool hasAssertion;
             rv = ds->HasAssertion(sourceRes, mProperty, targetValue,
-                                  PR_TRUE, &hasAssertion);
+                                  true, &hasAssertion);
             if (NS_FAILED(rv)) return rv;
 
 #ifdef PR_LOGGING
@@ -243,19 +243,19 @@ nsRDFPropertyTestNode::FilterInstantiations(InstantiationSet& aInstantiations,
             if (hasSourceBinding) {
                 rv = ds->GetTargets(sourceRes,
                                     mProperty,
-                                    PR_TRUE,
+                                    true,
                                     getter_AddRefs(results));
             }
             else {
                 rv = ds->GetSources(mProperty,
                                     targetValue,
-                                    PR_TRUE,
+                                    true,
                                     getter_AddRefs(results));
                 if (NS_FAILED(rv)) return rv;
             }
 
             while (1) {
-                PRBool hasMore;
+                bool hasMore;
                 rv = results->HasMoreElements(&hasMore);
                 if (NS_FAILED(rv)) return rv;
 
@@ -341,7 +341,7 @@ nsRDFPropertyTestNode::FilterInstantiations(InstantiationSet& aInstantiations,
                 return NS_ERROR_UNEXPECTED;
             }
 
-            *aCantHandleYet = PR_TRUE;
+            *aCantHandleYet = true;
             return NS_OK;
         }
     }
@@ -349,18 +349,18 @@ nsRDFPropertyTestNode::FilterInstantiations(InstantiationSet& aInstantiations,
     return NS_OK;
 }
 
-PRBool
+bool
 nsRDFPropertyTestNode::CanPropagate(nsIRDFResource* aSource,
                                     nsIRDFResource* aProperty,
                                     nsIRDFNode* aTarget,
                                     Instantiation& aInitialBindings) const
 {
-    PRBool result;
+    bool result;
 
     if ((mProperty.get() != aProperty) ||
         (mSource && mSource.get() != aSource) ||
         (mTarget && mTarget.get() != aTarget)) {
-        result = PR_FALSE;
+        result = false;
     }
     else {
         if (mSourceVariable)
@@ -369,7 +369,7 @@ nsRDFPropertyTestNode::CanPropagate(nsIRDFResource* aSource,
         if (mTargetVariable)
             aInitialBindings.AddAssignment(mTargetVariable, aTarget);
 
-        result = PR_TRUE;
+        result = true;
     }
 
 #ifdef PR_LOGGING

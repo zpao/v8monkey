@@ -27,6 +27,10 @@
 
 #import "ComplexTextInputPanel.h"
 
+#include "mozilla/Preferences.h"
+
+using namespace mozilla;
+
 #define kInputWindowHeight 20
 
 @implementation ComplexTextInputPanel
@@ -83,7 +87,21 @@
 
 - (void)keyboardInputSourceChanged:(NSNotification *)notification
 {
-  [self cancelComposition];
+  static PRInt8 sDoCancel = -1;
+  if (!sDoCancel || ![self inComposition]) {
+    return;
+  }
+  if (sDoCancel < 0) {
+    bool cancelComposition = false;
+    static const char* kPrefName =
+      "ui.plugin.cancel_composition_at_input_source_changed";
+    nsresult rv = Preferences::GetBool(kPrefName, &cancelComposition);
+    NS_ENSURE_SUCCESS(rv, );
+    sDoCancel = cancelComposition ? 1 : 0;
+  }
+  if (sDoCancel) {
+    [self cancelComposition];
+  }
 }
 
 - (BOOL)interpretKeyEvent:(NSEvent*)event string:(NSString**)string

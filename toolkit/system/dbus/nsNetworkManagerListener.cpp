@@ -45,6 +45,7 @@
 #include "nsServiceManagerUtils.h"
 #include "nsIObserverService.h"
 #include "nsStringAPI.h"
+#include "nsCRT.h"
 
 // Define NetworkManager API constants. This avoids a dependency on
 // NetworkManager-devel.
@@ -62,8 +63,8 @@ typedef enum NMState
 } NMState;
 
 nsNetworkManagerListener::nsNetworkManagerListener() :
-    mLinkUp(PR_TRUE), mNetworkManagerActive(PR_FALSE),
-    mOK(PR_TRUE), mManageIOService(PR_TRUE)
+    mLinkUp(true), mNetworkManagerActive(false),
+    mOK(true), mManageIOService(true)
 {
 }
 
@@ -76,14 +77,24 @@ nsNetworkManagerListener::~nsNetworkManagerListener() {
 NS_IMPL_ISUPPORTS1(nsNetworkManagerListener, nsINetworkLinkService)
 
 nsresult
-nsNetworkManagerListener::GetIsLinkUp(PRBool* aIsUp) {
+nsNetworkManagerListener::GetIsLinkUp(bool* aIsUp) {
   *aIsUp = mLinkUp;
   return NS_OK;
 }
 
 nsresult
-nsNetworkManagerListener::GetLinkStatusKnown(PRBool* aKnown) {
+nsNetworkManagerListener::GetLinkStatusKnown(bool* aKnown) {
   *aKnown = mNetworkManagerActive;
+  return NS_OK;
+}
+
+nsresult
+nsNetworkManagerListener::GetLinkType(PRUint32 *aLinkType)
+{
+  NS_ENSURE_ARG_POINTER(aLinkType);
+
+  // XXX This function has not yet been implemented for this platform
+  *aLinkType = nsINetworkLinkService::LINK_TYPE_UNKNOWN;
   return NS_OK;
 }
 
@@ -132,13 +143,13 @@ nsNetworkManagerListener::RegisterWithConnection(DBusConnection* connection) {
     dbus_message_new_method_call(NM_DBUS_SERVICE, NM_DBUS_PATH,
                                  NM_DBUS_INTERFACE, "state");
   if (!msg) {
-    mOK = PR_FALSE;
+    mOK = false;
     return;
   }
   
   DBusPendingCall* reply = mDBUS->SendWithReply(this, msg);
   if (!reply) {
-    mOK = PR_FALSE;
+    mOK = false;
     return;
   }
 
@@ -167,18 +178,18 @@ nsNetworkManagerListener::NotifyNetworkStatusObservers() {
 
 void
 nsNetworkManagerListener::UnregisterWithConnection(DBusConnection* connection) {
-  mNetworkManagerActive = PR_FALSE;
+  mNetworkManagerActive = false;
   NotifyNetworkStatusObservers();
 }
 
-PRBool
+bool
 nsNetworkManagerListener::HandleMessage(DBusMessage* message) {
   if (dbus_message_is_signal(message, NM_DBUS_INTERFACE,
                              NM_DBUS_SIGNAL_STATE_CHANGE)) {
     UpdateNetworkStatus(message);
-    return PR_TRUE;
+    return true;
   }
-  return PR_FALSE;
+  return false;
 }
 
 void
@@ -188,9 +199,9 @@ nsNetworkManagerListener::UpdateNetworkStatus(DBusMessage* msg) {
                              DBUS_TYPE_INVALID))
     return;
 
-  mNetworkManagerActive = PR_TRUE;
+  mNetworkManagerActive = true;
   
-  PRBool wasUp = mLinkUp;
+  bool wasUp = mLinkUp;
   mLinkUp = result == NM_STATE_CONNECTED;
   if (wasUp == mLinkUp)
     return;

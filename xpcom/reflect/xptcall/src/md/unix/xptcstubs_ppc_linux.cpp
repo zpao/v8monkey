@@ -178,7 +178,7 @@ PrepareAndDispatch(nsXPTCStubBase* self,
         case nsXPTType::T_U16:     dp->val.u16 = (PRUint16) tempu32; break;
         case nsXPTType::T_U32:     dp->val.u32 = (PRUint32) tempu32; break;
         case nsXPTType::T_U64:     dp->val.u64 = (PRUint64) tempu64; break;
-        case nsXPTType::T_BOOL:    dp->val.b   = (PRBool)   tempu32; break;
+        case nsXPTType::T_BOOL:    dp->val.b   = (bool)   tempu32; break;
         case nsXPTType::T_CHAR:    dp->val.c   = (char)     tempu32; break;
         case nsXPTType::T_WCHAR:   dp->val.wc  = (wchar_t)  tempu32; break;
 
@@ -204,20 +204,6 @@ PrepareAndDispatch(nsXPTCStubBase* self,
 // however, it's quick, dirty, and'll break when the ABI changes on
 // us, which is what we want ;-).
 
-#if __GXX_ABI_VERSION < 100
-// gcc-2 version
-# define STUB_ENTRY(n)                                       \
-__asm__ (                                                   \
-        ".section \".text\" \n\t"                           \
-        ".align 2 \n\t"                                     \
-	".globl  Stub"#n"__14nsXPTCStubBase \n\t"           \
-	".type   Stub"#n"__14nsXPTCStubBase,@function \n\n" \
-                                                            \
-"Stub"#n"__14nsXPTCStubBase: \n\t"                          \
-	"li     11,"#n" \n\t"                               \
-	"b      SharedStub@local \n"                        \
-);
-#else
 // gcc-3 version
 //
 // As G++3 ABI contains the length of the functionname in the mangled
@@ -256,7 +242,6 @@ __asm__ (								\
 	"li	11,"#n" \n\t"						\
 	"b	SharedStub@local \n"					\
 );
-#endif
 
 #define SENTINEL_ENTRY(n)                            \
 nsresult nsXPTCStubBase::Sentinel##n()               \

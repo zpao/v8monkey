@@ -51,7 +51,7 @@
  * in sync.
  */
 typedef enum {
- 	url_All       = 0         /**< %-escape every byte uncondtionally */
+ 	url_All       = 0         /**< %-escape every byte unconditionally */
 ,	url_XAlphas   = PR_BIT(0) /**< Normal escape - leave alphas intact, escape the rest */
 ,	url_XPAlphas  = PR_BIT(1) /**< As url_XAlphas, but convert spaces (0x20) to '+' and plus to %2B */
 ,	url_Path      = PR_BIT(2) /**< As url_XAlphas, but don't escape slash ('/') */
@@ -68,23 +68,23 @@ extern "C" {
  * @return A newly allocated escaped string that must be free'd with
  *         nsCRT::free, or null on failure
  */
-NS_COM char * nsEscape(const char * str, nsEscapeMask mask);
+char * nsEscape(const char * str, nsEscapeMask mask);
 
-NS_COM char * nsUnescape(char * str);
+char * nsUnescape(char * str);
 	/* decode % escaped hex codes into character values,
 	 * modifies the parameter, returns the same buffer
 	 */
 
-NS_COM PRInt32 nsUnescapeCount (char * str);
+PRInt32 nsUnescapeCount (char * str);
 	/* decode % escaped hex codes into character values,
 	 * modifies the parameter buffer, returns the length of the result
 	 * (result may contain \0's).
 	 */
 
-NS_COM char *
+char *
 nsEscapeHTML(const char * string);
 
-NS_COM PRUnichar *
+PRUnichar *
 nsEscapeHTML2(const PRUnichar *aSourceBuffer,
               PRInt32 aSourceBufferLen = -1);
  /*
@@ -142,7 +142,7 @@ enum EscapeMask {
  *
  * @return TRUE if escaping was performed, FALSE otherwise.
  */
-NS_COM PRBool NS_EscapeURL(const char *str,
+bool NS_EscapeURL(const char *str,
                            PRInt32 len,
                            PRUint32 flags,
                            nsACString &result);
@@ -158,7 +158,7 @@ NS_COM PRBool NS_EscapeURL(const char *str,
  *
  * @return TRUE if unescaping was performed, FALSE otherwise.
  */
-NS_COM PRBool NS_UnescapeURL(const char *str,
+bool NS_UnescapeURL(const char *str,
                              PRInt32 len,
                              PRUint32 flags,
                              nsACString &result);
@@ -188,15 +188,15 @@ NS_UnescapeURL(const nsCSubstring &str, PRUint32 flags, nsCSubstring &result) {
  * CString version of nsEscape. Returns true on success, false
  * on out of memory. To reverse this function, use NS_UnescapeURL.
  */
-inline PRBool
+inline bool
 NS_Escape(const nsCString& aOriginal, nsCString& aEscaped,
           nsEscapeMask aMask)
 {
   char* esc = nsEscape(aOriginal.get(), aMask);
   if (! esc)
-    return PR_FALSE;
+    return false;
   aEscaped.Adopt(esc);
-  return PR_TRUE;
+  return true;
 }
 
 /**

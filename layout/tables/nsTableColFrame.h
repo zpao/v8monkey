@@ -142,7 +142,7 @@ public:
     mMinCoord = 0;
     mPrefCoord = 0;
     mPrefPercent = 0.0f;
-    mHasSpecifiedCoord = PR_FALSE;
+    mHasSpecifiedCoord = false;
   }
 
   /**
@@ -184,12 +184,12 @@ public:
    * aHasSpecifiedCoord false.
    */
   void AddCoords(nscoord aMinCoord, nscoord aPrefCoord,
-                 PRBool aHasSpecifiedCoord) {
+                 bool aHasSpecifiedCoord) {
     NS_ASSERTION(aMinCoord <= aPrefCoord, "intrinsic widths out of order");
 
     if (aHasSpecifiedCoord && !mHasSpecifiedCoord) {
       mPrefCoord = mMinCoord;
-      mHasSpecifiedCoord = PR_TRUE;
+      mHasSpecifiedCoord = true;
     }
     if (!aHasSpecifiedCoord && mHasSpecifiedCoord) {
       aPrefCoord = aMinCoord; // NOTE: modifying argument
@@ -227,7 +227,7 @@ public:
    * Get whether there were any specified widths contributing to this
    * column.
    */
-  PRBool GetHasSpecifiedCoord() const { return mHasSpecifiedCoord; }
+  bool GetHasSpecifiedCoord() const { return mHasSpecifiedCoord; }
 
   /**
    * Get the largest specified percentage width contributing to this
@@ -240,7 +240,7 @@ public:
    * column-spanning cells.
    */
   void AddSpanCoords(nscoord aSpanMinCoord, nscoord aSpanPrefCoord,
-                     PRBool aSpanHasSpecifiedCoord) {
+                     bool aSpanHasSpecifiedCoord) {
     NS_ASSERTION(aSpanMinCoord <= aSpanPrefCoord,
                  "intrinsic widths out of order");
 
@@ -324,7 +324,7 @@ protected:
   BCPixelSize mRightContBorderWidth;
   BCPixelSize mBottomContBorderWidth;
 
-  PRPackedBool mHasSpecifiedCoord;
+  bool mHasSpecifiedCoord;
 };
 
 inline PRInt32 nsTableColFrame::GetColIndex() const

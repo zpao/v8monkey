@@ -49,11 +49,9 @@ nsTransactionItem::nsTransactionItem(nsITransaction *aTransaction)
 
 nsTransactionItem::~nsTransactionItem()
 {
-  if (mRedoStack)
-    delete mRedoStack;
+  delete mRedoStack;
 
-  if (mUndoStack)
-    delete mUndoStack;
+  delete mUndoStack;
 }
 
 nsrefcnt
@@ -128,7 +126,7 @@ nsTransactionItem::GetTransaction(nsITransaction **aTransaction)
 }
 
 nsresult
-nsTransactionItem::GetIsBatch(PRBool *aIsBatch)
+nsTransactionItem::GetIsBatch(bool *aIsBatch)
 {
   NS_ENSURE_TRUE(aIsBatch, NS_ERROR_NULL_POINTER);
 
@@ -269,7 +267,7 @@ nsTransactionItem::UndoChildren(nsTransactionManager *aTxMgr)
         return result;
       }
 
-      PRBool doInterrupt = PR_FALSE;
+      bool doInterrupt = false;
 
       result = aTxMgr->WillUndoNotify(t, &doInterrupt);
 
@@ -359,7 +357,7 @@ nsTransactionItem::RedoChildren(nsTransactionManager *aTxMgr)
       return result;
     }
 
-    PRBool doInterrupt = PR_FALSE;
+    bool doInterrupt = false;
 
     result = aTxMgr->WillRedoNotify(t, &doInterrupt);
 

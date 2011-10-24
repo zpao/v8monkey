@@ -52,7 +52,7 @@
 #include "nsIContent.h"
 #include "nsINameSpaceManager.h"
 
-nsIBoxLayout* nsStackLayout::gInstance = nsnull;
+nsBoxLayout* nsStackLayout::gInstance = nsnull;
 
 #define SPECIFIED_LEFT (1 << NS_SIDE_LEFT)
 #define SPECIFIED_RIGHT (1 << NS_SIDE_RIGHT)
@@ -60,7 +60,7 @@ nsIBoxLayout* nsStackLayout::gInstance = nsnull;
 #define SPECIFIED_BOTTOM (1 << NS_SIDE_BOTTOM)
 
 nsresult
-NS_NewStackLayout( nsIPresShell* aPresShell, nsCOMPtr<nsIBoxLayout>& aNewLayout)
+NS_NewStackLayout( nsIPresShell* aPresShell, nsCOMPtr<nsBoxLayout>& aNewLayout)
 {
   if (!nsStackLayout::gInstance) {
     nsStackLayout::gInstance = new nsStackLayout();
@@ -207,7 +207,7 @@ nsStackLayout::GetOffset(nsBoxLayoutState& aState, nsIBox* aChild, nsMargin& aOf
   PRUint8 offsetSpecified = 0;
   nsIContent* content = aChild->GetContent();
   if (content) {
-    PRBool ltr = aChild->GetStyleVisibility()->mDirection == NS_STYLE_DIRECTION_LTR;
+    bool ltr = aChild->GetStyleVisibility()->mDirection == NS_STYLE_DIRECTION_LTR;
     nsAutoString value;
     PRInt32 error;
 
@@ -288,11 +288,11 @@ nsStackLayout::Layout(nsIBox* aBox, nsBoxLayoutState& aState)
   nsRect clientRect;
   aBox->GetClientRect(clientRect);
 
-  PRBool grow;
+  bool grow;
 
   do {
     nsIBox* child = aBox->GetChildBox();
-    grow = PR_FALSE;
+    grow = false;
 
     while (child) 
     {  
@@ -308,7 +308,7 @@ nsStackLayout::Layout(nsIBox* aBox, nsBoxLayoutState& aState)
         childRect.height = 0;
 
       nsRect oldRect(child->GetRect());
-      PRBool sizeChanged = !oldRect.IsEqualEdges(childRect);
+      bool sizeChanged = !oldRect.IsEqualEdges(childRect);
 
       // only lay out dirty children or children whose sizes have changed
       if (sizeChanged || NS_SUBTREE_DIRTY(child)) {
@@ -379,12 +379,12 @@ nsStackLayout::Layout(nsIBox* aBox, nsBoxLayoutState& aState)
             // Did the child push back on us and get bigger?
             if (offset.LeftRight() + childRect.width > clientRect.width) {
               clientRect.width = childRect.width + offset.LeftRight();
-              grow = PR_TRUE;
+              grow = true;
             }
 
             if (offset.TopBottom() + childRect.height > clientRect.height) {
               clientRect.height = childRect.height + offset.TopBottom();
-              grow = PR_TRUE;
+              grow = true;
             }
           }
 

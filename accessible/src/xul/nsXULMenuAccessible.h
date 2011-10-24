@@ -65,6 +65,9 @@ public:
   virtual bool SelectAll();
   virtual bool UnselectAll();
 
+  // Widgets
+  virtual nsAccessible* CurrentItem();
+
 protected:
   // nsIDOMXULMultiSelectControlElement inherits from this, so we'll always have
   // one of these if the widget is valid and not defunct
@@ -82,11 +85,8 @@ public:
   nsXULMenuitemAccessible(nsIContent *aContent, nsIWeakReference *aShell);
 
   // nsIAccessible
-  NS_IMETHOD GetKeyboardShortcut(nsAString& _retval);
-  NS_IMETHOD GetDefaultKeyBinding(nsAString& aKeyBinding);
   NS_IMETHOD DoAction(PRUint8 index);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
-  NS_IMETHOD GetNumActions(PRUint8 *_retval);
 
   // nsAccessible
   virtual void Description(nsString& aDescription);
@@ -97,7 +97,17 @@ public:
   virtual void GetPositionAndSizeInternal(PRInt32 *aPosInSet,
                                           PRInt32 *aSetSize);
 
-  virtual PRBool GetAllowsAnonChildAccessibles();
+  virtual bool GetAllowsAnonChildAccessibles();
+
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
+  virtual KeyBinding AccessKey() const;
+  virtual KeyBinding KeyboardShortcut() const;
+
+  // Widgets
+  virtual bool IsActiveWidget() const;
+  virtual bool AreItemsOperable() const;
+  virtual nsAccessible* ContainerWidget() const;
 };
 
 /**
@@ -111,12 +121,14 @@ public:
   // nsIAccessible
   NS_IMETHOD DoAction(PRUint8 index);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
-  NS_IMETHOD GetNumActions(PRUint8 *_retval);
 
   // nsAccessible
   virtual nsresult GetNameInternal(nsAString& aName);
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
+
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
 };
 
 
@@ -132,6 +144,13 @@ public:
   virtual nsresult GetNameInternal(nsAString& aName);
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
+
+  // Widgets
+  virtual bool IsWidget() const;
+  virtual bool IsActiveWidget() const;
+  virtual bool AreItemsOperable() const;
+
+  virtual nsAccessible* ContainerWidget() const;
 };
 
 /**
@@ -146,6 +165,11 @@ public:
   virtual nsresult GetNameInternal(nsAString& aName);
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
+
+  // Widget
+  virtual bool IsActiveWidget() const;
+  virtual bool AreItemsOperable() const;
+  virtual nsAccessible* CurrentItem();
 };
 
 #endif  

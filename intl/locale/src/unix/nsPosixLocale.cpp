@@ -35,28 +35,17 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#include "nsISupports.h"
 #include "nscore.h"
 #include "nsString.h"
 #include "nsPosixLocale.h"
-#include "nsLocaleCID.h"
 #include "prprf.h"
 #include "plstr.h"
 #include "nsReadableUtils.h"
 
-/* nsPosixLocale ISupports */
-NS_IMPL_ISUPPORTS1(nsPosixLocale, nsIPosixLocale)
+static bool
+ParseLocaleString(const char* locale_string, char* language, char* country, char* extra, char separator);
 
-nsPosixLocale::nsPosixLocale(void)
-{
-}
-
-nsPosixLocale::~nsPosixLocale(void)
-{
-
-}
-
-NS_IMETHODIMP 
+nsresult 
 nsPosixLocale::GetPlatformLocale(const nsAString& locale, nsACString& posixLocale)
 {
   char  country_code[MAX_COUNTRY_CODE_LEN+1];
@@ -96,7 +85,7 @@ nsPosixLocale::GetPlatformLocale(const nsAString& locale, nsACString& posixLocal
   return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsPosixLocale::GetXPLocale(const char* posixLocale, nsAString& locale)
 {
   char  country_code[MAX_COUNTRY_CODE_LEN+1];
@@ -139,9 +128,9 @@ nsPosixLocale::GetXPLocale(const char* posixLocale, nsAString& locale)
 }
 
 //
-// returns PR_FALSE/PR_TRUE depending on if it was of the form LL-CC.Extra
-PRBool
-nsPosixLocale::ParseLocaleString(const char* locale_string, char* language, char* country, char* extra, char separator)
+// returns false/true depending on if it was of the form LL-CC.Extra
+static bool
+ParseLocaleString(const char* locale_string, char* language, char* country, char* extra, char separator)
 {
   const char *src = locale_string;
   char modifier[MAX_EXTRA_LEN+1];
@@ -152,7 +141,7 @@ nsPosixLocale::ParseLocaleString(const char* locale_string, char* language, char
   *country = '\0';
   *extra = '\0';
   if (strlen(locale_string) < 2) {
-    return(PR_FALSE);
+    return(false);
   }
 
   //
@@ -169,19 +158,19 @@ nsPosixLocale::ParseLocaleString(const char* locale_string, char* language, char
     NS_ASSERTION((len == 2) || (len == 3), "language code too short");
     NS_ASSERTION(len < 3, "reminder: verify we can handle 3+ character language code in all parts of the system; eg: language packs");
     *language = '\0';
-    return(PR_FALSE);
+    return(false);
   }
 
   // check if all done
   if (*src == '\0') {
-    return(PR_TRUE);
+    return(true);
   }
 
   if ((*src != '_') && (*src != '-') && (*src != '.') && (*src != '@')) {
     NS_ASSERTION(isalpha(*src), "language code too long");
     NS_ASSERTION(!isalpha(*src), "unexpected language/country separator");
     *language = '\0';
-    return(PR_FALSE);
+    return(false);
   }
 
   //
@@ -200,13 +189,13 @@ nsPosixLocale::ParseLocaleString(const char* locale_string, char* language, char
       NS_ASSERTION(len == 2, "unexpected country code length");
       *language = '\0';
       *country = '\0';
-      return(PR_FALSE);
+      return(false);
     }
   }
 
   // check if all done
   if (*src == '\0') {
-    return(PR_TRUE);
+    return(true);
   }
 
   if ((*src != '.') && (*src != '@')) {
@@ -214,7 +203,7 @@ nsPosixLocale::ParseLocaleString(const char* locale_string, char* language, char
     NS_ASSERTION(!isalpha(*src), "unexpected country/extra separator");
     *language = '\0';
     *country = '\0';
-    return(PR_FALSE);
+    return(false);
   }
 
   //
@@ -234,13 +223,13 @@ nsPosixLocale::ParseLocaleString(const char* locale_string, char* language, char
       *language = '\0';
       *country = '\0';
       *extra = '\0';
-      return(PR_FALSE);
+      return(false);
     }
   }
 
   // check if all done
   if (*src == '\0') {
-    return(PR_TRUE);
+    return(true);
   }
 
   //
@@ -263,13 +252,13 @@ nsPosixLocale::ParseLocaleString(const char* locale_string, char* language, char
       *country = '\0';
       *extra = '\0';
       *modifier = '\0';
-      return(PR_FALSE);
+      return(false);
     }
   }
 
   // check if all done
   if (*src == '\0') {
-    return(PR_TRUE);
+    return(true);
   }
 
   NS_ASSERTION(*src == '\0', "extra/modifier code too long");
@@ -277,6 +266,6 @@ nsPosixLocale::ParseLocaleString(const char* locale_string, char* language, char
   *country = '\0';
   *extra = '\0';
 
-  return(PR_FALSE);
+  return(false);
 }
 

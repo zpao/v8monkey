@@ -34,6 +34,7 @@ load 448161-2.html
 load 452150-1.xhtml
 load 456196.html
 load 460217-1.html
+load 460323-1.html
 load 466845-1.html
 load 469432-1.xhtml
 load 472195-1.html
@@ -45,6 +46,7 @@ load 473914-1.html
 load 478321-1.xhtml
 load 512851-1.xhtml
 load 539613-1.xhtml
+load 588627-1.html
 skip load long-url-list-stack-overflow.html # skipped due to being slow (bug 477490)
 load 495269-1.html
 load 495269-2.html
@@ -64,4 +66,10 @@ load 592698-1.html
 load 601437-1.html
 load 601439-1.html
 load 605689-1.html
+load 645142.html
+load 611922-1.html
 == 645951-1.html 645951-1-ref.html
+load 665209-1.html
+asserts(2) load 671799-1.html
+asserts(2) load 671799-2.html
+load 690990-1.html

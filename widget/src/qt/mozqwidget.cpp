@@ -35,23 +35,20 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#include <QtGui/QApplication>
-#include <QtGui/QCursor>
 #include <QtGui/QInputContext>
-#include <QtGui/QGraphicsSceneContextMenuEvent>
-#include <QtGui/QGraphicsSceneDragDropEvent>
-#include <QtGui/QGraphicsSceneMouseEvent>
 #include <QtGui/QGraphicsSceneHoverEvent>
-#include <QtGui/QGraphicsSceneWheelEvent>
-
-#include <QtCore/QEvent>
-#include <QtCore/QVariant>
+#include <QtGui/QGraphicsSceneMouseEvent>
 #include <QtCore/QTimer>
 
 #include "mozqwidget.h"
 #include "nsWindow.h"
 
+#include "nsIObserverService.h"
+#include "mozilla/Services.h"
+
+
 #ifdef MOZ_ENABLE_QTMOBILITY
+#include "mozqorientationsensorfilter.h"
 #ifdef MOZ_X11
 #include <QX11Info>
 #include <X11/Xlib.h>
@@ -91,9 +88,9 @@ static bool gPendingVKBOpen = false;
 static QString gLastPreeditString;
 
 MozQWidget::MozQWidget(nsWindow* aReceiver, QGraphicsItem* aParent)
-    : QGraphicsWidget(aParent),
-      mReceiver(aReceiver)
+    : mReceiver(aReceiver)
 {
+     setParentItem(aParent);
 #if (QT_VERSION >= QT_VERSION_CHECK(4, 6, 0))
      setFlag(QGraphicsItem::ItemAcceptsInputMethod);
      setAcceptTouchEvents(true);
@@ -164,7 +161,7 @@ void MozQWidget::focusInEvent(QFocusEvent* aEvent)
     // to open it, because there was no focused window yet so we do it now by
     // requesting the VKB without any timeout.
     if (gFailedOpenKeyboard)
-        requestVKB(0);
+        requestVKB(0, this);
 }
 
 #ifdef MOZ_ENABLE_QTMOBILITY
@@ -344,17 +341,30 @@ void MozQWidget::sendPressReleaseKeyEvent(int key,
                                           bool autorep,
                                           ushort count)
 {
-     Qt::KeyboardModifiers modifiers  = Qt::NoModifier;
-     if (letter && letter->isUpper()) {
-         modifiers = Qt::ShiftModifier;
-     }
+    Qt::KeyboardModifiers modifiers  = Qt::NoModifier;
+    if (letter && letter->isUpper()) {
+        modifiers = Qt::ShiftModifier;
+    }
 
-     QString text = letter ? QString(*letter) : QString();
+    if (letter) {
+        // Handle as TextEvent
+        nsCompositionEvent start(true, NS_COMPOSITION_START, mReceiver);
+        mReceiver->DispatchEvent(&start);
 
-     QKeyEvent press(QEvent::KeyPress, key, modifiers, text, autorep, count);
-     mReceiver->OnKeyPressEvent(&press);
-     QKeyEvent release(QEvent::KeyRelease, key, modifiers, text, autorep, count);
-     mReceiver->OnKeyReleaseEvent(&release);
+        nsTextEvent text(true, NS_TEXT_TEXT, mReceiver);
+        QString commitString = QString(*letter);
+        text.theText.Assign(commitString.utf16());
+        mReceiver->DispatchEvent(&text);
+
+        nsCompositionEvent end(true, NS_COMPOSITION_END, mReceiver);
+        mReceiver->DispatchEvent(&end);
+        return;
+    }
+
+    QKeyEvent press(QEvent::KeyPress, key, modifiers, QString(), autorep, count);
+    mReceiver->OnKeyPressEvent(&press);
+    QKeyEvent release(QEvent::KeyRelease, key, modifiers, QString(), autorep, count);
+    mReceiver->OnKeyReleaseEvent(&release);
 }
 
 void MozQWidget::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* aEvent)
@@ -395,26 +405,16 @@ bool MozQWidget::event ( QEvent * event )
     {
         // Do not send this event to other handlers, this is needed
         // to be able to receive the gesture events
-        PRBool handled = PR_FALSE;
+        bool handled = false;
         mReceiver->OnTouchEvent(static_cast<QTouchEvent *>(event),handled);
         return handled;
     }
     case (QEvent::Gesture):
     {
-        PRBool handled = PR_FALSE;
+        bool handled = false;
         mReceiver->OnGestureEvent(static_cast<QGestureEvent*>(event),handled);
         return handled;
     }
-#if (MOZ_PLATFORM_MAEMO != 6)
-    // This does not work for maemo6, due to partially implemented IM framework
-    case QEvent::InputMethod:
-    {
-        PRBool handled = PR_FALSE;
-        mReceiver->imComposeEvent(static_cast<QInputMethodEvent*>(event),handled);
-        return handled;
-    }
-#endif
-
     default:
         break;
     }
@@ -520,15 +520,42 @@ void MozQWidget::setModal(bool modal)
 
 QVariant MozQWidget::inputMethodQuery(Qt::InputMethodQuery aQuery) const
 {
-    // The following query uses enums for the values, which are defined in
-    // MeegoTouch headers, because this should also work in the pure Qt case
-    // we use the values directly here. The original values are in the comments.
-    if (static_cast<Qt::InputMethodQuery>(/*M::ImModeQuery*/ 10004 ) == aQuery)
-    {
-        return QVariant(/*M::InputMethodModeNormal*/ 0 );
+    // Additional MeeGo Touch queries, which do not depend on actually
+    // having a focused input field.
+    switch ((int) aQuery) {
+    case 10001: // VisualizationPriorityQuery.
+        // Tells if input method widget wants to have high priority
+        // for visualization. Input methods should honor this and stay
+        // out of widgets space.
+        // Return false, eg. the input method can overlap QGraphicsWKView.
+        return QVariant(false);
+    case 10003: // ImCorrectionEnabledQuery.
+        // Explicit correction enabling for text entries.
+        return QVariant(false);
+    case 10004: // ImModeQuery.
+        // Retrieval mode: normal (0), direct [minics hardware keyboard] (1) or proxy (2)
+        return QVariant::fromValue(0);
+    case 10006: // InputMethodToolbarQuery.
+        // Custom toolbar file name for text entry.
+        return QVariant();
     }
 
-    return QGraphicsWidget::inputMethodQuery(aQuery);
+    // Standard Qt queries dependent on having a focused web text input.
+    switch (aQuery) {
+    case Qt::ImFont:
+        return QVariant(QFont());
+    case Qt::ImMaximumTextLength:
+        return QVariant(); // Means no limit.
+    }
+
+    // Additional MeeGo Touch queries dependent on having a focused web text input
+    switch ((int) aQuery) {
+    case 10002: // PreeditRectangleQuery.
+        // Retrieve bounding rectangle for current preedit text.
+        return QVariant(QRect());
+    }
+
+    return QVariant();
 }
 
 /**
@@ -536,25 +563,25 @@ QVariant MozQWidget::inputMethodQuery(Qt::InputMethodQuery aQuery) const
   If the request is not canceled when the timer runs out, the VKB is actually
   shown.
 */
-void MozQWidget::requestVKB(int aTimeout)
+void MozQWidget::requestVKB(int aTimeout, QObject* aWidget)
 {
     if (!gPendingVKBOpen) {
         gPendingVKBOpen = true;
 
-        if (aTimeout == 0)
+        if (aTimeout == 0 || !aWidget) {
             showVKB();
-        else
-            QTimer::singleShot(aTimeout, this, SLOT(showVKB()));
+        } else {
+            QTimer::singleShot(aTimeout, aWidget, SLOT(showVKB()));
+        }
     }
 }
-
-
 
 void MozQWidget::showVKB()
 {
     // skip showing of keyboard if not pending
-    if (!gPendingVKBOpen)
+    if (!gPendingVKBOpen) {
         return;
+    }
 
     gPendingVKBOpen = false;
 
@@ -616,3 +643,34 @@ bool MozQWidget::isVKBOpen()
 {
     return gKeyboardOpen;
 }
+
+void
+MozQWidget::NotifyVKB(const QRect& rect)
+{
+    QRegion region(scene()->views()[0]->rect());
+    region -= rect;
+    QRectF bounds = mapRectFromScene(region.boundingRect());
+        nsCOMPtr<nsIObserverService> observerService = mozilla::services::GetObserverService();
+    if (observerService) {
+        QString rect = QString("{\"left\": %1, \"top\": %2, \"right\": %3, \"bottom\": %4}")
+                               .arg(bounds.x()).arg(bounds.y()).arg(bounds.width()).arg(bounds.height());
+        observerService->NotifyObservers(nsnull, "softkb-change", rect.utf16());
+    }
+}
+
+void MozQWidget::SwitchToForeground()
+{
+    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+    if (!os)
+        return;
+    os->NotifyObservers(nsnull, "application-foreground", nsnull);
+}
+
+void MozQWidget::SwitchToBackground()
+{
+    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+    if (!os)
+        return;
+    os->NotifyObservers(nsnull, "application-background", nsnull);
+}
+

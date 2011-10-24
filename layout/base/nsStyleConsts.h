@@ -20,7 +20,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *   Mats Palmgren <mats.palmgren@bredband.net>
+ *   Mats Palmgren <matspal@gmail.com>
  *   Jonathon Jongsma <jonathon.jongsma@collabora.co.uk>, Collabora Ltd.
  *
  * Alternatively, the contents of this file may be used under the terms of
@@ -162,6 +162,10 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_BOX_ORIENT_HORIZONTAL 0
 #define NS_STYLE_BOX_ORIENT_VERTICAL   1
 
+// orient
+#define NS_STYLE_ORIENT_HORIZONTAL 0
+#define NS_STYLE_ORIENT_VERTICAL   1
+
 // stack-sizing
 #define NS_STYLE_STACK_SIZING_IGNORE         0
 #define NS_STYLE_STACK_SIZING_STRETCH_TO_FIT 1
@@ -229,9 +233,10 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_VOLUME_X_LOUD            5
 
 // See nsStyleColor
-#define NS_STYLE_COLOR_MOZ_USE_TEXT_COLOR      1
+#define NS_STYLE_COLOR_MOZ_USE_TEXT_COLOR 1
+#define NS_STYLE_COLOR_INHERIT_FROM_BODY  2  /* Can't come from CSS directly */
 #ifdef GFX_HAS_INVERT
-#define NS_STYLE_COLOR_INVERT             2
+#define NS_STYLE_COLOR_INVERT             3
 #endif
 
 // See nsStyleColor
@@ -242,7 +247,6 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_COLOR_MOZ_VISITEDHYPERLINKTEXT       -5
 #define NS_COLOR_MOZ_ACTIVEHYPERLINKTEXT        -6
 
-#ifdef MOZ_CSS_ANIMATIONS
 // See nsStyleDisplay
 #define NS_STYLE_ANIMATION_DIRECTION_NORMAL       0
 #define NS_STYLE_ANIMATION_DIRECTION_ALTERNATE    1
@@ -259,7 +263,6 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 // See nsStyleDisplay
 #define NS_STYLE_ANIMATION_PLAY_STATE_RUNNING     0
 #define NS_STYLE_ANIMATION_PLAY_STATE_PAUSED      1
-#endif
 
 // See nsStyleBackground
 #define NS_STYLE_BG_ATTACHMENT_SCROLL     0
@@ -554,11 +557,6 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_LIST_STYLE_KATAKANA              16
 #define NS_STYLE_LIST_STYLE_HIRAGANA_IROHA        17
 #define NS_STYLE_LIST_STYLE_KATAKANA_IROHA        18
-#define NS_STYLE_LIST_STYLE_OLD_LOWER_ROMAN       19
-#define NS_STYLE_LIST_STYLE_OLD_UPPER_ROMAN       20
-#define NS_STYLE_LIST_STYLE_OLD_LOWER_ALPHA       21
-#define NS_STYLE_LIST_STYLE_OLD_UPPER_ALPHA       22
-#define NS_STYLE_LIST_STYLE_OLD_DECIMAL           23
 #define NS_STYLE_LIST_STYLE_MOZ_CJK_HEAVENLY_STEM     24
 #define NS_STYLE_LIST_STYLE_MOZ_CJK_EARTHLY_BRANCH    25
 #define NS_STYLE_LIST_STYLE_MOZ_TRAD_CHINESE_INFORMAL 26
@@ -657,6 +655,11 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_TEXT_DECORATION_STYLE_WAVY     5
 #define NS_STYLE_TEXT_DECORATION_STYLE_MAX      NS_STYLE_TEXT_DECORATION_STYLE_WAVY
 
+// See nsStyleTextOverflow
+#define NS_STYLE_TEXT_OVERFLOW_CLIP     0
+#define NS_STYLE_TEXT_OVERFLOW_ELLIPSIS 1
+#define NS_STYLE_TEXT_OVERFLOW_STRING   2
+
 // See nsStyleText
 #define NS_STYLE_TEXT_TRANSFORM_NONE            0
 #define NS_STYLE_TEXT_TRANSFORM_CAPITALIZE      1
@@ -714,9 +717,11 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_LINE_HEIGHT_BLOCK_HEIGHT       0
 
 // See nsStyleText
-#define NS_STYLE_UNICODE_BIDI_NORMAL            0
-#define NS_STYLE_UNICODE_BIDI_EMBED             1
-#define NS_STYLE_UNICODE_BIDI_OVERRIDE          2
+#define NS_STYLE_UNICODE_BIDI_NORMAL            0x0
+#define NS_STYLE_UNICODE_BIDI_EMBED             0x1
+#define NS_STYLE_UNICODE_BIDI_ISOLATE           0x2
+#define NS_STYLE_UNICODE_BIDI_OVERRIDE          0x4
+#define NS_STYLE_UNICODE_BIDI_PLAINTEXT         0x8
 
 // See nsStyleTable (here for HTML 4.0 for now, should probably change to side flags)
 #define NS_STYLE_TABLE_FRAME_NONE               0
@@ -854,6 +859,13 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_COLOR_INTERPOLATION_AUTO           0
 #define NS_STYLE_COLOR_INTERPOLATION_SRGB           1
 #define NS_STYLE_COLOR_INTERPOLATION_LINEARRGB      2
+
+// 3d Transforms - Backface visibility
+#define NS_STYLE_BACKFACE_VISIBILITY_VISIBLE        1
+#define NS_STYLE_BACKFACE_VISIBILITY_HIDDEN         0
+
+#define NS_STYLE_TRANSFORM_STYLE_FLAT               0
+#define NS_STYLE_TRANSFORM_STYLE_PRESERVE_3D        1
 
 /*****************************************************************************
  * Constants for media features.                                             *

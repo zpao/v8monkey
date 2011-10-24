@@ -41,6 +41,7 @@
 #include "nsIObserverService.h"
 #include "nsServiceManagerUtils.h"
 #include "nsString.h"
+#include "nsCRT.h"
 
 #import <Cocoa/Cocoa.h>
 #import <netinet/in.h>
@@ -50,8 +51,8 @@ NS_IMPL_ISUPPORTS2(nsNetworkLinkService,
                    nsIObserver)
 
 nsNetworkLinkService::nsNetworkLinkService()
-    : mLinkUp(PR_TRUE)
-    , mStatusKnown(PR_FALSE)
+    : mLinkUp(true)
+    , mStatusKnown(false)
     , mReachability(NULL)
     , mCFRunLoop(NULL)
 {
@@ -62,17 +63,27 @@ nsNetworkLinkService::~nsNetworkLinkService()
 }
 
 NS_IMETHODIMP
-nsNetworkLinkService::GetIsLinkUp(PRBool *aIsUp)
+nsNetworkLinkService::GetIsLinkUp(bool *aIsUp)
 {
     *aIsUp = mLinkUp;
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsNetworkLinkService::GetLinkStatusKnown(PRBool *aIsUp)
+nsNetworkLinkService::GetLinkStatusKnown(bool *aIsUp)
 {
     *aIsUp = mStatusKnown;
     return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNetworkLinkService::GetLinkType(PRUint32 *aLinkType)
+{
+  NS_ENSURE_ARG_POINTER(aLinkType);
+
+  // XXX This function has not yet been implemented for this platform
+  *aLinkType = nsINetworkLinkService::LINK_TYPE_UNKNOWN;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -96,7 +107,7 @@ nsNetworkLinkService::Init(void)
         do_GetService("@mozilla.org/observer-service;1", &rv);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = observerService->AddObserver(this, "xpcom-shutdown", PR_FALSE);
+    rv = observerService->AddObserver(this, "xpcom-shutdown", false);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // If the network reachability API can reach 0.0.0.0 without
@@ -175,15 +186,15 @@ nsNetworkLinkService::UpdateReachability()
 
     SCNetworkConnectionFlags flags;
     if (!::SCNetworkReachabilityGetFlags(mReachability, &flags)) {
-        mStatusKnown = PR_FALSE;
+        mStatusKnown = false;
         return;
     }
 
-    PRBool reachable = (flags & kSCNetworkFlagsReachable) != 0;
-    PRBool needsConnection = (flags & kSCNetworkFlagsConnectionRequired) != 0;
+    bool reachable = (flags & kSCNetworkFlagsReachable) != 0;
+    bool needsConnection = (flags & kSCNetworkFlagsConnectionRequired) != 0;
 
     mLinkUp = (reachable && !needsConnection);
-    mStatusKnown = PR_TRUE;
+    mStatusKnown = true;
 }
 
 void

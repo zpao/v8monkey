@@ -48,15 +48,9 @@ class nsIEditor;
 class nsContentList;
 class nsWrapperCache;
 
-namespace mozilla {
-namespace dom {
-class Element;
-} // namespace dom
-} // namespace mozilla
-
 #define NS_IHTMLDOCUMENT_IID \
-{ 0x8cc90664, 0xb0fe, 0x4cdb, \
- { 0xa2, 0xdd, 0x25, 0xcd, 0x8c, 0x2b, 0xfd, 0x08 } }
+{ 0x51a360fa, 0xd659, 0x4d85, \
+  { 0xa5, 0xc5, 0x4a, 0xbb, 0x0d, 0x97, 0x0f, 0x7a } }
 
 
 /**
@@ -66,8 +60,6 @@ class nsIHTMLDocument : public nsISupports
 {
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_IHTMLDOCUMENT_IID)
-
-  virtual mozilla::dom::Element* GetImageMap(const nsAString& aMapName) = 0;
 
   /**
    * Set compatibility mode for this document
@@ -109,10 +101,10 @@ public:
   // not the rest?
   virtual PRInt32 GetNumFormsSynchronous() = 0;
   
-  virtual PRBool IsWriting() = 0;
+  virtual bool IsWriting() = 0;
 
-  virtual PRBool GetIsFrameset() = 0;
-  virtual void SetIsFrameset(PRBool aFrameset) = 0;
+  virtual bool GetIsFrameset() = 0;
+  virtual void SetIsFrameset(bool aFrameset) = 0;
 
   /**
    * Get the list of form elements in the document.
@@ -148,7 +140,7 @@ public:
   /**
    * Returns whether the document is editable.
    */
-  PRBool IsEditingOn()
+  bool IsEditingOn()
   {
     return GetEditingState() == eDesignMode ||
            GetEditingState() == eContentEditable;
@@ -173,19 +165,13 @@ public:
   virtual void DisableCookieAccess() = 0;
 
   /**
-   * Get the first <body> child of the root <html>, but don't do
-   * anything <frameset>-related (like nsIDOMHTMLDocument::GetBody).
-   */
-  virtual nsIContent* GetBodyContentExternal() = 0;
-
-  /**
    * Called when this nsIHTMLDocument's editor is destroyed.
    */
   virtual void TearingDownEditor(nsIEditor *aEditor) = 0;
 
-  virtual void SetIsXHTML(PRBool aXHTML) = 0;
+  virtual void SetIsXHTML(bool aXHTML) = 0;
 
-  virtual void SetDocWriteDisabled(PRBool aDisabled) = 0;
+  virtual void SetDocWriteDisabled(bool aDisabled) = 0;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIHTMLDocument, NS_IHTMLDOCUMENT_IID)

@@ -101,7 +101,7 @@ AppendToFile(nsILocalFile *lf, const char *data, PRUint32 len)
 // maxSize may be -1 if unknown
 static void
 MakeRangeSpec(const PRInt64 &size, const PRInt64 &maxSize, PRInt32 chunkSize,
-              PRBool fetchRemaining, nsCString &rangeSpec)
+              bool fetchRemaining, nsCString &rangeSpec)
 {
   rangeSpec.AssignLiteral("bytes=");
   rangeSpec.AppendInt(PRInt64(size));
@@ -169,8 +169,8 @@ private:
   PRUint32                                 mLoadFlags;
   PRInt32                                  mNonPartialCount;
   nsresult                                 mStatus;
-  PRPackedBool                             mIsPending;
-  PRPackedBool                             mDidOnStartRequest;
+  bool                                     mIsPending;
+  bool                                     mDidOnStartRequest;
   PRTime                                   mLastProgressUpdate;
   nsCOMPtr<nsIAsyncVerifyRedirectCallback> mRedirectCallback;
   nsCOMPtr<nsIChannel>                     mNewRedirectChannel;
@@ -185,8 +185,8 @@ nsIncrementalDownload::nsIncrementalDownload()
   , mLoadFlags(LOAD_NORMAL)
   , mNonPartialCount(0)
   , mStatus(NS_OK)
-  , mIsPending(PR_FALSE)
-  , mDidOnStartRequest(PR_FALSE)
+  , mIsPending(false)
+  , mDidOnStartRequest(false)
   , mLastProgressUpdate(0)
   , mRedirectCallback(nsnull)
   , mNewRedirectChannel(nsnull)
@@ -228,7 +228,7 @@ nsIncrementalDownload::CallOnStartRequest()
   if (!mObserver || mDidOnStartRequest)
     return NS_OK;
 
-  mDidOnStartRequest = PR_TRUE;
+  mDidOnStartRequest = true;
   return mObserver->OnStartRequest(this, mObserverContext);
 }
 
@@ -243,7 +243,7 @@ nsIncrementalDownload::CallOnStopRequest()
   if (NS_SUCCEEDED(mStatus))
     mStatus = rv;
 
-  mIsPending = PR_FALSE;
+  mIsPending = false;
 
   mObserver->OnStopRequest(this, mObserverContext, mStatus);
   mObserver = nsnull;
@@ -297,7 +297,7 @@ nsIncrementalDownload::ProcessTimeout()
     nsCAutoString range;
     MakeRangeSpec(mCurrentSize, mTotalSize, mChunkSize, mInterval == 0, range);
 
-    rv = http->SetRequestHeader(NS_LITERAL_CSTRING("Range"), range, PR_FALSE);
+    rv = http->SetRequestHeader(NS_LITERAL_CSTRING("Range"), range, false);
     if (NS_FAILED(rv))
       return rv;
   }
@@ -356,7 +356,7 @@ nsIncrementalDownload::GetName(nsACString &name)
 }
 
 NS_IMETHODIMP
-nsIncrementalDownload::IsPending(PRBool *isPending)
+nsIncrementalDownload::IsPending(bool *isPending)
 {
   *isPending = mIsPending;
   return NS_OK;
@@ -513,7 +513,7 @@ nsIncrementalDownload::Start(nsIRequestObserver *observer,
   // RemoveObserver.  XXX(darin): The timer code should do this for us.
   nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
   if (obs)
-    obs->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, PR_TRUE);
+    obs->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, true);
 
   nsresult rv = ReadCurrentSize();
   if (NS_FAILED(rv))
@@ -527,7 +527,7 @@ nsIncrementalDownload::Start(nsIRequestObserver *observer,
   mObserverContext = context;
   mProgressSink = do_QueryInterface(observer);  // ok if null
 
-  mIsPending = PR_TRUE;
+  mIsPending = true;
   return NS_OK;
 }
 
@@ -696,7 +696,7 @@ nsIncrementalDownload::OnDataAvailable(nsIRequest *request,
 {
   while (count) {
     PRUint32 space = mChunkSize - mChunkLen;
-    PRUint32 n, len = PR_MIN(space, count);
+    PRUint32 n, len = NS_MIN(space, count);
 
     nsresult rv = input->Read(mChunk + mChunkLen, len, &n);
     if (NS_FAILED(rv))
@@ -766,7 +766,7 @@ nsIncrementalDownload::ClearRequestHeader(nsIHttpChannel *channel)
   // We don't support encodings -- they make the Content-Length not equal
   // to the actual size of the data. 
   return channel->SetRequestHeader(NS_LITERAL_CSTRING("Accept-Encoding"),
-                                   NS_LITERAL_CSTRING(""), PR_FALSE);
+                                   NS_LITERAL_CSTRING(""), false);
 }
 
 // nsIChannelEventSink
@@ -796,7 +796,7 @@ nsIncrementalDownload::AsyncOnChannelRedirect(nsIChannel *oldChannel,
   nsCAutoString rangeVal;
   http->GetRequestHeader(rangeHdr, rangeVal);
   if (!rangeVal.IsEmpty()) {
-    rv = newHttpChannel->SetRequestHeader(rangeHdr, rangeVal, PR_FALSE);
+    rv = newHttpChannel->SetRequestHeader(rangeHdr, rangeVal, false);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 

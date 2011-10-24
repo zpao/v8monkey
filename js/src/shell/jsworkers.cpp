@@ -46,10 +46,9 @@
 #include "prcvar.h"
 #include "jsapi.h"
 #include "jscntxt.h"
-#include "jshashtable.h"
+#include "jsdbgapi.h"
 #include "jsstdint.h"
 #include "jslock.h"
-#include "jsvector.h"
 #include "jsworkers.h"
 
 extern size_t gMaxStackSize;
@@ -894,12 +893,12 @@ class InitEvent : public Event
         if (!filename)
             return fail;
 
-        JSObject *scriptObj = JS_CompileFile(cx, child->getGlobal(), filename.ptr());
-        if (!scriptObj)
+        JSScript *script = JS_CompileFile(cx, child->getGlobal(), filename.ptr());
+        if (!script)
             return fail;
 
         AutoValueRooter rval(cx);
-        JSBool ok = JS_ExecuteScript(cx, child->getGlobal(), scriptObj, Jsvalify(rval.addr()));
+        JSBool ok = JS_ExecuteScript(cx, child->getGlobal(), script, rval.addr());
         return Result(ok);
     }
 };
@@ -935,7 +934,7 @@ class ErrorEvent : public Event
         JSString *data = NULL;
         jsval exc;
         if (JS_GetPendingException(cx, &exc)) {
-            AutoValueRooter tvr(cx, Valueify(exc));
+            AutoValueRooter tvr(cx, exc);
             JS_ClearPendingException(cx);
 
             // Determine what error message to put in the error event.
@@ -1052,7 +1051,7 @@ ResolveRelativePath(JSContext *cx, const char *base, JSString *filename)
         return filename;
 
     // Otherwise return base[:dirLen + 1] + filename.
-    js::Vector<jschar, 0, js::ContextAllocPolicy> result(cx);
+    js::Vector<jschar, 0> result(cx);
     size_t nchars;
     if (!JS_DecodeBytes(cx, base, dirLen + 1, NULL, &nchars))
         return NULL;

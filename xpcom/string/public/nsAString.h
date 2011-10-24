@@ -74,7 +74,7 @@
    * ASCII case-insensitive comparator.  (for Unicode case-insensitive
    * comparision, see nsUnicharUtils.h)
    */
-class NS_COM nsCaseInsensitiveCStringComparator
+class nsCaseInsensitiveCStringComparator
     : public nsCStringComparator
   {
     public:
@@ -88,7 +88,7 @@ class nsCaseInsensitiveCStringArrayComparator
   {
     public:
       template<class A, class B>
-      PRBool Equals(const A& a, const B& b) const {
+      bool Equals(const A& a, const B& b) const {
         return a.Equals(b, nsCaseInsensitiveCStringComparator());
       }
   };

@@ -87,7 +87,7 @@ static HWND hwndForDOMWindow( nsISupports * );
 
 static
 nsresult
-GetMostRecentWindow(const PRUnichar* aType, nsIDOMWindowInternal** aWindow) {
+GetMostRecentWindow(const PRUnichar* aType, nsIDOMWindow** aWindow) {
     nsresult rv;
     nsCOMPtr<nsIWindowMediator> med( do_GetService( NS_WINDOWMEDIATOR_CONTRACTID, &rv ) );
     if ( NS_FAILED( rv ) )
@@ -101,7 +101,7 @@ GetMostRecentWindow(const PRUnichar* aType, nsIDOMWindowInternal** aWindow) {
 
 static
 void
-activateWindow( nsIDOMWindowInternal *win ) {
+activateWindow( nsIDOMWindow *win ) {
     // Try to get native window handle.
     HWND hwnd = hwndForDOMWindow( win );
     if ( hwnd ) {
@@ -305,8 +305,8 @@ public:
     NS_DECL_ISUPPORTS_INHERITED
 
     // Overrides of base implementation.
-    NS_IMETHOD Start( PRBool *aResult );
-    NS_IMETHOD Stop( PRBool *aResult );
+    NS_IMETHOD Start( bool *aResult );
+    NS_IMETHOD Stop( bool *aResult );
     NS_IMETHOD Quit();
     NS_IMETHOD Enable();
     // The "old" Start method (renamed).
@@ -330,7 +330,7 @@ private:
     static void ParseDDEArg( const WCHAR* args, int index, nsString& aString);
     static HDDEDATA CreateDDEData( DWORD value );
     static HDDEDATA CreateDDEData( LPBYTE value, DWORD len );
-    static PRBool   InitTopicStrings();
+    static bool     InitTopicStrings();
     static int      FindTopic( HSZ topic );
     static void ActivateLastWindow();
     static nsresult OpenWindow( const char *urlstr, const char *args );
@@ -352,7 +352,7 @@ private:
     };
     static HSZ   mApplication, mTopics[ topicCount ];
     static DWORD mInstance;
-    static PRBool mCanHandleRequests;
+    static bool mCanHandleRequests;
     static PRUnichar mMutexName[];
     friend struct MessageWindow;
 }; // nsNativeAppSupportWin
@@ -472,7 +472,7 @@ int   nsNativeAppSupportWin::mConversations = 0;
 HSZ   nsNativeAppSupportWin::mApplication   = 0;
 HSZ   nsNativeAppSupportWin::mTopics[nsNativeAppSupportWin::topicCount] = { 0 };
 DWORD nsNativeAppSupportWin::mInstance      = 0;
-PRBool nsNativeAppSupportWin::mCanHandleRequests   = PR_FALSE;
+bool nsNativeAppSupportWin::mCanHandleRequests   = false;
 
 PRUnichar nsNativeAppSupportWin::mMutexName[ 128 ] = { 0 };
 
@@ -611,13 +611,13 @@ struct MessageWindow {
 #endif
 
                 NS_NewLocalFile(NS_ConvertUTF8toUTF16(wdpath),
-                                PR_FALSE,
+                                false,
                                 getter_AddRefs(workingDir));
             }
             (void)nsNativeAppSupportWin::HandleCommandLine((char*)cds->lpData, workingDir, nsICommandLine::STATE_REMOTE_AUTO);
 
             // Get current window and return its window handle.
-            nsCOMPtr<nsIDOMWindowInternal> win;
+            nsCOMPtr<nsIDOMWindow> win;
             GetMostRecentWindow( 0, getter_AddRefs( win ) );
             return win ? (LRESULT)hwndForDOMWindow( win ) : 0;
         }
@@ -641,19 +641,19 @@ private:
  *        be protected by use of a mutex semaphore.
  */
 NS_IMETHODIMP
-nsNativeAppSupportWin::Start( PRBool *aResult ) {
+nsNativeAppSupportWin::Start( bool *aResult ) {
     NS_ENSURE_ARG( aResult );
     NS_ENSURE_TRUE( mInstance == 0, NS_ERROR_NOT_INITIALIZED );
     NS_ENSURE_STATE( gAppData );
 
     if (getenv("MOZ_NO_REMOTE"))
     {
-        *aResult = PR_TRUE;
+        *aResult = true;
         return NS_OK;
     }
 
     nsresult rv = NS_ERROR_FAILURE;
-    *aResult = PR_FALSE;
+    *aResult = false;
 
     // Grab mutex first.
 
@@ -678,7 +678,7 @@ nsNativeAppSupportWin::Start( PRBool *aResult ) {
             // Start up DDE server.
             this->StartDDE();
             // Tell caller to spin message loop.
-            *aResult = PR_TRUE;
+            *aResult = true;
         }
     }
 
@@ -687,14 +687,14 @@ nsNativeAppSupportWin::Start( PRBool *aResult ) {
     return rv;
 }
 
-PRBool
+bool
 nsNativeAppSupportWin::InitTopicStrings() {
     for ( int i = 0; i < topicCount; i++ ) {
         if ( !( mTopics[ i ] = DdeCreateStringHandleA( mInstance, const_cast<char *>(topicNames[ i ]), CP_WINANSI ) ) ) {
-            return PR_FALSE;
+            return false;
         }
     }
-    return PR_TRUE;
+    return true;
 }
 
 int
@@ -745,12 +745,12 @@ nsNativeAppSupportWin::StartDDE() {
 
 // If no DDE conversations are pending, terminate DDE.
 NS_IMETHODIMP
-nsNativeAppSupportWin::Stop( PRBool *aResult ) {
+nsNativeAppSupportWin::Stop( bool *aResult ) {
     NS_ENSURE_ARG( aResult );
     NS_ENSURE_TRUE( mInstance, NS_ERROR_NOT_INITIALIZED );
 
     nsresult rv = NS_OK;
-    *aResult = PR_TRUE;
+    *aResult = true;
 
     Mutex ddeLock( mMutexName );
 
@@ -758,7 +758,7 @@ nsNativeAppSupportWin::Stop( PRBool *aResult ) {
         if ( mConversations == 0 ) {
             this->Quit();
         } else {
-            *aResult = PR_FALSE;
+            *aResult = false;
         }
 
         ddeLock.Unlock();
@@ -766,7 +766,7 @@ nsNativeAppSupportWin::Stop( PRBool *aResult ) {
     else {
         // No DDE application name specified, but that's OK.  Just
         // forge ahead.
-        *aResult = PR_TRUE;
+        *aResult = true;
     }
 
     return rv;
@@ -829,11 +829,11 @@ nsNativeAppSupportWin::Quit() {
 NS_IMETHODIMP
 nsNativeAppSupportWin::Enable()
 {
-    mCanHandleRequests = PR_TRUE;
+    mCanHandleRequests = true;
 
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
     if (obs) {
-        obs->AddObserver(this, "quit-application", PR_FALSE);
+        obs->AddObserver(this, "quit-application", false);
     } else {
         NS_ERROR("No observer service?");
     }
@@ -997,7 +997,7 @@ nsNativeAppSupportWin::HandleDDENotification( UINT uType,       // transaction t
                     // something goes wrong.
                     do {
                         // Get most recently used Nav window.
-                        nsCOMPtr<nsIDOMWindowInternal> navWin;
+                        nsCOMPtr<nsIDOMWindow> navWin;
                         GetMostRecentWindow( NS_LITERAL_STRING( "navigator:browser" ).get(),
                                              getter_AddRefs( navWin ) );
                         if ( !navWin ) {
@@ -1072,7 +1072,7 @@ nsNativeAppSupportWin::HandleDDENotification( UINT uType,       // transaction t
 #if MOZ_DEBUG_DDE
                         printf( "WWW_GetWindowInfo->%s\n", outpt.get() );
 #endif
-                    } while ( PR_FALSE );
+                    } while ( false );
                     break;
                 }
                 case topicActivate: {
@@ -1098,12 +1098,12 @@ nsNativeAppSupportWin::HandleDDENotification( UINT uType,       // transaction t
                 }
                 case topicRegisterViewer: {
                     // Register new viewer (not implemented).
-                    result = CreateDDEData( PR_FALSE );
+                    result = CreateDDEData( false );
                     break;
                 }
                 case topicUnRegisterViewer: {
                     // Unregister new viewer (not implemented).
-                    result = CreateDDEData( PR_FALSE );
+                    result = CreateDDEData( false );
                     break;
                 }
                 default:
@@ -1255,7 +1255,7 @@ HDDEDATA nsNativeAppSupportWin::CreateDDEData( LPBYTE value, DWORD len ) {
 }
 
 void nsNativeAppSupportWin::ActivateLastWindow() {
-    nsCOMPtr<nsIDOMWindowInternal> navWin;
+    nsCOMPtr<nsIDOMWindow> navWin;
     GetMostRecentWindow( NS_LITERAL_STRING("navigator:browser").get(), getter_AddRefs( navWin ) );
     if ( navWin ) {
         // Activate that window.
@@ -1525,7 +1525,7 @@ nsNativeAppSupportWin::OpenBrowserWindow()
     // If at all possible, hand the request off to the most recent
     // browser window.
 
-    nsCOMPtr<nsIDOMWindowInternal> navWin;
+    nsCOMPtr<nsIDOMWindow> navWin;
     GetMostRecentWindow( NS_LITERAL_STRING( "navigator:browser" ).get(), getter_AddRefs( navWin ) );
 
     // This isn't really a loop.  We just use "break" statements to fall
@@ -1565,7 +1565,7 @@ nsNativeAppSupportWin::OpenBrowserWindow()
         }
 
         NS_ERROR("failed to hand off external URL to extant window");
-    } while ( PR_FALSE );
+    } while ( false );
 
     // open a new window if caller requested it or if anything above failed
 

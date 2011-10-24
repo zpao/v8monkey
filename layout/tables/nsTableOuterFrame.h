@@ -41,9 +41,7 @@
 #include "nsHTMLContainerFrame.h"
 #include "nsBlockFrame.h"
 #include "nsITableLayout.h"
-
-struct nsStyleTable;
-class nsTableFrame;
+#include "nsTableFrame.h"
 
 class nsTableCaptionFrame : public nsBlockFrame
 {
@@ -57,11 +55,10 @@ public:
   virtual nsSize ComputeAutoSize(nsRenderingContext *aRenderingContext,
                                  nsSize aCBSize, nscoord aAvailableWidth,
                                  nsSize aMargin, nsSize aBorder,
-                                 nsSize aPadding, PRBool aShrinkWrap);
+                                 nsSize aPadding, bool aShrinkWrap);
 
-  NS_IMETHOD GetParentStyleContextFrame(nsPresContext* aPresContext,
-                                        nsIFrame**      aProviderFrame,
-                                        PRBool*         aIsChild);
+  virtual nsIFrame* GetParentStyleContextFrame();
+
 #ifdef ACCESSIBILITY
   virtual already_AddRefed<nsAccessible> CreateAccessible();
 #endif
@@ -101,28 +98,25 @@ public:
   // nsIFrame overrides - see there for a description
 
   virtual void DestroyFrom(nsIFrame* aDestructRoot);
-  
-  virtual PRBool IsContainingBlock() const;
 
-  NS_IMETHOD SetInitialChildList(nsIAtom*        aListName,
+  NS_IMETHOD SetInitialChildList(ChildListID     aListID,
                                  nsFrameList&    aChildList);
  
-  virtual nsFrameList GetChildList(nsIAtom* aListName) const;
+  virtual nsFrameList GetChildList(ChildListID aListID) const;
+  virtual void GetChildLists(nsTArray<ChildList>* aLists) const;
 
-  virtual nsIAtom* GetAdditionalChildListName(PRInt32 aIndex) const;
-
-  NS_IMETHOD AppendFrames(nsIAtom*        aListName,
+  NS_IMETHOD AppendFrames(ChildListID     aListID,
                           nsFrameList&    aFrameList);
 
-  NS_IMETHOD InsertFrames(nsIAtom*        aListName,
+  NS_IMETHOD InsertFrames(ChildListID     aListID,
                           nsIFrame*       aPrevFrame,
                           nsFrameList&    aFrameList);
 
-  NS_IMETHOD RemoveFrame(nsIAtom*        aListName,
+  NS_IMETHOD RemoveFrame(ChildListID     aListID,
                          nsIFrame*       aOldFrame);
 
   virtual nsIFrame* GetContentInsertionFrame() {
-    return GetFirstChild(nsnull)->GetContentInsertionFrame();
+    return GetFirstPrincipalChild()->GetContentInsertionFrame();
   }
 
 #ifdef ACCESSIBILITY
@@ -144,7 +138,7 @@ public:
   virtual nsSize ComputeAutoSize(nsRenderingContext *aRenderingContext,
                                  nsSize aCBSize, nscoord aAvailableWidth,
                                  nsSize aMargin, nsSize aBorder,
-                                 nsSize aPadding, PRBool aShrinkWrap);
+                                 nsSize aPadding, bool aShrinkWrap);
 
   /** process a reflow command for the table.
     * This involves reflowing the caption and the inner table.
@@ -167,12 +161,10 @@ public:
 
   /** SetSelected needs to be overridden to talk to inner tableframe
    */
-  void SetSelected(PRBool aSelected,
+  void SetSelected(bool aSelected,
                    SelectionType aType);
 
-  NS_IMETHOD GetParentStyleContextFrame(nsPresContext* aPresContext,
-                                        nsIFrame**      aProviderFrame,
-                                        PRBool*         aIsChild);
+  virtual nsIFrame* GetParentStyleContextFrame();
 
   /*---------------- nsITableLayout methods ------------------------*/
 
@@ -182,7 +174,7 @@ public:
                            PRInt32& aStartRowIndex, PRInt32& aStartColIndex, 
                            PRInt32& aRowSpan, PRInt32& aColSpan,
                            PRInt32& aActualRowSpan, PRInt32& aActualColSpan,
-                           PRBool& aIsSelected);
+                           bool& aIsSelected);
 
   /** @see nsITableFrame::GetTableSize */
   NS_IMETHOD GetTableSize(PRInt32& aRowCount, PRInt32& aColCount);
@@ -206,7 +198,7 @@ protected:
 
   PRUint8 GetCaptionSide(); // NS_STYLE_CAPTION_SIDE_* or NO_SIDE
 
-  PRBool HasSideCaption() {
+  bool HasSideCaption() {
     PRUint8 captionSide = GetCaptionSide();
     return captionSide == NS_STYLE_CAPTION_SIDE_LEFT ||
            captionSide == NS_STYLE_CAPTION_SIDE_RIGHT;
@@ -263,17 +255,15 @@ protected:
                       nscoord                  aAvailableWidth,
                       nsMargin&                aMargin);
 
+  nsTableFrame* InnerTableFrame() {
+    return static_cast<nsTableFrame*>(mFrames.FirstChild());
+  }
+  
 private:
-  // used to keep track of this frame's children. They are redundant with mFrames, but more convient
-  nsTableFrame* mInnerTableFrame; 
   nsFrameList   mCaptionFrames;
-  nsIFrame*     mCaptionFrame;
 };
 
 inline PRIntn nsTableOuterFrame::GetSkipSides() const
 { return 0; }
 
 #endif
-
-
-

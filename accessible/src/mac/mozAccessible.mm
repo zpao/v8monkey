@@ -52,6 +52,8 @@
 
 #include "nsRootAccessible.h"
 
+using namespace mozilla::a11y;
+
 // These constants are only defined in OS X SDK 10.4, so we define them in order
 // to be able to use for earlier OS versions.
 const NSString *kInstanceDescriptionAttribute = @"AXDescription";       // NSAccessibilityDescriptionAttribute
@@ -238,7 +240,7 @@ GetNativeFromGeckoAccessible(nsIAccessible *anAccessible)
   if ([attribute isEqualToString:NSAccessibilityRoleDescriptionAttribute])
     return NSAccessibilityRoleDescription([self role], nil);
 #endif
-  if ([attribute isEqualToString:kInstanceDescriptionAttribute])
+  if ([attribute isEqualToString: (NSString*) kInstanceDescriptionAttribute])
     return [self customDescription];
   if ([attribute isEqualToString:NSAccessibilityFocusedAttribute])
     return [NSNumber numberWithBool:[self isFocused]];
@@ -246,7 +248,7 @@ GetNativeFromGeckoAccessible(nsIAccessible *anAccessible)
     return [self size];
   if ([attribute isEqualToString:NSAccessibilityWindowAttribute])
     return [self window];
-  if ([attribute isEqualToString:kTopLevelUIElementAttribute])
+  if ([attribute isEqualToString: (NSString*) kTopLevelUIElementAttribute])
     return [self window];
   if ([attribute isEqualToString:NSAccessibilityTitleAttribute] || 
       [attribute isEqualToString:NSAccessibilityTitleUIElementAttribute])
@@ -334,9 +336,7 @@ GetNativeFromGeckoAccessible(nsIAccessible *anAccessible)
   if (mIsExpired)
     return nil;
   
-  nsCOMPtr<nsIAccessible> focusedGeckoChild;
-  mGeckoAccessible->GetFocusedChild (getter_AddRefs (focusedGeckoChild));
-  
+  nsAccessible* focusedGeckoChild = mGeckoAccessible->FocusedChild();
   if (focusedGeckoChild) {
     mozAccessible *focusedChild = GetNativeFromGeckoAccessible(focusedGeckoChild);
     if (focusedChild)
@@ -471,7 +471,7 @@ GetNativeFromGeckoAccessible(nsIAccessible *anAccessible)
   NS_ASSERTION(nsAccUtils::IsTextInterfaceSupportCorrect(mGeckoAccessible),
                "Does not support nsIAccessibleText when it should");
 #endif
-  return AXRoles[mRole];
+  return (NSString*) AXRoles[mRole];
 }
 
 - (NSString*)subrole

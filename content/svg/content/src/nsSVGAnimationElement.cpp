@@ -42,6 +42,7 @@
 #include "nsSMILAnimationController.h"
 #include "nsSMILAnimationFunction.h"
 #include "nsISMILAttr.h"
+#include "nsContentUtils.h"
 
 using namespace mozilla::dom;
 
@@ -123,14 +124,14 @@ nsSVGAnimationElement::GetAnimAttr(nsIAtom* aName) const
   return mAttrsAndChildren.GetAttr(aName, kNameSpaceID_None);
 }
 
-PRBool
+bool
 nsSVGAnimationElement::GetAnimAttr(nsIAtom* aAttName,
                                    nsAString& aResult) const
 {
   return GetAttr(kNameSpaceID_None, aAttName, aResult);
 }
 
-PRBool
+bool
 nsSVGAnimationElement::HasAnimAttr(nsIAtom* aAttName) const
 {
   return HasAttr(kNameSpaceID_None, aAttName);
@@ -151,7 +152,7 @@ nsSVGAnimationElement::GetTargetElementContent()
   return parent && parent->IsElement() ? parent->AsElement() : nsnull;
 }
 
-PRBool
+bool
 nsSVGAnimationElement::GetTargetAttributeName(PRInt32 *aNamespaceID,
                                               nsIAtom **aLocalName) const
 {
@@ -159,7 +160,7 @@ nsSVGAnimationElement::GetTargetAttributeName(PRInt32 *aNamespaceID,
     = mAttrsAndChildren.GetAttr(nsGkAtoms::attributeName);
 
   if (!nameAttr)
-    return PR_FALSE;
+    return false;
 
   NS_ASSERTION(nameAttr->Type() == nsAttrValue::eAtom,
     "attributeName should have been parsed as an atom");
@@ -215,7 +216,7 @@ nsSVGAnimationElement::GetStartTime(float* retval)
   FlushAnimations();
 
   nsSMILTimeValue startTime = mTimedElement.GetStartTime();
-  if (!startTime.IsResolved())
+  if (!startTime.IsDefinite())
     return NS_ERROR_DOM_INVALID_STATE_ERR;
 
   *retval = float(double(startTime.GetMillis()) / PR_MSEC_PER_SEC);
@@ -245,7 +246,7 @@ nsSVGAnimationElement::GetSimpleDuration(float* retval)
   // Not necessary to call FlushAnimations() for this
 
   nsSMILTimeValue simpleDur = mTimedElement.GetSimpleDuration();
-  if (!simpleDur.IsResolved()) {
+  if (!simpleDur.IsDefinite()) {
     *retval = 0.f;
     return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
   }
@@ -261,7 +262,7 @@ nsresult
 nsSVGAnimationElement::BindToTree(nsIDocument* aDocument,
                                   nsIContent* aParent,
                                   nsIContent* aBindingParent,
-                                  PRBool aCompileEventHandlers)
+                                  bool aCompileEventHandlers)
 {
   NS_ABORT_IF_FALSE(!mHrefTarget.get(),
                     "Shouldn't have href-target yet "
@@ -307,14 +308,11 @@ nsSVGAnimationElement::BindToTree(nsIDocument* aDocument,
 }
 
 void
-nsSVGAnimationElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+nsSVGAnimationElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
-  nsIDocument *doc = GetOwnerDoc();
-  if (doc) {
-    nsSMILAnimationController *controller = doc->GetAnimationController();
-    if (controller) {
-      controller->UnregisterAnimationElement(this);
-    }
+  nsSMILAnimationController *controller = OwnerDoc()->GetAnimationController();
+  if (controller) {
+    controller->UnregisterAnimationElement(this);
   }
 
   mHrefTarget.Unlink();
@@ -325,7 +323,7 @@ nsSVGAnimationElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
   nsSVGAnimationElementBase::UnbindFromTree(aDeep, aNullParent);
 }
 
-PRBool
+bool
 nsSVGAnimationElement::ParseAttribute(PRInt32 aNamespaceID,
                                       nsIAtom* aAttribute,
                                       const nsAString& aValue,
@@ -337,13 +335,13 @@ nsSVGAnimationElement::ParseAttribute(PRInt32 aNamespaceID,
         aAttribute == nsGkAtoms::attributeType) {
       aResult.ParseAtom(aValue);
       AnimationNeedsResample();
-      return PR_TRUE;
+      return true;
     }
 
     nsresult rv = NS_ERROR_FAILURE;
 
     // First let the animation function try to parse it...
-    PRBool foundMatch =
+    bool foundMatch =
       AnimationFunction().SetAttr(aAttribute, aValue, aResult, &rv);
 
     // ... and if that didn't recognize the attribute, let the timed element
@@ -356,10 +354,10 @@ nsSVGAnimationElement::ParseAttribute(PRInt32 aNamespaceID,
     if (foundMatch) {
       AnimationNeedsResample();
       if (NS_FAILED(rv)) {
-        ReportAttributeParseFailure(GetOwnerDoc(), aAttribute, aValue);
-        return PR_FALSE;
+        ReportAttributeParseFailure(OwnerDoc(), aAttribute, aValue);
+        return false;
       }
-      return PR_TRUE;
+      return true;
     }
   }
 
@@ -369,7 +367,7 @@ nsSVGAnimationElement::ParseAttribute(PRInt32 aNamespaceID,
 
 nsresult
 nsSVGAnimationElement::AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                    const nsAString* aValue, PRBool aNotify)
+                                    const nsAString* aValue, bool aNotify)
 {
   nsresult rv =
     nsSVGAnimationElementBase::AfterSetAttr(aNamespaceID, aName, aValue,
@@ -391,7 +389,7 @@ nsSVGAnimationElement::AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
 
 nsresult
 nsSVGAnimationElement::UnsetAttr(PRInt32 aNamespaceID,
-                                 nsIAtom* aAttribute, PRBool aNotify)
+                                 nsIAtom* aAttribute, bool aNotify)
 {
   nsresult rv = nsSVGAnimationElementBase::UnsetAttr(aNamespaceID, aAttribute,
                                                      aNotify);
@@ -407,7 +405,7 @@ nsSVGAnimationElement::UnsetAttr(PRInt32 aNamespaceID,
   return NS_OK;
 }
 
-PRBool
+bool
 nsSVGAnimationElement::IsNodeOfType(PRUint32 aFlags) const
 {
   return !(aFlags & ~(eCONTENT | eSVG | eANIMATION));
@@ -486,7 +484,7 @@ nsSVGAnimationElement::EndElementAt(float offset)
   return NS_OK;
 }
 
-PRBool
+bool
 nsSVGAnimationElement::IsEventName(nsIAtom* aName)
 {
   return nsContentUtils::IsEventAttributeName(aName, EventNameType_SMIL);
@@ -499,7 +497,7 @@ nsSVGAnimationElement::UpdateHrefTarget(nsIContent* aNodeForContext,
   nsCOMPtr<nsIURI> targetURI;
   nsCOMPtr<nsIURI> baseURI = GetBaseURI();
   nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(targetURI),
-                                            aHrefStr, GetOwnerDoc(), baseURI);
+                                            aHrefStr, OwnerDoc(), baseURI);
   mHrefTarget.Reset(aNodeForContext, targetURI);
   AnimationTargetChanged();
 }

@@ -56,6 +56,7 @@ NO_PKG_FILES = \
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 DIRS += mac
 _APPNAME = $(PKG_BASENAME).pkg
+_BINPATH = /XUL.framework/Versions/Current
 PKG_SKIP_STRIP = 1
 MOZ_PKG_SPECIAL = pkg
 PKG_DMG_SOURCE = $(STAGEPATH)xulrunner-pkg
@@ -64,6 +65,7 @@ endif
 include $(topsrcdir)/config/rules.mk
 
 INSTALL_SDK = 1
+GENERATE_CACHE = 1
 
 include $(topsrcdir)/toolkit/mozapps/installer/packager.mk
 
@@ -74,8 +76,6 @@ pkg_config_files = \
 	libxul-embedding.pc \
 	mozilla-js.pc \
 	mozilla-plugin.pc \
-	mozilla-gtkmozembed.pc \
-	mozilla-gtkmozembed-embedding.pc \
 	$(NULL)
 
 ifdef MOZ_NATIVE_NSPR
@@ -89,7 +89,7 @@ FULL_NSPR_LIBS=$(subst $(prefix),\$${sdkdir},$(shell $(DEPTH)/nsprpub/config/nsp
 NSPR_VERSION=$(shell $(DEPTH)/nsprpub/config/nspr-config --version)
 endif
 
-MOZ_XUL_LINK = -lxpcomglue_s -lxul -lxpcom
+MOZ_XUL_LINK = -lxpcomglue_s -lxul -lxpcom -lmozalloc
 ifdef JS_SHARED_LIBRARY
 MOZ_JS_LINK = -lmozjs
 else
@@ -123,7 +123,7 @@ install:: $(pkg_config_files)
 	@echo pkg_config_file: $(pkg_config_files)
 	$(SYSINSTALL) $(IFLAGS1) $^ $(DESTDIR)$(libdir)/pkgconfig
 
-GARBAGE += $(MOZILLA_VERSION).system.conf $(pkg_config_files)
+GARBAGE += $(pkg_config_files)
 
 GARBAGE += debian/changelog
 
@@ -158,15 +158,13 @@ debian/xulrunner.service: $(srcdir)/debian/xulrunner.service.in
 package:
 	$(MAKE) package -C $(DEPTH)
 
-deb: package debian/changelog debian/xulrunner.service debian/xulrunner.links $(MOZILLA_VERSION).system.conf
+deb: package debian/changelog debian/xulrunner.service debian/xulrunner.links
 	$(NSINSTALL)  $(topsrcdir)/$(MOZ_BUILD_APP)/installer/debian .
 	rm -fr $(DEBDESTDIR)
 	$(NSINSTALL) -D $(DEBDESTDIR)/$(installdir)
 	cp -pRL $(DEPTH)/dist/$(MOZ_BUILD_APP)/* $(DEBDESTDIR)/$(installdir)
 	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/dbus-1/services/
 	cp debian/$(MOZ_BUILD_APP).service $(DEBDESTDIR)/usr/share/dbus-1/services/org.mozilla.$(MOZ_BUILD_APP).service
-	$(NSINSTALL) -D $(DEBDESTDIR)$(regdir)
-	$(SYSINSTALL) $(MOZILLA_VERSION).system.conf  $(DEBDESTDIR)$(regdir)/
 	rm $(DEBDESTDIR)/$(installdir)/xpidl
 	dh_shlibdeps; fakeroot dh_fixperms; fakeroot dh_installdeb; fakeroot dh_gencontrol; fakeroot dh_md5sums; dh_builddeb
 endif

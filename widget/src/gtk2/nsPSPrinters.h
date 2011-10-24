@@ -43,25 +43,18 @@
 #include "nsTArray.h"
 #include "prtypes.h"
 
-class nsIPrefService;
-class nsIPrefBranch;
 class nsCUPSShim;
 
 class nsPSPrinterList {
     public:
-        /**
-         * Initialize a printer manager object.
-         * @return NS_ERROR_NOT_INITIALIZED if unable to access prefs
-         *         NS_OK for successful initialization.
-         */
-        nsresult Init();
+        nsPSPrinterList();
 
         /**
          * Is the PostScript module enabled or disabled?
-         * @return PR_TRUE if enabled,
-         *         PR_FALSE if not.
+         * @return true if enabled,
+         *         false if not.
          */
-        PRBool Enabled();
+        bool Enabled();
 
         /**
          * Obtain a list of printers (print destinations) supported by the
@@ -90,10 +83,6 @@ class nsPSPrinterList {
          * @return The PrinterType value for this name.
          */
         static PrinterType GetPrinterType(const nsACString& aName);
-
-    private:
-        nsCOMPtr<nsIPrefService> mPrefSvc;
-        nsCOMPtr<nsIPrefBranch> mPref;
 };
 
 #endif /* nsPSPrinters_h___ */

@@ -74,7 +74,7 @@ var BrowserSearch = {
     while (list.lastChild)
       list.removeChild(list.lastChild);
 
-    this.engines.forEach(function(aEngine) {
+    this.engines.forEach(function(aEngine, aIndex, aArray) {
       let button = document.createElement("button");
       button.className = "action-button";
       button.setAttribute("label", aEngine.name);
@@ -86,7 +86,13 @@ var BrowserSearch = {
 
     popup.hidden = false;
     popup.top = BrowserUI.toolbarH - popup.offset;
-    popup.anchorTo(document.getElementById("tool-search"));
+    let searchButton = document.getElementById("tool-search");
+    let anchorPosition = "";
+    if (Util.isTablet())
+      anchorPosition = "after_start";
+    else if (popup.hasAttribute("left"))
+      popup.removeAttribute("left");
+    popup.anchorTo(searchButton, anchorPosition);
 
     document.getElementById("urlbar-icons").setAttribute("open", "true");
     BrowserUI.pushPopup(this, [popup, this._button]);
@@ -163,234 +169,6 @@ var BrowserSearch = {
   }
 };
 
-var PageActions = {
-  init: function init() {
-    document.getElementById("pageactions-container").addEventListener("click", this, true);
-
-    this.register("pageaction-reset", this.updatePagePermissions, this);
-    this.register("pageaction-password", this.updateForgetPassword, this);
-#ifdef NS_PRINTING
-    this.register("pageaction-saveas", this.updatePageSaveAs, this);
-#endif
-    this.register("pageaction-share", this.updateShare, this);
-    this.register("pageaction-search", BrowserSearch.updatePageSearchEngines, BrowserSearch);
-  },
-
-  handleEvent: function handleEvent(aEvent) {
-    switch (aEvent.type) {
-      case "click":
-        getIdentityHandler().hide();
-        break;
-    }
-  },
-
-  /**
-   * @param aId id of a pageaction element
-   * @param aCallback function that takes an element and returns true if it should be visible
-   * @param aThisObj (optional) scope object for aCallback
-   */
-  register: function register(aId, aCallback, aThisObj) {
-    this._handlers.push({id: aId, callback: aCallback, obj: aThisObj});
-  },
-
-  _handlers: [],
-
-  updateSiteMenu: function updateSiteMenu() {
-    this._handlers.forEach(function(action) {
-      let node = document.getElementById(action.id);
-      if (node)
-        node.hidden = !action.callback.call(action.obj, node);
-    });
-    this._updateAttributes();
-  },
-
-  get _loginManager() {
-    delete this._loginManager;
-    return this._loginManager = Cc["@mozilla.org/login-manager;1"].getService(Ci.nsILoginManager);
-  },
-
-  // Permissions we track in Page Actions
-  _permissions: ["popup", "offline-app", "geolocation", "desktop-notification"],
-
-  _forEachPermissions: function _forEachPermissions(aHost, aCallback) {
-    let pm = Services.perms;
-    for (let i = 0; i < this._permissions.length; i++) {
-      let type = this._permissions[i];
-      if (!pm.testPermission(aHost, type))
-        continue;
-
-      let perms = pm.enumerator;
-      while (perms.hasMoreElements()) {
-        let permission = perms.getNext().QueryInterface(Ci.nsIPermission);
-        if (permission.host == aHost.asciiHost && permission.type == type)
-          aCallback(type);
-      }
-    }
-  },
-
-  updatePagePermissions: function updatePagePermissions(aNode) {
-    let host = Browser.selectedBrowser.currentURI;
-    let permissions = [];
-
-    this._forEachPermissions(host, function(aType) {
-      permissions.push("pageactions." + aType);
-    });
-
-    if (!this._loginManager.getLoginSavingEnabled(host.prePath)) {
-      // If rememberSignons is false, then getLoginSavingEnabled returns false
-      // for all pages, so we should just ignore it (Bug 601163).
-      if (Services.prefs.getBoolPref("signon.rememberSignons"))
-        permissions.push("pageactions.password");
-    }
-
-    let descriptions = permissions.map(function(s) Strings.browser.GetStringFromName(s));
-    aNode.setAttribute("description", descriptions.join(", "));
-
-    return (permissions.length > 0);
-  },
-
-  updateForgetPassword: function updateForgetPassword(aNode) {
-    let host = Browser.selectedBrowser.currentURI;
-    let logins = this._loginManager.findLogins({}, host.prePath, "", "");
-
-    return logins.some(function(login) login.hostname == host.prePath);
-  },
-
-  forgetPassword: function forgetPassword(aEvent) {
-    let host = Browser.selectedBrowser.currentURI;
-    let lm = this._loginManager;
-
-    lm.findLogins({}, host.prePath, "", "").forEach(function(login) {
-      if (login.hostname == host.prePath)
-        lm.removeLogin(login);
-    });
-
-    this.hideItem(aEvent.target);
-    aEvent.stopPropagation(); // Don't hide the site menu.
-  },
-
-  clearPagePermissions: function clearPagePermissions(aEvent) {
-    let pm = Services.perms;
-    let host = Browser.selectedBrowser.currentURI;
-    this._forEachPermissions(host, function(aType) {
-      pm.remove(host.asciiHost, aType);
-
-      // reset the 'remember' counter for permissions that support it
-      if (["geolocation", "desktop-notification"].indexOf(aType) != -1)
-        Services.contentPrefs.setPref(host.asciiHost, aType + ".request.remember", 0);
-    });
-
-    let lm = this._loginManager;
-    if (!lm.getLoginSavingEnabled(host.prePath))
-      lm.setLoginSavingEnabled(host.prePath, true);
-
-    this.hideItem(aEvent.target);
-    aEvent.stopPropagation(); // Don't hide the site menu.
-  },
-
-  savePageAsPDF: function saveAsPDF() {
-    let browser = Browser.selectedBrowser;
-    let fileName = ContentAreaUtils.getDefaultFileName(browser.contentTitle, browser.documentURI, null, null);
-    fileName = fileName.trim() + ".pdf";
-
-    let dm = Cc["@mozilla.org/download-manager;1"].getService(Ci.nsIDownloadManager);
-    let downloadsDir = dm.defaultDownloadsDirectory;
-
-#ifdef ANDROID
-    // Create the final destination file location
-    let file = downloadsDir.clone();
-    file.append(fileName);
-    file.createUnique(file.NORMAL_FILE_TYPE, 0666);
-#else
-    let picker = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-    picker.init(window, Strings.browser.GetStringFromName("pageactions.saveas.pdf"), Ci.nsIFilePicker.modeSave);
-    picker.appendFilter("PDF", "*.pdf");
-    picker.defaultExtension = "pdf";
-
-    picker.defaultString = fileName;
-
-    picker.displayDirectory = downloadsDir;
-    let rv = picker.show();
-    if (rv == Ci.nsIFilePicker.returnCancel)
-      return;
-
-    let file = picker.file;
-#endif
-    fileName = file.leafName;
-
-    // We must manually add this to the download system
-    let db = dm.DBConnection;
-
-    let stmt = db.createStatement(
-      "INSERT INTO moz_downloads (name, source, target, startTime, endTime, state, referrer) " +
-      "VALUES (:name, :source, :target, :startTime, :endTime, :state, :referrer)"
-    );
-
-    let current = browser.currentURI.spec;
-    stmt.params.name = fileName;
-    stmt.params.source = current;
-    stmt.params.target = Services.io.newFileURI(file).spec;
-    stmt.params.startTime = Date.now() * 1000;
-    stmt.params.endTime = Date.now() * 1000;
-    stmt.params.state = Ci.nsIDownloadManager.DOWNLOAD_NOTSTARTED;
-    stmt.params.referrer = current;
-    stmt.execute();
-    stmt.finalize();
-
-    let newItemId = db.lastInsertRowID;
-    let download = dm.getDownload(newItemId);
-    try {
-      DownloadsView.downloadStarted(download);
-    }
-    catch(e) {}
-    Services.obs.notifyObservers(download, "dl-start", null);
-
-#ifdef ANDROID
-    let tmpDir = Cc["@mozilla.org/file/directory_service;1"].getService(Ci.nsIProperties).get("TmpD", Ci.nsIFile);  
-    
-    file = tmpDir.clone();
-    file.append(fileName);
-
-#endif
-
-    let data = {
-      type: Ci.nsIPrintSettings.kOutputFormatPDF,
-      id: newItemId,
-      referrer: current,
-      filePath: file.path
-    };
-
-    Browser.selectedBrowser.messageManager.sendAsyncMessage("Browser:SaveAs", data);
-  },
-
-  updatePageSaveAs: function updatePageSaveAs(aNode) {
-    // Check for local XUL content
-    let contentWindow = Browser.selectedBrowser.contentWindow;
-    return !(contentWindow && contentWindow.document instanceof XULDocument);
-  },
-
-  updateShare: function updateShare(aNode) {
-    return Util.isShareableScheme(Browser.selectedBrowser.currentURI.scheme);
-  },
-
-  hideItem: function hideItem(aNode) {
-    aNode.hidden = true;
-    this._updateAttributes();
-  },
-
-  _updateAttributes: function _updateAttributes() {
-    let container = document.getElementById("pageactions-container");
-    let visibleNodes = container.querySelectorAll("pageaction:not([hidden=true])");
-    let visibleCount = visibleNodes.length;
-
-    for (let i = 0; i < visibleCount; i++)
-      visibleNodes[i].classList.remove("odd-last-child");
-
-    if (visibleCount % 2)
-      visibleNodes[visibleCount - 1].classList.add("odd-last-child");
-  }
-};
-
 var NewTabPopup = {
   _timeout: 0,
   _tabs: [],
@@ -423,6 +201,9 @@ var NewTabPopup = {
   },
 
   show: function nt_show(aTab) {
+    if (Util.isTablet() && TabsPopup.visible)
+      return;
+
     BrowserUI.pushPopup(this, this.box);
 
     this._tabs.push(aTab);
@@ -436,7 +217,18 @@ var NewTabPopup = {
     setTimeout((function() {
       let boxRect = this.box.getBoundingClientRect();
       this.box.top = tabRect.top + (tabRect.height / 2) - (boxRect.height / 2);
-      this.box.anchorTo(aTab);
+
+      // We don't use anchorTo() here because the tab
+      // being anchored to might be overflowing the tabs
+      // scrollbox which confuses the dynamic arrow direction
+      // calculation (see bug 662520).
+      if (Util.isTablet()) {
+        let toolbarbutton = document.getElementById("tool-tabs");
+        this.box.anchorTo(toolbarbutton, "after_start");
+      } else if (Elements.tabList.getBoundingClientRect().left < 0)
+        this.box.pointLeftAt(aTab);
+      else
+        this.box.pointRightAt(aTab);
     }).bind(this), 0);
 
     if (this._timeout)
@@ -505,7 +297,7 @@ var FindHelperUI = {
     Elements.browsers.addEventListener("PanFinished", this, false);
 
     // Listen for events where form assistant should be closed
-    document.getElementById("tabs").addEventListener("TabSelect", this, true);
+    Elements.tabList.addEventListener("TabSelect", this, true);
     Elements.browsers.addEventListener("URLChanged", this, true);
   },
 
@@ -646,7 +438,6 @@ var FormHelperUI = {
 
   init: function formHelperInit() {
     this._container = document.getElementById("content-navigator");
-    this._suggestionsContainer = document.getElementById("form-helper-suggestions-container");
     this._cmdPrevious = document.getElementById(this.commands.previous);
     this._cmdNext = document.getElementById(this.commands.next);
 
@@ -656,9 +447,10 @@ var FormHelperUI = {
     messageManager.addMessageListener("FormAssist:Update", this);
     messageManager.addMessageListener("FormAssist:Resize", this);
     messageManager.addMessageListener("FormAssist:AutoComplete", this);
+    messageManager.addMessageListener("FormAssist:ValidationMessage", this);
 
     // Listen for events where form assistant should be closed or updated
-    let tabs = document.getElementById("tabs");
+    let tabs = Elements.tabList;
     tabs.addEventListener("TabSelect", this, true);
     tabs.addEventListener("TabClose", this, true);
     Elements.browsers.addEventListener("URLChanged", this, true);
@@ -673,31 +465,45 @@ var FormHelperUI = {
     window.addEventListener("keyup", this, true);
     window.addEventListener("keypress", this, true);
 
-    // Listen some events to show/hide the autocomplete box
+    // Listen some events to show/hide arrows
     Elements.browsers.addEventListener("PanBegin", this, false);
     Elements.browsers.addEventListener("PanFinished", this, false);
-    window.addEventListener("AnimatedZoomBegin", this, false);
-    window.addEventListener("AnimatedZoomEnd", this, false);
-    window.addEventListener("MozBeforeResize", this, true);
-    window.addEventListener("resize", this, false);
+
+    // Dynamically enabled/disabled the form helper if needed depending on
+    // the size of the screen
+    let mode = Services.prefs.getIntPref("formhelper.mode");
+    let state = (mode == 2) ? !Util.isTablet() : !!mode;
+    Services.prefs.setBoolPref("formhelper.enabled", state);
   },
 
   _currentBrowser: null,
   show: function formHelperShow(aElement, aHasPrevious, aHasNext) {
+    // Delay the operation until all resize operations generated by the
+    // keyboard apparition are done. This avoid doing unuseful zooming
+    // operations.
+    if (aElement.editable && !ViewableAreaObserver.isKeyboardOpened) {
+      this._waitForKeyboard(aElement, aHasPrevious, aHasNext);
+      return;
+    }
+
     this._currentBrowser = Browser.selectedBrowser;
     this._currentCaretRect = null;
 
+#ifndef ANDROID
     // Update the next/previous commands
     this._cmdPrevious.setAttribute("disabled", !aHasPrevious);
     this._cmdNext.setAttribute("disabled", !aHasNext);
 
     // If both next and previous are disabled don't bother showing arrows
-    if (!aHasNext && !aHasPrevious)
-      this._container.setAttribute("disabled", "true");
-    else
+    if (aHasNext || aHasPrevious)
       this._container.removeAttribute("disabled");
+    else
+      this._container.setAttribute("disabled", "true");
+#else
+    // Always hide the arrows on Android
+    this._container.setAttribute("disabled", "true");
+#endif
 
-    this._hasSuggestions = false;
     this._open = true;
 
     let lastElement = this._currentElement || null;
@@ -710,12 +516,13 @@ var FormHelperUI = {
       type: aElement.type,
       choices: aElement.choices,
       isAutocomplete: aElement.isAutocomplete,
+      validationMessage: aElement.validationMessage,
       list: aElement.list,
     }
 
     this._updateContainerForSelect(lastElement, this._currentElement);
     this._zoom(Rect.fromRect(aElement.rect), Rect.fromRect(aElement.caretRect));
-    this._updateSuggestionsFor(this._currentElement);
+    this._updatePopupsFor(this._currentElement);
 
     // Prevent the view to scroll automatically while typing
     this._currentBrowser.scrollSync = false;
@@ -733,7 +540,6 @@ var FormHelperUI = {
     this._currentCaretRect = null;
 
     this._updateContainerForSelect(this._currentElement, null);
-    this._resetSuggestions();
 
     this._currentBrowser.messageManager.sendAsyncMessage("FormAssist:Closed", { });
     this._open = false;
@@ -758,28 +564,11 @@ var FormHelperUI = {
         // manual dblClick and navigation between the fields by clicking the
         // buttons
         this._container.style.visibility = "hidden";
-
-      case "AnimatedZoomBegin":
-        // Changing the hidden attribute here create bugs with the scrollbox
-        // arrows because the binding will miss some underflow events
-        if (this._hasSuggestions) {
-          // Because the suggestions container could be big in terms of width
-          // (but never bigger than the screen) it's position needs to be
-          // resetted to the left to ensure it does not push the content to
-          // the right and misplaced sidebars as a result
-          this._suggestionsContainer.left = 0;
-          this._suggestionsContainer.style.visibility = "hidden";
-        }
         break;
+
 
       case "PanFinished":
         this._container.style.visibility = "visible";
-
-      case "AnimatedZoomEnd":
-        if (this._hasSuggestions) {
-          this._suggestionsContainer.style.visibility = "visible";
-          this._ensureSuggestionsVisible();
-        }
         break;
 
       case "URLChanged":
@@ -804,7 +593,7 @@ var FormHelperUI = {
         if (focusedElement && focusedElement.localName == "browser")
           return;
 
-        Browser.keySender.handleEvent(aEvent);
+        Browser.keyFilter.handleEvent(aEvent);
         break;
 
       case "SizeChanged":
@@ -813,48 +602,61 @@ var FormHelperUI = {
           self._zoom(self._currentElementRect, self._currentCaretRect);
         }, 0, this);
         break;
-
-      case "MozBeforeResize":
-        if (this._hasSuggestions)
-          this._suggestionsContainer.left = 0;
-        break;
-
-      case "resize":
-        if (this._hasSuggestions)
-          this._ensureSuggestionsVisible();
-        break;
     }
   },
 
   receiveMessage: function formHelperReceiveMessage(aMessage) {
-    if (!this._open && aMessage.name != "FormAssist:Show" && aMessage.name != "FormAssist:Hide")
+    let allowedMessages = ["FormAssist:Show", "FormAssist:Hide",
+                           "FormAssist:AutoComplete", "FormAssist:ValidationMessage"];
+    if (!this._open && allowedMessages.indexOf(aMessage.name) == -1)
       return;
 
     let json = aMessage.json;
     switch (aMessage.name) {
       case "FormAssist:Show":
         // if the user has manually disabled the Form Assistant UI we still
-        // want to show a UI for <select /> element but not managed by
-        // FormHelperUI
-        this.enabled ? this.show(json.current, json.hasPrevious, json.hasNext)
-                     : SelectHelperUI.show(json.current.choices, json.current.title);
+        // want to show a UI for <select /> element and still want to show
+        // autocomplete suggestions but not managed by FormHelperUI
+        if (this.enabled) {
+          this.show(json.current, json.hasPrevious, json.hasNext)
+        } else if (json.current.choices) {
+          SelectHelperUI.show(json.current.choices, json.current.title);
+        } else {
+          this._currentElementRect = Rect.fromRect(json.current.rect);
+          this._currentBrowser = getBrowser();
+          this._updatePopupsFor(json.current);
+        }
         break;
 
       case "FormAssist:Hide":
-        this.enabled ? this.hide()
-                     : SelectHelperUI.hide();
+        if (this.enabled) {
+          this.hide();
+        } else {
+          SelectHelperUI.hide();
+          ContentPopupHelper.popup = null;
+        }
         break;
 
       case "FormAssist:Resize":
+        if (!ViewableAreaObserver.isKeyboardOpened)
+          return;
+
         let element = json.current;
         this._zoom(Rect.fromRect(element.rect), Rect.fromRect(element.caretRect));
         break;
 
+      case "FormAssist:ValidationMessage":
+        this._updatePopupsFor(json.current, { fromInput: true });
+        break;
+
       case "FormAssist:AutoComplete":
-        this._updateSuggestionsFor(json.current);
+        this._updatePopupsFor(json.current, { fromInput: true });
         break;
 
        case "FormAssist:Update":
+        if (!ViewableAreaObserver.isKeyboardOpened)
+          return;
+
         Browser.hideSidebars();
         Browser.hideTitlebar();
         this._zoom(null, Rect.fromRect(json.caretRect));
@@ -882,8 +684,11 @@ var FormHelperUI = {
 
   doAutoComplete: function formHelperDoAutoComplete(aElement) {
     // Suggestions are only in <label>s. Ignore the rest.
-    if (aElement instanceof Ci.nsIDOMXULLabelElement)
-      this._currentBrowser.messageManager.sendAsyncMessage("FormAssist:AutoComplete", { value: aElement.getAttribute("data") });
+    if (!(aElement instanceof Ci.nsIDOMXULLabelElement))
+      return;
+
+    this._currentBrowser.messageManager.sendAsyncMessage("FormAssist:AutoComplete", { value: aElement.getAttribute("data") });
+    ContentPopupHelper.popup = null;
   },
 
   get _open() {
@@ -903,6 +708,7 @@ var FormHelperUI = {
       this._currentElement = null;
       this._container.hide(this);
 
+      ContentPopupHelper.popup = null;
       this._container.removeAttribute("disabled");
 
       // Since the style is overrided when a popup is shown, it needs to be
@@ -915,35 +721,46 @@ var FormHelperUI = {
     this._container.dispatchEvent(evt);
   },
 
-  _hasSuggestions: false,
-  _updateSuggestionsFor: function _formHelperUpdateAutocompleteFor(aElement) {
+  _updatePopupsFor: function _formHelperUpdatePopupsFor(aElement, options) {
+    options = options || {};
+
+    let fromInput = 'fromInput' in options && options.fromInput;
+
+    // The order of the updates matters here. If the popup update was
+    // triggered from user input (e.g. key press in an input element),
+    // we first check if there are input suggestions then check for
+    // a validation message. The idea here is that the validation message
+    // will be shown straight away once the invalid element is focused
+    // and suggestions will be shown as user inputs data. Only one popup
+    // is shown at a time. If both are not shown, then we ensure any
+    // previous popups are hidden.
+    let noPopupsShown = fromInput ?
+                        (!this._updateSuggestionsFor(aElement) &&
+                         !this._updateFormValidationFor(aElement)) :
+                        (!this._updateFormValidationFor(aElement) &&
+                         !this._updateSuggestionsFor(aElement));
+
+    if (noPopupsShown)
+      ContentPopupHelper.popup = null;
+  },
+
+  _updateSuggestionsFor: function _formHelperUpdateSuggestionsFor(aElement) {
     let suggestions = this._getAutocompleteSuggestions(aElement);
-    if (!suggestions.length) {
-      this._resetSuggestions();
-      return;
-    }
-    // Keeps the suggestions element hidden while is it not positionned to the
-    // correct place
-    let suggestionsContainer = this._suggestionsContainer;
-    suggestionsContainer.style.visibility = "hidden";
-    suggestionsContainer.hidden = false;
-    suggestionsContainer.left = 0;
+    if (!suggestions.length)
+      return false;
 
     // the scrollX/scrollY position can change because of the animated zoom so
     // delay the suggestions positioning
     if (AnimatedZoom.isZooming()) {
       let self = this;
-      window.addEventListener("AnimatedZoomEnd", function() {
-        window.removeEventListener("AnimatedZoomEnd", arguments.callee, true);
-          // Ensure the current element has not changed during this interval
-          if (self._currentElement != aElement)
-            return;
-
-          self._updateSuggestionsFor(aElement);
-      }, true);
-      return;
+      this._waitForZoom(function() {
+        self._updateSuggestionsFor(aElement);
+      });
+      return true;
     }
 
+    // Declare which box is going to be the inside container of the content popup helper
+    let suggestionsContainer = document.getElementById("form-helper-suggestions-container");
     let container = suggestionsContainer.firstChild;
     while (container.hasChildNodes())
       container.removeChild(container.lastChild);
@@ -959,8 +776,35 @@ var FormHelperUI = {
     }
     container.appendChild(fragment);
 
-    this._hasSuggestions = true;
-    this._ensureSuggestionsVisible();
+    ContentPopupHelper.popup = suggestionsContainer;
+    ContentPopupHelper.anchorTo(this._currentElementRect);
+
+    return true;
+  },
+
+  _updateFormValidationFor: function _formHelperUpdateFormValidationFor(aElement) {
+    if (!aElement.validationMessage)
+      return false;
+
+    // the scrollX/scrollY position can change because of the animated zoom so
+    // delay the suggestions positioning
+    if (AnimatedZoom.isZooming()) {
+      let self = this;
+      this._waitForZoom(function() {
+        self._updateFormValidationFor(aElement);
+      });
+      return true;
+    }
+
+    let validationContainer = document.getElementById("form-helper-validation-container");
+
+    // Update label with form validation message
+    validationContainer.firstChild.value = aElement.validationMessage;
+
+    ContentPopupHelper.popup = validationContainer;
+    ContentPopupHelper.anchorTo(this._currentElementRect);
+
+    return true;
   },
 
   /** Retrieve the autocomplete list from the autocomplete service for an element */
@@ -991,114 +835,6 @@ var FormHelperUI = {
       suggestions.push(options[i]);
 
     return suggestions;
-  },
-
-  _resetSuggestions: function _formHelperResetAutocomplete() {
-    this._suggestionsContainer.hidden = true;
-    this._hasSuggestions = false;
-  },
-
-  /**
-   * This method positionned the list of suggestions on the screen using
-   * a 'virtual' element as referrer that match the real content element
-   * This method called element.getBoundingClientRect() many times and can be
-   * expensive, do not called it too many times.
-   */
-  _ensureSuggestionsVisible: function _formHelperEnsureSuggestionsVisible() {
-    let container = this._suggestionsContainer;
-
-    // Calculate the maximum size of the arrowpanel by allowing it to live only
-    // on the visible browser area
-    let [leftVis, rightVis, leftW, rightW] = Browser.computeSidebarVisibility();
-    let leftOffset = leftVis * leftW;
-    let rightOffset = rightVis * rightW;
-    let visibleAreaWidth = window.innerWidth - leftOffset - rightOffset;
-    container.firstChild.style.maxWidth = (visibleAreaWidth * 0.75) + "px";
-
-    let browser = getBrowser();
-    let rect = this._currentElementRect.clone().scale(browser.scale, browser.scale);
-    let scroll = browser.getRootView().getPosition();
-
-    // The sidebars scroll needs to be taken into account, otherwise the arrows
-    // can be misplaced if the sidebars are open
-    let topOffset = (BrowserUI.toolbarH - Browser.getScrollboxPosition(Browser.pageScrollboxScroller).y);
-
-    // Notifications take height _before_ the browser if there any
-    let notification = Browser.getNotificationBox().currentNotification;
-    if (notification)
-      topOffset += notification.getBoundingClientRect().height;
-
-    let virtualContentRect = {
-      width: rect.width,
-      height: rect.height,
-      left: Math.ceil(rect.left - scroll.x + leftOffset - rightOffset),
-      right: Math.floor(rect.left + rect.width - scroll.x + leftOffset - rightOffset),
-      top: Math.ceil(rect.top - scroll.y + topOffset),
-      bottom: Math.floor(rect.top + rect.height - scroll.y + topOffset)
-    };
-
-    // Translate the virtual rect inside the bounds of the viewable area if it
-    // overflow
-    if (virtualContentRect.left + virtualContentRect.width > visibleAreaWidth) {
-      let offsetX = visibleAreaWidth - (virtualContentRect.left + virtualContentRect.width);
-      virtualContentRect.width += offsetX;
-      virtualContentRect.right -= offsetX;
-    }
-
-    if (virtualContentRect.left < leftOffset) {
-      let offsetX = (virtualContentRect.right - virtualContentRect.width);
-      virtualContentRect.width += offsetX;
-      virtualContentRect.left -= offsetX;
-    }
-
-    // If the suggestions are out of view there is no need to display it
-    let browserRect = Rect.fromRect(browser.getBoundingClientRect());
-    if (BrowserUI.isToolbarLocked()) {
-      // If the toolbar is locked, it can appear over the field in such a way
-      // that the field is hidden
-      let toolbarH = BrowserUI.toolbarH;
-      browserRect = new Rect(leftOffset - rightOffset, Math.max(0, browserRect.top - toolbarH) + toolbarH,
-                             browserRect.width + leftOffset - rightOffset, browserRect.height - toolbarH);
-    }
-
-    if (browserRect.intersect(Rect.fromRect(virtualContentRect)).isEmpty()) {
-      container.style.visibility = "hidden";
-      return;
-    }
-
-    // Adding rect.height to the top moves the arrowbox below the virtual field
-    let left = rect.left - scroll.x + leftOffset - rightOffset;
-    let top = rect.top - scroll.y + topOffset + (rect.height);
-
-    // Ensure parts of the arrowbox are not outside the window
-    let arrowboxRect = Rect.fromRect(container.getBoundingClientRect());
-    if (left + arrowboxRect.width > window.innerWidth)
-      left -= (left + arrowboxRect.width - window.innerWidth);
-    else if (left < leftOffset)
-      left += (leftOffset - left);
-    container.left = left;
-
-    // Do not position the suggestions over the navigation buttons
-    let buttonsHeight = this._container.getBoundingClientRect().height;
-    if (top + arrowboxRect.height >= window.innerHeight - buttonsHeight)
-      top -= (rect.height + arrowboxRect.height);
-    container.top = top;
-
-    // Create a virtual element to point to
-    let virtualContentElement = {
-      getBoundingClientRect: function() {
-        return virtualContentRect;
-      }
-    };
-    container.anchorTo(virtualContentElement);
-    container.style.visibility = "visible";
-  },
-
-  /** Update the form helper container to reflect new element user is editing. */
-  _updateContainer: function _formHelperUpdateContainer(aLastElement, aCurrentElement) {
-    this._updateContainerForSelect(aLastElement, aCurrentElement);
-
-    this._container.contentHasChanged();
   },
 
   /** Helper for _updateContainer that handles the case where the new element is a select. */
@@ -1146,16 +882,10 @@ var FormHelperUI = {
     // the scrollX/scrollY position can change because of the animated zoom so
     // delay the caret adjustment
     if (AnimatedZoom.isZooming()) {
-      let currentElement = this._currentElement;
       let self = this;
-      window.addEventListener("AnimatedZoomEnd", function() {
-        window.removeEventListener("AnimatedZoomEnd", arguments.callee, true);
-          // Ensure the current element has not changed during this interval
-          if (self._currentElement != currentElement)
-            return;
-
-          self._ensureCaretVisible(aCaretRect);
-      }, true);
+      this._waitForZoom(function() {
+        self._ensureCaretVisible(aCaretRect);
+      });
       return;
     }
 
@@ -1200,6 +930,19 @@ var FormHelperUI = {
     Browser.pageScrollboxScroller.scrollTo(restore.pageScrollOffset.x, restore.pageScrollOffset.y);
   },
 
+  _waitForZoom: function _formHelperWaitForZoom(aCallback) {
+    let currentElement = this._currentElement;
+    let self = this;
+    window.addEventListener("AnimatedZoomEnd", function() {
+      window.removeEventListener("AnimatedZoomEnd", arguments.callee, true);
+      // Ensure the current element has not changed during this interval
+      if (self._currentElement != currentElement)
+        return;
+
+      aCallback();
+    }, true);
+  },
+
   _getZoomLevelForRect: function _getZoomLevelForRect(aRect) {
     const margin = 30;
     let zoomLevel = getBrowser().getBoundingClientRect().width / (aRect.width + margin);
@@ -1226,6 +969,22 @@ var FormHelperUI = {
       deltaY = aCaretRect.top - aRect.top;
 
     return [deltaX, deltaY];
+  },
+
+  _waitForKeyboard: function formHelperWaitForKeyboard(aElement, aHasPrevious, aHasNext) {
+    let self = this;
+    window.addEventListener("KeyboardChanged", function(aEvent) {
+      window.removeEventListener("KeyboardChanged", arguments.callee, false);
+
+      if (AnimatedZoom.isZooming()) {
+        self._waitForZoom(function() {
+          self.show(aElement, aHasPrevious, aHasNext);
+        });
+        return;
+      }
+
+      self.show(aElement, aHasPrevious, aHasNext);
+    }, false);
   }
 };
 
@@ -1277,11 +1036,11 @@ var ContextHelper = {
     let label = document.getElementById("context-hint");
     label.value = this.popupState.label || "";
 
+    this.sizeToContent();
     this._panel.hidden = false;
     window.addEventListener("resize", this, true);
     window.addEventListener("keypress", this, true);
 
-    this.sizeToContent();
     BrowserUI.pushPopup(this, [this._popup]);
 
     let event = document.createEvent("Events");
@@ -1303,7 +1062,8 @@ var ContextHelper = {
   },
 
   sizeToContent: function sizeToContent() {
-    this._popup.maxWidth = window.innerWidth * 0.75;
+    let style = document.defaultView.getComputedStyle(this._panel, null);
+    this._popup.width = window.innerWidth - (parseInt(style.paddingLeft) + parseInt(style.paddingRight));
   },
 
   handleEvent: function handleEvent(aEvent) {
@@ -1369,7 +1129,16 @@ var BadgeHandlers = {
       aPopup.registerBadgeHandler(handlers[i].url, handlers[i]);
   },
 
+  get _pk11DB() {
+    delete this._pk11DB;
+    return this._pk11DB = Cc["@mozilla.org/security/pk11tokendb;1"].getService(Ci.nsIPK11TokenDB);
+  },
+
   getLogin: function(aURL) {
+    let token = this._pk11DB.getInternalKeyToken();
+    if (!token.isLoggedIn())
+      return {username: "", password: ""};
+
     let lm = Cc["@mozilla.org/login-manager;1"].getService(Ci.nsILoginManager);
     let logins = lm.findLogins({}, aURL, aURL, null);
     let username = logins.length > 0 ? logins[0].username : "";
@@ -1454,11 +1223,10 @@ var FullScreenVideo = {
 
   createBrowser: function fsv_createBrowser() {
     let browser = this.browser = document.createElement("browser");
-    browser.className = "window-width window-height full-screen";
     browser.setAttribute("type", "content");
     browser.setAttribute("remote", "true");
     browser.setAttribute("src", "chrome://browser/content/fullscreen-video.xhtml");
-    document.getElementById("main-window").appendChild(browser);
+    document.getElementById("stack").appendChild(browser);
 
     let mm = browser.messageManager;
     mm.loadFrameScript("chrome://browser/content/fullscreen-video.js", true);
@@ -1483,7 +1251,7 @@ var FullScreenVideo = {
         this._dispatchMouseEvent("Browser:MouseDown", aEvent.clientX, aEvent.clientY);
         break;
       case "TapSingle":
-        this._dispatchMouseEvent("Browser:MouseUp", aEvent.clientX, aEvent.clientY);
+        this._dispatchMouseEvent("Browser:MouseClick", aEvent.clientX, aEvent.clientY);
         break;
     }
   },
@@ -1496,91 +1264,4 @@ var FullScreenVideo = {
       messageId: null
     });
   }
-};
-
-var CharsetMenu = {
-  _strings: null,
-  _charsets: null,
-
-  get strings() {
-    if (!this._strings)
-      this._strings = Services.strings.createBundle("chrome://global/locale/charsetTitles.properties");
-    return this._strings;
-  },
-
-  init: function() {
-    PageActions.register("pageaction-charset", this.updatePageAction, this);
-  },
-
-  updatePageAction: function(aNode) {
-    let pref = Services.prefs.getComplexValue("browser.menu.showCharacterEncoding", Ci.nsIPrefLocalizedString).data;
-    if (pref == "true") {
-      let charset = getBrowser().documentCharsetInfo.forcedCharset;
-      if (charset) {
-        charset = charset.toString();
-        charset = charset.trim().toLowerCase();
-        aNode.setAttribute("description", this.strings.GetStringFromName(charset + ".title"));
-      } else if (aNode.hasAttribute("description")) {
-        aNode.removeAttribute("description");
-      }
-    }
-    return ("true" == pref)
-  },
-
-  _toMenuItems: function(aCharsets, aCurrent) {
-    let ret = [];
-    aCharsets.forEach(function (aSet) {
-      try {
-        let string = aSet.trim().toLowerCase();
-        ret.push({
-          label: this.strings.GetStringFromName(string + ".title"),
-          value: string,
-          selected: (string == aCurrent)
-        });
-      } catch(ex) { }
-    }, this);
-    return ret;
-  },
-
-  menu : {
-    dispatchEvent: function(aEvent) {
-      if (aEvent.type == "command")
-        CharsetMenu.setCharset(this.menupopup.children[this.selectedIndex].value);
-    },
-    menupopup: {
-      hasAttribute: function(aAttr) { return false; },
-    },
-    selectedIndex: -1
-  },
-
-  get charsets() {
-    if (!this._charsets) {
-      this._charsets = Services.prefs.getComplexValue("intl.charsetmenu.browser.static", Ci.nsIPrefLocalizedString).data.split(",");
-    }
-    let charsets = this._charsets;
-    let currentCharset = getBrowser().documentCharsetInfo.forcedCharset;
-    
-    if (currentCharset) {
-      currentCharset = currentCharset.toString();
-      currentCharset = currentCharset.trim().toLowerCase();
-      if (charsets.indexOf(currentCharset) == -1)
-        charsets.splice(0, 0, currentCharset);
-    }
-    return this._toMenuItems(charsets, currentCharset);
-  },
-
-  show: function showCharsetMenu() {
-    this.menu.menupopup.children = this.charsets;
-    MenuListHelperUI.show(this.menu);
-  },
-
-  setCharset: function setCharset(aCharset) {
-    let browser = getBrowser();
-    browser.messageManager.sendAsyncMessage("Browser:SetCharset", {
-      charset: aCharset
-    });
-    let history = Cc["@mozilla.org/browser/nav-history-service;1"].getService(Ci.nsINavHistoryService);
-    history.setCharsetForURI(browser.documentURI, aCharset);
-  }
-
 };

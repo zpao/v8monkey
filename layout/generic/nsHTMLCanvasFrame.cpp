@@ -78,9 +78,9 @@ public:
   NS_DISPLAY_DECL_NAME("nsDisplayCanvas", TYPE_CANVAS)
 
   virtual nsRegion GetOpaqueRegion(nsDisplayListBuilder* aBuilder,
-                                   PRBool* aForceTransparentSurface = nsnull) {
+                                   bool* aForceTransparentSurface = nsnull) {
     if (aForceTransparentSurface) {
-      *aForceTransparentSurface = PR_FALSE;
+      *aForceTransparentSurface = false;
     }
     nsIFrame* f = GetUnderlyingFrame();
     nsHTMLCanvasElement *canvas = CanvasElementFromContent(f->GetContent());
@@ -97,7 +97,8 @@ public:
   }
 
   virtual already_AddRefed<Layer> BuildLayer(nsDisplayListBuilder* aBuilder,
-                                             LayerManager* aManager)
+                                             LayerManager* aManager,
+                                             const ContainerParameters& aContainerParameters)
   {
     return static_cast<nsHTMLCanvasFrame*>(mFrame)->
       BuildLayer(aBuilder, aManager, this);
@@ -105,6 +106,9 @@ public:
   virtual LayerState GetLayerState(nsDisplayListBuilder* aBuilder,
                                    LayerManager* aManager)
   {
+    if (CanvasElementFromContent(mFrame->GetContent())->ShouldForceInactiveLayer(aManager))
+      return LAYER_INACTIVE;
+
     // If compositing is cheap, just do that
     if (aManager->IsCompositingCheap())
       return mozilla::LAYER_ACTIVE;
@@ -132,7 +136,7 @@ nsHTMLCanvasFrame::Init(nsIContent* aContent,
   // We can fill in the canvas before the canvas frame is created, in
   // which case we never get around to marking the layer active. Therefore,
   // we mark it active here when we create the frame.
-  MarkLayersActive();
+  MarkLayersActive(nsChangeHint(0));
 
   return rv;
 }
@@ -187,7 +191,7 @@ nsHTMLCanvasFrame::GetIntrinsicRatio()
 nsHTMLCanvasFrame::ComputeSize(nsRenderingContext *aRenderingContext,
                                nsSize aCBSize, nscoord aAvailableWidth,
                                nsSize aMargin, nsSize aBorder, nsSize aPadding,
-                               PRBool aShrinkWrap)
+                               bool aShrinkWrap)
 {
   nsIntSize size = GetCanvasSize();
 

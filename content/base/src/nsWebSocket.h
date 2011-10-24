@@ -41,7 +41,7 @@
 #define nsWebSocket_h__
 
 #include "nsISupportsUtils.h"
-#include "nsIWebSocket.h"
+#include "nsIMozWebSocket.h"
 #include "nsCOMPtr.h"
 #include "nsString.h"
 #include "nsIJSNativeInitializer.h"
@@ -50,7 +50,7 @@
 #include "nsIDOMEventListener.h"
 #include "nsDOMEventTargetWrapperCache.h"
 #include "nsAutoPtr.h"
-#include "nsIProxiedProtocolHandler.h"
+#include "nsIDOMDOMStringList.h"
 
 #define DEFAULT_WS_SCHEME_PORT  80
 #define DEFAULT_WSS_SCHEME_PORT 443
@@ -67,7 +67,7 @@ class nsWebSocketEstablishedConnection;
 class nsWSCloseEvent;
 
 class nsWebSocket: public nsDOMEventTargetWrapperCache,
-                   public nsIWebSocket,
+                   public nsIMozWebSocket,
                    public nsIJSNativeInitializer
 {
 friend class nsWSNetAddressComparator;
@@ -80,7 +80,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsWebSocket,
                                            nsDOMEventTargetWrapperCache)
-  NS_DECL_NSIWEBSOCKET
+  NS_DECL_NSIMOZWEBSOCKET
 
   // nsIJSNativeInitializer
   NS_IMETHOD Initialize(nsISupports* aOwner, JSContext* aContext,
@@ -88,36 +88,29 @@ public:
 
   // nsIDOMEventTarget
   NS_IMETHOD AddEventListener(const nsAString& aType,
-                              nsIDOMEventListener* aListener,
-                              PRBool aUseCapture);
+                              nsIDOMEventListener *aListener,
+                              bool aUseCapture,
+                              bool aWantsUntrusted,
+                              PRUint8 optional_argc);
   NS_IMETHOD RemoveEventListener(const nsAString& aType,
                                  nsIDOMEventListener* aListener,
-                                 PRBool aUseCapture);
-
-  // nsIDOMNSEventTarget
-  NS_IMETHOD AddEventListener(const nsAString& aType,
-                              nsIDOMEventListener *aListener,
-                              PRBool aUseCapture,
-                              PRBool aWantsUntrusted,
-                              PRUint8 optional_argc);
-
-  static void ReleaseGlobals();
+                                 bool aUseCapture);
 
   // Determine if preferences allow WebSocket
-  static PRBool PrefEnabled();
+  static bool PrefEnabled();
 
-  const PRUint64 WindowID() const { return mWindowID; }
+  const PRUint64 InnerWindowID() const { return mInnerWindowID; }
   const nsCString& GetScriptFile() const { return mScriptFile; }
   const PRUint32 GetScriptLine() const { return mScriptLine; }
 
 protected:
   nsresult ParseURL(const nsString& aURL);
-  nsresult SetProtocol(const nsString& aProtocol);
   nsresult EstablishConnection();
 
   nsresult CreateAndDispatchSimpleEvent(const nsString& aName);
-  nsresult CreateAndDispatchMessageEvent(nsCString *aData);
-  nsresult CreateAndDispatchCloseEvent(PRBool aWasClean);
+  nsresult CreateAndDispatchMessageEvent(const nsACString& aData);
+  nsresult CreateAndDispatchCloseEvent(bool aWasClean, PRUint16 aCode,
+                                       const nsString &aReason);
 
   // called from mConnection accordingly to the situation
   void SetReadyState(PRUint16 aNewReadyState);
@@ -137,19 +130,27 @@ protected:
 
   // related to the WebSocket constructor steps
   nsString mOriginalURL;
-  PRPackedBool mSecure; // if true it is using SSL and the wss scheme,
+  bool mSecure; // if true it is using SSL and the wss scheme,
                         // otherwise it is using the ws scheme with no SSL
 
-  PRPackedBool mKeepingAlive;
-  PRPackedBool mCheckMustKeepAlive;
-  PRPackedBool mTriggeredCloseEvent;
+  bool mKeepingAlive;
+  bool mCheckMustKeepAlive;
+  bool mTriggeredCloseEvent;
+
+  nsCString mClientReason;
+  PRUint16  mClientReasonCode;
+  nsString  mServerReason;
+  PRUint16  mServerReasonCode;
 
   nsCString mAsciiHost;  // hostname
   PRUint32  mPort;
   nsCString mResource; // [filepath[?query]]
-  nsCString mOrigin;
+  nsString  mUTF16Origin;
+  
   nsCOMPtr<nsIURI> mURI;
-  nsCString mProtocol;
+  nsCString mRequestedProtocolList;
+  nsCString mEstablishedProtocol;
+  nsCString mEstablishedExtensions;
 
   PRUint16 mReadyState;
 
@@ -163,56 +164,16 @@ protected:
   // Web Socket owner information:
   // - the script file name, UTF8 encoded.
   // - source code line number where the Web Socket object was constructed.
-  // - the window ID of the outer window where the script lives. Note that this 
-  // may not be the same as the Web Socket owner window.
+  // - the ID of the inner window where the script lives. Note that this may not
+  //   be the same as the Web Socket owner window.
   // These attributes are used for error reporting.
   nsCString mScriptFile;
   PRUint32 mScriptLine;
-  PRUint64 mWindowID;
+  PRUint64 mInnerWindowID;
 
 private:
   nsWebSocket(const nsWebSocket& x);   // prevent bad usage
   nsWebSocket& operator=(const nsWebSocket& x);
-};
-
-#define NS_WSPROTOCOLHANDLER_CONTRACTID \
-    NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "ws"
-
-#define NS_WSSPROTOCOLHANDLER_CONTRACTID \
-    NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "wss"
-
-#define NS_WSPROTOCOLHANDLER_CID                     \
-{ /* a4e6aa3b-b6db-4809-aa11-e292e074cbc4 */         \
-    0xa4e6aa3b,                                      \
-    0xb6db,                                          \
-    0x4809,                                          \
-    {0xaa, 0x11, 0xe2, 0x92, 0xe0, 0x74, 0xcb, 0xc4} \
-}
-
-#define NS_WSSPROTOCOLHANDLER_CID                    \
-{ /* c6531804-b5c8-4a53-80bf-e339b82d3161 */         \
-    0xc6531804,                                      \
-    0xb5c8,                                          \
-    0x4a53,                                          \
-    {0x80, 0xbf, 0xe3, 0x39, 0xb8, 0x2d, 0x31, 0x61} \
-}
-
-class nsWSProtocolHandler: public nsIProxiedProtocolHandler
-{
-public:
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSIPROTOCOLHANDLER
-  NS_DECL_NSIPROXIEDPROTOCOLHANDLER
-
-  nsWSProtocolHandler() {};
-};
-
-class nsWSSProtocolHandler: public nsWSProtocolHandler
-{
-public:
-  NS_IMETHOD GetScheme(nsACString & aScheme);
-  NS_IMETHOD GetDefaultPort(PRInt32 *aDefaultPort);
-  nsWSSProtocolHandler() {};
 };
 
 #endif

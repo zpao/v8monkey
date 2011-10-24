@@ -42,6 +42,8 @@
 #include "nsAccUtils.h"
 #include "nsDocAccessible.h"
 
+using namespace mozilla::a11y;
+
 ////////////////////////////////////////////////////////////////////////////////
 // nsOuterDocAccessible
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,15 +69,9 @@ nsOuterDocAccessible::NativeRole()
   return nsIAccessibleRole::ROLE_INTERNAL_FRAME;
 }
 
-PRUint64
-nsOuterDocAccessible::NativeState()
-{
-  return nsAccessible::NativeState() & ~states::FOCUSABLE;
-}
-
 nsAccessible*
-nsOuterDocAccessible::GetChildAtPoint(PRInt32 aX, PRInt32 aY,
-                                      EWhichChildAtPoint aWhichChild)
+nsOuterDocAccessible::ChildAtPoint(PRInt32 aX, PRInt32 aY,
+                                   EWhichChildAtPoint aWhichChild)
 {
   PRInt32 docX = 0, docY = 0, docWidth = 0, docHeight = 0;
   nsresult rv = GetBounds(&docX, &docY, &docWidth, &docHeight);
@@ -90,7 +86,7 @@ nsOuterDocAccessible::GetChildAtPoint(PRInt32 aX, PRInt32 aY,
   NS_ENSURE_TRUE(child, nsnull);
 
   if (aWhichChild == eDeepestChild)
-    return child->GetChildAtPoint(aX, aY, eDeepestChild);
+    return child->ChildAtPoint(aX, aY, eDeepestChild);
   return child;
 }
 
@@ -110,14 +106,11 @@ nsOuterDocAccessible::GetAttributesInternal(nsIPersistentProperties *aAttributes
 ////////////////////////////////////////////////////////////////////////////////
 // nsIAccessible
 
-NS_IMETHODIMP
-nsOuterDocAccessible::GetNumActions(PRUint8 *aNumActions)
+PRUint8
+nsOuterDocAccessible::ActionCount()
 {
-  NS_ENSURE_ARG_POINTER(aNumActions);
-  *aNumActions = 0;
-
   // Internal frame, which is the doc's parent, should not have a click action.
-  return NS_OK;
+  return 0;
 }
 
 NS_IMETHODIMP
@@ -183,7 +176,7 @@ nsOuterDocAccessible::InvalidateChildren()
   SetChildrenFlag(eChildrenUninitialized);
 }
 
-PRBool
+bool
 nsOuterDocAccessible::AppendChild(nsAccessible *aAccessible)
 {
   // We keep showing the old document for a bit after creating the new one,
@@ -195,29 +188,29 @@ nsOuterDocAccessible::AppendChild(nsAccessible *aAccessible)
     mChildren[0]->Shutdown();
 
   if (!nsAccessible::AppendChild(aAccessible))
-    return PR_FALSE;
+    return false;
 
   NS_LOG_ACCDOCCREATE("append document to outerdoc",
                       aAccessible->GetDocumentNode())
   NS_LOG_ACCDOCCREATE_ACCADDRESS("outerdoc", this)
 
-  return PR_TRUE;
+  return true;
 }
 
-PRBool
+bool
 nsOuterDocAccessible::RemoveChild(nsAccessible *aAccessible)
 {
   nsAccessible *child = mChildren.SafeElementAt(0, nsnull);
   if (child != aAccessible) {
     NS_ERROR("Wrong child to remove!");
-    return PR_FALSE;
+    return false;
   }
 
-  NS_LOG_ACCDOCDESTROY("remove document from outerdoc",
-                       child->GetDocumentNode())
+  NS_LOG_ACCDOCDESTROY_FOR("remove document from outerdoc",
+                           child->GetDocumentNode(), child)
   NS_LOG_ACCDOCDESTROY_ACCADDRESS("outerdoc", this)
 
-  PRBool wasRemoved = nsAccessible::RemoveChild(child);
+  bool wasRemoved = nsAccessible::RemoveChild(child);
 
   NS_ASSERTION(!mChildren.Length(),
                "This child document of outerdoc accessible wasn't removed!");

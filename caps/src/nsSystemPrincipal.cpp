@@ -86,11 +86,13 @@ nsSystemPrincipal::Release()
 // Methods implementing nsIPrincipal //
 ///////////////////////////////////////
 
+#define SYSTEM_PRINCIPAL_SPEC "[System Principal]"
+
 NS_IMETHODIMP
 nsSystemPrincipal::GetPreferences(char** aPrefName, char** aID,
                                   char** aSubjectName,
                                   char** aGrantedList, char** aDeniedList,
-                                  PRBool* aIsTrusted)
+                                  bool* aIsTrusted)
 {
     // The system principal should never be streamed out
     *aPrefName = nsnull;
@@ -98,27 +100,33 @@ nsSystemPrincipal::GetPreferences(char** aPrefName, char** aID,
     *aSubjectName = nsnull;
     *aGrantedList = nsnull;
     *aDeniedList = nsnull;
-    *aIsTrusted = PR_FALSE;
+    *aIsTrusted = false;
 
     return NS_ERROR_FAILURE; 
 }
 
 NS_IMETHODIMP
-nsSystemPrincipal::Equals(nsIPrincipal *other, PRBool *result)
+nsSystemPrincipal::Equals(nsIPrincipal *other, bool *result)
 {
     *result = (other == this);
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsSystemPrincipal::Subsumes(nsIPrincipal *other, PRBool *result)
+nsSystemPrincipal::EqualsIgnoringDomain(nsIPrincipal *other, bool *result)
 {
-    *result = PR_TRUE;
+    return Equals(other, result);
+}
+
+NS_IMETHODIMP
+nsSystemPrincipal::Subsumes(nsIPrincipal *other, bool *result)
+{
+    *result = true;
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsSystemPrincipal::CheckMayLoad(nsIURI* uri, PRBool aReport)
+nsSystemPrincipal::CheckMayLoad(nsIURI* uri, bool aReport)
 {
     return NS_OK;
 }
@@ -150,9 +158,9 @@ nsSystemPrincipal::SetCanEnableCapability(const char *capability,
 NS_IMETHODIMP 
 nsSystemPrincipal::IsCapabilityEnabled(const char *capability, 
                                        void *annotation, 
-                                       PRBool *result)
+                                       bool *result)
 {
-    *result = PR_TRUE;
+    *result = true;
     return NS_OK;
 }
 
@@ -189,7 +197,7 @@ nsSystemPrincipal::GetURI(nsIURI** aURI)
 NS_IMETHODIMP 
 nsSystemPrincipal::GetOrigin(char** aOrigin)
 {
-    *aOrigin = ToNewCString(NS_LITERAL_CSTRING("[System Principal]"));
+    *aOrigin = ToNewCString(NS_LITERAL_CSTRING(SYSTEM_PRINCIPAL_SPEC));
     return *aOrigin ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
 }
 
@@ -219,9 +227,9 @@ nsSystemPrincipal::GetCertificate(nsISupports** aCertificate)
 }
 
 NS_IMETHODIMP 
-nsSystemPrincipal::GetHasCertificate(PRBool* aResult)
+nsSystemPrincipal::GetHasCertificate(bool* aResult)
 {
-    *aResult = PR_FALSE;
+    *aResult = false;
     return NS_OK;
 }
 
@@ -302,10 +310,8 @@ nsSystemPrincipal::nsSystemPrincipal()
 {
 }
 
-#define SYSTEM_PRINCIPAL_SPEC "[System Principal]"
-
 nsresult
-nsSystemPrincipal::Init()
+nsSystemPrincipal::Init(JSPrincipals **jsprin)
 {
     // Use an nsCString so we only do the allocation once here and then
     // share with nsJSPrincipals
@@ -314,8 +320,12 @@ nsSystemPrincipal::Init()
         NS_WARNING("Out of memory initializing system principal");
         return NS_ERROR_OUT_OF_MEMORY;
     }
-    
-    return mJSPrincipals.Init(this, str);
+
+    nsresult rv = mJSPrincipals.Init(this, str);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    *jsprin = &mJSPrincipals;
+    return NS_OK;
 }
 
 nsSystemPrincipal::~nsSystemPrincipal(void)

@@ -19,6 +19,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
+ *   Mats Palmgren <matspal@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -45,6 +46,7 @@
 *|*::-moz-fieldset-content {
   display: block;
   unicode-bidi: inherit;
+  text-overflow: inherit;
   height: 100%;   /* Need this so percentage heights of kids work right */
 }
 
@@ -53,16 +55,7 @@
 fieldset > legend {
   padding-left: 2px;
   padding-right: 2px;
-  border: none;
-  position: static;
-  float: none;
   width: -moz-fit-content;
-  min-width: 0;
-  max-width: none;
-  height: auto;
-  min-height: 0;
-  max-height: none;
-  white-space: nowrap;
 }
 
 legend {
@@ -97,7 +90,7 @@ input {
   color: -moz-FieldText;
   font: -moz-field;
   text-rendering: optimizeLegibility;
-  line-height: normal;
+  line-height: normal !important;
   text-align: start;
   text-transform: none;
   word-spacing: normal;
@@ -163,11 +156,10 @@ input > .anonymous-div {
   /* The 1px horizontal padding is for parity with Win/IE */
   padding: 0px 1px;
   margin: 0px;
-  /* XXXldb I'm not sure if we really want the 'text-decoration: inherit',
-     but it's needed to make 'text-decoration' "work" on text inputs. */
   text-decoration: inherit;
   -moz-text-decoration-color: inherit;
   -moz-text-decoration-style: inherit;
+  display: inline-block;
   ime-mode: inherit;
   resize: inherit;
 }
@@ -633,6 +625,7 @@ input > .anonymous-div,
 *|*::-moz-display-comboboxcontrol-frame,
 optgroup:before {
   unicode-bidi: inherit;
+  text-overflow: inherit;
 }
 
  /*
@@ -675,11 +668,12 @@ progress {
 
   /* Default style in case of there is -moz-appearance: none; */
   border: 2px solid;
-  -moz-border-top-colors: ThreeDShadow -moz-Dialog;
-  -moz-border-right-colors: ThreeDHighlight -moz-Dialog;
-  -moz-border-bottom-colors: ThreeDHighlight -moz-Dialog;
-  -moz-border-left-colors: ThreeDShadow -moz-Dialog;
-  background-color: -moz-Dialog;
+  /* #e6e6e6 is a light gray. */
+  -moz-border-top-colors: ThreeDShadow #e6e6e6;
+  -moz-border-right-colors: ThreeDHighlight #e6e6e6;
+  -moz-border-bottom-colors: ThreeDHighlight #e6e6e6;
+  -moz-border-left-colors: ThreeDShadow #e6e6e6;
+  background-color: #e6e6e6;
 }
 
 ::-moz-progress-bar {
@@ -688,13 +682,14 @@ progress {
   float: none ! important;
   position: static ! important;
   overflow: visible ! important;
+  -moz-box-sizing: border-box ! important;
 
   -moz-appearance: progresschunk;
   height: 100%;
   width: 100%;
 
   /* Default style in case of there is -moz-appearance: none; */
-  background-color: ThreeDShadow;
+  background-color: #0064b4; /* blue */
 }
 
 %if OSARCH==OS2

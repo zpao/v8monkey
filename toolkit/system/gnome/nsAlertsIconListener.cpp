@@ -51,7 +51,7 @@
 #define NOTIFY_CHECK_VERSION(x,y,z) 0
 #endif
 
-static PRBool gHasActions = PR_FALSE;
+static bool gHasActions = false;
 
 static void notify_action_cb(NotifyNotification *notification,
                              gchar *action, gpointer user_data)
@@ -79,7 +79,7 @@ NS_IMPL_ISUPPORTS4(nsAlertsIconListener, imgIContainerObserver,
                    imgIDecoderObserver, nsIObserver, nsISupportsWeakReference)
 
 nsAlertsIconListener::nsAlertsIconListener()
-: mLoadedFrame(PR_FALSE),
+: mLoadedFrame(false),
   mNotification(NULL)
 {
 }
@@ -121,7 +121,7 @@ nsAlertsIconListener::OnStartFrame(imgIRequest* aRequest,
 
 NS_IMETHODIMP
 nsAlertsIconListener::OnDataAvailable(imgIRequest* aRequest,
-                                      PRBool aCurrentFrame,
+                                      bool aCurrentFrame,
                                       const nsIntRect* aRect)
 {
   return NS_OK;
@@ -152,7 +152,7 @@ nsAlertsIconListener::FrameChanged(imgIContainer* aContainer,
 
 NS_IMETHODIMP
 nsAlertsIconListener::OnStopRequest(imgIRequest* aRequest,
-                                    PRBool aIsLastPart)
+                                    bool aIsLastPart)
 {
   PRUint32 imgStatus = imgIRequest::STATUS_ERROR;
   nsresult rv = aRequest->GetImageStatus(&imgStatus);
@@ -201,7 +201,7 @@ nsAlertsIconListener::OnStopFrame(imgIRequest* aRequest,
 
   g_object_unref(imagePixbuf);
 
-  mLoadedFrame = PR_TRUE;
+  mLoadedFrame = true;
   return NS_OK;
 }
 
@@ -262,7 +262,7 @@ nsAlertsIconListener::StartRequest(const nsAString & aImageUrl)
   if (!il)
     return ShowAlert(NULL);
 
-  return il->LoadImage(imageUri, nsnull, nsnull, nsnull, this,
+  return il->LoadImage(imageUri, nsnull, nsnull, nsnull, nsnull, this,
                        nsnull, nsIRequest::LOAD_NORMAL, nsnull, nsnull,
                        nsnull, getter_AddRefs(mIconRequest));
 }
@@ -303,7 +303,7 @@ nsresult
 nsAlertsIconListener::InitAlertAsync(const nsAString & aImageUrl,
                                      const nsAString & aAlertTitle, 
                                      const nsAString & aAlertText,
-                                     PRBool aAlertTextClickable,
+                                     bool aAlertTextClickable,
                                      const nsAString & aAlertCookie,
                                      nsIObserver * aAlertListener)
 {
@@ -338,7 +338,7 @@ nsAlertsIconListener::InitAlertAsync(const nsAString & aImageUrl,
     if (server_caps) {
       for (GList* cap = server_caps; cap != NULL; cap = cap->next) {
         if (!strcmp((char*) cap->data, "actions")) {
-          gHasActions = PR_TRUE;
+          gHasActions = true;
           break;
         }
       }
@@ -353,7 +353,7 @@ nsAlertsIconListener::InitAlertAsync(const nsAString & aImageUrl,
   nsCOMPtr<nsIObserverService> obsServ =
       do_GetService("@mozilla.org/observer-service;1");
   if (obsServ)
-    obsServ->AddObserver(this, "quit-application", PR_TRUE);
+    obsServ->AddObserver(this, "quit-application", true);
 
   // Workaround for a libnotify bug - blank titles aren't dealt with
   // properly so we use a space

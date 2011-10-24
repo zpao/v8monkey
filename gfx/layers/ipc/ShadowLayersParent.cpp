@@ -148,7 +148,7 @@ bool
 ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
                                InfallibleTArray<EditReply>* reply)
 {
-  MOZ_LAYERS_LOG(("[ParentSide] recieved txn with %d edits", cset.Length()));
+  MOZ_LAYERS_LOG(("[ParentSide] received txn with %d edits", cset.Length()));
 
   if (mDestroyed || layer_manager()->IsDestroyed()) {
     return true;
@@ -184,7 +184,6 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
 
       nsRefPtr<ShadowImageLayer> layer =
         layer_manager()->CreateShadowImageLayer();
-      layer->SetAllocator(this);
       AsShadowLayer(edit.get_OpCreateImageLayer())->Bind(layer);
       break;
     }
@@ -204,76 +203,6 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
       AsShadowLayer(edit.get_OpCreateCanvasLayer())->Bind(layer);
       break;
     }
-    case Edit::TOpCreateThebesBuffer: {
-      MOZ_LAYERS_LOG(("[ParentSide] CreateThebesBuffer"));
-
-      const OpCreateThebesBuffer& otb = edit.get_OpCreateThebesBuffer();
-      ShadowThebesLayer* thebes = static_cast<ShadowThebesLayer*>(
-        AsShadowLayer(otb)->AsLayer());
-
-      thebes->SetFrontBuffer(otb.initialFront(), otb.frontValidRegion(),
-                             otb.xResolution(), otb.yResolution());
-
-      break;
-    }
-    case Edit::TOpCreateCanvasBuffer: {
-      MOZ_LAYERS_LOG(("[ParentSide] CreateCanvasBuffer"));
-
-      const OpCreateCanvasBuffer& ocb = edit.get_OpCreateCanvasBuffer();
-      ShadowCanvasLayer* canvas = static_cast<ShadowCanvasLayer*>(
-        AsShadowLayer(ocb)->AsLayer());
-
-      canvas->Init(ocb.initialFront(), ocb.size());
-
-      break;
-    }
-    case Edit::TOpCreateImageBuffer: {
-      MOZ_LAYERS_LOG(("[ParentSide] CreateImageBuffer"));
-
-      const OpCreateImageBuffer ocb = edit.get_OpCreateImageBuffer();
-      ShadowImageLayer* image = static_cast<ShadowImageLayer*>(
-        AsShadowLayer(ocb)->AsLayer());
-
-      image->Init(ocb.initialFront(), ocb.size());
-
-      break;
-    }
-    case Edit::TOpDestroyThebesFrontBuffer: {
-      MOZ_LAYERS_LOG(("[ParentSide] DestroyThebesFrontBuffer"));
-
-      const OpDestroyThebesFrontBuffer& odfb =
-        edit.get_OpDestroyThebesFrontBuffer();
-      ShadowThebesLayer* thebes = static_cast<ShadowThebesLayer*>(
-        AsShadowLayer(odfb)->AsLayer());
-
-      thebes->DestroyFrontBuffer();
-
-      break;
-    }
-    case Edit::TOpDestroyCanvasFrontBuffer: {
-      MOZ_LAYERS_LOG(("[ParentSide] DestroyCanvasFrontBuffer"));
-
-      const OpDestroyCanvasFrontBuffer& odfb =
-        edit.get_OpDestroyCanvasFrontBuffer();
-      ShadowCanvasLayer* canvas = static_cast<ShadowCanvasLayer*>(
-        AsShadowLayer(odfb)->AsLayer());
-
-      canvas->DestroyFrontBuffer();
-
-      break;
-    }
-    case Edit::TOpDestroyImageFrontBuffer: {
-      MOZ_LAYERS_LOG(("[ParentSide] DestroyImageFrontBuffer"));
-
-      const OpDestroyImageFrontBuffer& odfb =
-        edit.get_OpDestroyImageFrontBuffer();
-      ShadowImageLayer* image = static_cast<ShadowImageLayer*>(
-        AsShadowLayer(odfb)->AsLayer());
-
-      image->DestroyFrontBuffer();
-
-      break;
-    }
 
       // Attributes
     case Edit::TOpSetLayerAttributes: {
@@ -290,7 +219,10 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
       layer->SetClipRect(common.useClipRect() ? &common.clipRect() : NULL);
       layer->SetTransform(common.transform());
       layer->SetTileSourceRect(common.useTileSourceRect() ? &common.tileSourceRect() : NULL);
-      layer->SetIsFixedPosition(common.isFixedPosition());
+      static bool fixedPositionLayersEnabled = getenv("MOZ_ENABLE_FIXED_POSITION_LAYERS") != 0;
+      if (fixedPositionLayersEnabled) {
+        layer->SetIsFixedPosition(common.isFixedPosition());
+      }
 
       typedef SpecificLayerAttributes Specific;
       const SpecificLayerAttributes& specific = attrs.specific();
@@ -307,7 +239,6 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
           specific.get_ThebesLayerAttributes();
 
         thebesLayer->SetValidRegion(attrs.validRegion());
-        thebesLayer->SetResolution(attrs.xResolution(), attrs.yResolution());
 
         break;
       }
@@ -386,18 +317,17 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
         static_cast<ShadowThebesLayer*>(shadow->AsLayer());
       const ThebesBuffer& newFront = op.newFrontBuffer();
 
-      ThebesBuffer newBack;
+      OptionalThebesBuffer newBack;
       nsIntRegion newValidRegion;
-      float newXResolution, newYResolution;
       OptionalThebesBuffer readonlyFront;
       nsIntRegion frontUpdatedRegion;
       thebes->Swap(newFront, op.updatedRegion(),
-                   &newBack, &newValidRegion, &newXResolution, &newYResolution,
+                   &newBack, &newValidRegion,
                    &readonlyFront, &frontUpdatedRegion);
       replyv.push_back(
         OpThebesBufferSwap(
           shadow, NULL,
-          newBack, newValidRegion, newXResolution, newYResolution,
+          newBack, newValidRegion,
           readonlyFront, frontUpdatedRegion));
       break;
     }
@@ -409,15 +339,10 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
       ShadowCanvasLayer* canvas =
         static_cast<ShadowCanvasLayer*>(shadow->AsLayer());
 
-      SurfaceDescriptor newFront = op.newFrontBuffer();
-      SurfaceDescriptor newBack;
-      canvas->Swap(op.newFrontBuffer(), &newBack);
-      if (newFront == newBack) {
-        newFront = SurfaceDescriptor();
-      }
-
+      canvas->SetAllocator(this);
+      CanvasSurface newBack;
+      canvas->Swap(op.newFrontBuffer(), op.needYFlip(), &newBack);
       canvas->Updated();
-
       replyv.push_back(OpBufferSwap(shadow, NULL,
                                     newBack));
 
@@ -431,15 +356,11 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
       ShadowImageLayer* image =
         static_cast<ShadowImageLayer*>(shadow->AsLayer());
 
-      SurfaceDescriptor newFront = op.newFrontBuffer();
-      SurfaceDescriptor newBack;
+      image->SetAllocator(this);
+      SharedImage newBack;
       image->Swap(op.newFrontBuffer(), &newBack);
-      if (newFront == newBack) {
-        newFront = SurfaceDescriptor();
-      }
-
-      replyv.push_back(OpBufferSwap(shadow, NULL,
-                                    newBack));
+      replyv.push_back(OpImageSwap(shadow, NULL,
+                                   newBack));
 
       break;
     }
@@ -449,7 +370,7 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
     }
   }
 
-  layer_manager()->EndTransaction(NULL, NULL);
+  layer_manager()->EndTransaction(NULL, NULL, LayerManager::END_NO_IMMEDIATE_REDRAW);
 
   reply->SetCapacity(replyv.size());
   if (replyv.size() > 0) {
@@ -463,13 +384,6 @@ ShadowLayersParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
 
   Frame()->ShadowLayersUpdated();
 
-  return true;
-}
-
-bool
-ShadowLayersParent::RecvGetParentType(LayersBackend* aBackend)
-{
-  *aBackend = layer_manager()->GetBackendType();
   return true;
 }
 
@@ -490,6 +404,18 @@ RenderFrameParent*
 ShadowLayersParent::Frame()
 {
   return static_cast<RenderFrameParent*>(Manager());
+}
+
+void
+ShadowLayersParent::DestroySharedSurface(gfxSharedImageSurface* aSurface)
+{
+  layer_manager()->DestroySharedSurface(aSurface, this);
+}
+
+void
+ShadowLayersParent::DestroySharedSurface(SurfaceDescriptor* aSurface)
+{
+  layer_manager()->DestroySharedSurface(aSurface, this);
 }
 
 } // namespace layers

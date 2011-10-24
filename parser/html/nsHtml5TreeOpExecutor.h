@@ -59,6 +59,7 @@
 #include "nsHashSets.h"
 #include "nsIURI.h"
 
+class nsHtml5Parser;
 class nsHtml5TreeBuilder;
 class nsHtml5Tokenizer;
 class nsHtml5StreamParser;
@@ -95,9 +96,9 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     /**
      * Whether EOF needs to be suppressed
      */
-    PRBool                               mSuppressEOF;
+    bool                                 mSuppressEOF;
     
-    PRBool                               mReadingFromStage;
+    bool                                 mReadingFromStage;
     nsTArray<nsHtml5TreeOperation>       mOpQueue;
     nsTArray<nsIContentPtr>              mElementsSeenInThisAppendBatch;
     nsTArray<nsHtml5PendingNotification> mPendingNotifications;
@@ -114,17 +115,25 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     /**
      * Whether the parser has started
      */
-    PRBool                        mStarted;
+    bool                          mStarted;
 
     nsHtml5TreeOpStage            mStage;
 
     eHtml5FlushState              mFlushState;
 
-    PRBool                        mRunFlushLoopOnStack;
+    bool                          mRunFlushLoopOnStack;
 
-    PRBool                        mCallContinueInterruptedParsingIfEnabled;
+    bool                          mCallContinueInterruptedParsingIfEnabled;
 
-    PRBool                        mPreventScriptExecution;
+    /**
+     * True if this parser should refuse to process any more input.
+     * Currently, the only way a parser can break is if it drops some input
+     * due to a memory allocation failure. In such a case, the whole parser
+     * needs to be marked as broken, because some input has been lost and
+     * parsing more input could lead to a DOM where pieces of HTML source
+     * that weren't supposed to become scripts become scripts.
+     */
+    bool                          mBroken;
 
   public:
   
@@ -153,7 +162,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     /**
      * Emits EOF.
      */
-    NS_IMETHOD DidBuildModel(PRBool aTerminated);
+    NS_IMETHOD DidBuildModel(bool aTerminated);
 
     /**
      * Forwards to nsContentSink
@@ -210,7 +219,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
       return mDocShell;
     }
 
-    PRBool IsScriptExecuting() {
+    bool IsScriptExecuting() {
       return IsScriptExecutingImpl();
     }
     
@@ -228,7 +237,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     
     void InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState, PRInt32 aLine);
 
-    PRBool IsScriptEnabled();
+    bool IsScriptEnabled();
 
     /**
      * Enables the fragment mode.
@@ -237,13 +246,27 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
      * executing; don't set to false when parsing a fragment directly into
      * a document--only when parsing to an actual DOM fragment
      */
-    void EnableFragmentMode(PRBool aPreventScriptExecution) {
-      mFragmentMode = PR_TRUE;
+    void EnableFragmentMode(bool aPreventScriptExecution) {
+      mFragmentMode = true;
       mPreventScriptExecution = aPreventScriptExecution;
     }
     
-    PRBool IsFragmentMode() {
+    bool IsFragmentMode() {
       return mFragmentMode;
+    }
+
+    /**
+     * Marks this parser as broken and tells the stream parser (if any) to
+     * terminate.
+     */
+    void MarkAsBroken();
+
+    /**
+     * Checks if this parser is broken.
+     */
+    inline bool IsBroken() {
+      NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+      return mBroken;
     }
 
     inline void BeginDocUpdate() {
@@ -263,7 +286,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     }
 
     void PostPendingAppendNotification(nsIContent* aParent, nsIContent* aChild) {
-      PRBool newParent = PR_TRUE;
+      bool newParent = true;
       const nsIContentPtr* first = mElementsSeenInThisAppendBatch.Elements();
       const nsIContentPtr* last = first + mElementsSeenInThisAppendBatch.Length() - 1;
       for (const nsIContentPtr* iter = last; iter >= first; --iter) {
@@ -271,7 +294,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
         sAppendBatchSlotsExamined++;
 #endif
         if (*iter == aParent) {
-          newParent = PR_FALSE;
+          newParent = false;
           break;
         }
       }
@@ -306,14 +329,14 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
       mFlushState = eInDocUpdate;
     }
     
-    inline PRBool HaveNotified(nsIContent* aNode) {
+    inline bool HaveNotified(nsIContent* aNode) {
       NS_PRECONDITION(aNode, "HaveNotified called with null argument.");
       const nsHtml5PendingNotification* start = mPendingNotifications.Elements();
       const nsHtml5PendingNotification* end = start + mPendingNotifications.Length();
       for (;;) {
         nsIContent* parent = aNode->GetParent();
         if (!parent) {
-          return PR_TRUE;
+          return true;
         }
         for (nsHtml5PendingNotification* iter = (nsHtml5PendingNotification*)start; iter < end; ++iter) {
           if (iter->Contains(parent)) {
@@ -343,20 +366,20 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
 
     void NeedsCharsetSwitchTo(const char* aEncoding, PRInt32 aSource);
     
-    PRBool IsComplete() {
+    bool IsComplete() {
       return !mParser;
     }
     
-    PRBool HasStarted() {
+    bool HasStarted() {
       return mStarted;
     }
     
-    PRBool IsFlushing() {
+    bool IsFlushing() {
       return mFlushState >= eInFlush;
     }
 
 #ifdef DEBUG
-    PRBool IsInFlushLoop() {
+    bool IsInFlushLoop() {
       return mRunFlushLoopOnStack;
     }
 #endif
@@ -369,9 +392,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
       mOwnedElements.AppendObject(aContent);
     }
 
-    void DropHeldElements() {
-      mOwnedElements.Clear();
-    }
+    void DropHeldElements();
 
     /**
      * Flush the operations from the tree operations from the argument
@@ -384,7 +405,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     }
     
     void StartReadingFromStage() {
-      mReadingFromStage = PR_TRUE;
+      mReadingFromStage = true;
     }
 
     void StreamEnded();
@@ -401,11 +422,12 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
 
     void PreloadStyle(const nsAString& aURL, const nsAString& aCharset);
 
-    void PreloadImage(const nsAString& aURL);
+    void PreloadImage(const nsAString& aURL, const nsAString& aCrossOrigin);
 
     void SetSpeculationBase(const nsAString& aURL);
 
   private:
+    nsHtml5Parser* GetParser();
 
     nsHtml5Tokenizer* GetTokenizer();
 

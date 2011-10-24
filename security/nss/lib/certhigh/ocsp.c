@@ -39,7 +39,7 @@
  * Implementation of OCSP services, for both client and server.
  * (XXX, really, mostly just for client right now, but intended to do both.)
  *
- * $Id: ocsp.c,v 1.65 2010/06/07 19:03:27 kaie%kuix.de Exp $
+ * $Id: ocsp.c,v 1.67 2011/08/10 12:31:52 kaie%kuix.de Exp $
  */
 
 #include "prerror.h"
@@ -612,10 +612,14 @@ ocsp_CheckCacheSize(OCSPCacheData *cache)
 {
     OCSP_TRACE(("OCSP ocsp_CheckCacheSize\n"));
     PR_EnterMonitor(OCSP_Global.monitor);
-    if (OCSP_Global.maxCacheEntries <= 0) /* disabled or unlimited */
-        return;
-    while (cache->numberOfEntries > OCSP_Global.maxCacheEntries) {
-        ocsp_RemoveCacheItem(cache, cache->LRUitem);
+    if (OCSP_Global.maxCacheEntries > 0) {
+        /* Cache is not disabled. Number of cache entries is limited.
+         * The monitor ensures that maxCacheEntries remains positive.
+         */
+        while (cache->numberOfEntries > 
+                     (PRUint32)OCSP_Global.maxCacheEntries) {
+            ocsp_RemoveCacheItem(cache, cache->LRUitem);
+        }
     }
     PR_ExitMonitor(OCSP_Global.monitor);
 }
@@ -2946,6 +2950,7 @@ ocsp_SendEncodedRequest(char *location, SECItem *encodedRequest)
     PRFileDesc *sock = NULL;
     PRFileDesc *returnSock = NULL;
     char *header = NULL;
+    char portstr[16];
 
     /*
      * Take apart the location, getting the hostname, port, and path.
@@ -2961,11 +2966,16 @@ ocsp_SendEncodedRequest(char *location, SECItem *encodedRequest)
     if (sock == NULL)
 	goto loser;
 
+    portstr[0] = '\0';
+    if (port != 80) {
+        PR_snprintf(portstr, sizeof(portstr), ":%d", port);
+    }
+
     header = PR_smprintf("POST %s HTTP/1.0\r\n"
-			 "Host: %s:%d\r\n"
+			 "Host: %s%s\r\n"
 			 "Content-Type: application/ocsp-request\r\n"
 			 "Content-Length: %u\r\n\r\n",
-			 path, hostname, port, encodedRequest->len);
+			 path, hostname, portstr, encodedRequest->len);
     if (header == NULL)
 	goto loser;
 

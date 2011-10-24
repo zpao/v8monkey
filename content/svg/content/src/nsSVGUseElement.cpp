@@ -34,6 +34,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGUseElement.h"
 #include "nsIDOMSVGGElement.h"
 #include "nsGkAtoms.h"
@@ -43,7 +45,9 @@
 #include "nsIDocument.h"
 #include "nsIPresShell.h"
 #include "mozilla/dom/Element.h"
+#include "nsContentUtils.h"
 
+using namespace mozilla;
 using namespace mozilla::dom;
 
 ////////////////////////////////////////////////////////////////////////
@@ -59,7 +63,7 @@ nsSVGElement::LengthInfo nsSVGUseElement::sLengthInfo[4] =
 
 nsSVGElement::StringInfo nsSVGUseElement::sStringInfo[1] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_XLink, PR_TRUE }
+  { &nsGkAtoms::href, kNameSpaceID_XLink, true }
 };
 
 NS_IMPL_NS_NEW_SVG_ELEMENT(Use)
@@ -254,12 +258,6 @@ nsSVGUseElement::NodeWillBeDestroyed(const nsINode *aNode)
 nsIContent*
 nsSVGUseElement::CreateAnonymousContent()
 {
-#ifdef DEBUG_tor
-  nsAutoString href;
-  mStringAttributes[HREF].GetAnimValue(href, this);
-  fprintf(stderr, "<svg:use> reclone of \"%s\"\n", ToNewCString(href));
-#endif
-
   mClone = nsnull;
 
   if (mSource.get()) {
@@ -289,6 +287,10 @@ nsSVGUseElement::CreateAnonymousContent()
       tag != nsGkAtoms::use)
     return nsnull;
 
+  // Make sure the use attributes are valid
+  if (!HasValidDimensions())
+    return nsnull;
+
   // circular loop detection
 
   // check 1 - check if we're a document descendent of the target
@@ -316,9 +318,9 @@ nsSVGUseElement::CreateAnonymousContent()
   nsCOMPtr<nsIDOMNode> newnode;
   nsCOMArray<nsINode> unused;
   nsNodeInfoManager* nodeInfoManager =
-    targetContent->GetOwnerDoc() == GetOwnerDoc() ?
-      nsnull : GetOwnerDoc()->NodeInfoManager();
-  nsNodeUtils::Clone(targetContent, PR_TRUE, nodeInfoManager, unused,
+    targetContent->OwnerDoc() == OwnerDoc() ?
+      nsnull : OwnerDoc()->NodeInfoManager();
+  nsNodeUtils::Clone(targetContent, true, nodeInfoManager, unused,
                      getter_AddRefs(newnode));
 
   nsCOMPtr<nsIContent> newcontent = do_QueryInterface(newnode);
@@ -339,7 +341,9 @@ nsSVGUseElement::CreateAnonymousContent()
       return nsnull;
 
     nsCOMPtr<nsINodeInfo> nodeInfo;
-    nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::svg, nsnull, kNameSpaceID_SVG);
+    nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::svg, nsnull,
+                                            kNameSpaceID_SVG,
+                                            nsIDOMNode::ELEMENT_NODE);
     if (!nodeInfo)
       return nsnull;
 
@@ -350,12 +354,6 @@ nsSVGUseElement::CreateAnonymousContent()
     if (!svgNode)
       return nsnull;
     
-    if (newcontent->HasAttr(kNameSpaceID_None, nsGkAtoms::viewBox)) {
-      nsAutoString viewbox;
-      newcontent->GetAttr(kNameSpaceID_None, nsGkAtoms::viewBox, viewbox);
-      svgNode->SetAttr(kNameSpaceID_None, nsGkAtoms::viewBox, viewbox, PR_FALSE);
-    }
-
     // copy attributes
     const nsAttrName* name;
     PRUint32 i;
@@ -365,32 +363,27 @@ nsSVGUseElement::CreateAnonymousContent()
       nsIAtom* lname = name->LocalName();
 
       newcontent->GetAttr(nsID, lname, value);
-      svgNode->SetAttr(nsID, lname, name->GetPrefix(), value, PR_FALSE);
+      svgNode->SetAttr(nsID, lname, name->GetPrefix(), value, false);
     }
 
     // move the children over
     PRUint32 num = newcontent->GetChildCount();
     for (i = 0; i < num; i++) {
-      nsCOMPtr<nsIContent> child = newcontent->GetChildAt(0);
-      newcontent->RemoveChildAt(0, PR_FALSE);
-      svgNode->InsertChildAt(child, i, PR_TRUE);
+      nsCOMPtr<nsIContent> child = newcontent->GetFirstChild();
+      newcontent->RemoveChildAt(0, false);
+      svgNode->InsertChildAt(child, i, true);
     }
 
     newcontent = svgNode;
   }
 
   if (symbol || svg) {
-    if (HasAttr(kNameSpaceID_None, nsGkAtoms::width)) {
-      nsAutoString width;
-      GetAttr(kNameSpaceID_None, nsGkAtoms::width, width);
-      newcontent->SetAttr(kNameSpaceID_None, nsGkAtoms::width, width, PR_FALSE);
-    }
+    nsSVGElement *newElement = static_cast<nsSVGElement*>(newcontent.get());
 
-    if (HasAttr(kNameSpaceID_None, nsGkAtoms::height)) {
-      nsAutoString height;
-      GetAttr(kNameSpaceID_None, nsGkAtoms::height, height);
-      newcontent->SetAttr(kNameSpaceID_None, nsGkAtoms::height, height, PR_FALSE);
-    }
+    if (mLengthAttributes[WIDTH].IsExplicitlySet())
+      newElement->SetLength(nsGkAtoms::width, mLengthAttributes[WIDTH]);
+    if (mLengthAttributes[HEIGHT].IsExplicitlySet())
+      newElement->SetLength(nsGkAtoms::height, mLengthAttributes[HEIGHT]);
   }
 
   // Set up its base URI correctly
@@ -400,7 +393,7 @@ nsSVGUseElement::CreateAnonymousContent()
   nsCAutoString spec;
   baseURI->GetSpec(spec);
   newcontent->SetAttr(kNameSpaceID_XML, nsGkAtoms::base,
-                      NS_ConvertUTF8toUTF16(spec), PR_FALSE);
+                      NS_ConvertUTF8toUTF16(spec), false);
 
   targetContent->AddMutationObserver(this);
   mClone = newcontent;
@@ -416,22 +409,41 @@ nsSVGUseElement::DestroyAnonymousContent()
 //----------------------------------------------------------------------
 // implementation helpers
 
-void
-nsSVGUseElement::SyncWidthHeight(PRUint8 aAttrEnum)
+bool nsSVGUseElement::HasValidDimensions()
 {
-  if (mClone && (aAttrEnum == WIDTH || aAttrEnum == HEIGHT)) {
+  nsSVGSVGElement *ctx = GetCtx();
+
+  return (!mLengthAttributes[WIDTH].IsExplicitlySet() ||
+           mLengthAttributes[WIDTH].GetAnimValue(ctx) > 0) &&
+         (!mLengthAttributes[HEIGHT].IsExplicitlySet() || 
+           mLengthAttributes[HEIGHT].GetAnimValue(ctx) > 0);
+}
+
+void
+nsSVGUseElement::SyncWidthHeight(nsIAtom* aName)
+{
+  NS_ASSERTION(aName == nsGkAtoms::width || aName == nsGkAtoms::height,
+               "The clue is in the function name");
+
+  if (HasValidDimensions() == !mClone) {
+    TriggerReclone();
+    return;
+  }
+
+  if (mClone) {
     nsCOMPtr<nsIDOMSVGSymbolElement> symbol = do_QueryInterface(mClone);
     nsCOMPtr<nsIDOMSVGSVGElement>    svg    = do_QueryInterface(mClone);
 
     if (symbol || svg) {
-      if (aAttrEnum == WIDTH) {
-        nsAutoString width;
-        GetAttr(kNameSpaceID_None, nsGkAtoms::width, width);
-        mClone->SetAttr(kNameSpaceID_None, nsGkAtoms::width, width, PR_FALSE);
-      } else if (aAttrEnum == HEIGHT) {
-        nsAutoString height;
-        GetAttr(kNameSpaceID_None, nsGkAtoms::height, height);
-        mClone->SetAttr(kNameSpaceID_None, nsGkAtoms::height, height, PR_FALSE);
+      PRUint32 index = *sLengthInfo[WIDTH].mName == aName ? WIDTH : HEIGHT;
+      if (mLengthAttributes[index].IsExplicitlySet()) {
+        static_cast<nsSVGElement*>(mClone.get())->
+          SetLength(aName, mLengthAttributes[index]);
+      } else {
+        // Our width/height attribute is now no longer explicitly set, so we
+        // need to revert the clone's width/height to the width/height of the
+        // content that's being cloned.
+        TriggerReclone();
       }
     }
   }
@@ -478,70 +490,35 @@ nsSVGUseElement::UnlinkSource()
 // nsSVGElement methods
 
 /* virtual */ gfxMatrix
-nsSVGUseElement::PrependLocalTransformTo(const gfxMatrix &aMatrix)
+nsSVGUseElement::PrependLocalTransformTo(const gfxMatrix &aMatrix) const
 {
   // 'transform' attribute:
   gfxMatrix matrix = nsSVGUseElementBase::PrependLocalTransformTo(aMatrix);
 
   // now translate by our 'x' and 'y':
   float x, y;
-  GetAnimatedLengthValues(&x, &y, nsnull);
+  const_cast<nsSVGUseElement*>(this)->GetAnimatedLengthValues(&x, &y, nsnull);
   return matrix.PreMultiply(gfxMatrix().Translate(gfxPoint(x, y)));
-}
-
-void
-nsSVGUseElement::DidChangeLength(PRUint8 aAttrEnum, PRBool aDoSetAttr)
-{
-  nsSVGUseElementBase::DidChangeLength(aAttrEnum, aDoSetAttr);
-
-  SyncWidthHeight(aAttrEnum);
 }
 
 nsSVGElement::LengthAttributesInfo
 nsSVGUseElement::GetLengthInfo()
 {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              NS_ARRAY_LENGTH(sLengthInfo));
-}
-
-void
-nsSVGUseElement::DidChangeString(PRUint8 aAttrEnum)
-{
-  nsSVGUseElementBase::DidChangeString(aAttrEnum);
-
-  if (aAttrEnum == HREF) {
-    // we're changing our nature, clear out the clone information
-    mOriginal = nsnull;
-    UnlinkSource();
-    TriggerReclone();
-  }
-}
-
-void
-nsSVGUseElement::DidAnimateString(PRUint8 aAttrEnum)
-{
-  if (aAttrEnum == HREF) {
-    // we're changing our nature, clear out the clone information
-    mOriginal = nsnull;
-    UnlinkSource();
-    TriggerReclone();
-    return;
-  }
-
-  nsSVGUseElementBase::DidAnimateString(aAttrEnum);
+                              ArrayLength(sLengthInfo));
 }
 
 nsSVGElement::StringAttributesInfo
 nsSVGUseElement::GetStringInfo()
 {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              NS_ARRAY_LENGTH(sStringInfo));
+                              ArrayLength(sStringInfo));
 }
 
 //----------------------------------------------------------------------
 // nsIContent methods
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGUseElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
@@ -555,7 +532,7 @@ nsSVGUseElement::IsAttributeMapped(const nsIAtom* name) const
     sViewportsMap
   };
 
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGUseElementBase::IsAttributeMapped(name);
 }
 

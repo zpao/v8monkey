@@ -59,6 +59,8 @@
 #include "nsISupportsPriority.h"
 #include "nsCOMPtr.h"
 #include "pldhash.h"
+#include "prclist.h"
+#include "nsAutoPtr.h"
 
 struct nsRequestInfo;
 struct nsListenerInfo;
@@ -132,7 +134,7 @@ protected:
 
     virtual nsresult SetDocLoaderParent(nsDocLoader * aLoader);
 
-    PRBool IsBusy();
+    bool IsBusy();
 
     void Destroy();
     virtual void DestroyChildren();
@@ -153,10 +155,28 @@ protected:
                               PRInt64 aTotalProgress,
                               PRInt64 aMaxTotalProgress);
 
+    // This should be at least 2 long since we'll generally always
+    // have the current page and the global docloader on the ancestor
+    // list.  But to deal with frames it's better to make it a bit
+    // longer, and it's always a stack temporary so there's no real
+    // reason not to.
+    typedef nsAutoTArray<nsRefPtr<nsDocLoader>, 8> WebProgressList;
+    void GatherAncestorWebProgresses(WebProgressList& aList);
+
     void FireOnStateChange(nsIWebProgress *aProgress,
                            nsIRequest* request,
                            PRInt32 aStateFlags,
                            nsresult aStatus);
+
+    // The guts of FireOnStateChange, but does not call itself on our ancestors.
+    // The arguments that are const are const so that we can detect cases when
+    // DoFireOnStateChange wants to propagate changes to the next web progress
+    // at compile time.  The ones that are not, are references so that such
+    // changes can be propagated.
+    void DoFireOnStateChange(nsIWebProgress * const aProgress,
+                             nsIRequest* const request,
+                             PRInt32 &aStateFlags,
+                             const nsresult aStatus);
 
     void FireOnStatusChange(nsIWebProgress *aWebProgress,
                             nsIRequest *aRequest,
@@ -167,10 +187,10 @@ protected:
                               nsIRequest* aRequest,
                               nsIURI *aUri);
 
-    PRBool RefreshAttempted(nsIWebProgress* aWebProgress,
+    bool RefreshAttempted(nsIWebProgress* aWebProgress,
                             nsIURI *aURI,
                             PRInt32 aDelay,
-                            PRBool aSameURI);
+                            bool aSameURI);
 
     // this function is overridden by the docshell, it is provided so that we
     // can pass more information about redirect state (the normal OnStateChange
@@ -190,7 +210,7 @@ protected:
 
     // Inform a parent docloader that aChild is about to call its onload
     // handler.
-    PRBool ChildEnteringOnload(nsIDocumentLoader* aChild) {
+    bool ChildEnteringOnload(nsIDocumentLoader* aChild) {
         // It's ok if we're already in the list -- we'll just be in there twice
         // and then the RemoveObject calls from ChildDoneWithOnload will remove
         // us.
@@ -201,7 +221,7 @@ protected:
     // handler.
     void ChildDoneWithOnload(nsIDocumentLoader* aChild) {
         mChildrenInOnload.RemoveObject(aChild);
-        DocLoaderIsEmpty(PR_TRUE);
+        DocLoaderIsEmpty(true);
     }        
 
 protected:
@@ -234,25 +254,27 @@ protected:
     PLDHashTable mRequestInfoHash;
     PRInt64 mCompletedTotalProgress;
 
+    PRCList mStatusInfoList;
+
     /*
      * This flag indicates that the loader is loading a document.  It is set
      * from the call to LoadDocument(...) until the OnConnectionsComplete(...)
      * notification is fired...
      */
-    PRPackedBool mIsLoadingDocument;
+    bool mIsLoadingDocument;
 
     /* Flag to indicate that we're in the process of restoring a document. */
-    PRPackedBool mIsRestoringDocument;
+    bool mIsRestoringDocument;
 
     /* Flag to indicate that we're in the process of flushing layout
        under DocLoaderIsEmpty() and should not do another flush. */
-    PRPackedBool mDontFlushLayout;
+    bool mDontFlushLayout;
 
     /* Flag to indicate whether we should consider ourselves as currently
        flushing layout for the purposes of IsBusy. For example, if Stop has
        been called then IsBusy should return false even if we are still
        flushing. */
-    PRPackedBool mIsFlushingLayout;
+    bool mIsFlushingLayout;
 
 private:
     // A list of kids that are in the middle of their onload calls and will let
@@ -266,7 +288,7 @@ private:
     // fact empty.  This method _does_ make sure that layout is flushed if our
     // loadgroup has no active requests before checking for "real" emptiness if
     // aFlushLayout is true.
-    void DocLoaderIsEmpty(PRBool aFlushLayout);
+    void DocLoaderIsEmpty(bool aFlushLayout);
 
     nsListenerInfo *GetListenerInfo(nsIWebProgressListener* aListener);
 

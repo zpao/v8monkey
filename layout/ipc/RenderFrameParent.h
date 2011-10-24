@@ -82,6 +82,8 @@ public:
    */
   nsContentView* GetContentView(ViewID aId = FrameMetrics::ROOT_SCROLL_ID);
 
+  void ContentViewScaleChanged(nsContentView* aView);
+
   void ShadowLayersUpdated();
 
   NS_IMETHOD BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -99,7 +101,7 @@ public:
 protected:
   NS_OVERRIDE void ActorDestroy(ActorDestroyReason why);
 
-  NS_OVERRIDE virtual PLayersParent* AllocPLayers();
+  NS_OVERRIDE virtual PLayersParent* AllocPLayers(LayerManager::LayersBackend* aBackendType);
   NS_OVERRIDE virtual bool DeallocPLayers(PLayersParent* aLayers);
 
 private:
@@ -115,6 +117,22 @@ private:
   // This contains the views for all the scrollable frames currently in the
   // painted region of our remote content.
   ViewMap mContentViews;
+
+  // True after Destroy() has been called, which is triggered
+  // originally by nsFrameLoader::Destroy().  After this point, we can
+  // no longer safely ask the frame loader to find its nearest layer
+  // manager, because it may have been disconnected from the DOM.
+  // It's still OK to *tell* the frame loader that we've painted after
+  // it's destroyed; it'll just ignore us, and we won't be able to
+  // find an nsIFrame to invalidate.  See ShadowLayersUpdated().
+  //
+  // Prefer the extra bit of state to null'ing out mFrameLoader in
+  // Destroy() so that less code needs to be special-cased for after
+  // Destroy().
+  // 
+  // It's possible for mFrameLoader==null and
+  // mFrameLoaderDestroyed==false.
+  bool mFrameLoaderDestroyed;
 };
 
 } // namespace layout
@@ -143,7 +161,8 @@ public:
 
   NS_OVERRIDE
   virtual already_AddRefed<Layer>
-  BuildLayer(nsDisplayListBuilder* aBuilder, LayerManager* aManager);
+  BuildLayer(nsDisplayListBuilder* aBuilder, LayerManager* aManager,
+             const ContainerParameters& aContainerParameters);
 
   NS_DISPLAY_DECL_NAME("Remote", TYPE_REMOTE)
 

@@ -36,11 +36,15 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "nsSVGStylableElement.h"
 #include "nsIDOMSVGStopElement.h"
 #include "nsSVGNumber2.h"
 #include "nsSVGUtils.h"
 #include "nsGenericHTMLElement.h"
+
+using namespace mozilla;
 
 typedef nsSVGStylableElement nsSVGStopElementBase;
 
@@ -65,7 +69,7 @@ public:
   NS_FORWARD_NSIDOMSVGELEMENT(nsSVGStopElementBase::)
 
   // nsIContent interface
-  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
 
   virtual nsresult Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const;
 
@@ -79,7 +83,7 @@ protected:
 };
 
 nsSVGElement::NumberInfo nsSVGStopElement::sNumberInfo =
-{ &nsGkAtoms::offset, 0, PR_TRUE };
+{ &nsGkAtoms::offset, 0, true };
 
 NS_IMPL_NS_NEW_SVG_ELEMENT(Stop)
 
@@ -132,14 +136,14 @@ nsSVGStopElement::GetNumberInfo()
 //----------------------------------------------------------------------
 // nsIContent methods
 
-NS_IMETHODIMP_(PRBool)
+NS_IMETHODIMP_(bool)
 nsSVGStopElement::IsAttributeMapped(const nsIAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
     sGradientStopMap
   };
   
-  return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
+  return FindAttributeDependence(name, map, ArrayLength(map)) ||
     nsSVGStopElementBase::IsAttributeMapped(name);
 }
 

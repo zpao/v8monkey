@@ -36,7 +36,7 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
-/* $Id: sslsnce.c,v 1.54.2.1 2011/03/16 18:49:45 alexei.volkov.bugs%sun.com Exp $ */
+/* $Id: sslsnce.c,v 1.58 2011/10/01 00:11:02 wtc%google.com Exp $ */
 
 /* Note: ssl_FreeSID() in sslnonce.c gets used for both client and server 
  * cache sids!
@@ -83,6 +83,7 @@
 #include "ssl.h"
 #include "sslimpl.h"
 #include "sslproto.h"
+#include "sslutil.h"
 #include "pk11func.h"
 #include "base64.h"
 #include "keyhi.h"
@@ -1026,15 +1027,16 @@ CloseCache(cacheDesc *cache)
     int locks_initialized = cache->numSIDCacheLocksInitialized;
 
     if (cache->cacheMem) {
-	/* If everInherited is true, this shared cache was (and may still
-	** be) in use by multiple processes.  We do not wish to destroy
-	** the mutexes while they are still in use.  
-	*/
-	if (cache->sharedCache &&
-            PR_FALSE == cache->sharedCache->everInherited) {
+	if (cache->sharedCache) {
 	    sidCacheLock *pLock = cache->sidCacheLocks;
 	    for (; locks_initialized > 0; --locks_initialized, ++pLock ) {
-		sslMutex_Destroy(&pLock->mutex);
+		/* If everInherited is true, this shared cache was (and may
+		** still be) in use by multiple processes.  We do not wish to
+		** destroy the mutexes while they are still in use, but we do
+		** want to free mutex resources associated with this process.
+		*/
+		sslMutex_Destroy(&pLock->mutex,
+				 cache->sharedCache->everInherited);
 	    }
 	}
 	if (cache->shared) {
@@ -1331,6 +1333,11 @@ ssl_ConfigServerSessionIDCacheInstanceWithOpt(cacheDesc *cache,
     PORT_Assert(sizeof(certCacheEntry) == 4096);
     PORT_Assert(sizeof(srvNameCacheEntry) == 1072);
 
+    rv = ssl_Init();
+    if (rv != SECSuccess) {
+	return rv;
+    }
+
     myPid = SSL_GETPID();
     if (!directory) {
 	directory = DEFAULT_CACHE_DIRECTORY;
@@ -1511,6 +1518,11 @@ SSL_InheritMPServerSIDCacheInstance(cacheDesc *cache, const char * envString)
     int           locks_initialized = 0;
     int           locks_to_initialize = 0;
 #endif
+    SECStatus     status = ssl_Init();
+
+    if (status != SECSuccess) {
+	return status;
+    }
 
     myPid = SSL_GETPID();
 

@@ -28,8 +28,9 @@ function test_resource_user_agent() {
   Weave.Service.username   = "johndoe";
   Weave.Service.password   = "ilovejane";
 
-  let expectedUA = Svc.AppInfo.name + "/" + Svc.AppInfo.version +
-                   " FxSync/" + WEAVE_VERSION + "." + Svc.AppInfo.appBuildID;
+  let expectedUA = Services.appinfo.name + "/" + Services.appinfo.version +
+                   " FxSync/" + WEAVE_VERSION + "." +
+                   Services.appinfo.appBuildID;
 
   function test_fetchInfo(next) {
     _("Testing _fetchInfo.");
@@ -75,7 +76,7 @@ function test_resource_user_agent() {
     });
   }
 
-  Utils.asyncChain(
+  Async.chain(
     test_fetchInfo,
     test_desktop_post,
     test_desktop_get,

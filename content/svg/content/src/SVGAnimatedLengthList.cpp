@@ -154,7 +154,7 @@ nsISMILAttr*
 SVGAnimatedLengthList::ToSMILAttr(nsSVGElement *aSVGElement,
                                   PRUint8 aAttrEnum,
                                   PRUint8 aAxis,
-                                  PRBool aCanZeroPadList)
+                                  bool aCanZeroPadList)
 {
   return new SMILAnimatedLengthList(this, aSVGElement, aAttrEnum, aAxis, aCanZeroPadList);
 }
@@ -164,7 +164,7 @@ SVGAnimatedLengthList::
   SMILAnimatedLengthList::ValueFromString(const nsAString& aStr,
                                const nsISMILAnimationElement* /*aSrcElement*/,
                                nsSMILValue& aValue,
-                               PRBool& aPreventCachingOfSandwich) const
+                               bool& aPreventCachingOfSandwich) const
 {
   nsSMILValue val(&SVGLengthListSMILType::sSingleton);
   SVGLengthListAndInfo *llai = static_cast<SVGLengthListAndInfo*>(val.mU.mPtr);
@@ -187,13 +187,13 @@ SVGAnimatedLengthList::
     // sandwich layer, causing the animation sandwich to be recalculated every
     // single sample.
 
-    aPreventCachingOfSandwich = PR_FALSE;
+    aPreventCachingOfSandwich = false;
     for (PRUint32 i = 0; i < llai->Length(); ++i) {
       PRUint8 unit = (*llai)[i].GetUnit();
       if (unit == nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE ||
           unit == nsIDOMSVGLength::SVG_LENGTHTYPE_EMS ||
           unit == nsIDOMSVGLength::SVG_LENGTHTYPE_EXS) {
-        aPreventCachingOfSandwich = PR_TRUE;
+        aPreventCachingOfSandwich = true;
         break;
       }
     }

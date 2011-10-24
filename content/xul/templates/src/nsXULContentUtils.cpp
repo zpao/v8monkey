@@ -57,6 +57,7 @@
 
  */
 
+#include "mozilla/Util.h"
 
 #include "nsCOMPtr.h"
 #include "nsIContent.h"
@@ -71,7 +72,6 @@
 #include "nsIServiceManager.h"
 #include "nsIURL.h"
 #include "nsXULContentUtils.h"
-#include "nsIXULPrototypeCache.h"
 #include "nsLayoutCID.h"
 #include "nsNetUtil.h"
 #include "nsRDFCID.h"
@@ -91,6 +91,8 @@
 #include "nsILocaleService.h"
 #include "nsIConsoleService.h"
 #include "nsEscape.h"
+
+using namespace mozilla;
 
 static NS_DEFINE_CID(kRDFServiceCID,        NS_RDFSERVICE_CID);
 
@@ -202,13 +204,12 @@ nsXULContentUtils::FindChildByTag(nsIContent* aElement,
                                   nsIAtom* aTag,
                                   nsIContent** aResult)
 {
-    PRUint32 count = aElement->GetChildCount();
+    for (nsIContent* child = aElement->GetFirstChild();
+         child;
+         child = child->GetNextSibling()) {
 
-    for (PRUint32 i = 0; i < count; ++i) {
-        nsIContent *kid = aElement->GetChildAt(i);
-
-        if (kid->NodeInfo()->Equals(aTag, aNameSpaceID)) {
-            NS_ADDREF(*aResult = kid);
+        if (child->NodeInfo()->Equals(aTag, aNameSpaceID)) {
+            NS_ADDREF(*aResult = child);
 
             return NS_OK;
         }
@@ -227,7 +228,7 @@ nsXULContentUtils::GetElementResource(nsIContent* aElement, nsIRDFResource** aRe
     nsresult rv;
 
     PRUnichar buf[128];
-    nsFixedString id(buf, NS_ARRAY_LENGTH(buf), 0);
+    nsFixedString id(buf, ArrayLength(buf), 0);
 
     // Whoa.  Why the "id" attribute?  What if it's not even a XUL
     // element?  This is totally bogus!
@@ -328,34 +329,29 @@ nsXULContentUtils::MakeElementURI(nsIDocument* aDocument,
     // Convert an element's ID to a URI that can be used to refer to
     // the element in the XUL graph.
 
-    nsIURI *docURL = aDocument->GetDocumentURI();
-    NS_ENSURE_TRUE(docURL, NS_ERROR_UNEXPECTED);
+    nsIURI *docURI = aDocument->GetDocumentURI();
+    NS_ENSURE_TRUE(docURI, NS_ERROR_UNEXPECTED);
 
-    nsCOMPtr<nsIURI> docURIClone;
-    nsresult rv = docURL->Clone(getter_AddRefs(docURIClone));
+    nsRefPtr<nsIURI> docURIClone;
+    nsresult rv = docURI->Clone(getter_AddRefs(docURIClone));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsCOMPtr<nsIURL> mutableURL(do_QueryInterface(docURIClone));
-    if (!mutableURL) {
-        nsCString uri;
-        rv = docURL->GetSpec(aURI);
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        nsCAutoString ref;
-        NS_EscapeURL(NS_ConvertUTF16toUTF8(aElementID), esc_FilePath | esc_AlwaysCopy, ref);
-
-        aURI.Append('#');
-        aURI.Append(ref);
-
-        return NS_OK;
+    rv = docURIClone->SetRef(NS_ConvertUTF16toUTF8(aElementID));
+    if (NS_SUCCEEDED(rv)) {
+        return docURIClone->GetSpec(aURI);
     }
 
-    NS_ENSURE_TRUE(mutableURL, NS_ERROR_NOT_AVAILABLE);
-
-    rv = mutableURL->SetRef(NS_ConvertUTF16toUTF8(aElementID));
+    // docURIClone is apparently immutable. Fine - we can append ref manually.
+    rv = docURI->GetSpec(aURI);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    return mutableURL->GetSpec(aURI);
+    nsCAutoString ref;
+    NS_EscapeURL(NS_ConvertUTF16toUTF8(aElementID), esc_FilePath | esc_AlwaysCopy, ref);
+
+    aURI.Append('#');
+    aURI.Append(ref);
+
+    return NS_OK;
 }
 
 
@@ -390,27 +386,9 @@ nsXULContentUtils::MakeElementID(nsIDocument* aDocument,
                             aDocument->GetDocumentCharacterSet().get());
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsCOMPtr<nsIURL> url = do_QueryInterface(uri);
-    if (url) {
-        nsCAutoString ref;
-        url->GetRef(ref);
-        CopyUTF8toUTF16(ref, aElementID);
-    } else {
-        const char* start = aURI.BeginReading();
-        const char* end = aURI.EndReading();
-        const char* chr = end;
-
-        while (--chr >= start) {
-            if (*chr == '#') {
-                nsDependentCSubstring ref = Substring(chr + 1, end);
-                nsCAutoString unescaped;
-                CopyUTF8toUTF16(NS_UnescapeURL(ref, esc_FilePath, unescaped), aElementID);
-                return NS_OK;
-            }
-        }
-
-        aElementID.Truncate();
-    }
+    nsCAutoString ref;
+    uri->GetRef(ref);
+    CopyUTF8toUTF16(ref, aElementID);
 
     return NS_OK;
 }
@@ -441,7 +419,7 @@ nsXULContentUtils::GetResource(PRInt32 aNameSpaceID, const nsAString& aAttribute
     nsresult rv;
 
     PRUnichar buf[256];
-    nsFixedString uri(buf, NS_ARRAY_LENGTH(buf), 0);
+    nsFixedString uri(buf, ArrayLength(buf), 0);
     if (aNameSpaceID != kNameSpaceID_Unknown && aNameSpaceID != kNameSpaceID_None) {
         rv = nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNameSpaceID, uri);
         // XXX ignore failure; treat as "no namespace"

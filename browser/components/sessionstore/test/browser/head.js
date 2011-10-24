@@ -35,8 +35,7 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-const SS_SVC = Cc["@mozilla.org/browser/sessionstore;1"].
-               getService(Ci.nsISessionStore);
+let ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
 
 // This assumes that tests will at least have some state/entries
 function waitForBrowserState(aState, aSetStateCallback) {
@@ -45,8 +44,22 @@ function waitForBrowserState(aState, aSetStateCallback) {
   let expectedTabsRestored = 0;
   let expectedWindows = aState.windows.length;
   let windowsOpen = 1;
+  let listening = false;
+  let windowObserving = false;
+  let restoreHiddenTabs = Services.prefs.getBoolPref(
+                          "browser.sessionstore.restore_hidden_tabs");
 
-  aState.windows.forEach(function(winState) expectedTabsRestored += winState.tabs.length);
+  aState.windows.forEach(function (winState) {
+    winState.tabs.forEach(function (tabState) {
+      if (restoreHiddenTabs || !tabState.hidden)
+        expectedTabsRestored++;
+    });
+  });
+
+  // There must be only hidden tabs and restoreHiddenTabs = false. We still
+  // expect one of them to be restored because it gets shown automatically.
+  if (!expectedTabsRestored)
+    expectedTabsRestored = 1;
 
   function onSSTabRestored(aEvent) {
     if (++tabsRestored == expectedTabsRestored) {
@@ -54,6 +67,7 @@ function waitForBrowserState(aState, aSetStateCallback) {
       windows.forEach(function(win) {
         win.gBrowser.tabContainer.removeEventListener("SSTabRestored", onSSTabRestored, true);
       });
+      listening = false;
       info("running " + aSetStateCallback.name);
       executeSoon(aSetStateCallback);
     }
@@ -67,8 +81,10 @@ function waitForBrowserState(aState, aSetStateCallback) {
       newWindow.addEventListener("load", function() {
         newWindow.removeEventListener("load", arguments.callee, false);
 
-        if (++windowsOpen == expectedWindows)
+        if (++windowsOpen == expectedWindows) {
           Services.ww.unregisterNotification(windowObserver);
+          windowObserving = false;
+        }
 
         // Track this window so we can remove the progress listener later
         windows.push(newWindow);
@@ -79,24 +95,67 @@ function waitForBrowserState(aState, aSetStateCallback) {
   }
 
   // We only want to register the notification if we expect more than 1 window
-  if (expectedWindows > 1)
+  if (expectedWindows > 1) {
+    registerCleanupFunction(function() {
+      if (windowObserving) {
+        Services.ww.unregisterNotification(windowObserver);
+      }
+    });
+    windowObserving = true;
     Services.ww.registerNotification(windowObserver);
+  }
 
+  registerCleanupFunction(function() {
+    if (listening) {
+      windows.forEach(function(win) {
+        win.gBrowser.tabContainer.removeEventListener("SSTabRestored", onSSTabRestored, true);
+      });
+    }
+  });
   // Add the event listener for this window as well.
+  listening = true;
   gBrowser.tabContainer.addEventListener("SSTabRestored", onSSTabRestored, true);
 
   // Finally, call setBrowserState
-  SS_SVC.setBrowserState(JSON.stringify(aState));
+  ss.setBrowserState(JSON.stringify(aState));
 }
 
 // waitForSaveState waits for a state write but not necessarily for the state to
 // turn dirty.
 function waitForSaveState(aSaveStateCallback) {
+  let observing = false;
   let topic = "sessionstore-state-write";
-  Services.obs.addObserver(function() {
-    Services.obs.removeObserver(arguments.callee, topic, false);
+
+  let sessionSaveTimeout = 1000 +
+    Services.prefs.getIntPref("browser.sessionstore.interval");
+
+  function removeObserver() {
+    if (!observing)
+      return;
+    Services.obs.removeObserver(observer, topic, false);
+    observing = false;
+  }
+
+  let timeout = setTimeout(function () {
+    removeObserver();
+    aSaveStateCallback();
+  }, sessionSaveTimeout);
+
+  function observer(aSubject, aTopic, aData) {
+    removeObserver();
+    timeout = clearTimeout(timeout);
     executeSoon(aSaveStateCallback);
-  }, topic, false);
+  }
+
+  registerCleanupFunction(function() {
+    removeObserver();
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
+
+  observing = true;
+  Services.obs.addObserver(observer, topic, false);
 };
 
 var gUniqueCounter = 0;

@@ -39,15 +39,17 @@
 
 #include "States.h"
 
+using namespace mozilla::a11y;
+
 AccGroupInfo::AccGroupInfo(nsAccessible* aItem, PRUint32 aRole) :
   mPosInSet(0), mSetSize(0), mParent(nsnull)
 {
   MOZ_COUNT_CTOR(AccGroupInfo);
-  nsAccessible* parent = aItem->GetParent();
+  nsAccessible* parent = aItem->Parent();
   if (!parent)
     return;
 
-  PRInt32 indexInParent = aItem->GetIndexInParent();
+  PRInt32 indexInParent = aItem->IndexInParent();
   PRInt32 level = nsAccUtils::GetARIAOrDefaultLevel(aItem);
 
   // Compute position in set.
@@ -130,29 +132,19 @@ AccGroupInfo::AccGroupInfo(nsAccessible* aItem, PRUint32 aRole) :
   if (mParent)
     return;
 
-  // Compute parent.
   PRUint32 parentRole = parent->Role();
-
-  // In the case of ARIA row in treegrid, return treegrid since ARIA
-  // groups aren't used to organize levels in ARIA treegrids.
-  if (aRole == nsIAccessibleRole::ROLE_ROW &&
-      parentRole == nsIAccessibleRole::ROLE_TREE_TABLE) {
+  if (IsConceptualParent(aRole, parentRole))
     mParent = parent;
+
+  // In the case of ARIA tree (not ARIA treegrid) a tree can be arranged by
+  // using ARIA groups to organize levels. In this case the parent of the tree
+  // item will be a group and the previous treeitem of that should be the tree
+  // item parent.
+  if (parentRole != nsIAccessibleRole::ROLE_GROUPING ||
+      aRole != nsIAccessibleRole::ROLE_OUTLINEITEM)
     return;
-  }
 
-  // In the case of ARIA tree, a tree can be arranged by using ARIA groups
-  // to organize levels. In this case the parent of the tree item will be
-  // a group and the previous treeitem of that should be the tree item
-  // parent. Or, if the parent is something other than a tree we will
-  // return that.
-
-  if (parentRole != nsIAccessibleRole::ROLE_GROUPING) {
-    mParent = parent;
-    return;
-  }
-
-  nsAccessible* parentPrevSibling = parent->GetSiblingAtOffset(-1);
+  nsAccessible* parentPrevSibling = parent->PrevSibling();
   if (!parentPrevSibling)
     return;
 
@@ -162,7 +154,7 @@ AccGroupInfo::AccGroupInfo(nsAccessible* aItem, PRUint32 aRole) :
     // although the text does not appear to be rendered, GetRenderedText()
     // says that it is so we need to skip past it to find the true
     // previous sibling.
-    parentPrevSibling = parentPrevSibling->GetSiblingAtOffset(-1);
+    parentPrevSibling = parentPrevSibling->PrevSibling();
     if (parentPrevSibling)
       parentPrevSiblingRole = parentPrevSibling->Role();
   }
@@ -171,4 +163,38 @@ AccGroupInfo::AccGroupInfo(nsAccessible* aItem, PRUint32 aRole) :
   // conceptual tree item parent.
   if (parentPrevSiblingRole == nsIAccessibleRole::ROLE_OUTLINEITEM)
     mParent = parentPrevSibling;
+}
+
+bool
+AccGroupInfo::IsConceptualParent(PRUint32 aRole, PRUint32 aParentRole)
+{
+  if (aParentRole == nsIAccessibleRole::ROLE_OUTLINE &&
+      aRole == nsIAccessibleRole::ROLE_OUTLINEITEM)
+    return true;
+  if ((aParentRole == nsIAccessibleRole::ROLE_TABLE ||
+       aParentRole == nsIAccessibleRole::ROLE_TREE_TABLE) &&
+      aRole == nsIAccessibleRole::ROLE_ROW)
+    return true;
+  if (aParentRole == nsIAccessibleRole::ROLE_ROW &&
+      (aRole == nsIAccessibleRole::ROLE_CELL ||
+       aRole == nsIAccessibleRole::ROLE_GRID_CELL))
+    return true;
+  if (aParentRole == nsIAccessibleRole::ROLE_LIST &&
+      aRole == nsIAccessibleRole::ROLE_LISTITEM)
+    return true;
+  if (aParentRole == nsIAccessibleRole::ROLE_COMBOBOX_LIST &&
+      aRole == nsIAccessibleRole::ROLE_COMBOBOX_OPTION)
+    return true;
+  if (aParentRole == nsIAccessibleRole::ROLE_LISTBOX &&
+      aRole == nsIAccessibleRole::ROLE_OPTION)
+    return true;
+  if (aParentRole == nsIAccessibleRole::ROLE_PAGETABLIST &&
+      aRole == nsIAccessibleRole::ROLE_PAGETAB)
+    return true;
+  if ((aParentRole == nsIAccessibleRole::ROLE_POPUP_MENU ||
+       aParentRole == nsIAccessibleRole::ROLE_MENUPOPUP) &&
+      aRole == nsIAccessibleRole::ROLE_MENUITEM)
+    return true;
+
+  return false;
 }

@@ -53,13 +53,13 @@ public:
   NS_IMETHOD_(PRInt32) GetLength() const = 0;
   NS_IMETHOD_(PRInt32) GetBufferSize() const = 0;
   NS_IMETHOD_(PRUnichar*) GetBuffer() const = 0;
-  NS_IMETHOD_(PRBool) Grow(PRInt32 aNewSize) = 0;
+  NS_IMETHOD_(bool) Grow(PRInt32 aNewSize) = 0;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIUnicharBuffer, NS_IUNICHARBUFFER_IID)
 
 /// Factory method for nsIUnicharBuffer.
-extern NS_COM nsresult
+extern nsresult
 NS_NewUnicharBuffer(nsIUnicharBuffer** aInstancePtrResult,
                     nsISupports* aOuter,
                     PRUint32 aBufferSize = 0);

@@ -47,6 +47,7 @@ INTERNAL_TOOLS = 1
 
 HOST_PROGRAM = elfhack
 NO_DIST_INSTALL = 1
+NO_PROFILE_GUIDED_OPTIMIZE = 1
 
 VPATH += $(topsrcdir)/build
 
@@ -71,13 +72,23 @@ endif
 CSRCS := \
   inject/$(CPU).c \
   inject/$(CPU)-noinit.c \
+  test.c \
   $(NULL)
 
-libs:: $(CSRCS:.c=.$(OBJ_SUFFIX))
-
 ifndef CROSS_COMPILE
+CSRCS += dummy.c
+endif
+
+WRAP_LDFLAGS=
+
+# need this to suppress errors due to /usr/include/linux/byteorder/swab.h
+# on mozilla buildbots
+OS_CXXFLAGS := $(filter-out -pedantic,$(OS_CXXFLAGS))
+
+include $(topsrcdir)/config/rules.mk
+
 test$(DLL_SUFFIX): test.$(OBJ_SUFFIX) elfhack $(CSRCS:.c=.$(OBJ_SUFFIX))
-	$(MKSHLIB) $<
+	$(MKSHLIB) $(LDFLAGS) $<
 	@echo ===
 	@echo === If you get failures below, please file a bug describing the error
 	@echo === and your environment \(compiler and linker versions\), and use
@@ -90,16 +101,21 @@ test$(DLL_SUFFIX): test.$(OBJ_SUFFIX) elfhack $(CSRCS:.c=.$(OBJ_SUFFIX))
 	# Fail if the new library doesn't contain less relocations
 	[ $$(objdump -R $@.bak | wc -l) -gt $$(objdump -R $@ | wc -l) ]
 
+.PRECIOUS: test$(DLL_SUFFIX)
+
+GARBAGE += test$(DLL_SUFFIX) test$(DLL_SUFFIX).bak
+
+libs:: test$(DLL_SUFFIX)
+
+ifndef CROSS_COMPILE
 dummy: dummy.$(OBJ_SUFFIX) test$(DLL_SUFFIX)
-	$(CC) $(LDFLAGS) -o $@ $^
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 libs:: dummy
 	# Will either crash or return exit code 1 if elfhack is broken
 	LD_LIBRARY_PATH=$(CURDIR) $(CURDIR)/dummy
 
-CSRCS += test.c dummy.c
-
-GARBAGE += dummy test$(DLL_SUFFIX) test$(DLL_SUFFIX).bak
+GARBAGE += dummy
 endif
 
 inject:
@@ -110,13 +126,8 @@ inject/%.c: inject.c | inject
 
 GARBAGE_DIRS += inject
 
-# need this to suppress errors due to /usr/include/linux/byteorder/swab.h
-# on mozilla buildbots
-OS_CXXFLAGS := $(filter-out -pedantic,$(OS_CXXFLAGS))
-
-include $(topsrcdir)/config/rules.mk
-
 inject/%.$(OBJ_SUFFIX): DEFINES += -DBITS=$(if $(HAVE_64BIT_OS),64,32)
 inject/%.$(OBJ_SUFFIX): CFLAGS := -O2 -fno-stack-protector $(filter -m% -I%,$(CFLAGS))
 inject/$(CPU)-noinit.$(OBJ_SUFFIX): DEFINES += -DNOINIT
 test.$(OBJ_SUFFIX): CFLAGS := -O0
+host_elf.$(OBJ_SUFFIX) host_elfhack.$(OBJ_SUFFIX): elfxx.h

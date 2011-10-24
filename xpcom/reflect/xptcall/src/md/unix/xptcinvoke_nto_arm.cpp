@@ -116,7 +116,7 @@ invoke_copy_to_stack(PRUint32* d, PRUint32 paramCount, nsXPTCVariant* s)
         case nsXPTType::T_U64    : *((PRUint64*)d) = s->val.u64; d++;    break;
         case nsXPTType::T_FLOAT  : *((float*)   d) = s->val.f;           break;
         case nsXPTType::T_DOUBLE : *((double*)  d) = s->val.d;   d++;    break;
-        case nsXPTType::T_BOOL   : *((PRBool*)  d) = s->val.b;           break;
+        case nsXPTType::T_BOOL   : *((bool*)  d) = s->val.b;           break;
         case nsXPTType::T_CHAR   : *((char*)    d) = s->val.c;           break;
         case nsXPTType::T_WCHAR  : *((wchar_t*) d) = s->val.wc;          break;
         default:
@@ -194,12 +194,7 @@ XPTC_InvokeByIndex(nsISupports* that, PRUint32 methodIndex,
     "ldr	r1, [r0, #0]	\n\t"	/* get that->vtable offset		*/
     "ldr	r2, [%1, #4]	\n\t"
     "mov	r2, r2, lsl #2	\n\t"	/* a vtable_entry(x)=8 + (4 bytes * x)	*/
-#if defined(__GXX_ABI_VERSION) && __GXX_ABI_VERSION >= 100 /* G++ V3 ABI */
     "ldr        ip, [r1, r2]    \n\t"   /* get method adress from vtable        */
-#else /* non G++ V3 ABI */
-    "add	r2, r2, #8	\n\t"	/* with this compilers			*/
-    "ldr	ip, [r1, r2]	\n\t"	/* get method adress from vtable	*/
-#endif
     "cmp	r4, #12		\n\t"	/* more than 3 arguments???		*/
     "ldmgtia	sp!, {r1, r2, r3}\n\t"	/* yes: load arguments for r1-r3	*/
     "subgt	r4, r4, #12	\n\t"	/*      and correct the stack pointer	*/

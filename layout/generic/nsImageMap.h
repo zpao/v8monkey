@@ -37,38 +37,35 @@
 
 /* code for HTML client-side image maps */
 
-#ifndef nsImageMap_h___
-#define nsImageMap_h___
+#ifndef nsImageMap_h
+#define nsImageMap_h
 
 #include "nsISupports.h"
 #include "nsCoord.h"
 #include "nsTArray.h"
 #include "nsStubMutationObserver.h"
-#include "nsIDOMFocusListener.h"
+#include "nsIDOMEventListener.h"
 #include "nsIFrame.h"
 
-class nsIDOMHTMLAreaElement;
-class nsIDOMHTMLMapElement;
-class nsRenderingContext;
-class nsIURI;
-class nsString;
-class nsIDOMEvent;
 class Area;
+class nsIDOMEvent;
+class nsRenderingContext;
 
-class nsImageMap : public nsStubMutationObserver, public nsIDOMFocusListener
+class nsImageMap : public nsStubMutationObserver,
+                   public nsIDOMEventListener
 {
 public:
   nsImageMap();
 
-  nsresult Init(nsIPresShell* aPresShell, nsIFrame* aImageFrame, nsIDOMHTMLMapElement* aMap);
+  nsresult Init(nsIFrame* aImageFrame, nsIContent* aMap);
 
   /**
    * See if the given aX,aY <b>pixel</b> coordinates are in the image
-   * map. If they are then PR_TRUE is returned and aContent points to the
-   * found area. If the coordinates are not in the map then PR_FALSE
+   * map. If they are then true is returned and aContent points to the
+   * found area. If the coordinates are not in the map then false
    * is returned.
    */
-  PRBool IsInside(nscoord aX, nscoord aY,
+  bool IsInside(nscoord aX, nscoord aY,
                   nsIContent** aContent) const;
 
   void Draw(nsIFrame* aFrame, nsRenderingContext& aRC);
@@ -77,7 +74,7 @@ public:
    * Called just before the nsImageFrame releases us. 
    * Used to break the cycle caused by the DOM listener.
    */
-  void Destroy(void);
+  void Destroy();
   
   // nsISupports
   NS_DECL_ISUPPORTS
@@ -88,10 +85,8 @@ public:
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
 
-  //nsIDOMFocusListener
-  NS_IMETHOD Focus(nsIDOMEvent* aEvent);
-  NS_IMETHOD Blur(nsIDOMEvent* aEvent);
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent);
+  //nsIDOMEventListener
+  NS_DECL_NSIDOMEVENTLISTENER
 
   nsresult GetBoundsForAreaContent(nsIContent *aContent,
                                    nsRect& aBounds);
@@ -102,20 +97,17 @@ protected:
   void FreeAreas();
 
   nsresult UpdateAreas();
-  nsresult SearchForAreas(nsIContent* aParent, PRBool& aFoundArea,
-                         PRBool& aFoundAnchor);
+  nsresult SearchForAreas(nsIContent* aParent, bool& aFoundArea,
+                          bool& aFoundAnchor);
 
   nsresult AddArea(nsIContent* aArea);
  
-  nsresult ChangeFocus(nsIDOMEvent* aEvent, PRBool aFocus);
-
   void MaybeUpdateAreas(nsIContent *aContent);
 
-  nsIPresShell* mPresShell; // WEAK - owns the frame that owns us
   nsIFrame* mImageFrame;  // the frame that owns us
   nsCOMPtr<nsIContent> mMap;
   nsAutoTArray<Area*, 8> mAreas; // almost always has some entries
-  PRBool mContainsBlockContents;
+  bool mContainsBlockContents;
 };
 
-#endif /* nsImageMap_h___ */
+#endif /* nsImageMap_h */

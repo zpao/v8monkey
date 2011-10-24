@@ -41,7 +41,6 @@
 #include "nsGenericHTMLElement.h"
 #include "nsIDOMHTMLFieldSetElement.h"
 #include "nsIConstraintValidation.h"
-#include "nsTPtrArray.h"
 
 
 class nsHTMLFieldSetElement : public nsGenericHTMLFormElement,
@@ -53,6 +52,15 @@ public:
 
   nsHTMLFieldSetElement(already_AddRefed<nsINodeInfo> aNodeInfo);
   virtual ~nsHTMLFieldSetElement();
+
+  /** Typesafe, non-refcounting cast from nsIContent.  Cheaper than QI. **/
+  static nsHTMLFieldSetElement* FromContent(nsIContent* aContent)
+  {
+    if (!aContent || !aContent->IsHTML(nsGkAtoms::fieldset)) {
+      return nsnull;
+    }
+    return static_cast<nsHTMLFieldSetElement*>(aContent);
+  }
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -72,12 +80,11 @@ public:
   // nsIContent
   virtual nsresult PreHandleEvent(nsEventChainPreVisitor& aVisitor);
   virtual nsresult AfterSetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                                const nsAString* aValue, PRBool aNotify);
+                                const nsAString* aValue, bool aNotify);
 
   virtual nsresult InsertChildAt(nsIContent* aChild, PRUint32 aIndex,
-                                     PRBool aNotify);
-  virtual nsresult RemoveChildAt(PRUint32 aIndex, PRBool aNotify,
-                                 PRBool aMutationEvent = PR_TRUE);
+                                     bool aNotify);
+  virtual nsresult RemoveChildAt(PRUint32 aIndex, bool aNotify);
 
   // nsIFormControl
   NS_IMETHOD_(PRUint32) GetType() const { return NS_FORM_FIELDSET; }
@@ -104,17 +111,17 @@ private:
    * Notify all elements (in mElements) that the first legend of the fieldset
    * has now changed.
    */
-  void NotifyElementsForFirstLegendChange(PRBool aNotify);
+  void NotifyElementsForFirstLegendChange(bool aNotify);
 
   // This function is used to generate the nsContentList (listed form elements).
-  static PRBool MatchListedElements(nsIContent* aContent, PRInt32 aNamespaceID,
+  static bool MatchListedElements(nsIContent* aContent, PRInt32 aNamespaceID,
                                     nsIAtom* aAtom, void* aData);
 
   // listed form controls elements.
   nsRefPtr<nsContentList> mElements;
 
   // List of elements which have this fieldset as first fieldset ancestor.
-  nsTPtrArray<nsGenericHTMLFormElement> mDependentElements;
+  nsTArray<nsGenericHTMLFormElement*> mDependentElements;
 
   nsIContent* mFirstLegend;
 };

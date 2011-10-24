@@ -60,10 +60,10 @@ protected:
                                         nsCOMPtr<nsIBrowserProfileMigrator>& bpm);
 
   /**
-   * Import profiles from ~/.firefox/ or ~/.phoenix/
-   * @return PR_TRUE if any profiles imported.
+   * Import profiles from ~/.firefox/
+   * @return true if any profiles imported.
    */
-  PRBool ImportRegistryProfiles(const nsACString& aAppName);
+  bool ImportRegistryProfiles(const nsACString& aAppName);
 };
 
 #endif

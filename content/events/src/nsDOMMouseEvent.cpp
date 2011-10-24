@@ -45,7 +45,7 @@
 nsDOMMouseEvent::nsDOMMouseEvent(nsPresContext* aPresContext,
                                  nsInputEvent* aEvent)
   : nsDOMUIEvent(aPresContext, aEvent ? aEvent :
-                 new nsMouseEvent(PR_FALSE, 0, nsnull,
+                 new nsMouseEvent(false, 0, nsnull,
                                   nsMouseEvent::eReal))
 {
   // There's no way to make this class' ctor allocate an nsMouseScrollEvent.
@@ -53,13 +53,13 @@ nsDOMMouseEvent::nsDOMMouseEvent(nsPresContext* aPresContext,
   // DOM event.
   
   if (aEvent) {
-    mEventIsInternal = PR_FALSE;
+    mEventIsInternal = false;
   }
   else {
-    mEventIsInternal = PR_TRUE;
+    mEventIsInternal = true;
     mEvent->time = PR_Now();
     mEvent->refPoint.x = mEvent->refPoint.y = 0;
-    static_cast<nsMouseEvent*>(mEvent)->inputSource = nsIDOMNSMouseEvent::MOZ_SOURCE_UNKNOWN;
+    static_cast<nsMouseEvent*>(mEvent)->inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
   }
 
   switch (mEvent->eventStructType)
@@ -98,16 +98,15 @@ DOMCI_DATA(MouseEvent, nsDOMMouseEvent)
 
 NS_INTERFACE_MAP_BEGIN(nsDOMMouseEvent)
   NS_INTERFACE_MAP_ENTRY(nsIDOMMouseEvent)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMNSMouseEvent)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(MouseEvent)
 NS_INTERFACE_MAP_END_INHERITING(nsDOMUIEvent)
 
 NS_IMETHODIMP
-nsDOMMouseEvent::InitMouseEvent(const nsAString & aType, PRBool aCanBubble, PRBool aCancelable,
+nsDOMMouseEvent::InitMouseEvent(const nsAString & aType, bool aCanBubble, bool aCancelable,
                                 nsIDOMWindow* aView, PRInt32 aDetail, PRInt32 aScreenX, 
                                 PRInt32 aScreenY, PRInt32 aClientX, PRInt32 aClientY, 
-                                PRBool aCtrlKey, PRBool aAltKey, PRBool aShiftKey, 
-                                PRBool aMetaKey, PRUint16 aButton, nsIDOMEventTarget *aRelatedTarget)
+                                bool aCtrlKey, bool aAltKey, bool aShiftKey, 
+                                bool aMetaKey, PRUint16 aButton, nsIDOMEventTarget *aRelatedTarget)
 {
   nsresult rv = nsDOMUIEvent::InitUIEvent(aType, aCanBubble, aCancelable, aView, aDetail);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -146,11 +145,11 @@ nsDOMMouseEvent::InitMouseEvent(const nsAString & aType, PRBool aCanBubble, PRBo
 }   
 
 NS_IMETHODIMP
-nsDOMMouseEvent::InitNSMouseEvent(const nsAString & aType, PRBool aCanBubble, PRBool aCancelable,
+nsDOMMouseEvent::InitNSMouseEvent(const nsAString & aType, bool aCanBubble, bool aCancelable,
                                   nsIDOMWindow *aView, PRInt32 aDetail, PRInt32 aScreenX,
                                   PRInt32 aScreenY, PRInt32 aClientX, PRInt32 aClientY,
-                                  PRBool aCtrlKey, PRBool aAltKey, PRBool aShiftKey,
-                                  PRBool aMetaKey, PRUint16 aButton, nsIDOMEventTarget *aRelatedTarget,
+                                  bool aCtrlKey, bool aAltKey, bool aShiftKey,
+                                  bool aMetaKey, PRUint16 aButton, nsIDOMEventTarget *aRelatedTarget,
                                   float aPressure, PRUint16 aInputSource)
 {
   nsresult rv = nsDOMMouseEvent::InitMouseEvent(aType, aCanBubble, aCancelable,
@@ -251,7 +250,7 @@ nsDOMMouseEvent::GetClientY(PRInt32* aClientY)
 }
 
 NS_IMETHODIMP
-nsDOMMouseEvent::GetAltKey(PRBool* aIsDown)
+nsDOMMouseEvent::GetAltKey(bool* aIsDown)
 {
   NS_ENSURE_ARG_POINTER(aIsDown);
   *aIsDown = ((nsInputEvent*)mEvent)->isAlt;
@@ -259,7 +258,7 @@ nsDOMMouseEvent::GetAltKey(PRBool* aIsDown)
 }
 
 NS_IMETHODIMP
-nsDOMMouseEvent::GetCtrlKey(PRBool* aIsDown)
+nsDOMMouseEvent::GetCtrlKey(bool* aIsDown)
 {
   NS_ENSURE_ARG_POINTER(aIsDown);
   *aIsDown = ((nsInputEvent*)mEvent)->isControl;
@@ -267,7 +266,7 @@ nsDOMMouseEvent::GetCtrlKey(PRBool* aIsDown)
 }
 
 NS_IMETHODIMP
-nsDOMMouseEvent::GetShiftKey(PRBool* aIsDown)
+nsDOMMouseEvent::GetShiftKey(bool* aIsDown)
 {
   NS_ENSURE_ARG_POINTER(aIsDown);
   *aIsDown = ((nsInputEvent*)mEvent)->isShift;
@@ -275,15 +274,16 @@ nsDOMMouseEvent::GetShiftKey(PRBool* aIsDown)
 }
 
 NS_IMETHODIMP
-nsDOMMouseEvent::GetMetaKey(PRBool* aIsDown)
+nsDOMMouseEvent::GetMetaKey(bool* aIsDown)
 {
   NS_ENSURE_ARG_POINTER(aIsDown);
   *aIsDown = ((nsInputEvent*)mEvent)->isMeta;
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsDOMMouseEvent::GetWhich(PRUint32* aWhich)
+/* virtual */
+nsresult
+nsDOMMouseEvent::Which(PRUint32* aWhich)
 {
   NS_ENSURE_ARG_POINTER(aWhich);
   PRUint16 button;

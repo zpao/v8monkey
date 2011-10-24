@@ -56,7 +56,7 @@
 
 extern nsIRollupListener*  gRollupListener;
 extern nsIWidget*          gRollupWidget;
-extern PRBool              gRollupConsumeRollupEvent;
+extern bool                gRollupConsumeRollupEvent;
 extern PRUint32            gOS2Flags;
 
 #ifdef DEBUG_FOCUS
@@ -86,8 +86,8 @@ os2FrameWindow::os2FrameWindow(nsWindow* aOwner)
   mMinMax           = 0;
   mSavedStyle       = 0;
   mFrameIcon        = 0;
-  mChromeHidden     = PR_FALSE;
-  mNeedActivation   = PR_FALSE;
+  mChromeHidden     = false;
+  mNeedActivation   = false;
   mPrevFrameProc    = 0;
   mFrameBounds      = nsIntRect(0, 0, 0, 0);
 }
@@ -130,7 +130,7 @@ HWND os2FrameWindow::CreateFrameWindow(nsWindow* aParent,
   }
 
   // Hide from the Window List until shown.
-  SetWindowListVisibility(PR_FALSE);
+  SetWindowListVisibility(false);
 
   // This prevents a modal dialog from being covered by its disabled parent.
   if (aParentWnd != HWND_DESKTOP) {
@@ -245,7 +245,7 @@ PRUint32 os2FrameWindow::GetFCFlags(nsWindowType aWindowType,
 
 // For frame windows, 'Show' is equivalent to 'Show & Activate'.
 
-nsresult os2FrameWindow::Show(PRBool aState)
+nsresult os2FrameWindow::Show(bool aState)
 {
   PRUint32 ulFlags;
   if (!aState) {
@@ -281,7 +281,7 @@ nsresult os2FrameWindow::Show(PRBool aState)
 
 //-----------------------------------------------------------------------------
 
-void os2FrameWindow::SetWindowListVisibility(PRBool aState)
+void os2FrameWindow::SetWindowListVisibility(bool aState)
 {
   HSWITCH hswitch = WinQuerySwitchHandle(mFrameWnd, 0);
   if (hswitch) {
@@ -315,7 +315,7 @@ nsresult os2FrameWindow::Move(PRInt32 aX, PRInt32 aY)
 //-----------------------------------------------------------------------------
 
 nsresult os2FrameWindow::Resize(PRInt32 aWidth, PRInt32 aHeight,
-                                PRBool aRepaint)
+                                bool aRepaint)
 {
   // When resizing, the coordinates of the window's bottom-left corner have to
   // be adjusted to ensure the position of the top-left corner doesn't change.
@@ -328,7 +328,7 @@ nsresult os2FrameWindow::Resize(PRInt32 aWidth, PRInt32 aHeight,
 
 nsresult os2FrameWindow::Resize(PRInt32 aX, PRInt32 aY,
                                 PRInt32 aWidth, PRInt32 aHeight,
-                                PRBool aRepaint)
+                                bool aRepaint)
 {
   aY = WinQuerySysValue(HWND_DESKTOP, SV_CYSCREEN) - aY - aHeight;
   WinSetWindowPos(mFrameWnd, 0, aX, aY, aWidth, aHeight, SWP_MOVE | SWP_SIZE);
@@ -353,7 +353,7 @@ void os2FrameWindow::ActivateTopLevelWidget()
     PRInt32 sizeMode;
     mOwner->GetSizeMode(&sizeMode);
     if (sizeMode != nsSizeMode_Minimized) {
-      mNeedActivation = PR_FALSE;
+      mNeedActivation = false;
       DEBUGFOCUS(NS_ACTIVATE);
       mOwner->DispatchActivationEvent(NS_ACTIVATE);
     }
@@ -423,7 +423,7 @@ nsresult os2FrameWindow::SetSizeMode(PRInt32 aMode)
 //-----------------------------------------------------------------------------
 // Hide or show the frame & its controls (titlebar, minmax, etc.).
 
-nsresult os2FrameWindow::HideWindowChrome(PRBool aShouldHide)
+nsresult os2FrameWindow::HideWindowChrome(bool aShouldHide)
 {
   // Putting a maximized window into fullscreen mode causes multiple
   // problems if it's later minimized & then restored.  To avoid them,
@@ -435,10 +435,10 @@ nsresult os2FrameWindow::HideWindowChrome(PRBool aShouldHide)
   HWND hParent;
   if (aShouldHide) {
     hParent = HWND_OBJECT;
-    mChromeHidden = PR_TRUE;
+    mChromeHidden = true;
   } else {
     hParent = mFrameWnd;
-    mChromeHidden = PR_FALSE;
+    mChromeHidden = false;
   }
 
   // Hide or show the frame controls.
@@ -547,11 +547,11 @@ nsresult os2FrameWindow::SetIcon(const nsAString& aIconSpec)
 //-----------------------------------------------------------------------------
 // Constrain a potential move to fit onscreen.
 
-nsresult os2FrameWindow::ConstrainPosition(PRBool aAllowSlop,
+nsresult os2FrameWindow::ConstrainPosition(bool aAllowSlop,
                                       PRInt32* aX, PRInt32* aY)
 {
   // do we have enough info to do anything
-  PRBool doConstrain = PR_FALSE;
+  bool doConstrain = false;
 
   // get our playing field. use the current screen, or failing
   // that for any reason, use device caps for the default screen.
@@ -574,7 +574,7 @@ nsresult os2FrameWindow::ConstrainPosition(PRBool aAllowSlop,
       screenRect.xRight = left+width;
       screenRect.yTop = top;
       screenRect.yBottom = top+height;
-      doConstrain = PR_TRUE;
+      doConstrain = true;
     }
   }
 
@@ -645,7 +645,7 @@ MRESULT EXPENTRY fnwpFrame(HWND hwnd, ULONG msg, MPARAM mp1, MPARAM mp2)
 MRESULT os2FrameWindow::ProcessFrameMessage(ULONG msg, MPARAM mp1, MPARAM mp2)
 {
   MRESULT mresult = 0;
-  PRBool  isDone = PR_FALSE;
+  bool    isDone = false;
 
   switch (msg) {
     case WM_WINDOWPOSCHANGED: {
@@ -667,11 +667,11 @@ MRESULT os2FrameWindow::ProcessFrameMessage(ULONG msg, MPARAM mp1, MPARAM mp2)
         mFrameBounds.width = pSwp->cx;
         mFrameBounds.height = pSwp->cy;
         mresult = (*mPrevFrameProc)(mFrameWnd, msg, mp1, mp2);
-        isDone = PR_TRUE;
+        isDone = true;
       }
 
       if (pSwp->fl & (SWP_MAXIMIZE | SWP_MINIMIZE | SWP_RESTORE)) {
-        nsSizeModeEvent event(PR_TRUE, NS_SIZEMODE, mOwner);
+        nsSizeModeEvent event(true, NS_SIZEMODE, mOwner);
         if (pSwp->fl & SWP_MAXIMIZE) {
           event.mSizeMode = nsSizeMode_Maximized;
         } else if (pSwp->fl & SWP_MINIMIZE) {
@@ -723,7 +723,7 @@ MRESULT os2FrameWindow::ProcessFrameMessage(ULONG msg, MPARAM mp1, MPARAM mp2)
                    MPFROM2SHORT(SC_SYSMENU, FALSE), MPARAM(&menuitem));
         mresult = (*mPrevFrameProc)(mFrameWnd, msg, mp1, mp2);
         WinEnableMenuItem(menuitem.hwndSubMenu, SC_MAXIMIZE, FALSE);
-        isDone = PR_TRUE;
+        isDone = true;
       }
       break;
 
@@ -732,7 +732,7 @@ MRESULT os2FrameWindow::ProcessFrameMessage(ULONG msg, MPARAM mp1, MPARAM mp2)
       if (mChromeHidden &&
           SHORT1FROMMP(mp1) == SC_MAXIMIZE &&
           WinQueryWindowULong(mFrameWnd, QWL_STYLE) & WS_MINIMIZED) {
-        isDone = PR_TRUE;
+        isDone = true;
       }
       break;
 
@@ -742,9 +742,9 @@ MRESULT os2FrameWindow::ProcessFrameMessage(ULONG msg, MPARAM mp1, MPARAM mp2)
     case WM_ACTIVATE:
       DEBUGFOCUS(WM_ACTIVATE);
       if (mp1) {
-        mNeedActivation = PR_TRUE;
+        mNeedActivation = true;
       } else {
-        mNeedActivation = PR_FALSE;
+        mNeedActivation = false;
         DEBUGFOCUS(NS_DEACTIVATE);
         mOwner->DispatchActivationEvent(NS_DEACTIVATE);
         // Prevent the frame from automatically focusing any window

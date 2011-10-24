@@ -47,6 +47,11 @@
 #include "nsHyperTextAccessibleWrap.h"
 
 /**
+ * Used for XUL progressmeter element.
+ */
+typedef ProgressMeterAccessible<100> XULProgressMeterAccessible;
+
+/**
  * Used for XUL button.
  *
  * @note  Don't inherit from nsFormControlAccessible - it doesn't allow children
@@ -62,7 +67,6 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIAccessible
-  NS_IMETHOD GetNumActions(PRUint8 *_retval);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
   NS_IMETHOD DoAction(PRUint8 index);
 
@@ -70,13 +74,22 @@ public:
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
 
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
+
+  // Widgets
+  virtual bool IsWidget() const;
+  virtual bool IsActiveWidget() const;
+  virtual bool AreItemsOperable() const;
+  virtual nsAccessible* ContainerWidget() const;
+
 protected:
 
   // nsAccessible
   virtual void CacheChildren();
 
   // nsXULButtonAccessible
-  PRBool ContainsMenu();
+  bool ContainsMenu();
 };
 
 
@@ -90,13 +103,15 @@ public:
   nsXULCheckboxAccessible(nsIContent *aContent, nsIWeakReference *aShell);
 
   // nsIAccessible
-  NS_IMETHOD GetNumActions(PRUint8 *_retval);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
   NS_IMETHOD DoAction(PRUint8 index);
 
   // nsAccessible
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
+
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
 };
 
 /**
@@ -109,7 +124,6 @@ public:
   nsXULDropmarkerAccessible(nsIContent *aContent, nsIWeakReference *aShell);
 
   // nsIAccessible
-  NS_IMETHOD GetNumActions(PRUint8 *_retval);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
   NS_IMETHOD DoAction(PRUint8 index);
 
@@ -117,8 +131,11 @@ public:
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
 
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
+
 private:
-  PRBool DropmarkerOpen(PRBool aToggleOpen);
+  bool DropmarkerOpen(bool aToggleOpen);
 };
 
 /**
@@ -129,29 +146,10 @@ class nsXULGroupboxAccessible : public nsAccessibleWrap
 public:
   nsXULGroupboxAccessible(nsIContent *aContent, nsIWeakReference *aShell);
 
-  // nsIAccessible
-  NS_IMETHOD GetRelationByType(PRUint32 aRelationType,
-                               nsIAccessibleRelation **aRelation);
-
   // nsAccessible
   virtual PRUint32 NativeRole();
   virtual nsresult GetNameInternal(nsAString& aName);
-};
-
-/**
- * Used for XUL progressmeter element.
- */
-class nsXULProgressMeterAccessible : public nsFormControlAccessible
-{
-  NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_NSIACCESSIBLEVALUE
-
-public:
-  nsXULProgressMeterAccessible(nsIContent *aContent, nsIWeakReference *aShell);
-  NS_IMETHOD GetValue(nsAString &aValue);
-
-  // nsAccessible
-  virtual PRUint32 NativeRole();
+  virtual Relation RelationByType(PRUint32 aRelationType);
 };
 
 /**
@@ -167,6 +165,9 @@ public:
   virtual void GetPositionAndSizeInternal(PRInt32 *aPosInSet,
                                           PRInt32 *aSetSize);
   virtual PRUint64 NativeState();
+
+  // Widgets
+  virtual nsAccessible* ContainerWidget() const;
 };
 
 /**
@@ -180,6 +181,11 @@ public:
   // nsAccessible
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
+
+  // Widgets
+  virtual bool IsWidget() const;
+  virtual bool IsActiveWidget() const;
+  virtual bool AreItemsOperable() const;
 };
 
 /**
@@ -207,7 +213,7 @@ public:
                                           PRInt32 *aSetSize);
 
   // nsXULToolbarButtonAccessible
-  static PRBool IsSeparator(nsAccessible *aAccessible);
+  static bool IsSeparator(nsAccessible *aAccessible);
 };
 
 /**
@@ -251,7 +257,6 @@ public:
 
   // nsIAccessible
   NS_IMETHOD GetValue(nsAString& aValue);
-  NS_IMETHOD GetNumActions(PRUint8 *_retval);
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
   NS_IMETHOD DoAction(PRUint8 index);
 
@@ -262,11 +267,17 @@ public:
   virtual void ApplyARIAState(PRUint64* aState);
   virtual PRUint32 NativeRole();
   virtual PRUint64 NativeState();
-  virtual PRBool GetAllowsAnonChildAccessibles();
+  virtual bool GetAllowsAnonChildAccessibles();
+
+  // ActionAccessible
+  virtual PRUint8 ActionCount();
 
 protected:
   // nsAccessible
   virtual void CacheChildren();
+
+  // nsHyperTextAccessible
+  virtual already_AddRefed<nsFrameSelection> FrameSelection();
 
   // nsXULTextFieldAccessible
   already_AddRefed<nsIContent> GetInputField() const;

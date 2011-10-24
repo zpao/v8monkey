@@ -40,6 +40,8 @@
 
 #include "States.h"
 
+using namespace mozilla::a11y;
+
 ////////////////////////////////////////////////////////////////////////////////
 // nsXFormsDropmarkerWidgetAccessible
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,7 +62,7 @@ nsXFormsDropmarkerWidgetAccessible::NativeRole()
 PRUint64
 nsXFormsDropmarkerWidgetAccessible::NativeState()
 {
-  PRBool isOpen = PR_FALSE;
+  bool isOpen = false;
   nsCOMPtr<nsIDOMNode> DOMNode(do_QueryInterface(mContent));
   nsresult rv = sXFormsService->IsDropmarkerOpen(DOMNode, &isOpen);
   NS_ENSURE_SUCCESS(rv, 0);
@@ -68,13 +70,10 @@ nsXFormsDropmarkerWidgetAccessible::NativeState()
   return isOpen ? states::PRESSED: 0;
 }
 
-NS_IMETHODIMP
-nsXFormsDropmarkerWidgetAccessible::GetNumActions(PRUint8 *aCount)
+PRUint8
+nsXFormsDropmarkerWidgetAccessible::ActionCount()
 {
-  NS_ENSURE_ARG_POINTER(aCount);
-
-  *aCount = 1;
-  return NS_OK;
+  return 1;
 }
 
 NS_IMETHODIMP
@@ -84,7 +83,7 @@ nsXFormsDropmarkerWidgetAccessible::GetActionName(PRUint8 aIndex,
   if (aIndex != eAction_Click)
     return NS_ERROR_INVALID_ARG;
 
-  PRBool isOpen = PR_FALSE;
+  bool isOpen = false;
   nsCOMPtr<nsIDOMNode> DOMNode(do_QueryInterface(mContent));
   nsresult rv = sXFormsService->IsDropmarkerOpen(DOMNode, &isOpen);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -147,7 +146,7 @@ nsXFormsComboboxPopupWidgetAccessible::NativeState()
 {
   PRUint64 state = nsXFormsAccessible::NativeState();
 
-  PRBool isOpen = PR_FALSE;
+  bool isOpen = false;
   nsCOMPtr<nsIDOMNode> DOMNode(do_QueryInterface(mContent));
   nsresult rv = sXFormsService->IsDropmarkerOpen(DOMNode, &isOpen);
   NS_ENSURE_SUCCESS(rv, state);

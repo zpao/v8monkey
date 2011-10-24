@@ -42,23 +42,24 @@
 #include "nsCOMPtr.h"
 
 #include "nsIDOMEvent.h"
-#include "nsIDOMKeyListener.h"
-#include "nsIDOMMouseListener.h"
-#include "nsIDOMTextListener.h"
-#include "nsIDOMCompositionListener.h"
-#include "nsIDOMFocusListener.h"
+#include "nsIDOMEventListener.h"
 
 #include "nsCaret.h"
 
+// X.h defines KeyPress
+#ifdef KeyPress
+#undef KeyPress
+#endif
+
+#ifdef XP_WIN
+// On Windows, we support switching the text direction by pressing Ctrl+Shift
+#define HANDLE_NATIVE_TEXT_DIRECTION_SWITCH
+#endif
+
 class nsEditor;
 class nsIDOMDragEvent;
-class nsPIDOMEventTarget;
 
-class nsEditorEventListener : public nsIDOMKeyListener,
-                              public nsIDOMTextListener,
-                              public nsIDOMCompositionListener,
-                              public nsIDOMMouseListener,
-                              public nsIDOMFocusListener
+class nsEditorEventListener : public nsIDOMEventListener
 {
 public:
   nsEditorEventListener();
@@ -71,27 +72,17 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
 
-  // nsIDOMKeyListener
+#ifdef HANDLE_NATIVE_TEXT_DIRECTION_SWITCH
   NS_IMETHOD KeyDown(nsIDOMEvent* aKeyEvent);
   NS_IMETHOD KeyUp(nsIDOMEvent* aKeyEvent);
+#endif
   NS_IMETHOD KeyPress(nsIDOMEvent* aKeyEvent);
-
-  // nsIDOMTextListener
   NS_IMETHOD HandleText(nsIDOMEvent* aTextEvent);
-
-  // nsIDOMCompositionListener
   NS_IMETHOD HandleStartComposition(nsIDOMEvent* aCompositionEvent);
   NS_IMETHOD HandleEndComposition(nsIDOMEvent* aCompositionEvent);
-
-  // nsIDOMMouseListener
   NS_IMETHOD MouseDown(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseUp(nsIDOMEvent* aMouseEvent);
+  NS_IMETHOD MouseUp(nsIDOMEvent* aMouseEvent) { return NS_OK; }
   NS_IMETHOD MouseClick(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseDblClick(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseOver(nsIDOMEvent* aMouseEvent);
-  NS_IMETHOD MouseOut(nsIDOMEvent* aMouseEvent);
-
-  // nsIDOMFocusListener
   NS_IMETHOD Focus(nsIDOMEvent* aEvent);
   NS_IMETHOD Blur(nsIDOMEvent* aEvent);
 
@@ -99,7 +90,7 @@ protected:
   nsresult InstallToEditor();
   void UninstallFromEditor();
 
-  PRBool CanDrop(nsIDOMDragEvent* aEvent);
+  bool CanDrop(nsIDOMDragEvent* aEvent);
   nsresult DragEnter(nsIDOMDragEvent* aDragEvent);
   nsresult DragOver(nsIDOMDragEvent* aDragEvent);
   nsresult DragExit(nsIDOMDragEvent* aDragEvent);
@@ -111,8 +102,13 @@ protected:
 protected:
   nsEditor* mEditor; // weak
   nsRefPtr<nsCaret> mCaret;
-  PRPackedBool mCommitText;
-  PRPackedBool mInTransaction;
+  bool mCommitText;
+  bool mInTransaction;
+#ifdef HANDLE_NATIVE_TEXT_DIRECTION_SWITCH
+  bool mHaveBidiKeyboards;
+  bool mShouldSwitchTextDirection;
+  bool mSwitchToRTL;
+#endif
 };
 
 #endif // nsEditorEventListener_h__

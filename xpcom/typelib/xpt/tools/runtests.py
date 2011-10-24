@@ -32,6 +32,7 @@
 
 import difflib
 import os
+import shutil
 from StringIO import StringIO
 import subprocess
 import sys
@@ -157,7 +158,6 @@ class TypelibCompareMixin:
         self.assertEqual(type(t1), type(t2), "type types should be equal")
         self.assertEqual(t1.pointer, t2.pointer,
                          "pointer flag should be equal for %s and %s" % (t1, t2))
-        self.assertEqual(t1.unique_pointer, t2.unique_pointer)
         self.assertEqual(t1.reference, t2.reference)
         if isinstance(t1, xpt.SimpleType):
             self.assertEqual(t1.tag, t2.tag)
@@ -745,6 +745,66 @@ class TestTypelibMerge(unittest.TestCase):
         self.assert_(t1.interfaces[0].methods[0].params[0].type.element_type.iface.resolved)
         self.assertEqual(t1.interfaces[1],
                          t1.interfaces[0].methods[0].params[0].type.element_type.iface)
+
+class TestXPTLink(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tempdir, True)
+
+    def gettempfile(self):
+        fd, f = tempfile.mkstemp(dir=self.tempdir)
+        os.close(fd)
+        return f
+
+    def test_xpt_link(self):
+        """
+        Test the xpt_link method.
+        
+        """
+        t1 = xpt.Typelib()
+        # add an unresolved interface
+        t1.interfaces.append(xpt.Interface("IFoo"))
+        f1 = self.gettempfile()
+        t1.write(f1)
+
+        t2 = xpt.Typelib()
+        # add an unresolved interface
+        t2.interfaces.append(xpt.Interface("IBar"))
+        f2 = self.gettempfile()
+        t2.write(f2)
+
+        f3 = self.gettempfile()
+        xpt.xpt_link(f3, [f1, f2])
+        t3 = xpt.Typelib.read(f3)
+        
+        self.assertEqual(2, len(t3.interfaces))
+        # Interfaces should wind up sorted
+        self.assertEqual("IBar", t3.interfaces[0].name)
+        self.assertEqual("IFoo", t3.interfaces[1].name)
+
+        # Add some IID values
+        t1 = xpt.Typelib()
+        # add an unresolved interface
+        t1.interfaces.append(xpt.Interface("IFoo", iid="11223344-5566-7788-9900-aabbccddeeff"))
+        f1 = self.gettempfile()
+        t1.write(f1)
+
+        t2 = xpt.Typelib()
+        # add an unresolved interface
+        t2.interfaces.append(xpt.Interface("IBar", iid="44332211-6655-8877-0099-aabbccddeeff"))
+        f2 = self.gettempfile()
+        t2.write(f2)
+
+        f3 = self.gettempfile()
+        xpt.xpt_link(f3, [f1, f2])
+        t3 = xpt.Typelib.read(f3)
+        
+        self.assertEqual(2, len(t3.interfaces))
+        # Interfaces should wind up sorted
+        self.assertEqual("IFoo", t3.interfaces[0].name)
+        self.assertEqual("IBar", t3.interfaces[1].name)
 
 if __name__ == '__main__':
     unittest.main()

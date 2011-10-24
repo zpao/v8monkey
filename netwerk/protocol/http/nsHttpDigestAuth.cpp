@@ -99,7 +99,7 @@ nsHttpDigestAuth::MD5Hash(const char *buf, PRUint32 len)
   if (NS_FAILED(rv)) return rv;
 
   nsCAutoString hashString;
-  rv = mVerifier->Finish(PR_FALSE, hashString);
+  rv = mVerifier->Finish(false, hashString);
   if (NS_FAILED(rv)) return rv;
 
   NS_ENSURE_STATE(hashString.Length() == sizeof(mHashBuf));
@@ -110,7 +110,7 @@ nsHttpDigestAuth::MD5Hash(const char *buf, PRUint32 len)
 
 nsresult
 nsHttpDigestAuth::GetMethodAndPath(nsIHttpAuthenticableChannel *authChannel,
-                                   PRBool                       isProxyAuth,
+                                   bool                         isProxyAuth,
                                    nsCString                   &httpMethod,
                                    nsCString                   &path)
 {
@@ -118,7 +118,7 @@ nsHttpDigestAuth::GetMethodAndPath(nsIHttpAuthenticableChannel *authChannel,
   nsCOMPtr<nsIURI> uri;
   rv = authChannel->GetURI(getter_AddRefs(uri));
   if (NS_SUCCEEDED(rv)) {
-    PRBool proxyMethodIsConnect;
+    bool proxyMethodIsConnect;
     rv = authChannel->GetProxyMethodIsConnect(&proxyMethodIsConnect);
     if (NS_SUCCEEDED(rv)) {
       if (proxyMethodIsConnect && isProxyAuth) {
@@ -169,13 +169,13 @@ nsHttpDigestAuth::GetMethodAndPath(nsIHttpAuthenticableChannel *authChannel,
 NS_IMETHODIMP
 nsHttpDigestAuth::ChallengeReceived(nsIHttpAuthenticableChannel *authChannel,
                                     const char *challenge,
-                                    PRBool isProxyAuth,
+                                    bool isProxyAuth,
                                     nsISupports **sessionState,
                                     nsISupports **continuationState,
-                                    PRBool *result)
+                                    bool *result)
 {
   nsCAutoString realm, domain, nonce, opaque;
-  PRBool stale;
+  bool stale;
   PRUint16 algorithm, qop;
 
   nsresult rv = ParseChallenge(challenge, realm, domain, nonce, opaque,
@@ -195,7 +195,7 @@ nsHttpDigestAuth::ChallengeReceived(nsIHttpAuthenticableChannel *authChannel,
 NS_IMETHODIMP
 nsHttpDigestAuth::GenerateCredentials(nsIHttpAuthenticableChannel *authChannel,
                                       const char *challenge,
-                                      PRBool isProxyAuth,
+                                      bool isProxyAuth,
                                       const PRUnichar *userdomain,
                                       const PRUnichar *username,
                                       const PRUnichar *password,
@@ -211,11 +211,11 @@ nsHttpDigestAuth::GenerateCredentials(nsIHttpAuthenticableChannel *authChannel,
 
   *aFlags = 0;
 
-  PRBool isDigestAuth = !PL_strncasecmp(challenge, "digest ", 7);
+  bool isDigestAuth = !PL_strncasecmp(challenge, "digest ", 7);
   NS_ENSURE_TRUE(isDigestAuth, NS_ERROR_UNEXPECTED);
 
   // IIS implementation requires extra quotes
-  PRBool requireExtraQuotes = PR_FALSE;
+  bool requireExtraQuotes = false;
   {
     nsCAutoString serverVal;
     authChannel->GetServerResponseHeader(serverVal);
@@ -231,7 +231,7 @@ nsHttpDigestAuth::GenerateCredentials(nsIHttpAuthenticableChannel *authChannel,
   if (NS_FAILED(rv)) return rv;
 
   nsCAutoString realm, domain, nonce, opaque;
-  PRBool stale;
+  bool stale;
   PRUint16 algorithm, qop;
 
   rv = ParseChallenge(challenge, realm, domain, nonce, opaque,
@@ -571,13 +571,13 @@ nsHttpDigestAuth::ParseChallenge(const char * challenge,
                                  nsACString & domain,
                                  nsACString & nonce,
                                  nsACString & opaque,
-                                 PRBool * stale,
+                                 bool * stale,
                                  PRUint16 * algorithm,
                                  PRUint16 * qop)
 {
   const char *p = challenge + 7; // first 7 characters are "Digest "
 
-  *stale = PR_FALSE;
+  *stale = false;
   *algorithm = ALGO_MD5; // default is MD5
   *qop = 0;
 
@@ -600,10 +600,10 @@ nsHttpDigestAuth::ParseChallenge(const char * challenge,
     if (!*p) 
       return NS_ERROR_INVALID_ARG;
 
-    PRBool quoted = PR_FALSE;
+    bool quoted = false;
     if (*p == '"') {
       ++p;
-      quoted = PR_TRUE;
+      quoted = true;
     }
 
     // value
@@ -647,9 +647,9 @@ nsHttpDigestAuth::ParseChallenge(const char * challenge,
         nsCRT::strncasecmp(challenge+nameStart, "stale", 5) == 0)
     {
       if (nsCRT::strncasecmp(challenge+valueStart, "true", 4) == 0)
-        *stale = PR_TRUE;
+        *stale = true;
       else
-        *stale = PR_FALSE;
+        *stale = false;
     }
     else if (nameLength == 9 &&
         nsCRT::strncasecmp(challenge+nameStart, "algorithm", 9) == 0)

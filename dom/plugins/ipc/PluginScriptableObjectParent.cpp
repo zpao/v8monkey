@@ -39,11 +39,16 @@
 #include "PluginScriptableObjectParent.h"
 #include "PluginScriptableObjectUtils.h"
 
+#include "nsNPAPIPlugin.h"
 #include "mozilla/unused.h"
+#include "mozilla/Util.h"
 
 using namespace mozilla::plugins;
+using namespace mozilla::plugins::parent;
 
 namespace {
+
+typedef PluginIdentifierParent::StackIdentifier StackIdentifier;
 
 inline void
 ReleaseVariant(NPVariant& aVariant,
@@ -53,32 +58,6 @@ ReleaseVariant(NPVariant& aVariant,
   if (npn) {
     npn->releasevariantvalue(&aVariant);
   }
-}
-
-inline PPluginIdentifierParent*
-GetIdentifier(PluginInstanceParent* aInstance,
-              NPIdentifier aIdentifier)
-{
-  PluginModuleParent* module = aInstance->Module();
-  if (!module) {
-    NS_WARNING("Huh?!");
-    return false;
-  }
-
-  return module->GetIdentifierForNPIdentifier(aIdentifier);
-}
-
-inline PPluginIdentifierParent*
-GetIdentifier(NPObject* aObject,
-              NPIdentifier aIdentifier)
-{
-  PluginInstanceParent* instance = GetInstance(aObject);
-  if (!instance) {
-    NS_WARNING("Huh?!");
-    return false;
-  }
-
-  return GetIdentifier(instance, aIdentifier);
 }
 
 } // anonymous namespace
@@ -154,13 +133,13 @@ PluginScriptableObjectParent::ScriptableHasMethod(NPObject* aObject,
     return false;
   }
 
-  PPluginIdentifierParent* identifier = GetIdentifier(aObject, aName);
-  if (!identifier) {
+  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
+  if (!actor) {
     return false;
   }
 
-  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
-  if (!actor) {
+  StackIdentifier identifier(aObject, aName);
+  if (!identifier) {
     return false;
   }
 
@@ -194,13 +173,13 @@ PluginScriptableObjectParent::ScriptableInvoke(NPObject* aObject,
     return false;
   }
 
-  PPluginIdentifierParent* identifier = GetIdentifier(aObject, aName);
-  if (!identifier) {
+  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
+  if (!actor) {
     return false;
   }
 
-  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
-  if (!actor) {
+  StackIdentifier identifier(aObject, aName);
+  if (!identifier) {
     return false;
   }
 
@@ -296,13 +275,13 @@ PluginScriptableObjectParent::ScriptableHasProperty(NPObject* aObject,
     return false;
   }
 
-  PPluginIdentifierParent* identifier = GetIdentifier(aObject, aName);
-  if (!identifier) {
+  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
+  if (!actor) {
     return false;
   }
 
-  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
-  if (!actor) {
+  StackIdentifier identifier(aObject, aName);
+  if (!identifier) {
     return false;
   }
 
@@ -345,13 +324,13 @@ PluginScriptableObjectParent::ScriptableSetProperty(NPObject* aObject,
     return false;
   }
 
-  PPluginIdentifierParent* identifier = GetIdentifier(aObject, aName);
-  if (!identifier) {
+  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
+  if (!actor) {
     return false;
   }
 
-  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
-  if (!actor) {
+  StackIdentifier identifier(aObject, aName);
+  if (!identifier) {
     return false;
   }
 
@@ -388,13 +367,13 @@ PluginScriptableObjectParent::ScriptableRemoveProperty(NPObject* aObject,
     return false;
   }
 
-  PPluginIdentifierParent* identifier = GetIdentifier(aObject, aName);
-  if (!identifier) {
+  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
+  if (!actor) {
     return false;
   }
 
-  ProtectedActor<PluginScriptableObjectParent> actor(object->parent);
-  if (!actor) {
+  StackIdentifier identifier(aObject, aName);
+  if (!identifier) {
     return false;
   }
 
@@ -1096,8 +1075,23 @@ PluginScriptableObjectParent::AnswerEnumerate(InfallibleTArray<PPluginIdentifier
     return true;
   }
 
+  JSContext* cx = GetJSContext(instance->GetNPP());
+  JSAutoRequest ar(cx);
+
   for (uint32_t index = 0; index < idCount; index++) {
-    aProperties->AppendElement(GetIdentifier(instance, ids[index]));
+    // Because of GC hazards, all identifiers returned from enumerate
+    // must be made permanent.
+    if (_identifierisstring(ids[index])) {
+      JSString* str = NPIdentifierToString(ids[index]);
+      if (!JS_StringHasBeenInterned(cx, str)) {
+        DebugOnly<JSString*> str2 = JS_InternJSString(cx, str);
+        NS_ASSERTION(str2 == str, "Interning a JS string which is currently an ID should return itself.");
+      }
+    }
+    PluginIdentifierParent* id =
+      instance->Module()->GetIdentifierForNPIdentifier(instance->GetNPP(), ids[index]);
+    aProperties->AppendElement(id);
+    NS_ASSERTION(!id->IsTemporary(), "Should only have permanent identifiers!");
   }
 
   npn->memfree(ids);
@@ -1256,8 +1250,8 @@ PluginScriptableObjectParent::AnswerNPN_Evaluate(const nsCString& aScript,
 
 JSBool
 PluginScriptableObjectParent::GetPropertyHelper(NPIdentifier aName,
-                                                PRBool* aHasProperty,
-                                                PRBool* aHasMethod,
+                                                bool* aHasProperty,
+                                                bool* aHasMethod,
                                                 NPVariant* aResult)
 {
   NS_ASSERTION(Type() == Proxy, "Bad type!");
@@ -1268,7 +1262,7 @@ PluginScriptableObjectParent::GetPropertyHelper(NPIdentifier aName,
     return JS_FALSE;
   }
 
-  PPluginIdentifierParent* identifier = GetIdentifier(GetInstance(), aName);
+  StackIdentifier identifier(GetInstance(), aName);
   if (!identifier) {
     return JS_FALSE;
   }

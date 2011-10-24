@@ -41,6 +41,10 @@ VPATH     = @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
+ifeq (,$(filter aurora beta release,$(MOZ_UPDATE_CHANNEL)))
+DEFINES += -DMOZ_COMPATIBILITY_NIGHTLY=1
+endif
+
 MODULE = extensions
 
 XPIDLSRCS = \
@@ -68,6 +72,7 @@ EXTRA_PP_JS_MODULES = \
 
 EXTRA_JS_MODULES = \
   LightweightThemeManager.jsm \
+  SpellCheckDictionaryBootstrap.js \
   $(NULL)
 
 ifdef ENABLE_TESTS

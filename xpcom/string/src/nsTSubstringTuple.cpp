@@ -112,13 +112,13 @@ nsTSubstringTuple_CharT::WriteTo( char_type *buf, PRUint32 bufLen ) const
    * the given char sequence.
    */
 
-PRBool
+bool
 nsTSubstringTuple_CharT::IsDependentOn( const char_type *start, const char_type *end ) const
   {
     // we start with the right-most fragment since it is faster to check.
 
     if (TO_SUBSTRING(mFragB).IsDependentOn(start, end))
-      return PR_TRUE;
+      return true;
 
     if (mHead)
       return mHead->IsDependentOn(start, end);

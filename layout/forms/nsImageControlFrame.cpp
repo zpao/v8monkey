@@ -105,7 +105,7 @@ public:
   NS_IMETHOD GetCursor(const nsPoint&    aPoint,
                        nsIFrame::Cursor& aCursor);
   // nsIFormContromFrame
-  virtual void SetFocus(PRBool aOn, PRBool aRepaint);
+  virtual void SetFocus(bool aOn, bool aRepaint);
   virtual nsresult SetFormProperty(nsIAtom* aName, const nsAString& aValue);
   virtual nsresult GetFormProperty(nsIAtom* aName, nsAString& aValue) const; 
 };
@@ -124,7 +124,7 @@ void
 nsImageControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
 {
   if (!GetPrevInFlow()) {
-    nsFormControlFrame::RegUnRegAccessKey(this, PR_FALSE);
+    nsFormControlFrame::RegUnRegAccessKey(this, false);
   }
   nsImageControlFrameSuper::DestroyFrom(aDestructRoot);
 }
@@ -193,7 +193,7 @@ nsImageControlFrame::Reflow(nsPresContext*         aPresContext,
   DO_GLOBAL_REFLOW_COUNT("nsImageControlFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowState, aDesiredSize, aStatus);
   if (!GetPrevInFlow() && (mState & NS_FRAME_FIRST_REFLOW)) {
-    nsFormControlFrame::RegUnRegAccessKey(this, PR_TRUE);
+    nsFormControlFrame::RegUnRegAccessKey(this, true);
   }
   return nsImageControlFrameSuper::Reflow(aPresContext, aDesiredSize, aReflowState, aStatus);
 }
@@ -240,7 +240,7 @@ nsImageControlFrame::HandleEvent(nsPresContext* aPresContext,
 }
 
 void 
-nsImageControlFrame::SetFocus(PRBool aOn, PRBool aRepaint)
+nsImageControlFrame::SetFocus(bool aOn, bool aRepaint)
 {
 }
 

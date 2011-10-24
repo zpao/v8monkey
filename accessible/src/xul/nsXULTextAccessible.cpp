@@ -40,18 +40,20 @@
 // NOTE: groups are alphabetically ordered
 #include "nsXULTextAccessible.h"
 
-#include "nsAccessibilityAtoms.h"
 #include "nsAccUtils.h"
 #include "nsBaseWidgetAccessible.h"
 #include "nsCoreUtils.h"
-#include "nsRelUtils.h"
 #include "nsTextEquivUtils.h"
+#include "Relation.h"
 #include "States.h"
 
+#include "nsIAccessibleRelation.h"
 #include "nsIDOMXULDescriptionElement.h"
 #include "nsINameSpaceManager.h"
 #include "nsString.h"
 #include "nsNetUtil.h"
+
+using namespace mozilla::a11y;
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsXULTextAccessible
@@ -68,7 +70,7 @@ nsXULTextAccessible::GetNameInternal(nsAString& aName)
 {
   // if the value attr doesn't exist, the screen reader must get the accessible text
   // from the accessible text interface or from the children
-  mContent->GetAttr(kNameSpaceID_None, nsAccessibilityAtoms::value, aName);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::value, aName);
   return NS_OK;
 }
 
@@ -86,25 +88,21 @@ nsXULTextAccessible::NativeState()
   return nsHyperTextAccessibleWrap::NativeState() | states::READONLY;
 }
 
-NS_IMETHODIMP
-nsXULTextAccessible::GetRelationByType(PRUint32 aRelationType,
-                                       nsIAccessibleRelation **aRelation)
+Relation
+nsXULTextAccessible::RelationByType(PRUint32 aType)
 {
-  nsresult rv =
-    nsHyperTextAccessibleWrap::GetRelationByType(aRelationType, aRelation);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (aRelationType == nsIAccessibleRelation::RELATION_LABEL_FOR) {
+  Relation rel = nsHyperTextAccessibleWrap::RelationByType(aType);
+  if (aType == nsIAccessibleRelation::RELATION_LABEL_FOR) {
     // Caption is the label for groupbox
     nsIContent *parent = mContent->GetParent();
-    if (parent && parent->Tag() == nsAccessibilityAtoms::caption) {
-      nsAccessible* parent = GetParent();
+    if (parent && parent->Tag() == nsGkAtoms::caption) {
+      nsAccessible* parent = Parent();
       if (parent && parent->Role() == nsIAccessibleRole::ROLE_GROUPING)
-        return nsRelUtils::AddTarget(aRelationType, aRelation, parent);
+        rel.AppendTarget(parent);
     }
   }
 
-  return NS_OK;
+  return rel;
 }
 
 
@@ -160,14 +158,14 @@ nsXULLinkAccessible::GetValue(nsAString& aValue)
   if (IsDefunct())
     return NS_ERROR_FAILURE;
 
-  mContent->GetAttr(kNameSpaceID_None, nsAccessibilityAtoms::href, aValue);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::href, aValue);
   return NS_OK;
 }
 
 nsresult
 nsXULLinkAccessible::GetNameInternal(nsAString& aName)
 {
-  mContent->GetAttr(kNameSpaceID_None, nsAccessibilityAtoms::value, aName);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::value, aName);
   if (!aName.IsEmpty())
     return NS_OK;
 
@@ -187,13 +185,10 @@ nsXULLinkAccessible::NativeState()
   return nsHyperTextAccessible::NativeState() | states::LINKED;
 }
 
-NS_IMETHODIMP
-nsXULLinkAccessible::GetNumActions(PRUint8 *aNumActions)
+PRUint8
+nsXULLinkAccessible::ActionCount()
 {
-  NS_ENSURE_ARG_POINTER(aNumActions);
-  
-  *aNumActions = 1;
-  return NS_OK;
+  return 1;
 }
 
 NS_IMETHODIMP
@@ -225,7 +220,7 @@ nsXULLinkAccessible::DoAction(PRUint8 aIndex)
 // nsXULLinkAccessible: HyperLinkAccessible
 
 bool
-nsXULLinkAccessible::IsHyperLink()
+nsXULLinkAccessible::IsLink()
 {
   // Expose HyperLinkAccessible unconditionally.
   return true;
@@ -239,34 +234,34 @@ nsXULLinkAccessible::StartOffset()
   // a text.
   // XXX: accessible parent of XUL link accessible should be a hypertext
   // accessible.
-  if (nsAccessible::IsHyperLink())
+  if (nsAccessible::IsLink())
     return nsAccessible::StartOffset();
-  return GetIndexInParent();
+  return IndexInParent();
 }
 
 PRUint32
 nsXULLinkAccessible::EndOffset()
 {
-  if (nsAccessible::IsHyperLink())
+  if (nsAccessible::IsLink())
     return nsAccessible::EndOffset();
-  return GetIndexInParent() + 1;
+  return IndexInParent() + 1;
 }
 
 already_AddRefed<nsIURI>
-nsXULLinkAccessible::GetAnchorURI(PRUint32 aAnchorIndex)
+nsXULLinkAccessible::AnchorURIAt(PRUint32 aAnchorIndex)
 {
   if (aAnchorIndex != 0)
     return nsnull;
 
   nsAutoString href;
-  mContent->GetAttr(kNameSpaceID_None, nsAccessibilityAtoms::href, href);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
 
   nsCOMPtr<nsIURI> baseURI = mContent->GetBaseURI();
-  nsIDocument* document = mContent->GetOwnerDoc();
+  nsIDocument* document = mContent->OwnerDoc();
 
   nsIURI* anchorURI = nsnull;
   NS_NewURI(&anchorURI, href,
-            document ? document->GetDocumentCharacterSet().get() : nsnull,
+            document->GetDocumentCharacterSet().get(),
             baseURI);
 
   return anchorURI;

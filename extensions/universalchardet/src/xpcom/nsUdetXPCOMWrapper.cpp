@@ -79,13 +79,14 @@ NS_IMETHODIMP nsXPCOMDetector::Init(
 }
 //----------------------------------------------------------
 NS_IMETHODIMP nsXPCOMDetector::DoIt(const char* aBuf,
-              PRUint32 aLen, PRBool* oDontFeedMe)
+              PRUint32 aLen, bool* oDontFeedMe)
 {
   NS_ASSERTION(mObserver != nsnull , "have not init yet");
 
   if((nsnull == aBuf) || (nsnull == oDontFeedMe))
     return NS_ERROR_ILLEGAL_VALUE;
 
+  this->Reset();
   nsresult rv = this->HandleData(aBuf, aLen);
   if (NS_FAILED(rv))
     return rv;
@@ -95,9 +96,9 @@ NS_IMETHODIMP nsXPCOMDetector::DoIt(const char* aBuf,
     if (mDetectedCharset)
       Report(mDetectedCharset);
 
-    *oDontFeedMe = PR_TRUE;
+    *oDontFeedMe = true;
   }
-  *oDontFeedMe = PR_FALSE;
+  *oDontFeedMe = false;
   return NS_OK;
 }
 //----------------------------------------------------------

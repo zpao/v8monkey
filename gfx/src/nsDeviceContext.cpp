@@ -45,11 +45,11 @@
 #include "nsIWidget.h"
 
 #include "mozilla/Services.h"
+#include "mozilla/Preferences.h"
 #include "nsIServiceManager.h"
 #include "nsILanguageAtomService.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
-#include "nsIPrefService.h"
 
 #include "gfxImageSurface.h"
 
@@ -84,6 +84,7 @@ static nsSystemFontsAndroid *gSystemFonts = nsnull;
 #error Need to declare gSystemFonts!
 #endif
 
+using namespace mozilla;
 using mozilla::services::GetObserverService;
 
 class nsFontCache : public nsIObserver
@@ -125,7 +126,7 @@ nsFontCache::Init(nsDeviceContext* aContext)
     // in low-memory situations.
     nsCOMPtr<nsIObserverService> obs = GetObserverService();
     if (obs)
-        obs->AddObserver(this, "memory-pressure", PR_FALSE);
+        obs->AddObserver(this, "memory-pressure", false);
 
     nsCOMPtr<nsILanguageAtomService> langService;
     langService = do_GetService(NS_LANGUAGEATOMSERVICE_CONTRACTID);
@@ -321,7 +322,7 @@ nsDeviceContext::FontMetricsDeleted(const nsFontMetrics* aFontMetrics)
     return NS_OK;
 }
 
-PRBool
+bool
 nsDeviceContext::IsPrinterSurface()
 {
     return(mPrintingSurface != NULL);
@@ -368,19 +369,11 @@ nsDeviceContext::SetDPI()
         mAppUnitsPerDevNotScaledPixel =
             NS_lround((AppUnitsPerCSSPixel() * 96) / dpi);
     } else {
-        nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-
         // A value of -1 means use the maximum of 96 and the system DPI.
         // A value of 0 means use the system DPI. A positive value is used as the DPI.
         // This sets the physical size of a device pixel and thus controls the
         // interpretation of physical units.
-        PRInt32 prefDPI = -1;
-        if (prefs) {
-            nsresult rv = prefs->GetIntPref("layout.css.dpi", &prefDPI);
-            if (NS_FAILED(rv)) {
-                prefDPI = -1;
-            }
-        }
+        PRInt32 prefDPI = Preferences::GetInt("layout.css.dpi", -1);
 
         if (prefDPI > 0) {
             dpi = prefDPI;
@@ -388,7 +381,7 @@ nsDeviceContext::SetDPI()
             dpi = mWidget->GetDPI();
 
             if (prefDPI < 0) {
-                dpi = PR_MAX(96.0f, dpi);
+                dpi = NS_MAX(96.0f, dpi);
             }
         } else {
             dpi = 96.0f;
@@ -399,12 +392,9 @@ nsDeviceContext::SetDPI()
         // controls the size of a CSS "px".
         float devPixelsPerCSSPixel = -1.0;
 
-        if (prefs) {
-            nsXPIDLCString prefString;
-            nsresult rv = prefs->GetCharPref("layout.css.devPixelsPerPx", getter_Copies(prefString));
-            if (NS_SUCCEEDED(rv) && !prefString.IsEmpty()) {
-                devPixelsPerCSSPixel = static_cast<float>(atof(prefString));
-            }
+        nsAdoptingCString prefString = Preferences::GetCString("layout.css.devPixelsPerPx");
+        if (!prefString.IsEmpty()) {
+            devPixelsPerCSSPixel = static_cast<float>(atof(prefString));
         }
 
         if (devPixelsPerCSSPixel <= 0) {
@@ -416,7 +406,7 @@ nsDeviceContext::SetDPI()
         }
 
         mAppUnitsPerDevNotScaledPixel =
-            PR_MAX(1, NS_lround(AppUnitsPerCSSPixel() / devPixelsPerCSSPixel));
+            NS_MAX(1, NS_lround(AppUnitsPerCSSPixel() / devPixelsPerCSSPixel));
     }
 
     NS_ASSERTION(dpi != -1.0, "no dpi set");
@@ -644,10 +634,14 @@ nsDeviceContext::BeginPage(void)
 
     if (NS_FAILED(rv)) return rv;
 
-    /* We need to get a new surface for each page on the Mac */
 #ifdef XP_MACOSX
+    // We need to get a new surface for each page on the Mac, as the
+    // CGContextRefs are only good for one page.
+    // And we don't null it out in EndPage because mPrintingSurface needs
+    // to be available also in-between EndPage/BeginPage (bug 665218).
     mDeviceContextSpec->GetSurfaceForPrinter(getter_AddRefs(mPrintingSurface));
 #endif
+
     rv = mPrintingSurface->BeginPage();
 
     return rv;
@@ -657,13 +651,6 @@ nsresult
 nsDeviceContext::EndPage(void)
 {
     nsresult rv = mPrintingSurface->EndPage();
-
-    /* We need to release the CGContextRef in the surface here, plus it's
-       not something you would want anyway, as these CGContextRefs are only good
-       for one page. */
-#ifdef XP_MACOSX
-    mPrintingSurface = nsnull;
-#endif
 
     if (mDeviceContextSpec)
         mDeviceContextSpec->EndPage();
@@ -737,32 +724,32 @@ nsDeviceContext::CalcPrintingSize()
     if (!mPrintingSurface)
         return;
 
-    PRBool inPoints = PR_TRUE;
+    bool inPoints = true;
 
     gfxSize size(0, 0);
     switch (mPrintingSurface->GetType()) {
     case gfxASurface::SurfaceTypeImage:
-        inPoints = PR_FALSE;
+        inPoints = false;
         size = reinterpret_cast<gfxImageSurface*>(mPrintingSurface.get())->GetSize();
         break;
 
 #if defined(MOZ_PDF_PRINTING)
     case gfxASurface::SurfaceTypePDF:
-        inPoints = PR_TRUE;
+        inPoints = true;
         size = reinterpret_cast<gfxPDFSurface*>(mPrintingSurface.get())->GetSize();
         break;
 #endif
 
 #ifdef MOZ_ENABLE_GTK2
     case gfxASurface::SurfaceTypePS:
-        inPoints = PR_TRUE;
+        inPoints = true;
         size = reinterpret_cast<gfxPSSurface*>(mPrintingSurface.get())->GetSize();
         break;
 #endif
 
 #ifdef XP_MACOSX
     case gfxASurface::SurfaceTypeQuartz:
-        inPoints = PR_TRUE; // this is really only true when we're printing
+        inPoints = true; // this is really only true when we're printing
         size = reinterpret_cast<gfxQuartzSurface*>(mPrintingSurface.get())->GetSize();
         break;
 #endif
@@ -771,7 +758,7 @@ nsDeviceContext::CalcPrintingSize()
     case gfxASurface::SurfaceTypeWin32:
     case gfxASurface::SurfaceTypeWin32Printing:
         {
-            inPoints = PR_FALSE;
+            inPoints = false;
             HDC dc = reinterpret_cast<gfxWindowsSurface*>(mPrintingSurface.get())->GetDC();
             if (!dc)
                 dc = GetDC((HWND)mWidget->GetNativeData(NS_NATIVE_WIDGET));
@@ -787,7 +774,7 @@ nsDeviceContext::CalcPrintingSize()
 #ifdef XP_OS2
     case gfxASurface::SurfaceTypeOS2:
         {
-            inPoints = PR_FALSE;
+            inPoints = false;
             // we already set the size in the surface constructor we set for
             // printing, so just get those values here
             size = reinterpret_cast<gfxOS2Surface*>(mPrintingSurface.get())->GetSize();
@@ -819,7 +806,7 @@ nsDeviceContext::CalcPrintingSize()
     }
 }
 
-PRBool nsDeviceContext::CheckDPIChange() {
+bool nsDeviceContext::CheckDPIChange() {
     PRInt32 oldDevPixels = mAppUnitsPerDevNotScaledPixel;
     PRInt32 oldInches = mAppUnitsPerPhysicalInch;
 
@@ -829,12 +816,12 @@ PRBool nsDeviceContext::CheckDPIChange() {
         oldInches != mAppUnitsPerPhysicalInch;
 }
 
-PRBool
+bool
 nsDeviceContext::SetPixelScale(float aScale)
 {
     if (aScale <= 0) {
         NS_NOTREACHED("Invalid pixel scale value");
-        return PR_FALSE;
+        return false;
     }
     PRInt32 oldAppUnitsPerDevPixel = mAppUnitsPerDevPixel;
     mPixelScale = aScale;
@@ -846,5 +833,5 @@ void
 nsDeviceContext::UpdateScaledAppUnits()
 {
     mAppUnitsPerDevPixel =
-        PR_MAX(1, NSToIntRound(float(mAppUnitsPerDevNotScaledPixel) / mPixelScale));
+        NS_MAX(1, NSToIntRound(float(mAppUnitsPerDevNotScaledPixel) / mPixelScale));
 }

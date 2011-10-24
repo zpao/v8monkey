@@ -63,12 +63,15 @@
 #include "nsIStringBundle.h"
 #include "nsLocalHandlerApp.h"
 #include "mozilla/Services.h"
+#include "mozilla/Preferences.h"
 #include <stdlib.h>     // for system()
+
+using namespace mozilla;
 
 //------------------------------------------------------------------------
 
 // reduces overhead by preventing calls to nsRws when it isn't present
-static PRBool sUseRws = PR_TRUE;
+static bool sUseRws = true;
 
 static nsresult
 FindSemicolon(nsAString::const_iterator& aSemicolon_iter,
@@ -81,7 +84,7 @@ ParseMIMEType(const nsAString::const_iterator& aStart_iter,
               nsAString::const_iterator& aMinorTypeEnd,
               const nsAString::const_iterator& aEnd_iter);
 
-inline PRBool
+inline bool
 IsNetscapeFormat(const nsACString& aBuffer);
 
 //------------------------------------------------------------------------
@@ -125,14 +128,14 @@ nsOSHelperAppService::UnescapeCommand(const nsAString& aEscapedCommand,
 static nsresult
 FindSemicolon(nsAString::const_iterator& aSemicolon_iter,
               const nsAString::const_iterator& aEnd_iter) {
-  PRBool semicolonFound = PR_FALSE;
+  bool semicolonFound = false;
   while (aSemicolon_iter != aEnd_iter && !semicolonFound) {
     switch(*aSemicolon_iter) {
     case '\\':
       aSemicolon_iter.advance(2);
       break;
     case ';':
-      semicolonFound = PR_TRUE;
+      semicolonFound = true;
       break;
     default:
       ++aSemicolon_iter;
@@ -196,39 +199,27 @@ ParseMIMEType(const nsAString::const_iterator& aStart_iter,
 nsresult
 nsOSHelperAppService::GetFileLocation(const char* aPrefName,
                                       const char* aEnvVarName,
-                                      PRUnichar** aFileLocation) {
+                                      nsAString& aFileLocation) {
   LOG(("-- GetFileLocation.  Pref: '%s'  EnvVar: '%s'\n",
        aPrefName,
        aEnvVarName));
   NS_PRECONDITION(aPrefName, "Null pref name passed; don't do that!");
-  
-  nsresult rv;
-  *aFileLocation = nsnull;
+
+  aFileLocation.Truncate();
   /* The lookup order is:
      1) user pref
      2) env var
      3) pref
   */
-  nsCOMPtr<nsIPrefService> prefService(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
-  NS_ENSURE_SUCCESS(rv, rv);
-  nsCOMPtr<nsIPrefBranch> prefBranch;
-  rv = prefService->GetBranch(nsnull, getter_AddRefs(prefBranch));
-  NS_ENSURE_SUCCESS(rv, rv);
+  NS_ENSURE_TRUE(Preferences::GetRootBranch(), NS_ERROR_FAILURE);
 
   /*
     If we have an env var we should check whether the pref is a user
     pref.  If we do not, we don't care.
   */
-  nsCOMPtr<nsISupportsString> prefFileName;
-  PRBool isUserPref = PR_FALSE;
-  prefBranch->PrefHasUserValue(aPrefName, &isUserPref);
-  if (isUserPref) {
-    rv = prefBranch->GetComplexValue(aPrefName,
-                                     NS_GET_IID(nsISupportsString),
-                                     getter_AddRefs(prefFileName));
-    if (NS_SUCCEEDED(rv)) {
-      return prefFileName->ToString(aFileLocation);
-    }
+  if (Preferences::HasUserValue(aPrefName) &&
+      NS_SUCCEEDED(Preferences::GetString(aPrefName, &aFileLocation))) {
+    return NS_OK;
   }
 
   if (aEnvVarName && *aEnvVarName) {
@@ -244,25 +235,13 @@ nsOSHelperAppService::GetFileLocation(const char* aPrefName,
       rv = file->InitWithNativePath(nsDependentCString(prefValue));
       NS_ENSURE_SUCCESS(rv, rv);
 
-      nsAutoString unicodePath;
-      rv = file->GetPath(unicodePath);
+      rv = file->GetPath(aFileLocation);
       NS_ENSURE_SUCCESS(rv, rv);
-      
-      *aFileLocation = ToNewUnicode(unicodePath);
-      if (!*aFileLocation)
-        return NS_ERROR_OUT_OF_MEMORY;
       return NS_OK;
     }
   }
-  
-  rv = prefBranch->GetComplexValue(aPrefName,
-                                   NS_GET_IID(nsISupportsString),
-                                   getter_AddRefs(prefFileName));
-  if (NS_SUCCEEDED(rv)) {
-    return prefFileName->ToString(aFileLocation);
-  }
-  
-  return rv;
+
+  return Preferences::GetString(aPrefName, &aFileLocation);
 }
 
 
@@ -277,11 +256,10 @@ nsOSHelperAppService::LookUpTypeAndDescription(const nsAString& aFileExtension,
   LOG(("-- LookUpTypeAndDescription for extension '%s'\n",
        NS_LossyConvertUTF16toASCII(aFileExtension).get()));
   nsresult rv = NS_OK;
-  nsXPIDLString mimeFileName;
+  nsAutoString mimeFileName;
 
   rv = GetFileLocation("helpers.private_mime_types_file",
-                       nsnull,
-                       getter_Copies(mimeFileName));
+                       nsnull, mimeFileName);
   if (NS_SUCCEEDED(rv) && !mimeFileName.IsEmpty()) {
     rv = GetTypeAndDescriptionFromMimetypesFile(mimeFileName,
                                                 aFileExtension,
@@ -293,8 +271,7 @@ nsOSHelperAppService::LookUpTypeAndDescription(const nsAString& aFileExtension,
   }
   if (NS_FAILED(rv) || aMajorType.IsEmpty()) {
     rv = GetFileLocation("helpers.global_mime_types_file",
-                         nsnull,
-                         getter_Copies(mimeFileName));
+                         nsnull, mimeFileName);
     if (NS_SUCCEEDED(rv) && !mimeFileName.IsEmpty()) {
       rv = GetTypeAndDescriptionFromMimetypesFile(mimeFileName,
                                                   aFileExtension,
@@ -308,7 +285,7 @@ nsOSHelperAppService::LookUpTypeAndDescription(const nsAString& aFileExtension,
   return rv;
 }
 
-inline PRBool
+inline bool
 IsNetscapeFormat(const nsACString& aBuffer) {
   return StringBeginsWith(aBuffer, NS_LITERAL_CSTRING("#--Netscape Communications Corporation MIME Information")) ||
          StringBeginsWith(aBuffer, NS_LITERAL_CSTRING("#--MCOM MIME Information"));
@@ -317,7 +294,7 @@ IsNetscapeFormat(const nsACString& aBuffer) {
 /*
  * Create a file stream and line input stream for the filename.
  * Leaves the first line of the file in aBuffer and sets the format to
- *  PR_TRUE for netscape files and false for normail ones
+ *  true for netscape files and false for normail ones
  */
 // static
 nsresult
@@ -325,8 +302,8 @@ nsOSHelperAppService::CreateInputStream(const nsAString& aFilename,
                                         nsIFileInputStream ** aFileInputStream,
                                         nsILineInputStream ** aLineInputStream,
                                         nsACString& aBuffer,
-                                        PRBool * aNetscapeFormat,
-                                        PRBool * aMore) {
+                                        bool * aNetscapeFormat,
+                                        bool * aMore) {
   LOG(("-- CreateInputStream"));
   nsresult rv = NS_OK;
 
@@ -340,7 +317,7 @@ nsOSHelperAppService::CreateInputStream(const nsAString& aFilename,
   nsCOMPtr<nsIFileInputStream> fileStream(do_CreateInstance(NS_LOCALFILEINPUTSTREAM_CONTRACTID, &rv));
   if (NS_FAILED(rv))
     return rv;
-  rv = fileStream->Init(file, -1, -1, PR_FALSE);
+  rv = fileStream->Init(file, -1, -1, false);
   if (NS_FAILED(rv))
     return rv;
 
@@ -384,10 +361,10 @@ nsOSHelperAppService::GetTypeAndDescriptionFromMimetypesFile(const nsAString& aF
   nsresult rv = NS_OK;
   nsCOMPtr<nsIFileInputStream> mimeFile;
   nsCOMPtr<nsILineInputStream> mimeTypes;
-  PRBool netscapeFormat;
+  bool netscapeFormat;
   nsAutoString buf;
   nsCAutoString cBuf;
-  PRBool more = PR_FALSE;
+  bool more = false;
   rv = CreateInputStream(aFilename, getter_AddRefs(mimeFile), getter_AddRefs(mimeTypes),
                          cBuf, &netscapeFormat, &more);
 
@@ -506,11 +483,10 @@ nsOSHelperAppService::LookUpExtensionsAndDescription(const nsAString& aMajorType
        NS_LossyConvertUTF16toASCII(aMajorType).get(),
        NS_LossyConvertUTF16toASCII(aMinorType).get()));
   nsresult rv = NS_OK;
-  nsXPIDLString mimeFileName;
+  nsAutoString mimeFileName;
 
   rv = GetFileLocation("helpers.private_mime_types_file",
-                       nsnull,
-                       getter_Copies(mimeFileName));
+                       nsnull, mimeFileName);
   if (NS_SUCCEEDED(rv) && !mimeFileName.IsEmpty()) {
     rv = GetExtensionsAndDescriptionFromMimetypesFile(mimeFileName,
                                                       aMajorType,
@@ -522,8 +498,7 @@ nsOSHelperAppService::LookUpExtensionsAndDescription(const nsAString& aMajorType
   }
   if (NS_FAILED(rv) || aFileExtensions.IsEmpty()) {
     rv = GetFileLocation("helpers.global_mime_types_file",
-                         nsnull,
-                         getter_Copies(mimeFileName));
+                         nsnull, mimeFileName);
     if (NS_SUCCEEDED(rv) && !mimeFileName.IsEmpty()) {
       rv = GetExtensionsAndDescriptionFromMimetypesFile(mimeFileName,
                                                         aMajorType,
@@ -556,10 +531,10 @@ nsOSHelperAppService::GetExtensionsAndDescriptionFromMimetypesFile(const nsAStri
   nsresult rv = NS_OK;
   nsCOMPtr<nsIFileInputStream> mimeFile;
   nsCOMPtr<nsILineInputStream> mimeTypes;
-  PRBool netscapeFormat;
+  bool netscapeFormat;
   nsAutoString buf;
   nsCAutoString cBuf;
-  PRBool more = PR_FALSE;
+  bool more = false;
   rv = CreateInputStream(aFilename, getter_AddRefs(mimeFile), getter_AddRefs(mimeTypes),
                          cBuf, &netscapeFormat, &more);
 
@@ -909,11 +884,10 @@ nsOSHelperAppService::LookUpHandlerAndDescription(const nsAString& aMajorType,
        NS_LossyConvertUTF16toASCII(aMajorType).get(),
        NS_LossyConvertUTF16toASCII(aMinorType).get()));
   nsresult rv = NS_OK;
-  nsXPIDLString mailcapFileName;
+  nsAutoString mailcapFileName;
 
   rv = GetFileLocation("helpers.private_mailcap_file",
-                       "PERSONAL_MAILCAP",
-                       getter_Copies(mailcapFileName));
+                       "PERSONAL_MAILCAP", mailcapFileName);
   if (NS_SUCCEEDED(rv) && !mailcapFileName.IsEmpty()) {
     rv = GetHandlerAndDescriptionFromMailcapFile(mailcapFileName,
                                                  aMajorType,
@@ -927,8 +901,7 @@ nsOSHelperAppService::LookUpHandlerAndDescription(const nsAString& aMajorType,
   }
   if (NS_FAILED(rv) || aHandler.IsEmpty()) {
     rv = GetFileLocation("helpers.global_mailcap_file",
-                         "MAILCAP",
-                         getter_Copies(mailcapFileName));
+                         "MAILCAP", mailcapFileName);
     if (NS_SUCCEEDED(rv) && !mailcapFileName.IsEmpty()) {
       rv = GetHandlerAndDescriptionFromMailcapFile(mailcapFileName,
                                                    aMajorType,
@@ -962,7 +935,7 @@ nsOSHelperAppService::GetHandlerAndDescriptionFromMailcapFile(const nsAString& a
        NS_LossyConvertUTF16toASCII(aMinorType).get()));
 
   nsresult rv = NS_OK;
-  PRBool more = PR_FALSE;
+  bool more = false;
   
   nsCOMPtr<nsILocalFile> file(do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv));
   if (NS_FAILED(rv))
@@ -974,7 +947,7 @@ nsOSHelperAppService::GetHandlerAndDescriptionFromMailcapFile(const nsAString& a
   nsCOMPtr<nsIFileInputStream> mailcapFile(do_CreateInstance(NS_LOCALFILEINPUTSTREAM_CONTRACTID, &rv));
   if (NS_FAILED(rv))
     return rv;
-  rv = mailcapFile->Init(file, -1, -1, PR_FALSE);
+  rv = mailcapFile->Init(file, -1, -1, false);
   if (NS_FAILED(rv))
     return rv;
 
@@ -1025,7 +998,7 @@ nsOSHelperAppService::GetHandlerAndDescriptionFromMailcapFile(const nsAString& a
               Substring(minorTypeStart,
                         minorTypeEnd).Equals(aMinorType,
                                              nsCaseInsensitiveStringComparator())) { // we have a match
-            PRBool match = PR_TRUE;
+            bool match = true;
             ++semicolon_iter;             // point at the first char past the semicolon
             start_iter = semicolon_iter;  // handler string starts here
             FindSemicolon(semicolon_iter, end_iter);
@@ -1050,7 +1023,7 @@ nsOSHelperAppService::GetHandlerAndDescriptionFromMailcapFile(const nsAString& a
             aHandler = Substring(start_iter, end_executable_iter);
             
             nsAString::const_iterator start_option_iter, end_optionname_iter, equal_sign_iter;
-            PRBool equalSignFound;
+            bool equalSignFound;
             while (match &&
                    semicolon_iter != end_iter &&
                    ++semicolon_iter != end_iter) { // there are options left and we still match
@@ -1066,14 +1039,14 @@ nsOSHelperAppService::GetHandlerAndDescriptionFromMailcapFile(const nsAString& a
               semicolon_iter = start_option_iter;
               FindSemicolon(semicolon_iter, end_iter);
               equal_sign_iter = start_option_iter;
-              equalSignFound = PR_FALSE;
+              equalSignFound = false;
               while (equal_sign_iter != semicolon_iter && !equalSignFound) {
                 switch(*equal_sign_iter) {
                 case '\\':
                   equal_sign_iter.advance(2);
                   break;
                 case '=':
-                  equalSignFound = PR_TRUE;
+                  equalSignFound = true;
                   break;
                 default:
                   ++equal_sign_iter;
@@ -1103,7 +1076,7 @@ nsOSHelperAppService::GetHandlerAndDescriptionFromMailcapFile(const nsAString& a
                   LOG(("Running Test: %s\n", testCommand.get()));
                   // XXX this should not use system(), since that can block the UI thread!
                   if (NS_SUCCEEDED(rv) && system(testCommand.get()) != 0) {
-                    match = PR_FALSE;
+                    match = false;
                   }
                 }
               } else {
@@ -1137,30 +1110,24 @@ nsOSHelperAppService::GetHandlerAndDescriptionFromMailcapFile(const nsAString& a
   return rv;
 }
 
-nsresult nsOSHelperAppService::OSProtocolHandlerExists(const char * aProtocolScheme, PRBool * aHandlerExists)
+nsresult nsOSHelperAppService::OSProtocolHandlerExists(const char * aProtocolScheme, bool * aHandlerExists)
 {
   LOG(("-- nsOSHelperAppService::OSProtocolHandlerExists for '%s'\n",
        aProtocolScheme));
-  *aHandlerExists = PR_FALSE;
+  *aHandlerExists = false;
 
   /* if applications.protocol is in prefs, then we have an external protocol handler */
   nsresult rv;
-  nsCAutoString prefName;
-  prefName = NS_LITERAL_CSTRING("applications.") + nsDependentCString(aProtocolScheme);
+  nsCAutoString branchName =
+    NS_LITERAL_CSTRING("applications.") + nsDependentCString(aProtocolScheme);
+  nsCAutoString prefName = branchName + branchName;
 
-  nsCOMPtr<nsIPrefService> thePrefsService(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
-  if (NS_SUCCEEDED(rv)) {
-    nsCOMPtr<nsIPrefBranch> prefBranch;
-    rv = thePrefsService->GetBranch(prefName.get(), getter_AddRefs(prefBranch));
-    if (NS_SUCCEEDED(rv)) {
-      nsXPIDLCString prefString;
-      rv = prefBranch->GetCharPref(prefName.get(), getter_Copies(prefString));
-      *aHandlerExists = NS_SUCCEEDED(rv) && !prefString.IsEmpty();
-      if (*aHandlerExists) {
-        return NS_OK;
-      }
-    }
+  nsAdoptingCString prefString = Preferences::GetCString(prefName.get());
+  *aHandlerExists = !prefString.IsEmpty();
+  if (*aHandlerExists) {
+    return NS_OK;
   }
+
   /* Check the OS/2 INI for the protocol */
   char szAppFromINI[CCHMAXPATH];
   char szParamsFromINI[MAXINIPARAMLENGTH];
@@ -1168,7 +1135,7 @@ nsresult nsOSHelperAppService::OSProtocolHandlerExists(const char * aProtocolSch
                                           szAppFromINI, sizeof(szAppFromINI),
                                           szParamsFromINI, sizeof(szParamsFromINI));
   if (NS_SUCCEEDED(rv)) {
-    *aHandlerExists = PR_TRUE;
+    *aHandlerExists = true;
   }
 
   return NS_OK;
@@ -1398,7 +1365,7 @@ WpsGetDefaultHandler(const char *aFileExt, nsAString& aDescription)
   if (sUseRws) {
     nsCOMPtr<nsIRwsService> rwsSvc(do_GetService("@mozilla.org/rwsos2;1"));
     if (!rwsSvc)
-      sUseRws = PR_FALSE;
+      sUseRws = false;
     else {
       PRUint32 handle;
       // the handle may be zero if the WPS class provides the default handler
@@ -1426,7 +1393,7 @@ WpsMimeInfoFromExtension(const char *aFileExt, nsMIMEInfoOS2 *aMI)
   // this identifies whether the mimetype is a bogus
   // "application/octet-stream" generated when no match
   // could be found for this extension
-  PRBool exists;
+  bool exists;
   aMI->ExtensionExists(nsDependentCString(aFileExt), &exists);
 
   // get the default app's description and WPS handle (if any)
@@ -1511,12 +1478,12 @@ nsOSHelperAppService::GetFromTypeAndExtension(const nsACString& aMIMEType,
     return NS_OK;
   }
 
-  PRBool gotPromoted = PR_FALSE;
+  bool gotPromoted = false;
 
   // both mailcap & mimetypes.rdf have an entry;  if they're
   // different, exit;  otherwise, clear the default entry
   if (defApp && locPrefApp) {
-    PRBool sameFile;
+    bool sameFile;
     nsCOMPtr<nsIFile> app;
     rv = locPrefApp->GetExecutable(getter_AddRefs(app));
     NS_ENSURE_SUCCESS(rv, rv);
@@ -1527,7 +1494,7 @@ nsOSHelperAppService::GetFromTypeAndExtension(const nsACString& aMIMEType,
     defApp = 0;
     mi->SetDefaultApplication(0);
     mi->SetDefaultDescription(EmptyString());
-    gotPromoted = PR_TRUE;
+    gotPromoted = true;
   }
 
   nsAutoString description;
@@ -1538,7 +1505,7 @@ nsOSHelperAppService::GetFromTypeAndExtension(const nsACString& aMIMEType,
     mi->GetDefaultDescription(description);
     nsLocalHandlerApp *handlerApp(new nsLocalHandlerApp(description, defApp));
     mi->SetPreferredApplicationHandler(handlerApp);
-    gotPromoted = PR_TRUE;
+    gotPromoted = true;
   }
 
   // if the former default app was promoted to preferred app,
@@ -1566,10 +1533,10 @@ nsOSHelperAppService::GetFromTypeAndExtension(const nsACString& aMIMEType,
 already_AddRefed<nsIMIMEInfo>
 nsOSHelperAppService::GetMIMEInfoFromOS(const nsACString& aType,
                                         const nsACString& aFileExt,
-                                        PRBool     *aFound) {
-  *aFound = PR_TRUE;
+                                        bool       *aFound) {
+  *aFound = true;
   nsMIMEInfoOS2* retval = GetFromType(PromiseFlatCString(aType)).get();
-  PRBool hasDefault = PR_FALSE;
+  bool hasDefault = false;
   if (retval)
     retval->GetHasDefaultHandler(&hasDefault);
   if (!retval || !hasDefault) {
@@ -1588,7 +1555,7 @@ nsOSHelperAppService::GetMIMEInfoFromOS(const nsACString& aType,
     }
     // If we got nothing, make a new mimeinfo
     if (!retval) {
-      *aFound = PR_FALSE;
+      *aFound = false;
       retval = new nsMIMEInfoOS2(aType);
       if (retval) {
         NS_ADDREF(retval);
@@ -1609,7 +1576,7 @@ nsOSHelperAppService::GetMIMEInfoFromOS(const nsACString& aType,
 
 NS_IMETHODIMP
 nsOSHelperAppService::GetProtocolHandlerInfoFromOS(const nsACString &aScheme,
-                                                   PRBool *found,
+                                                   bool *found,
                                                    nsIHandlerInfo **_retval)
 {
   NS_ASSERTION(!aScheme.IsEmpty(), "No scheme was specified!");
@@ -1642,14 +1609,12 @@ NS_IMETHODIMP
 nsOSHelperAppService::GetApplicationDescription(const nsACString& aScheme, nsAString& _retval)
 {
   nsresult rv;
-  nsCOMPtr<nsIPrefService> thePrefsService(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
-  NS_ENSURE_SUCCESS(rv, rv);
-  nsCAutoString prefName = NS_LITERAL_CSTRING("applications.") + aScheme;
-  nsCOMPtr<nsIPrefBranch> prefBranch;
+  nsCAutoString branchName = NS_LITERAL_CSTRING("applications.") + aScheme;
   nsCAutoString applicationName;
 
-  rv = thePrefsService->GetBranch(prefName.get(), getter_AddRefs(prefBranch));
-  if (NS_FAILED(rv)) {
+  nsCAutoString prefName = branchName + branchName;
+  nsAdoptingCString prefString = Preferences::GetCString(prefName.get());
+  if (!prefString) { // failed
     char szAppFromINI[CCHMAXPATH];
     char szParamsFromINI[MAXINIPARAMLENGTH];
     /* did OS2.INI contain application? */
@@ -1661,18 +1626,14 @@ nsOSHelperAppService::GetApplicationDescription(const nsACString& aScheme, nsASt
     } else {
       return NS_ERROR_NOT_AVAILABLE;
     }
-  } else {
-    nsXPIDLCString prefString;
-    rv = prefBranch->GetCharPref(prefName.get(), getter_Copies(prefString));
-    if (NS_SUCCEEDED(rv) && !prefString.IsEmpty()) {
-      applicationName.Append(prefString);
-    }
+  } else if (!prefString.IsEmpty()) { // succeeded and not empty
+    applicationName.Append(prefString);
   }
 
 
   nsCOMPtr<nsILocalFile> application;
   rv = NS_NewNativeLocalFile(nsDependentCString(applicationName.get()),
-                             PR_FALSE,
+                             false,
                              getter_AddRefs(application));
   if (NS_FAILED(rv)) {
     char szAppPath[CCHMAXPATH];

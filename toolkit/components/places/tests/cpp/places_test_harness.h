@@ -144,7 +144,7 @@ public:
     nsCOMPtr<nsIObserverService> observerService =
       do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
     if (observerService) {
-      (void)observerService->AddObserver(this, mTopic, PR_FALSE);
+      (void)observerService->AddObserver(this, mTopic, false);
 
       while (!mTopicReceived) {
         if (PR_IntervalNow() - mStartTime > WAITFORTOPIC_TIMEOUT_SECONDS * PR_USEC_PER_SEC) {
@@ -192,7 +192,7 @@ addURI(nsIURI* aURI)
 
   PRInt64 id;
   nsresult rv = hist->AddVisit(aURI, PR_Now(), nsnull,
-                               nsINavHistoryService::TRANSITION_LINK, PR_FALSE,
+                               nsINavHistoryService::TRANSITION_LINK, false,
                                0, &id);
   do_check_success(rv);
 
@@ -273,7 +273,7 @@ do_get_place(nsIURI* aURI, PlaceRecord& result)
   rv = stmt->BindUTF8StringByIndex(0, spec);
   do_check_success(rv);
 
-  PRBool hasResults;
+  bool hasResults;
   rv = stmt->ExecuteStep(&hasResults);
   do_check_success(rv);
   if (!hasResults) {
@@ -315,7 +315,7 @@ do_get_lastVisit(PRInt64 placeId, VisitRecord& result)
   rv = stmt->BindInt64ByIndex(0, placeId);
   do_check_success(rv);
 
-  PRBool hasResults;
+  bool hasResults;
   rv = stmt->ExecuteStep(&hasResults);
   do_check_success(rv);
 
@@ -331,3 +331,39 @@ do_get_lastVisit(PRInt64 placeId, VisitRecord& result)
   rv = stmt->GetInt32(2, &result.transitionType);
   do_check_success(rv);
 }
+
+static const char TOPIC_PROFILE_TEARDOWN[] = "profile-change-teardown";
+static const char TOPIC_PROFILE_CHANGE[] = "profile-before-change";
+
+class ShutdownObserver : public nsIObserver
+{
+public:
+  NS_DECL_ISUPPORTS
+
+  ShutdownObserver()
+  {
+    nsCOMPtr<nsIObserverService> observerService =
+      do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+    do_check_true(observerService);
+    observerService->AddObserver(this,
+                                 NS_XPCOM_WILL_SHUTDOWN_OBSERVER_ID,
+                                 false);
+  }
+
+  NS_IMETHOD Observe(nsISupports* aSubject,
+                     const char* aTopic,
+                     const PRUnichar* aData)
+  {
+    if (strcmp(aTopic, NS_XPCOM_WILL_SHUTDOWN_OBSERVER_ID) == 0) {
+      nsCOMPtr<nsIObserverService> os =
+        do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+      (void)os->NotifyObservers(nsnull, TOPIC_PROFILE_TEARDOWN, nsnull);
+      (void)os->NotifyObservers(nsnull, TOPIC_PROFILE_CHANGE, nsnull);
+    }
+      return NS_OK;
+  }
+};
+NS_IMPL_ISUPPORTS1(
+  ShutdownObserver,
+  nsIObserver
+)

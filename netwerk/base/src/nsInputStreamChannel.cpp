@@ -41,7 +41,7 @@
 // nsInputStreamChannel
 
 nsresult
-nsInputStreamChannel::OpenContentStream(PRBool async, nsIInputStream **result,
+nsInputStreamChannel::OpenContentStream(bool async, nsIInputStream **result,
                                         nsIChannel** channel)
 {
   NS_ENSURE_TRUE(mContentStream, NS_ERROR_NOT_INITIALIZED);
@@ -62,7 +62,7 @@ nsInputStreamChannel::OpenContentStream(PRBool async, nsIInputStream **result,
     SetContentLength64(avail);
   }
 
-  EnableSynthesizedProgressEvents(PR_TRUE);
+  EnableSynthesizedProgressEvents(true);
   
   NS_ADDREF(*result = mContentStream);
   return NS_OK;

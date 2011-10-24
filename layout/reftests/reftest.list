@@ -9,7 +9,7 @@
 include reftest-sanity/reftest.list
 
 # images (if libpr0n is busted, could result in weird failures in other tests)
-include ../../modules/libpr0n/test/reftest/reftest.list
+include ../../image/test/reftest/reftest.list
 
 # relative and absolute positioning
 include abs-pos/reftest.list
@@ -88,6 +88,9 @@ skip-if(Android) include css-invalid/reftest.list
 
 # css-submit-invalid
 include css-submit-invalid/reftest.list
+
+# css text-overflow
+include text-overflow/reftest.list
 
 # css transitions
 include css-transitions/reftest.list
@@ -203,6 +206,9 @@ include object/reftest.list
 # ogg-video/
 include ogg-video/reftest.list
 
+# webm-video/
+include webm-video/reftest.list
+
 # parser/
 include ../../parser/htmlparser/tests/reftest/reftest.list
 
@@ -213,7 +219,7 @@ include percent-overflow-sizing/reftest.list
 include pixel-rounding/reftest.list
 
 # plugin/
-include ../../modules/plugin/test/reftest/reftest.list
+include ../../dom/plugins/test/reftest/reftest.list
 
 # printing
 include printing/reftest.list
@@ -267,6 +273,9 @@ include text-transform/reftest.list
 # -moz-transform/
 include transform/reftest.list
 
+# 3d transforms
+include transform-3d/reftest.list
+
 # unicode/ (verify that we don't do expend effort doing unicode-aware case checks)
 include unicode/reftest.list
 
@@ -281,6 +290,9 @@ include xul-document-load/reftest.list
 
 # xul/
 include xul/reftest.list
+
+# xul
+include ../xul/base/reftest/reftest.list
 
 # xul grid
 include ../xul/base/src/grid/reftests/reftest.list

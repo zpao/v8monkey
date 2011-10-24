@@ -65,15 +65,15 @@ public:
    * @param pData This is an XPCOM getter, so pData is already_addrefed.
    *   If the key doesn't exist, pData will be set to nsnull.
    */
-  PRBool Get(KeyType aKey, UserDataType* pData) const;
+  bool Get(KeyType aKey, UserDataType* pData) const;
 
   /**
    * Gets a weak reference to the hashtable entry.
-   * @param aFound If not nsnull, will be set to PR_TRUE if the entry is found,
-   *               to PR_FALSE otherwise.
+   * @param aFound If not nsnull, will be set to true if the entry is found,
+   *               to false otherwise.
    * @return The entry, or nsnull if not found. Do not release this pointer!
    */
-  RefPtr* GetWeak(KeyType aKey, PRBool* aFound = nsnull) const;
+  RefPtr* GetWeak(KeyType aKey, bool* aFound = nsnull) const;
 };
 
 /**
@@ -96,7 +96,7 @@ public:
    * @param pData This is an XPCOM getter, so pData is already_addrefed.
    *   If the key doesn't exist, pData will be set to nsnull.
    */
-  PRBool Get(KeyType aKey, UserDataType* pData) const;
+  bool Get(KeyType aKey, UserDataType* pData) const;
 
   // GetWeak does not make sense on a multi-threaded hashtable, where another
   // thread may remove the entry (and hence release it) as soon as GetWeak
@@ -109,7 +109,7 @@ public:
 //
 
 template<class KeyClass, class RefPtr>
-PRBool
+bool
 nsRefPtrHashtable<KeyClass,RefPtr>::Get
   (KeyType aKey, UserDataType* pRefPtr) const
 {
@@ -124,7 +124,7 @@ nsRefPtrHashtable<KeyClass,RefPtr>::Get
       NS_IF_ADDREF(*pRefPtr);
     }
 
-    return PR_TRUE;
+    return true;
   }
 
   // if the key doesn't exist, set *pRefPtr to null
@@ -132,27 +132,27 @@ nsRefPtrHashtable<KeyClass,RefPtr>::Get
   if (pRefPtr)
     *pRefPtr = nsnull;
 
-  return PR_FALSE;
+  return false;
 }
 
 template<class KeyClass, class RefPtr>
 RefPtr*
 nsRefPtrHashtable<KeyClass,RefPtr>::GetWeak
-  (KeyType aKey, PRBool* aFound) const
+  (KeyType aKey, bool* aFound) const
 {
   typename base_type::EntryType* ent = this->GetEntry(aKey);
 
   if (ent)
   {
     if (aFound)
-      *aFound = PR_TRUE;
+      *aFound = true;
 
     return ent->mData;
   }
 
-  // Key does not exist, return nsnull and set aFound to PR_FALSE
+  // Key does not exist, return nsnull and set aFound to false
   if (aFound)
-    *aFound = PR_FALSE;
+    *aFound = false;
   return nsnull;
 }
 
@@ -161,7 +161,7 @@ nsRefPtrHashtable<KeyClass,RefPtr>::GetWeak
 //
 
 template<class KeyClass, class RefPtr>
-PRBool
+bool
 nsRefPtrHashtableMT<KeyClass,RefPtr>::Get
   (KeyType aKey, UserDataType* pRefPtr) const
 {
@@ -180,7 +180,7 @@ nsRefPtrHashtableMT<KeyClass,RefPtr>::Get
 
     PR_Unlock(this->mLock);
 
-    return PR_TRUE;
+    return true;
   }
 
   // if the key doesn't exist, set *pRefPtr to null
@@ -190,7 +190,7 @@ nsRefPtrHashtableMT<KeyClass,RefPtr>::Get
 
   PR_Unlock(this->mLock);
 
-  return PR_FALSE;
+  return false;
 }
 
 #endif // nsRefPtrHashtable_h__

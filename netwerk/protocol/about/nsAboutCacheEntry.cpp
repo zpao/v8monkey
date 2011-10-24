@@ -65,7 +65,7 @@ HexDump(PRUint32 *state, const char *buf, PRInt32 n, nsCString &result)
 
     p = (const unsigned char *) buf;
 
-    PRInt32 i, row_max = PR_MIN(HEXDUMP_MAX_ROWS, n);
+    PRInt32 i, row_max = NS_MIN(HEXDUMP_MAX_ROWS, n);
 
     // print hex codes:
     for (i = 0; i < row_max; ++i) {
@@ -196,7 +196,7 @@ nsAboutCacheEntry::OpenCacheEntry(nsIURI *uri, nsICacheEntryDescriptor **result)
 {
     nsresult rv;
     nsCAutoString clientID, key;
-    PRBool streamBased = PR_TRUE;
+    bool streamBased = true;
 
     rv = ParseURI(uri, clientID, streamBased, key);
     if (NS_FAILED(rv)) return rv;
@@ -212,10 +212,10 @@ nsAboutCacheEntry::OpenCacheEntry(nsIURI *uri, nsICacheEntryDescriptor **result)
                              getter_AddRefs(session));
     if (NS_FAILED(rv)) return rv;
 
-    rv = session->SetDoomEntriesIfExpired(PR_FALSE);
+    rv = session->SetDoomEntriesIfExpired(false);
     if (NS_FAILED(rv)) return rv;
 
-    rv = session->OpenCacheEntry(key, nsICache::ACCESS_READ, PR_FALSE, result);
+    rv = session->OpenCacheEntry(key, nsICache::ACCESS_READ, false, result);
     return rv;
 }
 
@@ -273,8 +273,8 @@ nsAboutCacheEntry::WriteCacheEntryDescription(nsIOutputStream *outputStream,
 
     // Test if the key is actually a URI
     nsCOMPtr<nsIURI> uri;
-    PRBool isJS = PR_FALSE;
-    PRBool isData = PR_FALSE;
+    bool isJS = false;
+    bool isData = false;
 
     rv = NS_NewURI(getter_AddRefs(uri), str);
     // javascript: and data: URLs should not be linkified
@@ -405,7 +405,7 @@ nsAboutCacheEntry::WriteCacheEntryDescription(nsIOutputStream *outputStream,
             PRUint32 hexDumpState = 0;
             char chunk[4096];
             while (dataSize) {
-                PRUint32 count = PR_MIN(dataSize, sizeof(chunk));
+                PRUint32 count = NS_MIN<PRUint32>(dataSize, sizeof(chunk));
                 if (NS_FAILED(stream->Read(chunk, count, &n)) || n == 0)
                     break;
                 dataSize -= n;
@@ -432,7 +432,7 @@ nsAboutCacheEntry::WriteCacheEntryUnavailable(nsIOutputStream *outputStream)
 
 nsresult
 nsAboutCacheEntry::ParseURI(nsIURI *uri, nsCString &clientID,
-                            PRBool &streamBased, nsCString &key)
+                            bool &streamBased, nsCString &key)
 {
     //
     // about:cache-entry?client=[string]&sb=[boolean]&key=[string]
@@ -482,7 +482,7 @@ nsAboutCacheEntry::ParseURI(nsIURI *uri, nsCString &clientID,
 NS_IMETHODIMP
 nsAboutCacheEntry::VisitMetaDataElement(const char * key,
                                         const char * value,
-                                        PRBool *     keepGoing)
+                                        bool *     keepGoing)
 {
     mBuffer->AppendLiteral("  <tr>\n"
                            "    <th>");
@@ -495,6 +495,6 @@ nsAboutCacheEntry::VisitMetaDataElement(const char * key,
     mBuffer->AppendLiteral("</td>\n"
                            "  </tr>\n");
 
-    *keepGoing = PR_TRUE;
+    *keepGoing = true;
     return NS_OK;
 }

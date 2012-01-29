@@ -38,13 +38,13 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-/*
- * PR assertion checker.
- */
+/* Various JS utility functions. */
+
+#include "mozilla/Attributes.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "jstypes.h"
-#include "jsstdint.h"
 #include "jsutil.h"
 
 #ifdef WIN32
@@ -53,12 +53,14 @@
 #    include <signal.h>
 #endif
 
+#include "js/TemplateLib.h"
+
 using namespace js;
 
 #ifdef DEBUG
 /* For JS_OOM_POSSIBLY_FAIL in jsutil.h. */
-JS_PUBLIC_DATA(JSUint32) OOM_maxAllocations = (JSUint32)-1;
-JS_PUBLIC_DATA(JSUint32) OOM_counter = 0;
+JS_PUBLIC_DATA(uint32_t) OOM_maxAllocations = UINT32_MAX;
+JS_PUBLIC_DATA(uint32_t) OOM_counter = 0;
 #endif
 
 /*
@@ -82,21 +84,30 @@ CrashInJS()
      * We used to call DebugBreak() on Windows, but amazingly, it causes
      * the MSVS 2010 debugger not to be able to recover a call stack.
      */
-    *((int *) NULL) = 123;
+    *((volatile int *) NULL) = 123;
     exit(3);
 #elif defined(__APPLE__)
     /*
      * On Mac OS X, Breakpad ignores signals. Only real Mach exceptions are
      * trapped.
      */
-    *((int *) NULL) = 123;  /* To continue from here in GDB: "return" then "continue". */
+    *((volatile int *) NULL) = 123;  /* To continue from here in GDB: "return" then "continue". */
     raise(SIGABRT);  /* In case above statement gets nixed by the optimizer. */
 #else
     raise(SIGABRT);  /* To continue from here in GDB: "signal 0". */
 #endif
 }
 
-JS_PUBLIC_API(void) JS_Assert(const char *s, const char *file, JSIntn ln)
+/*
+ * |JS_Assert| historically took |JSIntn ln| as its last argument.  We've
+ * boiled |JSIntn ln| down to simply |int ln| so that mfbt may declare the
+ * function without depending on the |JSIntn| typedef, so we must manually
+ * verify that the |JSIntn| typedef is consistent.
+ */
+JS_STATIC_ASSERT((tl::IsSameType<JSIntn, int>::result));
+
+JS_PUBLIC_API(void)
+JS_Assert(const char *s, const char *file, int ln)
 {
     fprintf(stderr, "Assertion failure: %s, at %s:%d\n", s, file, ln);
     fflush(stderr);
@@ -118,7 +129,7 @@ JS_PUBLIC_API(void) JS_Assert(const char *s, const char *file, JSIntn ln)
  *
  * We wish to count occurrences of 0 and 1 values separately, always.
  */
-static uint32
+static uint32_t
 BinToVal(uintN logscale, uintN bin)
 {
     JS_ASSERT(bin <= 10);
@@ -128,11 +139,11 @@ BinToVal(uintN logscale, uintN bin)
     if (logscale == 2)
         return JS_BIT(bin);
     JS_ASSERT(logscale == 10);
-    return (uint32) pow(10.0, (double) bin);
+    return uint32_t(pow(10.0, (double) bin));
 }
 
 static uintN
-ValToBin(uintN logscale, uint32 val)
+ValToBin(uintN logscale, uint32_t val)
 {
     uintN bin;
 
@@ -147,7 +158,7 @@ ValToBin(uintN logscale, uint32 val)
 }
 
 void
-JS_BasicStatsAccum(JSBasicStats *bs, uint32 val)
+JS_BasicStatsAccum(JSBasicStats *bs, uint32_t val)
 {
     uintN oldscale, newscale, bin;
     double mean;
@@ -164,14 +175,14 @@ JS_BasicStatsAccum(JSBasicStats *bs, uint32 val)
         if (bs->max > 16 && mean > 8) {
             newscale = (bs->max > 1e6 && mean > 1000) ? 10 : 2;
             if (newscale != oldscale) {
-                uint32 newhist[11], newbin;
+                uint32_t newhist[11], newbin;
 
                 PodArrayZero(newhist);
                 for (bin = 0; bin <= 10; bin++) {
                     newbin = ValToBin(newscale, BinToVal(oldscale, bin));
                     newhist[newbin] += bs->hist[bin];
                 }
-                memcpy(bs->hist, newhist, sizeof bs->hist);
+                js_memcpy(bs->hist, newhist, sizeof bs->hist);
                 bs->logscale = newscale;
             }
         }
@@ -182,7 +193,7 @@ JS_BasicStatsAccum(JSBasicStats *bs, uint32 val)
 }
 
 double
-JS_MeanAndStdDev(uint32 num, double sum, double sqsum, double *sigma)
+JS_MeanAndStdDev(uint32_t num, double sum, double sqsum, double *sigma)
 {
     double var;
 
@@ -217,7 +228,7 @@ void
 JS_DumpHistogram(JSBasicStats *bs, FILE *fp)
 {
     uintN bin;
-    uint32 cnt, max;
+    uint32_t cnt, max;
     double sum, mean;
 
     for (bin = 0, max = 0, sum = 0; bin <= 10; bin++) {
@@ -240,7 +251,7 @@ JS_DumpHistogram(JSBasicStats *bs, FILE *fp)
         fprintf(fp, ": %8u ", cnt);
         if (cnt != 0) {
             if (max > 1e6 && mean > 1e3)
-                cnt = (uint32) ceil(log10((double) cnt));
+                cnt = uint32_t(ceil(log10((double) cnt)));
             else if (max > 16 && mean > 8)
                 cnt = JS_CEILING_LOG2W(cnt);
             for (uintN i = 0; i < cnt; i++)

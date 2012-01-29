@@ -52,17 +52,14 @@
 #include "nsSAXAttributes.h"
 #include "nsSAXLocator.h"
 #include "nsSAXXMLReader.h"
-#include "nsViewSourceHTML.h"
 
 #if defined(NS_DEBUG)
-#include "nsLoggingSink.h"
 #include "nsExpatDriver.h"
 #endif
 
 //----------------------------------------------------------------------
 
 #if defined(NS_DEBUG)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsLoggingSink)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsExpatDriver)
 #endif
 
@@ -70,30 +67,24 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsParser)
 NS_GENERIC_FACTORY_CONSTRUCTOR(CNavDTD)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsParserService)
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(CViewSourceHTML)
-
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSAXAttributes)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSAXXMLReader)
 
 #if defined(NS_DEBUG)
-NS_DEFINE_NAMED_CID(NS_LOGGING_SINK_CID);
 NS_DEFINE_NAMED_CID(NS_EXPAT_DRIVER_CID);
 #endif
 NS_DEFINE_NAMED_CID(NS_PARSER_CID);
 NS_DEFINE_NAMED_CID(NS_CNAVDTD_CID);
-NS_DEFINE_NAMED_CID(NS_VIEWSOURCE_DTD_CID);
 NS_DEFINE_NAMED_CID(NS_PARSERSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_SAXATTRIBUTES_CID);
 NS_DEFINE_NAMED_CID(NS_SAXXMLREADER_CID);
 
 static const mozilla::Module::CIDEntry kParserCIDs[] = {
 #if defined(NS_DEBUG)
-  { &kNS_LOGGING_SINK_CID, false, NULL, nsLoggingSinkConstructor },
   { &kNS_EXPAT_DRIVER_CID, false, NULL, nsExpatDriverConstructor },
 #endif
   { &kNS_PARSER_CID, false, NULL, nsParserConstructor },
   { &kNS_CNAVDTD_CID, false, NULL, CNavDTDConstructor },
-  { &kNS_VIEWSOURCE_DTD_CID, false, NULL, CViewSourceHTMLConstructor },
   { &kNS_PARSERSERVICE_CID, false, NULL, nsParserServiceConstructor },
   { &kNS_SAXATTRIBUTES_CID, false, NULL, nsSAXAttributesConstructor },
   { &kNS_SAXXMLREADER_CID, false, NULL, nsSAXXMLReaderConstructor },

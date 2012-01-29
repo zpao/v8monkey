@@ -45,6 +45,7 @@ include $(DEPTH)/config/autoconf.mk
 MODULE		= content
 LIBRARY_NAME	= gkconhtmlcon_s
 LIBXUL_LIBRARY	= 1
+FAIL_ON_WARNINGS = 1
 
 
 EXPORTS		= \
@@ -56,6 +57,7 @@ CPPSRCS		= \
 		nsClientRect.cpp \
 		nsHTMLDNSPrefetch.cpp \
 		nsGenericHTMLElement.cpp \
+		nsGenericHTMLFrameElement.cpp \
 		nsFormSubmission.cpp \
 		nsTextEditorState.cpp \
 		nsHTMLElement.cpp \
@@ -148,7 +150,6 @@ INCLUDES	+= \
 		-I$(srcdir)/../../../../editor/libeditor/text \
 		-I$(srcdir) \
 		-I$(topsrcdir)/xpcom/ds \
-		-I$(srcdir)/../../../../js/xpconnect/src \
 		$(NULL)
 
 DEFINES += -D_IMPL_NS_LAYOUT

@@ -69,7 +69,6 @@
  */
 #ifdef DEBUG
 
-#define JSDHASH_ONELINE_ASSERT PR_ASSERT
 #define RECURSION_LEVEL(table_) (*(PRUint32*)(table_->entryStore + \
                                             PL_DHASH_TABLE_SIZE(table_) * \
                                             table_->entrySize))
@@ -795,22 +794,49 @@ PL_DHashTableEnumerate(PLDHashTable *table, PLDHashEnumerator etor, void *arg)
     return i;
 }
 
-PRUint64
-PL_DHashTableSizeOf(PLDHashTable *table)
+struct SizeOfEntryExcludingThisArg
 {
-  PRUint64 size = 0;
+    size_t total;
+    PLDHashSizeOfEntryExcludingThisFun sizeOfEntryExcludingThis;
+    nsMallocSizeOfFun mallocSizeOf;
+    void *arg;      // the arg passed by the user
+};
 
-#ifdef MOZALLOC_HAVE_MALLOC_USABLE_SIZE
-  // Even when moz_malloc_usable_size is defined, it might always return 0, if
-  // the allocator in use doesn't support malloc_usable_size.
-  size = moz_malloc_usable_size(table->entryStore);
-#endif
+static PLDHashOperator
+SizeOfEntryExcludingThisEnumerator(PLDHashTable *table, PLDHashEntryHdr *hdr,
+                                   PRUint32 number, void *arg)
+{
+    SizeOfEntryExcludingThisArg *e = (SizeOfEntryExcludingThisArg *)arg;
+    e->total += e->sizeOfEntryExcludingThis(hdr, e->mallocSizeOf, e->arg);
+    return PL_DHASH_NEXT;
+}
 
-  if (size == 0) {
-    size = PL_DHASH_TABLE_SIZE(table) * table->entrySize;
-  }
+size_t
+PL_DHashTableSizeOfExcludingThis(const PLDHashTable *table,
+                                 PLDHashSizeOfEntryExcludingThisFun sizeOfEntryExcludingThis,
+                                 nsMallocSizeOfFun mallocSizeOf,
+                                 void *arg /* = NULL */)
+{
+    size_t n = 0;
+    n += mallocSizeOf(table->entryStore);
+    if (sizeOfEntryExcludingThis) {
+        SizeOfEntryExcludingThisArg arg2 = { 0, sizeOfEntryExcludingThis, mallocSizeOf, arg };
+        PL_DHashTableEnumerate(const_cast<PLDHashTable *>(table),
+                               SizeOfEntryExcludingThisEnumerator, &arg2);
+        n += arg2.total;
+    }
+    return n;
+}
 
-  return size;
+size_t
+PL_DHashTableSizeOfIncludingThis(const PLDHashTable *table,
+                                 PLDHashSizeOfEntryExcludingThisFun sizeOfEntryExcludingThis,
+                                 nsMallocSizeOfFun mallocSizeOf,
+                                 void *arg /* = NULL */)
+{
+    return mallocSizeOf(table) +
+           PL_DHashTableSizeOfExcludingThis(table, sizeOfEntryExcludingThis,
+                                            mallocSizeOf, arg);
 }
 
 #ifdef DEBUG

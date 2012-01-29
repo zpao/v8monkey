@@ -100,6 +100,12 @@ RefTestCmdLineHandler.prototype =
      * We want to do this here rather than in reftest.js because it's
      * important to force sRGB as an output profile for color management
      * before we load a window.
+     *
+     * If you change these, please adjust them in the bootstrap.js function 
+     * setDefaultPrefs().  These are duplicated there so we can have a 
+     * restartless addon for reftest on native Android.
+     *
+     * FIXME: These should be in only one place. 
      */
     var prefs = Components.classes["@mozilla.org/preferences-service;1"].
                 getService(Components.interfaces.nsIPrefService);
@@ -111,6 +117,9 @@ RefTestCmdLineHandler.prototype =
     // no slow script dialogs
     branch.setIntPref("dom.max_script_run_time", 0);
     branch.setIntPref("dom.max_chrome_script_run_time", 0);
+    branch.setIntPref("hangmonitor.timeout", 0);
+    // Ensure autoplay is enabled for all platforms.
+    branch.setBoolPref("media.autoplay.enabled", true);
 
     var wwatch = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
                            .getService(nsIWindowWatcher);

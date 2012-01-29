@@ -308,6 +308,7 @@ public:
    * texture types.
    */
   void CreateFBOWithTexture(const nsIntRect& aRect, InitMode aInit,
+                            GLuint aCurrentFrameBuffer,
                             GLuint *aFBO, GLuint *aTexture);
 
   GLuint QuadVBO() { return mQuadVBO; }
@@ -539,6 +540,7 @@ public:
 
   LayerManagerOGL* OGLManager() const { return mOGLManager; }
   GLContext *gl() const { return mOGLManager->gl(); }
+  virtual void CleanupResources() = 0;
 
 protected:
   LayerManagerOGL *mOGLManager;

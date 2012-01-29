@@ -115,10 +115,14 @@
 
             <td>
               <button onclick="openProfileDirectory()">
+#ifdef XP_WIN
+                &aboutSupport.showWin.label;
+#else
 #ifdef XP_MACOSX
                 &aboutSupport.showMac.label;
 #else
-                &aboutSupport.show.label;
+                &aboutSupport.showDir.label;
+#endif
 #endif
                </button>
             </td>
@@ -197,7 +201,7 @@
       <!-- - - - - - - - - - - - - - - - - - - - - -->
 
       <h2 class="major-section">
-        &aboutSupport.modifiedPrefsTitle;
+        &aboutSupport.modifiedKeyPrefsTitle;
       </h2>
 
       <table class="prefs-table">
@@ -222,6 +226,11 @@
 
       <table>
         <tbody id="graphics-tbody">
+        </tbody>
+      </table>
+
+      <table>
+        <tbody id="graphics-info-properties">
         </tbody>
       </table>
 

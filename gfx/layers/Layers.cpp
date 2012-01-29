@@ -218,8 +218,8 @@ TemporaryRef<DrawTarget>
 LayerManager::CreateDrawTarget(const IntSize &aSize,
                                SurfaceFormat aFormat)
 {
-  // Right now this doesn't work on the general layer manager.
-  return NULL;
+  return gfxPlatform::GetPlatform()->
+    CreateOffscreenDrawTarget(aSize, aFormat);
 }
 
 #ifdef DEBUG
@@ -561,6 +561,31 @@ PlanarYCbCrImage::CopyData(Data& aDest, gfxIntSize& aDestSize,
   return buffer;
 }
                          
+void
+LayerManager::StartFrameTimeRecording()
+{
+  mLastFrameTime = TimeStamp::Now();
+}
+
+void
+LayerManager::PostPresent()
+{
+  if (!mLastFrameTime.IsNull()) {
+    TimeStamp now = TimeStamp::Now();
+    mFrameTimes.AppendElement((now - mLastFrameTime).ToMilliseconds());
+    mLastFrameTime = now;
+  }
+}
+
+nsTArray<float>
+LayerManager::StopFrameTimeRecording()
+{
+  mLastFrameTime = TimeStamp();
+  nsTArray<float> result = mFrameTimes;
+  mFrameTimes.Clear();
+  return result;
+}
+
 
 
 #ifdef MOZ_LAYERS_HAVE_LOG

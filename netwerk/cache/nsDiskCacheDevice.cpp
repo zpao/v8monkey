@@ -118,6 +118,22 @@ private:
     nsDiskCacheBinding *mBinding;
 };
 
+class nsEvictDiskCacheEntriesEvent : public nsRunnable {
+public:
+    nsEvictDiskCacheEntriesEvent(nsDiskCacheDevice *device)
+        : mDevice(device) {}
+
+    NS_IMETHOD Run()
+    {
+        nsCacheServiceAutoLock lock;
+        mDevice->EvictDiskCacheEntries(mDevice->mCacheCapacity);
+        return NS_OK;
+    }
+
+private:
+    nsDiskCacheDevice *mDevice;
+};
+
 /******************************************************************************
  *  nsDiskCacheEvictor
  *
@@ -419,7 +435,9 @@ nsDiskCacheDevice::Init()
     rv = mBindery.Init();
     if (NS_FAILED(rv))
         return rv;
-    
+
+    nsDeleteDir::RemoveOldTrashes(mCacheDirectory);
+
     // Open Disk Cache
     rv = OpenDiskCache();
     if (NS_FAILED(rv)) {
@@ -443,17 +461,6 @@ nsDiskCacheDevice::Shutdown()
     nsresult rv = Shutdown_Private(true);
     if (NS_FAILED(rv))
         return rv;
-
-    if (mCacheDirectory) {
-        // delete any trash files left-over before shutting down.
-        nsCOMPtr<nsIFile> trashDir;
-        GetTrashDir(mCacheDirectory, &trashDir);
-        if (trashDir) {
-            bool exists;
-            if (NS_SUCCEEDED(trashDir->Exists(&exists)) && exists)
-                DeleteDir(trashDir, false, true);
-        }
-    }
 
     return NS_OK;
 }
@@ -503,6 +510,7 @@ nsDiskCacheDevice::GetDeviceID()
 nsCacheEntry *
 nsDiskCacheDevice::FindEntry(nsCString * key, bool *collision)
 {
+    Telemetry::AutoTimer<Telemetry::CACHE_DISK_SEARCH> timer;
     if (!Initialized())  return nsnull;  // NS_ERROR_NOT_INITIALIZED
     nsDiskCacheRecord       record;
     nsDiskCacheBinding *    binding = nsnull;
@@ -1003,18 +1011,16 @@ nsDiskCacheDevice::OpenDiskCache()
     if (NS_FAILED(rv))
         return rv;
 
-    bool trashing = false;
     if (exists) {
         // Try opening cache map file.
         rv = mCacheMap.Open(mCacheDirectory);        
         // move "corrupt" caches to trash
         if (rv == NS_ERROR_FILE_CORRUPTED) {
             // delay delete by 1 minute to avoid IO thrash at startup
-            rv = DeleteDir(mCacheDirectory, true, false, 60000);
+            rv = nsDeleteDir::DeleteDir(mCacheDirectory, true, 60000);
             if (NS_FAILED(rv))
                 return rv;
             exists = false;
-            trashing = true;
         }
         else if (NS_FAILED(rv))
             return rv;
@@ -1034,19 +1040,6 @@ nsDiskCacheDevice::OpenDiskCache()
             return rv;
     }
 
-    if (!trashing) {
-        // delete any trash files leftover from a previous run
-        nsCOMPtr<nsIFile> trashDir;
-        GetTrashDir(mCacheDirectory, &trashDir);
-        if (trashDir) {
-            bool exists;
-            if (NS_SUCCEEDED(trashDir->Exists(&exists)) && exists) {
-                // be paranoid and delete immediately if leftover
-                DeleteDir(trashDir, false, false);
-            }
-        }
-    }
-
     return NS_OK;
 }
 
@@ -1063,7 +1056,7 @@ nsDiskCacheDevice::ClearDiskCache()
 
     // If the disk cache directory is already gone, then it's not an error if
     // we fail to delete it ;-)
-    rv = DeleteDir(mCacheDirectory, true, false);
+    rv = nsDeleteDir::DeleteDir(mCacheDirectory, true);
     if (NS_FAILED(rv) && rv != NS_ERROR_FILE_TARGET_DOES_NOT_EXIST)
         return rv;
 
@@ -1143,8 +1136,14 @@ nsDiskCacheDevice::SetCapacity(PRUint32  capacity)
     // Units are KiB's
     mCacheCapacity = capacity;
     if (Initialized()) {
-        // start evicting entries if the new size is smaller!
-        EvictDiskCacheEntries(mCacheCapacity);
+        if (NS_IsMainThread()) {
+            // Do not evict entries on the main thread
+            nsCacheService::DispatchToCacheIOThread(
+                new nsEvictDiskCacheEntriesEvent(this));
+        } else {
+            // start evicting entries if the new size is smaller!
+            EvictDiskCacheEntries(mCacheCapacity);
+        }
     }
     // Let cache map know of the new capacity
     mCacheMap.NotifyCapacityChange(capacity);

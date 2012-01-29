@@ -49,6 +49,7 @@
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsCharSeparatedTokenizer.h"
 #include "nsContentUtils.h"
 #include "nsDirectoryServiceUtils.h"
 #include "nsDOMClassInfoID.h"
@@ -67,8 +68,7 @@
 #include "IDBEvents.h"
 #include "IDBKeyRange.h"
 #include "IndexedDatabaseManager.h"
-#include "LazyIdleThread.h"
-#include "nsIScriptSecurityManager.h"
+#include "Key.h"
 
 using namespace mozilla;
 
@@ -90,8 +90,13 @@ struct ObjectStoreInfoMap
 } // anonymous namespace
 
 IDBFactory::IDBFactory()
+: mOwningObject(nsnull)
 {
   IDBFactory::NoteUsedByProcessType(XRE_GetProcessType());
+}
+
+IDBFactory::~IDBFactory()
+{
 }
 
 // static
@@ -99,18 +104,32 @@ already_AddRefed<nsIIDBFactory>
 IDBFactory::Create(nsPIDOMWindow* aWindow)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
-  NS_ASSERTION(aWindow, "Must have a window!");
+
+  NS_ENSURE_TRUE(aWindow, nsnull);
 
   if (aWindow->IsOuterWindow()) {
     aWindow = aWindow->GetCurrentInnerWindow();
+    NS_ENSURE_TRUE(aWindow, nsnull);
   }
-  NS_ENSURE_TRUE(aWindow, nsnull);
 
   nsRefPtr<IDBFactory> factory = new IDBFactory();
+  factory->mWindow = aWindow;
+  return factory.forget();
+}
 
-  factory->mWindow = do_GetWeakReference(aWindow);
-  NS_ENSURE_TRUE(factory->mWindow, nsnull);
+// static
+already_AddRefed<nsIIDBFactory>
+IDBFactory::Create(JSContext* aCx,
+                   JSObject* aOwningObject)
+{
+  NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+  NS_ASSERTION(aCx, "Null context!");
+  NS_ASSERTION(aOwningObject, "Null object!");
+  NS_ASSERTION(JS_GetGlobalForObject(aCx, aOwningObject) == aOwningObject,
+               "Not a global object!");
 
+  nsRefPtr<IDBFactory> factory = new IDBFactory();
+  factory->mOwningObject = aOwningObject;
   return factory.forget();
 }
 
@@ -140,16 +159,6 @@ IDBFactory::GetConnection(const nsAString& aDatabaseFilePath)
   rv = ss->OpenDatabaseWithVFS(dbFile, NS_LITERAL_CSTRING("quota"),
                                getter_AddRefs(connection));
   NS_ENSURE_SUCCESS(rv, nsnull);
-
-#ifdef DEBUG
-  {
-    // Check to make sure that the database schema is correct again.
-    PRInt32 schemaVersion;
-    NS_ASSERTION(NS_SUCCEEDED(connection->GetSchemaVersion(&schemaVersion)) &&
-                 schemaVersion == DB_SCHEMA_VERSION,
-                 "Wrong schema!");
-  }
-#endif
 
   // Turn on foreign key constraints!
   rv = connection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
@@ -211,10 +220,17 @@ IDBFactory::GetDirectoryForOrigin(const nsACString& aASCIIOrigin,
   return NS_OK;
 }
 
+inline
+bool
+IgnoreWhitespace(PRUnichar c)
+{
+  return false;
+}
+
 // static
 nsresult
 IDBFactory::LoadDatabaseInformation(mozIStorageConnection* aConnection,
-                                    PRUint32 aDatabaseId,
+                                    nsIAtom* aDatabaseId,
                                     PRUint64* aVersion,
                                     ObjectStoreInfoArray& aObjectStores)
 {
@@ -235,9 +251,8 @@ IDBFactory::LoadDatabaseInformation(mozIStorageConnection* aConnection,
 
   bool hasResult;
   while (NS_SUCCEEDED((rv = stmt->ExecuteStep(&hasResult))) && hasResult) {
-    nsAutoPtr<ObjectStoreInfo>* element =
+    nsRefPtr<ObjectStoreInfo>* element =
       aObjectStores.AppendElement(new ObjectStoreInfo());
-    NS_ENSURE_TRUE(element, NS_ERROR_OUT_OF_MEMORY);
 
     ObjectStoreInfo* info = element->get();
 
@@ -246,11 +261,40 @@ IDBFactory::LoadDatabaseInformation(mozIStorageConnection* aConnection,
 
     info->id = stmt->AsInt64(1);
 
-    rv = stmt->GetString(2, info->keyPath);
+    PRInt32 columnType;
+    nsresult rv = stmt->GetTypeOfIndex(2, &columnType);
     NS_ENSURE_SUCCESS(rv, rv);
+    if (columnType == mozIStorageStatement::VALUE_TYPE_NULL) {
+      info->keyPath.SetIsVoid(true);
+    }
+    else {
+      NS_ASSERTION(columnType == mozIStorageStatement::VALUE_TYPE_TEXT,
+                   "Should be a string");
+      nsString keyPath;
+      rv = stmt->GetString(2, keyPath);
+      NS_ENSURE_SUCCESS(rv, rv);
 
-    info->autoIncrement = !!stmt->AsInt32(3);
-    info->databaseId = aDatabaseId;
+      if (!keyPath.IsEmpty() && keyPath.First() == ',') {
+        // We use a comma in the beginning to indicate that it's an array of
+        // key paths. This is to be able to tell a string-keypath from an
+        // array-keypath which contains only one item.
+        nsCharSeparatedTokenizerTemplate<IgnoreWhitespace>
+          tokenizer(keyPath, ',');
+        tokenizer.nextToken();
+        while (tokenizer.hasMoreTokens()) {
+          info->keyPathArray.AppendElement(tokenizer.nextToken());
+        }
+        NS_ASSERTION(!info->keyPathArray.IsEmpty(),
+                     "Should have at least one keypath");
+      }
+      else {
+        info->keyPath = keyPath;
+      }
+
+    }
+
+    info->nextAutoIncrementId = stmt->AsInt64(3);
+    info->comittedAutoIncrementId = info->nextAutoIncrementId;
 
     ObjectStoreInfoMap* mapEntry = infoMap.AppendElement();
     NS_ENSURE_TRUE(mapEntry, NS_ERROR_OUT_OF_MEMORY);
@@ -262,8 +306,7 @@ IDBFactory::LoadDatabaseInformation(mozIStorageConnection* aConnection,
 
   // Load index information
   rv = aConnection->CreateStatement(NS_LITERAL_CSTRING(
-    "SELECT object_store_id, id, name, key_path, unique_index, "
-           "object_store_autoincrement "
+    "SELECT object_store_id, id, name, key_path, unique_index, multientry "
     "FROM object_store_index"
   ), getter_AddRefs(stmt));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -292,11 +335,28 @@ IDBFactory::LoadDatabaseInformation(mozIStorageConnection* aConnection,
     rv = stmt->GetString(2, indexInfo->name);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = stmt->GetString(3, indexInfo->keyPath);
+    nsString keyPath;
+    rv = stmt->GetString(3, keyPath);
     NS_ENSURE_SUCCESS(rv, rv);
+    if (!keyPath.IsEmpty() && keyPath.First() == ',') {
+      // We use a comma in the beginning to indicate that it's an array of
+      // key paths. This is to be able to tell a string-keypath from an
+      // array-keypath which contains only one item.
+      nsCharSeparatedTokenizerTemplate<IgnoreWhitespace>
+        tokenizer(keyPath, ',');
+      tokenizer.nextToken();
+      while (tokenizer.hasMoreTokens()) {
+        indexInfo->keyPathArray.AppendElement(tokenizer.nextToken());
+      }
+      NS_ASSERTION(!indexInfo->keyPathArray.IsEmpty(),
+                   "Should have at least one keypath");
+    }
+    else {
+      indexInfo->keyPath = keyPath;
+    }
 
     indexInfo->unique = !!stmt->AsInt32(4);
-    indexInfo->autoIncrement = !!stmt->AsInt32(5);
+    indexInfo->multiEntry = !!stmt->AsInt32(5);
   }
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -325,69 +385,78 @@ IDBFactory::LoadDatabaseInformation(mozIStorageConnection* aConnection,
 
 // static
 nsresult
-IDBFactory::UpdateDatabaseMetadata(DatabaseInfo* aDatabaseInfo,
-                                   PRUint64 aVersion,
-                                   ObjectStoreInfoArray& aObjectStores)
+IDBFactory::SetDatabaseMetadata(DatabaseInfo* aDatabaseInfo,
+                                PRUint64 aVersion,
+                                ObjectStoreInfoArray& aObjectStores)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(aDatabaseInfo, "Null pointer!");
 
   ObjectStoreInfoArray objectStores;
-  if (!objectStores.SwapElements(aObjectStores)) {
-    NS_WARNING("Out of memory!");
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
+  objectStores.SwapElements(aObjectStores);
 
-  nsAutoTArray<nsString, 10> existingNames;
-  if (!aDatabaseInfo->GetObjectStoreNames(existingNames)) {
-    NS_WARNING("Out of memory!");
-    return NS_ERROR_OUT_OF_MEMORY;
+#ifdef DEBUG
+  {
+    nsTArray<nsString> existingNames;
+    aDatabaseInfo->GetObjectStoreNames(existingNames);
+    NS_ASSERTION(existingNames.IsEmpty(), "Should be an empty DatabaseInfo");
   }
-
-  // Remove all the old ones.
-  for (PRUint32 index = 0; index < existingNames.Length(); index++) {
-    ObjectStoreInfo::Remove(aDatabaseInfo->id, existingNames[index]);
-  }
+#endif
 
   aDatabaseInfo->version = aVersion;
 
   for (PRUint32 index = 0; index < objectStores.Length(); index++) {
-    nsAutoPtr<ObjectStoreInfo>& info = objectStores[index];
-    NS_ASSERTION(info->databaseId == aDatabaseInfo->id, "Huh?!");
+    nsRefPtr<ObjectStoreInfo>& info = objectStores[index];
 
-    if (!ObjectStoreInfo::Put(info)) {
+    if (!aDatabaseInfo->PutObjectStore(info)) {
       NS_WARNING("Out of memory!");
       return NS_ERROR_OUT_OF_MEMORY;
     }
-
-    info.forget();
   }
 
   return NS_OK;
 }
 
-NS_IMPL_ADDREF(IDBFactory)
-NS_IMPL_RELEASE(IDBFactory)
+NS_IMPL_CYCLE_COLLECTION_CLASS(IDBFactory)
 
-NS_INTERFACE_MAP_BEGIN(IDBFactory)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(IDBFactory)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(IDBFactory)
+
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(IDBFactory)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
   NS_INTERFACE_MAP_ENTRY(nsIIDBFactory)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(IDBFactory)
 NS_INTERFACE_MAP_END
 
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(IDBFactory)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mWindow)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(IDBFactory)
+  if (tmp->mOwningObject) {
+    tmp->mOwningObject = nsnull;
+  }
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mWindow)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(IDBFactory)
+  if (tmp->mOwningObject) {
+    NS_IMPL_CYCLE_COLLECTION_TRACE_JS_CALLBACK(tmp->mOwningObject,
+                                               "mOwningObject")
+  }
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
 DOMCI_DATA(IDBFactory, IDBFactory)
 
-NS_IMETHODIMP
-IDBFactory::Open(const nsAString& aName,
-                 PRInt64 aVersion,
-                 JSContext* aCx,
-                 nsIIDBOpenDBRequest** _retval)
+nsresult
+IDBFactory::OpenCommon(const nsAString& aName,
+                       PRInt64 aVersion,
+                       bool aDeleting,
+                       nsIIDBOpenDBRequest** _retval)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
-
-  if (aVersion < 1) {
-    return NS_ERROR_DOM_INDEXEDDB_NON_TRANSIENT_ERR;
-  }
+  NS_ASSERTION(mWindow || mOwningObject, "Must have one of these!");
 
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     // Force ContentChild to cache the path from the parent, so that
@@ -397,54 +466,89 @@ IDBFactory::Open(const nsAString& aName,
     ContentChild::GetSingleton()->GetIndexedDBPath();
   }
 
-  if (aName.IsEmpty()) {
-    return NS_ERROR_DOM_INDEXEDDB_NON_TRANSIENT_ERR;
-  }
+  nsCOMPtr<nsPIDOMWindow> window;
+  nsCOMPtr<nsIScriptGlobalObject> sgo;
+  nsIScriptContext* context = nsnull;
+  JSObject* scriptOwner = nsnull;
 
-  nsCOMPtr<nsPIDOMWindow> window = do_QueryReferent(mWindow);
-  NS_ENSURE_TRUE(window, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
+  if (mWindow) {
+    sgo = do_QueryInterface(mWindow);
+    NS_ENSURE_TRUE(sgo, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
-  nsCOMPtr<nsIScriptGlobalObject> sgo = do_QueryInterface(window);
-  NS_ENSURE_TRUE(sgo, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
+    context = sgo->GetContext();
+    NS_ENSURE_TRUE(context, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
-  nsIScriptContext* context = sgo->GetContext();
-  NS_ENSURE_TRUE(context, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
-
-  nsCOMPtr<nsIPrincipal> principal;
-  nsresult rv = nsContentUtils::GetSecurityManager()->
-    GetSubjectPrincipal(getter_AddRefs(principal));
-  NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
-
-  nsCString origin;
-  if (nsContentUtils::IsSystemPrincipal(principal)) {
-    origin.AssignLiteral("chrome");
+    window = mWindow;
   }
   else {
-    rv = nsContentUtils::GetASCIIOrigin(principal, origin);
-    NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
-
-    if (origin.EqualsLiteral("null")) {
-      NS_WARNING("IndexedDB databases not allowed for this principal!");
-      return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
-    }
+    scriptOwner = mOwningObject;
   }
 
+  nsCString origin;
+  nsresult rv =
+    IndexedDatabaseManager::GetASCIIOriginFromWindow(window, origin);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   nsRefPtr<IDBOpenDBRequest> request =
-    IDBOpenDBRequest::Create(context, window);
+    IDBOpenDBRequest::Create(context, window, scriptOwner);
   NS_ENSURE_TRUE(request, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
   nsRefPtr<OpenDatabaseHelper> openHelper =
-    new OpenDatabaseHelper(request, aName, origin, aVersion);
+    new OpenDatabaseHelper(request, aName, origin, aVersion, aDeleting);
+
+  rv = openHelper->Init();
+  NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
   nsRefPtr<CheckPermissionsHelper> permissionHelper =
-    new CheckPermissionsHelper(openHelper, window, aName, origin);
+    new CheckPermissionsHelper(openHelper, window, origin, aDeleting);
 
   nsRefPtr<IndexedDatabaseManager> mgr = IndexedDatabaseManager::GetOrCreate();
   NS_ENSURE_TRUE(mgr, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
-  rv = mgr->WaitForOpenAllowed(aName, origin, permissionHelper);
+  rv = mgr->WaitForOpenAllowed(origin, openHelper->Id(), permissionHelper);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
   request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+IDBFactory::Open(const nsAString& aName,
+                 PRInt64 aVersion,
+                 PRUint8 aArgc,
+                 nsIIDBOpenDBRequest** _retval)
+{
+  if (aVersion < 1 && aArgc) {
+    return NS_ERROR_DOM_INDEXEDDB_NON_TRANSIENT_ERR;
+  }
+
+  return OpenCommon(aName, aVersion, false, _retval);
+}
+
+NS_IMETHODIMP
+IDBFactory::DeleteDatabase(const nsAString& aName,
+                           nsIIDBOpenDBRequest** _retval)
+{
+  return OpenCommon(aName, 0, true, _retval);
+}
+
+NS_IMETHODIMP
+IDBFactory::Cmp(const jsval& aFirst,
+                const jsval& aSecond,
+                JSContext* aCx,
+                PRInt16* _retval)
+{
+  Key first, second;
+  nsresult rv = first.SetFromJSVal(aCx, aFirst);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = second.SetFromJSVal(aCx, aSecond);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (first.IsUnset() || second.IsUnset()) {
+    return NS_ERROR_DOM_INDEXEDDB_DATA_ERR;
+  }
+
+  *_retval = Key::CompareKeys(first, second);
   return NS_OK;
 }

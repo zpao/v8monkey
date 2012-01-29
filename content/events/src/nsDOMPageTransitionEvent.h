@@ -55,6 +55,9 @@ public:
 
   // Forward to base class
   NS_FORWARD_TO_NSDOMEVENT
+
+  virtual nsresult InitFromCtor(const nsAString& aType,
+                                JSContext* aCx, jsval* aVal);
 protected:
   bool mPersisted;
 };

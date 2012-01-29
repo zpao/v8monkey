@@ -130,9 +130,10 @@ nsDirectoryService::GetCurrentProcessDirectory(nsILocalFile** aFile)
 
 
 #ifdef XP_WIN
-    PRUnichar buf[MAX_PATH];
-    if ( ::GetModuleFileNameW(0, buf, sizeof(buf)) )
-    {
+    PRUnichar buf[MAX_PATH + 1];
+    SetLastError(ERROR_SUCCESS);
+    if (GetModuleFileNameW(0, buf, mozilla::ArrayLength(buf)) &&
+        GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
         // chop off the executable name by finding the rightmost backslash
         PRUnichar* lastSlash = wcsrchr(buf, L'\\');
         if (lastSlash)
@@ -855,6 +856,10 @@ nsDirectoryService::GetFile(const char *prop, bool *persistent, nsIFile **_retva
     else if (inAtom == nsDirectoryService::sCommon_Desktopdirectory)
     {
         rv = GetSpecialSystemDirectory(Win_Common_Desktopdirectory, getter_AddRefs(localFile)); 
+    }
+    else if (inAtom == nsDirectoryService::sCommon_AppData)
+    {
+        rv = GetSpecialSystemDirectory(Win_Common_AppData, getter_AddRefs(localFile)); 
     }
     else if (inAtom == nsDirectoryService::sAppdata)
     {

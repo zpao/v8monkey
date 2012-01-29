@@ -67,7 +67,8 @@
 #else
         title="&aboutDialog.title;"
 #endif
-        aria-describedby="version distribution distributionId"
+        role="dialog"
+        aria-describedby="version distribution distributionId communityDesc contributeDesc trademark"
         >
 
   <script type="application/javascript" src="chrome://browser/content/aboutDialog.js"/>
@@ -80,7 +81,7 @@
         <label id="distribution" class="text-blurb"/>
         <label id="distributionId" class="text-blurb"/>
 
-        <vbox id="detailsBox" aria-describedby="communityDesc contributeDesc">
+        <vbox id="detailsBox">
           <vbox id="updateBox">
 #ifdef MOZ_UPDATER
             <deck id="updateDeck" orient="vertical">
@@ -119,8 +120,19 @@
             &channel.description.start;<label id="currentChannel"/>&channel.description.end;
           </description>
 #endif
+          <vbox id="experimental" hidden="true">
+            <description class="text-blurb" id="warningDesc">
+              &warningDesc.version;
+#ifdef MOZ_TELEMETRY_REPORTING
+              &warningDesc.telemetry;
+#endif
+            </description>
+            <description class="text-blurb" id="communityExperimentalDesc">
+              &community.exp.start;<label class="text-link" href="http://www.mozilla.org/">&community.exp.mozillaLink;</label>&community.exp.middle;<label class="text-link" href="about:credits">&community.exp.creditsLink;</label>&community.exp.end;
+            </description>
+          </vbox>
           <description class="text-blurb" id="communityDesc">
-            &community.start2;<label class="text-link" href="http://www.mozilla.org/">&community.mozillaLink;</label>&community.middle2;<label class="text-link" href="about:credits">&community.creditsLink;</label>&community.end2;
+            &community.start2;<label class="text-link" href="http://www.mozilla.org/">&community.mozillaLink;</label>&community.middle2;<label class="text-link" href="about:credits">&community.creditsLink;</label>&community.end3;
           </description>
           <description class="text-blurb" id="contributeDesc">
             &contribute.start;<label class="text-link" href="http://www.mozilla.org/contribute/">&contribute.getInvolvedLink;</label>&contribute.end;
@@ -134,13 +146,7 @@
         <label class="text-link bottom-link" href="about:rights">&bottomLinks.rights;</label>
         <label class="text-link bottom-link" href="http://www.mozilla.com/legal/privacy/">&bottomLinks.privacy;</label>
       </hbox>
-      <description id="trademark">
-        <label class="trademark-label">&trademarkInfo.part1;</label>
-#ifdef MOZ_OFFICIAL_BRANDING
-        <!-- DO NOT REMOVE without consulting people involved with bug 616193 -->
-        <label id="extra-trademark" class="trademark-label">Some of the trademarks used under license from The Charlton Company.</label>
-#endif
-      </description>
+      <description id="trademark">&trademarkInfo.part1;</description>
     </vbox>
   </vbox>
   

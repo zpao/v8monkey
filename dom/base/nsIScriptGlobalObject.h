@@ -100,8 +100,8 @@ NS_HandleScriptError(nsIScriptGlobalObject *aScriptGlobal,
 
 
 #define NS_ISCRIPTGLOBALOBJECT_IID \
-{ 0x4eb16819, 0x4e81, 0x406e, \
-  { 0x93, 0x05, 0x6f, 0x30, 0xfc, 0xd2, 0x62, 0x4a } }
+{ 0x8f19a761, 0x0717, 0x4b3f, \
+  { 0x80, 0xc5, 0xed, 0x7e, 0x9c, 0xbc, 0x40, 0xb1 } }
 
 /**
  * The global object which keeps a script context for each supported script
@@ -128,15 +128,7 @@ public:
    */
   virtual nsIScriptContext *GetScriptContext(PRUint32 lang) = 0;
   
-  /**
-   * Get the opaque "global" object for the specified lang.
-   */
-  virtual void *GetScriptGlobal(PRUint32 lang) = 0;
-
-  // Set/GetContext deprecated methods - use GetScriptContext/Global
-  virtual JSObject *GetGlobalJSObject() {
-        return (JSObject *)GetScriptGlobal(nsIProgrammingLanguage::JAVASCRIPT);
-  }
+  virtual JSObject* GetGlobalJSObject() = 0;
 
   virtual nsIScriptContext *GetContext() {
         return GetScriptContext(nsIProgrammingLanguage::JAVASCRIPT);
@@ -170,6 +162,8 @@ public:
                                      nsEventStatus *aEventStatus) {
     return NS_HandleScriptError(this, aErrorEvent, aEventStatus);
   }
+
+  virtual bool IsBlackForCC() { return false; }
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIScriptGlobalObject,

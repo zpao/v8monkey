@@ -72,7 +72,7 @@ public:
   virtual ~nsHTMLSelectListAccessible() {}
 
   // nsAccessible
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual PRUint64 NativeState();
 
   // SelectAccessible
@@ -85,6 +85,7 @@ public:
   virtual bool IsActiveWidget() const;
   virtual bool AreItemsOperable() const;
   virtual nsAccessible* CurrentItem();
+  virtual void SetCurrentItem(nsAccessible* aItem);
 
 protected:
 
@@ -117,7 +118,7 @@ public:
 
   // nsAccessible
   virtual nsresult GetNameInternal(nsAString& aName);
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual PRUint64 NativeState();
 
   virtual PRInt32 GetLevelInternal();
@@ -129,8 +130,6 @@ public:
 
   // Widgets
   virtual nsAccessible* ContainerWidget() const;
-
-  static void SelectionChangedIfOption(nsIContent *aPossibleOption);
 
 protected:
   // nsAccessible
@@ -161,7 +160,7 @@ public:
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
 
   // nsAccessible
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual PRUint64 NativeState();
 
   // ActionAccessible
@@ -199,7 +198,7 @@ public:
 
   // nsAccessible
   virtual void Description(nsString& aDescription);
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual PRUint64 NativeState();
   virtual void InvalidateChildren();
 
@@ -211,6 +210,7 @@ public:
   virtual bool IsActiveWidget() const;
   virtual bool AreItemsOperable() const;
   virtual nsAccessible* CurrentItem();
+  virtual void SetCurrentItem(nsAccessible* aItem);
 
 protected:
   // nsAccessible
@@ -219,7 +219,7 @@ protected:
   /**
    * Return selected option.
    */
-  nsAccessible* SelectedOption(bool aIgnoreIfCollapsed = false) const;
+  nsAccessible* SelectedOption() const;
 
 private:
   nsRefPtr<nsHTMLComboboxListAccessible> mListAccessible;
@@ -246,6 +246,10 @@ public:
   // nsAccessible
   virtual PRUint64 NativeState();
   virtual void GetBoundsRect(nsRect& aBounds, nsIFrame** aBoundingFrame);
+
+  // Widgets
+  virtual bool IsActiveWidget() const;
+  virtual bool AreItemsOperable() const;
 };
 
 #endif

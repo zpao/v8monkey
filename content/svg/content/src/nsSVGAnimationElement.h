@@ -39,17 +39,18 @@
 #ifndef NS_SVGANIMATIONELEMENT_H_
 #define NS_SVGANIMATIONELEMENT_H_
 
-#include "nsSVGElement.h"
-#include "nsAutoPtr.h"
-#include "nsReferencedElement.h"
-#include "nsIDOMSVGAnimationElement.h"
+#include "DOMSVGTests.h"
 #include "nsIDOMElementTimeControl.h"
+#include "nsIDOMSVGAnimationElement.h"
 #include "nsISMILAnimationElement.h"
+#include "nsReferencedElement.h"
 #include "nsSMILTimedElement.h"
+#include "nsSVGElement.h"
 
 typedef nsSVGElement nsSVGAnimationElementBase;
 
 class nsSVGAnimationElement : public nsSVGAnimationElementBase,
+                              public DOMSVGTests,
                               public nsISMILAnimationElement,
                               public nsIDOMElementTimeControl
 {

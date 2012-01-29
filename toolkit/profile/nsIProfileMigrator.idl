@@ -73,20 +73,8 @@ interface nsIProfileStartup : nsISupports
 interface nsIProfileMigrator : nsISupports 
 {
   /**
-   * Import existing profile paths.  When the app is started the first
-   * time, if there are no INI-style profiles, appstartup will call
-   * this method to import any registry- style profiles that may
-   * exist. When this method is called, there is no event queue
-   * service and this method should not attempt to use the network or
-   * show any GUI.
-   *
-   * @note You don't actually have to move the profile data. Just call
-   *       nsIToolkitProfileService.create on the existing profile path(s).
-   */
-  void import();
-
-  /**
-   * Do profile migration.
+   * Migrate data from an outside source, if possible.  Does nothing
+   * otherwise.
    *
    * When this method is called, a default profile has been created;
    * XPCOM has been initialized such that compreg.dat is in the
@@ -98,7 +86,7 @@ interface nsIProfileMigrator : nsISupports
    * If your migrator needs to access services that use the profile (to
    * set profile prefs or bookmarks, for example), use aStartup.doStartup.
    *
-   * The startup code ignores COM exceptions thrown from this method.
+   * @note The startup code ignores COM exceptions thrown from this method.
    */
   void migrate(in nsIProfileStartup aStartup);
 };  

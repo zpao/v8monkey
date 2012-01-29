@@ -34,7 +34,6 @@ script findReferences-01.js
 script findReferences-02.js
 script findReferences-03.js
 script findReferences-04.js
-script regress-613452.js
 script regress-627859.js
 script regress-627984-1.js
 script regress-627984-2.js
@@ -43,7 +42,6 @@ script regress-627984-4.js
 script regress-627984-5.js
 script regress-627984-6.js
 script regress-627984-7.js
-script regress-630377.js
 script regress-631723.js
 skip-if(!xulRuntime.shell) script regress-636818.js
 script regress-636697.js
@@ -58,3 +56,8 @@ require-or(debugMode,skip) script regress-672804-2.js
 require-or(debugMode,skip) script regress-672804-3.js
 skip-if(!xulRuntime.shell) script regress-677589.js
 script regress-677924.js
+skip-if(!xulRuntime.shell) script regress-696109.js
+script regress-691746.js
+script regress-697515.js
+script correct-this-for-nonnatives-on-array-proto-chain.js
+script toSource-0.js

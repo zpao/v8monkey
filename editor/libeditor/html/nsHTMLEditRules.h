@@ -50,6 +50,7 @@
 #include "TypeInState.h"
 #include "nsReadableUtils.h"
 #include "nsTArray.h"
+#include "nsRange.h"
 
 class nsIDOMElement;
 class nsIEditor;
@@ -118,8 +119,6 @@ public:
   NS_IMETHOD DidInsertText(nsIDOMCharacterData *aTextNode, PRInt32 aOffset, const nsAString &aString, nsresult aResult);
   NS_IMETHOD WillDeleteText(nsIDOMCharacterData *aTextNode, PRInt32 aOffset, PRInt32 aLength);
   NS_IMETHOD DidDeleteText(nsIDOMCharacterData *aTextNode, PRInt32 aOffset, PRInt32 aLength, nsresult aResult);
-  NS_IMETHOD WillDeleteRange(nsIDOMRange *aRange);
-  NS_IMETHOD DidDeleteRange(nsIDOMRange *aRange);
   NS_IMETHOD WillDeleteSelection(nsISelection *aSelection);
   NS_IMETHOD DidDeleteSelection(nsISelection *aSelection);
 
@@ -305,13 +304,13 @@ protected:
 // data members
 protected:
   nsHTMLEditor           *mHTMLEditor;
-  nsCOMPtr<nsIDOMRange>   mDocChangeRange;
+  nsRefPtr<nsRange>       mDocChangeRange;
   bool                    mListenerEnabled;
   bool                    mReturnInEmptyLIKillsList;
   bool                    mDidDeleteSelection;
   bool                    mDidRangedDelete;
   bool                    mRestoreContentEditableCount;
-  nsCOMPtr<nsIDOMRange>   mUtilRange;
+  nsRefPtr<nsRange>       mUtilRange;
   PRUint32                mJoinOffset;  // need to remember an int across willJoin/didJoin...
   nsCOMPtr<nsIDOMNode>    mNewBlock;
   nsRangeStore            mRangeItem;

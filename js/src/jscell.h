@@ -65,10 +65,9 @@ enum AllocKind {
     FINALIZE_OBJECT16,
     FINALIZE_OBJECT16_BACKGROUND,
     FINALIZE_OBJECT_LAST = FINALIZE_OBJECT16_BACKGROUND,
-    FINALIZE_FUNCTION,
-    FINALIZE_FUNCTION_AND_OBJECT_LAST = FINALIZE_FUNCTION,
     FINALIZE_SCRIPT,
     FINALIZE_SHAPE,
+    FINALIZE_BASE_SHAPE,
     FINALIZE_TYPE_OBJECT,
 #if JS_HAS_XML_SUPPORT
     FINALIZE_XML,
@@ -79,15 +78,16 @@ enum AllocKind {
     FINALIZE_LAST = FINALIZE_EXTERNAL_STRING
 };
 
-const size_t FINALIZE_LIMIT = FINALIZE_LAST + 1;
+static const unsigned FINALIZE_LIMIT = FINALIZE_LAST + 1;
+static const unsigned FINALIZE_OBJECT_LIMIT = FINALIZE_OBJECT_LAST + 1;
 
 /*
  * Live objects are marked black. How many other additional colors are available
  * depends on the size of the GCThing. Objects marked gray are eligible for
  * cycle collection.
  */
-static const uint32 BLACK = 0;
-static const uint32 GRAY = 1;
+static const uint32_t BLACK = 0;
+static const uint32_t GRAY = 1;
 
 /*
  * A GC cell is the base class for all GC things.
@@ -102,9 +102,9 @@ struct Cell {
     inline Chunk *chunk() const;
     inline AllocKind getAllocKind() const;
 
-    JS_ALWAYS_INLINE bool isMarked(uint32 color = BLACK) const;
-    JS_ALWAYS_INLINE bool markIfUnmarked(uint32 color = BLACK) const;
-    JS_ALWAYS_INLINE void unmark(uint32 color) const;
+    JS_ALWAYS_INLINE bool isMarked(uint32_t color = BLACK) const;
+    JS_ALWAYS_INLINE bool markIfUnmarked(uint32_t color = BLACK) const;
+    JS_ALWAYS_INLINE void unmark(uint32_t color) const;
 
     inline JSCompartment *compartment() const;
 

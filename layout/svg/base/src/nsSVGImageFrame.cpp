@@ -47,7 +47,6 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "gfxPlatform.h"
 #include "nsSVGSVGElement.h"
-#include "mozilla/Preferences.h"
 
 using namespace mozilla;
 
@@ -63,7 +62,8 @@ public:
   NS_IMETHOD OnStopDecode(imgIRequest *aRequest, nsresult status,
                           const PRUnichar *statusArg);
   // imgIContainerObserver (override nsStubImageDecoderObserver)
-  NS_IMETHOD FrameChanged(imgIContainer *aContainer,
+  NS_IMETHOD FrameChanged(imgIRequest *aRequest,
+                          imgIContainer *aContainer,
                           const nsIntRect *aDirtyRect);
   // imgIContainerObserver (override nsStubImageDecoderObserver)
   NS_IMETHOD OnStartContainer(imgIRequest *aRequest,
@@ -104,6 +104,7 @@ public:
   NS_IMETHOD Init(nsIContent*      aContent,
                   nsIFrame*        aParent,
                   nsIFrame*        aPrevInFlow);
+  virtual void DestroyFrom(nsIFrame* aDestructRoot);
 
   /**
    * Get the "type" of the frame
@@ -180,6 +181,10 @@ nsSVGImageFrame::Init(nsIContent* aContent,
   nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mContent);
   NS_ENSURE_TRUE(imageLoader, NS_ERROR_UNEXPECTED);
 
+  // We should have a PresContext now, so let's notify our image loader that
+  // we need to register any image animations with the refresh driver.
+  imageLoader->FrameCreated(this);
+
   // Push a null JSContext on the stack so that code that runs within
   // the below code doesn't think it's being called by JS. See bug
   // 604262.
@@ -189,6 +194,19 @@ nsSVGImageFrame::Init(nsIContent* aContent,
   imageLoader->AddObserver(mListener);
 
   return NS_OK; 
+}
+
+/* virtual */ void
+nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot)
+{
+  nsCOMPtr<nsIImageLoadingContent> imageLoader =
+    do_QueryInterface(nsFrame::mContent);
+
+  if (imageLoader) {
+    imageLoader->FrameDestroyed(this);
+  }
+
+  nsFrame::DestroyFrom(aDestructRoot);
 }
 
 //----------------------------------------------------------------------
@@ -210,10 +228,9 @@ nsSVGImageFrame::AttributeChanged(PRInt32         aNameSpaceID,
   }
   if (aNameSpaceID == kNameSpaceID_XLink &&
       aAttribute == nsGkAtoms::href) {
-    // If caller is not chrome and dom.disable_image_src_set is true,
-    // prevent setting image.src by exiting early
-    if (Preferences::GetBool("dom.disable_image_src_set") &&
-        !nsContentUtils::IsCallerChrome()) {
+
+    // Prevent setting image.src by exiting early
+    if (nsContentUtils::IsImageSrcSetDisabled()) {
       return NS_OK;
     }
     nsSVGImageElement *element = static_cast<nsSVGImageElement*>(mContent);
@@ -367,8 +384,7 @@ nsSVGImageFrame::PaintSVG(nsSVGRenderState *aContext,
       // Grab root node (w/ sanity-check to make sure it exists & is <svg>)
       nsSVGSVGElement* rootSVGElem =
         static_cast<nsSVGSVGElement*>(imgRootFrame->GetContent());
-      if (!rootSVGElem || rootSVGElem->GetNameSpaceID() != kNameSpaceID_SVG ||
-          rootSVGElem->Tag() != nsGkAtoms::svg) {
+      if (!rootSVGElem || !rootSVGElem->IsSVG(nsGkAtoms::svg)) {
         NS_ABORT_IF_FALSE(false, "missing or non-<svg> root node!!");
         return false;
       }
@@ -540,7 +556,8 @@ NS_IMETHODIMP nsSVGImageListener::OnStopDecode(imgIRequest *aRequest,
   return NS_OK;
 }
 
-NS_IMETHODIMP nsSVGImageListener::FrameChanged(imgIContainer *aContainer,
+NS_IMETHODIMP nsSVGImageListener::FrameChanged(imgIRequest *aRequest,
+                                               imgIContainer *aContainer,
                                                const nsIntRect *aDirtyRect)
 {
   if (!mFrame)

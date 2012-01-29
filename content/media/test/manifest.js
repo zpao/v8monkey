@@ -5,9 +5,9 @@
 // These are small test files, good for just seeing if something loads. We
 // really only need one test file per backend here.
 var gSmallTests = [
+  { name:"small-shot.ogg", type:"audio/ogg", duration:0.276 },
   { name:"r11025_s16_c1.wav", type:"audio/x-wav", duration:1.0 },
   { name:"320x240.ogv", type:"video/ogg", width:320, height:240, duration:0.233 },
-  { name:"small-shot.ogg", type:"audio/ogg", duration:0.276 },
   { name:"seek.webm", type:"video/webm", duration:3.966 },
   { name:"bogus.duh", type:"bogus/duh" }
 ];
@@ -25,9 +25,13 @@ var gProgressTests = [
 
 // Used by test_mozLoadFrom.  Need one test file per decoder backend, plus
 // anything for testing clone-specific bugs.
+var cloneKey = Math.floor(Math.random()*100000000);
 var gCloneTests = gSmallTests.concat([
   // Actual duration is ~200ms, we have Content-Duration lie about it.
   { name:"bug520908.ogv", type:"video/ogg", duration:9000 },
+  // short-video is more like 1s, so if you load this twice you'll get an unexpected duration
+  { name:"dynamic_resource.sjs?key=" + cloneKey + "&res1=320x240.ogv&res2=short-video.ogv",
+    type:"video/ogg", duration:0.233 },
 ]);
 
 // Used by test_play_twice.  Need one test file per decoder backend, plus
@@ -295,6 +299,14 @@ function getPlayableVideo(candidates) {
   return null;
 }
 
+function getPlayableAudio(candidates) {
+  var v = document.createElement("audio");
+  var resources = candidates.filter(function(x){return /^audio/.test(x.type) && v.canPlayType(x.type);});
+  if (resources.length > 0)
+    return resources[0];
+  return null;
+}
+
 // Number of tests to run in parallel. Warning: Each media element requires
 // at least 3 threads (4 on Linux), and on Linux each thread uses 10MB of
 // virtual address space. Beware!
@@ -337,6 +349,7 @@ function MediaTestManager() {
     this.startTest = startTest;
     this.tokens = [];
     this.isShutdown = false;
+    this.numTestsRunning = 0;
     // Always wait for explicit finish.
     SimpleTest.waitForExplicitFinish();
     this.nextTest();
@@ -346,6 +359,8 @@ function MediaTestManager() {
   // Don't call more than once per token.
   this.started = function(token) {
     this.tokens.push(token);
+    this.numTestsRunning++;
+    is(this.numTestsRunning, this.tokens.length, "[started " + token + "] Length of array should match number of running tests");
   }
   
   // Registers that the test corresponding to 'token' has finished. Call when
@@ -358,11 +373,13 @@ function MediaTestManager() {
       // Remove the element from the list of running tests.
       this.tokens.splice(i, 1);
     }
+    this.numTestsRunning--;
+    is(this.numTestsRunning, this.tokens.length, "[finished " + token + "] Length of array should match number of running tests");
     if (this.tokens.length < PARALLEL_TESTS) {
       this.nextTest();
     }
   }
-  
+
   // Starts the next batch of tests, or finishes if they're all done.
   // Don't call this directly, call finished(token) when you're done.
   this.nextTest = function() {

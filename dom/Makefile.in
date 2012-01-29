@@ -43,6 +43,7 @@ VPATH		= @srcdir@
 include $(DEPTH)/config/autoconf.mk
 
 MODULE		= dom
+
 DIRS = \
   interfaces/base \
   interfaces/canvas \
@@ -64,16 +65,22 @@ DIRS = \
   interfaces/geolocation \
   interfaces/notification \
   interfaces/svg \
+  interfaces/smil \
   $(NULL)
 
-ifdef MOZ_SMIL
-DIRS += interfaces/smil
+ifeq (gonk,$(MOZ_WIDGET_TOOLKIT))
+DIRS += \
+  interfaces/apps \
+  $(NULL)
 endif
 
 DIRS += \
   base \
+  battery \
+  sms \
   src \
   locales \
+  network \
   plugins/base \
   plugins/ipc \
   indexedDB \
@@ -82,16 +89,18 @@ DIRS += \
   workers \
   $(NULL)
 
+ifdef MOZ_B2G_RIL
+DIRS += \
+  telephony \
+  wifi \
+  $(NULL)
+endif
+
 ifdef ENABLE_TESTS
 DIRS += tests
-
-# These subdirs rely on GTK libraries and header files, it is not
-#  buildable on other non-GTK unix builds
-
 ifneq (,$(filter gtk2 cocoa windows android qt os2,$(MOZ_WIDGET_TOOLKIT)))
 DIRS += plugins/test
 endif
 endif
 
 include $(topsrcdir)/config/rules.mk
-

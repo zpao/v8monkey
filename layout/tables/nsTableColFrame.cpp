@@ -90,13 +90,11 @@ nsTableColFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
     return;
      
   nsTableFrame* tableFrame = nsTableFrame::GetTableFrame(this);
-    
   if (tableFrame->IsBorderCollapse() &&
       tableFrame->BCRecalcNeeded(aOldStyleContext, GetStyleContext())) {
-    nsRect damageArea = nsRect(GetColIndex(), 0, 1, tableFrame->GetRowCount());
-    tableFrame->SetBCDamageArea(damageArea);
+    nsIntRect damageArea(GetColIndex(), 0, 1, tableFrame->GetRowCount());
+    tableFrame->AddBCDamageArea(damageArea);
   }
-  return;
 }
 
 void nsTableColFrame::SetContinuousBCBorderWidth(PRUint8     aForSide,
@@ -130,9 +128,7 @@ NS_METHOD nsTableColFrame::Reflow(nsPresContext*          aPresContext,
   bool collapseCol = (NS_STYLE_VISIBILITY_COLLAPSE == colVis->mVisible);
   if (collapseCol) {
     nsTableFrame* tableFrame = nsTableFrame::GetTableFrame(this);
-    if (tableFrame)  {
-      tableFrame->SetNeedToCollapse(true);
-    }    
+    tableFrame->SetNeedToCollapse(true);
   }
   aStatus = NS_FRAME_COMPLETE;
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowState, aDesiredSize);
@@ -172,10 +168,11 @@ void nsTableColFrame::Dump(PRInt32 aIndent)
     break;
   }
   printf("\nm:%d c:%d(%c) p:%f sm:%d sc:%d sp:%f f:%d",
-         mMinCoord, mPrefCoord, mHasSpecifiedCoord ? 's' : 'u', mPrefPercent,
-         mSpanMinCoord, mSpanPrefCoord,
+         PRInt32(mMinCoord), PRInt32(mPrefCoord),
+         mHasSpecifiedCoord ? 's' : 'u', mPrefPercent,
+         PRInt32(mSpanMinCoord), PRInt32(mSpanPrefCoord),
          mSpanPrefPercent,
-         GetFinalWidth());
+         PRInt32(GetFinalWidth()));
   printf("\n%s**END COL DUMP** ", indent);
   delete [] indent;
 }

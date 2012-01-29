@@ -37,6 +37,10 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Attributes.h"
+#include "mozilla/FunctionTimer.h"
+#include "mozilla/Preferences.h"
+
 #include "ImageLogging.h"
 #include "imgLoader.h"
 #include "imgRequestProxy.h"
@@ -89,13 +93,10 @@
 #include "nsIContentSecurityPolicy.h"
 #include "nsIChannelPolicy.h"
 
-#include "mozilla/FunctionTimer.h"
-#include "mozilla/Preferences.h"
-
 #include "nsContentUtils.h"
 
 using namespace mozilla;
-using namespace mozilla::imagelib;
+using namespace mozilla::image;
 
 #if defined(DEBUG_pavlov) || defined(DEBUG_timeless)
 #include "nsISimpleEnumerator.h"
@@ -136,7 +137,7 @@ static void PrintImageDecoders()
 #endif
 
 
-class imgMemoryReporter :
+class imgMemoryReporter MOZ_FINAL :
   public nsIMemoryReporter
 {
 public:
@@ -735,7 +736,6 @@ nsresult imgLoader::CreateNewProxyForRequest(imgRequest *aRequest, nsILoadGroup 
     proxyRequest = static_cast<imgRequestProxy *>(aProxyRequest);
   } else {
     proxyRequest = new imgRequestProxy();
-    if (!proxyRequest) return NS_ERROR_OUT_OF_MEMORY;
   }
   NS_ADDREF(proxyRequest);
 
@@ -760,7 +760,7 @@ nsresult imgLoader::CreateNewProxyForRequest(imgRequest *aRequest, nsILoadGroup 
   return NS_OK;
 }
 
-class imgCacheObserver : public nsIObserver
+class imgCacheObserver MOZ_FINAL : public nsIObserver
 {
 public:
   NS_DECL_ISUPPORTS
@@ -784,7 +784,8 @@ imgCacheObserver::Observe(nsISupports* aSubject, const char* aTopic, const PRUni
   return NS_OK;
 }
 
-class imgCacheExpirationTracker : public nsExpirationTracker<imgCacheEntry, 3>
+class imgCacheExpirationTracker MOZ_FINAL
+  : public nsExpirationTracker<imgCacheEntry, 3>
 {
   enum { TIMEOUT_SECONDS = 10 };
 public:
@@ -893,8 +894,6 @@ nsresult imgLoader::InitCache()
     return NS_ERROR_FAILURE;
   
   gCacheObserver = new imgCacheObserver();
-  if (!gCacheObserver) 
-    return NS_ERROR_OUT_OF_MEMORY;
   NS_ADDREF(gCacheObserver);
 
   os->AddObserver(gCacheObserver, "memory-pressure", false);
@@ -902,8 +901,6 @@ nsresult imgLoader::InitCache()
   os->AddObserver(gCacheObserver, "chrome-flush-caches", false);
 
   gCacheTracker = new imgCacheExpirationTracker();
-  if (!gCacheTracker)
-    return NS_ERROR_OUT_OF_MEMORY;
 
   if (!sCache.Init())
       return NS_ERROR_OUT_OF_MEMORY;

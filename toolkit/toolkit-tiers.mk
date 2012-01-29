@@ -59,7 +59,6 @@ tier_platform_dirs += modules/zlib
 endif
 
 tier_platform_dirs += \
-		modules/libreg \
 		modules/libpref \
 		intl \
 		netwerk \
@@ -91,7 +90,7 @@ tier_platform_dirs	+= gfx/qcms
 # "gecko" - core components
 #
 
-tier_platform_dirs += ipc js/ipc js/jetpack
+tier_platform_dirs += ipc js/ipc
 
 tier_platform_dirs += \
 		hal \
@@ -101,7 +100,7 @@ tier_platform_dirs += \
 
 ifdef MOZ_ENABLE_GTK2
 ifdef MOZ_X11
-tier_platform_dirs     += widget/src/gtkxtbin
+tier_platform_dirs     += widget/gtkxtbin
 endif
 endif
 
@@ -117,9 +116,7 @@ tier_platform_dirs += \
 		$(NULL)
 endif
 
-ifdef MOZ_RDF
 tier_platform_dirs += rdf
-endif
 
 ifdef MOZ_JSDEBUGGER
 tier_platform_dirs += js/jsd
@@ -197,10 +194,12 @@ ifdef MOZ_JPROF
 tier_platform_dirs        += tools/jprof
 endif
 
+tier_platform_dirs  += tools/profiler
+
 tier_platform_dirs	+= xpfe/components
 
 ifdef MOZ_ENABLE_XREMOTE
-tier_platform_dirs += widget/src/xremoteclient
+tier_platform_dirs += widget/xremoteclient
 endif
 
 ifdef MOZ_SPELLCHECK
@@ -224,6 +223,8 @@ tier_platform_dirs += services/crypto/component
 tier_platform_dirs += startupcache
 
 tier_platform_dirs += js/ductwork/debugger
+
+tier_platform_dirs += other-licenses/snappy
 
 ifdef APP_LIBXUL_STATICDIRS
 # Applications can cheat and ask for code to be
@@ -267,5 +268,6 @@ ifdef ENABLE_TESTS
 tier_platform_dirs += testing/mochitest
 tier_platform_dirs += testing/xpcshell
 tier_platform_dirs += testing/tools/screenshot
+tier_platform_dirs += testing/peptest
+tier_platform_dirs += testing/mozbase
 endif
-

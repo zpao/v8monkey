@@ -45,6 +45,7 @@
 #include "gfxImageSurface.h"
 #include "gfxContext.h"
 #include "GLContextProvider.h"
+#include "gfxPlatform.h"
 
 #ifdef XP_WIN
 #include "gfxWindowsSurface.h"
@@ -67,12 +68,7 @@ void
 CanvasLayerOGL::Destroy()
 {
   if (!mDestroyed) {
-    if (mTexture) {
-      GLContext *cx = mOGLManager->glForResources();
-      cx->MakeCurrent();
-      cx->fDeleteTextures(1, &mTexture);
-    }
-
+    CleanupResources();
     mDestroyed = true;
   }
 }
@@ -91,7 +87,10 @@ CanvasLayerOGL::Initialize(const Data& aData)
 
   mOGLManager->MakeCurrent();
 
-  if (aData.mSurface) {
+  if (aData.mDrawTarget) {
+    mDrawTarget = aData.mDrawTarget;
+    mNeedsYFlip = false;
+  } else if (aData.mSurface) {
     mCanvasSurface = aData.mSurface;
     mNeedsYFlip = false;
 #if defined(MOZ_WIDGET_GTK2) && !defined(MOZ_PLATFORM_MAEMO)
@@ -133,7 +132,7 @@ CanvasLayerOGL::Initialize(const Data& aData)
     MakeTexture();
     // This should only ever occur with 2d canvas, WebGL can't already have a texture
     // of this size can it?
-    NS_ABORT_IF_FALSE(mCanvasSurface, 
+    NS_ABORT_IF_FALSE(mCanvasSurface || mDrawTarget, 
                       "Invalid texture size when WebGL surface already exists at that size?");
   }
 }
@@ -155,6 +154,10 @@ CanvasLayerOGL::MakeTexture()
   gl()->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_WRAP_T, LOCAL_GL_CLAMP_TO_EDGE);
 }
 
+/**
+ * Following UpdateSurface(), mTexture on context this->gl() should contain the data we want,
+ * unless mDelayedUpdates is true because of a too-large surface.
+ */
 void
 CanvasLayerOGL::UpdateSurface()
 {
@@ -172,23 +175,26 @@ CanvasLayerOGL::UpdateSurface()
   }
 #endif
 
-  if (mCanvasGLContext) {
-    mCanvasGLContext->MakeCurrent();
-    mCanvasGLContext->fFinish();
-  }
-  mOGLManager->MakeCurrent();
-
   if (mCanvasGLContext &&
       mCanvasGLContext->GetContextType() == gl()->GetContextType())
   {
+    // Can texture share, just make sure it's resolved first
+    mCanvasGLContext->MakeCurrent();
+    mCanvasGLContext->GuaranteeResolve();
+
     if (gl()->BindOffscreenNeedsTexture(mCanvasGLContext) &&
         mTexture == 0)
     {
+      mOGLManager->MakeCurrent();
       MakeTexture();
     }
   } else {
     nsRefPtr<gfxASurface> updatedAreaSurface;
-    if (mCanvasSurface) {
+    if (mDrawTarget) {
+      // TODO: This is suboptimal - We should have direct handling for the surface types instead of
+      // going via a gfxASurface.
+      updatedAreaSurface = gfxPlatform::GetPlatform()->GetThebesSurfaceForDrawTarget(mDrawTarget);
+    } else if (mCanvasSurface) {
       updatedAreaSurface = mCanvasSurface;
     } else if (mCanvasGLContext) {
       nsRefPtr<gfxImageSurface> updatedAreaImageSurface =
@@ -201,6 +207,7 @@ CanvasLayerOGL::UpdateSurface()
       updatedAreaSurface = updatedAreaImageSurface;
     }
 
+    mOGLManager->MakeCurrent();
     mLayerProgram =
       gl()->UploadSurfaceToTexture(updatedAreaSurface,
                                    mBounds,
@@ -237,25 +244,27 @@ CanvasLayerOGL::RenderLayer(int aPreviousDestination,
   nsIntRect drawRect = mBounds;
 
   if (useGLContext) {
-    mCanvasGLContext->MakeCurrent();
-    mCanvasGLContext->fFlush();
-
-    gl()->MakeCurrent();
     gl()->BindTex2DOffscreen(mCanvasGLContext);
     program = mOGLManager->GetBasicLayerProgram(CanUseOpaqueSurface(), true);
   } else if (mDelayedUpdates) {
-    NS_ABORT_IF_FALSE(mCanvasSurface, "WebGL canvases should always be using full texture upload");
+    NS_ABORT_IF_FALSE(mCanvasSurface || mDrawTarget, "WebGL canvases should always be using full texture upload");
     
     drawRect.IntersectRect(drawRect, GetEffectiveVisibleRegion().GetBounds());
 
+    nsRefPtr<gfxASurface> surf = mCanvasSurface;
+    if (mDrawTarget) {
+      surf = gfxPlatform::GetPlatform()->GetThebesSurfaceForDrawTarget(mDrawTarget);
+    }
+
     mLayerProgram =
-      gl()->UploadSurfaceToTexture(mCanvasSurface,
+      gl()->UploadSurfaceToTexture(surf,
                                    nsIntRect(0, 0, drawRect.width, drawRect.height),
                                    mTexture,
                                    true,
                                    drawRect.TopLeft());
   }
-  if (!program) { 
+
+  if (!program) {
     program = mOGLManager->GetColorTextureLayerProgram(mLayerProgram);
   }
 
@@ -284,6 +293,16 @@ CanvasLayerOGL::RenderLayer(int aPreviousDestination,
 
   if (useGLContext) {
     gl()->UnbindTex2DOffscreen(mCanvasGLContext);
+  }
+}
+
+void
+CanvasLayerOGL::CleanupResources()
+{
+  if (mTexture) {
+    GLContext* cx = mOGLManager->glForResources();
+    cx->MakeCurrent();
+    cx->fDeleteTextures(1, &mTexture);
   }
 }
 
@@ -324,7 +343,8 @@ ShadowCanvasLayerOGL::Swap(const CanvasSurface& aNewFront,
   if (!mDestroyed) {
     nsRefPtr<gfxASurface> surf = ShadowLayerForwarder::OpenDescriptor(aNewFront);
     gfxIntSize sz = surf->GetSize();
-    if (!mTexImage || mTexImage->GetSize() != sz) {
+    if (!mTexImage || mTexImage->GetSize() != sz ||
+        mTexImage->GetContentType() != surf->GetContentType()) {
       Init(aNewFront, needYFlip);
     }
     nsIntRegion updateRegion(nsIntRect(0, 0, sz.width, sz.height));
@@ -400,4 +420,10 @@ ShadowCanvasLayerOGL::RenderLayer(int aPreviousFrameBuffer,
     program->SetLayerQuadRect(mTexImage->GetTileRect());
     mOGLManager->BindAndDrawQuad(program, mNeedsYFlip); // FIXME flip order of tiles?
   } while (mTexImage->NextTile());
+}
+
+void
+ShadowCanvasLayerOGL::CleanupResources()
+{
+  DestroyFrontBuffer();
 }

@@ -38,7 +38,7 @@
 #define nsTableFrame_h__
 
 #include "nscore.h"
-#include "nsHTMLContainerFrame.h"
+#include "nsContainerFrame.h"
 #include "nsStyleCoord.h"
 #include "nsStyleConsts.h"
 #include "nsITableLayout.h"
@@ -58,6 +58,7 @@ class nsStyleContext;
 
 struct nsTableReflowState;
 struct nsStylePosition;
+struct BCPropertyData;
 
 static inline bool IS_TABLE_CELL(nsIAtom* frameType) {
   return nsGkAtoms::tableCellFrame == frameType ||
@@ -127,7 +128,7 @@ private:
   * The principal child list contains row group frames. There is also an
   * additional child list, kColGroupList, which contains the col group frames.
   */
-class nsTableFrame : public nsHTMLContainerFrame, public nsITableLayout
+class nsTableFrame : public nsContainerFrame, public nsITableLayout
 {
 public:
   NS_DECL_QUERYFRAME
@@ -291,7 +292,7 @@ public:
 
   friend class nsDelayedCalcBCBorders;
   
-  void SetBCDamageArea(const nsRect& aValue);
+  void AddBCDamageArea(const nsIntRect& aValue);
   bool BCRecalcNeeded(nsStyleContext* aOldStyleContext,
                         nsStyleContext* aNewStyleContext);
   void PaintBCBorders(nsRenderingContext& aRenderingContext,
@@ -505,6 +506,8 @@ public:
                               const nsRect& aOrigVisualOverflow,
                               bool aIsFirstReflow);
 
+  virtual bool UpdateOverflow();
+
 protected:
 
   /** protected constructor. 
@@ -517,7 +520,7 @@ protected:
 
   void InitChildReflowState(nsHTMLReflowState& aReflowState);
 
-  /** implement abstract method on nsHTMLContainerFrame */
+  /** implement abstract method on nsContainerFrame */
   virtual PRIntn GetSkipSides() const;
 
 public:
@@ -688,13 +691,16 @@ public:
 
   nsTArray<nsTableColFrame*>& GetColCache();
 
+
 protected:
 
   void SetBorderCollapse(bool aValue);
 
+  BCPropertyData* GetBCProperty(bool aCreateIfNecessary = false) const;
+  void SetFullBCDamageArea();
   void CalcBCBorders();
 
-  void ExpandBCDamageArea(nsRect& aRect) const;
+  void ExpandBCDamageArea(nsIntRect& aRect) const;
 
   void SetColumnDimensions(nscoord         aHeight,
                            const nsMargin& aReflowState);

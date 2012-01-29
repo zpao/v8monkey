@@ -37,11 +37,17 @@
 #ifndef __NS_SVGANGLE_H__
 #define __NS_SVGANGLE_H__
 
+#include "nsAutoPtr.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsDOMError.h"
+#include "nsError.h"
 #include "nsIDOMSVGAngle.h"
 #include "nsIDOMSVGAnimatedAngle.h"
+#include "nsISMILAttr.h"
 #include "nsSVGElement.h"
-#include "nsDOMError.h"
 
+class nsISMILAnimationElement;
+class nsSMILValue;
 class nsSVGOrientType;
 
 class nsSVGAngle
@@ -80,10 +86,8 @@ public:
   static nsresult ToDOMSVGAngle(nsIDOMSVGAngle **aResult);
   nsresult ToDOMAnimatedAngle(nsIDOMSVGAnimatedAngle **aResult,
                               nsSVGElement* aSVGElement);
-#ifdef MOZ_SMIL
   // Returns a new nsISMILAttr object that the caller must delete
   nsISMILAttr* ToSMILAttr(nsSVGElement* aSVGElement);
-#endif // MOZ_SMIL
 
   static float GetDegreesPerUnit(PRUint8 aUnit);
 
@@ -198,7 +202,6 @@ public:
       { return mVal->ToDOMAnimVal(aAnimVal, mSVGElement); }
   };
 
-#ifdef MOZ_SMIL
   // We do not currently implemente a SMILAngle struct because in SVG 1.1 the
   // only *animatable* attribute that takes an <angle> is 'orient', on the
   // 'marker' element, and 'orient' must be special cased since it can also
@@ -231,7 +234,6 @@ public:
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);
   };
-#endif // MOZ_SMIL
 };
 
 nsresult

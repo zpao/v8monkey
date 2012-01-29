@@ -368,7 +368,7 @@ ATSFontEntry::GetFontTable(PRUint32 aTableTag, FallibleTArray<PRUint8>& aBuffer)
         return NS_ERROR_FAILURE;
     }
 
-    if (!aBuffer.AppendElements(dataLength)) {
+    if (!aBuffer.SetLength(dataLength)) {
         return NS_ERROR_OUT_OF_MEMORY;
     }
     PRUint8 *dataPtr = aBuffer.Elements();
@@ -1004,6 +1004,7 @@ gfxMacPlatformFontList::MakePlatformFontCG(const gfxProxyFontEntry *aProxyEntry,
                                      aProxyEntry->mItalic ?
                                          FONT_STYLE_ITALIC : FONT_STYLE_NORMAL,
                                      true, false));
+    ::CFRelease(fontRef);
 
     // if succeeded and font cmap is good, return the new font
     if (newFontEntry->mIsValid && NS_SUCCEEDED(newFontEntry->ReadCMAP())) {

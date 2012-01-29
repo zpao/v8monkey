@@ -184,8 +184,8 @@ nsEditingSession::MakeWindowEditable(nsIDOMWindow *aWindow,
 
   // Setup commands common to plaintext and html editors,
   //  including the document creation observers
-  // the first is an editor controller
-  rv = SetupEditorCommandController("@mozilla.org/editor/editorcontroller;1",
+  // the first is an editing controller
+  rv = SetupEditorCommandController("@mozilla.org/editor/editingcontroller;1",
                                     aWindow,
                                     static_cast<nsIEditingSession*>(this),
                                     &mBaseCommandControllerId);
@@ -837,7 +837,8 @@ nsEditingSession::OnProgressChange(nsIWebProgress *aWebProgress,
 ----------------------------------------------------------------------------*/
 NS_IMETHODIMP
 nsEditingSession::OnLocationChange(nsIWebProgress *aWebProgress, 
-                                   nsIRequest *aRequest, nsIURI *aURI)
+                                   nsIRequest *aRequest, nsIURI *aURI,
+                                   PRUint32 aFlags)
 {
   nsCOMPtr<nsIDOMWindow> domWindow;
   nsresult rv = aWebProgress->GetDOMWindow(getter_AddRefs(domWindow));
@@ -1434,7 +1435,7 @@ nsEditingSession::ReattachToWindow(nsIDOMWindow* aWindow)
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Setup the command controllers again.
-  rv = SetupEditorCommandController("@mozilla.org/editor/editorcontroller;1",
+  rv = SetupEditorCommandController("@mozilla.org/editor/editingcontroller;1",
                                     aWindow,
                                     static_cast<nsIEditingSession*>(this),
                                     &mBaseCommandControllerId);

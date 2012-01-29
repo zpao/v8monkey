@@ -64,10 +64,6 @@
 #include "gfxQuartzImageSurface.h"
 #endif
 
-#ifdef MOZ_DFB
-#include "gfxDirectFBSurface.h"
-#endif
-
 #if defined(CAIRO_HAS_QT_SURFACE) && defined(MOZ_WIDGET_QT)
 #include "gfxQPainterSurface.h"
 #endif
@@ -85,6 +81,7 @@
 #include "nsIConsoleService.h"
 #include "nsServiceManagerUtils.h"
 #include "nsStringGlue.h"
+#include "nsIClipboardHelper.h"
 
 using mozilla::CheckedInt;
 
@@ -200,11 +197,6 @@ gfxASurface::Wrap (cairo_surface_t *csurf)
     }
     else if (stype == CAIRO_SURFACE_TYPE_QUARTZ_IMAGE) {
         result = new gfxQuartzImageSurface(csurf);
-    }
-#endif
-#ifdef MOZ_DFB
-    else if (stype == CAIRO_SURFACE_TYPE_DIRECTFB) {
-        result = new gfxDirectFBSurface(csurf);
     }
 #endif
 #if defined(CAIRO_HAS_QT_SURFACE) && defined(MOZ_WIDGET_QT)
@@ -578,11 +570,11 @@ static const SurfaceMemoryReporterAttrs sSurfaceMemoryReporterAttrs[] = {
      "accounted for here aren't counted in vsize, resident, explicit, or any of "
      "the other measurements on this page."},
     {"gfx-surface-xcb", nsnull},
-    {"gfx-surface-glitz", nsnull},
+    {"gfx-surface-glitz???", nsnull},       // should never be used
     {"gfx-surface-quartz", nsnull},
     {"gfx-surface-win32", nsnull},
     {"gfx-surface-beos", nsnull},
-    {"gfx-surface-directfb", nsnull},
+    {"gfx-surface-directfb???", nsnull},    // should never be used
     {"gfx-surface-svg", nsnull},
     {"gfx-surface-os2", nsnull},
     {"gfx-surface-win32printing", nsnull},
@@ -711,43 +703,69 @@ gfxASurface::RecordMemoryFreed()
     }
 }
 
+#ifdef MOZ_DUMP_PAINTING
 void
-gfxASurface::DumpAsDataURL()
+gfxASurface::WriteAsPNG(const char* aFile)
 {
-  gfxIntSize size = GetSize();
-  if (size.width == -1 && size.height == -1) {
-    printf("Could not determine surface size\n");
-    return;
-  }
+    FILE *file = fopen(aFile, "wb");
+    if (file) {
+      WriteAsPNG_internal(file, true);
+      fclose(file);
+    } else {
+      NS_WARNING("Failed to create file!\n");
+    }
+}
+    
+void 
+gfxASurface::DumpAsDataURL() 
+{ 
+  WriteAsPNG_internal(stdout, false);
+}
 
-  nsAutoArrayPtr<PRUint8> imageBuffer(new (std::nothrow) PRUint8[size.width * 
-                                                                 size.height * 
-                                                                 4]);
-  if (!imageBuffer) {
-    printf("Could not allocate image buffer\n");
-    return;
-  }
- 
-  nsRefPtr<gfxImageSurface> imgsurf = 
-    new gfxImageSurface(imageBuffer.get(),
-                        gfxIntSize(size.width, size.height),
-                        size.width * 4,
-                        gfxASurface::ImageFormatARGB32);
+void 
+gfxASurface::CopyAsDataURL() 
+{ 
+  WriteAsPNG_internal(nsnull, false);
+}
 
-  if (!imgsurf || imgsurf->CairoStatus()) {
-    printf("Could not allocate image surface\n");
-    return;
-  }
+/**
+ * Write to a PNG file. If aBinary is true, then it is written
+ * as binary, otherwise as a data URL. If no file is specified then
+ * data is copied to the clipboard (must not be binary!).
+ */
+void
+gfxASurface::WriteAsPNG_internal(FILE* aFile, bool aBinary)
+{
+  nsRefPtr<gfxImageSurface> imgsurf = GetAsImageSurface();
+  gfxIntSize size;
 
-  nsRefPtr<gfxContext> ctx = new gfxContext(imgsurf);
-  if (!ctx || ctx->HasError()) {
-    printf("Could not allocate image context\n");
-    return;
-  }
+  if (!imgsurf) {
+    size = GetSize();
+    if (size.width == -1 && size.height == -1) {
+      printf("Could not determine surface size\n");
+      return;
+    }
 
-  ctx->SetOperator(gfxContext::OPERATOR_SOURCE);
-  ctx->SetSource(this, gfxPoint(0, 0));
-  ctx->Paint();
+    imgsurf = 
+      new gfxImageSurface(gfxIntSize(size.width, size.height),
+                          gfxASurface::ImageFormatARGB32);
+
+    if (!imgsurf || imgsurf->CairoStatus()) {
+      printf("Could not allocate image surface\n");
+      return;
+    }
+
+    nsRefPtr<gfxContext> ctx = new gfxContext(imgsurf);
+    if (!ctx || ctx->HasError()) {
+      printf("Could not allocate image context\n");
+      return;
+    }
+
+    ctx->SetOperator(gfxContext::OPERATOR_SOURCE);
+    ctx->SetSource(this, gfxPoint(0, 0));
+    ctx->Paint();
+  }
+  size = imgsurf->GetSize();
 
   nsCOMPtr<imgIEncoder> encoder =
     do_CreateInstance("@mozilla.org/image/encoder;2?type=image/png");
@@ -757,18 +775,18 @@ gfxASurface::DumpAsDataURL()
     printf("Could not create encoder. Printing %dx%d pixels.\n", w, h);
     for (PRInt32 y = 0; y < h; ++y) {
       for (PRInt32 x = 0; x < w; ++x) {
-        printf("%x ", reinterpret_cast<PRUint32*>(imageBuffer.get())[y*size.width + x]);
+        printf("%x ", reinterpret_cast<PRUint32*>(imgsurf->Data())[y*imgsurf->Stride()+ x]);
       }
       printf("\n");
     }
     return;
   }
 
-  nsresult rv = encoder->InitFromData(imageBuffer.get(),
+  nsresult rv = encoder->InitFromData(imgsurf->Data(),
                                       size.width * size.height * 4, 
                                       size.width, 
                                       size.height, 
-                                      size.width * 4,
+                                      imgsurf->Stride(),
                                       imgIEncoder::INPUT_FORMAT_HOSTARGB,
                                       NS_LITERAL_STRING(""));
   if (NS_FAILED(rv))
@@ -808,18 +826,38 @@ gfxASurface::DumpAsDataURL()
       imgData = newImgData;
     }
   }
+
+  if (aBinary) {
+    if (aFile) {
+      fwrite(imgData, 1, imgSize, aFile); 
+    } else {
+      NS_WARNING("Can't write binary image data without a file!");
+    }
+    return;
+  }
   
   // base 64, result will be NULL terminated
   char* encodedImg = PL_Base64Encode(imgData, imgSize, nsnull);
   PR_Free(imgData);
   if (!encodedImg) // not sure why this would fail
     return;
- 
-  printf("data:image/png;base64,");
-  printf("%s", encodedImg);
-  printf("\n");
+
+  nsCString string("data:image/png;base64,");
+  string.Append(encodedImg);
+
+  if (aFile) {
+    fprintf(aFile, "%s", string.BeginReading());
+    fprintf(aFile, "\n");
+  } else {
+    nsCOMPtr<nsIClipboardHelper> clipboard(do_GetService("@mozilla.org/widget/clipboardhelper;1", &rv));
+    if (clipboard) {
+      clipboard->CopyString(NS_ConvertASCIItoUTF16(string));
+    }
+  }
+
   PR_Free(encodedImg);
 
   return;
 }
+#endif
 

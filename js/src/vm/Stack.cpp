@@ -78,7 +78,7 @@ StackFrame::initExecuteFrame(JSScript *script, StackFrame *prev, FrameRegs *regs
      * script in the context of another frame and the frame type is determined
      * by the context.
      */
-    flags_ = type | HAS_SCOPECHAIN | HAS_PREVPC;
+    flags_ = type | HAS_SCOPECHAIN | HAS_BLOCKCHAIN | HAS_PREVPC;
     if (!(flags_ & GLOBAL))
         flags_ |= (prev->flags_ & (FUNCTION | GLOBAL));
 
@@ -88,13 +88,13 @@ StackFrame::initExecuteFrame(JSScript *script, StackFrame *prev, FrameRegs *regs
     if (isFunctionFrame()) {
         dstvp[0] = prev->calleev();
         exec = prev->exec;
-        args.script = script;
+        u.evalScript = script;
     } else {
         JS_ASSERT(isGlobalFrame());
         dstvp[0] = NullValue();
         exec.script = script;
 #ifdef DEBUG
-        args.script = (JSScript *)0xbad;
+        u.evalScript = (JSScript *)0xbad;
 #endif
     }
 
@@ -102,6 +102,7 @@ StackFrame::initExecuteFrame(JSScript *script, StackFrame *prev, FrameRegs *regs
     prev_ = prev;
     prevpc_ = regs ? regs->pc : (jsbytecode *)0xbad;
     prevInline_ = regs ? regs->inlined() : NULL;
+    blockChain_ = NULL;
 
 #ifdef DEBUG
     ncode_ = (void *)0xbad;
@@ -147,13 +148,12 @@ StackFrame::stealFrameAndSlots(Value *vp, StackFrame *otherfp,
      * js_LiveFrameToFloating comment in jsiter.h.
      */
     if (hasCallObj()) {
-        JSObject &obj = callObj();
-        obj.setPrivate(this);
+        CallObject &obj = callObj();
+        obj.setStackFrame(this);
         otherfp->flags_ &= ~HAS_CALL_OBJ;
         if (js_IsNamedLambda(fun())) {
-            JSObject *env = obj.getParent();
-            JS_ASSERT(env->isDeclEnv());
-            env->setPrivate(this);
+            DeclEnvObject &env = obj.enclosingScope().asDeclEnv();
+            env.setStackFrame(this);
         }
     }
     if (hasArgsObj()) {
@@ -234,26 +234,7 @@ StackSegment::contains(const CallArgsList *call) const
 
     /* NB: this depends on the continuity of segments in memory. */
     Value *vp = call->array();
-    bool ret = vp > slotsBegin() && vp <= calls_->array();
-
-    /*
-     * :XXX: Disabled. Including this check changes the asymptotic complexity
-     * of code which calls this function.
-     */
-#if 0
-#ifdef DEBUG
-    bool found = false;
-    for (CallArgsList *c = maybeCalls(); c->argv() > slotsBegin(); c = c->prev()) {
-        if (c == call) {
-            found = true;
-            break;
-        }
-    }
-    JS_ASSERT(found == ret);
-#endif
-#endif
-
-    return ret;
+    return vp > slotsBegin() && vp <= calls_->array();
 }
 
 StackFrame *
@@ -471,7 +452,7 @@ StackSpace::ensureSpaceSlow(JSContext *cx, MaybeReportError report, Value *from,
         } while (newCommit < request);
 
         /* The cast is safe because CAPACITY_BYTES is small. */
-        int32 size = static_cast<int32>(newCommit - commitEnd_) * sizeof(Value);
+        int32_t size = static_cast<int32_t>(newCommit - commitEnd_) * sizeof(Value);
 
         if (!VirtualAlloc(commitEnd_, size, MEM_COMMIT, PAGE_READWRITE)) {
             if (report)
@@ -498,7 +479,7 @@ StackSpace::tryBumpLimit(JSContext *cx, Value *from, uintN nvals, Value **limit)
 }
 
 size_t
-StackSpace::committedSize()
+StackSpace::sizeOfCommitted()
 {
 #ifdef XP_WIN
     return (commitEnd_ - base_) * sizeof(Value);
@@ -511,38 +492,14 @@ StackSpace::committedSize()
 
 ContextStack::ContextStack(JSContext *cx)
   : seg_(NULL),
-    space_(&JS_THREAD_DATA(cx)->stackSpace),
+    space_(&cx->runtime->stackSpace),
     cx_(cx)
-{
-    threadReset();
-}
+{}
 
 ContextStack::~ContextStack()
 {
     JS_ASSERT(!seg_);
 }
-
-void
-ContextStack::threadReset()
-{
-#ifdef JS_THREADSAFE
-    if (cx_->thread())
-        space_ = &JS_THREAD_DATA(cx_)->stackSpace;
-    else
-        space_ = NULL;
-#else
-    space_ = &JS_THREAD_DATA(cx_)->stackSpace;
-#endif
-}
-
-#ifdef DEBUG
-void
-ContextStack::assertSpaceInSync() const
-{
-    JS_ASSERT(space_);
-    JS_ASSERT(space_ == &JS_THREAD_DATA(cx_)->stackSpace);
-}
-#endif
 
 bool
 ContextStack::onTop() const
@@ -588,7 +545,8 @@ ContextStack::ensureOnTop(JSContext *cx, MaybeReportError report, uintN nvars,
     if (FrameRegs *regs = cx->maybeRegs()) {
         JSFunction *fun = NULL;
         if (JSInlinedSite *site = regs->inlined()) {
-            fun = regs->fp()->jit()->inlineFrames()[site->inlineIndex].fun;
+            mjit::JITChunk *chunk = regs->fp()->jit()->chunk(regs->pc);
+            fun = chunk->inlineFrames()[site->inlineIndex].fun;
         } else {
             StackFrame *fp = regs->fp();
             if (fp->isFunctionFrame()) {
@@ -644,7 +602,6 @@ ContextStack::popSegment()
 bool
 ContextStack::pushInvokeArgs(JSContext *cx, uintN argc, InvokeArgsGuard *iag)
 {
-    LeaveTrace(cx);
     JS_ASSERT(argc <= StackSpace::ARGS_LENGTH_MAX);
 
     uintN nvars = 2 + argc;
@@ -680,15 +637,15 @@ ContextStack::pushInvokeFrame(JSContext *cx, const CallArgs &args,
     JS_ASSERT(space().firstUnused() == args.end());
 
     JSObject &callee = args.callee();
-    JSFunction *fun = callee.getFunctionPrivate();
+    JSFunction *fun = callee.toFunction();
     JSScript *script = fun->script();
 
-    /*StackFrame::Flags*/ uint32 flags = ToFrameFlags(initial);
+    /*StackFrame::Flags*/ uint32_t flags = ToFrameFlags(initial);
     StackFrame *fp = getCallFrame(cx, REPORT_ERROR, args, fun, script, &flags);
     if (!fp)
         return false;
 
-    fp->initCallFrame(cx, callee, fun, script, args.length(), (StackFrame::Flags) flags);
+    fp->initCallFrame(cx, *fun, script, args.length(), (StackFrame::Flags) flags);
     ifg->regs_.prepareToRun(*fp, script);
 
     ifg->prevRegs_ = seg_->pushRegs(ifg->regs_);
@@ -758,7 +715,7 @@ ContextStack::pushDummyFrame(JSContext *cx, JSCompartment *dest, JSObject &scope
     uintN nvars = VALUES_PER_STACK_FRAME;
     Value *firstUnused = ensureOnTop(cx, REPORT_ERROR, nvars, CAN_EXTEND, &dfg->pushedSeg_, dest);
     if (!firstUnused)
-        return NULL;
+        return false;
 
     StackFrame *fp = reinterpret_cast<StackFrame *>(firstUnused);
     fp->initDummyFrame(cx, scopeChain);
@@ -812,6 +769,17 @@ ContextStack::pushGeneratorFrame(JSContext *cx, JSGenerator *gen, GeneratorFrame
     /* Save this for popGeneratorFrame. */
     gfg->gen_ = gen;
     gfg->stackvp_ = stackvp;
+
+    /*
+     * Trigger incremental barrier on the floating frame's generator object.
+     * This is normally traced through only by associated arguments/call
+     * objects, but only when the generator is not actually on the stack.
+     * We don't need to worry about generational barriers as the generator
+     * object has a trace hook and cannot be nursery allocated.
+     */
+    JSObject *genobj = js_FloatingFrameToGenerator(genfp)->obj;
+    JS_ASSERT(genobj->getClass()->trace);
+    JSObject::writeBarrierPre(genobj);
 
     /* Copy from the generator's floating frame to the stack. */
     stackfp->stealFrameAndSlots(stackvp, genfp, genvp, gen->regs.sp);
@@ -1043,11 +1011,11 @@ StackIter::settleOnNewState()
              * (see SplatApplyArgs), there is no efficient way to know how to
              * find the callee. Thus, calls to apply are lost completely.
              */
-            JSOp op = js_GetOpcode(cx_, fp_->script(), pc_);
+            JSOp op = JSOp(*pc_);
             if (op == JSOP_CALL || op == JSOP_FUNCALL) {
                 uintN argc = GET_ARGC(pc_);
                 DebugOnly<uintN> spoff = sp_ - fp_->base();
-                JS_ASSERT_IF(cx_->stackIterAssertionEnabled && !fp_->hasImacropc(),
+                JS_ASSERT_IF(cx_->stackIterAssertionEnabled,
                              spoff == js_ReconstructStackDepth(cx_, fp_->script(), pc_));
                 Value *vp = sp_ - (2 + argc);
 
@@ -1063,8 +1031,7 @@ StackIter::settleOnNewState()
             DebugOnly<JSScript *> script = fp_->script();
             JS_ASSERT_IF(op != JSOP_FUNAPPLY,
                          sp_ >= fp_->base() && sp_ <= fp_->slots() + script->nslots);
-            JS_ASSERT_IF(!fp_->hasImacropc(),
-                         pc_ >= script->code && pc_ < script->code + script->length);
+            JS_ASSERT(pc_ >= script->code && pc_ < script->code + script->length);
             return;
         }
 
@@ -1096,8 +1063,6 @@ StackIter::StackIter(JSContext *cx, SavedOption savedOption)
 #ifdef JS_METHODJIT
     mjit::ExpandInlineFrames(cx->compartment);
 #endif
-
-    LeaveTrace(cx);
 
     if (StackSegment *seg = cx->stack.seg_) {
         startOnSegment(seg);
@@ -1144,22 +1109,27 @@ StackIter::operator==(const StackIter &rhs) const
 AllFramesIter::AllFramesIter(StackSpace &space)
   : seg_(space.seg_),
     fp_(seg_ ? seg_->maybefp() : NULL)
-{}
+{
+    settle();
+}
 
 AllFramesIter&
 AllFramesIter::operator++()
 {
     JS_ASSERT(!done());
     fp_ = fp_->prev();
-    if (!seg_->contains(fp_)) {
-        seg_ = seg_->prevInMemory();
-        while (seg_) {
-            fp_ = seg_->maybefp();
-            if (fp_)
-                return *this;
-            seg_ = seg_->prevInMemory();
-        }
-        JS_ASSERT(!fp_);
-    }
+    settle();
     return *this;
+}
+
+void
+AllFramesIter::settle()
+{
+    while (seg_ && (!fp_ || !seg_->contains(fp_))) {
+        seg_ = seg_->prevInMemory();
+        fp_ = seg_ ? seg_->maybefp() : NULL;
+    }
+
+    JS_ASSERT(!!seg_ == !!fp_);
+    JS_ASSERT_IF(fp_, seg_->contains(fp_));
 }

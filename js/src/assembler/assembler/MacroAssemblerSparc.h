@@ -42,7 +42,7 @@
 #ifndef MacroAssemblerSparc_h
 #define MacroAssemblerSparc_h
 
-#include <wtf/Platform.h>
+#include <assembler/wtf/Platform.h>
 
 #if ENABLE_ASSEMBLER && WTF_CPU_SPARC
 
@@ -1235,7 +1235,7 @@ namespace JSC {
         {
             union {
                 float f;
-                uint32 u32;
+                uint32_t u32;
             } u;
             u.f = imm.u.d;
             store32(Imm32(u.u32), address);
@@ -1245,7 +1245,7 @@ namespace JSC {
         {
             union {
                 float f;
-                uint32 u32;
+                uint32_t u32;
             } u;
             u.f = imm.u.d;
             store32(Imm32(u.u32), address);

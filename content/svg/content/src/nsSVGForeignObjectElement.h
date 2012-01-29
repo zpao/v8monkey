@@ -39,14 +39,16 @@
 #ifndef __NS_SVGFOREIGNOBJECTELEMENT_H__
 #define __NS_SVGFOREIGNOBJECTELEMENT_H__
 
-#include "nsSVGGraphicElement.h"
+#include "DOMSVGTests.h"
 #include "nsIDOMSVGForeignObjectElem.h"
+#include "nsSVGGraphicElement.h"
 #include "nsSVGLength2.h"
 
 typedef nsSVGGraphicElement nsSVGForeignObjectElementBase;
 
 class nsSVGForeignObjectElement : public nsSVGForeignObjectElementBase,
-                                  public nsIDOMSVGForeignObjectElement
+                                  public nsIDOMSVGForeignObjectElement,
+                                  public DOMSVGTests
 {
   friend class nsSVGForeignObjectFrame;
 

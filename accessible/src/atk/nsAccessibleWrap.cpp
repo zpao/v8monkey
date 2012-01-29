@@ -441,21 +441,12 @@ nsAccessibleWrap::CreateMaiInterfaces(void)
        interfacesBits |= 1 << MAI_INTERFACE_VALUE; 
     }
 
-    //nsIAccessibleDocument
-    nsCOMPtr<nsIAccessibleDocument> accessInterfaceDocument;
-    QueryInterface(NS_GET_IID(nsIAccessibleDocument),
-                              getter_AddRefs(accessInterfaceDocument));
-    if (accessInterfaceDocument) {
+    // document accessible
+    if (IsDoc())
         interfacesBits |= 1 << MAI_INTERFACE_DOCUMENT;
-    }
 
-    //nsIAccessibleImage
-    nsCOMPtr<nsIAccessibleImage> accessInterfaceImage;
-    QueryInterface(NS_GET_IID(nsIAccessibleImage),
-                              getter_AddRefs(accessInterfaceImage));
-    if (accessInterfaceImage) {
+    if (IsImageAccessible())
         interfacesBits |= 1 << MAI_INTERFACE_IMAGE;
-    }
 
   // HyperLinkAccessible
   if (IsLink())
@@ -1089,10 +1080,24 @@ nsAccessibleWrap::FirePlatformEvent(AccEvent* aEvent)
         }
       } break;
 
-    case nsIAccessibleEvent::EVENT_SELECTION_CHANGED:
-        MAI_LOG_DEBUG(("\n\nReceived: EVENT_SELECTION_CHANGED\n"));
-        g_signal_emit_by_name(atkObj, "selection_changed");
-        break;
+    case nsIAccessibleEvent::EVENT_SELECTION:
+    case nsIAccessibleEvent::EVENT_SELECTION_ADD:
+    case nsIAccessibleEvent::EVENT_SELECTION_REMOVE:
+    {
+      // XXX: dupe events may be fired
+      MAI_LOG_DEBUG(("\n\nReceived: EVENT_SELECTION_CHANGED\n"));
+      AccSelChangeEvent* selChangeEvent = downcast_accEvent(aEvent);
+      g_signal_emit_by_name(nsAccessibleWrap::GetAtkObject(selChangeEvent->Widget()),
+                            "selection_changed");
+      break;
+    }
+
+    case nsIAccessibleEvent::EVENT_SELECTION_WITHIN:
+    {
+      MAI_LOG_DEBUG(("\n\nReceived: EVENT_SELECTION_CHANGED\n"));
+      g_signal_emit_by_name(atkObj, "selection_changed");
+      break;
+    }
 
     case nsIAccessibleEvent::EVENT_TEXT_SELECTION_CHANGED:
         MAI_LOG_DEBUG(("\n\nReceived: EVENT_TEXT_SELECTION_CHANGED\n"));
@@ -1361,8 +1366,9 @@ nsAccessibleWrap::FireAtkTextChangedEvent(AccEvent* aEvent,
     char* signal_name = nsnull;
 
   if (gAvailableAtkSignals == eUnknown)
-    gAvailableAtkSignals = g_signal_lookup("text-insert", ATK_TYPE_TEXT) ?
-      eHaveNewAtkTextSignals : eNoNewAtkSignals;
+    gAvailableAtkSignals =
+      g_signal_lookup("text-insert", G_OBJECT_TYPE(aObject)) ?
+        eHaveNewAtkTextSignals : eNoNewAtkSignals;
 
   if (gAvailableAtkSignals == eNoNewAtkSignals) {
     // XXX remove this code and the gHaveNewTextSignals check when we can

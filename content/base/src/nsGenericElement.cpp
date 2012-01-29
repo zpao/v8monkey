@@ -91,13 +91,15 @@
 #endif /* MOZ_XUL */
 #include "nsFrameManager.h"
 #include "nsFrameSelection.h"
+#ifdef DEBUG
+#include "nsRange.h"
+#endif
 
 #include "nsBindingManager.h"
 #include "nsXBLBinding.h"
 #include "nsIXBLService.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIBoxObject.h"
-#include "nsIDOMNSElement.h"
 #include "nsClientRect.h"
 #include "nsSVGUtils.h"
 #include "nsLayoutUtils.h"
@@ -109,6 +111,7 @@
 #include "nsIDOMEventListener.h"
 #include "nsIWebNavigation.h"
 #include "nsIBaseWindow.h"
+#include "nsIWidget.h"
 
 #include "jsapi.h"
 
@@ -131,7 +134,7 @@
 #include "mozilla/css/StyleRule.h" /* For nsCSSSelectorList */
 #include "nsCSSRuleProcessor.h"
 #include "nsRuleProcessorData.h"
-#include "nsPLDOMEvent.h"
+#include "nsAsyncDOMEvent.h"
 #include "nsTextNode.h"
 #include "dombindings.h"
 
@@ -152,6 +155,7 @@
 #include "nsWrapperCacheInlines.h"
 
 #include "xpcpublic.h"
+#include "xpcprivate.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -1061,8 +1065,9 @@ nsINode::LookupNamespaceURI(const nsAString& aNamespacePrefix,
                             nsAString& aNamespaceURI)
 {
   Element *element = GetNameSpaceElement();
-  if (!element || NS_FAILED(element->LookupNamespaceURI(aNamespacePrefix,
-                                                        aNamespaceURI))) {
+  if (!element ||
+      NS_FAILED(element->LookupNamespaceURIInternal(aNamespacePrefix,
+                                                    aNamespaceURI))) {
     SetDOMStringToNull(aNamespaceURI);
   }
 
@@ -1097,6 +1102,28 @@ nsINode::AddEventListener(const nsAString& aType,
 }
 
 NS_IMETHODIMP
+nsINode::AddSystemEventListener(const nsAString& aType,
+                                nsIDOMEventListener *aListener,
+                                bool aUseCapture,
+                                bool aWantsUntrusted,
+                                PRUint8 aOptionalArgc)
+{
+  NS_ASSERTION(!aWantsUntrusted || aOptionalArgc > 1,
+               "Won't check if this is chrome, you want to set "
+               "aWantsUntrusted to false or make the aWantsUntrusted "
+               "explicit by making aOptionalArgc non-zero.");
+
+  if (!aWantsUntrusted &&
+      (aOptionalArgc < 2 &&
+       !nsContentUtils::IsChromeDoc(OwnerDoc()))) {
+    aWantsUntrusted = true;
+  }
+
+  return NS_AddSystemEventListener(this, aType, aListener, aUseCapture,
+                                   aWantsUntrusted);
+}
+
+NS_IMETHODIMP
 nsINode::RemoveEventListener(const nsAString& aType,
                              nsIDOMEventListener* aListener,
                              bool aUseCapture)
@@ -1107,6 +1134,8 @@ nsINode::RemoveEventListener(const nsAString& aType,
   }
   return NS_OK;
 }
+
+NS_IMPL_REMOVE_SYSTEM_EVENT_LISTENER(nsINode)
 
 nsresult
 nsINode::PreHandleEvent(nsEventChainPreVisitor& aVisitor)
@@ -1179,6 +1208,13 @@ nsINode::Trace(nsINode *tmp, TraceCallback cb, void *closure)
   nsContentUtils::TraceWrapper(tmp, cb, closure);
 }
 
+static bool
+IsXBL(nsINode* aNode)
+{
+  return aNode->IsElement() &&
+         aNode->AsElement()->IsInNamespace(kNameSpaceID_XBL);
+}
+
 /* static */
 bool
 nsINode::Traverse(nsINode *tmp, nsCycleCollectionTraversalCallback &cb)
@@ -1187,6 +1223,34 @@ nsINode::Traverse(nsINode *tmp, nsCycleCollectionTraversalCallback &cb)
   if (currentDoc &&
       nsCCUncollectableMarker::InGeneration(cb, currentDoc->GetMarkedCCGeneration())) {
     return false;
+  }
+
+  if (nsCCUncollectableMarker::sGeneration) {
+    // If we're black no need to traverse.
+    if (tmp->IsBlack()) {
+      return false;
+    }
+
+    const PtrBits problematicFlags =
+      (NODE_IS_ANONYMOUS |
+       NODE_IS_IN_ANONYMOUS_SUBTREE |
+       NODE_IS_NATIVE_ANONYMOUS_ROOT |
+       NODE_MAY_BE_IN_BINDING_MNGR |
+       NODE_IS_INSERTION_PARENT);
+
+    if (!tmp->HasFlag(problematicFlags) && !IsXBL(tmp)) {
+      // If we're in a black document, return early.
+      if ((currentDoc && currentDoc->IsBlack())) {
+        return false;
+      }
+      // If we're not in anonymous content and we have a black parent,
+      // return early.
+      nsIContent* parent = tmp->GetParent();
+      if (parent && !IsXBL(parent) && parent->IsBlack()) {
+        NS_ABORT_IF_FALSE(parent->IndexOf(tmp) >= 0, "Parent doesn't own us?");
+        return false;
+      }
+    }
   }
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mNodeInfo)
@@ -1246,11 +1310,6 @@ Element::NotifyStateChange(nsEventStates aStates)
     nsAutoScriptBlocker scriptBlocker;
     doc->ContentStateChanged(this, aStates);
   }
-}
-
-void
-Element::RequestLinkStateUpdate()
-{
 }
 
 void
@@ -1344,11 +1403,11 @@ nsIContent::GetFlattenedTreeParent() const
   return parent;
 }
 
-PRUint32
+nsIContent::IMEState
 nsIContent::GetDesiredIMEState()
 {
   if (!IsEditableInternal()) {
-    return IME_STATUS_DISABLE;
+    return IMEState(IMEState::DISABLED);
   }
   // NOTE: The content for independent editors (e.g., input[type=text],
   // textarea) must override this method, so, we don't need to worry about
@@ -1361,26 +1420,23 @@ nsIContent::GetDesiredIMEState()
   }
   nsIDocument* doc = GetCurrentDoc();
   if (!doc) {
-    return IME_STATUS_DISABLE;
+    return IMEState(IMEState::DISABLED);
   }
   nsIPresShell* ps = doc->GetShell();
   if (!ps) {
-    return IME_STATUS_DISABLE;
+    return IMEState(IMEState::DISABLED);
   }
   nsPresContext* pc = ps->GetPresContext();
   if (!pc) {
-    return IME_STATUS_DISABLE;
+    return IMEState(IMEState::DISABLED);
   }
   nsIEditor* editor = GetHTMLEditor(pc);
   nsCOMPtr<nsIEditorIMESupport> imeEditor = do_QueryInterface(editor);
   if (!imeEditor) {
-    return IME_STATUS_DISABLE;
+    return IMEState(IMEState::DISABLED);
   }
-  // Use "enable" for the default value because IME is disabled unexpectedly,
-  // it makes serious a11y problem.
-  PRUint32 state = IME_STATUS_ENABLE;
-  nsresult rv = imeEditor->GetPreferredIMEState(&state);
-  NS_ENSURE_SUCCESS(rv, IME_STATUS_ENABLE);
+  IMEState state;
+  imeEditor->GetPreferredIMEState(&state);
   return state;
 }
 
@@ -1414,8 +1470,8 @@ nsIContent::GetEditingHost()
 }
 
 nsresult
-nsIContent::LookupNamespaceURI(const nsAString& aNamespacePrefix,
-                               nsAString& aNamespaceURI) const
+nsIContent::LookupNamespaceURIInternal(const nsAString& aNamespacePrefix,
+                                       nsAString& aNamespaceURI) const
 {
   if (aNamespacePrefix.EqualsLiteral("xml")) {
     // Special-case for xml prefix
@@ -1692,41 +1748,56 @@ nsGenericElement::GetNextElementSibling()
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetFirstElementChild(nsIDOMElement** aResult)
+nsGenericElement::GetChildElementCount(PRUint32* aResult)
+{
+  *aResult = GetChildrenList()->Length(true);
+  return NS_OK;
+}
+
+// readonly attribute nsIDOMNodeList children
+NS_IMETHODIMP
+nsGenericElement::GetChildElements(nsIDOMNodeList** aResult)
+{
+  NS_ADDREF(*aResult = GetChildrenList());
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsGenericElement::GetFirstElementChild(nsIDOMElement** aResult)
 {
   *aResult = nsnull;
 
-  nsIContent *result = mContent->GetFirstElementChild();
+  nsIContent *result = GetFirstElementChild();
 
   return result ? CallQueryInterface(result, aResult) : NS_OK;
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetLastElementChild(nsIDOMElement** aResult)
+nsGenericElement::GetLastElementChild(nsIDOMElement** aResult)
 {
   *aResult = nsnull;
 
-  nsIContent *result = mContent->GetLastElementChild();
+  nsIContent *result = GetLastElementChild();
 
   return result ? CallQueryInterface(result, aResult) : NS_OK;
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetPreviousElementSibling(nsIDOMElement** aResult)
+nsGenericElement::GetPreviousElementSibling(nsIDOMElement** aResult)
 {
   *aResult = nsnull;
 
-  nsIContent *result = mContent->GetPreviousElementSibling();
+  nsIContent *result = GetPreviousElementSibling();
 
   return result ? CallQueryInterface(result, aResult) : NS_OK;
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetNextElementSibling(nsIDOMElement** aResult)
+nsGenericElement::GetNextElementSibling(nsIDOMElement** aResult)
 {
   *aResult = nsnull;
 
-  nsIContent *result = mContent->GetNextElementSibling();
+  nsIContent *result = GetNextElementSibling();
 
   return result ? CallQueryInterface(result, aResult) : NS_OK;
 }
@@ -1745,18 +1816,6 @@ nsGenericElement::GetChildrenList()
   return slots->mChildrenList;
 }
 
-NS_IMETHODIMP
-nsNSElementTearoff::GetChildElementCount(PRUint32* aResult)
-{
-  return mContent->GetChildElementCount(aResult);
-}
-
-NS_IMETHODIMP
-nsNSElementTearoff::GetChildren(nsIDOMNodeList** aResult)
-{
-  return mContent->GetChildren(aResult);
-}
-
 nsIDOMDOMTokenList*
 nsGenericElement::GetClassList(nsresult *aResult)
 {
@@ -1773,7 +1832,6 @@ nsGenericElement::GetClassList(nsresult *aResult)
     }
 
     slots->mClassList = new nsDOMTokenList(this, classAttr);
-    NS_ENSURE_TRUE(slots->mClassList, nsnull);
   }
 
   *aResult = NS_OK;
@@ -1782,12 +1840,12 @@ nsGenericElement::GetClassList(nsresult *aResult)
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetClassList(nsIDOMDOMTokenList** aResult)
+nsGenericElement::GetClassList(nsIDOMDOMTokenList** aResult)
 {
   *aResult = nsnull;
 
   nsresult rv;
-  nsIDOMDOMTokenList* list = mContent->GetClassList(&rv);
+  nsIDOMDOMTokenList* list = GetClassList(&rv);
   NS_ENSURE_TRUE(list, rv);
 
   NS_ADDREF(*aResult = list);
@@ -1795,61 +1853,29 @@ nsNSElementTearoff::GetClassList(nsIDOMDOMTokenList** aResult)
   return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 nsGenericElement::SetCapture(bool aRetargetToElement)
 {
   // If there is already an active capture, ignore this request. This would
   // occur if a splitter, frame resizer, etc had already captured and we don't
   // want to override those.
   if (nsIPresShell::GetCapturingContent())
-    return;
+    return NS_OK;
 
   nsIPresShell::SetCapturingContent(this, CAPTURE_PREVENTDRAG |
     (aRetargetToElement ? CAPTURE_RETARGETTOELEMENT : 0));
-}
-
-NS_IMETHODIMP
-nsNSElementTearoff::SetCapture(bool aRetargetToElement)
-{
-  mContent->SetCapture(aRetargetToElement);
 
   return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 nsGenericElement::ReleaseCapture()
 {
   if (nsIPresShell::GetCapturingContent() == this) {
     nsIPresShell::SetCapturingContent(nsnull, 0);
   }
-}
-
-NS_IMETHODIMP
-nsNSElementTearoff::ReleaseCapture()
-{
-  mContent->ReleaseCapture();
 
   return NS_OK;
-}
-
-//----------------------------------------------------------------------
-
-
-NS_IMPL_CYCLE_COLLECTION_1(nsNSElementTearoff, mContent)
-
-NS_INTERFACE_MAP_BEGIN(nsNSElementTearoff)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMNSElement)
-  NS_INTERFACE_MAP_ENTRIES_CYCLE_COLLECTION(nsNSElementTearoff)
-NS_INTERFACE_MAP_END_AGGREGATED(mContent)
-
-NS_IMPL_CYCLE_COLLECTING_ADDREF(nsNSElementTearoff)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(nsNSElementTearoff)
-
-NS_IMETHODIMP
-nsNSElementTearoff::GetElementsByClassName(const nsAString& aClasses,
-                                           nsIDOMNodeList** aReturn)
-{
-  return mContent->GetElementsByClassName(aClasses, aReturn);
 }
 
 nsIFrame*
@@ -1939,14 +1965,14 @@ nsGenericElement::GetScrollTop()
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetScrollTop(PRInt32* aScrollTop)
+nsGenericElement::GetScrollTop(PRInt32* aScrollTop)
 {
-  *aScrollTop = mContent->GetScrollTop();
+  *aScrollTop = GetScrollTop();
 
   return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 nsGenericElement::SetScrollTop(PRInt32 aScrollTop)
 {
   nsIScrollableFrame* sf = GetScrollFrame();
@@ -1955,13 +1981,6 @@ nsGenericElement::SetScrollTop(PRInt32 aScrollTop)
     pt.y = nsPresContext::CSSPixelsToAppUnits(aScrollTop);
     sf->ScrollTo(pt, nsIScrollableFrame::INSTANT);
   }
-}
-
-NS_IMETHODIMP
-nsNSElementTearoff::SetScrollTop(PRInt32 aScrollTop)
-{
-  mContent->SetScrollTop(aScrollTop);
-
   return NS_OK;
 }
 
@@ -1976,14 +1995,14 @@ nsGenericElement::GetScrollLeft()
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetScrollLeft(PRInt32* aScrollLeft)
+nsGenericElement::GetScrollLeft(PRInt32* aScrollLeft)
 {
-  *aScrollLeft = mContent->GetScrollLeft();
+  *aScrollLeft = GetScrollLeft();
 
   return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 nsGenericElement::SetScrollLeft(PRInt32 aScrollLeft)
 {
   nsIScrollableFrame* sf = GetScrollFrame();
@@ -1992,13 +2011,6 @@ nsGenericElement::SetScrollLeft(PRInt32 aScrollLeft)
     pt.x = nsPresContext::CSSPixelsToAppUnits(aScrollLeft);
     sf->ScrollTo(pt, nsIScrollableFrame::INSTANT);
   }
-}
-
-NS_IMETHODIMP
-nsNSElementTearoff::SetScrollLeft(PRInt32 aScrollLeft)
-{
-  mContent->SetScrollLeft(aScrollLeft);
-
   return NS_OK;
 }
 
@@ -2021,9 +2033,9 @@ nsGenericElement::GetScrollHeight()
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetScrollHeight(PRInt32* aScrollHeight)
+nsGenericElement::GetScrollHeight(PRInt32* aScrollHeight)
 {
-  *aScrollHeight = mContent->GetScrollHeight();
+  *aScrollHeight = GetScrollHeight();
 
   return NS_OK;
 }
@@ -2047,9 +2059,9 @@ nsGenericElement::GetScrollWidth()
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetScrollWidth(PRInt32 *aScrollWidth)
+nsGenericElement::GetScrollWidth(PRInt32 *aScrollWidth)
 {
-  *aScrollWidth = mContent->GetScrollWidth();
+  *aScrollWidth = GetScrollWidth();
 
   return NS_OK;
 }
@@ -2077,41 +2089,38 @@ nsGenericElement::GetClientAreaRect()
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetClientTop(PRInt32 *aClientTop)
+nsGenericElement::GetClientTop(PRInt32 *aClientTop)
 {
-  *aClientTop = mContent->GetClientTop();
+  *aClientTop = GetClientTop();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetClientLeft(PRInt32 *aClientLeft)
+nsGenericElement::GetClientLeft(PRInt32 *aClientLeft)
 {
-  *aClientLeft = mContent->GetClientLeft();
+  *aClientLeft = GetClientLeft();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetClientHeight(PRInt32 *aClientHeight)
+nsGenericElement::GetClientHeight(PRInt32 *aClientHeight)
 {
-  *aClientHeight = mContent->GetClientHeight();
+  *aClientHeight = GetClientHeight();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetClientWidth(PRInt32 *aClientWidth)
+nsGenericElement::GetClientWidth(PRInt32 *aClientWidth)
 {
-  *aClientWidth = mContent->GetClientWidth();
+  *aClientWidth = GetClientWidth();
   return NS_OK;
 }
 
-nsresult
+NS_IMETHODIMP
 nsGenericElement::GetBoundingClientRect(nsIDOMClientRect** aResult)
 {
   // Weak ref, since we addref it below
   nsClientRect* rect = new nsClientRect();
-  if (!rect)
-    return NS_ERROR_OUT_OF_MEMORY;
-
   NS_ADDREF(*aResult = rect);
   
   nsIFrame* frame = GetPrimaryFrame(Flush_Layout);
@@ -2121,32 +2130,25 @@ nsGenericElement::GetBoundingClientRect(nsIDOMClientRect** aResult)
   }
 
   nsRect r = nsLayoutUtils::GetAllInFlowRectsUnion(frame,
-          nsLayoutUtils::GetContainingBlockForClientRect(frame));
+          nsLayoutUtils::GetContainingBlockForClientRect(frame),
+          nsLayoutUtils::RECTS_ACCOUNT_FOR_TRANSFORMS);
   rect->SetLayoutRect(r);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::GetBoundingClientRect(nsIDOMClientRect** aResult)
-{
-  return mContent->GetBoundingClientRect(aResult);
-}
-
-nsresult
 nsGenericElement::GetElementsByClassName(const nsAString& aClasses,
                                          nsIDOMNodeList** aReturn)
 {
   return nsContentUtils::GetElementsByClassName(this, aClasses, aReturn);
 }
 
-nsresult
+NS_IMETHODIMP
 nsGenericElement::GetClientRects(nsIDOMClientRectList** aResult)
 {
   *aResult = nsnull;
 
   nsRefPtr<nsClientRectList> rectList = new nsClientRectList();
-  if (!rectList)
-    return NS_ERROR_OUT_OF_MEMORY;
 
   nsIFrame* frame = GetPrimaryFrame(Flush_Layout);
   if (!frame) {
@@ -2157,18 +2159,14 @@ nsGenericElement::GetClientRects(nsIDOMClientRectList** aResult)
 
   nsLayoutUtils::RectListBuilder builder(rectList);
   nsLayoutUtils::GetAllInFlowRects(frame,
-          nsLayoutUtils::GetContainingBlockForClientRect(frame), &builder);
+          nsLayoutUtils::GetContainingBlockForClientRect(frame), &builder,
+          nsLayoutUtils::RECTS_ACCOUNT_FOR_TRANSFORMS);
   if (NS_FAILED(builder.mRV))
     return builder.mRV;
   *aResult = rectList.forget().get();
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsNSElementTearoff::GetClientRects(nsIDOMClientRectList** aResult)
-{
-  return mContent->GetClientRects(aResult);
-}
 
 //----------------------------------------------------------------------
 
@@ -2293,10 +2291,8 @@ nsGenericElement::nsDOMSlots::Traverse(nsCycleCollectionTraversalCallback &cb, b
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mSlots->mStyle");
   cb.NoteXPCOMChild(mStyle.get());
 
-#ifdef MOZ_SMIL
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mSlots->mSMILOverrideStyle");
   cb.NoteXPCOMChild(mSMILOverrideStyle.get());
-#endif // MOZ_SMIL
 
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mSlots->mAttributeMap");
   cb.NoteXPCOMChild(mAttributeMap.get());
@@ -2314,9 +2310,7 @@ void
 nsGenericElement::nsDOMSlots::Unlink(bool aIsXUL)
 {
   mStyle = nsnull;
-#ifdef MOZ_SMIL
   mSMILOverrideStyle = nsnull;
-#endif // MOZ_SMIL
   if (mAttributeMap) {
     mAttributeMap->DropReference();
     mAttributeMap = nsnull;
@@ -2449,20 +2443,18 @@ nsGenericElement::InternalIsSupported(nsISupports* aObject,
     }
   } else if (PL_strcasecmp(f, "SVGEvents") == 0 ||
              PL_strcasecmp(f, "SVGZoomEvents") == 0 ||
-             nsSVGFeatures::HaveFeature(aObject, aFeature)) {
+             nsSVGFeatures::HasFeature(aObject, aFeature)) {
     if (aVersion.IsEmpty() ||
         PL_strcmp(v, "1.0") == 0 ||
         PL_strcmp(v, "1.1") == 0) {
       *aReturn = true;
     }
   }
-#ifdef MOZ_SMIL
   else if (NS_SMILEnabled() && PL_strcasecmp(f, "TimeControl") == 0) {
     if (aVersion.IsEmpty() || PL_strcmp(v, "1.0") == 0) {
       *aReturn = true;
     }
   }
-#endif /* MOZ_SMIL */
 
   return NS_OK;
 }
@@ -3067,6 +3059,16 @@ nsGenericElement::UnbindFromTree(bool aDeep, bool aNullParent)
     HasFlag(NODE_FORCE_XBL_BINDINGS) ? OwnerDoc() : GetCurrentDoc();
 
   if (aNullParent) {
+    if (IsFullScreenAncestor()) {
+      // The element being removed is an ancestor of the full-screen element,
+      // exit full-screen state.
+      nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                      "DOM", OwnerDoc(),
+                                      nsContentUtils::eDOM_PROPERTIES,
+                                      "RemovedFullScreenElement");
+      // Fully exit full-screen.
+      nsIDocument::ExitFullScreen(false);
+    }
     if (GetParent()) {
       NS_RELEASE(mParent);
     } else {
@@ -3342,7 +3344,6 @@ nsGenericElement::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
   return NS_OK;
 }
 
-#ifdef MOZ_SMIL
 nsIDOMCSSStyleDeclaration*
 nsGenericElement::GetSMILOverrideStyle()
 {
@@ -3385,7 +3386,6 @@ nsGenericElement::SetSMILOverrideStyleRule(css::StyleRule* aStyleRule,
 
   return NS_OK;
 }
-#endif // MOZ_SMIL
 
 css::StyleRule*
 nsGenericElement::GetInlineStyleRule()
@@ -3631,7 +3631,7 @@ nsINode::doInsertChildAt(nsIContent* aKid, PRUint32 aIndex,
       mutation.mRelatedNode = do_QueryInterface(this);
 
       mozAutoSubtreeModified subtree(OwnerDoc(), this);
-      (new nsPLDOMEvent(aKid, mutation))->RunDOMEventWhenSafe();
+      (new nsAsyncDOMEvent(aKid, mutation))->RunDOMEventWhenSafe();
     }
   }
 
@@ -3976,7 +3976,7 @@ nsGenericElement::FireNodeInserted(nsIDocument* aDoc,
       mutation.mRelatedNode = do_QueryInterface(aParent);
 
       mozAutoSubtreeModified subtree(aDoc, aParent);
-      (new nsPLDOMEvent(childContent, mutation))->RunDOMEventWhenSafe();
+      (new nsAsyncDOMEvent(childContent, mutation))->RunDOMEventWhenSafe();
     }
   }
 }
@@ -4197,16 +4197,6 @@ nsINode::IsEqualNode(nsIDOMNode* aOther, bool* aReturn)
   return NS_OK;
 }
 
-nsresult
-nsINode::IsSameNode(nsIDOMNode* aOther, bool* aReturn)
-{
-  OwnerDoc()->WarnOnceAbout(nsIDocument::eIsSameNode);
-
-  nsCOMPtr<nsINode> other = do_QueryInterface(aOther);
-  *aReturn = other == this;
-  return NS_OK;
-}
-
 //----------------------------------------------------------------------
 
 // nsISupports implementation
@@ -4231,10 +4221,18 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGenericElement)
         // Once we have XPCOMGC we shouldn't need to call UnbindFromTree.
         // We could probably do a non-deep unbind here when IsInDoc is false
         // for better performance.
-        tmp->mAttrsAndChildren.ChildAt(childCount)->UnbindFromTree();
-        tmp->mAttrsAndChildren.RemoveChildAt(childCount);
+
+        // Hold a strong ref to the node when we remove it, because we may be
+        // the last reference to it.  We need to call TakeChildAt() and
+        // update mFirstChild before calling UnbindFromTree, since this last
+        // can notify various observers and they should really see consistent
+        // tree state.
+        nsCOMPtr<nsIContent> child = tmp->mAttrsAndChildren.TakeChildAt(childCount);
+        if (childCount == 0) {
+          tmp->mFirstChild = nsnull;
+        }
+        child->UnbindFromTree();
       }
-      tmp->mFirstChild = nsnull;
     }
   }  
 
@@ -4275,15 +4273,21 @@ static const char* kNSURIs[] = {
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsGenericElement)
   if (NS_UNLIKELY(cb.WantDebugInfo())) {
-    char name[72];
+    char name[512];
     PRUint32 nsid = tmp->GetNameSpaceID();
     nsAtomCString localName(tmp->NodeInfo()->NameAtom());
+    nsCAutoString uri;
+    if (tmp->OwnerDoc()->GetDocumentURI()) {
+      tmp->OwnerDoc()->GetDocumentURI()->GetSpec(uri);
+    }
+
     if (nsid < ArrayLength(kNSURIs)) {
-      PR_snprintf(name, sizeof(name), "nsGenericElement%s %s", kNSURIs[nsid],
-                  localName.get());
+      PR_snprintf(name, sizeof(name), "nsGenericElement%s %s %s", kNSURIs[nsid],
+                  localName.get(), uri.get());
     }
     else {
-      PR_snprintf(name, sizeof(name), "nsGenericElement %s", localName.get());
+      PR_snprintf(name, sizeof(name), "nsGenericElement %s %s",
+                  localName.get(), uri.get());
     }
     cb.DescribeRefCountedNode(tmp->mRefCnt.get(), sizeof(nsGenericElement),
                               name);
@@ -4345,10 +4349,10 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_INTERFACE_MAP_BEGIN(nsGenericElement)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRIES_CYCLE_COLLECTION(nsGenericElement)
+  NS_INTERFACE_MAP_ENTRY(Element)
   NS_INTERFACE_MAP_ENTRY(nsIContent)
   NS_INTERFACE_MAP_ENTRY(nsINode)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventTarget)
-  NS_INTERFACE_MAP_ENTRY_TEAROFF(nsIDOMNSElement, new nsNSElementTearoff(this))
   NS_INTERFACE_MAP_ENTRY_TEAROFF(nsISupportsWeakReference,
                                  new nsNodeSupportsWeakRefTearoff(this))
   NS_INTERFACE_MAP_ENTRY_TEAROFF(nsIDOMNodeSelector,
@@ -4652,7 +4656,7 @@ nsGenericElement::SetAttrAndNotify(PRInt32 aNamespaceID,
     mutation.mAttrChange = aModType;
 
     mozAutoSubtreeModified subtree(OwnerDoc(), this);
-    (new nsPLDOMEvent(this, mutation))->RunDOMEventWhenSafe();
+    (new nsAsyncDOMEvent(this, mutation))->RunDOMEventWhenSafe();
   }
 
   return NS_OK;
@@ -4866,7 +4870,7 @@ nsGenericElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
     mutation.mAttrChange = nsIDOMMutationEvent::REMOVAL;
 
     mozAutoSubtreeModified subtree(OwnerDoc(), this);
-    (new nsPLDOMEvent(this, mutation))->RunDOMEventWhenSafe();
+    (new nsAsyncDOMEvent(this, mutation))->RunDOMEventWhenSafe();
   }
 
   return NS_OK;
@@ -4976,6 +4980,11 @@ nsGenericElement::List(FILE* out, PRInt32 aIndent,
 
   fprintf(out, " state=[%llx]", State().GetInternalValue());
   fprintf(out, " flags=[%08x]", static_cast<unsigned int>(GetFlags()));
+  if (IsCommonAncestorForRangeInSelection()) {
+    nsRange::RangeHashTable* ranges =
+      static_cast<nsRange::RangeHashTable*>(GetProperty(nsGkAtoms::range));
+    fprintf(out, " ranges:%d", ranges ? ranges->Count() : 0);
+  }
   fprintf(out, " primaryframe=%p", static_cast<void*>(GetPrimaryFrame()));
   fprintf(out, " refcount=%d<", mRefCnt.get());
 
@@ -5362,21 +5371,71 @@ ParseSelectorList(nsINode* aNode,
   return NS_OK;
 }
 
-/* static */
-nsIContent*
-nsGenericElement::doQuerySelector(nsINode* aRoot, const nsAString& aSelector,
-                                  nsresult *aResult)
+// Actually find elements matching aSelectorList (which must not be
+// null) and which are descendants of aRoot and put them in Alist.  If
+// onlyFirstMatch, then stop once the first one is found.
+template<bool onlyFirstMatch, class T>
+inline static nsresult FindMatchingElements(nsINode* aRoot,
+                                            const nsAString& aSelector,
+                                            T &aList)
 {
-  NS_PRECONDITION(aResult, "Null out param?");
-
   nsAutoPtr<nsCSSSelectorList> selectorList;
-  *aResult = ParseSelectorList(aRoot, aSelector,
-                               getter_Transfers(selectorList));
-  NS_ENSURE_SUCCESS(*aResult, nsnull);
+  nsresult rv = ParseSelectorList(aRoot, aSelector,
+                                  getter_Transfers(selectorList));
+  NS_ENSURE_SUCCESS(rv, rv);
+  NS_ENSURE_TRUE(selectorList, NS_OK);
 
-  TreeMatchContext matchingContext(false,
-                                   nsRuleWalker::eRelevantLinkUnvisited,
-                                   aRoot->OwnerDoc());
+  NS_ASSERTION(selectorList->mSelectors,
+               "How can we not have any selectors?");
+
+  nsIDocument* doc = aRoot->OwnerDoc();  
+  TreeMatchContext matchingContext(false, nsRuleWalker::eRelevantLinkUnvisited,
+                                   doc);
+  doc->FlushPendingLinkUpdates();
+
+  // Fast-path selectors involving IDs.  We can only do this if aRoot
+  // is in the document and the document is not in quirks mode, since
+  // ID selectors are case-insensitive in quirks mode.  Also, only do
+  // this if selectorList only has one selector, because otherwise
+  // ordering the elements correctly is a pain.
+  NS_ASSERTION(aRoot->IsElement() || aRoot->IsNodeOfType(nsINode::eDOCUMENT) ||
+               !aRoot->IsInDoc(),
+               "The optimization below to check ContentIsDescendantOf only for "
+               "elements depends on aRoot being either an element or a "
+               "document if it's in the document.");
+  if (aRoot->IsInDoc() &&
+      doc->GetCompatibilityMode() != eCompatibility_NavQuirks &&
+      !selectorList->mNext &&
+      selectorList->mSelectors->mIDList) {
+    nsIAtom* id = selectorList->mSelectors->mIDList->mAtom;
+    const nsSmallVoidArray* elements =
+      doc->GetAllElementsForId(nsDependentAtomString(id));
+
+    // XXXbz: Should we fall back to the tree walk if aRoot is not the
+    // document and |elements| is long, for some value of "long"?
+    if (elements) {
+      for (PRInt32 i = 0; i < elements->Count(); ++i) {
+        Element *element = static_cast<Element*>(elements->ElementAt(i));
+        if (!aRoot->IsElement() ||
+            nsContentUtils::ContentIsDescendantOf(element, aRoot)) {
+          // We have an element with the right id and it's a descendant
+          // of aRoot.  Make sure it really matches the selector.
+          if (nsCSSRuleProcessor::SelectorListMatches(element, matchingContext,
+                                                      selectorList)) {
+            aList.AppendElement(element);
+            if (onlyFirstMatch) {
+              return NS_OK;
+            }
+          }
+        }
+      }
+    }
+
+    // No elements with this id, or none of them are our descendants,
+    // or none of them match.  We're done here.
+    return NS_OK;
+  }
+
   for (nsIContent* cur = aRoot->GetFirstChild();
        cur;
        cur = cur->GetNextNode(aRoot)) {
@@ -5384,11 +5443,36 @@ nsGenericElement::doQuerySelector(nsINode* aRoot, const nsAString& aSelector,
         nsCSSRuleProcessor::SelectorListMatches(cur->AsElement(),
                                                 matchingContext,
                                                 selectorList)) {
-      return cur;
+      aList.AppendElement(cur->AsElement());
+      if (onlyFirstMatch) {
+        return NS_OK;
+      }
     }
   }
 
-  return nsnull;
+  return NS_OK;
+}
+
+struct ElementHolder {
+  ElementHolder() : mElement(nsnull) {}
+  void AppendElement(Element* aElement) {
+    NS_ABORT_IF_FALSE(!mElement, "Should only get one element");
+    mElement = aElement;
+  }
+  Element* mElement;
+};
+
+/* static */
+nsIContent*
+nsGenericElement::doQuerySelector(nsINode* aRoot, const nsAString& aSelector,
+                                  nsresult *aResult)
+{
+  NS_PRECONDITION(aResult, "Null out param?");
+
+  ElementHolder holder;
+  *aResult = FindMatchingElements<true>(aRoot, aSelector, holder);
+
+  return holder.mElement;
 }
 
 /* static */
@@ -5403,25 +5487,7 @@ nsGenericElement::doQuerySelectorAll(nsINode* aRoot,
   NS_ENSURE_TRUE(contentList, NS_ERROR_OUT_OF_MEMORY);
   NS_ADDREF(*aReturn = contentList);
   
-  nsAutoPtr<nsCSSSelectorList> selectorList;
-  nsresult rv = ParseSelectorList(aRoot, aSelector,
-                                  getter_Transfers(selectorList));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  TreeMatchContext matchingContext(false,
-                                   nsRuleWalker::eRelevantLinkUnvisited,
-                                   aRoot->OwnerDoc());
-  for (nsIContent* cur = aRoot->GetFirstChild();
-       cur;
-       cur = cur->GetNextNode(aRoot)) {
-    if (cur->IsElement() &&
-        nsCSSRuleProcessor::SelectorListMatches(cur->AsElement(),
-                                                matchingContext,
-                                                selectorList)) {
-      contentList->AppendElement(cur);
-    }
-  }
-  return NS_OK;
+  return FindMatchingElements<false>(aRoot, aSelector, *contentList);
 }
 
 
@@ -5434,6 +5500,7 @@ nsGenericElement::MozMatchesSelector(const nsAString& aSelector, nsresult* aResu
   *aResult = ParseSelectorList(this, aSelector, getter_Transfers(selectorList));
 
   if (NS_SUCCEEDED(*aResult)) {
+    OwnerDoc()->FlushPendingLinkUpdates();
     TreeMatchContext matchingContext(false,
                                      nsRuleWalker::eRelevantLinkUnvisited,
                                      OwnerDoc());
@@ -5445,12 +5512,12 @@ nsGenericElement::MozMatchesSelector(const nsAString& aSelector, nsresult* aResu
 }
 
 NS_IMETHODIMP
-nsNSElementTearoff::MozMatchesSelector(const nsAString& aSelector, bool* aReturn)
+nsGenericElement::MozMatchesSelector(const nsAString& aSelector, bool* aReturn)
 {
   NS_PRECONDITION(aReturn, "Null out param?");
 
   nsresult rv;
-  *aReturn = mContent->MozMatchesSelector(aSelector, &rv);
+  *aReturn = MozMatchesSelector(aSelector, &rv);
 
   return rv;
 }
@@ -5509,6 +5576,30 @@ nsGenericElement::SizeOf() const
 #undef DOCUMENT_ONLY_EVENT
 #undef TOUCH_EVENT
 #undef EVENT
+
+NS_IMETHODIMP
+nsGenericElement::GetOnmouseenter(JSContext* cx, JS::Value* vp)
+{
+  return nsINode::GetOnmouseenter(cx, vp);
+}
+
+NS_IMETHODIMP
+nsGenericElement::SetOnmouseenter(JSContext* cx, const JS::Value& v)
+{
+  return nsINode::SetOnmouseenter(cx, v);
+}
+
+NS_IMETHODIMP
+nsGenericElement::GetOnmouseleave(JSContext* cx, JS::Value* vp)
+{
+  return nsINode::GetOnmouseleave(cx, vp);
+}
+
+NS_IMETHODIMP
+nsGenericElement::SetOnmouseleave(JSContext* cx, const JS::Value& v)
+{
+  return nsINode::SetOnmouseleave(cx, v);
+}
 
 bool
 nsINode::Contains(const nsINode* aOther) const

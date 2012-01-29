@@ -115,7 +115,7 @@
 #include "nsContentUtils.h"
 #include "nsContentList.h"
 #include "nsMutationEvent.h"
-#include "nsPLDOMEvent.h"
+#include "nsAsyncDOMEvent.h"
 #include "nsIDOMMutationEvent.h"
 #include "nsPIDOMWindow.h"
 #include "nsDOMAttributeMap.h"
@@ -163,9 +163,9 @@ public:
                                          const nsAString& aBody,
                                          const char* aURL,
                                          PRUint32 aLineNo,
-                                         nsScriptObjectHolder &aHandler);
+                                         nsScriptObjectHolder<JSObject>& aHandler);
     virtual nsresult GetCompiledEventHandler(nsIAtom *aName,
-                                             nsScriptObjectHolder &aHandler);
+                                             nsScriptObjectHolder<JSObject>& aHandler);
 
 private:
     nsRefPtr<nsXULElement> mElement;
@@ -656,14 +656,7 @@ nsXULElement::PerformAccesskey(bool aKeyCausesActivation,
     }
 
     nsIFrame* frame = content->GetPrimaryFrame();
-    if (!frame)
-        return;
-
-    const nsStyleVisibility* vis = frame->GetStyleVisibility();
-
-    if (vis->mVisible == NS_STYLE_VISIBILITY_COLLAPSE ||
-        vis->mVisible == NS_STYLE_VISIBILITY_HIDDEN ||
-        !frame->AreAncestorViewsVisible())
+    if (!frame || !frame->IsVisibleConsideringAncestors())
         return;
 
     nsXULElement* elm = FromContent(content);
@@ -712,6 +705,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsScriptEventHandlerOwnerTearoff)
   tmp->mElement = nsnull;
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsScriptEventHandlerOwnerTearoff)
+  NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mElement");
   cb.NoteXPCOMChild(static_cast<nsIContent*>(tmp->mElement));
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -725,7 +719,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsScriptEventHandlerOwnerTearoff)
 nsresult
 nsScriptEventHandlerOwnerTearoff::GetCompiledEventHandler(
                                                 nsIAtom *aName,
-                                                nsScriptObjectHolder &aHandler)
+                                                nsScriptObjectHolder<JSObject>& aHandler)
 {
     XUL_PROTOTYPE_ATTRIBUTE_METER(gNumCacheTests);
     aHandler.drop();
@@ -747,7 +741,7 @@ nsScriptEventHandlerOwnerTearoff::CompileEventHandler(
                                                 const nsAString& aBody,
                                                 const char* aURL,
                                                 PRUint32 aLineNo,
-                                                nsScriptObjectHolder &aHandler)
+                                                nsScriptObjectHolder<JSObject>& aHandler)
 {
     nsresult rv;
 
@@ -816,13 +810,13 @@ nsScriptEventHandlerOwnerTearoff::CompileEventHandler(
             rv = nsContentUtils::HoldScriptObject(aContext->GetScriptTypeID(),
                                                   elem,
                                                   &NS_CYCLE_COLLECTION_NAME(nsXULPrototypeNode),
-                                                  aHandler,
+                                                  aHandler.get(),
                                                   elem->mHoldsScriptObject);
             if (NS_FAILED(rv)) return rv;
 
             elem->mHoldsScriptObject = true;
         }
-        attr->mEventHandler = (void *)aHandler;
+        attr->mEventHandler = aHandler.get();
     }
 
     return NS_OK;
@@ -1465,7 +1459,7 @@ nsXULElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName, bool aNotify)
         mutation.mAttrChange = nsIDOMMutationEvent::REMOVAL;
 
         mozAutoSubtreeModified subtree(OwnerDoc(), this);
-        (new nsPLDOMEvent(this, mutation))->RunDOMEventWhenSafe();
+        (new nsAsyncDOMEvent(this, mutation))->RunDOMEventWhenSafe();
     }
 
     return NS_OK;
@@ -2552,12 +2546,16 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NATIVE_BEGIN(nsXULPrototypeNode)
     if (tmp->mType == nsXULPrototypeNode::eType_Element) {
         nsXULPrototypeElement *elem =
             static_cast<nsXULPrototypeElement*>(tmp);
+        NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mNodeInfo");
         cb.NoteXPCOMChild(elem->mNodeInfo);
         PRUint32 i;
         for (i = 0; i < elem->mNumAttributes; ++i) {
             const nsAttrName& name = elem->mAttributes[i].mName;
-            if (!name.IsAtom())
+            if (!name.IsAtom()) {
+                NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb,
+                    "mAttributes[i].mName.NodeInfo()");
                 cb.NoteXPCOMChild(name.NodeInfo());
+            }
         }
         for (i = 0; i < elem->mChildren.Length(); ++i) {
             NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NATIVE_PTR(elem->mChildren[i].get(),
@@ -2574,7 +2572,7 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_NATIVE_BEGIN(nsXULPrototypeNode)
         if (elem->mHoldsScriptObject) {
             PRUint32 i;
             for (i = 0; i < elem->mNumAttributes; ++i) {
-                void *handler = elem->mAttributes[i].mEventHandler;
+                JSObject* handler = elem->mAttributes[i].mEventHandler;
                 NS_IMPL_CYCLE_COLLECTION_TRACE_CALLBACK(elem->mScriptTypeID,
                                                         handler,
                                                         "mAttributes[i].mEventHandler")
@@ -3009,7 +3007,7 @@ nsXULPrototypeScript::Deserialize(nsIObjectInputStream* aStream,
                                             mScriptObject.mLangID);
     NS_ASSERTION(context != nsnull, "Have no context for deserialization");
     NS_ENSURE_TRUE(context, NS_ERROR_UNEXPECTED);
-    nsScriptObjectHolder newScriptObject(context);
+    nsScriptObjectHolder<JSScript> newScriptObject(context);
     rv = context->Deserialize(aStream, newScriptObject);
     if (NS_FAILED(rv)) {
         NS_WARNING("Language deseralization failed");
@@ -3046,7 +3044,8 @@ nsXULPrototypeScript::DeserializeOutOfLine(nsIObjectInputStream* aInput,
 
             if (useXULCache) {
                 PRUint32 newLangID = nsIProgrammingLanguage::UNKNOWN;
-                void *newScriptObject = cache->GetScript(mSrcURI, &newLangID);
+                JSScript* newScriptObject =
+                    cache->GetScript(mSrcURI, &newLangID);
                 if (newScriptObject) {
                     // Things may blow here if we simply change the script
                     // language - other code may already have pre-fetched the
@@ -3144,10 +3143,9 @@ nsXULPrototypeScript::Compile(const PRUnichar* aText,
 
     // Ok, compile it to create a prototype script object!
 
-    nsScriptObjectHolder newScriptObject(context);
+    nsScriptObjectHolder<JSScript> newScriptObject(context);
     rv = context->CompileScript(aText,
                                 aTextLength,
-                                nsnull,
                                 // Use the enclosing document's principal
                                 // XXX is this right? or should we use the
                                 // protodoc's?
@@ -3177,7 +3175,7 @@ nsXULPrototypeScript::UnlinkJSObjects()
 }
 
 void
-nsXULPrototypeScript::Set(void *aObject)
+nsXULPrototypeScript::Set(JSScript* aObject)
 {
     NS_ASSERTION(!mScriptObject.mObject, "Leaking script object.");
     if (!aObject) {

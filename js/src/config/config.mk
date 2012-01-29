@@ -198,6 +198,11 @@ else # ! MOZ_DEBUG
 # Used for generating an optimized build with debugging symbols.
 # Used in the Windows nightlies to generate symbols for crash reporting.
 ifdef MOZ_DEBUG_SYMBOLS
+ifeq ($(AS),yasm)
+ASFLAGS += -g cv8
+else
+ASFLAGS += -Zi
+endif
 OS_CXXFLAGS += -Zi -UDEBUG -DNDEBUG
 OS_CFLAGS += -Zi -UDEBUG -DNDEBUG
 ifdef HAVE_64BIT_OS
@@ -238,13 +243,13 @@ endif # MOZ_DEBUG
 # the Makefile wants static CRT linking.
 ifeq ($(MOZ_MEMORY)_$(USE_STATIC_LIBS),1_1)
 # Disable default CRT libs and add the right lib path for the linker
-MOZ_UTILS_LDFLAGS=
+MOZ_GLUE_LDFLAGS=
 endif
 
 endif # WINNT && !GNU_CC
 
-ifndef MOZ_UTILS_PROGRAM_LDFLAGS
-MOZ_UTILS_PROGRAM_LDFLAGS=$(MOZ_UTILS_LDFLAGS)
+ifndef MOZ_GLUE_PROGRAM_LDFLAGS
+MOZ_GLUE_PROGRAM_LDFLAGS=$(MOZ_GLUE_LDFLAGS)
 endif
 
 #
@@ -469,13 +474,6 @@ ifeq (WINNT_1,$(OS_ARCH)_$(MOZ_PROFILE_GENERATE)$(MOZ_PROFILE_USE))
 FAIL_ON_WARNINGS_DEBUG=
 FAIL_ON_WARNINGS=
 endif # WINNT && (MOS_PROFILE_GENERATE ^ MOZ_PROFILE_USE)
-
-# Also clear FAIL_ON_WARNINGS[_DEBUG] for Android builds, since
-# they have some platform-specific warnings we haven't fixed yet.
-ifeq ($(OS_TARGET),Android)
-FAIL_ON_WARNINGS_DEBUG=
-FAIL_ON_WARNINGS=
-endif # Android
 
 # Now, check for debug version of flag; it turns on normal flag in debug builds.
 ifdef FAIL_ON_WARNINGS_DEBUG
@@ -780,8 +778,8 @@ EXPAND_LIBS_GEN = $(PYTHON) $(topsrcdir)/config/pythonpath.py -I$(DEPTH)/config 
 EXPAND_AR = $(EXPAND_LIBS_EXEC) --extract -- $(AR)
 EXPAND_CC = $(EXPAND_LIBS_EXEC) --uselist -- $(CC)
 EXPAND_CCC = $(EXPAND_LIBS_EXEC) --uselist -- $(CCC)
-EXPAND_LD = $(EXPAND_LIBS_EXEC) --uselist -- $(LD)
-EXPAND_MKSHLIB = $(EXPAND_LIBS_EXEC) --uselist -- $(MKSHLIB)
+EXPAND_LD = $(EXPAND_LIBS_EXEC) --uselist $(if $(REORDER),--reorder $(REORDER))-- $(LD)
+EXPAND_MKSHLIB = $(EXPAND_LIBS_EXEC) --uselist $(if $(REORDER),--reorder $(REORDER))-- $(MKSHLIB)
 
 ifdef STDCXX_COMPAT
 CHECK_STDCXX = objdump -p $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' > /dev/null && echo "TEST-UNEXPECTED-FAIL | | We don't want these libstdc++ symbols to be used:" && objdump -T $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' && exit 1 || exit 0

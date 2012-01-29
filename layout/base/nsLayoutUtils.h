@@ -73,6 +73,12 @@ class nsFontFaceList;
 class nsBlockFrame;
 class gfxDrawable;
 
+namespace mozilla {
+namespace dom {
+class Element;
+} // namespace dom
+} // namespace mozilla
+
 /**
  * nsLayoutUtils is a namespace class used for various helper
  * functions that are useful in multiple places in layout.  The goal
@@ -338,14 +344,6 @@ public:
                                             nsDisplayListBuilder* aBuilder);
 
   /**
-    * GetFrameFor returns the root frame for a view
-    * @param aView is the view to return the root frame for
-    * @return the root frame for the view
-    */
-  static nsIFrame* GetFrameFor(nsIView *aView)
-  { return static_cast<nsIFrame*>(aView->GetClientData()); }
-
-  /**
     * GetScrollableFrameFor returns the scrollable frame for a scrolled frame
     */
   static nsIScrollableFrame* GetScrollableFrameFor(nsIFrame *aScrolledFrame);
@@ -425,6 +423,20 @@ public:
    * the event is not a GUI event).
    */
   static nsPoint GetEventCoordinatesRelativeTo(const nsEvent* aEvent,
+                                               nsIFrame* aFrame);
+
+  /**
+   * Get the coordinates of a given point relative to an event and a
+   * given frame.
+   * @param aEvent the event
+   * @param aPoint the point to get the coordinates relative to
+   * @param aFrame the frame to make coordinates relative to
+   * @return the point, or (NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE) if
+   * for some reason the coordinates for the mouse are not known (e.g.,
+   * the event is not a GUI event).
+   */
+  static nsPoint GetEventCoordinatesRelativeTo(const nsEvent* aEvent,
+                                               const nsIntPoint aPoint,
                                                nsIFrame* aFrame);
 
   /**
@@ -510,11 +522,28 @@ public:
                                    bool aShouldIgnoreSuppression = false,
                                    bool aIgnoreRootScrollFrame = false);
 
-  
+  /**
+   * Transform aRect relative to aAncestor down to the coordinate system of
+   * aFrame. Computes the bounding-box of the true quadrilateral.
+   */
+  static nsRect TransformAncestorRectToFrame(nsIFrame* aFrame,
+                                             const nsRect& aRect,
+                                             nsIFrame* aAncestor);
 
-  static nsRect TransformRectToBoundsInAncestor(nsIFrame* aFrame,
-                                                const nsRect& aRect,
-                                                nsIFrame* aStopAtAncestor);
+  /**
+   * Transform aRect relative to aFrame up to the coordinate system of
+   * aAncestor. Computes the bounding-box of the true quadrilateral.
+   */
+  static nsRect TransformFrameRectToAncestor(nsIFrame* aFrame,
+                                             const nsRect& aRect,
+                                             nsIFrame* aAncestor);
+
+
+  /**
+   * Gets the transform for aFrame relative to aAncestor. Pass null for aAncestor
+   * to go up to the root frame.
+   */
+  static gfx3DMatrix GetTransformToAncestor(nsIFrame *aFrame, nsIFrame *aAncestor);
 
   /**
    * Given a point in the global coordinate space, returns that point expressed
@@ -525,8 +554,8 @@ public:
    * @param aPoint The point, in the global space, to get in the frame-local space.
    * @return aPoint, expressed in aFrame's canonical coordinate space.
    */
-  static nsPoint InvertTransformsToRoot(nsIFrame* aFrame,
-                                        const nsPoint &aPt);
+  static nsPoint TransformRootPointToFrame(nsIFrame* aFrame,
+                                           const nsPoint &aPt);
 
   /**
    * Helper function that, given a rectangle and a matrix, returns the smallest
@@ -689,8 +718,8 @@ public:
   };
 
   struct RectAccumulator : public RectCallback {
-    nsRect       mResultRect;
-    nsRect       mFirstRect;
+    nsRect mResultRect;
+    nsRect mFirstRect;
     bool mSeenFirstRect;
 
     RectAccumulator();
@@ -708,6 +737,9 @@ public:
 
   static nsIFrame* GetContainingBlockForClientRect(nsIFrame* aFrame);
 
+  enum {
+    RECTS_ACCOUNT_FOR_TRANSFORMS = 0x01
+  };
   /**
    * Collect all CSS border-boxes associated with aFrame and its
    * continuations, "drilling down" through outer table frames and
@@ -716,15 +748,22 @@ public:
    * into account) and passed to the callback in frame-tree order.
    * If aFrame is null, no boxes are returned.
    * For SVG frames, returns one rectangle, the bounding box.
+   * If aFlags includes RECTS_ACCOUNT_FOR_TRANSFORMS, then when converting
+   * the boxes into aRelativeTo coordinates, transforms (including CSS
+   * and SVG transforms) are taken into account.
    */
   static void GetAllInFlowRects(nsIFrame* aFrame, nsIFrame* aRelativeTo,
-                                RectCallback* aCallback);
+                                RectCallback* aCallback, PRUint32 aFlags = 0);
 
   /**
    * Computes the union of all rects returned by GetAllInFlowRects. If
    * the union is empty, returns the first rect.
+   * If aFlags includes RECTS_ACCOUNT_FOR_TRANSFORMS, then when converting
+   * the boxes into aRelativeTo coordinates, transforms (including CSS
+   * and SVG transforms) are taken into account.
    */
-  static nsRect GetAllInFlowRectsUnion(nsIFrame* aFrame, nsIFrame* aRelativeTo);
+  static nsRect GetAllInFlowRectsUnion(nsIFrame* aFrame, nsIFrame* aRelativeTo,
+                                       PRUint32 aFlags = 0);
 
   enum {
     EXCLUDE_BLUR_SHADOWS = 0x01
@@ -742,19 +781,23 @@ public:
    * Get the font metrics corresponding to the frame's style data.
    * @param aFrame the frame
    * @param aFontMetrics the font metrics result
+   * @param aSizeInflation number to multiply font size by
    * @return success or failure code
    */
   static nsresult GetFontMetricsForFrame(const nsIFrame* aFrame,
-                                         nsFontMetrics** aFontMetrics);
+                                         nsFontMetrics** aFontMetrics,
+                                         float aSizeInflation = 1.0f);
 
   /**
    * Get the font metrics corresponding to the given style data.
    * @param aStyleContext the style data
    * @param aFontMetrics the font metrics result
+   * @param aSizeInflation number to multiply font size by
    * @return success or failure code
    */
   static nsresult GetFontMetricsForStyleContext(nsStyleContext* aStyleContext,
-                                                nsFontMetrics** aFontMetrics);
+                                                nsFontMetrics** aFontMetrics,
+                                                float aSizeInflation = 1.0f);
 
   /**
    * Find the immediate child of aParent whose frame subtree contains
@@ -1378,7 +1421,7 @@ public:
     bool mCORSUsed;
   };
 
-  static SurfaceFromElementResult SurfaceFromElement(nsIDOMElement *aElement,
+  static SurfaceFromElementResult SurfaceFromElement(mozilla::dom::Element *aElement,
                                                      PRUint32 aSurfaceFlags = 0);
 
   /**
@@ -1435,24 +1478,143 @@ public:
 
   /**
    * Walks the frame tree starting at aFrame looking for textRuns.
-   * If aTotal is NULL, just clears the TEXT_RUN_MEMORY_ACCOUNTED flag
-   * on each textRun found.
-   * If aTotal is non-NULL, adds the storage used for each textRun to the
+   * If |clear| is true, just clears the TEXT_RUN_MEMORY_ACCOUNTED flag
+   * on each textRun found (and |aMallocSizeOf| is not used).
+   * If |clear| is false, adds the storage used for each textRun to the
    * total, and sets the TEXT_RUN_MEMORY_ACCOUNTED flag to avoid double-
    * accounting. (Runs with this flag already set will be skipped.)
    * Expected usage pattern is therefore to call twice:
-   *    rv = GetTextRunMemoryForFrames(rootFrame, NULL);
-   *    rv = GetTextRunMemoryForFrames(rootFrame, &total);
+   *    (void)SizeOfTextRunsForFrames(rootFrame, nsnull, true);
+   *    total = SizeOfTextRunsForFrames(rootFrame, mallocSizeOf, false);
    */
-  static nsresult GetTextRunMemoryForFrames(nsIFrame* aFrame,
-                                            PRUint64* aTotal);
+  static size_t SizeOfTextRunsForFrames(nsIFrame* aFrame,
+                                        nsMallocSizeOfFun aMallocSizeOf,
+                                        bool clear);
 
   /**
    * Checks if CSS 3D transforms are currently enabled.
    */
   static bool Are3DTransformsEnabled();
 
+  /**
+   * Unions the overflow areas of all non-popup children of aFrame with
+   * aOverflowAreas.
+   */
+  static void UnionChildOverflow(nsIFrame* aFrame,
+                                 nsOverflowAreas& aOverflowAreas);
+
+  /**
+   * Return whether this is a frame whose width is used when computing
+   * the font size inflation of its descendants.
+   */
+  static bool IsContainerForFontSizeInflation(const nsIFrame *aFrame)
+  {
+    return aFrame->GetStateBits() & NS_FRAME_FONT_INFLATION_CONTAINER;
+  }
+
+  /**
+   * Return the font size inflation *ratio* for a given frame.  This is
+   * the factor by which font sizes should be inflated; it is never
+   * smaller than 1.
+   *
+   * The WidthDetermination parameter says how we determine the width of
+   * the nearest inflation container:  when not in reflow we look at the
+   * frame tree; when in reflow we look at state stored on the pres
+   * context.
+   */
+  enum WidthDetermination { eNotInReflow, eInReflow };
+  static float FontSizeInflationFor(const nsIFrame *aFrame,
+                                    WidthDetermination aWidthDetermination);
+
+  /**
+   * Perform the first half of the computation of FontSizeInflationFor
+   * (see above).
+   * This includes determining whether inflation should be performed
+   * within this container and returning 0 if it should not be.
+   *
+   * The result is guaranteed not to vary between line participants
+   * (inlines, text frames) within a line.
+   *
+   * The result should not be used directly since font sizes slightly
+   * above the minimum should always be adjusted as done by
+   * FontSizeInflationInner.
+   */
+  static nscoord InflationMinFontSizeFor(const nsIFrame *aFrame,
+                                         WidthDetermination
+                                           aWidthDetermination);
+
+  /**
+   * Perform the second half of the computation done by
+   * FontSizeInflationFor (see above).
+   *
+   * aMinFontSize must be the result of one of the
+   *   InflationMinFontSizeFor methods above.
+   */
+  static float FontSizeInflationInner(const nsIFrame *aFrame,
+                                      nscoord aMinFontSize);
+
+  static bool FontSizeInflationEnabled(nsPresContext *aPresContext);
+
+  static void Initialize();
   static void Shutdown();
+
+  /**
+   * Register an imgIRequest object with a refresh driver.
+   *
+   * @param aPresContext The nsPresContext whose refresh driver we want to
+   *        register with.
+   * @param aRequest A pointer to the imgIRequest object which the client wants
+   *        to register with the refresh driver.
+   * @param aRequestRegistered A pointer to a boolean value which indicates
+   *        whether the given image request is registered. If
+   *        *aRequestRegistered is true, then this request will not be
+   *        registered again. If the request is registered by this function,
+   *        then *aRequestRegistered will be set to true upon the completion of
+   *        this function.
+   *
+   */
+  static void RegisterImageRequest(nsPresContext* aPresContext,
+                                   imgIRequest* aRequest,
+                                   bool* aRequestRegistered);
+
+  /**
+   * Register an imgIRequest object with a refresh driver, but only if the
+   * request is for an image that is animated.
+   *
+   * @param aPresContext The nsPresContext whose refresh driver we want to
+   *        register with.
+   * @param aRequest A pointer to the imgIRequest object which the client wants
+   *        to register with the refresh driver.
+   * @param aRequestRegistered A pointer to a boolean value which indicates
+   *        whether the given image request is registered. If
+   *        *aRequestRegistered is true, then this request will not be
+   *        registered again. If the request is registered by this function,
+   *        then *aRequestRegistered will be set to true upon the completion of
+   *        this function.
+   *
+   */
+  static void RegisterImageRequestIfAnimated(nsPresContext* aPresContext,
+                                             imgIRequest* aRequest,
+                                             bool* aRequestRegistered);
+
+  /**
+   * Deregister an imgIRequest object from a refresh driver.
+   *
+   * @param aPresContext The nsPresContext whose refresh driver we want to
+   *        deregister from.
+   * @param aRequest A pointer to the imgIRequest object with which the client
+   *        previously registered and now wants to deregister from the refresh
+   *        driver.
+   * @param aRequestRegistered A pointer to a boolean value which indicates
+   *        whether the given image request is registered. If
+   *        *aRequestRegistered is false, then this request will not be
+   *        deregistered. If the request is deregistered by this function,
+   *        then *aRequestRegistered will be set to false upon the completion of
+   *        this function.
+   */
+  static void DeregisterImageRequest(nsPresContext* aPresContext,
+                                     imgIRequest* aRequest,
+                                     bool* aRequestRegistered);
 
 #ifdef DEBUG
   /**
@@ -1472,6 +1634,43 @@ public:
   AssertTreeOnlyEmptyNextInFlows(nsIFrame *aSubtreeRoot);
 #endif
 };
+
+namespace mozilla {
+  namespace layout {
+
+    /**
+     * An RAII class which will, for the duration of its lifetime,
+     * **if** the frame given is a container for font size inflation,
+     * set the current inflation container on the pres context to null
+     * (and then, in its destructor, restore the old value).
+     */
+    class AutoMaybeNullInflationContainer {
+    public:
+      AutoMaybeNullInflationContainer(nsIFrame *aFrame)
+      {
+        if (nsLayoutUtils::IsContainerForFontSizeInflation(aFrame)) {
+          mPresContext = aFrame->PresContext();
+          mOldValue = mPresContext->mCurrentInflationContainer;
+          mPresContext->mCurrentInflationContainer = nsnull;
+        } else {
+          // indicate we have nothing to restore
+          mPresContext = nsnull;
+        }
+      }
+
+      ~AutoMaybeNullInflationContainer()
+      {
+        if (mPresContext) {
+          mPresContext->mCurrentInflationContainer = mOldValue;
+        }
+      }
+    private:
+      nsPresContext *mPresContext;
+      nsIFrame *mOldValue;
+    };
+
+  }
+}
 
 class nsSetAttrRunnable : public nsRunnable
 {

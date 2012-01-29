@@ -82,7 +82,7 @@ public:
   virtual void Shutdown();
 
   // nsAccessible
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual PRUint64 NativeState();
   virtual nsAccessible* ChildAtPoint(PRInt32 aX, PRInt32 aY,
                                      EWhichChildAtPoint aWhichChild);
@@ -106,6 +106,7 @@ public:
   virtual bool IsActiveWidget() const;
   virtual bool AreItemsOperable() const;
   virtual nsAccessible* CurrentItem();
+  virtual void SetCurrentItem(nsAccessible* aItem);
 
   virtual nsAccessible* ContainerWidget() const;
 
@@ -291,7 +292,7 @@ public:
   virtual void Shutdown();
 
   // nsAccessible
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
 
   // nsXULTreeItemAccessibleBase
   virtual void RowInvalidated(PRInt32 aStartColIdx, PRInt32 aEndColIdx);

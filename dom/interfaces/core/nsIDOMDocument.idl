@@ -66,7 +66,7 @@ interface nsIDOMLocation;
  * http://dvcs.w3.org/hg/domcore/raw-file/tip/Overview.html
  */
 
-[scriptable, uuid(256a15f4-126f-48f9-90b6-7f5b2b1e30e6)]
+[scriptable, uuid(d7cdd08e-1bfd-4bc3-9742-d66586781ee2)]
 interface nsIDOMDocument : nsIDOMNode
 {
   readonly attribute nsIDOMDocumentType         doctype;
@@ -87,8 +87,8 @@ interface nsIDOMDocument : nsIDOMNode
   nsIDOMNodeList                getElementsByTagName(in DOMString tagname);
 
   // Introduced in DOM Level 2:
-  nsIDOMNode                    importNode(in nsIDOMNode importedNode,
-                                           in boolean deep)
+  [optional_argc] nsIDOMNode    importNode(in nsIDOMNode importedNode,
+                                           [optional] in boolean deep)
                                   raises(DOMException);
   // Introduced in DOM Level 2:
   nsIDOMElement                 createElementNS(in DOMString namespaceURI,
@@ -118,16 +118,14 @@ interface nsIDOMDocument : nsIDOMNode
    */
   nsIDOMRange              createRange();
 
-  nsIDOMNodeIterator createNodeIterator(in nsIDOMNode root,
-                                        in unsigned long whatToShow,
-                                        in nsIDOMNodeFilter filter,
-                                        in boolean entityReferenceExpansion)
-                                        raises(DOMException);
-  nsIDOMTreeWalker   createTreeWalker(in nsIDOMNode root,
-                                      in unsigned long whatToShow,
-                                      in nsIDOMNodeFilter filter,
-                                      in boolean entityReferenceExpansion)
-                                        raises(DOMException);
+  [optional_argc] nsIDOMNodeIterator createNodeIterator(in nsIDOMNode root,
+                                                        [optional] in unsigned long whatToShow,
+                                                        [optional] in nsIDOMNodeFilter filter)
+                                                          raises(DOMException);
+  [optional_argc] nsIDOMTreeWalker   createTreeWalker(in nsIDOMNode root,
+                                                      [optional] in unsigned long whatToShow,
+                                                      [optional] in nsIDOMNodeFilter filter)
+                                                        raises(DOMException);
 
   nsIDOMEvent               createEvent(in DOMString eventType)
                                                raises(DOMException);

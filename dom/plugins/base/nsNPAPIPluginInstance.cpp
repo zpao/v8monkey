@@ -61,21 +61,17 @@
 #include "nsNetCID.h"
 #include "nsIContent.h"
 
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
 #include "ANPBase.h"
 #include <android/log.h>
 #include "android_npapi.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/CondVar.h"
 #include "AndroidBridge.h"
 #endif
 
 using namespace mozilla;
 using namespace mozilla::plugins::parent;
-
-#ifdef ANDROID
-#include <map>
-static std::map<void*, nsNPAPIPluginInstance*> sSurfaceMap;
-#endif
 
 static NS_DEFINE_IID(kIOutputStreamIID, NS_IOUTPUTSTREAM_IID);
 static NS_DEFINE_IID(kIPluginStreamListenerIID, NS_IPLUGINSTREAMLISTENER_IID);
@@ -91,15 +87,15 @@ nsNPAPIPluginInstance::nsNPAPIPluginInstance(nsNPAPIPlugin* plugin)
     mDrawingModel(NPDrawingModelQuickDraw),
 #endif
 #endif
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
     mSurface(nsnull),
-    mTargetSurface(nsnull),
-    mDrawingModel(0),
+    mANPDrawingModel(0),
 #endif
     mRunning(NOT_STARTED),
     mWindowless(false),
     mWindowlessLocal(false),
     mTransparent(false),
+    mCached(false),
     mUsesDOMForCursor(false),
     mInPluginInitCall(false),
     mPlugin(plugin),
@@ -127,10 +123,6 @@ nsNPAPIPluginInstance::nsNPAPIPluginInstance(nsNPAPIPlugin* plugin)
       mUsePluginLayersPref = useLayersPref;
   }
 
-#ifdef ANDROID
-  mTargetSurfaceLock = new Mutex("nsNPAPIPluginInstance::SurfaceLock");
-#endif
-
   PLUGIN_LOG(PLUGIN_LOG_BASIC, ("nsNPAPIPluginInstance ctor: this=%p\n",this));
 }
 
@@ -142,22 +134,6 @@ nsNPAPIPluginInstance::~nsNPAPIPluginInstance()
     PR_Free((void *)mMIMEType);
     mMIMEType = nsnull;
   }
-
-#ifdef ANDROID
-  if (mSurface) {
-    sSurfaceMap.erase(mSurface);
-  }
-
-  if (mTargetSurface) {
-    delete mTargetSurface;
-    mTargetSurface = nsnull;
-  }
-
-  if (mTargetSurfaceLock) {
-    delete mTargetSurfaceLock;
-    mTargetSurfaceLock = nsnull;
-  }
-#endif
 }
 
 void
@@ -165,6 +141,12 @@ nsNPAPIPluginInstance::Destroy()
 {
   Stop();
   mPlugin = nsnull;
+}
+
+TimeStamp
+nsNPAPIPluginInstance::StopTime()
+{
+  return mStopTime;
 }
 
 nsresult nsNPAPIPluginInstance::Initialize(nsIPluginInstanceOwner* aOwner, const char* aMIMEType)
@@ -225,6 +207,7 @@ nsresult nsNPAPIPluginInstance::Stop()
   {
     AsyncCallbackAutoLock lock;
     mRunning = DESTROYING;
+    mStopTime = TimeStamp::Now();
   }
 
   OnPluginDestroy(&mNPP);
@@ -364,7 +347,7 @@ nsNPAPIPluginInstance::InitializePlugin()
       const char* const* pvalues = nsnull;    
       if (NS_SUCCEEDED(GetParameters(pcount, pnames, pvalues))) {
         // Android expects an empty string as the separator instead of null
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
         NS_ASSERTION(PL_strcmp(values[count], "") == 0, "attribute/parameter array not setup correctly for Android NPAPI plugins");
 #else
         NS_ASSERTION(!values[count], "attribute/parameter array not setup correctly for NPAPI plugins");
@@ -747,119 +730,63 @@ void nsNPAPIPluginInstance::SetEventModel(NPEventModel aModel)
 }
 #endif
 
-#if defined(ANDROID)
-void nsNPAPIPluginInstance::SetDrawingModel(PRUint32 aModel)
+#if defined(MOZ_WIDGET_ANDROID)
+void nsNPAPIPluginInstance::SetANPDrawingModel(PRUint32 aModel)
 {
-  mDrawingModel = aModel;
+  mANPDrawingModel = aModel;
 }
 
 class SurfaceGetter : public nsRunnable {
 public:
-  SurfaceGetter(NPPluginFuncs* aPluginFunctions, NPP_t aNPP) : 
-    mHaveSurface(false), mPluginFunctions(aPluginFunctions), mNPP(aNPP) {
-    mLock = new Mutex("SurfaceGetter::Lock");
-    mCondVar = new CondVar(*mLock, "SurfaceGetter::CondVar");
-    
+  SurfaceGetter(nsNPAPIPluginInstance* aInstance, NPPluginFuncs* aPluginFunctions, NPP_t aNPP) : 
+    mInstance(aInstance), mPluginFunctions(aPluginFunctions), mNPP(aNPP) {
   }
   ~SurfaceGetter() {
-    delete mLock;
-    delete mCondVar;
   }
   nsresult Run() {
-    MutexAutoLock lock(*mLock);
-    (*mPluginFunctions->getvalue)(&mNPP, kJavaSurface_ANPGetValue, &mSurface);
-    mHaveSurface = true;
-    mCondVar->Notify();
+    void* surface;
+    (*mPluginFunctions->getvalue)(&mNPP, kJavaSurface_ANPGetValue, &surface);
+    mInstance->SetJavaSurface(surface);
     return NS_OK;
   }
-  void* GetSurface() {
-    MutexAutoLock lock(*mLock);
-    mHaveSurface = false;
-    AndroidBridge::Bridge()->PostToJavaThread(this);
-    while (!mHaveSurface)
-      mCondVar->Wait();
-    return mSurface;
+  void RequestSurface() {
+    mozilla::AndroidBridge::Bridge()->PostToJavaThread(this);
   }
 private:
+  nsNPAPIPluginInstance* mInstance;
   NPP_t mNPP;
-  void* mSurface;
-  Mutex* mLock;
-  CondVar* mCondVar;
-  bool mHaveSurface;
   NPPluginFuncs* mPluginFunctions;
 };
 
 
 void* nsNPAPIPluginInstance::GetJavaSurface()
 {
-  if (mDrawingModel != kSurface_ANPDrawingModel)
+  if (mANPDrawingModel != kSurface_ANPDrawingModel)
     return nsnull;
   
-  if (mSurface)
-    return mSurface;
-
-  nsCOMPtr<SurfaceGetter> sg = new SurfaceGetter(mPlugin->PluginFuncs(), mNPP);
-  mSurface = sg->GetSurface();
-  sSurfaceMap[mSurface] = this;
   return mSurface;
 }
 
-gfxImageSurface*
-nsNPAPIPluginInstance::LockTargetSurface()
+void nsNPAPIPluginInstance::SetJavaSurface(void* aSurface)
 {
-  mTargetSurfaceLock->Lock();
-  return mTargetSurface;
+  mSurface = aSurface;
 }
 
-gfxImageSurface*
-nsNPAPIPluginInstance::LockTargetSurface(PRUint32 aWidth, PRUint32 aHeight, gfxImageFormat aFormat,
-                                         NPRect* aRect)
+void nsNPAPIPluginInstance::RequestJavaSurface()
 {
-  mTargetSurfaceLock->Lock();
-  if (!mTargetSurface ||
-      mTargetSurface->Width() != aWidth ||
-      mTargetSurface->Height() != aHeight ||
-      mTargetSurface->Format() != aFormat) {
+  if (mSurfaceGetter.get())
+    return;
 
-    if (mTargetSurface) {
-      delete mTargetSurface;
-    }
+  mSurfaceGetter = new SurfaceGetter(this, mPlugin->PluginFuncs(), mNPP);
 
-    mTargetSurface = new gfxImageSurface(gfxIntSize(aWidth, aHeight), aFormat);
-  }
-
-  mTargetLockRect = *aRect;
-
-  return mTargetSurface;
-}
-
-void
-nsNPAPIPluginInstance::InvalidateTargetRect()
-{
-    InvalidateRect(&mTargetLockRect);
-}
-
-void
-nsNPAPIPluginInstance::UnlockTargetSurface(bool aInvalidate)
-{
-  mTargetSurfaceLock->Unlock();
-
-  if (aInvalidate) {
-    NS_DispatchToMainThread(NS_NewRunnableMethod(this, &nsNPAPIPluginInstance::InvalidateTargetRect));
-  }
-}
-
-nsNPAPIPluginInstance*
-nsNPAPIPluginInstance::FindByJavaSurface(void* aJavaSurface)
-{
-  return sSurfaceMap[aJavaSurface];
+  ((SurfaceGetter*)mSurfaceGetter.get())->RequestSurface();
 }
 
 #endif
 
 nsresult nsNPAPIPluginInstance::GetDrawingModel(PRInt32* aModel)
 {
-#if defined(XP_MACOSX) || defined(ANDROID)
+#if defined(XP_MACOSX)
   *aModel = (PRInt32)mDrawingModel;
   return NS_OK;
 #else
@@ -956,9 +883,22 @@ nsNPAPIPluginInstance::DefineJavaProperties()
 }
 
 nsresult
+nsNPAPIPluginInstance::SetCached(bool aCache)
+{
+  mCached = aCache;
+  return NS_OK;
+}
+
+bool
+nsNPAPIPluginInstance::ShouldCache()
+{
+  return mCached;
+}
+
+nsresult
 nsNPAPIPluginInstance::IsWindowless(bool* isWindowless)
 {
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
   // On android, pre-honeycomb, all plugins are treated as windowless.
   *isWindowless = true;
 #else

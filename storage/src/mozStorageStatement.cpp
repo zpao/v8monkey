@@ -58,6 +58,7 @@
 #include "mozStorageStatementParams.h"
 #include "mozStorageStatementRow.h"
 #include "mozStorageStatement.h"
+#include "sampler.h"
 
 #include "prlog.h"
 
@@ -175,7 +176,8 @@ Statement::initialize(Connection *aDBConnection,
   sqlite3 *db = aDBConnection->GetNativeConnection();
   NS_ASSERTION(db, "We should never be called with a null sqlite3 database!");
 
-  int srv = prepareStmt(db, PromiseFlatCString(aSQLStatement), &mDBStatement);
+  int srv = aDBConnection->prepareStatement(PromiseFlatCString(aSQLStatement),
+                                            &mDBStatement);
   if (srv != SQLITE_OK) {
 #ifdef PR_LOGGING
       PR_LOG(gStorageLog, PR_LOG_ERROR,
@@ -319,8 +321,7 @@ Statement::getAsyncStatement(sqlite3_stmt **_stmt)
   // If we do not yet have a cached async statement, clone our statement now.
   if (!mAsyncStatement) {
     nsDependentCString sql(::sqlite3_sql(mDBStatement));
-    int rc = prepareStmt(mDBConnection->GetNativeConnection(), sql,
-                     &mAsyncStatement);
+    int rc = mDBConnection->prepareStatement(sql, &mAsyncStatement);
     if (rc != SQLITE_OK) {
       *_stmt = nsnull;
       return rc;
@@ -587,6 +588,7 @@ Statement::Execute()
 NS_IMETHODIMP
 Statement::ExecuteStep(bool *_moreResults)
 {
+  SAMPLE_LABEL("storage", "Statement::ExecuteStep");
   if (!mDBStatement)
     return NS_ERROR_NOT_INITIALIZED;
 
@@ -613,7 +615,7 @@ Statement::ExecuteStep(bool *_moreResults)
     // We have bound, so now we can clear our array.
     mParamsArray = nsnull;
   }
-  int srv = stepStmt(mDBStatement);
+  int srv = mDBConnection->stepStatement(mDBStatement);
 
 #ifdef PR_LOGGING
   if (srv != SQLITE_ROW && srv != SQLITE_DONE) {

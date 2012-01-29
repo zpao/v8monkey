@@ -42,11 +42,9 @@
  */
 #include <stdlib.h>
 #include "jstypes.h"
-#include "jsstdint.h"
 #include "prmjtime.h"
 #include "jsapi.h"
 #include "jsatom.h"
-#include "jsbuiltins.h"
 #include "jscntxt.h"
 #include "jsversion.h"
 #include "jslock.h"
@@ -510,16 +508,16 @@ js_math_pow(JSContext *cx, uintN argc, Value *vp)
     return JS_TRUE;
 }
 
-static const int64 RNG_MULTIPLIER = 0x5DEECE66DLL;
-static const int64 RNG_ADDEND = 0xBLL;
-static const int64 RNG_MASK = (1LL << 48) - 1;
+static const int64_t RNG_MULTIPLIER = 0x5DEECE66DLL;
+static const int64_t RNG_ADDEND = 0xBLL;
+static const int64_t RNG_MASK = (1LL << 48) - 1;
 static const jsdouble RNG_DSCALE = jsdouble(1LL << 53);
 
 /*
  * Math.random() support, lifted from java.util.Random.java.
  */
 static inline void
-random_setSeed(JSContext *cx, int64 seed)
+random_setSeed(JSContext *cx, int64_t seed)
 {
     cx->rngSeed = (seed ^ RNG_MULTIPLIER) & RNG_MASK;
 }
@@ -535,14 +533,14 @@ js_InitRandom(JSContext *cx)
      */
     random_setSeed(cx,
                    (PRMJ_Now() / 1000) ^
-                   int64(cx) ^
-                   int64(cx->link.next));
+                   int64_t(cx) ^
+                   int64_t(cx->link.next));
 }
 
-static inline uint64
+static inline uint64_t
 random_next(JSContext *cx, int bits)
 {
-    uint64 nextseed = cx->rngSeed * RNG_MULTIPLIER;
+    uint64_t nextseed = cx->rngSeed * RNG_MULTIPLIER;
     nextseed += RNG_ADDEND;
     nextseed &= RNG_MASK;
     cx->rngSeed = nextseed;
@@ -578,26 +576,39 @@ js_copysign(double x, double y)
 }
 #endif
 
-jsdouble
-js_math_round_impl(jsdouble x)
-{
-    return js_copysign(floor(x + 0.5), x);
-}
 
-JSBool
+JSBool /* ES5 15.8.2.15. */
 js_math_round(JSContext *cx, uintN argc, Value *vp)
 {
-    jsdouble x, z;
+    CallArgs args = CallArgsFromVp(argc, vp);
 
-    if (argc == 0) {
-        vp->setDouble(js_NaN);
-        return JS_TRUE;
+    if (args.length() == 0) {
+        args.rval().setDouble(js_NaN);
+        return true;
     }
-    if (!ToNumber(cx, vp[2], &x))
-        return JS_FALSE;
-    z = js_copysign(floor(x + 0.5), x);
-    vp->setNumber(z);
-    return JS_TRUE;
+
+    double x;
+    if (!ToNumber(cx, args[0], &x))
+        return false;
+
+    int32_t i;
+    if (JSDOUBLE_IS_INT32(x, &i)) { 
+        args.rval().setInt32(i);
+        return true;
+    }
+
+    jsdpun u;
+    u.d = x;
+
+    /* Some numbers are so big that adding 0.5 would give the wrong number */
+    int exponent = ((u.s.hi & JSDOUBLE_HI32_EXPMASK) >> JSDOUBLE_HI32_EXPSHIFT) - JSDOUBLE_EXPBIAS;
+    if (exponent >= 52) {
+        args.rval().setNumber(x);
+        return true;
+    }
+
+    args.rval().setNumber(js_copysign(floor(x + 0.5), x));
+    return true;
 }
 
 static JSBool
@@ -666,189 +677,28 @@ math_toSource(JSContext *cx, uintN argc, Value *vp)
 }
 #endif
 
-#ifdef JS_TRACER
-
-#define MATH_BUILTIN_1(name, cfun)                                            \
-    static jsdouble FASTCALL name##_tn(MathCache *cache, jsdouble d) {        \
-        return cache->lookup(cfun, d);                                        \
-    }                                                                         \
-    JS_DEFINE_TRCINFO_1(name,                                                 \
-        (2, (static, DOUBLE, name##_tn, MATHCACHE, DOUBLE, 1, nanojit::ACCSET_NONE)))
-
-MATH_BUILTIN_1(js_math_abs, fabs)
-MATH_BUILTIN_1(math_atan, atan)
-MATH_BUILTIN_1(math_sin, sin)
-MATH_BUILTIN_1(math_cos, cos)
-MATH_BUILTIN_1(js_math_sqrt, sqrt)
-MATH_BUILTIN_1(math_tan, tan)
-
-static jsdouble FASTCALL
-math_acos_tn(MathCache *cache, jsdouble d)
-{
-#if defined(SOLARIS) && defined(__GNUC__)
-    if (d < -1 || 1 < d) {
-        return js_NaN;
-    }
-#endif
-    return cache->lookup(acos, d);
-}
-
-static jsdouble FASTCALL
-math_asin_tn(MathCache *cache, jsdouble d)
-{
-#if defined(SOLARIS) && defined(__GNUC__)
-    if (d < -1 || 1 < d) {
-        return js_NaN;
-    }
-#endif
-    return cache->lookup(asin, d);
-}
-
-static jsdouble FASTCALL
-math_exp_tn(MathCache *cache, jsdouble d)
-{
-    return cache->lookup(math_exp_body, d);
-}
-
-JS_DEFINE_TRCINFO_1(math_exp,
-    (2, (static, DOUBLE, math_exp_tn, MATHCACHE, DOUBLE,  1, nanojit::ACCSET_NONE)))
-
-static jsdouble FASTCALL
-math_log_tn(MathCache *cache, jsdouble d)
-{
-#if defined(SOLARIS) && defined(__GNUC__)
-    if (d < 0)
-        return js_NaN;
-#endif
-    return cache->lookup(log, d);
-}
-
-static jsdouble FASTCALL
-math_max_tn(jsdouble d, jsdouble p)
-{
-    if (JSDOUBLE_IS_NaN(d) || JSDOUBLE_IS_NaN(p))
-        return js_NaN;
-
-    if (p == 0 && p == d) {
-        // Max prefers 0.0 to -0.0.
-        if (js_copysign(1.0, d) == -1)
-            return p;
-        return d;
-    }
-    return (p > d) ? p : d;
-}
-
-static jsdouble FASTCALL
-math_min_tn(jsdouble d, jsdouble p)
-{
-    if (JSDOUBLE_IS_NaN(d) || JSDOUBLE_IS_NaN(p))
-        return js_NaN;
-
-    if (p == 0 && p == d) {
-        // Min prefers -0.0 to 0.0.
-        if (js_copysign (1.0, p) == -1)
-            return p;
-        return d;
-    }
-    return (p < d) ? p : d;
-}
-
-static jsdouble FASTCALL
-math_pow_tn(jsdouble d, jsdouble p)
-{
-    /*
-     * Special case for square roots. Note that pow(x, 0.5) != sqrt(x)
-     * when x = -0.0, so we have to guard for this.
-     */
-    if (JSDOUBLE_IS_FINITE(d) && d != 0.0) {
-        if (p == 0.5)
-            return sqrt(d);
-
-        if (p == -0.5)
-            return 1.0/sqrt(d);
-    }
-    if (!JSDOUBLE_IS_FINITE(p) && (d == 1.0 || d == -1.0))
-        return js_NaN;
-    if (p == 0)
-        return 1.0;
-    int32_t i;
-    if (JSDOUBLE_IS_INT32(p, &i))
-        return powi(d, i);
-
-    return pow(d, p);
-}
-
-static jsdouble FASTCALL
-math_random_tn(JSContext *cx)
-{
-    return random_nextDouble(cx);
-}
-
-static jsdouble FASTCALL
-math_round_tn(jsdouble x)
-{
-    return js_math_round_impl(x);
-}
-
-static jsdouble FASTCALL
-math_ceil_tn(jsdouble x)
-{
-    return js_math_ceil_impl(x);
-}
-
-static jsdouble FASTCALL
-math_floor_tn(jsdouble x)
-{
-    return js_math_floor_impl(x);
-}
-
-JS_DEFINE_TRCINFO_1(math_acos,
-    (2, (static, DOUBLE, math_acos_tn, MATHCACHE, DOUBLE, 1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(math_asin,
-    (2, (static, DOUBLE, math_asin_tn, MATHCACHE, DOUBLE, 1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(math_atan2,
-    (2, (static, DOUBLE, math_atan2_kernel, DOUBLE, DOUBLE, 1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(js_math_floor,
-    (1, (static, DOUBLE, math_floor_tn, DOUBLE,         1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(math_log,
-    (2, (static, DOUBLE, math_log_tn, MATHCACHE, DOUBLE,  1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(js_math_max,
-    (2, (static, DOUBLE, math_max_tn, DOUBLE, DOUBLE,   1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(js_math_min,
-    (2, (static, DOUBLE, math_min_tn, DOUBLE, DOUBLE,   1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(js_math_pow,
-    (2, (static, DOUBLE, math_pow_tn, DOUBLE, DOUBLE,   1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(math_random,
-    (1, (static, DOUBLE, math_random_tn, CONTEXT,       0, nanojit::ACCSET_STORE_ANY)))
-JS_DEFINE_TRCINFO_1(js_math_round,
-    (1, (static, DOUBLE, math_round_tn, DOUBLE,         1, nanojit::ACCSET_NONE)))
-JS_DEFINE_TRCINFO_1(js_math_ceil,
-    (1, (static, DOUBLE, math_ceil_tn, DOUBLE,          1, nanojit::ACCSET_NONE)))
-
-#endif /* JS_TRACER */
-
 static JSFunctionSpec math_static_methods[] = {
 #if JS_HAS_TOSOURCE
     JS_FN(js_toSource_str,  math_toSource,        0, 0),
 #endif
-    JS_TN("abs",            js_math_abs,          1, 0, &js_math_abs_trcinfo),
-    JS_TN("acos",           math_acos,            1, 0, &math_acos_trcinfo),
-    JS_TN("asin",           math_asin,            1, 0, &math_asin_trcinfo),
-    JS_TN("atan",           math_atan,            1, 0, &math_atan_trcinfo),
-    JS_TN("atan2",          math_atan2,           2, 0, &math_atan2_trcinfo),
-    JS_TN("ceil",           js_math_ceil,         1, 0, &js_math_ceil_trcinfo),
-    JS_TN("cos",            math_cos,             1, 0, &math_cos_trcinfo),
-    JS_TN("exp",            math_exp,             1, 0, &math_exp_trcinfo),
-    JS_TN("floor",          js_math_floor,        1, 0, &js_math_floor_trcinfo),
-    JS_TN("log",            math_log,             1, 0, &math_log_trcinfo),
-    JS_TN("max",            js_math_max,          2, 0, &js_math_max_trcinfo),
-    JS_TN("min",            js_math_min,          2, 0, &js_math_min_trcinfo),
-    JS_TN("pow",            js_math_pow,          2, 0, &js_math_pow_trcinfo),
-    JS_TN("random",         math_random,          0, 0, &math_random_trcinfo),
-    JS_TN("round",          js_math_round,        1, 0, &js_math_round_trcinfo),
-    JS_TN("sin",            math_sin,             1, 0, &math_sin_trcinfo),
-    JS_TN("sqrt",           js_math_sqrt,         1, 0, &js_math_sqrt_trcinfo),
-    JS_TN("tan",            math_tan,             1, 0, &math_tan_trcinfo),
+    JS_FN("abs",            js_math_abs,          1, 0),
+    JS_FN("acos",           math_acos,            1, 0),
+    JS_FN("asin",           math_asin,            1, 0),
+    JS_FN("atan",           math_atan,            1, 0),
+    JS_FN("atan2",          math_atan2,           2, 0),
+    JS_FN("ceil",           js_math_ceil,         1, 0),
+    JS_FN("cos",            math_cos,             1, 0),
+    JS_FN("exp",            math_exp,             1, 0),
+    JS_FN("floor",          js_math_floor,        1, 0),
+    JS_FN("log",            math_log,             1, 0),
+    JS_FN("max",            js_math_max,          2, 0),
+    JS_FN("min",            js_math_min,          2, 0),
+    JS_FN("pow",            js_math_pow,          2, 0),
+    JS_FN("random",         math_random,          0, 0),
+    JS_FN("round",          js_math_round,        1, 0),
+    JS_FN("sin",            math_sin,             1, 0),
+    JS_FN("sqrt",           js_math_sqrt,         1, 0),
+    JS_FN("tan",            math_tan,             1, 0),
     JS_FS_END
 };
 
@@ -865,7 +715,7 @@ js_IsMathFunction(Native native)
 JSObject *
 js_InitMathClass(JSContext *cx, JSObject *obj)
 {
-    JSObject *Math = NewNonFunction<WithProto::Class>(cx, &MathClass, NULL, obj);
+    JSObject *Math = NewObjectWithClassProto(cx, &MathClass, NULL, obj);
     if (!Math || !Math->setSingletonType(cx))
         return NULL;
 

@@ -51,6 +51,7 @@ JAVAFILES = \
   DataWorkerThread.java \
   DoAlert.java \
   DoCommand.java \
+  FindProcThread.java \
   NtpMessage.java \
   Power.java \
   RedirOutputThread.java \
@@ -103,7 +104,7 @@ sutAgentAndroid-unsigned-unaligned.apk: sutAgentAndroid.ap_ classes.dex
 sutAgentAndroid-unaligned.apk: sutAgentAndroid-unsigned-unaligned.apk
 	cp  sutAgentAndroid-unsigned-unaligned.apk $@
 ifdef JARSIGNER
-  $(JARSIGNER) $@
+	$(JARSIGNER) $@
 endif
 
 sutAgentAndroid.apk: sutAgentAndroid-unaligned.apk

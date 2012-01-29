@@ -69,7 +69,7 @@ class nsDOMEventTargetHelper : public nsIDOMEventTarget
 {
 public:
   nsDOMEventTargetHelper() {}
-  virtual ~nsDOMEventTargetHelper() {}
+  virtual ~nsDOMEventTargetHelper();
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS(nsDOMEventTargetHelper)
 
@@ -103,5 +103,12 @@ protected:
   nsCOMPtr<nsIScriptContext> mScriptContext;
   nsCOMPtr<nsPIDOMWindow>    mOwner; // Inner window.
 };
+
+#define NS_UNMARK_LISTENER_WRAPPER(_event)                       \
+  if (tmp->mOn##_event##Listener) {                              \
+    nsCOMPtr<nsIXPConnectWrappedJS> wjs =                        \
+      do_QueryInterface(tmp->mOn##_event##Listener->GetInner()); \
+    xpc_UnmarkGrayObject(wjs);                                   \
+  }
 
 #endif // nsDOMEventTargetHelper_h_

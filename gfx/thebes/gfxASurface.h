@@ -57,8 +57,23 @@ struct nsIntRect;
  */
 class THEBES_API gfxASurface {
 public:
+#ifdef MOZILLA_INTERNAL_API
     nsrefcnt AddRef(void);
     nsrefcnt Release(void);
+
+    // These functions exist so that browsercomps can refcount a gfxASurface
+    virtual nsresult AddRefExternal(void)
+    {
+      return AddRef();
+    }
+    virtual nsresult ReleaseExternal(void)
+    {
+      return Release();
+    }
+#else
+    virtual nsresult AddRef(void);
+    virtual nsresult Release(void);
+#endif
 
 public:
     /**
@@ -80,11 +95,11 @@ public:
         SurfaceTypePS,
         SurfaceTypeXlib,
         SurfaceTypeXcb,
-        SurfaceTypeGlitz,
+        SurfaceTypeGlitz,           // unused, but needed for cairo parity
         SurfaceTypeQuartz,
         SurfaceTypeWin32,
         SurfaceTypeBeOS,
-        SurfaceTypeDirectFB,
+        SurfaceTypeDirectFB,        // unused, but needed for cairo parity
         SurfaceTypeSVG,
         SurfaceTypeOS2,
         SurfaceTypeWin32Printing,
@@ -229,7 +244,28 @@ public:
 
     virtual const gfxIntSize GetSize() const { return gfxIntSize(-1, -1); }
 
+#ifdef MOZ_DUMP_PAINTING
+    /**
+     * Debug functions to encode the current image as a PNG and export it.
+     */
+
+    /**
+     * Writes a binary PNG file.
+     */
+    void WriteAsPNG(const char* aFile);
+
+    /**
+     * Write as a PNG encoded Data URL to stdout.
+     */
     void DumpAsDataURL();
+
+    /**
+     * Copy a PNG encoded Data URL to the clipboard.
+     */
+    void CopyAsDataURL();
+    
+    void WriteAsPNG_internal(FILE* aFile, bool aBinary);
+#endif
 
     void SetOpaqueRect(const gfxRect& aRect) {
         if (aRect.IsEmpty()) {

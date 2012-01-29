@@ -38,12 +38,14 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include <stdio.h>
+#include <ctype.h>
 
 #include "jscntxt.h"
-#include "jsprobes.h"
-#include "jsutil.h"
 #include "jscrashformat.h"
 #include "jscrashreport.h"
+#include "jsprf.h"
+#include "jsprobes.h"
+#include "jsutil.h"
 #include "prmjtime.h"
 
 #include "gc/Statistics.h"
@@ -51,9 +53,95 @@
 namespace js {
 namespace gcstats {
 
-Statistics::Statistics(JSRuntime *rt)
-  : runtime(rt)
+static const char *
+ExplainReason(gcreason::Reason reason)
 {
+    switch (reason) {
+#define SWITCH_REASON(name)                     \
+        case gcreason::name:                    \
+          return #name;
+        GCREASONS(SWITCH_REASON)
+
+        default:
+          JS_NOT_REACHED("bad GC reason");
+          return "?";
+#undef SWITCH_REASON
+    }
+}
+
+Statistics::ColumnInfo::ColumnInfo(const char *title, double t, double total)
+  : title(title)
+{
+    JS_snprintf(str, sizeof(str), "%.1f", t);
+    JS_snprintf(totalStr, sizeof(totalStr), "%.1f", total);
+    width = 6;
+}
+
+Statistics::ColumnInfo::ColumnInfo(const char *title, double t)
+  : title(title)
+{
+    JS_snprintf(str, sizeof(str), "%.1f", t);
+    strcpy(totalStr, "n/a");
+    width = 6;
+}
+
+Statistics::ColumnInfo::ColumnInfo(const char *title, unsigned int data)
+  : title(title)
+{
+    JS_snprintf(str, sizeof(str), "%d", data);
+    strcpy(totalStr, "n/a");
+    width = 4;
+}
+
+Statistics::ColumnInfo::ColumnInfo(const char *title, const char *data)
+  : title(title)
+{
+    JS_ASSERT(strlen(data) < sizeof(str));
+    strcpy(str, data);
+    strcpy(totalStr, "n/a ");
+    width = 0;
+}
+
+static const int NUM_COLUMNS = 17;
+
+void
+Statistics::makeTable(ColumnInfo *cols)
+{
+    int i = 0;
+
+    cols[i++] = ColumnInfo("Type", compartment ? "Comp" : "Glob");
+
+    cols[i++] = ColumnInfo("Total", t(PHASE_GC), total(PHASE_GC));
+    cols[i++] = ColumnInfo("Wait", beginDelay(PHASE_MARK, PHASE_GC));
+    cols[i++] = ColumnInfo("Mark", t(PHASE_MARK), total(PHASE_MARK));
+    cols[i++] = ColumnInfo("Sweep", t(PHASE_SWEEP), total(PHASE_SWEEP));
+    cols[i++] = ColumnInfo("FinObj", t(PHASE_SWEEP_OBJECT), total(PHASE_SWEEP_OBJECT));
+    cols[i++] = ColumnInfo("FinStr", t(PHASE_SWEEP_STRING), total(PHASE_SWEEP_STRING));
+    cols[i++] = ColumnInfo("FinScr", t(PHASE_SWEEP_SCRIPT), total(PHASE_SWEEP_SCRIPT));
+    cols[i++] = ColumnInfo("FinShp", t(PHASE_SWEEP_SHAPE), total(PHASE_SWEEP_SHAPE));
+    cols[i++] = ColumnInfo("DisCod", t(PHASE_DISCARD_CODE), total(PHASE_DISCARD_CODE));
+    cols[i++] = ColumnInfo("DisAnl", t(PHASE_DISCARD_ANALYSIS), total(PHASE_DISCARD_ANALYSIS));
+    cols[i++] = ColumnInfo("XPCnct", t(PHASE_XPCONNECT), total(PHASE_XPCONNECT));
+    cols[i++] = ColumnInfo("Destry", t(PHASE_DESTROY), total(PHASE_DESTROY));
+    cols[i++] = ColumnInfo("End", endDelay(PHASE_GC, PHASE_DESTROY));
+
+    cols[i++] = ColumnInfo("+Chu", counts[STAT_NEW_CHUNK]);
+    cols[i++] = ColumnInfo("-Chu", counts[STAT_DESTROY_CHUNK]);
+
+    cols[i++] = ColumnInfo("Reason", ExplainReason(triggerReason));
+
+    JS_ASSERT(i == NUM_COLUMNS);
+}
+
+Statistics::Statistics(JSRuntime *rt)
+  : runtime(rt),
+    triggerReason(gcreason::NO_REASON)
+{
+    PodArrayZero(counts);
+    PodArrayZero(totals);
+
+    startupTime = PRMJ_Now();
+
     char *env = getenv("MOZ_GCTIMER");
     if (!env || strcmp(env, "none") == 0) {
         fp = NULL;
@@ -72,27 +160,28 @@ Statistics::Statistics(JSRuntime *rt)
         fp = fopen(env, "a");
         JS_ASSERT(fp);
 
-        fprintf(fp, "     AppTime,  Total,   Wait,   Mark,  Sweep, FinObj,"
-                " FinStr, FinScr, FinShp, Destry,    End, +Chu, -Chu, T, Reason\n");
+        fprintf(fp, "     AppTime");
+
+        ColumnInfo cols[NUM_COLUMNS];
+        makeTable(cols);
+        for (int i = 0; i < NUM_COLUMNS; i++)
+            fprintf(fp, ", %*s", cols[i].width, cols[i].title);
+        fprintf(fp, "\n");
     }
-
-    PodArrayZero(counts);
-    PodArrayZero(totals);
-
-    startupTime = PRMJ_Now();
 }
 
 Statistics::~Statistics()
 {
     if (fp) {
-        if (fullFormat)
-            fprintf(fp,
-                    "------>TOTAL  "
-                    "%6.1f,         %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f\n",
-                    total(PHASE_GC), total(PHASE_MARK), total(PHASE_SWEEP),
-                    total(PHASE_SWEEP_OBJECT), total(PHASE_SWEEP_STRING),
-                    total(PHASE_SWEEP_SCRIPT), total(PHASE_SWEEP_SHAPE),
-                    total(PHASE_DESTROY));
+        if (fullFormat) {
+            fprintf(fp, "------>TOTAL");
+
+            ColumnInfo cols[NUM_COLUMNS];
+            makeTable(cols);
+            for (int i = 0; i < NUM_COLUMNS && cols[i].totalStr[0]; i++)
+                fprintf(fp, ", %*s", cols[i].width, cols[i].totalStr);
+            fprintf(fp, "\n");
+        }
 
         if (fp != stdout && fp != stderr)
             fclose(fp);
@@ -106,7 +195,7 @@ struct GCCrashData
 };
 
 void
-Statistics::beginGC(JSCompartment *comp, Reason reason)
+Statistics::beginGC(JSCompartment *comp, gcreason::Reason reason)
 {
     compartment = comp;
 
@@ -120,7 +209,6 @@ Statistics::beginGC(JSCompartment *comp, Reason reason)
     Probes::GCStart(compartment);
 
     GCCrashData crashData;
-    crashData.isRegen = runtime->shapeGen & SHAPE_OVERFLOW_BIT;
     crashData.isCompartment = !!compartment;
     crash::SaveCrashData(crash::JS_CRASH_TAG_GC, &crashData, sizeof(crashData));
 }
@@ -150,23 +238,41 @@ Statistics::endDelay(Phase phase1, Phase phase2)
 }
 
 void
+Statistics::statsToString(char *buffer, size_t size)
+{
+    JS_ASSERT(size);
+    buffer[0] = 0x00;
+
+    ColumnInfo cols[NUM_COLUMNS];
+    makeTable(cols);
+
+    size_t pos = 0;
+    for (int i = 0; i < NUM_COLUMNS; i++) {
+        int len = strlen(cols[i].title) + 1 + strlen(cols[i].str);
+        if (i > 0)
+            len += 2;
+        if (pos + len >= size)
+            break;
+        if (i > 0)
+            strcat(buffer, ", ");
+        strcat(buffer, cols[i].title);
+        strcat(buffer, ":");
+        strcat(buffer, cols[i].str);
+        pos += len;
+    }
+}
+
+void
 Statistics::printStats()
 {
     if (fullFormat) {
-        /*       App   , Total, Wait , Mark , Sweep, FinOb, FinSt, FinSc, FinSh, Destry, End */
-        fprintf(fp,
-                "%12.0f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, ",
-                double(phaseStarts[PHASE_GC] - startupTime) / PRMJ_USEC_PER_MSEC,
-                t(PHASE_GC),
-                beginDelay(PHASE_MARK, PHASE_GC),
-                t(PHASE_MARK), t(PHASE_SWEEP),
-                t(PHASE_SWEEP_OBJECT), t(PHASE_SWEEP_STRING),
-                t(PHASE_SWEEP_SCRIPT), t(PHASE_SWEEP_SHAPE),
-                t(PHASE_DESTROY),
-                endDelay(PHASE_GC, PHASE_DESTROY));
+        fprintf(fp, "%12.0f", double(phaseStarts[PHASE_GC] - startupTime) / PRMJ_USEC_PER_MSEC);
 
-        fprintf(fp, "%4d, %4d,", counts[STAT_NEW_CHUNK], counts[STAT_DESTROY_CHUNK]);
-        fprintf(fp, " %s, %s\n", compartment ? "C" : "G", ExplainReason(triggerReason));
+        ColumnInfo cols[NUM_COLUMNS];
+        makeTable(cols);
+        for (int i = 0; i < NUM_COLUMNS; i++)
+            fprintf(fp, ", %*s", cols[i].width, cols[i].str);
+        fprintf(fp, "\n");
     } else {
         fprintf(fp, "%f %f %f\n",
                 t(PHASE_GC), t(PHASE_MARK), t(PHASE_SWEEP));
@@ -187,11 +293,15 @@ Statistics::endGC()
     if (JSAccumulateTelemetryDataCallback cb = runtime->telemetryCallback) {
         (*cb)(JS_TELEMETRY_GC_REASON, triggerReason);
         (*cb)(JS_TELEMETRY_GC_IS_COMPARTMENTAL, compartment ? 1 : 0);
-        (*cb)(JS_TELEMETRY_GC_IS_SHAPE_REGEN,
-              runtime->shapeGen & SHAPE_OVERFLOW_BIT ? 1 : 0);
         (*cb)(JS_TELEMETRY_GC_MS, t(PHASE_GC));
         (*cb)(JS_TELEMETRY_GC_MARK_MS, t(PHASE_MARK));
         (*cb)(JS_TELEMETRY_GC_SWEEP_MS, t(PHASE_SWEEP));
+    }
+
+    if (JSGCFinishedCallback cb = runtime->gcFinishedCallback) {
+        char buffer[1024];
+        statsToString(buffer, sizeof(buffer));
+        (*cb)(runtime, compartment, buffer);
     }
 
     if (fp)

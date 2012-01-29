@@ -63,7 +63,7 @@ public:
   NS_IMETHOD DoAction(PRUint8 index);
 
   // nsAccessible
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual PRUint64 NativeState();
 
   // ActionAccessible
@@ -108,7 +108,8 @@ public:
 
   // nsAccessible
   virtual nsresult GetNameInternal(nsAString& aName);
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
+  virtual PRUint64 State();
   virtual PRUint64 NativeState();
 
   // ActionAccessible
@@ -135,7 +136,7 @@ public:
   NS_IMETHOD DoAction(PRUint8 index);
 
   // nsAccessible
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual PRUint64 NativeState();
 
   // ActionAccessible
@@ -170,7 +171,8 @@ public:
   // nsAccessible
   virtual void ApplyARIAState(PRUint64* aState);
   virtual nsresult GetNameInternal(nsAString& aName);
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
+  virtual PRUint64 State();
   virtual PRUint64 NativeState();
 
   // ActionAccessible
@@ -183,6 +185,19 @@ public:
 
 
 /**
+ * Accessible for input@type="file" element.
+ */
+class nsHTMLFileInputAccessible : public nsHyperTextAccessibleWrap
+{
+public:
+  nsHTMLFileInputAccessible(nsIContent* aContent, nsIWeakReference* aShell);
+
+  // nsAccessible
+  virtual mozilla::a11y::role NativeRole();
+  virtual nsresult HandleAccEvent(AccEvent* aAccEvent);
+};
+
+/**
  * Accessible for HTML fieldset element.
  */
 class nsHTMLGroupboxAccessible : public nsHyperTextAccessibleWrap
@@ -192,7 +207,7 @@ public:
 
   // nsAccessible
   virtual nsresult GetNameInternal(nsAString& aName);
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual Relation RelationByType(PRUint32 aType);
 
 protected:
@@ -209,8 +224,40 @@ public:
   nsHTMLLegendAccessible(nsIContent *aContent, nsIWeakReference *aShell);
 
   // nsAccessible
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual Relation RelationByType(PRUint32 aType);
 };
 
-#endif  
+/**
+ * Accessible for HTML5 figure element.
+ */
+class nsHTMLFigureAccessible : public nsHyperTextAccessibleWrap
+{
+public:
+  nsHTMLFigureAccessible(nsIContent* aContent, nsIWeakReference* aShell);
+
+  // nsAccessible
+  virtual nsresult GetAttributesInternal(nsIPersistentProperties* aAttributes);
+  virtual nsresult GetNameInternal(nsAString& aName);
+  virtual mozilla::a11y::role NativeRole();
+  virtual Relation RelationByType(PRUint32 aType);
+
+protected:
+  nsIContent* Caption() const;
+};
+
+
+/**
+ * Accessible for HTML5 figcaption element.
+ */
+class nsHTMLFigcaptionAccessible : public nsHyperTextAccessibleWrap
+{
+public:
+  nsHTMLFigcaptionAccessible(nsIContent* aContent, nsIWeakReference* aShell);
+
+  // nsAccessible
+  virtual mozilla::a11y::role NativeRole();
+  virtual Relation RelationByType(PRUint32 aType);
+};
+
+#endif

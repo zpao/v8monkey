@@ -37,20 +37,22 @@
 #ifndef __NS_SVGLENGTH2_H__
 #define __NS_SVGLENGTH2_H__
 
-#include "nsIDOMSVGLength.h"
-#include "nsIDOMSVGAnimatedLength.h"
-#include "nsSVGUtils.h"
-#include "nsSVGElement.h"
+#include "nsAutoPtr.h"
+#include "nsCoord.h"
+#include "nsCycleCollectionParticipant.h"
 #include "nsDOMError.h"
-#include "nsMathUtils.h"
-
-#ifdef MOZ_SMIL
+#include "nsError.h"
+#include "nsIDOMSVGAnimatedLength.h"
+#include "nsIDOMSVGLength.h"
 #include "nsISMILAttr.h"
-class nsSMILValue;
-class nsISMILType;
-#endif // MOZ_SMIL
+#include "nsMathUtils.h"
+#include "nsSVGElement.h"
+#include "nsSVGUtils.h"
 
 class nsIFrame;
+class nsISMILAnimationElement;
+class nsSMILValue;
+class nsSVGSVGElement;
 
 class nsSVGLength2
 {
@@ -102,6 +104,9 @@ public:
   float GetAnimValue(nsSVGSVGElement* aCtx) const
     { return mAnimVal / GetUnitScaleFactor(aCtx, mSpecifiedUnitType); }
 
+  bool HasBaseVal() const {
+    return mIsBaseSet;
+  }
   // Returns true if the animated value of this length has been explicitly
   // set (either by animation, or by taking on the base value which has been
   // explicitly set by markup or a DOM call), false otherwise.
@@ -112,10 +117,8 @@ public:
   
   nsresult ToDOMAnimatedLength(nsIDOMSVGAnimatedLength **aResult,
                                nsSVGElement* aSVGElement);
-#ifdef MOZ_SMIL
   // Returns a new nsISMILAttr object that the caller must delete
   nsISMILAttr* ToSMILAttr(nsSVGElement* aSVGElement);
-#endif // MOZ_SMIL
 
 private:
   
@@ -223,18 +226,14 @@ private:
     // need to flush any resample requests to reflect these modifications.
     NS_IMETHOD GetUnitType(PRUint16* aResult)
     {
-#ifdef MOZ_SMIL
       mSVGElement->FlushAnimations();
-#endif
       *aResult = mVal->mSpecifiedUnitType;
       return NS_OK;
     }
 
     NS_IMETHOD GetValue(float* aResult)
     {
-#ifdef MOZ_SMIL
       mSVGElement->FlushAnimations();
-#endif
       *aResult = mVal->GetAnimValue(mSVGElement);
       return NS_OK;
     }
@@ -243,9 +242,7 @@ private:
 
     NS_IMETHOD GetValueInSpecifiedUnits(float* aResult)
     {
-#ifdef MOZ_SMIL
       mSVGElement->FlushAnimations();
-#endif
       *aResult = mVal->mAnimVal;
       return NS_OK;
     }
@@ -256,9 +253,7 @@ private:
       { return NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR; }
     NS_IMETHOD GetValueAsString(nsAString& aValue)
     {
-#ifdef MOZ_SMIL
       mSVGElement->FlushAnimations();
-#endif
       mVal->GetAnimValueString(aValue);
       return NS_OK;
     }
@@ -291,7 +286,6 @@ public:
       { return mVal->ToDOMAnimVal(aAnimVal, mSVGElement); }
   };
 
-#ifdef MOZ_SMIL
   struct SMILLength : public nsISMILAttr
   {
   public:
@@ -313,7 +307,6 @@ public:
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);
   };
-#endif // MOZ_SMIL
 };
 
 #endif //  __NS_SVGLENGTH2_H__

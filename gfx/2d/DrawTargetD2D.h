@@ -46,10 +46,17 @@
 #include <vector>
 #include <sstream>
 
+#ifdef _MSC_VER
+#include <hash_set>
+#else
+#include <unordered_set>
+#endif
+
 namespace mozilla {
 namespace gfx {
 
 class SourceSurfaceD2DTarget;
+class SourceSurfaceD2D;
 class GradientStopsD2D;
 
 struct PrivateD3D10DataD2D
@@ -111,7 +118,11 @@ public:
                           const GlyphBuffer &aBuffer,
                           const Pattern &aPattern,
                           const DrawOptions &aOptions = DrawOptions());
+  virtual void Mask(const Pattern &aSource,
+                    const Pattern &aMask,
+                    const DrawOptions &aOptions = DrawOptions());
   virtual void PushClip(const Path *aPath);
+  virtual void PushClipRect(const Rect &aRect);
   virtual void PopClip();
 
   virtual TemporaryRef<SourceSurface> CreateSourceSurfaceFromData(unsigned char *aData,
@@ -128,7 +139,10 @@ public:
 
   virtual TemporaryRef<PathBuilder> CreatePathBuilder(FillRule aFillRule = FILL_WINDING) const;
 
-  virtual TemporaryRef<GradientStops> CreateGradientStops(GradientStop *aStops, uint32_t aNumStops) const;
+  virtual TemporaryRef<GradientStops>
+    CreateGradientStops(GradientStop *aStops,
+                        uint32_t aNumStops,
+                        ExtendMode aExtendMode = EXTEND_CLAMP) const;
 
   virtual void *GetNativeSurface(NativeSurfaceType aType);
 
@@ -148,12 +162,25 @@ private:
   friend class AutoSaveRestoreClippedOut;
   friend class SourceSurfaceD2DTarget;
 
+#ifdef _MSC_VER
+  typedef stdext::hash_set<DrawTargetD2D*> TargetSet;
+#else
+  typedef std::unordered_set<DrawTargetD2D*> TargetSet;
+#endif
+
   bool InitD2DRenderTarget();
   void PrepareForDrawing(ID2D1RenderTarget *aRT);
 
   // This function will mark the surface as changing, and make sure any
   // copy-on-write snapshots are notified.
   void MarkChanged();
+  void FlushTransformToRT() {
+    if (mTransformDirty) {
+      mRT->SetTransform(D2DMatrix(mTransform));
+      mTransformDirty = false;
+    }
+  }
+  void AddDependencyOnSource(SourceSurfaceD2DTarget* aSource);
 
   ID3D10BlendState *GetBlendStateForOperator(CompositionOp aOperator);
   ID2D1RenderTarget *GetRTForOperation(CompositionOp aOperator, const Pattern &aPattern);
@@ -166,6 +193,11 @@ private:
   TemporaryRef<ID2D1Brush> CreateBrushForPattern(const Pattern &aPattern, Float aAlpha = 1.0f);
 
   TemporaryRef<ID3D10Texture1D> CreateGradientTexture(const GradientStopsD2D *aStops);
+
+  // This creates a partially uploaded bitmap for a SourceSurfaceD2D that is
+  // too big to fit in a bitmap. It adjusts the passed Matrix to accomodate the
+  // partial upload.
+  TemporaryRef<ID2D1Bitmap> CreatePartialBitmapForSurface(SourceSurfaceD2D *aSurface, Matrix &aMatrix);
 
   void SetupEffectForRadialGradient(const RadialGradientPattern *aPattern);
 
@@ -194,11 +226,13 @@ private:
   };
   std::vector<PushedClip> mPushedClips;
   
-  // List of Snapshots of this surface, these need to be told when this
-  // surface is modified. Possibly vector is not the best choice here.
-  std::vector<SourceSurfaceD2DTarget*> mSnapshots;
+  // The latest snapshot of this surface. This needs to be told when this
+  // target is modified. We keep it alive as a cache.
+  RefPtr<SourceSurfaceD2DTarget> mSnapshot;
   // A list of targets we need to flush when we're modified.
-  std::vector<RefPtr<DrawTargetD2D>> mDependentTargets;
+  TargetSet mDependentTargets;
+  // A list of targets which have this object in their mDependentTargets set
+  TargetSet mDependingOnTargets;
 
   // True of the current clip stack is pushed to the main RT.
   bool mClipsArePushed;

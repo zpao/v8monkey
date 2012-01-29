@@ -37,13 +37,14 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "AccIterator.h"
-#include "States.h"
 #include "nsAccCache.h"
 #include "nsAccessibilityService.h"
 #include "nsAccTreeWalker.h"
 #include "nsAccUtils.h"
 #include "nsRootAccessible.h"
 #include "nsTextEquivUtils.h"
+#include "Role.h"
+#include "States.h"
 
 #include "nsIMutableArray.h"
 #include "nsICommandManager.h"
@@ -219,7 +220,7 @@ nsDocAccessible::GetName(nsAString& aName)
 }
 
 // nsAccessible public method
-PRUint32
+role
 nsDocAccessible::NativeRole()
 {
   nsCOMPtr<nsIDocShellTreeItem> docShellTreeItem =
@@ -232,23 +233,23 @@ nsDocAccessible::NativeRole()
     if (sameTypeRoot == docShellTreeItem) {
       // Root of content or chrome tree
       if (itemType == nsIDocShellTreeItem::typeChrome)
-        return nsIAccessibleRole::ROLE_CHROME_WINDOW;
+        return roles::CHROME_WINDOW;
 
       if (itemType == nsIDocShellTreeItem::typeContent) {
 #ifdef MOZ_XUL
         nsCOMPtr<nsIXULDocument> xulDoc(do_QueryInterface(mDocument));
         if (xulDoc)
-          return nsIAccessibleRole::ROLE_APPLICATION;
+          return roles::APPLICATION;
 #endif
-        return nsIAccessibleRole::ROLE_DOCUMENT;
+        return roles::DOCUMENT;
       }
     }
     else if (itemType == nsIDocShellTreeItem::typeContent) {
-      return nsIAccessibleRole::ROLE_DOCUMENT;
+      return roles::DOCUMENT;
     }
   }
 
-  return nsIAccessibleRole::ROLE_PANE; // Fall back;
+  return roles::PANE; // Fall back;
 }
 
 // nsAccessible public method
@@ -311,7 +312,8 @@ nsDocAccessible::NativeState()
     state |= states::BUSY;
 
   nsIFrame* frame = GetFrame();
-  if (!frame || !nsCoreUtils::CheckVisibilityInParentChain(frame)) {
+  if (!frame ||
+      !frame->IsVisibleConsideringAncestors(nsIFrame::VISIBILITY_CROSS_CHROME_CONTENT_BOUNDARY)) {
     state |= states::INVISIBLE | states::OFFSCREEN;
   }
 
@@ -1041,32 +1043,23 @@ nsDocAccessible::AttributeChangedImpl(nsIContent* aContent, PRInt32 aNameSpaceID
     return;
   }
 
-  if (aAttribute == nsGkAtoms::selected ||
+  // ARIA or XUL selection
+  if ((aContent->IsXUL() && aAttribute == nsGkAtoms::selected) ||
       aAttribute == nsGkAtoms::aria_selected) {
-    // ARIA or XUL selection
+    nsAccessible* item = GetAccessible(aContent);
+    nsAccessible* widget =
+      nsAccUtils::GetSelectableContainer(item, item->State());
+    if (widget) {
+      AccSelChangeEvent::SelChangeType selChangeType =
+        aContent->AttrValueIs(aNameSpaceID, aAttribute,
+                              nsGkAtoms::_true, eCaseMatters) ?
+          AccSelChangeEvent::eSelectionAdd : AccSelChangeEvent::eSelectionRemove;
 
-    nsAccessible *multiSelect =
-      nsAccUtils::GetMultiSelectableContainer(aContent);
-    // XXX: Multi selects are handled here only (bug 414302).
-    if (multiSelect) {
-      // Need to find the right event to use here, SELECTION_WITHIN would
-      // seem right but we had started using it for something else
-      FireDelayedAccessibleEvent(nsIAccessibleEvent::EVENT_SELECTION_WITHIN,
-                                 multiSelect->GetNode(),
-                                 AccEvent::eAllowDupes);
-
-      static nsIContent::AttrValuesArray strings[] =
-        {&nsGkAtoms::_empty, &nsGkAtoms::_false, nsnull};
-      if (aContent->FindAttrValueIn(kNameSpaceID_None, aAttribute,
-                                    strings, eCaseMatters) >= 0) {
-        FireDelayedAccessibleEvent(nsIAccessibleEvent::EVENT_SELECTION_REMOVE,
-                                   aContent);
-        return;
-      }
-
-      FireDelayedAccessibleEvent(nsIAccessibleEvent::EVENT_SELECTION_ADD,
-                                 aContent);
+      nsRefPtr<AccEvent> event =
+        new AccSelChangeEvent(widget, item, selChangeType);
+      FireDelayedAccessibleEvent(event);
     }
+    return;
   }
 
   if (aAttribute == nsGkAtoms::contenteditable) {
@@ -1208,7 +1201,18 @@ void nsDocAccessible::ContentStateChanged(nsIDocument* aDocument,
                                           nsEventStates aStateMask)
 {
   if (aStateMask.HasState(NS_EVENT_STATE_CHECKED)) {
-    nsHTMLSelectOptionAccessible::SelectionChangedIfOption(aContent);
+    nsAccessible* item = GetAccessible(aContent);
+    if (item) {
+      nsAccessible* widget = item->ContainerWidget();
+      if (widget && widget->IsSelect()) {
+        AccSelChangeEvent::SelChangeType selChangeType =
+          aContent->AsElement()->State().HasState(NS_EVENT_STATE_CHECKED) ?
+            AccSelChangeEvent::eSelectionAdd : AccSelChangeEvent::eSelectionRemove;
+        nsRefPtr<AccEvent> event = new AccSelChangeEvent(widget, item,
+                                                         selChangeType);
+        FireDelayedAccessibleEvent(event);
+      }
+    }
   }
 
   if (aStateMask.HasState(NS_EVENT_STATE_INVALID)) {
@@ -1275,13 +1279,18 @@ void*
 nsDocAccessible::GetNativeWindow() const
 {
   nsCOMPtr<nsIPresShell> shell(do_QueryReferent(mWeakShell));
+  if (!shell)
+    return nsnull;
+
   nsIViewManager* vm = shell->GetViewManager();
-  if (vm) {
-    nsCOMPtr<nsIWidget> widget;
-    vm->GetRootWidget(getter_AddRefs(widget));
-    if (widget)
-      return widget->GetNativeData(NS_NATIVE_WINDOW);
-  }
+  if (!vm)
+    return nsnull;
+
+  nsCOMPtr<nsIWidget> widget;
+  vm->GetRootWidget(getter_AddRefs(widget));
+  if (widget)
+    return widget->GetNativeData(NS_NATIVE_WINDOW);
+
   return nsnull;
 }
 
@@ -1562,14 +1571,14 @@ nsDocAccessible::AddDependentIDsFor(nsAccessible* aRelProvider,
 
     if (relAttr == nsGkAtoms::_for) {
       if (!aRelProvider->GetContent()->IsHTML() ||
-          aRelProvider->GetContent()->Tag() != nsGkAtoms::label &&
-          aRelProvider->GetContent()->Tag() != nsGkAtoms::output)
+          (aRelProvider->GetContent()->Tag() != nsGkAtoms::label &&
+           aRelProvider->GetContent()->Tag() != nsGkAtoms::output))
         continue;
 
     } else if (relAttr == nsGkAtoms::control) {
       if (!aRelProvider->GetContent()->IsXUL() ||
-          aRelProvider->GetContent()->Tag() != nsGkAtoms::label &&
-          aRelProvider->GetContent()->Tag() != nsGkAtoms::description)
+          (aRelProvider->GetContent()->Tag() != nsGkAtoms::label &&
+           aRelProvider->GetContent()->Tag() != nsGkAtoms::description))
         continue;
     }
 
@@ -1834,7 +1843,7 @@ nsDocAccessible::UpdateTree(nsAccessible* aContainer, nsIContent* aChildNode,
     // children of alert accessible to avoid this.
     nsAccessible* ancestor = aContainer;
     while (ancestor) {
-      if (ancestor->ARIARole() == nsIAccessibleRole::ROLE_ALERT) {
+      if (ancestor->ARIARole() == roles::ALERT) {
         FireDelayedAccessibleEvent(nsIAccessibleEvent::EVENT_ALERT,
                                    ancestor->GetNode());
         break;
@@ -1848,11 +1857,7 @@ nsDocAccessible::UpdateTree(nsAccessible* aContainer, nsIContent* aChildNode,
     }
   }
 
-  // Fire value change event.
-  if (aContainer->Role() == nsIAccessibleRole::ROLE_ENTRY) {
-    FireDelayedAccessibleEvent(nsIAccessibleEvent::EVENT_VALUE_CHANGE,
-                               aContainer->GetNode());
-  }
+  MaybeNotifyOfValueChange(aContainer);
 
   // Fire reorder event so the MSAA clients know the children have changed. Also
   // the event is used internally by MSAA layer.
@@ -1883,7 +1888,7 @@ nsDocAccessible::UpdateTreeInternal(nsAccessible* aChild, bool aIsInsert)
     // the changes before our processing and we may miss some menupopup
     // events. Now we just want to be consistent in content insertion/removal
     // handling.
-    if (aChild->ARIARole() == nsIAccessibleRole::ROLE_MENUPOPUP) {
+    if (aChild->ARIARole() == roles::MENUPOPUP) {
       nsRefPtr<AccEvent> event =
         new AccEvent(nsIAccessibleEvent::EVENT_MENUPOPUP_END, aChild);
 
@@ -1903,13 +1908,13 @@ nsDocAccessible::UpdateTreeInternal(nsAccessible* aChild, bool aIsInsert)
     FireDelayedAccessibleEvent(event);
 
   if (aIsInsert) {
-    PRUint32 ariaRole = aChild->ARIARole();
-    if (ariaRole == nsIAccessibleRole::ROLE_MENUPOPUP) {
+    roles::Role ariaRole = aChild->ARIARole();
+    if (ariaRole == roles::MENUPOPUP) {
       // Fire EVENT_MENUPOPUP_START if ARIA menu appears.
       FireDelayedAccessibleEvent(nsIAccessibleEvent::EVENT_MENUPOPUP_START,
                                  node, AccEvent::eRemoveDupes);
 
-    } else if (ariaRole == nsIAccessibleRole::ROLE_ALERT) {
+    } else if (ariaRole == roles::ALERT) {
       // Fire EVENT_ALERT if ARIA alert appears.
       updateFlags = eAlertAccessible;
       FireDelayedAccessibleEvent(nsIAccessibleEvent::EVENT_ALERT, node,

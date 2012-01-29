@@ -58,7 +58,7 @@
 #include "nsComputedDOMStyle.h"
 #include "nsEventStateManager.h"
 #include "nsIAtom.h"
-#include "nsIRange.h"
+#include "nsRange.h"
 #include "mozilla/dom/Element.h"
 
 
@@ -244,6 +244,24 @@ inDOMUtils::GetRuleLine(nsIDOMCSSStyleRule *aRule, PRUint32 *_retval)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+inDOMUtils::IsInheritedProperty(const nsAString &aPropertyName, bool *_retval)
+{
+  nsCSSProperty prop = nsCSSProps::LookupProperty(aPropertyName);
+  if (prop == eCSSProperty_UNKNOWN) {
+    *_retval = false;
+    return NS_OK;
+  }
+
+  if (nsCSSProps::IsShorthand(prop)) {
+    prop = nsCSSProps::SubpropertyEntryFor(prop)[0];
+  }
+
+  nsStyleStructID sid = nsCSSProps::kSIDTable[prop];
+  *_retval = !nsCachedStyleData::IsReset(sid);
+  return NS_OK;
+}
+
 NS_IMETHODIMP 
 inDOMUtils::GetBindingURLs(nsIDOMElement *aElement, nsIArray **_retval)
 {
@@ -337,8 +355,5 @@ NS_IMETHODIMP
 inDOMUtils::GetUsedFontFaces(nsIDOMRange* aRange,
                              nsIDOMFontFaceList** aFontFaceList)
 {
-  nsCOMPtr<nsIRange> range = do_QueryInterface(aRange);
-  NS_ENSURE_TRUE(range, NS_ERROR_UNEXPECTED);
-
-  return range->GetUsedFontFaces(aFontFaceList);
+  return static_cast<nsRange*>(aRange)->GetUsedFontFaces(aFontFaceList);
 }

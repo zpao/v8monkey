@@ -1005,8 +1005,9 @@ function Engine(aLocation, aSourceDataType, aIsReadOnly) {
 }
 
 Engine.prototype = {
-  // The engine's alias.
-  _alias: null,
+  // The engine's alias (can be null). Initialized to |undefined| to indicate
+  // not-initialized-from-engineMetadataService.
+  _alias: undefined,
   // The data describing the engine. Is either an array of bytes, for Sherlock
   // files, or an XML document element, for XML plugins.
   _data: null,
@@ -2201,7 +2202,7 @@ Engine.prototype = {
 
   // nsISearchEngine
   get alias() {
-    if (this._alias === null)
+    if (this._alias === undefined)
       this._alias = engineMetadataService.getAttr(this, "alias");
 
     return this._alias;
@@ -3433,6 +3434,7 @@ SearchService.prototype = {
           this._batchTimer.cancel();
           this._buildCache();
         }
+        engineMetadataService.closeDB();
         break;
     }
   },
@@ -3615,6 +3617,15 @@ var engineMetadataService = {
     pp.name = name;
     this.mDeleteData.executeStep();
     this.mDeleteData.reset();
+  },
+
+  closeDB: function epsCloseDB() {
+    ["mInsertData", "mDeleteData", "mGetData"].forEach(function(aStmt) {
+      if (Object.getOwnPropertyDescriptor(this, aStmt).value !== undefined)
+        this[aStmt].finalize();
+    }, this);
+    if (Object.getOwnPropertyDescriptor(this, "mDB").value !== undefined)
+      this.mDB.close();
   }
 }
 

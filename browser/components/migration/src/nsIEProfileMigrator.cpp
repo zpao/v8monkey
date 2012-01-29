@@ -65,7 +65,6 @@
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
 #include "nsISimpleEnumerator.h"
-#include "nsISupportsArray.h"
 #include "nsIProfileMigrator.h"
 #include "nsIBrowserProfileMigrator.h"
 #include "nsIObserverService.h"
@@ -99,6 +98,8 @@
 #include "nsUnicharUtils.h"
 #include "nsIWindowsRegKey.h"
 #include "nsISupportsPrimitives.h"
+
+#define kNotFound -1
 
 #define TRIDENTPROFILE_BUNDLE       "chrome://browser/locale/migration/migration.properties"
 
@@ -486,7 +487,7 @@ nsIEProfileMigrator::GetSourceHasMultipleProfiles(bool* aResult)
 }
 
 NS_IMETHODIMP
-nsIEProfileMigrator::GetSourceProfiles(nsISupportsArray** aResult)
+nsIEProfileMigrator::GetSourceProfiles(nsIArray** aResult)
 {
   *aResult = nsnull;
   return NS_OK;
@@ -603,9 +604,13 @@ nsIEProfileMigrator::TestForIE7()
 
   iePath = destination; 
 
+  // Check if the path is enclosed in quotation marks.
   if (StringBeginsWith(iePath, NS_LITERAL_STRING("\""))) {
     iePath.Cut(0,1);
-    PRUint32 index = iePath.FindChar('\"', 0);
+    PRInt32 index = iePath.FindChar('\"', 0);
+
+    // After removing the opening quoation mark,
+    // remove the closing one and everything after it.
     if (index > 0)
       iePath.Cut(index,iePath.Length());
   }
@@ -622,8 +627,8 @@ nsIEProfileMigrator::TestForIE7()
    return false;
 
   if (ieVersion.Length() > 2) {
-    PRUint32 index = ieVersion.FindChar('.', 0);
-    if (index < 0)
+    PRInt32 index = ieVersion.FindChar('.', 0);
+    if (index == kNotFound)
       return false;
     ieVersion.Cut(index, ieVersion.Length());
     PRInt32 ver = wcstol(ieVersion.get(), nsnull, 0);

@@ -36,6 +36,7 @@
 
 # Required Plugins:
 # AppAssocReg http://nsis.sourceforge.net/Application_Association_Registration_plug-in
+# CityHash    http://mxr.mozilla.org/mozilla-central/source/other-licenses/nsis/Contrib/CityHash
 # ShellLink   http://nsis.sourceforge.net/ShellLink_plug-in
 # UAC         http://nsis.sourceforge.net/UAC_plug-in
 
@@ -60,6 +61,7 @@ RequestExecutionLevel user
 !define NO_LOG
 
 Var TmpVal
+Var MaintCertKey
 
 ; Other included files may depend upon these includes!
 ; The following includes are provided by NSIS.
@@ -92,8 +94,10 @@ VIAddVersionKey "OriginalFilename" "helper.exe"
 !insertmacro ElevateUAC
 !insertmacro GetLongPath
 !insertmacro GetPathFromString
+!insertmacro InitHashAppModelId
 !insertmacro IsHandlerForInstallDir
 !insertmacro IsPinnedToTaskBar
+!insertmacro IsUserAdmin
 !insertmacro LogDesktopShortcut
 !insertmacro LogQuickLaunchShortcut
 !insertmacro LogStartMenuShortcut
@@ -117,6 +121,7 @@ VIAddVersionKey "OriginalFilename" "helper.exe"
 !insertmacro un.DeleteShortcuts
 !insertmacro un.GetLongPath
 !insertmacro un.GetSecondInstallPath
+!insertmacro un.InitHashAppModelId
 !insertmacro un.ManualCloseAppPrompt
 !insertmacro un.ParseUninstallLog
 !insertmacro un.RegCleanAppHandler
@@ -229,13 +234,23 @@ Section "Uninstall"
     RmDir "$APPDATA\Mozilla"
   ${EndIf}
 
+  ; setup the application model id registration value
+  ${un.InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+
   SetShellVarContext current  ; Set SHCTX to HKCU
   ${un.RegCleanMain} "Software\Mozilla"
   ${un.RegCleanUninstall}
   ${un.DeleteShortcuts}
 
   ; Unregister resources associated with Win7 taskbar jump lists.
-  ApplicationID::UninstallJumpLists "${AppUserModelID}"
+  ${If} ${AtLeastWin7}
+  ${AndIf} "$AppUserModelID" != ""
+    ApplicationID::UninstallJumpLists "$AppUserModelID"
+  ${EndIf}
+
+  ; Remove any app model id's stored in the registry for this install path
+  DeleteRegValue HKCU "Software\Mozilla\${AppName}\TaskBarIDs" "$INSTDIR"
+  DeleteRegValue HKLM "Software\Mozilla\${AppName}\TaskBarIDs" "$INSTDIR"
 
   ClearErrors
   WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" "Write Test"
@@ -367,6 +382,21 @@ Section "Uninstall"
   ; removed and other ugly things will happen like recreation of the app's
   ; clients registry key by the OS under some conditions.
   System::Call "shell32::SHChangeNotify(i, i, i, i) v (0x08000000, 0, 0, 0)"
+
+!ifdef MOZ_MAINTENANCE_SERVICE
+  ; Get the path the allowed cert is at and remove it
+  ; Keep this block of code last since it modfies the reg view
+  ServicesHelper::PathToUniqueRegistryPath "$INSTDIR"
+  Pop $MaintCertKey
+  ${If} $MaintCertKey != ""
+    ; We always use the 64bit registry for certs
+    ; This call is ignored on 32-bit systems.
+    SetRegView 64
+    DeleteRegKey HKLM "$MaintCertKey\"
+    SetRegView lastused
+  ${EndIf}
+!endif
+
 SectionEnd
 
 ################################################################################
@@ -577,6 +607,10 @@ FunctionEnd
 # Initialization Functions
 
 Function .onInit
+  ; We need this set up for most of the helper.exe operations.
+  !ifdef AppName
+  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+  !endif
   ${UninstallOnInitCommon}
 FunctionEnd
 

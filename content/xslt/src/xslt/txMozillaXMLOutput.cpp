@@ -63,6 +63,7 @@
 #include "nsIStyleSheetLinkingElement.h"
 #include "nsIDocumentTransformer.h"
 #include "mozilla/css/Loader.h"
+#include "mozilla/dom/Element.h"
 #include "nsICharsetAlias.h"
 #include "nsIHTMLContentSink.h"
 #include "nsContentUtils.h"
@@ -303,9 +304,7 @@ txMozillaXMLOutput::endElement()
     NS_ASSERTION(mCurrentNode->IsElement(), "borked mCurrentNode");
     NS_ENSURE_TRUE(mCurrentNode->IsElement(), NS_ERROR_UNEXPECTED);
 
-    nsIContent* element = static_cast<nsIContent*>
-                                     (static_cast<nsINode*>
-                                                 (mCurrentNode));
+    Element* element = mCurrentNode->AsElement();
 
     // Handle html-elements
     if (!mNoFixup) {
@@ -318,30 +317,36 @@ txMozillaXMLOutput::endElement()
         PRInt32 ns = element->GetNameSpaceID();
         nsIAtom* localName = element->Tag();
 
-        if ((ns == kNameSpaceID_XHTML && (localName == nsGkAtoms::script ||
-                                          localName == nsGkAtoms::title ||
+        if ((ns == kNameSpaceID_XHTML && (localName == nsGkAtoms::title ||
                                           localName == nsGkAtoms::object ||
                                           localName == nsGkAtoms::applet ||
                                           localName == nsGkAtoms::select ||
                                           localName == nsGkAtoms::textarea)) ||
-            (ns == kNameSpaceID_SVG && (localName == nsGkAtoms::script ||
-                                        localName == nsGkAtoms::title))) {
-
-            rv = element->DoneAddingChildren(true);
-
+            (ns == kNameSpaceID_SVG && localName == nsGkAtoms::title)) {
+            element->DoneAddingChildren(true);
+        } else if ((ns == kNameSpaceID_XHTML || ns == kNameSpaceID_SVG) &&
+                   localName == nsGkAtoms::script) {
+            nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(element);
+            NS_ABORT_IF_FALSE(sele, "script elements need to implement nsIScriptElement");
+            bool block = sele->AttemptToExecute();
             // If the act of insertion evaluated the script, we're fine.
             // Else, add this script element to the array of loading scripts.
-            if (rv == NS_ERROR_HTMLPARSER_BLOCK) {
-                nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(element);
+            if (block) {
                 rv = mNotifier->AddScriptElement(sele);
                 NS_ENSURE_SUCCESS(rv, rv);
             }
         } else if (ns == kNameSpaceID_XHTML &&
                    (localName == nsGkAtoms::input ||
                     localName == nsGkAtoms::button ||
-                    localName == nsGkAtoms::menuitem)) {
+                    localName == nsGkAtoms::menuitem
+#ifdef MOZ_MEDIA
+                     ||
+                    localName == nsGkAtoms::audio ||
+                    localName == nsGkAtoms::video
+#endif
+                  )) {
           element->DoneCreatingElement();
-        }
+        }   
     }
 
     if (mCreatingNewDocument) {
@@ -556,12 +561,12 @@ txMozillaXMLOutput::startElementInternal(nsIAtom* aPrefix,
     mOpenedElementIsHTML = false;
 
     // Create the element
-    nsCOMPtr<nsINodeInfo> ni;
-    ni = mNodeInfoManager->GetNodeInfo(aLocalName, aPrefix, aNsID,
-                                       nsIDOMNode::ELEMENT_NODE);
+    nsCOMPtr<nsINodeInfo> ni =
+        mNodeInfoManager->GetNodeInfo(aLocalName, aPrefix, aNsID,
+                                      nsIDOMNode::ELEMENT_NODE);
     NS_ENSURE_TRUE(ni, NS_ERROR_OUT_OF_MEMORY);
 
-    NS_NewElement(getter_AddRefs(mOpenedElement), aNsID, ni.forget(),
+    NS_NewElement(getter_AddRefs(mOpenedElement), ni.forget(),
                   mCreatingNewDocument ?
                   FROM_PARSER_XSLT : FROM_PARSER_FRAGMENT);
 
@@ -658,7 +663,7 @@ txMozillaXMLOutput::createTxWrapper()
     nsCOMPtr<nsIContent> wrapper;
     rv = mDocument->CreateElem(nsDependentAtomString(nsGkAtoms::result),
                                nsGkAtoms::transformiix, namespaceID,
-                               false, getter_AddRefs(wrapper));
+                               getter_AddRefs(wrapper));
     NS_ENSURE_SUCCESS(rv, rv);
 
     PRUint32 i, j, childCount = mDocument->GetChildCount();
@@ -935,14 +940,12 @@ txMozillaXMLOutput::createResultDocument(const nsSubstring& aName, PRInt32 aNsID
             }
 
             // Indicate that there is no internal subset (not just an empty one)
-            nsAutoString voidString;
-            voidString.SetIsVoid(true);
             rv = NS_NewDOMDocumentType(getter_AddRefs(documentType),
                                        mNodeInfoManager,
                                        doctypeName,
                                        mOutputFormat.mPublicId,
                                        mOutputFormat.mSystemId,
-                                       voidString);
+                                       NullString());
             NS_ENSURE_SUCCESS(rv, rv);
 
             nsCOMPtr<nsIContent> docType = do_QueryInterface(documentType);

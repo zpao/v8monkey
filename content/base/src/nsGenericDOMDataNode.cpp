@@ -62,7 +62,7 @@
 #include "nsBindingManager.h"
 #include "nsCCUncollectableMarker.h"
 #include "mozAutoDocUpdate.h"
-#include "nsPLDOMEvent.h"
+#include "nsAsyncDOMEvent.h"
 
 #include "pldhash.h"
 #include "prprf.h"
@@ -387,7 +387,7 @@ nsGenericDOMDataNode::SetTextInternal(PRUint32 aOffset, PRUint32 aCount,
       }
 
       mozAutoSubtreeModified subtree(OwnerDoc(), this);
-      (new nsPLDOMEvent(this, mutation))->RunDOMEventWhenSafe();
+      (new nsAsyncDOMEvent(this, mutation))->RunDOMEventWhenSafe();
     }
   }
 
@@ -928,7 +928,6 @@ nsGenericDOMDataNode::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
   return NS_OK;
 }
 
-#ifdef MOZ_SMIL
 nsIDOMCSSStyleDeclaration*
 nsGenericDOMDataNode::GetSMILOverrideStyle()
 {
@@ -948,7 +947,6 @@ nsGenericDOMDataNode::SetSMILOverrideStyleRule(css::StyleRule* aStyleRule,
   NS_NOTREACHED("How come we're setting SMILOverrideStyle on a non-element?");
   return NS_ERROR_UNEXPECTED;
 }
-#endif // MOZ_SMIL
 
 css::StyleRule*
 nsGenericDOMDataNode::GetInlineStyleRule()

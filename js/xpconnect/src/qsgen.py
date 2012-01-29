@@ -125,8 +125,6 @@ import sys
 
 # === Preliminaries
 
-MAX_TRACEABLE_NATIVE_ARGS = 8
-
 # --makedepend-output support.
 make_dependencies = []
 make_targets = []
@@ -200,33 +198,17 @@ def removeStubMember(memberId, member):
                         % (member.name, member.iface.name))
     member.iface.stubMembers.remove(member)
 
-def addStubMember(memberId, member, traceable):
-    mayTrace = False
+def addStubMember(memberId, member):
     if member.kind == 'method' and not member.implicit_jscontext and not isVariantType(member.realtype):
-        # This code MUST match writeTraceableQuickStub
-        haveCallee = memberNeedsCallee(member)
-        # Traceable natives support up to MAX_TRACEABLE_NATIVE_ARGS
-        # total arguments.  We always have two prefix arguments
-        # (CONTEXT and THIS) and when haveCallee is true also have
-        # CALLEE.  We can only output a traceable native if our number
-        # of arguments is no bigger than can be handled.
-        prefixArgCount = 2 + int(haveCallee);
-        mayTrace = (len(member.params) <= MAX_TRACEABLE_NATIVE_ARGS - prefixArgCount)
-
         for param in member.params:
             for attrname, value in vars(param).items():
                 if value is True:
-                    # Let the tracer call the regular fastnative method if there
-                    # are optional arguments.
                     if attrname == 'optional':
-                        mayTrace = False
                         continue
 
                     raise UserError("Method %s, parameter %s: "
                                     "unrecognized property %r"
                                     % (memberId, param.name, attrname))
-
-    member.traceable = traceable and mayTrace
 
     # Add this member to the list.
     member.iface.stubMembers.append(member)
@@ -256,7 +238,7 @@ def checkStubMember(member, isCustom):
     # Check for unknown properties.
     for attrname, value in vars(member).items():
         if value is True and attrname not in ('readonly','optional_argc',
-                                              'traceable','implicit_jscontext',
+                                              'implicit_jscontext',
                                               'getter', 'stringifier'):
             raise UserError("%s %s: unrecognized property %r"
                             % (member.kind.capitalize(), memberId,
@@ -288,7 +270,7 @@ class Configuration:
         self.customReturnInterfaces = config.get('customReturnInterfaces', [])
         self.customMethodCalls = config.get('customMethodCalls', {})
 
-def readConfigFile(filename, includePath, cachedir, traceable):
+def readConfigFile(filename, includePath, cachedir):
     # Read the config file.
     conf = Configuration(filename, includePath)
 
@@ -339,10 +321,8 @@ def readConfigFile(filename, includePath, cachedir, traceable):
             for member in iface.members:
                 if member.kind in ('method', 'attribute') and not member.noscript:
                     cmc = conf.customMethodCalls.get(interfaceName + "_" + header.methodNativeName(member), None)
-                    mayTrace = cmc is None or cmc.get('traceable', True)
 
-                    addStubMember(iface.name + '.' + member.name, member,
-                                  traceable and mayTrace)
+                    addStubMember(iface.name + '.' + member.name, member)
 
                     if member.iface not in stubbedInterfaces:
                         stubbedInterfaces.append(member.iface)
@@ -360,9 +340,8 @@ def readConfigFile(filename, includePath, cachedir, traceable):
                                     % memberId)
 
                 cmc = conf.customMethodCalls.get(interfaceName + "_" + header.methodNativeName(member), None)
-                mayTrace = cmc is None or cmc.get('traceable', True)
 
-                addStubMember(memberId, member, traceable and mayTrace)
+                addStubMember(memberId, member)
                 if member.iface not in stubbedInterfaces:
                     stubbedInterfaces.append(member.iface)
             else:
@@ -408,6 +387,38 @@ def writeHeaderFile(filename, name):
 
 # === Generating the source file
 
+class StringTable:
+    def __init__(self):
+        self.current_index = 0;
+        self.table = {}
+        self.reverse_table = {}
+
+    def c_strlen(self, string):
+        return len(string) + 1
+
+    def stringIndex(self, string):
+        if string in self.table:
+            return self.table[string]
+        else:
+            result = self.current_index
+            self.table[string] = result
+            self.current_index += self.c_strlen(string)
+            return result
+
+    def writeDefinition(self, f, name):
+        entries = self.table.items()
+        entries.sort(key=lambda x:x[1])
+        # Avoid null-in-string warnings with GCC and potentially
+        # overlong string constants; write everything out the long way.
+        def explodeToCharArray(string):
+            return ", ".join(map(lambda x:"'%s'" % x, string))
+        f.write("static const char %s[] = {\n" % name)
+        for (string, offset) in entries[:-1]:
+            f.write("  /* %5d */ %s, '\\0',\n"
+                    % (offset, explodeToCharArray(string)))
+        f.write("  /* %5d */ %s, '\\0' };\n\n"
+                % (entries[-1][1], explodeToCharArray(entries[-1][0])))
+
 def substitute(template, vals):
     """ Simple replacement for string.Template, which isn't in Python 2.3. """
     def replacement(match):
@@ -417,30 +428,30 @@ def substitute(template, vals):
 # From JSData2Native.
 argumentUnboxingTemplates = {
     'octet':
-        "    uint32 ${name}_u32;\n"
+        "    uint32_t ${name}_u32;\n"
         "    if (!JS_ValueToECMAUint32(cx, ${argVal}, &${name}_u32))\n"
         "        return JS_FALSE;\n"
-        "    uint8 ${name} = (uint8) ${name}_u32;\n",
+        "    uint8_t ${name} = (uint8_t) ${name}_u32;\n",
 
     'short':
-        "    int32 ${name}_i32;\n"
+        "    int32_t ${name}_i32;\n"
         "    if (!JS_ValueToECMAInt32(cx, ${argVal}, &${name}_i32))\n"
         "        return JS_FALSE;\n"
-        "    int16 ${name} = (int16) ${name}_i32;\n",
+        "    int16_t ${name} = (int16_t) ${name}_i32;\n",
 
     'unsigned short':
-        "    uint32 ${name}_u32;\n"
+        "    uint32_t ${name}_u32;\n"
         "    if (!JS_ValueToECMAUint32(cx, ${argVal}, &${name}_u32))\n"
         "        return JS_FALSE;\n"
-        "    uint16 ${name} = (uint16) ${name}_u32;\n",
+        "    uint16_t ${name} = (uint16_t) ${name}_u32;\n",
 
     'long':
-        "    int32 ${name};\n"
+        "    int32_t ${name};\n"
         "    if (!JS_ValueToECMAInt32(cx, ${argVal}, &${name}))\n"
         "        return JS_FALSE;\n",
 
     'unsigned long':
-        "    uint32 ${name};\n"
+        "    uint32_t ${name};\n"
         "    if (!JS_ValueToECMAUint32(cx, ${argVal}, &${name}))\n"
         "        return JS_FALSE;\n",
 
@@ -488,7 +499,7 @@ argumentUnboxingTemplates = {
         "    char *${name} = ${name}_bytes.ptr();\n",
 
     'wstring':
-        "    PRUnichar *${name};\n"
+        "    const PRUnichar *${name};\n"
         "    if (!xpc_qsJsvalToWcharStr(cx, ${argVal}, ${argPtr}, &${name}))\n"
         "        return JS_FALSE;\n",
 
@@ -652,25 +663,27 @@ resultConvTemplates = {
             "    return JS_TRUE;\n",
 
     'octet':
-        "    ${jsvalRef} = INT_TO_JSVAL((int32) result);\n"
+        "    ${jsvalRef} = INT_TO_JSVAL((int32_t) result);\n"
         "    return JS_TRUE;\n",
 
     'short':
-        "    ${jsvalRef} = INT_TO_JSVAL((int32) result);\n"
+        "    ${jsvalRef} = INT_TO_JSVAL((int32_t) result);\n"
         "    return JS_TRUE;\n",
 
     'long':
-        "    return xpc_qsInt32ToJsval(cx, result, ${jsvalPtr});\n",
+        "    ${jsvalRef} = INT_TO_JSVAL(result);\n"
+        "    return JS_TRUE;\n",
 
     'long long':
         "    return xpc_qsInt64ToJsval(cx, result, ${jsvalPtr});\n",
 
     'unsigned short':
-        "    ${jsvalRef} = INT_TO_JSVAL((int32) result);\n"
+        "    ${jsvalRef} = INT_TO_JSVAL((int32_t) result);\n"
         "    return JS_TRUE;\n",
 
     'unsigned long':
-        "    return xpc_qsUint32ToJsval(cx, result, ${jsvalPtr});\n",
+        "    ${jsvalRef} = UINT_TO_JSVAL(result);\n"
+        "    return JS_TRUE;\n",
 
     'unsigned long long':
         "    return xpc_qsUint64ToJsval(cx, result, ${jsvalPtr});\n",
@@ -686,10 +699,10 @@ resultConvTemplates = {
         "    return JS_TRUE;\n",
 
     '[astring]':
-        "    return xpc_qsStringToJsval(cx, result, ${jsvalPtr});\n",
+        "    return xpc::StringToJsval(cx, result, ${jsvalPtr});\n",
 
     '[domstring]':
-        "    return xpc_qsStringToJsval(cx, result, ${jsvalPtr});\n",
+        "    return xpc::StringToJsval(cx, result, ${jsvalPtr});\n",
 
     '[jsval]':
         # Here there's nothing to convert, because the result has already been
@@ -905,7 +918,7 @@ def writeQuickStub(f, customMethodCalls, member, stubName, isSetter=False):
         if isGetter:
             pthisval = 'vp'
         elif isSetter:
-            f.write("    js::AutoValueRooter tvr(cx);\n")
+            f.write("    JS::AutoValueRooter tvr(cx);\n")
             pthisval = 'tvr.jsval_addr()'
         else:
             pthisval = '&vp[1]' # as above, ok to overwrite vp[1]
@@ -1065,410 +1078,7 @@ def writeQuickStub(f, customMethodCalls, member, stubName, isSetter=False):
     if customMethodCall is not None:
         f.write(callTemplate)
 
-# Only these types can be returned (note: no strings);
-# if the type isn't one of these, then defaultTraceType is used
-traceReturnTypeMap = {
-    'void':             ("uint32 ", "UINT32", "0"),
-    'boolean':          ("JSBool ", "BOOL", "JS_FALSE"),
-    'short':            ("int32 ", "INT32", "0"),
-    'unsigned short':   ("uint32 ", "UINT32", "0"),
-    'long':             ("int32 ", "INT32", "0"),
-    'unsigned long':    ("uint32 ", "UINT32", "0"),
-    'long long':        ("jsdouble ", "DOUBLE", "0"),
-    'unsigned long long': ("jsdouble ", "DOUBLE", "0"),
-    'float':            ("jsdouble ", "DOUBLE", "0"),
-    'double':           ("jsdouble ", "DOUBLE", "0"),
-    'octet':            ("uint32 ", "UINT32", "0"),
-    '[astring]':        ("JSString *", "STRING_OR_NULL", "nsnull"),
-    '[domstring]':      ("JSString *", "STRING_OR_NULL", "nsnull"),
-    '[cstring]':        ("JSString *", "STRING_OR_NULL", "nsnull"),
-    'string':           ("JSString *", "STRING_OR_NULL", "nsnull"),
-    'wstring':          ("JSString *", "STRING_OR_NULL", "nsnull")
-    }
-
-# This list extends the above list, but includes types that
-# are valid for arguments only, namely strings.
-traceParamTypeMap = traceReturnTypeMap.copy()
-traceParamTypeMap.update({
-    'void':             ("uint32 ", "UINT32"),
-    'boolean':          ("JSBool ", "BOOL"),
-    'short':            ("int32 ", "INT32"),
-    'unsigned short':   ("uint32 ", "UINT32"),
-    'long':             ("int32 ", "INT32"),
-    'unsigned long':    ("uint32 ", "UINT32"),
-    'long long':        ("jsdouble ", "DOUBLE"),
-    'unsigned long long': ("jsdouble ", "DOUBLE"),
-    'float':            ("jsdouble ", "DOUBLE"),
-    'double':           ("jsdouble ", "DOUBLE"),
-    'octet':            ("uint32 ", "UINT32"),
-    '[astring]':        ("JSString *", "STRING"),
-    '[domstring]':      ("JSString *", "STRING"),
-    '[cstring]':        ("JSString *", "STRING"),
-    'string':           ("JSString *", "STRING"),
-    'wstring':          ("JSString *", "STRING"),
-    })
-
-defaultReturnTraceType = ("JSObject *", "OBJECT_OR_NULL", "nsnull")
-defaultParamTraceType = ("js::ValueArgType ", "VALUE")
-
-def getTraceParamType(type):
-    type = getBuiltinOrNativeTypeName(type)
-    assert type is not '[jsval]'
-    return traceParamTypeMap.get(type, defaultParamTraceType)[0]
-
-def getTraceReturnType(type):
-    assert not isVariantType(type)
-    type = getBuiltinOrNativeTypeName(type)
-    assert type is not '[jsval]'
-    return traceReturnTypeMap.get(type, defaultReturnTraceType)[0]
-
-def getTraceInfoParamType(type):
-    type = getBuiltinOrNativeTypeName(type)
-    assert type is not '[jsval]'
-    return traceParamTypeMap.get(type, defaultParamTraceType)[1]
-
-def getTraceInfoReturnType(type):
-    assert not isVariantType(type)
-    type = getBuiltinOrNativeTypeName(type)
-    assert type is not '[jsval]'
-    return traceReturnTypeMap.get(type, defaultReturnTraceType)[1]
-
-def getTraceInfoDefaultReturn(type):
-    assert not isVariantType(type)
-    type = getBuiltinOrNativeTypeName(type)
-    assert type is not '[jsval]'
-    return traceReturnTypeMap.get(type, defaultReturnTraceType)[2]
-
-def getFailureString(retval, indent):
-    assert indent > 0
-    ret = " " * (4 * indent)
-    ret += "js_SetTraceableNativeFailed(cx);\n"
-    ret += " " * (4 * indent)
-    ret += "return %s;\n" % retval
-    ret += " " * (4 * (indent - 1))
-    ret += "}\n"
-    return ret
- 
-def writeFailure(f, retval, indent):
-    f.write(getFailureString(retval, indent))
-
-traceableArgumentConversionTemplates = {
-    'octet':
-          "    PRUint8 ${name} = (PRUint8) ${argVal};\n",
-    'short':
-          "    PRint16 ${name} = (PRint16) ${argVal};\n",
-    'unsigned short':
-          "    PRUint16 ${name} = (PRUint16) ${argVal};\n",
-    'long':
-          "    PRInt32 ${name} = (PRInt32) ${argVal};\n",
-    'unsigned long':
-          "    PRUint32 ${name} = (PRUint32) ${argVal};\n",
-    'long long':
-          "    PRInt64 ${name} = (PRInt64) ${argVal};\n",
-    'unsigned long long':
-          "    PRUint64 ${name} = xpc_qsDoubleToUint64(${argVal});\n",
-    'boolean':
-          "    bool ${name} = (bool) ${argVal};\n",
-    'float':
-          "    float ${name} = (float) ${argVal};\n",
-    'double':
-          "    jsdouble ${name} = ${argVal};\n",
-    '[astring]':
-          "    XPCReadableJSStringWrapper ${name};\n"
-          "    if (!${name}.init(cx, ${argVal})) {\n"
-          "${error}",
-    '[domstring]':
-          "    XPCReadableJSStringWrapper ${name};\n"
-          "    if (!${name}.init(cx, ${argVal})) {\n"
-          "${error}",
-    '[utf8string]':
-          "    size_t ${name}_length;\n"
-          "    const jschar *${name}_chars = JS_GetStringCharsAndLength(cx, "
-          "${argVal}, &${name}_length);\n"
-          "    if (!${name}_chars) {\n"
-          "${error}"
-          "    NS_ConvertUTF16toUTF8 ${name}(${argVal}_chars, ${argVal}_length);\n",
-    'string':
-          "    size_t ${name}_length;\n"
-          "    const jschar *${name}_chars = JS_GetStringCharsAndLength(cx, "
-          "${argVal}, &${name}_length);\n"
-          "    if (!${name}_chars) {\n"
-          "${error}"
-          "    NS_ConvertUTF16toUTF8 ${name}_utf8(${name}_chars, ${name}_length);\n"
-          "    const char *${name} = ${name}_utf8.get();\n",
-    'wstring':
-          "    const jschar *${name}_chars = JS_GetStringCharsZ(cx, {argVal});\n"
-          "    if (!${name}_chars) {\n"
-          "${error}"
-          "    const PRUnichar *${name} = ${name}_chars;\n",
-    }
-
-def writeTraceableArgumentConversion(f, member, i, name, type, haveCcx,
-                                     rvdeclared):
-    argVal = "_arg%d" % i
-
-    params = {
-        'name': name,
-        'argVal': argVal,
-        'error': getFailureString(getTraceInfoDefaultReturn(member.realtype), 2)
-        }
-
-    typeName = getBuiltinOrNativeTypeName(type)
-    if typeName is not None:
-        template = traceableArgumentConversionTemplates.get(typeName)
-        if template is not None:
-            f.write(substitute(template, params))
-            return rvdeclared
-        # else fall through; the type isn't supported yet.
-    elif isInterfaceType(type):
-        if type.name == 'nsIVariant':
-            # Totally custom.
-            assert haveCcx
-            template = (
-                "    nsCOMPtr<nsIVariant> ${name}(already_AddRefed<nsIVariant>("
-                "XPCVariant::newVariant(ccx, js::ValueArgToConstRef(${argVal}))));\n"
-                "    if (!${name}) {\n")
-            f.write(substitute(template, params))
-            writeFailure(f, getTraceInfoDefaultReturn(member.realtype), 2)
-            return rvdeclared
-        elif type.name == 'nsIAtom':
-            # Should have special atomizing behavior.  Fall through.
-            pass
-        else:
-            if not rvdeclared:
-                f.write("    nsresult rv;\n");
-            f.write("    %s *%s;\n" % (type.name, name))
-            f.write("    xpc_qsSelfRef %sref;\n" % name)
-            f.write("    JS::Anchor<jsval> %sanchor;\n" % name);
-            f.write("    rv = xpc_qsUnwrapArg<%s>("
-                    "cx, js::ValueArgToConstRef(%s), &%s, &%sref.ptr, &%sanchor.get());\n"
-                    % (type.name, argVal, name, name, name))
-            f.write("    if (NS_FAILED(rv)) {\n")
-            if haveCcx:
-                f.write("        xpc_qsThrowBadArgWithCcx(ccx, rv, %d);\n" % i)
-            else:
-                # XXX Fix this to return a real error!
-                f.write("        xpc_qsThrowBadArgWithDetails(cx, rv, %d, "
-                        "\"%s\", \"%s\");\n"
-                        % (i, member.iface.name, member.name))
-            writeFailure(f, getTraceInfoDefaultReturn(member.realtype), 2)
-            return True
-
-    print member
-    warn("Unable to unbox argument of type %s (for traceable arg)" % type.name)
-    f.write("    !; // TODO - Unbox argument %s = arg%d\n" % (name, i))
-    return rvdeclared
-
-traceableResultConvTemplates = {
-    'void':
-        "    return 0;\n",
-    'octet':
-        "    return uint32(result);\n",
-    'short':
-        "    return int32(result);\n",
-    'unsigned short':
-        "    return uint32(result);\n",
-    'long':
-        "    return int32(result);\n",
-    'unsigned long':
-        "    return uint32(result);\n",
-    'long long':
-        "    return jsdouble(result);\n",
-    'unsigned long long':
-        "    return jsdouble(result);\n",
-    'boolean':
-        "    return result ? JS_TRUE : JS_FALSE;\n",
-    'float':
-        "    return jsdouble(result);\n",
-    'double':
-        "    return jsdouble(result);\n",
-    '[domstring]':
-        "    JSString *rval;\n"
-        "    if (!xpc_qsStringToJsstring(cx, result, &rval)) {\n"
-        "        JS_ReportOutOfMemory(cx);\n${errorStr}"
-        "    return rval;\n",
-    '[astring]':
-        "    JSString *rval;\n"
-        "    if (!xpc_qsStringToJsstring(cx, result, &rval)) {\n"
-        "        JS_ReportOutOfMemory(cx);\n${errorStr}"
-        "    return rval;\n"
-    }
-
-def writeTraceableResultConv(f, type):
-    typeName = getBuiltinOrNativeTypeName(type)
-    assert typeName is not '[jsval]'
-    if typeName is not None:
-        template = traceableResultConvTemplates.get(typeName)
-        if template is not None:
-            values = { 'errorStr': getFailureString(
-                                   getTraceInfoDefaultReturn(type), 2) }
-            f.write(substitute(template, values))
-            return
-        # else fall through; this type isn't supported yet
-    elif isInterfaceType(type):
-        if isVariantType(type):
-            f.write("    jsval returnVal;\n"
-                    "    JSBool ok = xpc_qsVariantToJsval(lccx, result, "
-                    "&returnVal);\n")
-        else:
-            f.write("    if (!result) {\n"
-                    "      return nsnull;\n"
-                    "    }\n"
-                    "    nsWrapperCache* cache = xpc_qsGetWrapperCache(result);\n"
-                    "    JSObject* wrapper =\n"
-                    "      xpc_FastGetCachedWrapper(cache, obj);\n"
-                    "    if (wrapper) {\n"
-                    "      return wrapper;\n"
-                    "    }\n"
-                    "    // After this point do not use 'result'!\n"
-                    "    qsObjectHelper helper(result, cache);\n"
-                    "    jsval returnVal;\n"
-                    "    JSBool ok = xpc_qsXPCOMObjectToJsval(lccx, "
-                    "helper, &NS_GET_IID(%s), &interfaces[k_%s], "
-                    "&returnVal);\n"
-                    % (type.name, type.name))
-        f.write("    if (!ok) {\n");
-        writeFailure(f, getTraceInfoDefaultReturn(type), 2)
-        f.write("    return JSVAL_TO_OBJECT(returnVal);\n")
-        return
-
-    warn("Unable to convert result of type %s" % typeName)
-    f.write("    !; // TODO - Convert `result` to jsval, store in rval.\n")
-    f.write("    return xpc_qsThrow(cx, NS_ERROR_UNEXPECTED); // FIXME\n")
-
-def writeTraceableQuickStub(f, customMethodCalls, member, stubName):
-    assert member.traceable
-
-    traceInfo = {
-        'type': getTraceInfoReturnType(member.realtype) + "_FAIL",
-        'params': ["CONTEXT", "THIS"]
-        }
-
-    haveCcx = memberNeedsCcx(member)
-
-    customMethodCall = customMethodCalls.get(stubName, None)
-
-    if customMethodCall is None:
-        customMethodCall = customMethodCalls.get(member.iface.name + '_', None)
-        if customMethodCall is not None:
-            # We don't support traceable templated quickstubs yet
-            assert not 'code' in customMethodCall
-
-    if customMethodCall is not None and customMethodCall.get('skipgen', False):
-        return
-    if (customMethodCall is not None and
-        not customMethodCall.get('unwrapThisFailureFatal', True)):
-        raise UserError(member.iface.name + '.' + member.name + ": "
-                        "Unwrapping this failure must be fatal for traceable stubs")
-
-    # Write the function
-    f.write("static %sFASTCALL\n" % getTraceReturnType(member.realtype))
-    f.write("%s(JSContext *cx, JSObject *obj" % (stubName + "_tn"))
-    # This code MUST match the arguments length check in addStubMember
-    if memberNeedsCallee(member):
-        f.write(", JSObject *callee")
-        traceInfo["params"].append("CALLEE")
-    for i, param in enumerate(member.params):
-        f.write(", %s_arg%d" % (getTraceParamType(param.realtype), i))
-        traceInfo["params"].append(getTraceInfoParamType(param.realtype))
-    f.write(")\n{\n");
-    f.write("    XPC_QS_ASSERT_CONTEXT_OK(cx);\n")
-
-    # Create ccx if needed.
-    if haveCcx:
-        f.write("    XPCCallContext ccx(JS_CALLER, cx, obj, callee);\n")
-        if isInterfaceType(member.realtype):
-            f.write("    XPCLazyCallContext lccx(ccx);\n")
-
-    # Get the 'self' pointer.
-    if customMethodCall is None or not 'thisType' in customMethodCall:
-        f.write("    %s *self;\n" % member.iface.name)
-    else:
-        f.write("    %s *self;\n" % customMethodCall['thisType'])
-    f.write("    xpc_qsSelfRef selfref;\n")
-    f.write("    JS::Anchor<jsval> selfanchor;\n")
-    if haveCcx:
-        f.write("    if (!xpc_qsUnwrapThisFromCcx(ccx, &self, &selfref.ptr, "
-                "&selfanchor.get())) {\n")
-    elif (member.kind == 'method') and isInterfaceType(member.realtype):
-        f.write("    XPCLazyCallContext lccx(JS_CALLER, cx, obj);\n")
-        f.write("    if (!xpc_qsUnwrapThis(cx, obj, callee, &self, &selfref.ptr, "
-                "&selfanchor.get(), &lccx)) {\n")
-    else:
-        f.write("    if (!xpc_qsUnwrapThis(cx, obj, nsnull, &self, &selfref.ptr, "
-                "&selfanchor.get(), nsnull)) {\n")
-    writeFailure(f, getTraceInfoDefaultReturn(member.realtype), 2)
-
-    argNames = []
-
-    # Convert in-parameters.
-    rvdeclared = False
-    for i, param in enumerate(member.params):
-        argName = "arg%d" % i
-        argTypeKey = argName + 'Type'
-        if customMethodCall is None or not argTypeKey in customMethodCall:
-            validateParam(member, param)
-            realtype = unaliasType(param.realtype)
-        else:
-            realtype = xpidl.Forward(name=customMethodCall[argTypeKey],
-                                     location='', doccomments='')
-        rvdeclared = writeTraceableArgumentConversion(f, member, i, argName,
-                                                      realtype, haveCcx,
-                                                      rvdeclared)
-        argNames.append(argName)
-
-    canFail = customMethodCall is None or customMethodCall.get('canFail', True)
-    if canFail and not rvdeclared:
-        f.write("    nsresult rv;\n")
-        rvdeclared = True
-
-    if customMethodCall is not None and 'code' in customMethodCall:
-        f.write("%s\n" % customMethodCall['code'])
-    else:
-        prefix = ''
-
-        resultname = prefix + 'result'
-        selfname = prefix + 'self'
-        nsresultname = prefix + 'rv'
-
-        # Prepare out-parameter.
-        writeResultDecl(f, member.realtype, resultname)
-
-        # Call the method.
-        comName = header.methodNativeName(member)
-        if not isVoidType(member.realtype):
-            argNames.append(outParamForm(resultname, member.realtype))
-        args = ', '.join(argNames)
-
-        f.write("    ")
-        if canFail:
-            f.write("%s = " % nsresultname)
-        f.write("%s->%s(%s);\n" % (selfname, comName, args))
-
-    if canFail:
-        # Check for errors.
-        f.write("    if (NS_FAILED(rv)) {\n")
-        if haveCcx:
-            f.write("        xpc_qsThrowMethodFailedWithCcx(ccx, rv);\n")
-        else:
-            # XXX Replace with a real error message!
-            f.write("        xpc_qsThrowMethodFailedWithDetails(cx, rv, "
-                    "\"%s\", \"%s\");\n" % (member.iface.name, member.name))
-        writeFailure(f, getTraceInfoDefaultReturn(member.realtype), 2)
-
-    # Convert the return value.
-    writeTraceableResultConv(f, member.realtype)
-
-    # Epilog.
-    f.write("}\n\n")
-
-    # Write the JS_DEFINE_TRCINFO block
-    f.write("JS_DEFINE_TRCINFO_1(%s,\n" % stubName)
-    f.write("    (%d, (static, %s, %s, %s, 0, nanojit::ACCSET_STORE_ANY)))\n\n"
-            % (len(traceInfo["params"]), traceInfo["type"], stubName + "_tn",
-               ", ".join(traceInfo["params"])))
-
-def writeAttrStubs(f, customMethodCalls, attr):
+def writeAttrStubs(f, customMethodCalls, stringtable, attr):
     cmc = customMethodCalls.get(attr.iface.name + "_" + header.methodNativeName(attr), None)
     custom = cmc and cmc.get('skipgen', False)
 
@@ -1484,11 +1094,11 @@ def writeAttrStubs(f, customMethodCalls, attr):
         if not custom:
             writeQuickStub(f, customMethodCalls, attr, setterName, isSetter=True)
 
-    ps = ('{"%s", %s, %s}'
-          % (attr.name, getterName, setterName))
+    ps = ('{%d, %s, %s}'
+          % (stringtable.stringIndex(attr.name), getterName, setterName))
     return ps
 
-def writeMethodStub(f, customMethodCalls, method):
+def writeMethodStub(f, customMethodCalls, stringtable, method):
     """ Write a method stub to `f`. Return an xpc_qsFunctionSpec initializer. """
 
     cmc = customMethodCalls.get(method.iface.name + "_" + header.methodNativeName(method), None)
@@ -1497,60 +1107,27 @@ def writeMethodStub(f, customMethodCalls, method):
     stubName = method.iface.name + '_' + header.methodNativeName(method)
     if not custom:
         writeQuickStub(f, customMethodCalls, method, stubName)
-    fs = '{"%s", %s, %d}' % (method.name, stubName, len(method.params))
+    fs = '{%d, %d, %s}' % (stringtable.stringIndex(method.name),
+                           len(method.params), stubName)
     return fs
 
-def writeTraceableStub(f, customMethodCalls, method):
-    """ Write a method stub to `f`. Return an xpc_qsTraceableSpec initializer. """
-
-    cmc = customMethodCalls.get(method.iface.name + "_" + header.methodNativeName(method), None)
-    custom = cmc and cmc.get('skipgen', False)
-
-    stubName = method.iface.name + '_' + header.methodNativeName(method)
-    if not custom:
-        writeTraceableQuickStub(f, customMethodCalls, method, stubName)
-    fs = '{"%s", %s, %d}' % (method.name,
-                             "JS_DATA_TO_FUNC_PTR(JSNative, &%s_trcinfo)" % stubName,
-                             len(method.params))
-    return fs
-
-def writeStubsForInterface(f, customMethodCalls, iface):
+def writeStubsForInterface(f, customMethodCalls, stringtable, iface):
     f.write("// === interface %s\n\n" % iface.name)
     propspecs = []
     funcspecs = []
-    tracespecs = []
     for member in iface.stubMembers:
         if member.kind == 'attribute':
-            ps = writeAttrStubs(f, customMethodCalls, member)
+            ps = writeAttrStubs(f, customMethodCalls, stringtable, member)
             propspecs.append(ps)
         elif member.kind == 'method':
-            fs = writeMethodStub(f, customMethodCalls, member)
-            if member.traceable:
-                ts = writeTraceableStub(f, customMethodCalls, member)
-                tracespecs.append(ts)
-            else:
-                funcspecs.append(fs)
+            fs = writeMethodStub(f, customMethodCalls, stringtable, member)
+            funcspecs.append(fs)
         else:
             raise TypeError('expected attribute or method, not %r'
                             % member.__class__.__name__)
 
-    if propspecs:
-        f.write("static const xpc_qsPropertySpec %s_properties[] = {\n"
-                % iface.name)
-        for ps in propspecs:
-            f.write("    %s,\n" % ps)
-        f.write("    {nsnull}};\n")
-    if funcspecs:
-        f.write("static const xpc_qsFunctionSpec %s_functions[] = {\n" % iface.name)
-        for fs in funcspecs:
-            f.write("    %s,\n" % fs)
-        f.write("    {nsnull}};\n")
-    if tracespecs:
-        f.write("static const xpc_qsTraceableSpec %s_traceables[] = {\n" % iface.name)
-        for ts in tracespecs:
-            f.write("    %s,\n" % ts)
-        f.write("    {nsnull}};\n")
-    f.write('\n\n')
+    iface.propspecs = propspecs
+    iface.funcspecs = funcspecs
 
 def hashIID(iid):
     # See nsIDKey::HashCode in nsHashtable.h.
@@ -1583,8 +1160,31 @@ def writeResultXPCInterfacesArray(f, conf, resulttypes):
     if count > 0:
         f.write("\n\n")
 
-def writeDefiner(f, conf, interfaces):
+def writeSpecs(f, elementType, varname, spec_type, spec_indices, interfaces):
+    index = 0
+    f.write("static const %s %s[] = {\n" % (elementType, varname))
+    for iface in interfaces:
+        specs = getattr(iface, spec_type)
+        if specs:
+            spec_indices[iface.name] = index
+            f.write("    // %s (index %d)\n" % (iface.name,index))
+            for s in specs:
+                f.write("    %s,\n" % s)
+            index += len(specs)
+    f.write("};\n\n")
+
+def writeDefiner(f, conf, stringtable, interfaces):
     f.write("// === Definer\n\n")
+
+    # Write out the properties and functions
+    propspecs_indices = {}
+    funcspecs_indices = {}
+    prop_array_name = "all_properties"
+    func_array_name = "all_functions"
+    writeSpecs(f, "xpc_qsPropertySpec", prop_array_name,
+               "propspecs", propspecs_indices, interfaces)
+    writeSpecs(f, "xpc_qsFunctionSpec", func_array_name,
+               "funcspecs", funcspecs_indices, interfaces)
 
     # generate the static hash table
     loadFactor = 0.6
@@ -1610,7 +1210,7 @@ def writeDefiner(f, conf, interfaces):
                 arraySize += 1
 
     entries = ["    {{0, 0, 0, {0, 0, 0, 0, 0, 0, 0, 0}}, "
-               "nsnull, nsnull, nsnull, XPC_QS_NULL_INDEX, XPC_QS_NULL_INDEX}"
+               "0, 0, 0, 0, XPC_QS_NULL_INDEX, XPC_QS_NULL_INDEX}"
                for i in range(arraySize)]
     for i, bucket in enumerate(buckets):
         for j, iface in enumerate(bucket):
@@ -1624,27 +1224,19 @@ def writeDefiner(f, conf, interfaces):
                         m4[4:6], m4[6:8], m4[8:10], m4[10:12]))
             iid = ('{0x%s, 0x%s, 0x%s, %s}' % (m0, m1, m2, m3arr))
 
-            # properties field
-            properties = "nsnull"
-            for member in iface.stubMembers:
-                if member.kind == 'attribute':
-                    assert not member.traceable
-                    properties = iface.name + "_properties"
-                    break
+            # properties fields
+            prop_index = 0
+            prop_n_entries = 0
+            if iface.propspecs:
+                prop_index = propspecs_indices[iface.name]
+                prop_n_entries = len(iface.propspecs)
 
-            # member field
-            functions = "nsnull"
-            for member in iface.stubMembers:
-                if member.kind == 'method' and not member.traceable:
-                    functions = iface.name + "_functions"
-                    break
-
-            # traceables field
-            traceables = "nsnull"
-            for member in iface.stubMembers:
-                if member.traceable:
-                    traceables = iface.name + "_traceables"
-                    break
+            # member fields
+            func_index = 0
+            func_n_entries = 0
+            if iface.funcspecs:
+                func_index = funcspecs_indices[iface.name]
+                func_n_entries = len(iface.funcspecs)
 
             # parentInterface field
             baseName = iface.base
@@ -1666,13 +1258,26 @@ def writeDefiner(f, conf, interfaces):
                 chain = str(k)
 
             # add entry
-            entry = "    {%s, %s, %s, %s, %s, %s}" % (
-                iid, properties, functions, traceables, parentInterface, chain)
+            entry = "    /* %s */ {%s, %d, %d, %d, %d, %s, %s}" % (
+                iface.name, iid, prop_index, prop_n_entries,
+                func_index, func_n_entries, parentInterface, chain)
             entries[entryIndexes[iface.attributes.uuid]] = entry
 
     f.write("static const xpc_qsHashEntry tableData[] = {\n")
     f.write(",\n".join(entries))
     f.write("\n    };\n\n")
+    f.write("// Make sure our table indices aren't overflowed\n"
+            "PR_STATIC_ASSERT((sizeof(tableData) / sizeof(tableData[0])) < (1 << (8 * sizeof(tableData[0].parentInterface))));\n"
+            "PR_STATIC_ASSERT((sizeof(tableData) / sizeof(tableData[0])) < (1 << (8 * sizeof(tableData[0].chain))));\n\n")
+
+    # The string table for property and method names.
+    table_name = "stringtab"
+    stringtable.writeDefinition(f, table_name)
+    structNames = [prop_array_name, func_array_name]
+    for name in structNames:
+        f.write("PR_STATIC_ASSERT(sizeof(%s) < (1 << (8 * sizeof(%s[0].name_index))));\n"
+                % (table_name, name))
+    f.write("\n")
 
     # the definer function (entry point to this quick stubs file)
     f.write("JSBool %s_DefineQuickStubs(" % conf.name)
@@ -1680,19 +1285,14 @@ def writeDefiner(f, conf, interfaces):
             "const nsID **iids)\n"
             "{\n")
     f.write("    return xpc_qsDefineQuickStubs("
-            "cx, proto, flags, count, iids, %d, tableData);\n" % size)
+            "cx, proto, flags, count, iids, %d, tableData, %s, %s, %s);\n" % (
+            size, prop_array_name, func_array_name, table_name))
     f.write("}\n\n\n")
 
 
 stubTopTemplate = '''\
 /* THIS FILE IS AUTOGENERATED - DO NOT EDIT */
 #include "jsapi.h"
-#include "jscntxt.h"
-/* Include nanojit.h early to avoid conflicting with nscore's |#define free|.
- * NB: needs to be kept in sync with jsbuiltins.h */
-#ifdef JS_TRACER
-#  include "nanojit/nanojit.h"
-#endif
 #include "qsWinUndefs.h"
 #include "prtypes.h"
 #include "nsID.h"
@@ -1703,7 +1303,6 @@ stubTopTemplate = '''\
 #include "xpcprivate.h"  // for XPCCallContext
 #include "XPCQuickStubs.h"
 #include "nsWrapperCacheInlines.h"
-#include "jsbuiltins.h"
 '''
 
 def writeStubFile(filename, headerFilename, conf, interfaces):
@@ -1756,9 +1355,10 @@ def writeStubFile(filename, headerFilename, conf, interfaces):
         writeResultXPCInterfacesArray(f, conf, frozenset(resulttypes))
         for customQS in conf.customQuickStubs:
             f.write('#include "%s"\n' % customQS)
+        stringtable = StringTable()
         for iface in interfaces:
-            writeStubsForInterface(f, conf.customMethodCalls, iface)
-        writeDefiner(f, conf, interfaces)
+            writeStubsForInterface(f, conf.customMethodCalls, stringtable, iface)
+        writeDefiner(f, conf, stringtable, interfaces)
     finally:
         f.close()
 
@@ -1796,8 +1396,6 @@ def main():
                  help="Directory in which to cache lex/parse tables.")
     o.add_option("--verbose-errors", action='store_true', default=False,
                  help="When an error happens, display the Python traceback.")
-    o.add_option("--enable-traceables", action='store_true', default=False,
-                 help="Whether or not traceable methods are generated.")
     (options, filenames) = o.parse_args()
 
     if len(filenames) != 1:
@@ -1822,8 +1420,7 @@ def main():
         includePath = options.idlpath.split(':')
         conf, interfaces = readConfigFile(filename,
                                           includePath=includePath,
-                                          cachedir=options.cachedir,
-                                          traceable=options.enable_traceables)
+                                          cachedir=options.cachedir)
         writeHeaderFile(options.header_output, conf.name)
         writeStubFile(options.stub_output, options.header_output,
                       conf, interfaces)

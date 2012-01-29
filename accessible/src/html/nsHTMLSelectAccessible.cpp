@@ -44,6 +44,7 @@
 #include "nsEventShell.h"
 #include "nsIAccessibleEvent.h"
 #include "nsTextEquivUtils.h"
+#include "Role.h"
 #include "States.h"
 
 #include "nsCOMPtr.h"
@@ -83,13 +84,13 @@ nsHTMLSelectListAccessible::NativeState()
   return state;
 }
 
-PRUint32
+role
 nsHTMLSelectListAccessible::NativeRole()
 {
-  if (mParent && mParent->Role() == nsIAccessibleRole::ROLE_COMBOBOX)
-    return nsIAccessibleRole::ROLE_COMBOBOX_LIST;
+  if (mParent && mParent->Role() == roles::COMBOBOX)
+    return roles::COMBOBOX_LIST;
 
-  return nsIAccessibleRole::ROLE_LISTBOX;
+  return roles::LISTBOX;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -151,6 +152,14 @@ nsHTMLSelectListAccessible::CurrentItem()
   return nsnull;
 }
 
+void
+nsHTMLSelectListAccessible::SetCurrentItem(nsAccessible* aItem)
+{
+  aItem->GetContent()->SetAttr(kNameSpaceID_None,
+                               nsGkAtoms::selected, NS_LITERAL_STRING("true"),
+                               true);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // nsHTMLSelectListAccessible: nsAccessible protected
 
@@ -171,9 +180,8 @@ void
 nsHTMLSelectListAccessible::CacheOptSiblings(nsIContent *aParentContent)
 {
   nsCOMPtr<nsIPresShell> presShell(do_QueryReferent(mWeakShell));
-  PRUint32 numChildren = aParentContent->GetChildCount();
-  for (PRUint32 count = 0; count < numChildren; count ++) {
-    nsIContent *childContent = aParentContent->GetChildAt(count);
+  for (nsIContent* childContent = aParentContent->GetFirstChild(); childContent;
+       childContent = childContent->GetNextSibling()) {
     if (!childContent->IsHTML()) {
       continue;
     }
@@ -210,13 +218,13 @@ nsHTMLSelectOptionAccessible::
 ////////////////////////////////////////////////////////////////////////////////
 // nsHTMLSelectOptionAccessible: nsAccessible public
 
-PRUint32
+role
 nsHTMLSelectOptionAccessible::NativeRole()
 {
-  if (mParent && mParent->Role() == nsIAccessibleRole::ROLE_COMBOBOX_LIST)
-    return nsIAccessibleRole::ROLE_COMBOBOX_OPTION;
+  if (mParent && mParent->Role() == roles::COMBOBOX_LIST)
+    return roles::COMBOBOX_OPTION;
 
-  return nsIAccessibleRole::ROLE_OPTION;
+  return roles::OPTION;
 }
 
 nsresult
@@ -230,7 +238,7 @@ nsHTMLSelectOptionAccessible::GetNameInternal(nsAString& aName)
 
   // CASE #2 -- no label parameter, get the first child, 
   // use it if it is a text node
-  nsIContent *text = mContent->GetChildAt(0);
+  nsIContent* text = mContent->GetFirstChild();
   if (!text)
     return NS_OK;
 
@@ -335,7 +343,7 @@ nsHTMLSelectOptionAccessible::GetLevelInternal()
   PRInt32 level =
     parentContent->NodeInfo()->Equals(nsGkAtoms::optgroup) ? 2 : 1;
 
-  if (level == 1 && Role() != nsIAccessibleRole::ROLE_HEADING)
+  if (level == 1 && Role() != roles::HEADING)
     level = 0; // In a single level list, the level is irrelevant
 
   return level;
@@ -345,14 +353,12 @@ void
 nsHTMLSelectOptionAccessible::GetPositionAndSizeInternal(PRInt32 *aPosInSet,
                                                          PRInt32 *aSetSize)
 {
-  nsIContent *parentContent = mContent->GetParent();
-
   PRInt32 posInSet = 0, setSize = 0;
   bool isContentFound = false;
 
-  PRUint32 childCount = parentContent->GetChildCount();
-  for (PRUint32 childIdx = 0; childIdx < childCount; childIdx++) {
-    nsIContent *childContent = parentContent->GetChildAt(childIdx);
+  nsIContent* parentContent = mContent->GetParent();
+  for (nsIContent* childContent = parentContent->GetFirstChild(); childContent;
+       childContent = childContent->GetNextSibling()) {
     if (childContent->NodeInfo()->Equals(mContent->NodeInfo())) {
       if (!isContentFound) {
         if (childContent == mContent)
@@ -416,59 +422,7 @@ nsHTMLSelectOptionAccessible::SetSelected(bool aSelect)
 nsAccessible*
 nsHTMLSelectOptionAccessible::ContainerWidget() const
 {
-  if (mParent && mParent->IsListControl()) {
-    nsAccessible* grandParent = mParent->Parent();
-    if (grandParent && grandParent->IsCombobox())
-      return grandParent;
-
-    return mParent;
-  }
-  return nsnull;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// nsHTMLSelectOptionAccessible: static methods
-
-void
-nsHTMLSelectOptionAccessible::SelectionChangedIfOption(nsIContent *aPossibleOptionNode)
-{
-  if (!aPossibleOptionNode ||
-      aPossibleOptionNode->Tag() != nsGkAtoms::option ||
-      !aPossibleOptionNode->IsHTML()) {
-    return;
-  }
-
-  nsAccessible *multiSelect =
-    nsAccUtils::GetMultiSelectableContainer(aPossibleOptionNode);
-  if (!multiSelect)
-    return;
-
-  nsAccessible *option = GetAccService()->GetAccessible(aPossibleOptionNode);
-  if (!option)
-    return;
-
-
-  nsRefPtr<AccEvent> selWithinEvent =
-    new AccEvent(nsIAccessibleEvent::EVENT_SELECTION_WITHIN, multiSelect);
-
-  if (!selWithinEvent)
-    return;
-
-  option->GetDocAccessible()->FireDelayedAccessibleEvent(selWithinEvent);
-
-  PRUint64 state = option->State();
-  PRUint32 eventType;
-  if (state & states::SELECTED) {
-    eventType = nsIAccessibleEvent::EVENT_SELECTION_ADD;
-  }
-  else {
-    eventType = nsIAccessibleEvent::EVENT_SELECTION_REMOVE;
-  }
-
-  nsRefPtr<AccEvent> selAddRemoveEvent = new AccEvent(eventType, option);
-
-  if (selAddRemoveEvent)
-    option->GetDocAccessible()->FireDelayedAccessibleEvent(selAddRemoveEvent);
+  return mParent && mParent->IsListControl() ? mParent : nsnull;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -506,10 +460,10 @@ nsHTMLSelectOptGroupAccessible::
 {
 }
 
-PRUint32
+role
 nsHTMLSelectOptGroupAccessible::NativeRole()
 {
-  return nsIAccessibleRole::ROLE_HEADING;
+  return roles::HEADING;
 }
 
 PRUint64
@@ -566,10 +520,10 @@ nsHTMLComboboxAccessible::
 ////////////////////////////////////////////////////////////////////////////////
 // nsHTMLComboboxAccessible: nsAccessible
 
-PRUint32
+role
 nsHTMLComboboxAccessible::NativeRole()
 {
-  return nsIAccessibleRole::ROLE_COMBOBOX;
+  return roles::COMBOBOX;
 }
 
 void
@@ -738,26 +692,29 @@ nsHTMLComboboxAccessible::AreItemsOperable() const
 nsAccessible*
 nsHTMLComboboxAccessible::CurrentItem()
 {
-  // No current item for collapsed combobox.
-  return SelectedOption(true);
+  return AreItemsOperable() ? mListAccessible->CurrentItem() : nsnull;
+}
+
+void
+nsHTMLComboboxAccessible::SetCurrentItem(nsAccessible* aItem)
+{
+  if (AreItemsOperable())
+    mListAccessible->SetCurrentItem(aItem);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsHTMLComboboxAccessible: protected
 
 nsAccessible*
-nsHTMLComboboxAccessible::SelectedOption(bool aIgnoreIfCollapsed) const
+nsHTMLComboboxAccessible::SelectedOption() const
 {
   nsIFrame* frame = GetFrame();
   nsIComboboxControlFrame* comboboxFrame = do_QueryFrame(frame);
-  if (comboboxFrame) {
-    if (aIgnoreIfCollapsed && !comboboxFrame->IsDroppedDown())
-      return nsnull;
+  if (!comboboxFrame)
+    return nsnull;
 
-    frame = comboboxFrame->GetDropDown();
-  }
-
-  nsIListControlFrame* listControlFrame = do_QueryFrame(frame);
+  nsIListControlFrame* listControlFrame =
+    do_QueryFrame(comboboxFrame->GetDropDown());
   if (listControlFrame) {
     nsCOMPtr<nsIContent> activeOptionNode = listControlFrame->GetCurrentOption();
     if (activeOptionNode) {
@@ -845,7 +802,7 @@ void nsHTMLComboboxListAccessible::GetBoundsRect(nsRect& aBounds, nsIFrame** aBo
   }
 
   // Get the first option.
-  nsIContent* content = mContent->GetChildAt(0);
+  nsIContent* content = mContent->GetFirstChild();
   if (!content) {
     return;
   }
@@ -858,3 +815,19 @@ void nsHTMLComboboxListAccessible::GetBoundsRect(nsRect& aBounds, nsIFrame** aBo
   *aBoundingFrame = frame->GetParent();
   aBounds = (*aBoundingFrame)->GetRect();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// nsHTMLComboboxListAccessible: Widgets
+
+bool
+nsHTMLComboboxListAccessible::IsActiveWidget() const
+{
+  return mParent && mParent->IsActiveWidget();
+}
+
+bool
+nsHTMLComboboxListAccessible::AreItemsOperable() const
+{
+  return mParent && mParent->AreItemsOperable();
+}
+

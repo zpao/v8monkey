@@ -49,6 +49,7 @@
 #include "nsIClassInfo.h"
 #include "nsIFile.h"
 #include "nsILocalFile.h"
+#include "nsIMemoryReporter.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
 #include "nsIOutputStream.h"
@@ -83,6 +84,39 @@
 
 namespace mozilla {
 namespace scache {
+
+static PRInt64
+GetStartupCacheMappingSize()
+{
+    mozilla::scache::StartupCache* sc = mozilla::scache::StartupCache::GetSingleton();
+    return sc ? sc->SizeOfMapping() : 0;
+}
+
+NS_MEMORY_REPORTER_IMPLEMENT(StartupCacheMapping,
+                             "explicit/startup-cache/mapping",
+                             KIND_NONHEAP,
+                             nsIMemoryReporter::UNITS_BYTES,
+                             GetStartupCacheMappingSize,
+                             "Memory used to hold the mapping of the startup "
+                             "cache from file.  This memory is likely to be "
+                             "swapped out shortly after start-up.")
+
+NS_MEMORY_REPORTER_MALLOC_SIZEOF_FUN(StartupCacheDataMallocSizeOf, "startup-cache/data")
+
+static PRInt64
+GetStartupCacheDataSize()
+{
+    mozilla::scache::StartupCache* sc = mozilla::scache::StartupCache::GetSingleton();
+    return sc ? sc->HeapSizeOfIncludingThis(StartupCacheDataMallocSizeOf) : 0;
+}
+
+NS_MEMORY_REPORTER_IMPLEMENT(StartupCacheData,
+                             "explicit/startup-cache/data",
+                             KIND_HEAP,
+                             nsIMemoryReporter::UNITS_BYTES,
+                             GetStartupCacheDataSize,
+                             "Memory used by the startup cache for things "
+                             "other than the file mapping.")
 
 static const char sStartupCacheName[] = "startupCache." SC_WORDSIZE "." SC_ENDIAN;
 static NS_DEFINE_CID(kZipReaderCID, NS_ZIPREADER_CID);
@@ -120,7 +154,8 @@ StartupCache* StartupCache::gStartupCache;
 bool StartupCache::gShutdownInitiated;
 
 StartupCache::StartupCache() 
-  : mArchive(NULL), mStartupWriteInitiated(false), mWriteThread(NULL) {}
+  : mArchive(NULL), mStartupWriteInitiated(false), mWriteThread(NULL),
+    mMappingMemoryReporter(nsnull), mDataMemoryReporter(nsnull) { }
 
 StartupCache::~StartupCache() 
 {
@@ -134,6 +169,10 @@ StartupCache::~StartupCache()
   WaitOnWriteThread();
   WriteToDisk();
   gStartupCache = nsnull;
+  (void)::NS_UnregisterMemoryReporter(mMappingMemoryReporter);
+  (void)::NS_UnregisterMemoryReporter(mDataMemoryReporter);
+  mMappingMemoryReporter = nsnull;
+  mDataMemoryReporter = nsnull;
 }
 
 nsresult
@@ -206,6 +245,12 @@ StartupCache::Init()
     NS_WARNING("Failed to load startupcache file correctly, removing!");
     InvalidateCache();
   }
+
+  mMappingMemoryReporter = new NS_MEMORY_REPORTER_NAME(StartupCacheMapping);
+  mDataMemoryReporter    = new NS_MEMORY_REPORTER_NAME(StartupCacheData);
+  (void)::NS_RegisterMemoryReporter(mMappingMemoryReporter);
+  (void)::NS_RegisterMemoryReporter(mDataMemoryReporter);
+
   return NS_OK;
 }
 
@@ -224,6 +269,26 @@ StartupCache::LoadArchive()
   mArchive = new nsZipArchive();
   return mArchive->OpenArchive(mFile);
 }
+
+namespace {
+
+nsresult
+GetBufferFromZipArchive(nsZipArchive *zip, bool doCRC, const char* id,
+                        char** outbuf, PRUint32* length)
+{
+  if (!zip)
+    return NS_ERROR_NOT_AVAILABLE;
+
+  nsZipItemPtr<char> zipItem(zip, id, doCRC);
+  if (!zipItem)
+    return NS_ERROR_NOT_AVAILABLE;
+
+  *outbuf = zipItem.Forget();
+  *length = zipItem.Length();
+  return NS_OK;
+}
+
+} /* anonymous namespace */
 
 // NOTE: this will not find a new entry until it has been written to disk!
 // Consumer should take ownership of the resulting buffer.
@@ -244,36 +309,19 @@ StartupCache::GetBuffer(const char* id, char** outbuf, PRUint32* length)
     }
   }
 
-  if (mArchive) {
-    nsZipItemPtr<char> zipItem(mArchive, id, true);
-    if (zipItem) {
-      *outbuf = zipItem.Forget();
-      *length = zipItem.Length();
-      return NS_OK;
-    } 
-  }
+  nsresult rv = GetBufferFromZipArchive(mArchive, true, id, outbuf, length);
+  if (NS_SUCCEEDED(rv))
+    return rv;
 
-  if (mozilla::Omnijar::GetReader(mozilla::Omnijar::APP)) {
-    // no need to checksum omnijarred entries
-    nsZipItemPtr<char> zipItem(mozilla::Omnijar::GetReader(mozilla::Omnijar::APP), id);
-    if (zipItem) {
-      *outbuf = zipItem.Forget();
-      *length = zipItem.Length();
-      return NS_OK;
-    } 
-  }
+  nsRefPtr<nsZipArchive> omnijar = mozilla::Omnijar::GetReader(mozilla::Omnijar::APP);
+  // no need to checksum omnijarred entries
+  rv = GetBufferFromZipArchive(omnijar, false, id, outbuf, length);
+  if (NS_SUCCEEDED(rv))
+    return rv;
 
-  if (mozilla::Omnijar::GetReader(mozilla::Omnijar::GRE)) {
-    // no need to checksum omnijarred entries
-    nsZipItemPtr<char> zipItem(mozilla::Omnijar::GetReader(mozilla::Omnijar::GRE), id);
-    if (zipItem) {
-      *outbuf = zipItem.Forget();
-      *length = zipItem.Length();
-      return NS_OK;
-    } 
-  }
-
-  return NS_ERROR_NOT_AVAILABLE;
+  omnijar = mozilla::Omnijar::GetReader(mozilla::Omnijar::GRE);
+  // no need to checksum omnijarred entries
+  return GetBufferFromZipArchive(omnijar, false, id, outbuf, length);
 }
 
 // Makes a copy of the buffer, client retains ownership of inbuf.
@@ -306,6 +354,28 @@ StartupCache::PutBuffer(const char* id, const char* inbuf, PRUint32 len)
   entry = new CacheEntry(data.forget(), len);
   mTable.Put(idStr, entry);
   return ResetStartupWriteTimer();
+}
+
+size_t
+StartupCache::SizeOfMapping() 
+{
+    return mArchive ? mArchive->SizeOfMapping() : 0;
+}
+
+size_t
+StartupCache::HeapSizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf)
+{
+    // This function could measure more members, but they haven't been found by
+    // DMD to be significant.  They can be added later if necessary.
+    return aMallocSizeOf(this) +
+           mTable.SizeOfExcludingThis(SizeOfEntryExcludingThis, aMallocSizeOf);
+}
+
+/* static */ size_t
+StartupCache::SizeOfEntryExcludingThis(const nsACString& key, const nsAutoPtr<CacheEntry>& data,
+                                       nsMallocSizeOfFun mallocSizeOf, void *)
+{
+    return data->SizeOfExcludingThis(mallocSizeOf);
 }
 
 struct CacheWriteHolder
@@ -611,7 +681,7 @@ StartupCacheWrapper::GetBuffer(const char* id, char** outbuf, PRUint32* length)
 }
 
 nsresult
-StartupCacheWrapper::PutBuffer(const char* id, char* inbuf, PRUint32 length) 
+StartupCacheWrapper::PutBuffer(const char* id, const char* inbuf, PRUint32 length) 
 {
   StartupCache* sc = StartupCache::GetSingleton();
   if (!sc) {

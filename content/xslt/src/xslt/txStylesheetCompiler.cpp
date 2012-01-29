@@ -227,10 +227,10 @@ txStylesheetCompiler::startElementInternal(PRInt32 aNamespaceID,
             NS_ENSURE_SUCCESS(rv, rv);
 
             if (TX_StringEqualsAtom(attr->mValue, nsGkAtoms::preserve)) {
-                mElementContext->mPreserveWhitespace = MB_TRUE;
+                mElementContext->mPreserveWhitespace = true;
             }
             else if (TX_StringEqualsAtom(attr->mValue, nsGkAtoms::_default)) {
-                mElementContext->mPreserveWhitespace = MB_FALSE;
+                mElementContext->mPreserveWhitespace = false;
             }
             else {
                 return NS_ERROR_XSLT_PARSE_FAILURE;
@@ -291,20 +291,20 @@ txStylesheetCompiler::startElementInternal(PRInt32 aNamespaceID,
             NS_ENSURE_SUCCESS(rv, rv);
 
             if (attr->mValue.EqualsLiteral("1.0")) {
-                mElementContext->mForwardsCompatibleParsing = MB_FALSE;
+                mElementContext->mForwardsCompatibleParsing = false;
             }
             else {
-                mElementContext->mForwardsCompatibleParsing = MB_TRUE;
+                mElementContext->mForwardsCompatibleParsing = true;
             }
         }
     }
 
     // Find the right elementhandler and execute it
-    MBool isInstruction = MB_FALSE;
+    bool isInstruction = false;
     PRInt32 count = mElementContext->mInstructionNamespaces.Length();
     for (i = 0; i < count; ++i) {
         if (mElementContext->mInstructionNamespaces[i] == aNamespaceID) {
-            isInstruction = MB_TRUE;
+            isInstruction = true;
             break;
         }
     }
@@ -342,7 +342,7 @@ txStylesheetCompiler::startElementInternal(PRInt32 aNamespaceID,
         }
     }
 
-    rv = pushPtr(const_cast<txElementHandler*>(handler));
+    rv = pushPtr(const_cast<txElementHandler*>(handler), eElementHandler);
     NS_ENSURE_SUCCESS(rv, rv);
 
     mElementContext->mDepth++;
@@ -379,7 +379,7 @@ txStylesheetCompiler::endElement()
 
     const txElementHandler* handler =
         const_cast<const txElementHandler*>
-                  (static_cast<txElementHandler*>(popPtr()));
+                  (static_cast<txElementHandler*>(popPtr(eElementHandler)));
     rv = (handler->mEndFunction)(*this);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -636,7 +636,7 @@ txStylesheetCompilerState::~txStylesheetCompilerState()
 nsresult
 txStylesheetCompilerState::pushHandlerTable(txHandlerTable* aTable)
 {
-    nsresult rv = pushPtr(mHandlerTable);
+    nsresult rv = pushPtr(mHandlerTable, eHandlerTable);
     NS_ENSURE_SUCCESS(rv, rv);
 
     mHandlerTable = aTable;
@@ -647,13 +647,13 @@ txStylesheetCompilerState::pushHandlerTable(txHandlerTable* aTable)
 void
 txStylesheetCompilerState::popHandlerTable()
 {
-    mHandlerTable = static_cast<txHandlerTable*>(popPtr());
+    mHandlerTable = static_cast<txHandlerTable*>(popPtr(eHandlerTable));
 }
 
 nsresult
 txStylesheetCompilerState::pushSorter(txPushNewContext* aSorter)
 {
-    nsresult rv = pushPtr(mSorter);
+    nsresult rv = pushPtr(mSorter, ePushNewContext);
     NS_ENSURE_SUCCESS(rv, rv);
 
     mSorter = aSorter;
@@ -664,7 +664,7 @@ txStylesheetCompilerState::pushSorter(txPushNewContext* aSorter)
 void
 txStylesheetCompilerState::popSorter()
 {
-    mSorter = static_cast<txPushNewContext*>(popPtr());
+    mSorter = static_cast<txPushNewContext*>(popPtr(ePushNewContext));
 }
 
 nsresult
@@ -688,33 +688,47 @@ txStylesheetCompilerState::popChooseGotoList()
 }
 
 nsresult
-txStylesheetCompilerState::pushObject(TxObject* aObject)
+txStylesheetCompilerState::pushObject(txObject* aObject)
 {
     return mObjectStack.push(aObject);
 }
 
-TxObject*
+txObject*
 txStylesheetCompilerState::popObject()
 {
-    return static_cast<TxObject*>(mObjectStack.pop());
+    return static_cast<txObject*>(mObjectStack.pop());
 }
 
 nsresult
-txStylesheetCompilerState::pushPtr(void* aPtr)
+txStylesheetCompilerState::pushPtr(void* aPtr, enumStackType aType)
 {
 #ifdef TX_DEBUG_STACK
-    PR_LOG(txLog::xslt, PR_LOG_DEBUG, ("pushPtr: %d\n", aPtr));
+    PR_LOG(txLog::xslt, PR_LOG_DEBUG, ("pushPtr: 0x%x type %u\n", aPtr, aType));
 #endif
+    mTypeStack.AppendElement(aType);
     return mOtherStack.push(aPtr);
 }
 
 void*
-txStylesheetCompilerState::popPtr()
+txStylesheetCompilerState::popPtr(enumStackType aType)
 {
+    PRUint32 stacklen = mTypeStack.Length();
+    if (stacklen == 0) {
+        NS_RUNTIMEABORT("Attempt to pop when type stack is empty");
+    }
+
+    enumStackType type = mTypeStack.ElementAt(stacklen - 1);
+    mTypeStack.RemoveElementAt(stacklen - 1);
     void* value = mOtherStack.pop();
+    
 #ifdef TX_DEBUG_STACK
-    PR_LOG(txLog::xslt, PR_LOG_DEBUG, ("popPtr: %d\n", value));
+    PR_LOG(txLog::xslt, PR_LOG_DEBUG, ("popPtr: 0x%x type %u requested %u\n", value, type, aType));
 #endif
+    
+    if (type != aType) {
+        NS_RUNTIMEABORT("Expected type does not match top element type");
+    }
+
     return value;
 }
 

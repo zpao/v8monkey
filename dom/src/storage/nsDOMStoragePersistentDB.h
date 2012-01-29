@@ -46,6 +46,7 @@
 #include "nsTHashtable.h"
 #include "nsDataHashtable.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/storage/StatementCache.h"
 
 class DOMStorageImpl;
 class nsSessionStorageEntry;
@@ -55,12 +56,20 @@ using mozilla::TimeDuration;
 
 class nsDOMStoragePersistentDB : public nsDOMStorageBaseDB
 {
+  typedef mozilla::storage::StatementCache<mozIStorageStatement> StatementCache;
+
 public:
   nsDOMStoragePersistentDB();
   ~nsDOMStoragePersistentDB() {}
 
   nsresult
   Init(const nsString& aDatabaseName);
+
+  /**
+   * Close the connection, finalizing all the cached statements.
+   */
+  void
+  Close();
 
   /**
    * Retrieve a list of all the keys associated with a particular domain.
@@ -185,20 +194,7 @@ protected:
                                              void* aUserArg);       
 
   nsCOMPtr<mozIStorageConnection> mConnection;
-
-  nsCOMPtr<mozIStorageStatement> mCopyToTempTableStatement;
-  nsCOMPtr<mozIStorageStatement> mCopyBackToDiskStatement;
-  nsCOMPtr<mozIStorageStatement> mDeleteTemporaryTableStatement;
-  nsCOMPtr<mozIStorageStatement> mGetAllKeysStatement;
-  nsCOMPtr<mozIStorageStatement> mGetKeyValueStatement;
-  nsCOMPtr<mozIStorageStatement> mInsertKeyStatement;
-  nsCOMPtr<mozIStorageStatement> mSetSecureStatement;
-  nsCOMPtr<mozIStorageStatement> mRemoveKeyStatement;
-  nsCOMPtr<mozIStorageStatement> mRemoveOwnerStatement;
-  nsCOMPtr<mozIStorageStatement> mRemoveStorageStatement;
-  nsCOMPtr<mozIStorageStatement> mRemoveAllStatement;
-  nsCOMPtr<mozIStorageStatement> mGetOfflineExcludedUsageStatement;
-  nsCOMPtr<mozIStorageStatement> mGetFullUsageStatement;
+  StatementCache mStatements;
 
   nsCString mCachedOwner;
   PRInt32 mCachedUsage;
@@ -212,6 +208,11 @@ protected:
   friend class nsDOMStorageMemoryDB;
   nsresult
   GetUsageInternal(const nsACString& aQuotaDomainDBKey, bool aExcludeOfflineFromUsage, PRInt32 *aUsage);
+
+  // Compares aDomain with the mCachedOwner and returns false if changes
+  // in aDomain don't affect mCachedUsage.
+  bool DomainMaybeCached(const nsACString& aDomain);
+
 };
 
 #endif /* nsDOMStorageDB_h___ */

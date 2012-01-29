@@ -78,9 +78,31 @@ WeakMapBase::sweepAll(JSTracer *tracer)
         m->sweep(tracer);
 }
 
+void
+WeakMapBase::traceAllMappings(WeakMapTracer *tracer)
+{
+    JSRuntime *rt = tracer->context->runtime;
+    for (WeakMapBase *m = rt->gcWeakMapList; m; m = m->next)
+        m->traceMappings(tracer);
+}
+
+void
+WeakMapBase::resetWeakMapList(JSRuntime *rt)
+{
+    JS_ASSERT(WeakMapNotInList != NULL);
+
+    WeakMapBase *m = rt->gcWeakMapList;
+    rt->gcWeakMapList = NULL;
+    while (m) {
+        WeakMapBase *n = m->next;
+        m->next = WeakMapNotInList;
+        m = n;
+    }
+}
+
 } /* namespace js */
 
-typedef WeakMap<JSObject *, Value> ObjectValueMap;
+typedef WeakMap<HeapPtr<JSObject>, HeapValue> ObjectValueMap;
 
 static ObjectValueMap *
 GetObjectMap(JSObject *obj)
@@ -215,7 +237,7 @@ WeakMap_set(JSContext *cx, uintN argc, Value *vp)
 
     ObjectValueMap *map = GetObjectMap(obj);
     if (!map) {
-        map = cx->new_<ObjectValueMap>(cx);
+        map = cx->new_<ObjectValueMap>(cx, obj);
         if (!map->init()) {
             cx->delete_(map);
             goto out_of_memory;
@@ -223,9 +245,18 @@ WeakMap_set(JSContext *cx, uintN argc, Value *vp)
         obj->setPrivate(map);
     }
 
-    args.thisv() = UndefinedValue();
     if (!map->put(key, value))
         goto out_of_memory;
+
+    // Preserve wrapped native keys to prevent wrapper optimization.
+    if (key->getClass()->ext.isWrappedNative) {
+        if (!cx->runtime->preserveWrapperCallback ||
+            !cx->runtime->preserveWrapperCallback(cx, key)) {
+            JS_ReportWarning(cx, "Failed to preserve wrapper of wrapped native weak map key.");
+        }
+    }
+
+    args.rval().setUndefined();
     return true;
 
   out_of_memory:
@@ -275,8 +306,6 @@ WeakMap_construct(JSContext *cx, uintN argc, Value *vp)
     if (!obj)
         return false;
 
-    obj->setPrivate(NULL);
-
     vp->setObject(*obj);
     return true;
 }
@@ -315,12 +344,11 @@ js_InitWeakMapClass(JSContext *cx, JSObject *obj)
 {
     JS_ASSERT(obj->isNative());
 
-    GlobalObject *global = obj->asGlobal();
+    GlobalObject *global = &obj->asGlobal();
 
     JSObject *weakMapProto = global->createBlankPrototype(cx, &WeakMapClass);
     if (!weakMapProto)
         return NULL;
-    weakMapProto->setPrivate(NULL);
 
     JSFunction *ctor = global->createConstructor(cx, WeakMap_construct, &WeakMapClass,
                                                  CLASS_ATOM(cx, WeakMap), 0);

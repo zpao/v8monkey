@@ -50,7 +50,11 @@ SurfaceToTexture(ID3D10Device *aDevice,
                  gfxASurface *aSurface,
                  const gfxIntSize &aSize)
 {
-  if (aSurface && aSurface->GetType() == gfxASurface::SurfaceTypeD2D) {
+  if (!aSurface) {
+    return NULL;
+  }
+
+  if (aSurface->GetType() == gfxASurface::SurfaceTypeD2D) {
     void *data = aSurface->GetData(&gKeyD3D10Texture);
     if (data) {
       nsRefPtr<ID3D10Texture2D> texture = static_cast<ID3D10Texture2D*>(data);
@@ -67,7 +71,7 @@ SurfaceToTexture(ID3D10Device *aDevice,
   if (!imageSurface) {
     imageSurface = new gfxImageSurface(aSize,
                                        gfxASurface::ImageFormatARGB32);
-    
+
     nsRefPtr<gfxContext> context = new gfxContext(imageSurface);
     context->SetSource(aSurface);
     context->SetOperator(gfxContext::OPERATOR_SOURCE);
@@ -75,13 +79,13 @@ SurfaceToTexture(ID3D10Device *aDevice,
   }
 
   D3D10_SUBRESOURCE_DATA data;
-  
+
   CD3D10_TEXTURE2D_DESC desc(DXGI_FORMAT_B8G8R8A8_UNORM,
                              imageSurface->GetSize().width,
                              imageSurface->GetSize().height,
                              1, 1);
   desc.Usage = D3D10_USAGE_IMMUTABLE;
-  
+
   data.pSysMem = imageSurface->Data();
   data.SysMemPitch = imageSurface->Stride();
 
@@ -409,9 +413,18 @@ PlanarYCbCrImageD3D10::AllocateTextures()
   dataCr.pSysMem = mData.mCrChannel;
   dataCr.SysMemPitch = mData.mCbCrStride;
 
-  mDevice->CreateTexture2D(&descY, &dataY, getter_AddRefs(mYTexture));
-  mDevice->CreateTexture2D(&descCbCr, &dataCb, getter_AddRefs(mCbTexture));
-  mDevice->CreateTexture2D(&descCbCr, &dataCr, getter_AddRefs(mCrTexture));
+  HRESULT hr = mDevice->CreateTexture2D(&descY, &dataY, getter_AddRefs(mYTexture));
+  if (!FAILED(hr)) {
+      hr = mDevice->CreateTexture2D(&descCbCr, &dataCb, getter_AddRefs(mCbTexture));
+  }
+  if (!FAILED(hr)) {
+      hr = mDevice->CreateTexture2D(&descCbCr, &dataCr, getter_AddRefs(mCrTexture));
+  }
+  if (FAILED(hr)) {
+    LayerManagerD3D10::ReportFailure(NS_LITERAL_CSTRING("PlanarYCbCrImageD3D10::AllocateTextures(): Failed to create texture"),
+                                     hr);
+    return;
+  }
   mDevice->CreateShaderResourceView(mYTexture, NULL, getter_AddRefs(mYView));
   mDevice->CreateShaderResourceView(mCbTexture, NULL, getter_AddRefs(mCbView));
   mDevice->CreateShaderResourceView(mCrTexture, NULL, getter_AddRefs(mCrView));
@@ -487,7 +500,12 @@ CairoImageD3D10::GetAsSurface()
   texDesc.BindFlags = D3D10_BIND_RENDER_TARGET | D3D10_BIND_SHADER_RESOURCE;
   texDesc.MiscFlags = D3D10_RESOURCE_MISC_GDI_COMPATIBLE;
 
-  mDevice->CreateTexture2D(&texDesc, NULL, getter_AddRefs(surfTexture));
+  HRESULT hr = mDevice->CreateTexture2D(&texDesc, NULL, getter_AddRefs(surfTexture));
+  if (FAILED(hr)) {
+    LayerManagerD3D10::ReportFailure(NS_LITERAL_CSTRING("CairoImageD3D10::GetAsSurface(): Failed to create texture"),
+                                     hr);
+    return nsnull;
+  }
 
   mDevice->CopyResource(surfTexture, mTexture);
 

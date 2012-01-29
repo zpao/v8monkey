@@ -38,7 +38,7 @@
 #include "mozilla/Util.h"
 
 #include "nsIDOMHTMLIFrameElement.h"
-#include "nsGenericHTMLElement.h"
+#include "nsGenericHTMLFrameElement.h"
 #include "nsIDOMDocument.h"
 #include "nsIDOMGetSVGDocument.h"
 #include "nsIDOMSVGDocument.h"
@@ -262,7 +262,7 @@ nsHTMLIFrameElement::IsAttributeMapped(const nsIAtom* aAttribute) const
     sCommonAttributeMap,
   };
   
-  return FindAttributeDependence(aAttribute, map, ArrayLength(map));
+  return FindAttributeDependence(aAttribute, map);
 }
 
 

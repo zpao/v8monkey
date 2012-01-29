@@ -1381,7 +1381,7 @@ nsXULDocument::Persist(nsIContent* aElement, PRInt32 aNameSpaceID,
                        nsIAtom* aAttribute)
 {
     // For non-chrome documents, persistance is simply broken
-    if (!IsCapabilityEnabled("UniversalBrowserWrite"))
+    if (!IsCapabilityEnabled("UniversalXPConnect"))
         return NS_ERROR_NOT_AVAILABLE;
 
     // First make sure we _have_ a local store to stuff the persisted
@@ -2140,7 +2140,7 @@ nsresult
 nsXULDocument::ApplyPersistentAttributes()
 {
     // For non-chrome documents, persistance is simply broken
-    if (!IsCapabilityEnabled("UniversalBrowserRead"))
+    if (!IsCapabilityEnabled("UniversalXPConnect"))
         return NS_ERROR_NOT_AVAILABLE;
 
     // Add all of the 'persisted' attributes into the content
@@ -2361,23 +2361,6 @@ nsXULDocument::ContextStack::SetTopIndex(PRInt32 aIndex)
 
     mTop->mIndex = aIndex;
     return NS_OK;
-}
-
-
-bool
-nsXULDocument::ContextStack::IsInsideXULTemplate()
-{
-    if (mDepth) {
-        for (nsIContent* element = mTop->mElement; element;
-             element = element->GetParent()) {
-
-            if (element->NodeInfo()->Equals(nsGkAtoms::_template,
-                                            kNameSpaceID_XUL)) {
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 
@@ -3052,15 +3035,12 @@ nsXULDocument::ResumeWalk()
                     const PRUnichar* params[] = { piProto->mTarget.get() };
 
                     nsContentUtils::ReportToConsole(
+                                        nsIScriptError::warningFlag,
+                                        "XUL Document", nsnull,
                                         nsContentUtils::eXUL_PROPERTIES,
                                         "PINotInProlog",
                                         params, ArrayLength(params),
-                                        overlayURI,
-                                        EmptyString(), /* source line */
-                                        0, /* line number */
-                                        0, /* column number */
-                                        nsIScriptError::warningFlag,
-                                        "XUL Document");
+                                        overlayURI);
                 }
 
                 nsIContent* parent = processingOverlayHookupNodes ?
@@ -3349,15 +3329,11 @@ nsXULDocument::ReportMissingOverlay(nsIURI* aURI)
 
     NS_ConvertUTF8toUTF16 utfSpec(spec);
     const PRUnichar* params[] = { utfSpec.get() };
-    nsContentUtils::ReportToConsole(nsContentUtils::eXUL_PROPERTIES,
+    nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                    "XUL Document", this,
+                                    nsContentUtils::eXUL_PROPERTIES,
                                     "MissingOverlay",
-                                    params, ArrayLength(params),
-                                    nsnull,
-                                    EmptyString(), /* source line */
-                                    0, /* line number */
-                                    0, /* column number */
-                                    nsIScriptError::warningFlag,
-                                    "XUL Document", this);
+                                    params, ArrayLength(params));
 }
 
 nsresult
@@ -3383,7 +3359,7 @@ nsXULDocument::LoadScript(nsXULPrototypeScript* aScriptProto, bool* aBlock)
 
     if (isChromeDoc && useXULCache) {
         PRUint32 fetchedLang = nsIProgrammingLanguage::UNKNOWN;
-        void *newScriptObject =
+        JSScript* newScriptObject =
             nsXULPrototypeCache::GetInstance()->GetScript(
                                    aScriptProto->mSrcURI,
                                    &fetchedLang);
@@ -3623,7 +3599,7 @@ nsXULDocument::OnStreamComplete(nsIStreamLoader* aLoader,
 
 
 nsresult
-nsXULDocument::ExecuteScript(nsIScriptContext * aContext, void * aScriptObject)
+nsXULDocument::ExecuteScript(nsIScriptContext * aContext, JSScript* aScriptObject)
 {
     NS_PRECONDITION(aScriptObject != nsnull && aContext != nsnull, "null ptr");
     if (! aScriptObject || ! aContext)
@@ -3631,15 +3607,11 @@ nsXULDocument::ExecuteScript(nsIScriptContext * aContext, void * aScriptObject)
 
     NS_ENSURE_TRUE(mScriptGlobalObject, NS_ERROR_NOT_INITIALIZED);
 
+    NS_ABORT_IF_FALSE(aContext->GetScriptTypeID() == nsIProgrammingLanguage::JAVASCRIPT,
+                      "Should have a JavaScript nsIScriptContext.");
     // Execute the precompiled script with the given version
-    nsresult rv;
-    void *global = mScriptGlobalObject->GetScriptGlobal(
-                                            aContext->GetScriptTypeID());
-    rv = aContext->ExecuteScript(aScriptObject,
-                                 global,
-                                 nsnull, nsnull);
-
-    return rv;
+    JSObject* global = mScriptGlobalObject->GetGlobalJSObject();
+    return aContext->ExecuteScript(aScriptObject, global, nsnull, nsnull);
 }
 
 nsresult
@@ -3707,9 +3679,8 @@ nsXULDocument::CreateElementFromPrototype(nsXULPrototypeElement* aPrototype,
                                                     nsIDOMNode::ELEMENT_NODE);
         if (!newNodeInfo) return NS_ERROR_OUT_OF_MEMORY;
         nsCOMPtr<nsIContent> content;
-        PRInt32 ns = newNodeInfo->NamespaceID();
         nsCOMPtr<nsINodeInfo> xtfNi = newNodeInfo;
-        rv = NS_NewElement(getter_AddRefs(content), ns, newNodeInfo.forget(),
+        rv = NS_NewElement(getter_AddRefs(content), newNodeInfo.forget(),
                            NOT_FROM_PARSER);
         if (NS_FAILED(rv))
             return rv;
@@ -3854,7 +3825,6 @@ nsXULDocument::CreateTemplateBuilder(nsIContent* aElement)
             nsresult rv =
                 document->CreateElem(nsDependentAtomString(nsGkAtoms::treechildren),
                                      nsnull, kNameSpaceID_XUL,
-                                     false,
                                      getter_AddRefs(bodyContent));
             NS_ENSURE_SUCCESS(rv, rv);
 

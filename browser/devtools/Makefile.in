@@ -50,12 +50,11 @@ DIRS = \
   highlighter \
   webconsole \
   sourceeditor \
+  styleeditor \
   styleinspector \
+  tilt \
+  scratchpad \
   shared \
   $(NULL)
-
-ifdef ENABLE_TESTS
-DIRS += scratchpad/test
-endif
 
 include $(topsrcdir)/config/rules.mk

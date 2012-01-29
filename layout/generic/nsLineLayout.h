@@ -134,7 +134,7 @@ public:
 
   bool TrimTrailingWhiteSpace();
 
-  void HorizontalAlignFrames(nsRect& aLineBounds, bool aAllowJustify);
+  void HorizontalAlignFrames(nsRect& aLineBounds, bool aIsLastLine);
 
   /**
    * Handle all the relative positioning in the line, compute the
@@ -369,6 +369,9 @@ public:
    * context (e.g. MathML or floating first-letter).
    */
   nsIFrame* GetLineContainerFrame() const { return mBlockReflowState->frame; }
+  const nsHTMLReflowState* GetLineContainerRS() const {
+    return mBlockReflowState;
+  }
   const nsLineList::iterator* GetLine() const {
     return GetFlag(LL_GOTLINEBOX) ? &mLineBox : nsnull;
   }
@@ -547,6 +550,8 @@ protected:
   nscoord mMaxTopBoxHeight;
   nscoord mMaxBottomBoxHeight;
 
+  nscoord mInflationMinFontSize;
+
   // Final computed line-height value after VerticalAlignFrames for
   // the block has been called.
   nscoord mFinalLineHeight;
@@ -562,8 +567,6 @@ protected:
   PLArenaPool mArena; // Per span and per frame data, 4 byte aligned
 
   PRUint32 mFlags;
-
-  PRUint8 mTextAlign;
 
   nsresult NewPerFrameData(PerFrameData** aResult);
 

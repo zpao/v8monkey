@@ -44,6 +44,7 @@
 #include "RestyleTracker.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsStyleChangeList.h"
+#include "sampler.h"
 
 namespace mozilla {
 namespace css {
@@ -165,8 +166,9 @@ RestyleTracker::ProcessOneRestyle(Element* aElement,
 }
 
 void
-RestyleTracker::ProcessRestyles()
+RestyleTracker::DoProcessRestyles()
 {
+  SAMPLE_LABEL("CSS", "ProcessRestyles");
   // Make sure to not rebuild quote or counter lists while we're
   // processing restyles
   mFrameConstructor->BeginUpdate();

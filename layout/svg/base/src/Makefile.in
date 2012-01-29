@@ -45,6 +45,7 @@ include $(DEPTH)/config/autoconf.mk
 MODULE		= layout
 LIBRARY_NAME	= gksvgbase_s
 LIBXUL_LIBRARY	= 1
+FAIL_ON_WARNINGS = 1
 
 
 CPPSRCS		= \
@@ -63,7 +64,10 @@ CPPSRCS		= \
 		nsSVGImageFrame.cpp \
 		nsSVGInnerSVGFrame.cpp \
 		nsSVGIntegrationUtils.cpp \
-		nsSVGLeafFrame.cpp \
+		SVGFEContainerFrame.cpp \
+		SVGFEImageFrame.cpp \
+		SVGFELeafFrame.cpp \
+		SVGFEUnstyledLeafFrame.cpp \
 		nsSVGMarkerFrame.cpp \
 		nsSVGMaskFrame.cpp \
 		nsSVGOuterSVGFrame.cpp \
@@ -102,6 +106,7 @@ LOCAL_INCLUDES	= \
 		-I$(srcdir)/../../../xul/base/src \
 		-I$(srcdir)/../../../../content/svg/content/src \
 		-I$(srcdir)/../../../../content/base/src \
+		-I$(srcdir)/../../../../content/html/content/src \
 		$(NULL)
 
 libs::

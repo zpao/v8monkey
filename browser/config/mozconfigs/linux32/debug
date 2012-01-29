@@ -1,8 +1,8 @@
 ac_add_options --enable-debug
 ac_add_options --enable-trace-malloc
 
-CC=/tools/gcc-4.5/bin/gcc
-CXX=/tools/gcc-4.5/bin/g++
+. $topsrcdir/build/unix/mozconfig.linux
+
 # Avoid dependency on libstdc++ 4.5
 ac_add_options --enable-stdcxx-compat
 
@@ -14,3 +14,6 @@ mk_add_options MOZ_MAKE_FLAGS="-j4"
 
 #Use ccache
 ac_add_options --with-ccache=/usr/bin/ccache
+
+# Treat warnings as errors in directories with FAIL_ON_WARNINGS.
+ac_add_options --enable-warnings-as-errors

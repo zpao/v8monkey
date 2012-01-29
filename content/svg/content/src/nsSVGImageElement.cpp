@@ -72,8 +72,9 @@ NS_IMPL_RELEASE_INHERITED(nsSVGImageElement,nsSVGImageElementBase)
 DOMCI_NODE_DATA(SVGImageElement, nsSVGImageElement)
 
 NS_INTERFACE_TABLE_HEAD(nsSVGImageElement)
-  NS_NODE_INTERFACE_TABLE7(nsSVGImageElement, nsIDOMNode, nsIDOMElement,
-                           nsIDOMSVGElement, nsIDOMSVGImageElement,
+  NS_NODE_INTERFACE_TABLE8(nsSVGImageElement, nsIDOMNode, nsIDOMElement,
+                           nsIDOMSVGElement, nsIDOMSVGTests,
+                           nsIDOMSVGImageElement,
                            nsIDOMSVGURIReference, imgIDecoderObserver,
                            nsIImageLoadingContent)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(SVGImageElement)
@@ -167,6 +168,34 @@ nsSVGImageElement::LoadSVGImage(bool aForce, bool aNotify)
 //----------------------------------------------------------------------
 // nsIContent methods:
 
+nsresult
+nsSVGImageElement::AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
+                                const nsAString* aValue, bool aNotify)
+{
+  if (aNamespaceID == kNameSpaceID_XLink && aName == nsGkAtoms::href) {
+
+    // If there isn't a frame we still need to load the image in case
+    // the frame is created later e.g. by attaching to a document.
+    // If there is a frame then it should deal with loading as the image
+    // url may be animated
+    if (!GetPrimaryFrame()) {
+
+      // Prevent setting image.src by exiting early
+      if (nsContentUtils::IsImageSrcSetDisabled()) {
+        return NS_OK;
+      }
+
+      if (aValue) {
+        LoadSVGImage(true, aNotify);
+      } else {
+        CancelImageRequests(aNotify);
+      }
+    }
+  }
+  return nsSVGImageElementBase::AfterSetAttr(aNamespaceID, aName,
+                                             aValue, aNotify);
+}
+
 void
 nsSVGImageElement::MaybeLoadSVGImage()
 {
@@ -213,7 +242,7 @@ nsSVGImageElement::IsAttributeMapped(const nsIAtom* name) const
     sViewportsMap,
   };
   
-  return FindAttributeDependence(name, map, ArrayLength(map)) ||
+  return FindAttributeDependence(name, map) ||
     nsSVGImageElementBase::IsAttributeMapped(name);
 }
 

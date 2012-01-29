@@ -39,19 +39,25 @@
 
 #include "nsISupports.idl"
 
-interface nsIVariant;
 interface nsIIDBObjectStore;
 interface nsIIDBRequest;
 interface nsIIDBTransaction;
 interface nsIDOMDOMStringList;
 interface nsIDOMEventListener;
 
+[scriptable, uuid(fb143548-08d1-43b4-95f2-a1cd58f8db76)]
+interface nsIIDBObjectStoreParameters : nsISupports
+{
+  attribute jsval keyPath;
+  attribute boolean autoIncrement;
+};
+
 /**
  * IDBDatabase interface.  See
  * http://dvcs.w3.org/hg/IndexedDB/raw-file/tip/Overview.html#idl-def-IDBDatabase
  * for more information.
  */
-[scriptable, uuid(ac14faa5-261c-4a84-9616-a700fd606f83)]
+[scriptable, builtinclass, uuid(bb877dff-ab5b-4ebb-9b3c-a7fa97cd4b51)]
 interface nsIIDBDatabase : nsISupports
 {
   readonly attribute DOMString name;
@@ -60,30 +66,24 @@ interface nsIIDBDatabase : nsISupports
 
   readonly attribute nsIDOMDOMStringList objectStoreNames;
 
-  /**
-   * Optional arguments:
-   *   - keyPath (string):
-   *       Specifies key path on objects in the objectStore. Defaults to no key
-   *       path.
-   *   - autoIncrement (boolean):
-   *       Specifies if the objectStore has a key generator. Defaults to false.
-   */
   [implicit_jscontext]
   nsIIDBObjectStore
-  createObjectStore(in AString name,
+  createObjectStore([Null(Stringify)] in DOMString name,
+                    /* nsIIDBObjectStoreParameters */
                     [optional /* none */] in jsval options);
 
   void
-  deleteObjectStore(in AString name);
+  deleteObjectStore([Null(Stringify)] in DOMString name);
 
   [optional_argc, implicit_jscontext]
   nsIIDBTransaction
-  transaction(in nsIVariant storeNames, // js array of strings
-              [optional /* READ_ONLY */] in unsigned short mode,
-              [optional /* 5000ms */] in unsigned long timeout);
+  transaction(in jsval storeNames, // js array of strings
+              [optional /* READ_ONLY */] in unsigned short mode);
 
   void
   close();
+
+  attribute nsIDOMEventListener onabort;
 
   attribute nsIDOMEventListener onerror;
 

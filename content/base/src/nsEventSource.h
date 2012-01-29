@@ -84,8 +84,8 @@ public:
   nsEventSource();
   virtual ~nsEventSource();
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsEventSource,
-                                           nsDOMEventTargetWrapperCache)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_INHERITED(nsEventSource,
+                                                                   nsDOMEventTargetWrapperCache)
 
   NS_DECL_NSIEVENTSOURCE
 
@@ -215,6 +215,7 @@ protected:
   bool mFrozen;
   bool mErrorLoadOnRedirect;
   bool mGoingToDispatchAllMessages;
+  bool mWithCredentials;
 
   // used while reading the input streams
   nsCOMPtr<nsIUnicodeDecoder> mUnicodeDecoder;
@@ -243,7 +244,7 @@ protected:
   nsString mOriginalURL;
 
   nsCOMPtr<nsIPrincipal> mPrincipal;
-  nsCString mOrigin;
+  nsString mOrigin;
 
   PRUint32 mRedirectFlags;
   nsCOMPtr<nsIAsyncVerifyRedirectCallback> mRedirectCallback;

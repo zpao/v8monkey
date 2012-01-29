@@ -40,6 +40,7 @@
 #ifndef _nsARIAMap_H_
 #define _nsARIAMap_H_
 
+#include "mozilla/a11y/Role.h"
 #include "prtypes.h"
 
 class nsIAtom;
@@ -273,7 +274,7 @@ struct nsRoleMapEntry
   const char *roleString;
   
   // Role mapping rule: maps to this nsIAccessibleRole
-  PRUint32 role;
+  mozilla::a11y::role role;
   
   // Role rule: whether to use mapped role or native semantics
   bool roleRule;
@@ -347,6 +348,20 @@ struct nsARIAMap
    */
   static nsAttributeCharacteristics gWAIUnivAttrMap[];
   static PRUint32 gWAIUnivAttrMapLength;
+
+  /**
+   * Return accessible state from ARIA universal states applied to the given
+   * element.
+   */
+  static PRUint64 UniversalStatesFor(nsIContent* aContent)
+  {
+    PRUint64 state = 0;
+    PRUint32 index = 0;
+    while (nsStateMapEntry::MapToStates(aContent, &state, gWAIUnivStateMap[index]))
+      index++;
+
+    return state;
+  }
 };
 
 #endif

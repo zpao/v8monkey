@@ -38,7 +38,7 @@
 #include "mozilla/Util.h"
 
 #include "nsIDOMHTMLFrameElement.h"
-#include "nsGenericHTMLElement.h"
+#include "nsGenericHTMLFrameElement.h"
 #include "nsGkAtoms.h"
 #include "nsIDocument.h"
 #include "nsIDOMDocument.h"
@@ -179,7 +179,7 @@ nsHTMLFrameElement::IsAttributeMapped(const nsIAtom* aAttribute) const
     sCommonAttributeMap,
   };
   
-  return FindAttributeDependence(aAttribute, map, ArrayLength(map));
+  return FindAttributeDependence(aAttribute, map);
 }
 
 nsMapRuleToAttributesFunc

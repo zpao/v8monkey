@@ -63,7 +63,7 @@ extern "C" {
 #include <setjmp.h>
 
 namespace mozilla {
-namespace imagelib {
+namespace image {
 
 typedef struct {
     struct jpeg_error_mgr pub;  /* "public" fields for IJG library*/
@@ -86,7 +86,7 @@ class RasterImage;
 class nsJPEGDecoder : public Decoder
 {
 public:
-  nsJPEGDecoder(RasterImage *aImage, imgIDecoderObserver* aObserver);
+  nsJPEGDecoder(RasterImage &aImage, imgIDecoderObserver* aObserver);
   virtual ~nsJPEGDecoder();
 
   virtual void InitInternal();
@@ -128,7 +128,7 @@ public:
   PRUint32 mCMSMode;
 };
 
-} // namespace imagelib
+} // namespace image
 } // namespace mozilla
 
 #endif // nsJPEGDecoder_h__

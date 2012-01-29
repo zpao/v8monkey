@@ -42,6 +42,7 @@
 #include "nsDebug.h"
 #include "nsSVGPathElement.h"
 #include "nsSVGAnimateMotionElement.h"
+#include "nsContentUtils.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -228,8 +229,7 @@ nsSVGMpathElement::GetReferencedPath()
   }
 
   nsIContent* genericTarget = mHrefTarget.get();
-  if (genericTarget &&
-      genericTarget->Tag() == nsGkAtoms::path) {
+  if (genericTarget && genericTarget->IsSVG(nsGkAtoms::path)) {
     return static_cast<nsSVGPathElement*>(genericTarget);
   }
   return nsnull;
@@ -288,9 +288,7 @@ nsSVGMpathElement::UnlinkHrefTarget(bool aNotifyParent)
 void
 nsSVGMpathElement::NotifyParentOfMpathChange(nsIContent* aParent)
 {
-  if (aParent &&
-      aParent->GetNameSpaceID() == kNameSpaceID_SVG &&
-      aParent->Tag() == nsGkAtoms::animateMotion) {
+  if (aParent && aParent->IsSVG(nsGkAtoms::animateMotion)) {
 
     nsSVGAnimateMotionElement* animateMotionParent =
       static_cast<nsSVGAnimateMotionElement*>(aParent);

@@ -42,6 +42,9 @@
 
 #include "mozilla/IHistory.h"
 #include "mozIAsyncHistory.h"
+#include "nsIDownloadHistory.h"
+#include "Database.h"
+
 #include "mozilla/dom/Link.h"
 #include "nsTHashtable.h"
 #include "nsString.h"
@@ -50,7 +53,6 @@
 #include "nsDeque.h"
 #include "nsIObserver.h"
 #include "mozIStorageConnection.h"
-#include "mozilla/storage/StatementCache.h"
 
 namespace mozilla {
 namespace places {
@@ -61,12 +63,14 @@ struct VisitData;
   {0x0937a705, 0x91a6, 0x417a, {0x82, 0x92, 0xb2, 0x2e, 0xb1, 0x0d, 0xa8, 0x6c}}
 
 class History : public IHistory
+              , public nsIDownloadHistory
               , public mozIAsyncHistory
               , public nsIObserver
 {
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_IHISTORY
+  NS_DECL_NSIDOWNLOADHISTORY
   NS_DECL_MOZIASYNCHISTORY
   NS_DECL_NSIOBSERVER
 
@@ -111,10 +115,10 @@ public:
   bool FetchPageInfo(VisitData& _place);
 
   /**
-   * Get the number of bytes of memory this History object is using (not
-   * counting sizeof(*this)).
+   * Get the number of bytes of memory this History object is using,
+   * including sizeof(*this))
    */
-  PRInt64 SizeOf();
+  size_t SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf);
 
   /**
    * Obtains a pointer to this service.
@@ -127,10 +131,14 @@ public:
    */
   static History* GetSingleton();
 
-  /**
-   * Statement cache that is used for background thread statements only.
-   */
-  storage::StatementCache<mozIStorageStatement> syncStatements;
+  template<int N>
+  already_AddRefed<mozIStorageStatement>
+  GetStatement(const char (&aQuery)[N])
+  {
+    mozIStorageConnection* dbConn = GetDBConn();
+    NS_ENSURE_TRUE(dbConn, nsnull);
+    return mDB->GetStatement(aQuery);
+  }
 
 private:
   virtual ~History();
@@ -141,13 +149,11 @@ private:
   mozIStorageConnection* GetDBConn();
 
   /**
-   * A read-write database connection used for adding history visits and setting
-   * a page's title.
-   *
-   * @note this should only be accessed by GetDBConn.
-   * @note this is the same connection as the one found on nsNavHistory.
+   * The database handle.  This is initialized lazily by the first call to
+   * GetDBConn(), so never use it directly, or, if you really need, always
+   * invoke GetDBConn() before.
    */
-  nsCOMPtr<mozIStorageConnection> mDBConn;
+  nsRefPtr<mozilla::places::Database> mDB;
 
   /**
    * A read-only database connection used for checking if a URI is visited.
@@ -191,9 +197,12 @@ private:
   };
 
   /**
-   * Helper function for nsTHashtable::EnumerateEntries call in SizeOf().
+   * Helper function for nsTHashtable::SizeOfExcludingThis call in
+   * SizeOfIncludingThis().
    */
-  static PLDHashOperator SizeOfEnumerator(KeyClass* aEntry, void* aArg);
+  static size_t SizeOfEntryExcludingThis(KeyClass* aEntry,
+                                         nsMallocSizeOfFun aMallocSizeOf,
+                                         void*);
 
   nsTHashtable<KeyClass> mObservers;
 };

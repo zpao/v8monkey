@@ -132,12 +132,14 @@ public:
     }
   }
 
-  // override the gfxTextRun impl to account for additional members here
-  virtual PRUint64 ComputeSize();
+  // override the gfxTextRun impls to account for additional members here
+  virtual NS_MUST_OVERRIDE size_t SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf);
+  virtual NS_MUST_OVERRIDE size_t SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf);
 
   nsTransformingTextRunFactory       *mFactory;
   nsTArray<nsRefPtr<nsStyleContext> > mStyles;
-  nsTArray<bool>              mCapitalize;
+  nsTArray<bool>                      mCapitalize;
+  nsString                            mString;
   bool                                mOwnsFactory;
   bool                                mNeedsRebuild;
 
@@ -147,16 +149,18 @@ private:
                        gfxFontGroup* aFontGroup,
                        const PRUnichar* aString, PRUint32 aLength,
                        const PRUint32 aFlags, nsStyleContext** aStyles,
-                       bool aOwnsFactory,
-                       CompressedGlyph *aGlyphStorage)
-    : gfxTextRun(aParams, aString, aLength, aFontGroup, aFlags, aGlyphStorage),
-      mFactory(aFactory), mOwnsFactory(aOwnsFactory), mNeedsRebuild(true)
+                       bool aOwnsFactory)
+    : gfxTextRun(aParams, aString, aLength, aFontGroup, aFlags),
+      mFactory(aFactory), mString(aString, aLength),
+      mOwnsFactory(aOwnsFactory), mNeedsRebuild(true)
   {
+    mCharacterGlyphs = reinterpret_cast<CompressedGlyph*>(this + 1);
+
     PRUint32 i;
     for (i = 0; i < aLength; ++i) {
       mStyles.AppendElement(aStyles[i]);
     }
-  }  
+  }
 };
 
 #endif /*NSTEXTRUNTRANSFORMATIONS_H_*/

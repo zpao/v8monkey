@@ -40,11 +40,14 @@
 #ifndef nsCSSParser_h___
 #define nsCSSParser_h___
 
+#include "mozilla/Attributes.h"
+
 #include "nsAString.h"
 #include "nsCSSProperty.h"
 #include "nsColor.h"
 #include "nsCOMArray.h"
 #include "nsCOMPtr.h"
+#include "nsTArray.h"
 
 class nsCSSStyleSheet;
 class nsIPrincipal;
@@ -73,9 +76,8 @@ public:
   static void Shutdown();
 
 private:
-  // not to be implemented
-  nsCSSParser(nsCSSParser const&);
-  nsCSSParser& operator=(nsCSSParser const&);
+  nsCSSParser(nsCSSParser const&) MOZ_DELETE;
+  nsCSSParser& operator=(nsCSSParser const&) MOZ_DELETE;
 
 public:
   // Set a style sheet for the parser to fill in. The style sheet must

@@ -37,13 +37,15 @@
 #ifndef MOZILLA_DOMSVGLENGTHLIST_H__
 #define MOZILLA_DOMSVGLENGTHLIST_H__
 
-#include "nsIDOMSVGLengthList.h"
-#include "SVGLengthList.h"
-#include "SVGLength.h"
 #include "DOMSVGAnimatedLengthList.h"
-#include "nsCOMArray.h"
 #include "nsAutoPtr.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsDebug.h"
+#include "nsIDOMSVGLengthList.h"
+#include "nsTArray.h"
+#include "SVGLengthList.h"
 
+class nsIDOMSVGLength;
 class nsSVGElement;
 
 namespace mozilla {
@@ -103,8 +105,7 @@ public:
    */
   PRUint32 Length() const {
     NS_ABORT_IF_FALSE(mItems.Length() == 0 ||
-                      mItems.Length() ==
-                        const_cast<DOMSVGLengthList*>(this)->InternalList().Length(),
+                      mItems.Length() == InternalList().Length(),
                       "DOM wrapper's list length is out of sync");
     return mItems.Length();
   }
@@ -116,7 +117,7 @@ public:
 
 private:
 
-  nsSVGElement* Element() {
+  nsSVGElement* Element() const {
     return mAList->mElement;
   }
 
@@ -143,7 +144,7 @@ private:
    * get const protection, but our setter methods guard against changing
    * animVal lists.
    */
-  SVGLengthList& InternalList();
+  SVGLengthList& InternalList() const;
 
   /// Creates a DOMSVGLength for aIndex, if it doesn't already exist.
   void EnsureItemAt(PRUint32 aIndex);

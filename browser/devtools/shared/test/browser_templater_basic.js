@@ -3,8 +3,11 @@
 
 // Tests that the DOM Template engine works properly
 
-Cu.import("resource:///modules/devtools/Templater.jsm");
-Cu.import("resource:///modules/devtools/Promise.jsm");
+let tempScope = {};
+Cu.import("resource:///modules/devtools/Templater.jsm", tempScope);
+Cu.import("resource:///modules/devtools/Promise.jsm", tempScope);
+let template = tempScope.template;
+let Promise = tempScope.Promise;
 
 function test() {
   addTab("http://example.com/browser/browser/devtools/shared/test/browser_templater_basic.html", function() {
@@ -22,7 +25,7 @@ function runTest(index) {
   holder.innerHTML = options.template;
 
   info('Running ' + options.name);
-  new Templater().processNode(holder, options.data);
+  template(holder, options.data, options.options);
 
   if (typeof options.result == 'string') {
     is(holder.innerHTML, options.result, options.name);
@@ -88,6 +91,7 @@ var tests = [
   function() { return {
     name: 'returnDom',
     template: '<div id="ex2">${__element.ownerDocument.createTextNode(\'pass 2\')}</div>',
+    options: { allowEval: true },
     data: {},
     result: '<div id="ex2">pass 2</div>'
   };},
@@ -102,6 +106,7 @@ var tests = [
   function() { return {
     name: 'ifTrue',
     template: '<p if="${name !== \'jim\'}">hello ${name}</p>',
+    options: { allowEval: true },
     data: { name: 'fred' },
     result: '<p>hello fred</p>'
   };},
@@ -109,6 +114,7 @@ var tests = [
   function() { return {
     name: 'ifFalse',
     template: '<p if="${name !== \'jim\'}">hello ${name}</p>',
+    options: { allowEval: true },
     data: { name: 'jim' },
     result: ''
   };},
@@ -116,6 +122,7 @@ var tests = [
   function() { return {
     name: 'simpleLoop',
     template: '<p foreach="index in ${[ 1, 2, 3 ]}">${index}</p>',
+    options: { allowEval: true },
     data: {},
     result: '<p>1</p><p>2</p><p>3</p>'
   };},
@@ -127,6 +134,7 @@ var tests = [
     result: '123'
   };},
 
+  // Bug 692028: DOMTemplate memory leak with asynchronous arrays
   // Bug 692031: DOMTemplate async loops do not drop the loop element
   function() { return {
     name: 'asyncLoopElement',
@@ -150,6 +158,7 @@ var tests = [
   function() { return {
     name: 'useElement',
     template: '<p id="pass9">${adjust(__element)}</p>',
+    options: { allowEval: true },
     data: {
       adjust: function(element) {
         is('pass9', element.id, 'useElement adjust');
@@ -167,6 +176,7 @@ var tests = [
     later: 'inline'
   };},
 
+  // Bug 692028: DOMTemplate memory leak with asynchronous arrays
   function() { return {
     name: 'asyncArray',
     template: '<p foreach="i in ${delayed}">${i}</p>',
@@ -183,6 +193,7 @@ var tests = [
     later: '<p>4</p><p>5</p><p>6</p>'
   };},
 
+  // Bug 692028: DOMTemplate memory leak with asynchronous arrays
   function() { return {
     name: 'asyncBoth',
     template: '<p foreach="i in ${delayed}">${i}</p>',
@@ -195,6 +206,38 @@ var tests = [
     },
     result: '<span></span>',
     later: '<p>4</p><p>5</p><p>6</p>'
+  };},
+
+  // Bug 701762: DOMTemplate fails when ${foo()} returns undefined
+  function() { return {
+    name: 'functionReturningUndefiend',
+    template: '<p>${foo()}</p>',
+    options: { allowEval: true },
+    data: {
+      foo: function() {}
+    },
+    result: '<p>undefined</p>'
+  };},
+
+  // Bug 702642: DOMTemplate is relatively slow when evaluating JS ${}
+  function() { return {
+    name: 'propertySimple',
+    template: '<p>${a.b.c}</p>',
+    data: { a: { b: { c: 'hello' } } },
+    result: '<p>hello</p>'
+  };},
+
+  function() { return {
+    name: 'propertyPass',
+    template: '<p>${Math.max(1, 2)}</p>',
+    options: { allowEval: true },
+    result: '<p>2</p>'
+  };},
+
+  function() { return {
+    name: 'propertyFail',
+    template: '<p>${Math.max(1, 2)}</p>',
+    result: '<p>${Math.max(1, 2)}</p>'
   };}
 ];
 

@@ -2,8 +2,8 @@ ac_add_options --enable-update-channel=${MOZ_UPDATE_CHANNEL}
 ac_add_options --enable-update-packaging
 ac_add_options --enable-official-branding
 
-CC=/tools/gcc-4.5/bin/gcc
-CXX=/tools/gcc-4.5/bin/g++
+. $topsrcdir/build/unix/mozconfig.linux
+
 # Avoid dependency on libstdc++ 4.5
 ac_add_options --enable-stdcxx-compat
 
@@ -15,3 +15,6 @@ mk_add_options PROFILE_GEN_SCRIPT='$(PYTHON) @MOZ_OBJDIR@/_profile/pgo/profilese
 export MOZILLA_OFFICIAL=1
 
 export MOZ_TELEMETRY_REPORTING=1
+
+# Treat warnings as errors in directories with FAIL_ON_WARNINGS.
+ac_add_options --enable-warnings-as-errors

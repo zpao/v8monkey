@@ -394,12 +394,21 @@ var checkCanvasRect = function(gl, x, y, width, height, color, msg, errorRange) 
     var offset = i * 4;
     for (var j = 0; j < color.length; ++j) {
       if (Math.abs(buf[offset + j] - color[j]) > errorRange) {
-        testFailed(msg);
         var was = buf[offset + 0].toString();
         for (j = 1; j < color.length; ++j) {
           was += "," + buf[offset + j];
         }
-        debug('expected: ' + color + ' was ' + was);
+
+        var cv = document.createElement('canvas');
+        cv.height = height;
+        cv.width = width;
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle="rgba(" + color[0] + ", " + color[1] + ", " + color[2] + ", 255)";
+        ctx.fillRect(0, 0, width, height);
+        testFailedRender(msg, ctx, buf, width, height);
+
+        debug('at (' + (i % width) + ', ' + Math.floor(i / width) +
+              ') expected: ' + color + ' was ' + was);
         return;
       }
     }
@@ -590,8 +599,6 @@ var linkProgram = function(gl, program, opt_errorCallback) {
     testFailed("Error in program linking:" + error);
 
     gl.deleteProgram(program);
-    //gl.deleteProgram(fragmentShader);
-    //gl.deleteProgram(vertexShader);
   }
 };
 
@@ -899,6 +906,17 @@ var loadShaderFromFile = function(gl, file, type, opt_errorCallback) {
 };
 
 /**
+ * Gets the content of script.
+ */
+var getScript = function(scriptId) {
+  var shaderScript = document.getElementById(scriptId);
+  if (!shaderScript) {
+    throw("*** Error: unknown script element" + scriptId);
+  }
+  return shaderScript.text;
+};
+
+/**
  * Loads a shader from a script tag.
  * @param {!WebGLContext} gl The WebGLContext to use.
  * @param {string} scriptId The id of the script tag.
@@ -1116,6 +1134,7 @@ return {
   endsWith: endsWith,
   getFileListAsync: getFileListAsync,
   getLastError: getLastError,
+  getScript: getScript,
   getUrlArguments: getUrlArguments,
   glEnumToString: glEnumToString,
   glErrorShouldBe: glErrorShouldBe,

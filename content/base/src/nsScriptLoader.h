@@ -108,14 +108,14 @@ public:
    * (i.e. there are no other scripts pending) then ScriptAvailable
    * and ScriptEvaluated will be called before the function returns.
    *
-   * If NS_ERROR_HTMLPARSER_BLOCK is returned the script could not be
-   * executed immediately. In this case ScriptAvailable is guaranteed
-   * to be called at a later point (as well as possibly ScriptEvaluated).
+   * If true is returned the script could not be executed immediately.
+   * In this case ScriptAvailable is guaranteed to be called at a later
+   * point (as well as possibly ScriptEvaluated).
    *
    * @param aElement The element representing the script to be loaded and
    *        evaluated.
    */
-  nsresult ProcessScriptElement(nsIScriptElement* aElement);
+  bool ProcessScriptElement(nsIScriptElement* aElement);
 
   /**
    * Gets the currently executing script. This is useful if you want to
@@ -134,9 +134,8 @@ public:
   /**
    * Whether the loader is enabled or not.
    * When disabled, processing of new script elements is disabled. 
-   * Any call to ProcessScriptElement() will fail with a return code of
-   * NS_ERROR_NOT_AVAILABLE. Note that this DOES NOT disable
-   * currently loading or executing scripts.
+   * Any call to ProcessScriptElement() will return false. Note that
+   * this DOES NOT disable currently loading or executing scripts.
    */
   bool GetEnabled()
   {
@@ -178,7 +177,7 @@ public:
    */
   static nsresult ConvertToUTF16(nsIChannel* aChannel, const PRUint8* aData,
                                  PRUint32 aLength,
-                                 const nsString& aHintCharset,
+                                 const nsAString& aHintCharset,
                                  nsIDocument* aDocument, nsString& aString);
 
   /**
@@ -244,6 +243,17 @@ public:
                           const nsAString &aType);
 
 private:
+  /**
+   * Unblocks the creator parser of the parser-blocking scripts.
+   */
+  void UnblockParser(nsScriptLoadRequest* aParserBlockingRequest);
+
+  /**
+   * Asynchronously resumes the creator parser of the parser-blocking scripts.
+   */
+  void ContinueParserAsync(nsScriptLoadRequest* aParserBlockingRequest);
+
+
   /**
    * Helper function to check the content policy for a given request.
    */

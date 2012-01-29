@@ -52,7 +52,7 @@
 
 interface nsIDOMValidityState;
 
-[scriptable, uuid(405c84e3-8fa3-4ecd-be5d-ba918832c4f8)]
+[scriptable, uuid(91f19c37-4763-4963-a38a-ce3101fd3729)]
 interface nsIDOMHTMLFieldSetElement : nsIDOMHTMLElement
 {
            attribute boolean                disabled;

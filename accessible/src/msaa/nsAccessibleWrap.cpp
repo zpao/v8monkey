@@ -38,15 +38,16 @@
 
 #include "nsAccessibleWrap.h"
 
+#include "Compatibility.h"
 #include "nsAccUtils.h"
 #include "nsCoreUtils.h"
 #include "nsWinUtils.h"
 #include "Relation.h"
+#include "Role.h"
 #include "States.h"
 
 #include "ia2AccessibleRelation.h"
 
-#include "nsIAccessibleDocument.h"
 #include "nsIAccessibleEvent.h"
 #include "nsIAccessibleRelation.h"
 #include "nsIAccessibleWin32Object.h"
@@ -90,12 +91,14 @@ static const PRInt32 kIEnumVariantDisconnected = -1;
 // nsAccessibleWrap
 ////////////////////////////////////////////////////////////////////////////////
 
+ITypeInfo* nsAccessibleWrap::gTypeInfo = NULL;
+
 //-----------------------------------------------------
 // construction
 //-----------------------------------------------------
 nsAccessibleWrap::
   nsAccessibleWrap(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsAccessible(aContent, aShell), mEnumVARIANTPosition(0), mTypeInfo(NULL)
+  nsAccessible(aContent, aShell), mEnumVARIANTPosition(0)
 {
 }
 
@@ -104,8 +107,6 @@ nsAccessibleWrap::
 //-----------------------------------------------------
 nsAccessibleWrap::~nsAccessibleWrap()
 {
-  if (mTypeInfo)
-    mTypeInfo->Release();
 }
 
 NS_IMPL_ISUPPORTS_INHERITED0(nsAccessibleWrap, nsAccessible);
@@ -129,7 +130,7 @@ __try {
       *ppv = static_cast<IEnumVARIANT*>(this);
   } else if (IID_IServiceProvider == iid)
     *ppv = static_cast<IServiceProvider*>(this);
-  else if (IID_IAccessible2 == iid && !gIsIA2Disabled)
+  else if (IID_IAccessible2 == iid && !Compatibility::IsIA2Off())
     *ppv = static_cast<IAccessible2*>(this);
 
   if (NULL == *ppv) {
@@ -289,15 +290,12 @@ __try {
   nsresult rv = xpAccessible->GetName(name);
   if (NS_FAILED(rv))
     return GetHRESULT(rv);
-    
-  if (name.IsVoid()) {
-    // Valid return value for the name:
-    // The name was not provided, e.g. no alt attribute for an image.
-    // A screen reader may choose to invent its own accessible name, e.g. from
-    // an image src attribute.
-    // See nsHTMLImageAccessible::GetName()
-    return S_OK;
-  }
+
+  // The name was not provided, e.g. no alt attribute for an image. A screen
+  // reader may choose to invent its own accessible name, e.g. from an image src
+  // attribute. Refer to NS_OK_EMPTY_NAME return value.
+  if (name.IsVoid())
+    return S_FALSE;
 
   *pszName = ::SysAllocStringLen(name.get(), name.Length());
   if (!*pszName)
@@ -315,22 +313,25 @@ STDMETHODIMP nsAccessibleWrap::get_accValue(
 {
 __try {
   *pszValue = NULL;
-  nsAccessible *xpAccessible = GetXPAccessibleFor(varChild);
-  if (xpAccessible) {
-    nsAutoString value;
-    if (NS_FAILED(xpAccessible->GetValue(value)))
-      return E_FAIL;
 
-    // see bug 438784: Need to expose URL on doc's value attribute.
-    // For this, reverting part of fix for bug 425693 to make this MSAA method 
-    // behave IAccessible2-style.
-    if (value.IsEmpty())
-      return S_FALSE;
+  nsAccessible* xpAccessible = GetXPAccessibleFor(varChild);
+  if (!xpAccessible || xpAccessible->IsDefunct())
+    return E_FAIL;
 
-    *pszValue = ::SysAllocStringLen(value.get(), value.Length());
-    if (!*pszValue)
-      return E_OUTOFMEMORY;
-  }
+  nsAutoString value;
+  if (NS_FAILED(xpAccessible->GetValue(value)))
+    return E_FAIL;
+
+  // See bug 438784: need to expose URL on doc's value attribute. For this,
+  // reverting part of fix for bug 425693 to make this MSAA method behave
+  // IAccessible2-style.
+  if (value.IsEmpty())
+    return S_FALSE;
+
+  *pszValue = ::SysAllocStringLen(value.get(), value.Length());
+  if (!*pszValue)
+    return E_OUTOFMEMORY;
+
 } __except(FilterA11yExceptions(::GetExceptionCode(), GetExceptionInformation())) { }
   return S_OK;
 }
@@ -376,17 +377,17 @@ __try {
                "Does not support nsIAccessibleText when it should");
 #endif
 
-  PRUint32 xpRole = xpAccessible->Role();
-  PRUint32 msaaRole = gWindowsRoleMap[xpRole].msaaRole;
-  NS_ASSERTION(gWindowsRoleMap[nsIAccessibleRole::ROLE_LAST_ENTRY].msaaRole == ROLE_WINDOWS_LAST_ENTRY,
+  roles::Role role = xpAccessible->Role();
+  PRUint32 msaaRole = gWindowsRoleMap[role].msaaRole;
+  NS_ASSERTION(gWindowsRoleMap[roles::LAST_ENTRY].msaaRole == ROLE_WINDOWS_LAST_ENTRY,
                "MSAA role map skewed");
 
   // Special case, if there is a ROLE_ROW inside of a ROLE_TREE_TABLE, then call the MSAA role
   // a ROLE_OUTLINEITEM for consistency and compatibility.
   // We need this because ARIA has a role of "row" for both grid and treegrid
-  if (xpRole == nsIAccessibleRole::ROLE_ROW) {
+  if (role == roles::ROW) {
     nsAccessible* xpParent = Parent();
-    if (xpParent && xpParent->Role() == nsIAccessibleRole::ROLE_TREE_TABLE)
+    if (xpParent && xpParent->Role() == roles::TREE_TABLE)
       msaaRole = ROLE_SYSTEM_OUTLINEITEM;
   }
   
@@ -1152,17 +1153,17 @@ __try {
   if (IsDefunct())
     return E_FAIL;
 
-  NS_ASSERTION(gWindowsRoleMap[nsIAccessibleRole::ROLE_LAST_ENTRY].ia2Role == ROLE_WINDOWS_LAST_ENTRY,
+  NS_ASSERTION(gWindowsRoleMap[roles::LAST_ENTRY].ia2Role == ROLE_WINDOWS_LAST_ENTRY,
                "MSAA role map skewed");
 
-  PRUint32 xpRole = Role();
-  *aRole = gWindowsRoleMap[xpRole].ia2Role;
+  roles::Role role = Role();
+  *aRole = gWindowsRoleMap[role].ia2Role;
 
   // Special case, if there is a ROLE_ROW inside of a ROLE_TREE_TABLE, then call
   // the IA2 role a ROLE_OUTLINEITEM.
-  if (xpRole == nsIAccessibleRole::ROLE_ROW) {
+  if (role == roles::ROW) {
     nsAccessible* xpParent = Parent();
-    if (xpParent && xpParent->Role() == nsIAccessibleRole::ROLE_TREE_TABLE)
+    if (xpParent && xpParent->Role() == roles::TREE_TABLE)
       *aRole = ROLE_SYSTEM_OUTLINEITEM;
   }
 
@@ -1590,6 +1591,15 @@ nsAccessibleWrap::FirePlatformEvent(AccEvent* aEvent)
 
   // Fire MSAA event for client area window.
   NotifyWinEvent(winEvent, hWnd, OBJID_CLIENT, childID);
+
+  // JAWS announces collapsed combobox navigation based on focus events.
+  if (Compatibility::IsJAWS()) {
+    if (eventType == nsIAccessibleEvent::EVENT_SELECTION &&
+      accessible->Role() == roles::COMBOBOX_OPTION) {
+      NotifyWinEvent(EVENT_OBJECT_FOCUS, hWnd, OBJID_CLIENT, childID);
+    }
+  }
+
   return NS_OK;
 }
 
@@ -1764,7 +1774,7 @@ nsAccessibleWrap::GetXPAccessibleFor(const VARIANT& aVarChild)
       return AsDoc()->GetAccessibleByUniqueIDInSubtree(uniqueID);
 
     // ARIA document.
-    if (ARIARole() == nsIAccessibleRole::ROLE_DOCUMENT) {
+    if (ARIARole() == roles::DOCUMENT) {
       nsDocAccessible* document = GetDocAccessible();
       nsAccessible* child =
         document->GetAccessibleByUniqueIDInSubtree(uniqueID);
@@ -1825,19 +1835,19 @@ void nsAccessibleWrap::UpdateSystemCaret()
 ITypeInfo*
 nsAccessibleWrap::GetTI(LCID lcid)
 {
-  if (mTypeInfo)
-    return mTypeInfo;
+  if (gTypeInfo)
+    return gTypeInfo;
 
   ITypeLib *typeLib = NULL;
   HRESULT hr = LoadRegTypeLib(LIBID_Accessibility, 1, 0, lcid, &typeLib);
   if (FAILED(hr))
     return NULL;
 
-  hr = typeLib->GetTypeInfoOfGuid(IID_IAccessible, &mTypeInfo);
+  hr = typeLib->GetTypeInfoOfGuid(IID_IAccessible, &gTypeInfo);
   typeLib->Release();
 
   if (FAILED(hr))
     return NULL;
 
-  return mTypeInfo;
+  return gTypeInfo;
 }

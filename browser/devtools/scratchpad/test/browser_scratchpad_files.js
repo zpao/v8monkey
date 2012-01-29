@@ -2,11 +2,11 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-
-// Reference to the Scratchpad chrome window object.
-let gScratchpadWindow;
+let tempScope = {};
+Cu.import("resource://gre/modules/NetUtil.jsm", tempScope);
+Cu.import("resource://gre/modules/FileUtils.jsm", tempScope);
+let NetUtil = tempScope.NetUtil;
+let FileUtils = tempScope.FileUtils;
 
 // Reference to the Scratchpad object.
 let gScratchpad;
@@ -22,11 +22,9 @@ function test()
   waitForExplicitFinish();
 
   gBrowser.selectedTab = gBrowser.addTab();
-  gBrowser.selectedBrowser.addEventListener("load", function() {
-    gBrowser.selectedBrowser.removeEventListener("load", arguments.callee, true);
-
-    gScratchpadWindow = Scratchpad.openScratchpad();
-    gScratchpadWindow.addEventListener("load", runTests, false);
+  gBrowser.selectedBrowser.addEventListener("load", function onLoad() {
+    gBrowser.selectedBrowser.removeEventListener("load", onLoad, true);
+    openScratchpad(runTests);
   }, true);
 
   content.location = "data:text/html,<p>test file open and save in Scratchpad";
@@ -34,8 +32,6 @@ function test()
 
 function runTests()
 {
-  gScratchpadWindow.removeEventListener("load", arguments.callee, false);
-
   gScratchpad = gScratchpadWindow.Scratchpad;
 
   // Create a temporary file.
@@ -138,8 +134,5 @@ function fileRead(aInputStream, aStatus)
   gFile.remove(false);
   gFile = null;
   gScratchpad = null;
-  gScratchpadWindow.close();
-  gScratchpadWindow = null;
-  gBrowser.removeCurrentTab();
   finish();
 }

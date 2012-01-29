@@ -158,7 +158,15 @@ public:
 
   void SetIsProxy()
   {
-    mWrapperPtrBits |= WRAPPER_IS_PROXY;
+    NS_ASSERTION(!mWrapperPtrBits,
+                 "This flag should be set before creating any wrappers.");
+    mWrapperPtrBits = WRAPPER_IS_PROXY;
+  }
+  void ClearIsProxy()
+  {
+    NS_ASSERTION(!mWrapperPtrBits || mWrapperPtrBits == WRAPPER_IS_PROXY,
+                 "This flag should be cleared before creating any wrappers.");
+    mWrapperPtrBits = 0;
   }
 
   bool IsProxy() const
@@ -181,6 +189,11 @@ public:
     *triedToWrap = false;
     return nsnull;
   }
+
+  /**
+   * Returns true if the object has a non-gray wrapper.
+   */
+  bool IsBlack();
 
 private:
   // Only meant to be called by nsContentUtils.

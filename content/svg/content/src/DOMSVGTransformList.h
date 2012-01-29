@@ -41,12 +41,15 @@
 #ifndef MOZILLA_DOMSVGTRANSFORMLIST_H__
 #define MOZILLA_DOMSVGTRANSFORMLIST_H__
 
-#include "nsIDOMSVGTransformList.h"
-#include "SVGTransformList.h"
 #include "DOMSVGAnimatedTransformList.h"
-#include "nsCOMArray.h"
 #include "nsAutoPtr.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsDebug.h"
+#include "nsIDOMSVGTransformList.h"
+#include "nsTArray.h"
+#include "SVGTransformList.h"
 
+class nsIDOMSVGTransform;
 class nsSVGElement;
 
 namespace mozilla {
@@ -97,8 +100,7 @@ public:
    */
   PRUint32 Length() const {
     NS_ABORT_IF_FALSE(mItems.IsEmpty() ||
-      mItems.Length() ==
-        const_cast<DOMSVGTransformList*>(this)->InternalList().Length(),
+      mItems.Length() == InternalList().Length(),
       "DOM wrapper's list length is out of sync");
     return mItems.Length();
   }
@@ -110,7 +112,7 @@ public:
 
 private:
 
-  nsSVGElement* Element() {
+  nsSVGElement* Element() const {
     return mAList->mElement;
   }
 
@@ -129,7 +131,7 @@ private:
    * get const protection, but our setter methods guard against changing
    * animVal lists.
    */
-  SVGTransformList& InternalList();
+  SVGTransformList& InternalList() const;
 
   /// Creates a DOMSVGTransform for aIndex, if it doesn't already exist.
   void EnsureItemAt(PRUint32 aIndex);

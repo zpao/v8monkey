@@ -55,26 +55,6 @@ namespace js {
 namespace mjit {
 
 /*
- * A problem often arises where, for one reason or another, a piece of code
- * wants to touch the script->code, but isn't expecting JSOP_TRAP. This allows
- * one to temporarily remove JSOP_TRAPs from the instruction stream (without
- * copying) and automatically re-add them on scope exit.
- */
-class AutoScriptRetrapper
-{
-  public:
-    AutoScriptRetrapper(JSContext *cx, JSScript *script1) :
-        script(script1), traps(cx) {};
-    ~AutoScriptRetrapper();
-
-    bool untrap(jsbytecode *pc);
-
-  private:
-    JSScript *script;
-    Vector<jsbytecode*> traps;
-};
-
-/*
  * This class is responsible for sanely destroying a JITed script while frames
  * for it are still on the stack, removing all references in the world to it
  * and patching up those existing frames to go into the interpreter. If you
@@ -84,9 +64,18 @@ class AutoScriptRetrapper
  */
 class Recompiler {
 public:
-    Recompiler(JSContext *cx, JSScript *script);
 
-    void recompile(bool resetUses = true);
+    // Clear all uses of compiled code for script on the stack. This must be
+    // followed by destroying all JIT code for the script.
+    static void
+    clearStackReferences(JSContext *cx, JSScript *script);
+
+    // Clear all uses of compiled code for script on the stack, along with
+    // the specified compiled chunk.
+    static void
+    clearStackReferencesAndChunk(JSContext *cx, JSScript *script,
+                                 JITScript *jit, size_t chunkIndex,
+                                 bool resetUses = true);
 
     static void
     expandInlineFrames(JSCompartment *compartment, StackFrame *fp, mjit::CallSite *inlined,
@@ -95,18 +84,13 @@ public:
     static void patchFrame(JSCompartment *compartment, VMFrame *f, JSScript *script);
 
 private:
-    JSContext *cx;
-    JSScript *script;
 
-    static void patchCall(JITScript *jit, StackFrame *fp, void **location);
-    static void patchNative(JSCompartment *compartment, JITScript *jit, StackFrame *fp,
+    static void patchCall(JITChunk *chunk, StackFrame *fp, void **location);
+    static void patchNative(JSCompartment *compartment, JITChunk *chunk, StackFrame *fp,
                             jsbytecode *pc, RejoinState rejoin);
 
     static StackFrame *
     expandInlineFrameChain(StackFrame *outer, InlineFrame *inner);
-
-    /* Detach jit from any IC callers. */
-    static void cleanup(JITScript *jit);
 };
 
 } /* namespace mjit */

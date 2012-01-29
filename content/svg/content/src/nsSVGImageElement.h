@@ -39,12 +39,12 @@
 #ifndef __NS_SVGIMAGEELEMENT_H__
 #define __NS_SVGIMAGEELEMENT_H__
 
-#include "nsSVGPathGeometryElement.h"
 #include "nsIDOMSVGImageElement.h"
 #include "nsIDOMSVGURIReference.h"
 #include "nsImageLoadingContent.h"
-#include "nsSVGString.h"
 #include "nsSVGLength2.h"
+#include "nsSVGPathGeometryElement.h"
+#include "nsSVGString.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
 
 typedef nsSVGPathGeometryElement nsSVGImageElementBase;
@@ -77,6 +77,8 @@ public:
   NS_FORWARD_NSIDOMSVGELEMENT(nsSVGImageElementBase::)
 
   // nsIContent interface
+  virtual nsresult AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
+                                const nsAString* aValue, bool aNotify);
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
                               bool aCompileEventHandlers);
@@ -93,6 +95,8 @@ public:
   nsresult CopyInnerTo(nsGenericElement* aDest) const;
 
   void MaybeLoadSVGImage();
+
+  bool IsImageSrcSetDisabled() const;
 
   virtual nsXPCClassInfo* GetClassInfo();
 protected:

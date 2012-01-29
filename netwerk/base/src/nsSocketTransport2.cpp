@@ -304,6 +304,16 @@ nsSocketInputStream::Available(PRUint32 *avail)
     // mistakenly try to re-enter this code.)
     PRInt32 n = PR_Available(fd);
 
+    // PSM does not implement PR_Available() so do a best approximation of it
+    // with MSG_PEEK
+    if ((n == -1) && (PR_GetError() == PR_NOT_IMPLEMENTED_ERROR)) {
+        char c;
+
+        n = PR_Recv(fd, &c, 1, PR_MSG_PEEK, 0);
+        SOCKET_LOG(("nsSocketInputStream::Available [this=%x] "
+                    "using PEEK backup n=%d]\n", this, n));
+    }
+
     nsresult rv;
     {
         MutexAutoLock lock(mTransport->mLock);
@@ -552,7 +562,8 @@ nsSocketOutputStream::Write(const char *buf, PRUint32 count, PRUint32 *countWrit
 
     *countWritten = 0;
 
-    if (count == 0)
+    // A write of 0 bytes can be used to force the initial SSL handshake.
+    if (count == 0 && mByteCount)
         return NS_OK;
 
     PRFileDesc *fd;
@@ -575,7 +586,6 @@ nsSocketOutputStream::Write(const char *buf, PRUint32 count, PRUint32 *countWrit
     PRInt32 n = PR_Write(fd, buf, count);
 
     SOCKET_LOG(("  PR_Write returned [n=%d]\n", n));
-    NS_ASSERTION(n != 0, "unexpected return value");
 
     nsresult rv;
     {
@@ -712,6 +722,7 @@ nsSocketTransport::nsSocketTransport()
     , mInputClosed(true)
     , mOutputClosed(true)
     , mResolving(false)
+    , mNetAddrIsSet(false)
     , mLock("nsSocketTransport.mLock")
     , mFD(nsnull)
     , mFDref(0)
@@ -848,6 +859,7 @@ nsSocketTransport::InitWithConnectedSocket(PRFileDesc *fd, const PRNetAddr *addr
     mPollFlags = (PR_POLL_READ | PR_POLL_WRITE | PR_POLL_EXCEPT);
     mPollTimeout = mTimeouts[TIMEOUT_READ_WRITE];
     mState = STATE_TRANSFERRING;
+    mNetAddrIsSet = true;
 
     mFD = fd;
     mFDref = 1;
@@ -1257,6 +1269,8 @@ nsSocketTransport::RecoverFromError()
     if (mState != STATE_RESOLVING && mState != STATE_CONNECTING)
         return false;
 
+    nsresult rv;
+
     // OK to check this outside mLock
     NS_ASSERTION(!mFDconnected, "socket should not be connected");
 
@@ -1270,6 +1284,15 @@ nsSocketTransport::RecoverFromError()
 
     bool tryAgain = false;
 
+    if (mConnectionFlags & DISABLE_IPV6 &&
+        mCondition == NS_ERROR_UNKNOWN_HOST &&
+        mState == STATE_RESOLVING &&
+        !mProxyTransparentResolvesHost) {
+        SOCKET_LOG(("  trying lookup again with both ipv4/ipv6 enabled\n"));
+        mConnectionFlags &= ~DISABLE_IPV6;
+        tryAgain = true;
+    }
+
     // try next ip address only if past the resolver stage...
     if (mState == STATE_CONNECTING && mDNSRecord) {
         mDNSRecord->ReportUnusable(SocketPort());
@@ -1277,6 +1300,16 @@ nsSocketTransport::RecoverFromError()
         nsresult rv = mDNSRecord->GetNextAddr(SocketPort(), &mNetAddr);
         if (NS_SUCCEEDED(rv)) {
             SOCKET_LOG(("  trying again with next ip address\n"));
+            tryAgain = true;
+        }
+        else if (mConnectionFlags & DISABLE_IPV6) {
+            // Drop state to closed.  This will trigger new round of DNS
+            // resolving bellow.
+            // XXX Here should idealy be set now non-existing flag DISABLE_IPV4
+            SOCKET_LOG(("  failed to connect all ipv4 hosts,"
+                        " trying lookup/connect again with both ipv4/ipv6\n"));
+            mState = STATE_CLOSED;
+            mConnectionFlags &= ~DISABLE_IPV6;
             tryAgain = true;
         }
     }
@@ -1296,7 +1329,6 @@ nsSocketTransport::RecoverFromError()
 
     // prepare to try again.
     if (tryAgain) {
-        nsresult rv;
         PRUint32 msg;
 
         if (mState == STATE_CONNECTING) {
@@ -1368,6 +1400,10 @@ nsSocketTransport::OnSocketConnected()
     mPollFlags = (PR_POLL_READ | PR_POLL_WRITE | PR_POLL_EXCEPT);
     mPollTimeout = mTimeouts[TIMEOUT_READ_WRITE];
     mState = STATE_TRANSFERRING;
+
+    // Set the mNetAddrIsSet flag only when state has reached TRANSFERRING
+    // because we need to make sure its value does not change due to failover
+    mNetAddrIsSet = true;
 
     // assign mFD (must do this within the transport lock), but take care not
     // to trample over mFDref if mFD is already set.
@@ -1694,12 +1730,11 @@ nsSocketTransport::OpenInputStream(PRUint32 flags,
         bool openBlocking =  (flags & OPEN_BLOCKING);
 
         net_ResolveSegmentParams(segsize, segcount);
-        nsIMemory *segalloc = net_GetSegmentAlloc(segsize);
 
         // create a pipe
         nsCOMPtr<nsIAsyncOutputStream> pipeOut;
         rv = NS_NewPipe2(getter_AddRefs(pipeIn), getter_AddRefs(pipeOut),
-                         !openBlocking, true, segsize, segcount, segalloc);
+                         !openBlocking, true, segsize, segcount);
         if (NS_FAILED(rv)) return rv;
 
         // async copy from socket to pipe
@@ -1741,12 +1776,11 @@ nsSocketTransport::OpenOutputStream(PRUint32 flags,
         bool openBlocking =  (flags & OPEN_BLOCKING);
 
         net_ResolveSegmentParams(segsize, segcount);
-        nsIMemory *segalloc = net_GetSegmentAlloc(segsize);
 
         // create a pipe
         nsCOMPtr<nsIAsyncInputStream> pipeIn;
         rv = NS_NewPipe2(getter_AddRefs(pipeIn), getter_AddRefs(pipeOut),
-                         true, !openBlocking, segsize, segcount, segalloc);
+                         true, !openBlocking, segsize, segcount);
         if (NS_FAILED(rv)) return rv;
 
         // async copy from socket to pipe
@@ -1887,7 +1921,11 @@ nsSocketTransport::GetPeerAddr(PRNetAddr *addr)
     // we can freely access mNetAddr from any thread without being
     // inside a critical section.
 
-    NS_ENSURE_TRUE(mState == STATE_TRANSFERRING, NS_ERROR_NOT_AVAILABLE);
+    if (!mNetAddrIsSet) {
+        SOCKET_LOG(("nsSocketTransport::GetPeerAddr [this=%p state=%d] "
+                    "NOT_AVAILABLE because not yet connected.", this, mState));
+        return NS_ERROR_NOT_AVAILABLE;
+    }
 
     memcpy(addr, &mNetAddr, sizeof(mNetAddr));
     return NS_OK;

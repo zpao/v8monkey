@@ -47,7 +47,7 @@
  * induced by the recursive parsing (not precise syntax trees, see Parser.h).
  * After tree construction, it rewrites trees to fold constants and evaluate
  * compile-time expressions.  Finally, it calls js::frontend::EmitTree (see
- * CodeGenerator.h) to generate bytecode.
+ * BytecodeEmitter.h) to generate bytecode.
  *
  * This parser attempts no error recovery.
  */
@@ -57,7 +57,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "jstypes.h"
-#include "jsstdint.h"
 #include "jsutil.h"
 #include "jsapi.h"
 #include "jsarray.h"
@@ -78,7 +77,7 @@
 #include "jsstr.h"
 
 #include "frontend/BytecodeCompiler.h"
-#include "frontend/BytecodeGenerator.h"
+#include "frontend/BytecodeEmitter.h"
 #include "frontend/FoldConstants.h"
 #include "frontend/ParseMaps.h"
 #include "frontend/TokenStream.h"
@@ -92,9 +91,9 @@
 #endif
 
 #include "jsatominlines.h"
-#include "jsobjinlines.h"
 #include "jsscriptinlines.h"
 
+#include "frontend/BytecodeEmitter-inl.h"
 #include "frontend/ParseMaps-inl.h"
 #include "frontend/ParseNode-inl.h"
 #include "vm/RegExpObject-inl.h"
@@ -116,11 +115,13 @@ using namespace js::frontend;
     JS_END_MACRO
 #define MUST_MATCH_TOKEN(tt, errno) MUST_MATCH_TOKEN_WITH_FLAGS(tt, errno, 0)
 
-Parser::Parser(JSContext *cx, JSPrincipals *prin, StackFrame *cfp, bool foldConstants)
+Parser::Parser(JSContext *cx, JSPrincipals *prin, JSPrincipals *originPrin,
+               StackFrame *cfp, bool foldConstants)
   : AutoGCRooter(cx, PARSER),
     context(cx),
-    tokenStream(cx),
+    tokenStream(cx, prin, originPrin),
     principals(NULL),
+    originPrincipals(NULL),
     callerFrame(cfp),
     callerVarObj(cfp ? &cfp->varObj() : NULL),
     allocator(cx),
@@ -132,7 +133,7 @@ Parser::Parser(JSContext *cx, JSPrincipals *prin, StackFrame *cfp, bool foldCons
 {
     cx->activeCompilations++;
     PodArrayZero(tempFreeList);
-    setPrincipals(prin);
+    setPrincipals(prin, originPrin);
     JS_ASSERT_IF(cfp, cfp->isScriptFrame());
 }
 
@@ -154,32 +155,35 @@ Parser::init(const jschar *base, size_t length, const char *filename, uintN line
 Parser::~Parser()
 {
     JSContext *cx = context;
-
     if (principals)
         JSPRINCIPALS_DROP(cx, principals);
+    if (originPrincipals)
+        JSPRINCIPALS_DROP(cx, originPrincipals);
     cx->tempLifoAlloc().release(tempPoolMark);
     cx->activeCompilations--;
 }
 
 void
-Parser::setPrincipals(JSPrincipals *prin)
+Parser::setPrincipals(JSPrincipals *prin, JSPrincipals *originPrin)
 {
-    JS_ASSERT(!principals);
-    if (prin)
-        JSPRINCIPALS_HOLD(context, prin);
+    JS_ASSERT(!principals && !originPrincipals);
     principals = prin;
+    if (principals)
+        JSPRINCIPALS_HOLD(context, principals);
+    originPrincipals = originPrin;
+    if (originPrincipals)
+        JSPRINCIPALS_HOLD(context, originPrincipals);
 }
 
 ObjectBox *
 Parser::newObjectBox(JSObject *obj)
 {
-    JS_ASSERT(obj);
-
     /*
-     * We use JSContext.tempPool to allocate parsed objects and place them on
-     * a list in this Parser to ensure GC safety. Thus the tempPool arenas
-     * containing the entries must be alive until we are done with scanning,
-     * parsing and code generation for the whole script or top-level function.
+     * We use JSContext.tempLifoAlloc to allocate parsed objects and place them
+     * on a list in this Parser to ensure GC safety. Thus the tempLifoAlloc
+     * arenas containing the entries must be alive until we are done with
+     * scanning, parsing and code generation for the whole script or top-level
+     * function.
      */
     ObjectBox *objbox = context->tempLifoAlloc().new_<ObjectBox>();
     if (!objbox) {
@@ -201,10 +205,11 @@ Parser::newFunctionBox(JSObject *obj, ParseNode *fn, TreeContext *tc)
     JS_ASSERT(obj->isFunction());
 
     /*
-     * We use JSContext.tempPool to allocate parsed objects and place them on
-     * a list in this Parser to ensure GC safety. Thus the tempPool arenas
-     * containing the entries must be alive until we are done with scanning,
-     * parsing and code generation for the whole script or top-level function.
+     * We use JSContext.tempLifoAlloc to allocate parsed objects and place them
+     * on a list in this Parser to ensure GC safety. Thus the tempLifoAlloc
+     * arenas containing the entries must be alive until we are done with
+     * scanning, parsing and code generation for the whole script or top-level
+     * function.
      */
     FunctionBox *funbox = context->tempLifoAlloc().newPod<FunctionBox>();
     if (!funbox) {
@@ -236,6 +241,14 @@ Parser::newFunctionBox(JSObject *obj, ParseNode *fn, TreeContext *tc)
     funbox->tcflags = (TCF_IN_FUNCTION | (tc->flags & (TCF_COMPILE_N_GO | TCF_STRICT_MODE_CODE)));
     if (tc->innermostWith)
         funbox->tcflags |= TCF_IN_WITH;
+    if (!tc->inFunction()) {
+        JSObject *scope = tc->scopeChain();
+        while (scope) {
+            if (scope->isWith())
+                funbox->tcflags |= TCF_IN_WITH;
+            scope = scope->enclosingScope();
+        }
+    }
     return funbox;
 }
 
@@ -244,7 +257,7 @@ Parser::trace(JSTracer *trc)
 {
     ObjectBox *objbox = traceListHead;
     while (objbox) {
-        MarkObject(trc, *objbox->object, "parser.object");
+        MarkRoot(trc, objbox->object, "parser.object");
         if (objbox->isFunctionBox)
             static_cast<FunctionBox *>(objbox)->bindings.trace(trc);
         objbox = objbox->traceLink;
@@ -254,87 +267,12 @@ Parser::trace(JSTracer *trc)
         tc->trace(trc);
 }
 
-/*
- * Walk the function box list at |*funboxHead|, removing boxes for deleted
- * functions and cleaning up method lists. We do this once, before
- * performing function analysis, to avoid traversing possibly long function
- * lists repeatedly when recycling nodes.
- *
- * There are actually three possible states for function boxes and their
- * nodes:
- *
- * - Live: funbox->node points to the node, and funbox->node->pn_funbox
- *   points back to the funbox.
- *
- * - Recycled: funbox->node points to the node, but funbox->node->pn_funbox
- *   is NULL. When a function node is part of a tree that gets recycled, we
- *   must avoid corrupting any method list the node is on, so we leave the
- *   function node unrecycled until we call cleanFunctionList. At recycle
- *   time, we clear such nodes' pn_funbox pointers to indicate that they
- *   are deleted and should be recycled once we get here.
- *
- * - Mutated: funbox->node is NULL; the contents of the node itself could
- *   be anything. When we mutate a function node into some other kind of
- *   node, we lose all indication that the node was ever part of the
- *   function box tree; it could later be recycled, reallocated, and turned
- *   into anything at all. (Fortunately, method list members never get
- *   mutated, so we don't have to worry about that case.)
- *   ParseNodeAllocator::prepareNodeForMutation clears the node's function
- *   box's node pointer, disconnecting it entirely from the function box tree,
- *   and marking the function box to be trimmed out.
- */
-void
-Parser::cleanFunctionList(FunctionBox **funboxHead)
-{
-    FunctionBox **link = funboxHead;
-    while (FunctionBox *box = *link) {
-        if (!box->node) {
-            /*
-             * This funbox's parse node was mutated into something else. Drop the box,
-             * and stay at the same link.
-             */
-            *link = box->siblings;
-        } else if (!box->node->pn_funbox) {
-            /*
-             * This funbox's parse node is ready to be recycled. Drop the box, recycle
-             * the node, and stay at the same link.
-             */
-            *link = box->siblings;
-            allocator.freeNode(box->node);
-        } else {
-            /* The function is still live. */
-
-            /* First, remove nodes for deleted functions from our methods list. */
-            {
-                ParseNode **methodLink = &box->methods;
-                while (ParseNode *method = *methodLink) {
-                    /* Method nodes are never rewritten in place to be other kinds of nodes. */
-                    JS_ASSERT(method->isArity(PN_FUNC));
-                    if (!method->pn_funbox) {
-                        /* Deleted: drop the node, and stay on this link. */
-                        *methodLink = method->pn_link;
-                    } else {
-                        /* Live: keep the node, and move to the next link. */
-                        methodLink = &method->pn_link;
-                    }
-                }
-            }
-
-            /* Second, remove boxes for deleted functions from our kids list. */
-            cleanFunctionList(&box->kids);
-
-            /* Keep the box on the list, and move to the next link. */
-            link = &box->siblings;
-        }
-    }
-}
-
 static bool
 GenerateBlockIdForStmtNode(ParseNode *pn, TreeContext *tc)
 {
     JS_ASSERT(tc->topStmt);
     JS_ASSERT(STMT_MAYBE_SCOPE(tc->topStmt));
-    JS_ASSERT(pn->isKind(TOK_LC) || pn->isKind(TOK_LEXICALSCOPE));
+    JS_ASSERT(pn->isKind(PNK_STATEMENTLIST) || pn->isKind(PNK_LEXICALSCOPE));
     if (!GenerateBlockId(tc, tc->topStmt->blockid))
         return false;
     pn->pn_blockid = tc->topStmt->blockid;
@@ -394,56 +332,54 @@ HasFinalReturn(ParseNode *pn)
     uintN rv, rv2, hasDefault;
 
     switch (pn->getKind()) {
-      case TOK_LC:
+      case PNK_STATEMENTLIST:
         if (!pn->pn_head)
             return ENDS_IN_OTHER;
         return HasFinalReturn(pn->last());
 
-      case TOK_IF:
+      case PNK_IF:
         if (!pn->pn_kid3)
             return ENDS_IN_OTHER;
         return HasFinalReturn(pn->pn_kid2) & HasFinalReturn(pn->pn_kid3);
 
-      case TOK_WHILE:
+      case PNK_WHILE:
         pn2 = pn->pn_left;
-        if (pn2->isKind(TOK_PRIMARY) && pn2->isOp(JSOP_TRUE))
+        if (pn2->isKind(PNK_TRUE))
             return ENDS_IN_RETURN;
-        if (pn2->isKind(TOK_NUMBER) && pn2->pn_dval)
+        if (pn2->isKind(PNK_NUMBER) && pn2->pn_dval)
             return ENDS_IN_RETURN;
         return ENDS_IN_OTHER;
 
-      case TOK_DO:
+      case PNK_DOWHILE:
         pn2 = pn->pn_right;
-        if (pn2->isKind(TOK_PRIMARY)) {
-            if (pn2->isOp(JSOP_FALSE))
-                return HasFinalReturn(pn->pn_left);
-            if (pn2->isOp(JSOP_TRUE))
-                return ENDS_IN_RETURN;
-        }
-        if (pn2->isKind(TOK_NUMBER)) {
+        if (pn2->isKind(PNK_FALSE))
+            return HasFinalReturn(pn->pn_left);
+        if (pn2->isKind(PNK_TRUE))
+            return ENDS_IN_RETURN;
+        if (pn2->isKind(PNK_NUMBER)) {
             if (pn2->pn_dval == 0)
                 return HasFinalReturn(pn->pn_left);
             return ENDS_IN_RETURN;
         }
         return ENDS_IN_OTHER;
 
-      case TOK_FOR:
+      case PNK_FOR:
         pn2 = pn->pn_left;
         if (pn2->isArity(PN_TERNARY) && !pn2->pn_kid2)
             return ENDS_IN_RETURN;
         return ENDS_IN_OTHER;
 
-      case TOK_SWITCH:
+      case PNK_SWITCH:
         rv = ENDS_IN_RETURN;
         hasDefault = ENDS_IN_OTHER;
         pn2 = pn->pn_right;
-        if (pn2->isKind(TOK_LEXICALSCOPE))
+        if (pn2->isKind(PNK_LEXICALSCOPE))
             pn2 = pn2->expr();
         for (pn2 = pn2->pn_head; rv && pn2; pn2 = pn2->pn_next) {
-            if (pn2->isKind(TOK_DEFAULT))
+            if (pn2->isKind(PNK_DEFAULT))
                 hasDefault = ENDS_IN_RETURN;
             pn3 = pn2->pn_right;
-            JS_ASSERT(pn3->isKind(TOK_LC));
+            JS_ASSERT(pn3->isKind(PNK_STATEMENTLIST));
             if (pn3->pn_head) {
                 rv2 = HasFinalReturn(pn3->last());
                 if (rv2 == ENDS_IN_OTHER && pn2->pn_next)
@@ -456,23 +392,23 @@ HasFinalReturn(ParseNode *pn)
         rv &= hasDefault;
         return rv;
 
-      case TOK_BREAK:
+      case PNK_BREAK:
         return ENDS_IN_BREAK;
 
-      case TOK_WITH:
+      case PNK_WITH:
         return HasFinalReturn(pn->pn_right);
 
-      case TOK_RETURN:
+      case PNK_RETURN:
         return ENDS_IN_RETURN;
 
-      case TOK_COLON:
-      case TOK_LEXICALSCOPE:
+      case PNK_COLON:
+      case PNK_LEXICALSCOPE:
         return HasFinalReturn(pn->expr());
 
-      case TOK_THROW:
+      case PNK_THROW:
         return ENDS_IN_RETURN;
 
-      case TOK_TRY:
+      case PNK_TRY:
         /* If we have a finally block that returns, we are done. */
         if (pn->pn_kid3) {
             rv = HasFinalReturn(pn->pn_kid3);
@@ -489,11 +425,11 @@ HasFinalReturn(ParseNode *pn)
         }
         return rv;
 
-      case TOK_CATCH:
+      case PNK_CATCH:
         /* Check this catch block's body. */
         return HasFinalReturn(pn->pn_kid3);
 
-      case TOK_LET:
+      case PNK_LET:
         /* Non-binary let statements are let declarations. */
         if (!pn->isArity(PN_BINARY))
             return ENDS_IN_OTHER;
@@ -534,7 +470,7 @@ CheckFinalReturn(JSContext *cx, TreeContext *tc, ParseNode *pn)
 static bool
 CheckStrictAssignment(JSContext *cx, TreeContext *tc, ParseNode *lhs)
 {
-    if (tc->needStrictChecks() && lhs->isKind(TOK_NAME)) {
+    if (tc->needStrictChecks() && lhs->isKind(PNK_NAME)) {
         JSAtom *atom = lhs->pn_atom;
         JSAtomState *atomState = &cx->runtime->atomState;
         if (atom == atomState->evalAtom || atom == atomState->argumentsAtom) {
@@ -584,8 +520,6 @@ ReportBadParameter(JSContext *cx, TreeContext *tc, JSAtom *name, uintN errorNumb
            ReportStrictModeError(cx, TS(tc->parser), tc, dn, errorNumber, bytes.ptr());
 }
 
-namespace js {
-
 /*
  * In strict mode code, all parameter names must be distinct, must not be
  * strict mode reserved keywords, and must not be 'eval' or 'arguments'.  We
@@ -593,7 +527,7 @@ namespace js {
  * function's body may turn on strict mode for the function head.
  */
 bool
-CheckStrictParameters(JSContext *cx, TreeContext *tc)
+js::CheckStrictParameters(JSContext *cx, TreeContext *tc)
 {
     JS_ASSERT(tc->inFunction());
 
@@ -610,7 +544,7 @@ CheckStrictParameters(JSContext *cx, TreeContext *tc)
 
     /* Start with lastVariable(), not lastArgument(), for destructuring. */
     for (Shape::Range r = tc->bindings.lastVariable(); !r.empty(); r.popFront()) {
-        jsid id = r.front().propid;
+        jsid id = r.front().propid();
         if (!JSID_IS_ATOM(id))
             continue;
 
@@ -647,10 +581,8 @@ CheckStrictParameters(JSContext *cx, TreeContext *tc)
     return true;
 }
 
-} /* namespace js */
-
 ParseNode *
-Parser::functionBody()
+Parser::functionBody(FunctionBodyType type)
 {
     JS_ASSERT(tc->inFunction());
 
@@ -662,11 +594,12 @@ Parser::functionBody()
     tc->flags &= ~(TCF_RETURN_EXPR | TCF_RETURN_VOID);
 
     ParseNode *pn;
-#if JS_HAS_EXPR_CLOSURES
-    if (tokenStream.currentToken().type == TOK_LC) {
+    if (type == StatementListBody) {
         pn = statements();
     } else {
-        pn = UnaryNode::create(tc);
+        JS_ASSERT(type == ExpressionBody);
+        JS_ASSERT(JS_HAS_EXPR_CLOSURES);
+        pn = UnaryNode::create(PNK_RETURN, tc);
         if (pn) {
             pn->pn_kid = assignExpr();
             if (!pn->pn_kid) {
@@ -678,16 +611,12 @@ Parser::functionBody()
                                     JSMSG_BAD_ANON_GENERATOR_RETURN);
                     pn = NULL;
                 } else {
-                    pn->setKind(TOK_RETURN);
                     pn->setOp(JSOP_RETURN);
                     pn->pn_pos.end = pn->pn_kid->pn_pos.end;
                 }
             }
         }
     }
-#else
-    pn = statements();
-#endif
 
     if (pn) {
         JS_ASSERT(!(tc->topStmt->flags & SIF_SCOPE));
@@ -708,11 +637,10 @@ Parser::functionBody()
 static Definition *
 MakePlaceholder(ParseNode *pn, TreeContext *tc)
 {
-    Definition *dn = (Definition *) NameNode::create(pn->pn_atom, tc);
+    Definition *dn = (Definition *) NameNode::create(PNK_NAME, pn->pn_atom, tc);
     if (!dn)
         return NULL;
 
-    dn->setKind(TOK_NAME);
     dn->setOp(JSOP_NOP);
     dn->setDefn(true);
     dn->pn_dflags |= PND_PLACEHOLDER;
@@ -756,6 +684,8 @@ Define(ParseNode *pn, JSAtom *atom, TreeContext *tc, bool let = false)
             if ((!pnu || pnu->pn_blockid < tc->bodyid) && foundLexdep)
                 tc->lexdeps->remove(atom);
         }
+
+        pn->pn_dflags |= dn->pn_dflags & PND_CLOSED;
     }
 
     Definition *toAdd = (Definition *) pn;
@@ -788,7 +718,7 @@ ForgetUse(ParseNode *pn)
 static ParseNode *
 MakeAssignment(ParseNode *pn, ParseNode *rhs, TreeContext *tc)
 {
-    ParseNode *lhs = tc->parser->new_<ParseNode>(*pn);
+    ParseNode *lhs = tc->parser->cloneNode(*pn);
     if (!lhs)
         return NULL;
 
@@ -803,7 +733,7 @@ MakeAssignment(ParseNode *pn, ParseNode *rhs, TreeContext *tc)
         pn->pn_link = NULL;
     }
 
-    pn->setKind(TOK_ASSIGN);
+    pn->setKind(PNK_ASSIGN);
     pn->setOp(JSOP_NOP);
     pn->setArity(PN_BINARY);
     pn->setInParens(false);
@@ -836,13 +766,13 @@ MakeDefIntoUse(Definition *dn, ParseNode *pn, JSAtom *atom, TreeContext *tc)
     } else if (dn->kind() == Definition::FUNCTION) {
         JS_ASSERT(dn->isOp(JSOP_NOP));
         tc->parser->prepareNodeForMutation(dn);
-        dn->setKind(TOK_NAME);
+        dn->setKind(PNK_NAME);
         dn->setArity(PN_NAME);
         dn->pn_atom = atom;
     }
 
     /* Now make dn no longer a definition, rather a use of pn. */
-    JS_ASSERT(dn->isKind(TOK_NAME));
+    JS_ASSERT(dn->isKind(PNK_NAME));
     JS_ASSERT(dn->isArity(PN_NAME));
     JS_ASSERT(dn->pn_atom == atom);
 
@@ -863,38 +793,33 @@ MakeDefIntoUse(Definition *dn, ParseNode *pn, JSAtom *atom, TreeContext *tc)
     return dn;
 }
 
-namespace js {
-
 bool
-DefineArg(ParseNode *pn, JSAtom *atom, uintN i, TreeContext *tc)
+js::DefineArg(ParseNode *pn, JSAtom *atom, uintN i, TreeContext *tc)
 {
-    ParseNode *argpn, *argsbody;
-
     /* Flag tc so we don't have to lookup arguments on every use. */
     if (atom == tc->parser->context->runtime->atomState.argumentsAtom)
         tc->flags |= TCF_FUN_PARAM_ARGUMENTS;
 
     /*
      * Make an argument definition node, distinguished by being in tc->decls
-     * but having TOK_NAME type and JSOP_NOP op. Insert it in a TOK_ARGSBODY
+     * but having PNK_NAME kind and JSOP_NOP op. Insert it in a PNK_ARGSBODY
      * list node returned via pn->pn_body.
      */
-    argpn = NameNode::create(atom, tc);
+    ParseNode *argpn = NameNode::create(PNK_NAME, atom, tc);
     if (!argpn)
         return false;
-    JS_ASSERT(argpn->isKind(TOK_NAME) && argpn->isOp(JSOP_NOP));
+    JS_ASSERT(argpn->isKind(PNK_NAME) && argpn->isOp(JSOP_NOP));
 
     /* Arguments are initialized by definition. */
     argpn->pn_dflags |= PND_INITIALIZED;
     if (!Define(argpn, atom, tc))
         return false;
 
-    argsbody = pn->pn_body;
+    ParseNode *argsbody = pn->pn_body;
     if (!argsbody) {
-        argsbody = ListNode::create(tc);
+        argsbody = ListNode::create(PNK_ARGSBODY, tc);
         if (!argsbody)
             return false;
-        argsbody->setKind(TOK_ARGSBODY);
         argsbody->setOp(JSOP_NOP);
         argsbody->makeEmpty();
         pn->pn_body = argsbody;
@@ -907,8 +832,6 @@ DefineArg(ParseNode *pn, JSAtom *atom, uintN i, TreeContext *tc)
     return true;
 }
 
-} /* namespace js */
-
 /*
  * Parameter block types for the several Binder functions.  We use a common
  * helper function signature in order to share code among destructuring and
@@ -919,6 +842,12 @@ DefineArg(ParseNode *pn, JSAtom *atom, uintN i, TreeContext *tc)
 typedef JSBool
 (*Binder)(JSContext *cx, BindData *data, JSAtom *atom, TreeContext *tc);
 
+static JSBool
+BindLet(JSContext *cx, BindData *data, JSAtom *atom, TreeContext *tc);
+
+static JSBool
+BindVarOrConst(JSContext *cx, BindData *data, JSAtom *atom, TreeContext *tc);
+
 struct BindData {
     BindData() : fresh(true) {}
 
@@ -928,10 +857,26 @@ struct BindData {
     Binder          binder;     /* binder, discriminates u */
     union {
         struct {
+            VarContext varContext;
+            StaticBlockObject *blockObj;
             uintN   overflow;
         } let;
     };
     bool fresh;
+
+    void initLet(VarContext varContext, StaticBlockObject &blockObj, uintN overflow) {
+        this->pn = NULL;
+        this->op = JSOP_NOP;
+        this->binder = BindLet;
+        this->let.varContext = varContext;
+        this->let.blockObj = &blockObj;
+        this->let.overflow = overflow;
+    }
+
+    void initVarOrConst(JSOp op) {
+        this->op = op;
+        this->binder = BindVarOrConst;
+    }
 };
 
 static bool
@@ -1013,15 +958,20 @@ Parser::newFunction(TreeContext *tc, JSAtom *atom, FunctionSyntaxKind kind)
      */
     while (tc->parent)
         tc = tc->parent;
-    JSObject *parent = tc->inFunction() ? NULL : tc->scopeChain();
+
+    RootedVarObject parent(context);
+    parent = tc->inFunction() ? NULL : tc->scopeChain();
 
     JSFunction *fun =
         js_NewFunction(context, NULL, NULL, 0,
                        JSFUN_INTERPRETED | (kind == Expression ? JSFUN_LAMBDA : 0),
                        parent, atom);
     if (fun && !tc->compileAndGo()) {
-        fun->clearParent();
-        fun->clearType();
+        if (!fun->clearParent(context))
+            return NULL;
+        if (!fun->clearType(context))
+            return NULL;
+        fun->setEnvironment(NULL);
     }
     return fun;
 }
@@ -1040,595 +990,6 @@ MatchOrInsertSemicolon(JSContext *cx, TokenStream *ts)
     }
     (void) ts->matchToken(TOK_SEMI);
     return JS_TRUE;
-}
-
-bool
-Parser::analyzeFunctions(TreeContext *tc)
-{
-    cleanFunctionList(&tc->functionList);
-    if (!tc->functionList)
-        return true;
-    if (!markFunArgs(tc->functionList))
-        return false;
-    markExtensibleScopeDescendants(tc->functionList, false);
-    setFunctionKinds(tc->functionList, &tc->flags);
-    return true;
-}
-
-/*
- * Mark as funargs any functions that reach up to one or more upvars across an
- * already-known funarg. The parser will flag the o_m lambda as a funarg in:
- *
- *   function f(o, p) {
- *       o.m = function o_m(a) {
- *           function g() { return p; }
- *           function h() { return a; }
- *           return g() + h();
- *       }
- *   }
- *
- * but without this extra marking phase, function g will not be marked as a
- * funarg since it is called from within its parent scope. But g reaches up to
- * f's parameter p, so if o_m escapes f's activation scope, g does too and
- * cannot assume that p's stack slot is still alive. In contast function h
- * neither escapes nor uses an upvar "above" o_m's level.
- *
- * If function g itself contained lambdas that contained non-lambdas that reach
- * up above its level, then those non-lambdas would have to be marked too. This
- * process is potentially exponential in the number of functions, but generally
- * not so complex. But it can't be done during a single recursive traversal of
- * the funbox tree, so we must use a work queue.
- *
- * Return the minimal "skipmin" for funbox and its siblings. This is the delta
- * between the static level of the bodies of funbox and its peers (which must
- * be funbox->level + 1), and the static level of the nearest upvar among all
- * the upvars contained by funbox and its peers. If there are no upvars, return
- * FREE_STATIC_LEVEL. Thus this function never returns 0.
- */
-static uintN
-FindFunArgs(FunctionBox *funbox, int level, FunctionBoxQueue *queue)
-{
-    uintN allskipmin = UpvarCookie::FREE_LEVEL;
-
-    do {
-        ParseNode *fn = funbox->node;
-        JS_ASSERT(fn->isArity(PN_FUNC));
-        JSFunction *fun = funbox->function();
-        int fnlevel = level;
-
-        /*
-         * An eval can leak funbox, functions along its ancestor line, and its
-         * immediate kids. Since FindFunArgs uses DFS and the parser propagates
-         * TCF_FUN_HEAVYWEIGHT bottom up, funbox's ancestor function nodes have
-         * already been marked as funargs by this point. Therefore we have to
-         * flag only funbox->node and funbox->kids' nodes here.
-         *
-         * Generators need to be treated in the same way. Even if the value
-         * of a generator function doesn't escape, anything defined or referred
-         * to inside the generator can escape through a call to the generator.
-         * We could imagine doing static analysis to track the calls and see
-         * if any iterators or values returned by iterators escape, but that
-         * would be hard, so instead we just assume everything might escape.
-         */
-        if (funbox->tcflags & (TCF_FUN_HEAVYWEIGHT | TCF_FUN_IS_GENERATOR)) {
-            fn->setFunArg();
-            for (FunctionBox *kid = funbox->kids; kid; kid = kid->siblings)
-                kid->node->setFunArg();
-        }
-
-        /*
-         * Compute in skipmin the least distance from fun's static level up to
-         * an upvar, whether used directly by fun, or indirectly by a function
-         * nested in fun.
-         */
-        uintN skipmin = UpvarCookie::FREE_LEVEL;
-        ParseNode *pn = fn->pn_body;
-
-        if (pn->isKind(TOK_UPVARS)) {
-            AtomDefnMapPtr &upvars = pn->pn_names;
-            JS_ASSERT(upvars->count() != 0);
-
-            for (AtomDefnRange r = upvars->all(); !r.empty(); r.popFront()) {
-                Definition *defn = r.front().value();
-                Definition *lexdep = defn->resolve();
-
-                if (!lexdep->isFreeVar()) {
-                    uintN upvarLevel = lexdep->frameLevel();
-
-                    if (int(upvarLevel) <= fnlevel)
-                        fn->setFunArg();
-
-                    uintN skip = (funbox->level + 1) - upvarLevel;
-                    if (skip < skipmin)
-                        skipmin = skip;
-                }
-            }
-        }
-
-        /*
-         * If this function escapes, whether directly (the parser detects such
-         * escapes) or indirectly (because this non-escaping function uses an
-         * upvar that reaches across an outer function boundary where the outer
-         * function escapes), enqueue it for further analysis, and bump fnlevel
-         * to trap any non-escaping children.
-         */
-        if (fn->isFunArg()) {
-            queue->push(funbox);
-            fnlevel = int(funbox->level);
-        }
-
-        /*
-         * Now process the current function's children, and recalibrate their
-         * cumulative skipmin to be relative to the current static level.
-         */
-        if (funbox->kids) {
-            uintN kidskipmin = FindFunArgs(funbox->kids, fnlevel, queue);
-
-            JS_ASSERT(kidskipmin != 0);
-            if (kidskipmin != UpvarCookie::FREE_LEVEL) {
-                --kidskipmin;
-                if (kidskipmin != 0 && kidskipmin < skipmin)
-                    skipmin = kidskipmin;
-            }
-        }
-
-        /*
-         * Finally, after we've traversed all of the current function's kids,
-         * minimize fun's skipmin against our accumulated skipmin. Do likewise
-         * with allskipmin, but minimize across funbox and all of its siblings,
-         * to compute our return value.
-         */
-        if (skipmin != UpvarCookie::FREE_LEVEL) {
-            fun->u.i.skipmin = skipmin;
-            if (skipmin < allskipmin)
-                allskipmin = skipmin;
-        }
-    } while ((funbox = funbox->siblings) != NULL);
-
-    return allskipmin;
-}
-
-bool
-Parser::markFunArgs(FunctionBox *funbox)
-{
-    FunctionBoxQueue queue;
-    if (!queue.init(functionCount)) {
-        js_ReportOutOfMemory(context);
-        return false;
-    }
-
-    FindFunArgs(funbox, -1, &queue);
-    while ((funbox = queue.pull()) != NULL) {
-        ParseNode *fn = funbox->node;
-        JS_ASSERT(fn->isFunArg());
-
-        ParseNode *pn = fn->pn_body;
-        if (pn->isKind(TOK_UPVARS)) {
-            AtomDefnMapPtr upvars = pn->pn_names;
-            JS_ASSERT(!upvars->empty());
-
-            for (AtomDefnRange r = upvars->all(); !r.empty(); r.popFront()) {
-                Definition *defn = r.front().value();
-                Definition *lexdep = defn->resolve();
-
-                if (!lexdep->isFreeVar() &&
-                    !lexdep->isFunArg() &&
-                    (lexdep->kind() == Definition::FUNCTION ||
-                     lexdep->isOp(JSOP_CALLEE))) {
-                    /*
-                     * Mark this formerly-Algol-like function as an escaping
-                     * function (i.e., as a funarg), because it is used from
-                     * another funarg.
-                     *
-                     * Progress is guaranteed because we set the funarg flag
-                     * here, which suppresses revisiting this function (thanks
-                     * to the !lexdep->isFunArg() test just above).
-                     */
-                    lexdep->setFunArg();
-
-                    FunctionBox *afunbox;
-                    if (lexdep->isOp(JSOP_CALLEE)) {
-                        /*
-                         * A named function expression will not appear to be a
-                         * funarg if it is immediately applied. However, if its
-                         * name is used in an escaping function nested within
-                         * it, then it must become flagged as a funarg again.
-                         * See bug 545980.
-                         */
-                        afunbox = funbox;
-                        uintN calleeLevel = lexdep->pn_cookie.level();
-                        uintN staticLevel = afunbox->level + 1U;
-                        while (staticLevel != calleeLevel) {
-                            afunbox = afunbox->parent;
-                            --staticLevel;
-                        }
-                        JS_ASSERT(afunbox->level + 1U == calleeLevel);
-                        afunbox->node->setFunArg();
-                    } else {
-                       afunbox = lexdep->pn_funbox;
-                    }
-                    queue.push(afunbox);
-
-                    /*
-                     * Walk over nested functions again, now that we have
-                     * changed the level across which it is unsafe to access
-                     * upvars using the runtime dynamic link (frame chain).
-                     */
-                    if (afunbox->kids)
-                        FindFunArgs(afunbox->kids, afunbox->level, &queue);
-                }
-            }
-        }
-    }
-    return true;
-}
-
-static uint32
-MinBlockId(ParseNode *fn, uint32 id)
-{
-    if (fn->pn_blockid < id)
-        return false;
-    if (fn->isDefn()) {
-        for (ParseNode *pn = fn->dn_uses; pn; pn = pn->pn_link) {
-            if (pn->pn_blockid < id)
-                return false;
-        }
-    }
-    return true;
-}
-
-static inline bool
-CanFlattenUpvar(Definition *dn, FunctionBox *funbox, uint32 tcflags)
-{
-    /*
-     * Consider the current function (the lambda, innermost below) using a var
-     * x defined two static levels up:
-     *
-     *  function f() {
-     *      // z = g();
-     *      var x = 42;
-     *      function g() {
-     *          return function () { return x; };
-     *      }
-     *      return g();
-     *  }
-     *
-     * So long as (1) the initialization in 'var x = 42' dominates all uses of
-     * g and (2) x is not reassigned, it is safe to optimize the lambda to a
-     * flat closure. Uncommenting the early call to g makes this optimization
-     * unsafe (z could name a global setter that calls its argument).
-     */
-    FunctionBox *afunbox = funbox;
-    uintN dnLevel = dn->frameLevel();
-
-    JS_ASSERT(dnLevel <= funbox->level);
-    while (afunbox->level != dnLevel) {
-        afunbox = afunbox->parent;
-
-        /*
-         * NB: afunbox can't be null because we are sure to find a function box
-         * whose level == dnLevel before we would try to walk above the root of
-         * the funbox tree. See bug 493260 comments 16-18.
-         *
-         * Assert but check anyway, to protect future changes that bind eval
-         * upvars in the parser.
-         */
-        JS_ASSERT(afunbox);
-
-        /*
-         * If this function is reaching up across an enclosing funarg, then we
-         * cannot copy dn's value into a flat closure slot. The flat closure
-         * code assumes the upvars to be copied are in frames still on the
-         * stack.
-         */
-        if (!afunbox || afunbox->node->isFunArg())
-            return false;
-
-        /*
-         * Reaching up for dn across a generator also means we can't flatten,
-         * since the generator iterator does not run until later, in general.
-         * See bug 563034.
-         */
-        if (afunbox->tcflags & TCF_FUN_IS_GENERATOR)
-            return false;
-    }
-
-    /*
-     * If afunbox's function (which is at the same level as dn) is in a loop,
-     * pessimistically assume the variable initializer may be in the same loop.
-     * A flat closure would then be unsafe, as the captured variable could be
-     * assigned after the closure is created. See bug 493232.
-     */
-    if (afunbox->inLoop)
-        return false;
-
-    /*
-     * |with| and eval used as an operator defeat lexical scoping: they can be
-     * used to assign to any in-scope variable. Therefore they must disable
-     * flat closures that use such upvars.  The parser detects these as special
-     * forms and marks the function heavyweight.
-     */
-    if ((afunbox->parent ? afunbox->parent->tcflags : tcflags) & TCF_FUN_HEAVYWEIGHT)
-        return false;
-
-    /*
-     * If afunbox's function is not a lambda, it will be hoisted, so it could
-     * capture the undefined value that by default initializes var, let, and
-     * const bindings. And if dn is a function that comes at (meaning a
-     * function refers to its own name) or strictly after afunbox, we also
-     * defeat the flat closure optimization for this dn.
-     */
-    JSFunction *afun = afunbox->function();
-    if (!(afun->flags & JSFUN_LAMBDA)) {
-        if (dn->isBindingForm() || dn->pn_pos >= afunbox->node->pn_pos)
-            return false;
-    }
-
-    if (!dn->isInitialized())
-        return false;
-
-    Definition::Kind dnKind = dn->kind();
-    if (dnKind != Definition::CONST) {
-        if (dn->isAssigned())
-            return false;
-
-        /*
-         * Any formal could be mutated behind our back via the arguments
-         * object, so deoptimize if the outer function uses arguments.
-         *
-         * In a Function constructor call where the final argument -- the body
-         * source for the function to create -- contains a nested function
-         * definition or expression, afunbox->parent will be null. The body
-         * source might use |arguments| outside of any nested functions it may
-         * contain, so we have to check the tcflags parameter that was passed
-         * in from BytecodeCompiler::compileFunctionBody.
-         */
-        if (dnKind == Definition::ARG &&
-            ((afunbox->parent ? afunbox->parent->tcflags : tcflags) & TCF_FUN_USES_ARGUMENTS)) {
-            return false;
-        }
-    }
-
-    /*
-     * Check quick-and-dirty dominance relation. Function definitions dominate
-     * their uses thanks to hoisting.  Other binding forms hoist as undefined,
-     * of course, so check forward-reference and blockid relations.
-     */
-    if (dnKind != Definition::FUNCTION) {
-        /*
-         * Watch out for code such as
-         *
-         *   (function () {
-         *   ...
-         *   var jQuery = ... = function (...) {
-         *       return new jQuery.foo.bar(baz);
-         *   }
-         *   ...
-         *   })();
-         *
-         * where the jQuery variable is not reassigned, but of course is not
-         * initialized at the time that the would-be-flat closure containing
-         * the jQuery upvar is formed.
-         */
-        if (dn->pn_pos.end >= afunbox->node->pn_pos.end)
-            return false;
-        if (!MinBlockId(afunbox->node, dn->pn_blockid))
-            return false;
-    }
-    return true;
-}
-
-static void
-FlagHeavyweights(Definition *dn, FunctionBox *funbox, uint32 *tcflags)
-{
-    uintN dnLevel = dn->frameLevel();
-
-    while ((funbox = funbox->parent) != NULL) {
-        /*
-         * Notice that funbox->level is the static level of the definition or
-         * expression of the function parsed into funbox, not the static level
-         * of its body. Therefore we must add 1 to match dn's level to find the
-         * funbox whose body contains the dn definition.
-         */
-        if (funbox->level + 1U == dnLevel || (dnLevel == 0 && dn->isLet())) {
-            funbox->tcflags |= TCF_FUN_HEAVYWEIGHT;
-            break;
-        }
-        funbox->tcflags |= TCF_FUN_ENTRAINS_SCOPES;
-    }
-
-    if (!funbox && (*tcflags & TCF_IN_FUNCTION))
-        *tcflags |= TCF_FUN_HEAVYWEIGHT;
-}
-
-static bool
-DeoptimizeUsesWithin(Definition *dn, const TokenPos &pos)
-{
-    uintN ndeoptimized = 0;
-
-    for (ParseNode *pnu = dn->dn_uses; pnu; pnu = pnu->pn_link) {
-        JS_ASSERT(pnu->isUsed());
-        JS_ASSERT(!pnu->isDefn());
-        if (pnu->pn_pos.begin >= pos.begin && pnu->pn_pos.end <= pos.end) {
-            pnu->pn_dflags |= PND_DEOPTIMIZED;
-            ++ndeoptimized;
-        }
-    }
-
-    return ndeoptimized != 0;
-}
-
-static void
-ConsiderUnbranding(FunctionBox *funbox)
-{
-    /*
-     * We've already recursively set our kids' kinds, which also classifies
-     * enclosing functions holding upvars referenced in those descendants'
-     * bodies. So now we can check our "methods".
-     *
-     * Despecialize from branded method-identity-based shape to shape- or
-     * slot-based shape if this function smells like a constructor and too many
-     * of its methods are *not* joinable null closures (i.e., they have one or
-     * more upvars fetched via the display).
-     */
-    bool returnsExpr = !!(funbox->tcflags & TCF_RETURN_EXPR);
-#if JS_HAS_EXPR_CLOSURES
-    {
-        ParseNode *pn2 = funbox->node->pn_body;
-        if (pn2->isKind(TOK_UPVARS))
-            pn2 = pn2->pn_tree;
-        if (pn2->isKind(TOK_ARGSBODY))
-            pn2 = pn2->last();
-        if (!pn2->isKind(TOK_LC))
-            returnsExpr = true;
-    }
-#endif
-    if (!returnsExpr) {
-        uintN methodSets = 0, slowMethodSets = 0;
-
-        for (ParseNode *method = funbox->methods; method; method = method->pn_link) {
-            JS_ASSERT(method->isOp(JSOP_LAMBDA) || method->isOp(JSOP_LAMBDA_FC));
-            ++methodSets;
-            if (!method->pn_funbox->joinable())
-                ++slowMethodSets;
-        }
-
-        if (funbox->shouldUnbrand(methodSets, slowMethodSets))
-            funbox->tcflags |= TCF_FUN_UNBRAND_THIS;
-    }
-}
-
-void
-Parser::setFunctionKinds(FunctionBox *funbox, uint32 *tcflags)
-{
-    for (; funbox; funbox = funbox->siblings) {
-        ParseNode *fn = funbox->node;
-        ParseNode *pn = fn->pn_body;
-
-        if (funbox->kids) {
-            setFunctionKinds(funbox->kids, tcflags);
-            ConsiderUnbranding(funbox);
-        }
-
-        JSFunction *fun = funbox->function();
-
-        JS_ASSERT(fun->kind() == JSFUN_INTERPRETED);
-
-        if (funbox->tcflags & TCF_FUN_HEAVYWEIGHT) {
-            /* nothing to do */
-        } else if (funbox->inAnyDynamicScope()) {
-            JS_ASSERT(!fun->isNullClosure());
-        } else {
-            bool hasUpvars = false;
-            bool canFlatten = true;
-
-            if (pn->isKind(TOK_UPVARS)) {
-                AtomDefnMapPtr upvars = pn->pn_names;
-                JS_ASSERT(!upvars->empty());
-
-                /*
-                 * For each lexical dependency from this closure to an outer
-                 * binding, analyze whether it is safe to copy the binding's
-                 * value into a flat closure slot when the closure is formed.
-                 */
-                for (AtomDefnRange r = upvars->all(); !r.empty(); r.popFront()) {
-                    Definition *defn = r.front().value();
-                    Definition *lexdep = defn->resolve();
-
-                    if (!lexdep->isFreeVar()) {
-                        hasUpvars = true;
-                        if (!CanFlattenUpvar(lexdep, funbox, *tcflags)) {
-                            /*
-                             * Can't flatten. Enclosing functions holding
-                             * variables used by this function will be flagged
-                             * heavyweight below. FIXME bug 545759: re-enable
-                             * partial flat closures.
-                             */
-                            canFlatten = false;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (!hasUpvars) {
-                /* No lexical dependencies => null closure, for best performance. */
-                fun->setKind(JSFUN_NULL_CLOSURE);
-            } else if (canFlatten) {
-                fun->setKind(JSFUN_FLAT_CLOSURE);
-                switch (fn->getOp()) {
-                  case JSOP_DEFFUN:
-                    fn->setOp(JSOP_DEFFUN_FC);
-                    break;
-                  case JSOP_DEFLOCALFUN:
-                    fn->setOp(JSOP_DEFLOCALFUN_FC);
-                    break;
-                  case JSOP_LAMBDA:
-                    fn->setOp(JSOP_LAMBDA_FC);
-                    break;
-                  default:
-                    /* js_EmitTree's case TOK_FUNCTION: will select op. */
-                    JS_ASSERT(fn->isOp(JSOP_NOP));
-                }
-            }
-        }
-
-        if (fun->kind() == JSFUN_INTERPRETED && pn->isKind(TOK_UPVARS)) {
-            /*
-             * One or more upvars cannot be safely snapshot into a flat
-             * closure's non-reserved slot (see JSOP_GETFCSLOT), so we loop
-             * again over all upvars, and for each non-free upvar, ensure that
-             * its containing function has been flagged as heavyweight.
-             *
-             * The emitter must see TCF_FUN_HEAVYWEIGHT accurately before
-             * generating any code for a tree of nested functions.
-             */
-            AtomDefnMapPtr upvars = pn->pn_names;
-            JS_ASSERT(!upvars->empty());
-
-            for (AtomDefnRange r = upvars->all(); !r.empty(); r.popFront()) {
-                Definition *defn = r.front().value();
-                Definition *lexdep = defn->resolve();
-                if (!lexdep->isFreeVar())
-                    FlagHeavyweights(lexdep, funbox, tcflags);
-            }
-        }
-
-        if (funbox->joinable())
-            fun->setJoinable();
-    }
-}
-
-/*
- * Walk the FunctionBox tree looking for functions whose call objects may
- * acquire new bindings as they execute: non-strict functions that call eval,
- * and functions that contain function statements (definitions not appearing
- * within the top statement list, which don't take effect unless they are
- * evaluated). Such call objects may acquire bindings that shadow variables
- * defined in enclosing scopes, so any enclosed functions must have their
- * bindings' extensibleParents flags set, and enclosed compiler-created blocks
- * must have their OWN_SHAPE flags set; the comments for
- * js::Bindings::extensibleParents explain why.
- */
-void
-Parser::markExtensibleScopeDescendants(FunctionBox *funbox, bool hasExtensibleParent) 
-{
-    for (; funbox; funbox = funbox->siblings) {
-        /*
-         * It would be nice to use fun->kind() here to recognize functions
-         * that will never consult their parent chains, and thus don't need
-         * their 'extensible parents' flag set. Filed as bug 619750. 
-         */
-
-        JS_ASSERT(!funbox->bindings.extensibleParents());
-        if (hasExtensibleParent)
-            funbox->bindings.setExtensibleParents();
-
-        if (funbox->kids) {
-            markExtensibleScopeDescendants(funbox->kids,
-                                           hasExtensibleParent || funbox->scopeIsExtensible());
-        }
-    }
 }
 
 static FunctionBox *
@@ -1656,6 +1017,23 @@ EnterFunction(ParseNode *fn, TreeContext *funtc, JSAtom *funAtom = NULL,
         return NULL;
 
     return funbox;
+}
+
+static bool
+DeoptimizeUsesWithin(Definition *dn, const TokenPos &pos)
+{
+    uintN ndeoptimized = 0;
+
+    for (ParseNode *pnu = dn->dn_uses; pnu; pnu = pnu->pn_link) {
+        JS_ASSERT(pnu->isUsed());
+        JS_ASSERT(!pnu->isDefn());
+        if (pnu->pn_pos.begin >= pos.begin && pnu->pn_pos.end <= pos.end) {
+            pnu->pn_dflags |= PND_DEOPTIMIZED;
+            ++ndeoptimized;
+        }
+    }
+
+    return ndeoptimized != 0;
 }
 
 static bool
@@ -1805,11 +1183,10 @@ LeaveFunction(ParseNode *fn, TreeContext *funtc, PropertyName *funName = NULL,
         if (funtc->lexdeps->count() - foundCallee != 0) {
             ParseNode *body = fn->pn_body;
 
-            fn->pn_body = NameSetNode::create(tc);
+            fn->pn_body = NameSetNode::create(PNK_UPVARS, tc);
             if (!fn->pn_body)
                 return false;
 
-            fn->pn_body->setKind(TOK_UPVARS);
             fn->pn_body->pn_pos = body->pn_pos;
             if (foundCallee)
                 funtc->lexdeps->remove(funName);
@@ -1830,7 +1207,7 @@ LeaveFunction(ParseNode *fn, TreeContext *funtc, PropertyName *funName = NULL,
      * we create it eagerly whenever parameters are (or might, in the case of
      * calls to eval) be assigned.
      */
-    if (funtc->inStrictMode() && funbox->object->getFunctionPrivate()->nargs > 0) {
+    if (funtc->inStrictMode() && funbox->object->toFunction()->nargs > 0) {
         AtomDeclsIter iter(&funtc->decls);
         Definition *dn;
 
@@ -1848,7 +1225,7 @@ LeaveFunction(ParseNode *fn, TreeContext *funtc, PropertyName *funName = NULL,
 }
 
 static bool
-DefineGlobal(ParseNode *pn, CodeGenerator *cg, PropertyName *name);
+DefineGlobal(ParseNode *pn, BytecodeEmitter *bce, PropertyName *name);
 
 /*
  * FIXME? this Parser method was factored from Parser::functionDef with minimal
@@ -1900,7 +1277,7 @@ Parser::functionArguments(TreeContext &funtc, FunctionBox *funbox, ParseNode **l
                  * Adjust fun->nargs to count the single anonymous positional
                  * parameter that is to be destructured.
                  */
-                uint16 slot;
+                uint16_t slot;
                 if (!funtc.bindings.addDestructuring(context, &slot))
                     return false;
 
@@ -1909,23 +1286,22 @@ Parser::functionArguments(TreeContext &funtc, FunctionBox *funbox, ParseNode **l
                  * anonymous positional parameter into the destructuring
                  * left-hand-side expression and accumulate it in list.
                  */
-                ParseNode *rhs = NameNode::create(context->runtime->atomState.emptyAtom, &funtc);
+                ParseNode *rhs =
+                    NameNode::create(PNK_NAME, context->runtime->atomState.emptyAtom, &funtc);
                 if (!rhs)
                     return false;
-                rhs->setKind(TOK_NAME);
                 rhs->setOp(JSOP_GETARG);
                 rhs->pn_cookie.set(funtc.staticLevel, slot);
                 rhs->pn_dflags |= PND_BOUND;
 
                 ParseNode *item =
-                    ParseNode::newBinaryOrAppend(TOK_ASSIGN, JSOP_NOP, lhs, rhs, &funtc);
+                    ParseNode::newBinaryOrAppend(PNK_ASSIGN, JSOP_NOP, lhs, rhs, &funtc);
                 if (!item)
                     return false;
                 if (!list) {
-                    list = ListNode::create(&funtc);
+                    list = ListNode::create(PNK_VAR, &funtc);
                     if (!list)
                         return false;
-                    list->setKind(TOK_VAR);
                     list->makeEmpty();
                     *listp = list;
                 }
@@ -1962,7 +1338,7 @@ Parser::functionArguments(TreeContext &funtc, FunctionBox *funbox, ParseNode **l
                 }
 #endif
 
-                uint16 slot;
+                uint16_t slot;
                 if (!funtc.bindings.addArgument(context, name, &slot))
                     return false;
                 if (!DefineArg(funbox->node, name, slot, &funtc))
@@ -2000,8 +1376,7 @@ Parser::functionDef(PropertyName *funName, FunctionType type, FunctionSyntaxKind
     JS_ASSERT_IF(kind == Statement, funName);
 
     /* Make a TOK_FUNCTION node. */
-    tokenStream.mungeCurrentToken(TOK_FUNCTION, JSOP_NOP);
-    ParseNode *pn = FunctionNode::create(tc);
+    ParseNode *pn = FunctionNode::create(PNK_FUNCTION, tc);
     if (!pn)
         return NULL;
     pn->pn_body = NULL;
@@ -2061,7 +1436,7 @@ Parser::functionDef(PropertyName *funName, FunctionType type, FunctionSyntaxKind
 
             if (Definition *fn = tc->lexdeps.lookupDefn(funName)) {
                 JS_ASSERT(fn->isDefn());
-                fn->setKind(TOK_FUNCTION);
+                fn->setKind(PNK_FUNCTION);
                 fn->setArity(PN_FUNC);
                 fn->pn_pos.begin = pn->pn_pos.begin;
 
@@ -2088,7 +1463,7 @@ Parser::functionDef(PropertyName *funName, FunctionType type, FunctionSyntaxKind
          * variable to bind its name to its value, and not an activation object
          * property (it might also need the activation property, if the outer
          * function contains with statements, e.g., but the stack slot wins
-         * when BytecodeGenerator.cpp's BindNameToSlot can optimize a JSOP_NAME
+         * when BytecodeEmitter.cpp's BindNameToSlot can optimize a JSOP_NAME
          * into a JSOP_GETLOCAL bytecode).
          */
         if (bodyLevel && tc->inFunction()) {
@@ -2172,17 +1547,18 @@ Parser::functionDef(PropertyName *funName, FunctionType type, FunctionSyntaxKind
         return NULL;
     }
 
+    FunctionBodyType bodyType = StatementListBody;
 #if JS_HAS_EXPR_CLOSURES
-    TokenKind tt = tokenStream.getToken(TSF_OPERAND);
-    if (tt != TOK_LC) {
+    if (tokenStream.getToken(TSF_OPERAND) != TOK_LC) {
         tokenStream.ungetToken();
         fun->flags |= JSFUN_EXPR_CLOSURE;
+        bodyType = ExpressionBody;
     }
 #else
     MUST_MATCH_TOKEN(TOK_LC, JSMSG_CURLY_BEFORE_BODY);
 #endif
 
-    ParseNode *body = functionBody();
+    ParseNode *body = functionBody(bodyType);
     if (!body)
         return NULL;
 
@@ -2193,7 +1569,7 @@ Parser::functionDef(PropertyName *funName, FunctionType type, FunctionSyntaxKind
         return NULL;
 
 #if JS_HAS_EXPR_CLOSURES
-    if (tt == TOK_LC)
+    if (bodyType == StatementListBody)
         MUST_MATCH_TOKEN(TOK_RC, JSMSG_CURLY_AFTER_BODY);
     else if (kind == Statement && !MatchOrInsertSemicolon(context, &tokenStream))
         return NULL;
@@ -2207,11 +1583,11 @@ Parser::functionDef(PropertyName *funName, FunctionType type, FunctionSyntaxKind
      * parent to call eval. We need this for two reasons: (1) the Jaegermonkey
      * optimizations really need to know if eval is called transitively, and
      * (2) in strict mode, eval called transitively requires eager argument
-     * creation in strict mode parent functions. 
+     * creation in strict mode parent functions.
      *
-     * For the latter, we really only need to propagate callsEval if both 
-     * functions are strict mode, but we don't lose much by always propagating. 
-     * The only optimization we lose this way is in the case where a function 
+     * For the latter, we really only need to propagate callsEval if both
+     * functions are strict mode, but we don't lose much by always propagating.
+     * The only optimization we lose this way is in the case where a function
      * is strict, does not mutate arguments, does not call eval directly, but
      * calls eval transitively.
      */
@@ -2222,28 +1598,26 @@ Parser::functionDef(PropertyName *funName, FunctionType type, FunctionSyntaxKind
     /*
      * If there were destructuring formal parameters, prepend the initializing
      * comma expression that we synthesized to body. If the body is a return
-     * node, we must make a special TOK_SEQ node, to prepend the destructuring
+     * node, we must make a special PNK_SEQ node, to prepend the destructuring
      * code without bracing the decompilation of the function body.
      */
     if (prelude) {
         if (!body->isArity(PN_LIST)) {
             ParseNode *block;
 
-            block = ListNode::create(outertc);
+            block = ListNode::create(PNK_SEQ, outertc);
             if (!block)
                 return NULL;
-            block->setKind(TOK_SEQ);
             block->pn_pos = body->pn_pos;
             block->initList(body);
 
             body = block;
         }
 
-        ParseNode *item = UnaryNode::create(outertc);
+        ParseNode *item = UnaryNode::create(PNK_SEMI, outertc);
         if (!item)
             return NULL;
 
-        item->setKind(TOK_SEMI);
         item->pn_pos.begin = item->pn_pos.end = body->pn_pos.begin;
         item->pn_kid = prelude;
         item->pn_next = body->pn_head;
@@ -2305,7 +1679,7 @@ Parser::functionDef(PropertyName *funName, FunctionType type, FunctionSyntaxKind
 
     if (!outertc->inFunction() && bodyLevel && kind == Statement && outertc->compiling()) {
         JS_ASSERT(pn->pn_cookie.isFree());
-        if (!DefineGlobal(pn, outertc->asCodeGenerator(), funName))
+        if (!DefineGlobal(pn, outertc->asBytecodeEmitter(), funName))
             return NULL;
     }
 
@@ -2431,24 +1805,20 @@ Parser::recognizeDirectivePrologue(ParseNode *pn, bool *isDirectivePrologueMembe
 ParseNode *
 Parser::statements()
 {
-    ParseNode *pn, *pn2, *saveBlock;
-    TokenKind tt;
-
     JS_CHECK_RECURSION(context, return NULL);
 
-    pn = ListNode::create(tc);
+    ParseNode *pn = ListNode::create(PNK_STATEMENTLIST, tc);
     if (!pn)
         return NULL;
-    pn->setKind(TOK_LC);
     pn->makeEmpty();
     pn->pn_blockid = tc->blockid();
-    saveBlock = tc->blockNode;
+    ParseNode *saveBlock = tc->blockNode;
     tc->blockNode = pn;
 
     bool inDirectivePrologue = tc->atBodyLevel();
     tokenStream.setOctalCharacterEscape(false);
     for (;;) {
-        tt = tokenStream.peekToken(TSF_OPERAND);
+        TokenKind tt = tokenStream.peekToken(TSF_OPERAND);
         if (tt <= TOK_EOF || tt == TOK_RC) {
             if (tt == TOK_ERROR) {
                 if (tokenStream.isEOF())
@@ -2457,17 +1827,17 @@ Parser::statements()
             }
             break;
         }
-        pn2 = statement();
-        if (!pn2) {
+        ParseNode *next = statement();
+        if (!next) {
             if (tokenStream.isEOF())
                 tokenStream.setUnexpectedEOF();
             return NULL;
         }
 
-        if (inDirectivePrologue && !recognizeDirectivePrologue(pn2, &inDirectivePrologue))
+        if (inDirectivePrologue && !recognizeDirectivePrologue(next, &inDirectivePrologue))
             return NULL;
 
-        if (pn2->isKind(TOK_FUNCTION)) {
+        if (next->isKind(PNK_FUNCTION)) {
             /*
              * PNX_FUNCDEFS notifies the emitter that the block contains body-
              * level function definitions that should be processed before the
@@ -2485,7 +1855,7 @@ Parser::statements()
                 tc->noteHasExtensibleScope();
             }
         }
-        pn->append(pn2);
+        pn->append(next);
     }
 
     /*
@@ -2504,39 +1874,49 @@ Parser::statements()
 ParseNode *
 Parser::condition()
 {
-    ParseNode *pn;
-
     MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_BEFORE_COND);
-    pn = parenExpr();
+    ParseNode *pn = parenExpr();
     if (!pn)
         return NULL;
     MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_COND);
 
     /* Check for (a = b) and warn about possible (a == b) mistype. */
-    if (pn->isKind(TOK_ASSIGN) &&
-        pn->isOp(JSOP_NOP) &&
+    JS_ASSERT_IF(pn->isKind(PNK_ASSIGN), pn->isOp(JSOP_NOP));
+    if (pn->isKind(PNK_ASSIGN) &&
         !pn->isInParens() &&
-        !reportErrorNumber(NULL, JSREPORT_WARNING | JSREPORT_STRICT, JSMSG_EQUAL_AS_ASSIGN, "")) {
+        !reportErrorNumber(NULL, JSREPORT_WARNING | JSREPORT_STRICT, JSMSG_EQUAL_AS_ASSIGN))
+    {
         return NULL;
     }
     return pn;
 }
 
 static bool
-MatchLabel(JSContext *cx, TokenStream *ts, ParseNode *pn)
+MatchLabel(JSContext *cx, TokenStream *ts, PropertyName **label)
 {
     TokenKind tt = ts->peekTokenSameLine(TSF_OPERAND);
     if (tt == TOK_ERROR)
         return false;
-    PropertyName *label;
     if (tt == TOK_NAME) {
         (void) ts->getToken();
-        label = ts->currentToken().name();
+        *label = ts->currentToken().name();
     } else {
-        label = NULL;
+        *label = NULL;
     }
-    pn->pn_atom = label;
     return true;
+}
+
+static bool
+ReportRedeclaration(JSContext *cx, TreeContext *tc, ParseNode *pn, bool isConst, JSAtom *atom)
+{
+    JSAutoByteString name;
+    if (js_AtomToPrintableString(cx, atom, &name)) {
+        ReportCompileErrorNumber(cx, TS(tc->parser), pn,
+                                 JSREPORT_ERROR, JSMSG_REDECLARED_VAR,
+                                 isConst ? "const" : "variable",
+                                 name.ptr());
+    }
+    return false;
 }
 
 /*
@@ -2544,101 +1924,98 @@ MatchLabel(JSContext *cx, TokenStream *ts, ParseNode *pn)
  * must already be in such a scope.
  *
  * Throw a SyntaxError if 'atom' is an invalid name. Otherwise create a
- * property for the new variable on the block object, tc->blockChain();
+ * property for the new variable on the block object, tc->blockChain;
  * populate data->pn->pn_{op,cookie,defn,dflags}; and stash a pointer to
  * data->pn in a slot of the block object.
  */
 static JSBool
 BindLet(JSContext *cx, BindData *data, JSAtom *atom, TreeContext *tc)
 {
-    ParseNode *pn;
-    JSObject *blockObj;
-    jsint n;
-
-    /*
-     * Body-level 'let' is the same as 'var' currently -- this may change in a
-     * successor standard to ES5 that specifies 'let'.
-     */
-    JS_ASSERT(!tc->atBodyLevel());
-
-    pn = data->pn;
+    ParseNode *pn = data->pn;
     if (!CheckStrictBinding(cx, tc, atom->asPropertyName(), pn))
         return false;
 
-    blockObj = tc->blockChain();
-    Definition *dn = tc->decls.lookupFirst(atom);
-    if (dn && dn->pn_blockid == tc->blockid()) {
-        JSAutoByteString name;
-        if (js_AtomToPrintableString(cx, atom, &name)) {
-            ReportCompileErrorNumber(cx, TS(tc->parser), pn,
-                                     JSREPORT_ERROR, JSMSG_REDECLARED_VAR,
-                                     dn->isConst() ? "const" : "variable",
-                                     name.ptr());
-        }
-        return false;
-    }
-
-    n = OBJ_BLOCK_COUNT(cx, blockObj);
-    if (n == JS_BIT(16)) {
+    StaticBlockObject &blockObj = *data->let.blockObj;
+    uintN blockCount = blockObj.slotCount();
+    if (blockCount == JS_BIT(16)) {
         ReportCompileErrorNumber(cx, TS(tc->parser), pn,
                                  JSREPORT_ERROR, data->let.overflow);
         return false;
     }
 
     /*
-     * Pass push = true to Define so it pushes an ale ahead of any outer scope.
-     * This is balanced by PopStatement, defined immediately below.
+     * For bindings that are hoisted to the beginning of the block/function,
+     * Define() right now. For the rest, delay Define() until PushLetScope.
      */
-    if (!Define(pn, atom, tc, true))
-        return false;
+    if (data->let.varContext == HoistVars) {
+        JS_ASSERT(!tc->atBodyLevel());
+        Definition *dn = tc->decls.lookupFirst(atom);
+        if (dn && dn->pn_blockid == tc->blockid())
+            return ReportRedeclaration(cx, tc, pn, dn->isConst(), atom);
+        if (!Define(pn, atom, tc, true))
+            return false;
+    }
 
     /*
      * Assign block-local index to pn->pn_cookie right away, encoding it as an
      * upvar cookie whose skip tells the current static level. The emitter will
      * adjust the node's slot based on its stack depth model -- and, for global
-     * and eval code, BytecodeCompiler::compileScript will adjust the slot
+     * and eval code, js::frontend::CompileScript will adjust the slot
      * again to include script->nfixed.
      */
     pn->setOp(JSOP_GETLOCAL);
-    pn->pn_cookie.set(tc->staticLevel, uint16(n));
+    pn->pn_cookie.set(tc->staticLevel, uint16_t(blockCount));
     pn->pn_dflags |= PND_LET | PND_BOUND;
 
     /*
      * Define the let binding's property before storing pn in the the binding's
-     * slot indexed by n off the class-reserved slot base.
+     * slot indexed by blockCount off the class-reserved slot base.
      */
-    const Shape *shape = blockObj->defineBlockVariable(cx, ATOM_TO_JSID(atom), n);
-    if (!shape)
+    bool redeclared;
+    jsid id = ATOM_TO_JSID(atom);
+    const Shape *shape = blockObj.addVar(cx, id, blockCount, &redeclared);
+    if (!shape) {
+        if (redeclared)
+            ReportRedeclaration(cx, tc, pn, false, atom);
         return false;
+    }
 
-    /*
-     * Store pn temporarily in what would be shape-mapped slots in a cloned
-     * block object (once the prototype's final population is known, after all
-     * 'let' bindings for this block have been parsed). We free these slots in
-     * BytecodeGenerator.cpp:EmitEnterBlock so they don't tie up unused space
-     * in the so-called "static" prototype Block.
-     */
-    blockObj->setSlot(shape->slot, PrivateValue(pn));
+    /* Store pn in the static block object. */
+    blockObj.setDefinitionParseNode(blockCount, reinterpret_cast<Definition *>(pn));
     return true;
 }
+
+template <class Op>
+static inline bool
+ForEachLetDef(TreeContext *tc, StaticBlockObject &blockObj, Op op)
+{
+    for (Shape::Range r = blockObj.lastProperty()->all(); !r.empty(); r.popFront()) {
+        const Shape &shape = r.front();
+
+        /* Beware the destructuring dummy slots. */
+        if (JSID_IS_INT(shape.propid()))
+            continue;
+
+        if (!op(tc, blockObj, shape, JSID_TO_ATOM(shape.propid())))
+            return false;
+    }
+    return true;
+}
+
+struct RemoveDecl {
+    bool operator()(TreeContext *tc, StaticBlockObject &, const Shape &, JSAtom *atom) {
+        tc->decls.remove(atom);
+        return true;
+    }
+};
 
 static void
 PopStatement(TreeContext *tc)
 {
-    StmtInfo *stmt = tc->topStmt;
-
-    if (stmt->flags & SIF_SCOPE) {
-        JSObject *obj = stmt->blockBox->object;
-        JS_ASSERT(!obj->isClonedBlock());
-
-        for (Shape::Range r = obj->lastProperty()->all(); !r.empty(); r.popFront()) {
-            JSAtom *atom = JSID_TO_ATOM(r.front().propid);
-
-            /* Beware the empty destructuring dummy. */
-            if (atom == tc->parser->context->runtime->atomState.emptyAtom)
-                continue;
-            tc->decls.remove(atom);
-        }
+    if (tc->topStmt->flags & SIF_SCOPE) {
+        StaticBlockObject &blockObj = *tc->topStmt->blockObj;
+        JS_ASSERT(!blockObj.inDictionaryMode());
+        ForEachLetDef(tc, blockObj, RemoveDecl());
     }
     PopStatementTC(tc);
 }
@@ -2672,24 +2049,24 @@ OuterLet(TreeContext *tc, StmtInfo *stmt, JSAtom *atom)
  * stack frame slots.
  */
 static bool
-DefineGlobal(ParseNode *pn, CodeGenerator *cg, PropertyName *name)
+DefineGlobal(ParseNode *pn, BytecodeEmitter *bce, PropertyName *name)
 {
-    GlobalScope *globalScope = cg->compiler()->globalScope;
+    GlobalScope *globalScope = bce->globalScope;
     JSObject *globalObj = globalScope->globalObj;
 
-    if (!cg->compileAndGo() || !globalObj || cg->compilingForEval())
+    if (!bce->compileAndGo() || !globalObj || bce->compilingForEval())
         return true;
 
     AtomIndexAddPtr p = globalScope->names.lookupForAdd(name);
     if (!p) {
-        JSContext *cx = cg->parser->context;
+        JSContext *cx = bce->parser->context;
 
         JSObject *holder;
         JSProperty *prop;
         if (!globalObj->lookupProperty(cx, name, &holder, &prop))
             return false;
 
-        FunctionBox *funbox = pn->isKind(TOK_FUNCTION) ? pn->pn_funbox : NULL;
+        FunctionBox *funbox = pn->isKind(PNK_FUNCTION) ? pn->pn_funbox : NULL;
 
         GlobalScope::GlobalDef def;
         if (prop) {
@@ -2708,8 +2085,8 @@ DefineGlobal(ParseNode *pn, CodeGenerator *cg, PropertyName *name)
                 !shape->hasDefaultSetter()) {
                 return true;
             }
-            
-            def = GlobalScope::GlobalDef(shape->slot);
+
+            def = GlobalScope::GlobalDef(shape->slot());
         } else {
             def = GlobalScope::GlobalDef(name, funbox);
         }
@@ -2736,7 +2113,7 @@ DefineGlobal(ParseNode *pn, CodeGenerator *cg, PropertyName *name)
          * hoisted to the top of the script, and the |c = []| will just
          * overwrite it at runtime.
          */
-        if (pn->isKind(TOK_FUNCTION)) {
+        if (pn->isKind(PNK_FUNCTION)) {
             JS_ASSERT(pn->isArity(PN_FUNC));
             jsatomid index = p.value();
             globalScope->defs[index].funbox = pn->pn_funbox;
@@ -2798,7 +2175,7 @@ BindTopLevelVar(JSContext *cx, BindData *data, ParseNode *pn, TreeContext *tc)
      * is present, try to bake in either an already available slot or a
      * predicted slot that will be defined after compiling is completed.
      */
-    return DefineGlobal(pn, tc->asCodeGenerator(), pn->pn_atom->asPropertyName());
+    return DefineGlobal(pn, tc->asBytecodeEmitter(), pn->pn_atom->asPropertyName());
 }
 
 static bool
@@ -2924,7 +2301,7 @@ BindVarOrConst(JSContext *cx, BindData *data, JSAtom *atom, TreeContext *tc)
          * it and possibly reinitializes its value. Beware that if pn becomes a
          * use of |mdl.defn()|, and if we have an initializer for this var or
          * const (typically a const would ;-), then pn must be rewritten into a
-         * TOK_ASSIGN node. See Variables, further below.
+         * PNK_ASSIGN node. See js::Parser::variables, further below.
          *
          * A case such as let (x = 1) { var x = 2; print(x); } is even harder.
          * There the x definition is hoisted but the x = 2 assignment mutates
@@ -2939,7 +2316,7 @@ BindVarOrConst(JSContext *cx, BindData *data, JSAtom *atom, TreeContext *tc)
             ParseNode *pnu = pn;
 
             if (pn->isDefn()) {
-                pnu = NameNode::create(atom, tc);
+                pnu = NameNode::create(PNK_NAME, atom, tc);
                 if (!pnu)
                     return JS_FALSE;
             }
@@ -2971,12 +2348,11 @@ BindVarOrConst(JSContext *cx, BindData *data, JSAtom *atom, TreeContext *tc)
             if (tc->lexdeps->lookup(atom)) {
                 tc->lexdeps->remove(atom);
             } else {
-                ParseNode *pn2 = NameNode::create(atom, tc);
+                ParseNode *pn2 = NameNode::create(PNK_NAME, atom, tc);
                 if (!pn2)
                     return JS_FALSE;
 
                 /* The token stream may be past the location for pn. */
-                pn2->setKind(TOK_NAME);
                 pn2->pn_pos = pn->pn_pos;
                 pn = pn2;
             }
@@ -3008,7 +2384,7 @@ MakeSetCall(JSContext *cx, ParseNode *pn, TreeContext *tc, uintN msg)
         return false;
 
     ParseNode *pn2 = pn->pn_head;
-    if (pn2->isKind(TOK_FUNCTION) && (pn2->pn_funbox->tcflags & TCF_GENEXP_LAMBDA)) {
+    if (pn2->isKind(PNK_FUNCTION) && (pn2->pn_funbox->tcflags & TCF_GENEXP_LAMBDA)) {
         ReportCompileErrorNumber(cx, TS(tc->parser), pn, JSREPORT_ERROR, msg);
         return false;
     }
@@ -3073,7 +2449,7 @@ BindDestructuringVar(JSContext *cx, BindData *data, ParseNode *pn, TreeContext *
      * simple variable, we must check for assignment to 'arguments' and flag
      * the enclosing function (if any) as heavyweight.
      */
-    JS_ASSERT(pn->isKind(TOK_NAME));
+    JS_ASSERT(pn->isKind(PNK_NAME));
     atom = pn->pn_atom;
     if (atom == cx->runtime->atomState.argumentsAtom)
         tc->flags |= TCF_FUN_HEAVYWEIGHT;
@@ -3122,12 +2498,12 @@ static JSBool
 BindDestructuringLHS(JSContext *cx, ParseNode *pn, TreeContext *tc)
 {
     switch (pn->getKind()) {
-      case TOK_NAME:
+      case PNK_NAME:
         NoteLValue(cx, pn, tc);
         /* FALL THROUGH */
 
-      case TOK_DOT:
-      case TOK_LB:
+      case PNK_DOT:
+      case PNK_LB:
         /*
          * We may be called on a name node that has already been specialized,
          * in the very weird and ECMA-262-required "for (var [x] = i in o) ..."
@@ -3137,18 +2513,16 @@ BindDestructuringLHS(JSContext *cx, ParseNode *pn, TreeContext *tc)
             pn->setOp(JSOP_SETNAME);
         break;
 
-      case TOK_LP:
+      case PNK_LP:
         if (!MakeSetCall(cx, pn, tc, JSMSG_BAD_LEFTSIDE_OF_ASS))
             return JS_FALSE;
         break;
 
 #if JS_HAS_XML_SUPPORT
-      case TOK_UNARYOP:
-        if (pn->isOp(JSOP_XMLNAME)) {
-            pn->setOp(JSOP_BINDXMLNAME);
-            break;
-        }
-        /* FALL THROUGH */
+      case PNK_XMLUNARY:
+        JS_ASSERT(pn->isOp(JSOP_XMLNAME));
+        pn->setOp(JSOP_BINDXMLNAME);
+        break;
 #endif
 
       default:
@@ -3199,27 +2573,34 @@ BindDestructuringLHS(JSContext *cx, ParseNode *pn, TreeContext *tc)
  * See also UndominateInitializers, immediately below. If you change
  * either of these functions, you might have to change the other to
  * match.
+ *
+ * The 'toplevel' is a private detail of the recursive strategy used by
+ * CheckDestructuring and callers should use the default value.
  */
 static bool
-CheckDestructuring(JSContext *cx, BindData *data, ParseNode *left, TreeContext *tc)
+CheckDestructuring(JSContext *cx, BindData *data, ParseNode *left, TreeContext *tc,
+                   bool toplevel = true)
 {
     bool ok;
 
-    if (left->isKind(TOK_ARRAYCOMP)) {
+    if (left->isKind(PNK_ARRAYCOMP)) {
         ReportCompileErrorNumber(cx, TS(tc->parser), left, JSREPORT_ERROR,
                                  JSMSG_ARRAY_COMP_LEFTSIDE);
         return false;
     }
 
-    if (left->isKind(TOK_RB)) {
+    StaticBlockObject *blockObj = data && data->binder == BindLet ? data->let.blockObj : NULL;
+    uint32_t blockCountBefore = blockObj ? blockObj->slotCount() : 0;
+
+    if (left->isKind(PNK_RB)) {
         for (ParseNode *pn = left->pn_head; pn; pn = pn->pn_next) {
             /* Nullary comma is an elision; binary comma is an expression.*/
-            if (!pn->isKind(TOK_COMMA) || !pn->isArity(PN_NULLARY)) {
-                if (pn->isKind(TOK_RB) || pn->isKind(TOK_RC)) {
-                    ok = CheckDestructuring(cx, data, pn, tc);
+            if (!pn->isArrayHole()) {
+                if (pn->isKind(PNK_RB) || pn->isKind(PNK_RC)) {
+                    ok = CheckDestructuring(cx, data, pn, tc, false);
                 } else {
                     if (data) {
-                        if (!pn->isKind(TOK_NAME)) {
+                        if (!pn->isKind(PNK_NAME)) {
                             ReportCompileErrorNumber(cx, TS(tc->parser), pn, JSREPORT_ERROR,
                                                      JSMSG_NO_VARIABLE_NAME);
                             return false;
@@ -3234,15 +2615,15 @@ CheckDestructuring(JSContext *cx, BindData *data, ParseNode *left, TreeContext *
             }
         }
     } else {
-        JS_ASSERT(left->isKind(TOK_RC));
+        JS_ASSERT(left->isKind(PNK_RC));
         for (ParseNode *pair = left->pn_head; pair; pair = pair->pn_next) {
-            JS_ASSERT(pair->isKind(TOK_COLON));
+            JS_ASSERT(pair->isKind(PNK_COLON));
             ParseNode *pn = pair->pn_right;
 
-            if (pn->isKind(TOK_RB) || pn->isKind(TOK_RC)) {
-                ok = CheckDestructuring(cx, data, pn, tc);
+            if (pn->isKind(PNK_RB) || pn->isKind(PNK_RC)) {
+                ok = CheckDestructuring(cx, data, pn, tc, false);
             } else if (data) {
-                if (!pn->isKind(TOK_NAME)) {
+                if (!pn->isKind(PNK_NAME)) {
                     ReportCompileErrorNumber(cx, TS(tc->parser), pn, JSREPORT_ERROR,
                                              JSMSG_NO_VARIABLE_NAME);
                     return false;
@@ -3266,23 +2647,25 @@ CheckDestructuring(JSContext *cx, BindData *data, ParseNode *left, TreeContext *
      *   let [] = 1;
      *
      * would violate this assumption as the there would be no let locals to
-     * store on the stack. To satisfy it we add an empty property to such
-     * blocks so that OBJ_BLOCK_COUNT(cx, blockObj), which gives the number of
-     * slots, would be always positive.
+     * store on the stack.
      *
-     * Note that we add such a property even if the block has locals due to
-     * later let declarations in it. We optimize for code simplicity here,
-     * not the fastest runtime performance with empty [] or {}.
+     * Furthermore, the decompiler needs an abstract stack location to store
+     * the decompilation of each let block/expr initializer. E.g., given:
+     *
+     *   let (x = 1, [[]] = b, y = 3, {a:[]} = c) { ... }
+     *
+     * four slots are needed.
+     *
+     * To satisfy both constraints, we push a dummy slot (and add a
+     * corresponding dummy property to the block object) for each initializer
+     * that doesn't introduce at least one binding.
      */
-    if (data &&
-        data->binder == BindLet &&
-        OBJ_BLOCK_COUNT(cx, tc->blockChain()) == 0 &&
-        !DefineNativeProperty(cx, tc->blockChain(),
-                              ATOM_TO_JSID(cx->runtime->atomState.emptyAtom),
-                              UndefinedValue(), NULL, NULL,
-                              JSPROP_ENUMERATE | JSPROP_PERMANENT,
-                              Shape::HAS_SHORTID, 0)) {
-        return false;
+    if (toplevel && blockObj && blockCountBefore == blockObj->slotCount()) {
+        bool redeclared;
+        if (!blockObj->addVar(cx, INT_TO_JSID(blockCountBefore), blockCountBefore, &redeclared))
+            return false;
+        JS_ASSERT(!redeclared);
+        JS_ASSERT(blockObj->slotCount() == blockCountBefore + 1);
     }
 
     return true;
@@ -3308,23 +2691,23 @@ CheckDestructuring(JSContext *cx, BindData *data, ParseNode *left, TreeContext *
 static void
 UndominateInitializers(ParseNode *left, const TokenPtr &end, TreeContext *tc)
 {
-    if (left->isKind(TOK_RB)) {
+    if (left->isKind(PNK_RB)) {
         for (ParseNode *pn = left->pn_head; pn; pn = pn->pn_next) {
             /* Nullary comma is an elision; binary comma is an expression.*/
-            if (!pn->isKind(TOK_COMMA) || !pn->isArity(PN_NULLARY)) {
-                if (pn->isKind(TOK_RB) || pn->isKind(TOK_RC))
+            if (!pn->isKind(PNK_COMMA) || !pn->isArity(PN_NULLARY)) {
+                if (pn->isKind(PNK_RB) || pn->isKind(PNK_RC))
                     UndominateInitializers(pn, end, tc);
                 else
                     pn->pn_pos.end = end;
             }
         }
     } else {
-        JS_ASSERT(left->isKind(TOK_RC));
+        JS_ASSERT(left->isKind(PNK_RC));
 
         for (ParseNode *pair = left->pn_head; pair; pair = pair->pn_next) {
-            JS_ASSERT(pair->isKind(TOK_COLON));
+            JS_ASSERT(pair->isKind(PNK_COLON));
             ParseNode *pn = pair->pn_right;
-            if (pn->isKind(TOK_RB) || pn->isKind(TOK_RC))
+            if (pn->isKind(PNK_RB) || pn->isKind(PNK_RC))
                 UndominateInitializers(pn, end, tc);
             else
                 pn->pn_pos.end = end;
@@ -3335,6 +2718,8 @@ UndominateInitializers(ParseNode *left, const TokenPtr &end, TreeContext *tc)
 ParseNode *
 Parser::destructuringExpr(BindData *data, TokenKind tt)
 {
+    JS_ASSERT(tokenStream.isCurrentTokenType(tt));
+
     tc->flags |= TCF_DECL_DESTRUCTURING;
     ParseNode *pn = primaryExpr(tt, JS_FALSE);
     tc->flags &= ~TCF_DECL_DESTRUCTURING;
@@ -3350,17 +2735,14 @@ Parser::destructuringExpr(BindData *data, TokenKind tt)
 ParseNode *
 Parser::returnOrYield(bool useAssignExpr)
 {
-    TokenKind tt, tt2;
-    ParseNode *pn, *pn2;
-
-    tt = tokenStream.currentToken().type;
+    TokenKind tt = tokenStream.currentToken().type;
     if (!tc->inFunction()) {
         reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_RETURN_OR_YIELD,
                           (tt == TOK_RETURN) ? js_return_str : js_yield_str);
         return NULL;
     }
 
-    pn = UnaryNode::create(tc);
+    ParseNode *pn = UnaryNode::create((tt == TOK_RETURN) ? PNK_RETURN : PNK_YIELD, tc);
     if (!pn)
         return NULL;
 
@@ -3380,7 +2762,7 @@ Parser::returnOrYield(bool useAssignExpr)
 #endif
 
     /* This is ugly, but we don't want to require a semicolon. */
-    tt2 = tokenStream.peekTokenSameLine(TSF_OPERAND);
+    TokenKind tt2 = tokenStream.peekTokenSameLine(TSF_OPERAND);
     if (tt2 == TOK_ERROR)
         return NULL;
 
@@ -3390,8 +2772,9 @@ Parser::returnOrYield(bool useAssignExpr)
             (tt2 != tt && tt2 != TOK_RB && tt2 != TOK_RP &&
              tt2 != TOK_COLON && tt2 != TOK_COMMA))
 #endif
-        ) {
-        pn2 = useAssignExpr ? assignExpr() : expr();
+        )
+    {
+        ParseNode *pn2 = useAssignExpr ? assignExpr() : expr();
         if (!pn2)
             return NULL;
 #if JS_HAS_GENERATORS
@@ -3427,22 +2810,17 @@ Parser::returnOrYield(bool useAssignExpr)
 }
 
 static ParseNode *
-PushLexicalScope(JSContext *cx, TokenStream *ts, TreeContext *tc, StmtInfo *stmt)
+PushLexicalScope(JSContext *cx, TreeContext *tc, StaticBlockObject &obj, StmtInfo *stmt)
 {
-    ParseNode *pn = LexicalScopeNode::create(tc);
+    ParseNode *pn = LexicalScopeNode::create(PNK_LEXICALSCOPE, tc);
     if (!pn)
         return NULL;
 
-    JSObject *obj = js_NewBlockObject(cx);
-    if (!obj)
-        return NULL;
-
-    ObjectBox *blockbox = tc->parser->newObjectBox(obj);
+    ObjectBox *blockbox = tc->parser->newObjectBox(&obj);
     if (!blockbox)
         return NULL;
 
-    PushBlockScope(tc, stmt, blockbox, -1);
-    pn->setKind(TOK_LEXICALSCOPE);
+    PushBlockScope(tc, stmt, obj, -1);
     pn->setOp(JSOP_LEAVEBLOCK);
     pn->pn_objbox = blockbox;
     pn->pn_cookie.makeFree();
@@ -3453,38 +2831,85 @@ PushLexicalScope(JSContext *cx, TokenStream *ts, TreeContext *tc, StmtInfo *stmt
     return pn;
 }
 
+static ParseNode *
+PushLexicalScope(JSContext *cx, TreeContext *tc, StmtInfo *stmt)
+{
+    StaticBlockObject *blockObj = StaticBlockObject::create(cx);
+    if (!blockObj)
+        return NULL;
+
+    return PushLexicalScope(cx, tc, *blockObj, stmt);
+}
+
 #if JS_HAS_BLOCK_SCOPE
 
-ParseNode *
-Parser::letBlock(JSBool statement)
+struct AddDecl
 {
-    ParseNode *pn, *pnblock, *pnlet;
-    StmtInfo stmtInfo;
+    uint32_t blockid;
 
+    AddDecl(uint32_t blockid) : blockid(blockid) {}
+
+    bool operator()(TreeContext *tc, StaticBlockObject &blockObj, const Shape &shape, JSAtom *atom)
+    {
+        ParseNode *def = (ParseNode *) blockObj.getSlot(shape.slot()).toPrivate();
+        def->pn_blockid = blockid;
+        return Define(def, atom, tc, true);
+    }
+};
+
+static ParseNode *
+PushLetScope(JSContext *cx, TreeContext *tc, StaticBlockObject &blockObj, StmtInfo *stmt)
+{
+    ParseNode *pn = PushLexicalScope(cx, tc, blockObj, stmt);
+    if (!pn)
+        return NULL;
+
+    /* Tell codegen to emit JSOP_ENTERLETx (not JSOP_ENTERBLOCK). */
+    pn->pn_dflags |= PND_LET;
+
+    /* Populate the new scope with decls found in the head with updated blockid. */
+    if (!ForEachLetDef(tc, blockObj, AddDecl(stmt->blockid)))
+        return NULL;
+
+    return pn;
+}
+
+/*
+ * Parse a let block statement or let expression (determined by 'letContext').
+ * In both cases, bindings are not hoisted to the top of the enclosing block
+ * and thus must be carefully injected between variables() and the let body.
+ */
+ParseNode *
+Parser::letBlock(LetContext letContext)
+{
     JS_ASSERT(tokenStream.currentToken().type == TOK_LET);
 
-    /* Create the let binary node. */
-    pnlet = BinaryNode::create(tc);
+    ParseNode *pnlet = BinaryNode::create(PNK_LET, tc);
     if (!pnlet)
+        return NULL;
+
+    StaticBlockObject *blockObj = StaticBlockObject::create(context);
+    if (!blockObj)
         return NULL;
 
     MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_BEFORE_LET);
 
-    /* This is a let block or expression of the form: let (a, b, c) .... */
-    pnblock = PushLexicalScope(context, &tokenStream, tc, &stmtInfo);
-    if (!pnblock)
+    ParseNode *vars = variables(PNK_LET, blockObj, DontHoistVars);
+    if (!vars)
         return NULL;
-    pn = pnblock;
-    pn->pn_expr = pnlet;
-
-    pnlet->pn_left = variables(true);
-    if (!pnlet->pn_left)
-        return NULL;
-    pnlet->pn_left->pn_xflags = PNX_POPVAR;
 
     MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_LET);
 
-    if (statement && !tokenStream.matchToken(TOK_LC, TSF_OPERAND)) {
+    StmtInfo stmtInfo;
+    ParseNode *block = PushLetScope(context, tc, *blockObj, &stmtInfo);
+    if (!block)
+        return NULL;
+
+    pnlet->pn_left = vars;
+    pnlet->pn_right = block;
+
+    ParseNode *ret;
+    if (letContext == LetStatement && !tokenStream.matchToken(TOK_LC, TSF_OPERAND)) {
         /*
          * Strict mode eliminates a grammar ambiguity with unparenthesized
          * LetExpressions in an ExpressionStatement. If followed immediately
@@ -3503,34 +2928,34 @@ Parser::letBlock(JSBool statement)
          * need to wrap the TOK_LET node in a TOK_SEMI node so that we pop
          * the return value of the expression.
          */
-        pn = UnaryNode::create(tc);
-        if (!pn)
+        ParseNode *semi = UnaryNode::create(PNK_SEMI, tc);
+        if (!semi)
             return NULL;
-        pn->setKind(TOK_SEMI);
-        pn->pn_num = -1;
-        pn->pn_kid = pnblock;
 
-        statement = JS_FALSE;
+        semi->pn_kid = pnlet;
+
+        letContext = LetExpresion;
+        ret = semi;
+    } else {
+        ret = pnlet;
     }
 
-    if (statement) {
-        pnlet->pn_right = statements();
-        if (!pnlet->pn_right)
+    if (letContext == LetStatement) {
+        JS_ASSERT(block->getOp() == JSOP_LEAVEBLOCK);
+        block->pn_expr = statements();
+        if (!block->pn_expr)
             return NULL;
         MUST_MATCH_TOKEN(TOK_RC, JSMSG_CURLY_AFTER_LET);
     } else {
-        /*
-         * Change pnblock's opcode to the variant that propagates the last
-         * result down after popping the block, and clear statement.
-         */
-        pnblock->setOp(JSOP_LEAVEBLOCKEXPR);
-        pnlet->pn_right = assignExpr();
-        if (!pnlet->pn_right)
+        JS_ASSERT(letContext == LetExpresion);
+        block->setOp(JSOP_LEAVEBLOCKEXPR);
+        block->pn_expr = assignExpr();
+        if (!block->pn_expr)
             return NULL;
     }
 
     PopStatement(tc);
-    return pn;
+    return ret;
 }
 
 #endif /* JS_HAS_BLOCK_SCOPE */
@@ -3543,42 +2968,50 @@ PushBlocklikeStatement(StmtInfo *stmt, StmtType type, TreeContext *tc)
 }
 
 static ParseNode *
-NewBindingNode(JSAtom *atom, TreeContext *tc, bool let = false)
+NewBindingNode(JSAtom *atom, TreeContext *tc, StaticBlockObject *blockObj = NULL,
+               VarContext varContext = HoistVars)
 {
-    ParseNode *pn;
-    AtomDefnPtr removal;
+    /*
+     * If this name is being injected into an existing block/function, see if
+     * it has already been declared or if it resolves an outstanding lexdep.
+     * Otherwise, this is a let block/expr that introduces a new scope and thus
+     * shadows existing decls and doesn't resolve existing lexdeps. Duplicate
+     * names are caught by BindLet.
+     */
+    if (!blockObj || varContext == HoistVars) {
+        ParseNode *pn = tc->decls.lookupFirst(atom);
+        AtomDefnPtr removal;
+        if (pn) {
+            JS_ASSERT(!pn->isPlaceholder());
+        } else {
+            removal = tc->lexdeps->lookup(atom);
+            pn = removal ? removal.value() : NULL;
+            JS_ASSERT_IF(pn, pn->isPlaceholder());
+        }
 
-    if ((pn = tc->decls.lookupFirst(atom))) {
-        JS_ASSERT(!pn->isPlaceholder());
-    } else {
-        removal = tc->lexdeps->lookup(atom);
-        pn = removal ? removal.value() : NULL;
-        JS_ASSERT_IF(pn, pn->isPlaceholder());
-    }
+        if (pn) {
+            JS_ASSERT(pn->isDefn());
 
-    if (pn) {
-        JS_ASSERT(pn->isDefn());
+            /*
+             * A let binding at top level becomes a var before we get here, so if
+             * pn and tc have the same blockid then that id must not be the bodyid.
+             * If pn is a forward placeholder definition from the same or a higher
+             * block then we claim it.
+             */
+            JS_ASSERT_IF(blockObj && pn->pn_blockid == tc->blockid(),
+                         pn->pn_blockid != tc->bodyid);
 
-        /*
-         * A let binding at top level becomes a var before we get here, so if
-         * pn and tc have the same blockid then that id must not be the bodyid.
-         * If pn is a forward placeholder definition from the same or a higher
-         * block then we claim it.
-         */
-        JS_ASSERT_IF(let && pn->pn_blockid == tc->blockid(),
-                     pn->pn_blockid != tc->bodyid);
-
-        if (pn->isPlaceholder() && pn->pn_blockid >= (let ? tc->blockid() : tc->bodyid)) {
-            if (let)
+            if (pn->isPlaceholder() && pn->pn_blockid >= tc->blockid()) {
                 pn->pn_blockid = tc->blockid();
-
-            tc->lexdeps->remove(removal);
-            return pn;
+                tc->lexdeps->remove(removal);
+                return pn;
+            }
         }
     }
 
     /* Make a new node for this declarator name (or destructuring pattern). */
-    pn = NameNode::create(atom, tc);
+    JS_ASSERT(tc->parser->tokenStream.currentToken().type == TOK_NAME);
+    ParseNode *pn = NameNode::create(PNK_NAME, atom, tc);
     if (!pn)
         return NULL;
 
@@ -3591,10 +3024,8 @@ NewBindingNode(JSAtom *atom, TreeContext *tc, bool let = false)
 ParseNode *
 Parser::switchStatement()
 {
-    ParseNode *pn5, *saveBlock;
-    JSBool seenDefault = JS_FALSE;
-
-    ParseNode *pn = BinaryNode::create(tc);
+    JS_ASSERT(tc->parser->tokenStream.currentToken().type == TOK_SWITCH);
+    ParseNode *pn = BinaryNode::create(PNK_SWITCH, tc);
     if (!pn)
         return NULL;
     MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_BEFORE_SWITCH);
@@ -3615,15 +3046,16 @@ Parser::switchStatement()
     PushStatement(tc, &stmtInfo, STMT_SWITCH, -1);
 
     /* pn2 is a list of case nodes. The default case has pn_left == NULL */
-    ParseNode *pn2 = ListNode::create(tc);
+    ParseNode *pn2 = ListNode::create(PNK_STATEMENTLIST, tc);
     if (!pn2)
         return NULL;
     pn2->makeEmpty();
     if (!GenerateBlockIdForStmtNode(pn2, tc))
         return NULL;
-    saveBlock = tc->blockNode;
+    ParseNode *saveBlock = tc->blockNode;
     tc->blockNode = pn2;
 
+    bool seenDefault = false;
     TokenKind tt;
     while ((tt = tokenStream.getToken()) != TOK_RC) {
         ParseNode *pn3;
@@ -3633,24 +3065,20 @@ Parser::switchStatement()
                 reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_TOO_MANY_DEFAULTS);
                 return NULL;
             }
-            seenDefault = JS_TRUE;
-            /* FALL THROUGH */
+            seenDefault = true;
+            pn3 = BinaryNode::create(PNK_DEFAULT, tc);
+            if (!pn3)
+                return NULL;
+            break;
 
           case TOK_CASE:
           {
-            pn3 = BinaryNode::create(tc);
+            pn3 = BinaryNode::create(PNK_CASE, tc);
             if (!pn3)
                 return NULL;
-            if (tt == TOK_CASE) {
-                pn3->pn_left = expr();
-                if (!pn3->pn_left)
-                    return NULL;
-            }
-            pn2->append(pn3);
-            if (pn2->pn_count == JS_BIT(16)) {
-                reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_TOO_MANY_CASES);
+            pn3->pn_left = expr();
+            if (!pn3->pn_left)
                 return NULL;
-            }
             break;
           }
 
@@ -3661,18 +3089,24 @@ Parser::switchStatement()
             reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_SWITCH);
             return NULL;
         }
+
+        pn2->append(pn3);
+        if (pn2->pn_count == JS_BIT(16)) {
+            reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_TOO_MANY_CASES);
+            return NULL;
+        }
+
         MUST_MATCH_TOKEN(TOK_COLON, JSMSG_COLON_AFTER_CASE);
 
-        ParseNode *pn4 = ListNode::create(tc);
+        ParseNode *pn4 = ListNode::create(PNK_STATEMENTLIST, tc);
         if (!pn4)
             return NULL;
-        pn4->setKind(TOK_LC);
         pn4->makeEmpty();
         while ((tt = tokenStream.peekToken(TSF_OPERAND)) != TOK_RC &&
                tt != TOK_CASE && tt != TOK_DEFAULT) {
             if (tt == TOK_ERROR)
                 return NULL;
-            pn5 = statement();
+            ParseNode *pn5 = statement();
             if (!pn5)
                 return NULL;
             pn4->pn_pos.end = pn5->pn_pos.end;
@@ -3706,18 +3140,15 @@ Parser::switchStatement()
 ParseNode *
 Parser::forStatement()
 {
-    ParseNode *pnseq = NULL;
-#if JS_HAS_BLOCK_SCOPE
-    ParseNode *pnlet = NULL;
-    StmtInfo blockInfo;
-#endif
+    JS_ASSERT(tokenStream.isCurrentTokenType(TOK_FOR));
 
     /* A FOR node is binary, left is loop control and right is the body. */
-    ParseNode *pn = BinaryNode::create(tc);
+    ParseNode *pn = BinaryNode::create(PNK_FOR, tc);
     if (!pn)
         return NULL;
-    StmtInfo stmtInfo;
-    PushStatement(tc, &stmtInfo, STMT_FOR_LOOP, -1);
+
+    StmtInfo forStmt;
+    PushStatement(tc, &forStmt, STMT_FOR_LOOP, -1);
 
     pn->setOp(JSOP_ITER);
     pn->pn_iflags = 0;
@@ -3729,61 +3160,78 @@ Parser::forStatement()
     }
 
     MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_AFTER_FOR);
-    TokenKind tt = tokenStream.peekToken(TSF_OPERAND);
 
-#if JS_HAS_BLOCK_SCOPE
-    bool let = false;
-#endif
+    /*
+     * True if we have 'for (var/let/const ...)', except in the oddball case
+     * where 'let' begins a let-expression in 'for (let (...) ...)'.
+     */
+    bool forDecl = false;
 
+    /* Non-null when forDecl is true for a 'for (let ...)' statement. */
+    StaticBlockObject *blockObj = NULL;
+
+    /* Set to 'x' in 'for (x ;... ;...)' or 'for (x in ...)'. */
     ParseNode *pn1;
-    if (tt == TOK_SEMI) {
-        if (pn->pn_iflags & JSITER_FOREACH) {
-            reportErrorNumber(pn, JSREPORT_ERROR, JSMSG_BAD_FOR_EACH_LOOP);
-            return NULL;
-        }
 
-        /* No initializer -- set first kid of left sub-node to null. */
-        pn1 = NULL;
-    } else {
-        /*
-         * Set pn1 to a var list or an initializing expression.
-         *
-         * Set the TCF_IN_FOR_INIT flag during parsing of the first clause
-         * of the for statement.  This flag will be used by the RelExpr
-         * production; if it is set, then the 'in' keyword will not be
-         * recognized as an operator, leaving it available to be parsed as
-         * part of a for/in loop.
-         *
-         * A side effect of this restriction is that (unparenthesized)
-         * expressions involving an 'in' operator are illegal in the init
-         * clause of an ordinary for loop.
-         */
-        tc->flags |= TCF_IN_FOR_INIT;
-        if (tt == TOK_VAR) {
-            (void) tokenStream.getToken();
-            pn1 = variables(false);
+    {
+        TokenKind tt = tokenStream.peekToken(TSF_OPERAND);
+        if (tt == TOK_SEMI) {
+            if (pn->pn_iflags & JSITER_FOREACH) {
+                reportErrorNumber(pn, JSREPORT_ERROR, JSMSG_BAD_FOR_EACH_LOOP);
+                return NULL;
+            }
+
+            pn1 = NULL;
+        } else {
+            /*
+             * Set pn1 to a var list or an initializing expression.
+             *
+             * Set the TCF_IN_FOR_INIT flag during parsing of the first clause
+             * of the for statement.  This flag will be used by the RelExpr
+             * production; if it is set, then the 'in' keyword will not be
+             * recognized as an operator, leaving it available to be parsed as
+             * part of a for/in loop.
+             *
+             * A side effect of this restriction is that (unparenthesized)
+             * expressions involving an 'in' operator are illegal in the init
+             * clause of an ordinary for loop.
+             */
+            tc->flags |= TCF_IN_FOR_INIT;
+            if (tt == TOK_VAR || tt == TOK_CONST) {
+                forDecl = true;
+                tokenStream.consumeKnownToken(tt);
+                pn1 = variables(tt == TOK_VAR ? PNK_VAR : PNK_CONST);
+            }
 #if JS_HAS_BLOCK_SCOPE
-        } else if (tt == TOK_LET) {
-            let = true;
-            (void) tokenStream.getToken();
-            if (tokenStream.peekToken() == TOK_LP) {
-                pn1 = letBlock(JS_FALSE);
-                tt = TOK_LEXICALSCOPE;
-            } else {
-                pnlet = PushLexicalScope(context, &tokenStream, tc, &blockInfo);
-                if (!pnlet)
-                    return NULL;
-                blockInfo.flags |= SIF_FOR_BLOCK;
-                pn1 = variables(false);
+            else if (tt == TOK_LET) {
+                (void) tokenStream.getToken();
+                if (tokenStream.peekToken() == TOK_LP) {
+                    pn1 = letBlock(LetExpresion);
+                } else {
+                    forDecl = true;
+                    blockObj = StaticBlockObject::create(context);
+                    if (!blockObj)
+                        return NULL;
+                    pn1 = variables(PNK_LET, blockObj, DontHoistVars);
+                }
             }
 #endif
-        } else {
-            pn1 = expr();
+            else {
+                pn1 = expr();
+            }
+            tc->flags &= ~TCF_IN_FOR_INIT;
+            if (!pn1)
+                return NULL;
         }
-        tc->flags &= ~TCF_IN_FOR_INIT;
-        if (!pn1)
-            return NULL;
     }
+
+    JS_ASSERT_IF(forDecl, pn1->isArity(PN_LIST));
+    JS_ASSERT(!!blockObj == (forDecl && pn1->isOp(JSOP_NOP)));
+
+    const TokenPos pos = tokenStream.currentToken().pos;
+
+    /* If non-null, the parent that should be returned instead of forHead. */
+    ParseNode *forParent = NULL;
 
     /*
      * We can be sure that it's a for/in loop if there's still an 'in'
@@ -3791,10 +3239,9 @@ Parser::forStatement()
      * as we've excluded 'in' from being parsed in RelExpr by setting
      * the TCF_IN_FOR_INIT flag in our TreeContext.
      */
-    ParseNode *pn2, *pn3;
-    ParseNode *pn4 = TernaryNode::create(tc);
-    if (!pn4)
-        return NULL;
+    ParseNode *forHead;     /* initialized by both branches. */
+    StmtInfo letStmt;       /* used if blockObj != NULL. */
+    ParseNode *pn2, *pn3;   /* forHead->pn_kid1 and pn_kid2. */
     if (pn1 && tokenStream.matchToken(TOK_IN)) {
         /*
          * Parse the rest of the for/in head.
@@ -3804,39 +3251,38 @@ Parser::forStatement()
          * enumeration value each iteration, and pn3 is the rhs of 'in'.
          */
         pn->pn_iflags |= JSITER_ENUMERATE;
-        stmtInfo.type = STMT_FOR_IN_LOOP;
+        forStmt.type = STMT_FOR_IN_LOOP;
 
         /* Check that the left side of the 'in' is valid. */
-        JS_ASSERT(!TokenKindIsDecl(tt) || pn1->isKind(tt));
-        if (TokenKindIsDecl(tt)
+        if (forDecl
             ? (pn1->pn_count > 1 || pn1->isOp(JSOP_DEFCONST)
 #if JS_HAS_DESTRUCTURING
                || (versionNumber() == JSVERSION_1_7 &&
                    pn->isOp(JSOP_ITER) &&
                    !(pn->pn_iflags & JSITER_FOREACH) &&
-                   (pn1->pn_head->isKind(TOK_RC) ||
-                    (pn1->pn_head->isKind(TOK_RB) &&
+                   (pn1->pn_head->isKind(PNK_RC) ||
+                    (pn1->pn_head->isKind(PNK_RB) &&
                      pn1->pn_head->pn_count != 2) ||
-                    (pn1->pn_head->isKind(TOK_ASSIGN) &&
-                     (!pn1->pn_head->pn_left->isKind(TOK_RB) ||
+                    (pn1->pn_head->isKind(PNK_ASSIGN) &&
+                     (!pn1->pn_head->pn_left->isKind(PNK_RB) ||
                       pn1->pn_head->pn_left->pn_count != 2))))
 #endif
               )
-            : (!pn1->isKind(TOK_NAME) &&
-               !pn1->isKind(TOK_DOT) &&
+            : (!pn1->isKind(PNK_NAME) &&
+               !pn1->isKind(PNK_DOT) &&
 #if JS_HAS_DESTRUCTURING
                ((versionNumber() == JSVERSION_1_7 &&
                  pn->isOp(JSOP_ITER) &&
                  !(pn->pn_iflags & JSITER_FOREACH))
-                ? (!pn1->isKind(TOK_RB) || pn1->pn_count != 2)
-                : (!pn1->isKind(TOK_RB) && !pn1->isKind(TOK_RC))) &&
+                ? (!pn1->isKind(PNK_RB) || pn1->pn_count != 2)
+                : (!pn1->isKind(PNK_RB) && !pn1->isKind(PNK_RC))) &&
 #endif
-               !pn1->isKind(TOK_LP) &&
+               !pn1->isKind(PNK_LP) &&
 #if JS_HAS_XML_SUPPORT
-               (!pn1->isKind(TOK_UNARYOP) ||
-                !pn1->isOp(JSOP_XMLNAME)) &&
+               !pn1->isKind(PNK_XMLUNARY) &&
 #endif
-               !pn1->isKind(TOK_LB))) {
+               !pn1->isKind(PNK_LB)))
+        {
             reportErrorNumber(pn1, JSREPORT_ERROR, JSMSG_BAD_FOR_LEFTSIDE);
             return NULL;
         }
@@ -3849,35 +3295,34 @@ Parser::forStatement()
          */
         pn2 = NULL;
         uintN dflag = PND_ASSIGNED;
-        if (TokenKindIsDecl(tt)) {
+        if (forDecl) {
             /* Tell EmitVariables that pn1 is part of a for/in. */
             pn1->pn_xflags |= PNX_FORINVAR;
 
             pn2 = pn1->pn_head;
-            if ((pn2->isKind(TOK_NAME) && pn2->maybeExpr())
+            if ((pn2->isKind(PNK_NAME) && pn2->maybeExpr())
 #if JS_HAS_DESTRUCTURING
-                || pn2->isKind(TOK_ASSIGN)
+                || pn2->isKind(PNK_ASSIGN)
 #endif
-                ) {
+                )
+            {
                 /*
                  * Declaration with initializer.
                  *
                  * Rewrite 'for (<decl> x = i in o)' where <decl> is 'var' or
                  * 'const' to hoist the initializer or the entire decl out of
-                 * the loop head. TOK_VAR is the type for both 'var' and 'const'.
+                 * the loop head.
                  */
 #if JS_HAS_BLOCK_SCOPE
-                if (tt == TOK_LET) {
+                if (blockObj) {
                     reportErrorNumber(pn2, JSREPORT_ERROR, JSMSG_INVALID_FOR_IN_INIT);
                     return NULL;
                 }
 #endif /* JS_HAS_BLOCK_SCOPE */
 
-                pnseq = ListNode::create(tc);
+                ParseNode *pnseq = ListNode::create(PNK_SEQ, tc);
                 if (!pnseq)
                     return NULL;
-                pnseq->setKind(TOK_SEQ);
-                pnseq->pn_pos.begin = pn->pn_pos.begin;
 
                 dflag = PND_INITIALIZED;
 
@@ -3892,26 +3337,21 @@ Parser::forStatement()
                 pn1->pn_xflags &= ~PNX_FORINVAR;
                 pn1->pn_xflags |= PNX_POPVAR;
                 pnseq->initList(pn1);
+                pn1 = NULL;
 
 #if JS_HAS_DESTRUCTURING
-                if (pn2->isKind(TOK_ASSIGN)) {
+                if (pn2->isKind(PNK_ASSIGN)) {
                     pn2 = pn2->pn_left;
-                    JS_ASSERT(pn2->isKind(TOK_RB) || pn2->isKind(TOK_RC) ||
-                              pn2->isKind(TOK_NAME));
+                    JS_ASSERT(pn2->isKind(PNK_RB) || pn2->isKind(PNK_RC) ||
+                              pn2->isKind(PNK_NAME));
                 }
 #endif
-                pn1 = NULL;
+                pnseq->append(pn);
+                forParent = pnseq;
             }
-
-            /*
-             * pn2 is part of a declaration. Make a copy that can be passed to
-             * EmitAssignment.
-             */
-            pn2 = CloneLeftHandSide(pn2, tc);
-            if (!pn2)
-                return NULL;
         } else {
             /* Not a declaration. */
+            JS_ASSERT(!blockObj);
             pn2 = pn1;
             pn1 = NULL;
 
@@ -3919,19 +3359,50 @@ Parser::forStatement()
                 return NULL;
         }
 
+        pn3 = expr();
+        if (!pn3)
+            return NULL;
+
+        if (blockObj) {
+            /*
+             * Now that the pn3 has been parsed, push the let scope. To hold
+             * the blockObj for the emitter, wrap the TOK_LEXICALSCOPE node
+             * created by PushLetScope around the for's initializer. This also
+             * serves to indicate the let-decl to the emitter.
+             */
+            ParseNode *block = PushLetScope(context, tc, *blockObj, &letStmt);
+            if (!block)
+                return NULL;
+            letStmt.flags |= SIF_FOR_BLOCK;
+            block->pn_expr = pn1;
+            pn1 = block;
+        }
+
+        if (forDecl) {
+            /*
+             * pn2 is part of a declaration. Make a copy that can be passed to
+             * EmitAssignment. Take care to do this after PushLetScope has
+             * Define's the new binding since this pn2->isDefn() which tells
+             * CloneLeftHandSide to make the new pn2 a use.
+             */
+            pn2 = CloneLeftHandSide(pn2, tc);
+            if (!pn2)
+                return NULL;
+        }
+
         switch (pn2->getKind()) {
-          case TOK_NAME:
+          case PNK_NAME:
             /* Beware 'for (arguments in ...)' with or without a 'var'. */
             NoteLValue(context, pn2, tc, dflag);
             break;
 
 #if JS_HAS_DESTRUCTURING
-          case TOK_ASSIGN:
+          case PNK_ASSIGN:
             JS_NOT_REACHED("forStatement TOK_ASSIGN");
             break;
 
-          case TOK_RB:
-          case TOK_RC:
+          case PNK_RB:
+          case PNK_RC:
             if (versionNumber() == JSVERSION_1_7) {
                 /*
                  * Destructuring for-in requires [key, value] enumeration
@@ -3947,26 +3418,29 @@ Parser::forStatement()
           default:;
         }
 
-        /*
-         * Parse the object expression as the right operand of 'in', first
-         * removing the top statement from the statement-stack if this is a
-         * 'for (let x in y)' loop.
-         */
-#if JS_HAS_BLOCK_SCOPE
-        StmtInfo *save = tc->topStmt;
-        if (let)
-            tc->topStmt = save->down;
-#endif
-        pn3 = expr();
-        if (!pn3)
+        forHead = TernaryNode::create(PNK_FORIN, tc);
+        if (!forHead)
             return NULL;
-#if JS_HAS_BLOCK_SCOPE
-        if (let)
-            tc->topStmt = save;
-#endif
-
-        pn4->setKind(TOK_IN);
     } else {
+        if (blockObj) {
+            /*
+             * Desugar 'for (let A; B; C) D' into 'let (A) { for (; B; C) D }'
+             * to induce the correct scoping for A.
+             */
+            ParseNode *block = PushLetScope(context, tc, *blockObj, &letStmt);
+            if (!block)
+                return NULL;
+            letStmt.flags |= SIF_FOR_BLOCK;
+
+            ParseNode *let = new_<BinaryNode>(PNK_LET, JSOP_NOP, pos, pn1, block);
+            if (!let)
+                return NULL;
+
+            pn1 = NULL;
+            block->pn_expr = pn;
+            forParent = let;
+        }
+
         if (pn->pn_iflags & JSITER_FOREACH) {
             reportErrorNumber(pn, JSREPORT_ERROR, JSMSG_BAD_FOR_EACH_LOOP);
             return NULL;
@@ -3975,8 +3449,7 @@ Parser::forStatement()
 
         /* Parse the loop condition or null into pn2. */
         MUST_MATCH_TOKEN(TOK_SEMI, JSMSG_SEMI_AFTER_FOR_INIT);
-        tt = tokenStream.peekToken(TSF_OPERAND);
-        if (tt == TOK_SEMI) {
+        if (tokenStream.peekToken(TSF_OPERAND) == TOK_SEMI) {
             pn2 = NULL;
         } else {
             pn2 = expr();
@@ -3986,8 +3459,7 @@ Parser::forStatement()
 
         /* Parse the update expression or null into pn3. */
         MUST_MATCH_TOKEN(TOK_SEMI, JSMSG_SEMI_AFTER_FOR_COND);
-        tt = tokenStream.peekToken(TSF_OPERAND);
-        if (tt == TOK_RP) {
+        if (tokenStream.peekToken(TSF_OPERAND) == TOK_RP) {
             pn3 = NULL;
         } else {
             pn3 = expr();
@@ -3995,45 +3467,46 @@ Parser::forStatement()
                 return NULL;
         }
 
-        pn4->setKind(TOK_FORHEAD);
+        forHead = TernaryNode::create(PNK_FORHEAD, tc);
+        if (!forHead)
+            return NULL;
     }
-    pn4->setOp(JSOP_NOP);
-    pn4->pn_kid1 = pn1;
-    pn4->pn_kid2 = pn2;
-    pn4->pn_kid3 = pn3;
-    pn->pn_left = pn4;
+
+    forHead->pn_pos = pos;
+    forHead->setOp(JSOP_NOP);
+    forHead->pn_kid1 = pn1;
+    forHead->pn_kid2 = pn2;
+    forHead->pn_kid3 = pn3;
+    pn->pn_left = forHead;
 
     MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_FOR_CTRL);
 
-    /* Parse the loop body into pn->pn_right. */
-    pn2 = statement();
-    if (!pn2)
+    /* Parse the loop body. */
+    ParseNode *body = statement();
+    if (!body)
         return NULL;
-    pn->pn_right = pn2;
 
     /* Record the absolute line number for source note emission. */
-    pn->pn_pos.end = pn2->pn_pos.end;
+    pn->pn_pos.end = body->pn_pos.end;
+    pn->pn_right = body;
+
+    if (forParent) {
+        forParent->pn_pos.begin = pn->pn_pos.begin;
+        forParent->pn_pos.end = pn->pn_pos.end;
+    }
 
 #if JS_HAS_BLOCK_SCOPE
-    if (pnlet) {
+    if (blockObj)
         PopStatement(tc);
-        pnlet->pn_expr = pn;
-        pn = pnlet;
-    }
 #endif
-    if (pnseq) {
-        pnseq->pn_pos.end = pn->pn_pos.end;
-        pnseq->append(pn);
-        pn = pnseq;
-    }
     PopStatement(tc);
-    return pn;
+    return forParent ? forParent : pn;
 }
 
 ParseNode *
 Parser::tryStatement()
 {
-    ParseNode *catchList, *lastCatch;
+    JS_ASSERT(tokenStream.isCurrentTokenType(TOK_TRY));
 
     /*
      * try nodes are ternary.
@@ -4052,7 +3525,7 @@ Parser::tryStatement()
      *
      * finally nodes are TOK_LC statement lists.
      */
-    ParseNode *pn = TernaryNode::create(tc);
+    ParseNode *pn = TernaryNode::create(PNK_TRY, tc);
     if (!pn)
         return NULL;
     pn->setOp(JSOP_NOP);
@@ -4067,13 +3540,13 @@ Parser::tryStatement()
     MUST_MATCH_TOKEN(TOK_RC, JSMSG_CURLY_AFTER_TRY);
     PopStatement(tc);
 
-    catchList = NULL;
+    ParseNode *lastCatch;
+    ParseNode *catchList = NULL;
     TokenKind tt = tokenStream.getToken();
     if (tt == TOK_CATCH) {
-        catchList = ListNode::create(tc);
+        catchList = ListNode::create(PNK_CATCHLIST, tc);
         if (!catchList)
             return NULL;
-        catchList->setKind(TOK_RESERVED);
         catchList->makeEmpty();
         lastCatch = NULL;
 
@@ -4091,7 +3564,7 @@ Parser::tryStatement()
              * Create a lexical scope node around the whole catch clause,
              * including the head.
              */
-            pnblock = PushLexicalScope(context, &tokenStream, tc, &stmtInfo);
+            pnblock = PushLexicalScope(context, tc, &stmtInfo);
             if (!pnblock)
                 return NULL;
             stmtInfo.type = STMT_CATCH;
@@ -4103,7 +3576,7 @@ Parser::tryStatement()
              * where lhs is a name or a destructuring left-hand side.
              * (the latter is legal only #ifdef JS_HAS_CATCH_GUARD)
              */
-            ParseNode *pn2 = TernaryNode::create(tc);
+            ParseNode *pn2 = TernaryNode::create(PNK_CATCH, tc);
             if (!pn2)
                 return NULL;
             pnblock->pn_expr = pn2;
@@ -4114,10 +3587,8 @@ Parser::tryStatement()
              * scoped, not a property of a new Object instance.  This is
              * an intentional change that anticipates ECMA Ed. 4.
              */
-            data.pn = NULL;
-            data.op = JSOP_NOP;
-            data.binder = BindLet;
-            data.let.overflow = JSMSG_TOO_MANY_CATCH_VARS;
+            data.initLet(HoistVars, *tc->blockChain, JSMSG_TOO_MANY_CATCH_VARS);
+            JS_ASSERT(data.let.blockObj && data.let.blockObj == pnblock->pn_objbox->object);
 
             tt = tokenStream.getToken();
             ParseNode *pn3;
@@ -4134,7 +3605,7 @@ Parser::tryStatement()
               case TOK_NAME:
               {
                 JSAtom *label = tokenStream.currentToken().name();
-                pn3 = NewBindingNode(label, tc, true);
+                pn3 = NewBindingNode(label, tc);
                 if (!pn3)
                     return NULL;
                 data.pn = pn3;
@@ -4199,6 +3670,8 @@ Parser::tryStatement()
 ParseNode *
 Parser::withStatement()
 {
+    JS_ASSERT(tokenStream.isCurrentTokenType(TOK_WITH));
+
     /*
      * In most cases, we want the constructs forbidden in strict mode
      * code to be a subset of those that JSOPTION_STRICT warns about, and
@@ -4212,7 +3685,7 @@ Parser::withStatement()
         return NULL;
     }
 
-    ParseNode *pn = BinaryNode::create(tc);
+    ParseNode *pn = BinaryNode::create(PNK_WITH, tc);
     if (!pn)
         return NULL;
     MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_BEFORE_WITH);
@@ -4258,12 +3731,16 @@ Parser::letStatement()
     do {
         /* Check for a let statement or let expression. */
         if (tokenStream.peekToken() == TOK_LP) {
-            pn = letBlock(JS_TRUE);
-            if (!pn || pn->isOp(JSOP_LEAVEBLOCK))
+            pn = letBlock(LetStatement);
+            if (!pn)
+                return NULL;
+
+            JS_ASSERT(pn->isKind(PNK_LET) || pn->isKind(PNK_SEMI));
+            if (pn->isKind(PNK_LET) && pn->pn_expr->getOp() == JSOP_LEAVEBLOCK)
                 return pn;
 
             /* Let expressions require automatic semicolon insertion. */
-            JS_ASSERT(pn->isKind(TOK_SEMI) || pn->isOp(JSOP_LEAVEBLOCKEXPR));
+            JS_ASSERT(pn->isKind(PNK_SEMI) || pn->isOp(JSOP_NOP));
             break;
         }
 
@@ -4286,16 +3763,14 @@ Parser::letStatement()
         }
 
         if (stmt && (stmt->flags & SIF_SCOPE)) {
-            JS_ASSERT(tc->blockChainBox == stmt->blockBox);
+            JS_ASSERT(tc->blockChain == stmt->blockObj);
         } else {
             if (!stmt || (stmt->flags & SIF_BODY_BLOCK)) {
                 /*
                  * ES4 specifies that let at top level and at body-block scope
                  * does not shadow var, so convert back to var.
                  */
-                tokenStream.mungeCurrentToken(TOK_VAR, JSOP_DEFVAR);
-
-                pn = variables(false);
+                pn = variables(PNK_VAR);
                 if (!pn)
                     return NULL;
                 pn->pn_xflags |= PNX_POPVAR;
@@ -4316,11 +3791,11 @@ Parser::letStatement()
             JS_ASSERT(!stmt->downScope);
 
             /* Convert the block statement into a scope statement. */
-            JSObject *obj = js_NewBlockObject(tc->parser->context);
-            if (!obj)
+            StaticBlockObject *blockObj = StaticBlockObject::create(tc->parser->context);
+            if (!blockObj)
                 return NULL;
 
-            ObjectBox *blockbox = tc->parser->newObjectBox(obj);
+            ObjectBox *blockbox = tc->parser->newObjectBox(blockObj);
             if (!blockbox)
                 return NULL;
 
@@ -4334,22 +3809,20 @@ Parser::letStatement()
             stmt->downScope = tc->topScopeStmt;
             tc->topScopeStmt = stmt;
 
-            obj->setParent(tc->blockChain());
-            blockbox->parent = tc->blockChainBox;
-            tc->blockChainBox = blockbox;
-            stmt->blockBox = blockbox;
+            blockObj->setEnclosingBlock(tc->blockChain);
+            tc->blockChain = blockObj;
+            stmt->blockObj = blockObj;
 
 #ifdef DEBUG
             ParseNode *tmp = tc->blockNode;
-            JS_ASSERT(!tmp || !tmp->isKind(TOK_LEXICALSCOPE));
+            JS_ASSERT(!tmp || !tmp->isKind(PNK_LEXICALSCOPE));
 #endif
 
             /* Create a new lexical scope node for these statements. */
-            ParseNode *pn1 = LexicalScopeNode::create(tc);
+            ParseNode *pn1 = LexicalScopeNode::create(PNK_LEXICALSCOPE, tc);
             if (!pn1)
                 return NULL;
 
-            pn1->setKind(TOK_LEXICALSCOPE);
             pn1->setOp(JSOP_LEAVEBLOCK);
             pn1->pn_pos = tc->blockNode->pn_pos;
             pn1->pn_objbox = blockbox;
@@ -4358,7 +3831,7 @@ Parser::letStatement()
             tc->blockNode = pn1;
         }
 
-        pn = variables(false);
+        pn = variables(PNK_LET, tc->blockChain, HoistVars);
         if (!pn)
             return NULL;
         pn->pn_xflags = PNX_POPVAR;
@@ -4378,7 +3851,7 @@ Parser::expressionStatement()
         return NULL;
 
     if (tokenStream.peekToken() == TOK_COLON) {
-        if (!pn2->isKind(TOK_NAME)) {
+        if (!pn2->isKind(PNK_NAME)) {
             reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_LABEL);
             return NULL;
         }
@@ -4402,49 +3875,49 @@ Parser::expressionStatement()
             return NULL;
 
         /* Normalize empty statement to empty block for the decompiler. */
-        if (pn->isKind(TOK_SEMI) && !pn->pn_kid) {
-            pn->setKind(TOK_LC);
+        if (pn->isKind(PNK_SEMI) && !pn->pn_kid) {
+            pn->setKind(PNK_STATEMENTLIST);
             pn->setArity(PN_LIST);
             pn->makeEmpty();
         }
 
         /* Pop the label, set pn_expr, and return early. */
         PopStatement(tc);
-        pn2->setKind(TOK_COLON);
+        pn2->setKind(PNK_COLON);
         pn2->pn_pos.end = pn->pn_pos.end;
         pn2->pn_expr = pn;
         return pn2;
     }
 
-    ParseNode *pn = UnaryNode::create(tc);
+    ParseNode *pn = UnaryNode::create(PNK_SEMI, tc);
     if (!pn)
         return NULL;
-    pn->setKind(TOK_SEMI);
     pn->pn_pos = pn2->pn_pos;
     pn->pn_kid = pn2;
 
     switch (pn2->getKind()) {
-      case TOK_LP:
+      case PNK_LP:
         /*
          * Flag lambdas immediately applied as statements as instances of
          * the JS "module pattern". See CheckForImmediatelyAppliedLambda.
          */
-        if (pn2->pn_head->isKind(TOK_FUNCTION) &&
+        if (pn2->pn_head->isKind(PNK_FUNCTION) &&
             !pn2->pn_head->pn_funbox->node->isFunArg()) {
             pn2->pn_head->pn_funbox->tcflags |= TCF_FUN_MODULE_PATTERN;
         }
         break;
-      case TOK_ASSIGN:
+      case PNK_ASSIGN:
         /*
          * Keep track of all apparent methods created by assignments such
          * as this.foo = function (...) {...} in a function that could end
          * up a constructor function. See Parser::setFunctionKinds.
          */
+        JS_ASSERT(pn2->isOp(JSOP_NOP));
         if (tc->funbox &&
-            pn2->isOp(JSOP_NOP) &&
             pn2->pn_left->isOp(JSOP_SETPROP) &&
-            pn2->pn_left->pn_expr->isOp(JSOP_THIS) &&
-            pn2->pn_right->isOp(JSOP_LAMBDA)) {
+            pn2->pn_left->pn_expr->isKind(PNK_THIS) &&
+            pn2->pn_right->isOp(JSOP_LAMBDA))
+        {
             JS_ASSERT(!pn2->isDefn());
             JS_ASSERT(!pn2->isUsed());
             pn2->pn_right->pn_link = tc->funbox->methods;
@@ -4469,9 +3942,11 @@ Parser::statement()
       case TOK_FUNCTION:
       {
 #if JS_HAS_XML_SUPPORT
-        TokenKind tt = tokenStream.peekToken(TSF_KEYWORD_IS_NAME);
-        if (tt == TOK_DBLCOLON)
-            goto expression;
+        if (!tc->inStrictMode()) {
+            TokenKind tt = tokenStream.peekToken(TSF_KEYWORD_IS_NAME);
+            if (tt == TOK_DBLCOLON)
+                return expressionStatement();
+        }
 #endif
         return functionStmt();
       }
@@ -4479,17 +3954,26 @@ Parser::statement()
       case TOK_IF:
       {
         /* An IF node has three kids: condition, then, and optional else. */
-        pn = TernaryNode::create(tc);
+        pn = TernaryNode::create(PNK_IF, tc);
         if (!pn)
             return NULL;
         ParseNode *pn1 = condition();
         if (!pn1)
             return NULL;
+
         StmtInfo stmtInfo;
         PushStatement(tc, &stmtInfo, STMT_IF, -1);
         ParseNode *pn2 = statement();
         if (!pn2)
             return NULL;
+
+        if (pn2->isKind(PNK_SEMI) &&
+            !pn2->pn_kid &&
+            !reportErrorNumber(NULL, JSREPORT_WARNING | JSREPORT_STRICT, JSMSG_EMPTY_CONSEQUENT))
+        {
+            return NULL;
+        }
+
         ParseNode *pn3;
         if (tokenStream.matchToken(TOK_ELSE, TSF_OPERAND)) {
             stmtInfo.type = STMT_ELSE;
@@ -4513,7 +3997,7 @@ Parser::statement()
 
       case TOK_WHILE:
       {
-        pn = BinaryNode::create(tc);
+        pn = BinaryNode::create(PNK_WHILE, tc);
         if (!pn)
             return NULL;
         StmtInfo stmtInfo;
@@ -4533,7 +4017,7 @@ Parser::statement()
 
       case TOK_DO:
       {
-        pn = BinaryNode::create(tc);
+        pn = BinaryNode::create(PNK_DOWHILE, tc);
         if (!pn)
             return NULL;
         StmtInfo stmtInfo;
@@ -4569,7 +4053,7 @@ Parser::statement()
 
       case TOK_THROW:
       {
-        pn = UnaryNode::create(tc);
+        pn = UnaryNode::create(PNK_THROW, tc);
         if (!pn)
             return NULL;
 
@@ -4602,13 +4086,15 @@ Parser::statement()
 
       case TOK_BREAK:
       {
-        pn = NullaryNode::create(tc);
+        TokenPtr begin = tokenStream.currentToken().pos.begin;
+        PropertyName *label;
+        if (!MatchLabel(context, &tokenStream, &label))
+            return NULL;
+        TokenPtr end = tokenStream.currentToken().pos.end;
+        pn = new_<BreakStatement>(label, begin, end);
         if (!pn)
             return NULL;
-        if (!MatchLabel(context, &tokenStream, pn))
-            return NULL;
         StmtInfo *stmt = tc->topStmt;
-        JSAtom *label = pn->pn_atom;
         if (label) {
             for (; ; stmt = stmt->down) {
                 if (!stmt) {
@@ -4628,20 +4114,20 @@ Parser::statement()
                     break;
             }
         }
-        if (label)
-            pn->pn_pos.end = tokenStream.currentToken().pos.end;
         break;
       }
 
       case TOK_CONTINUE:
       {
-        pn = NullaryNode::create(tc);
+        TokenPtr begin = tokenStream.currentToken().pos.begin;
+        PropertyName *label;
+        if (!MatchLabel(context, &tokenStream, &label))
+            return NULL;
+        TokenPtr end = tokenStream.currentToken().pos.begin;
+        pn = new_<ContinueStatement>(label, begin, end);
         if (!pn)
             return NULL;
-        if (!MatchLabel(context, &tokenStream, pn))
-            return NULL;
         StmtInfo *stmt = tc->topStmt;
-        JSAtom *label = pn->pn_atom;
         if (label) {
             for (StmtInfo *stmt2 = NULL; ; stmt = stmt->down) {
                 if (!stmt) {
@@ -4670,8 +4156,6 @@ Parser::statement()
                     break;
             }
         }
-        if (label)
-            pn->pn_pos.end = tokenStream.currentToken().pos.end;
         break;
       }
 
@@ -4679,7 +4163,16 @@ Parser::statement()
         return withStatement();
 
       case TOK_VAR:
-        pn = variables(false);
+        pn = variables(PNK_VAR);
+        if (!pn)
+            return NULL;
+
+        /* Tell js_EmitTree to generate a final POP. */
+        pn->pn_xflags |= PNX_POPVAR;
+        break;
+
+      case TOK_CONST:
+        pn = variables(PNK_CONST);
         if (!pn)
             return NULL;
 
@@ -4727,35 +4220,38 @@ Parser::statement()
       }
 
       case TOK_SEMI:
-        pn = UnaryNode::create(tc);
+        pn = UnaryNode::create(PNK_SEMI, tc);
         if (!pn)
             return NULL;
-        pn->setKind(TOK_SEMI);
         return pn;
 
       case TOK_DEBUGGER:
-        pn = NullaryNode::create(tc);
+        pn = tc->parser->new_<DebuggerStatement>(tokenStream.currentToken().pos);
         if (!pn)
             return NULL;
-        pn->setKind(TOK_DEBUGGER);
         tc->flags |= TCF_FUN_HEAVYWEIGHT;
         break;
 
 #if JS_HAS_XML_SUPPORT
       case TOK_DEFAULT:
       {
-        pn = UnaryNode::create(tc);
+        if (tc->inStrictMode())
+            return expressionStatement();
+
+        pn = UnaryNode::create(PNK_DEFXMLNS, tc);
         if (!pn)
             return NULL;
         if (!tokenStream.matchToken(TOK_NAME) ||
             tokenStream.currentToken().name() != context->runtime->atomState.xmlAtom ||
             !tokenStream.matchToken(TOK_NAME) ||
             tokenStream.currentToken().name() != context->runtime->atomState.namespaceAtom ||
-            !tokenStream.matchToken(TOK_ASSIGN) ||
-            tokenStream.currentToken().t_op != JSOP_NOP) {
+            !tokenStream.matchToken(TOK_ASSIGN))
+        {
             reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_DEFAULT_XML_NAMESPACE);
             return NULL;
         }
+
+        JS_ASSERT(tokenStream.currentToken().t_op == JSOP_NOP);
 
         /* Is this an E4X dagger I see before me? */
         tc->flags |= TCF_FUN_HEAVYWEIGHT;
@@ -4773,9 +4269,6 @@ Parser::statement()
         return NULL;
 
       default:
-#if JS_HAS_XML_SUPPORT
-      expression:
-#endif
         return expressionStatement();
     }
 
@@ -4783,45 +4276,28 @@ Parser::statement()
     return MatchOrInsertSemicolon(context, &tokenStream) ? pn : NULL;
 }
 
+/*
+ * The 'blockObj' parameter is non-null when parsing the 'vars' in a let
+ * expression, block statement, non-top-level let declaration in statement
+ * context, and the let-initializer of a for-statement.
+ */
 ParseNode *
-Parser::variables(bool inLetHead)
+Parser::variables(ParseNodeKind kind, StaticBlockObject *blockObj, VarContext varContext)
 {
-    TokenKind tt;
-    bool let;
-    StmtInfo *scopeStmt;
-    BindData data;
-    ParseNode *pn, *pn2;
-
     /*
-     * The three options here are:
-     * - TOK_LET: We are parsing a let declaration.
-     * - TOK_LP: We are parsing the head of a let block.
-     * - Otherwise, we're parsing var declarations.
+     * The four options here are:
+     * - PNK_VAR:   We're parsing var declarations.
+     * - PNK_CONST: We're parsing const declarations.
+     * - PNK_LET:   We are parsing a let declaration.
+     * - PNK_LP:    We are parsing the head of a let block.
      */
-    tt = tokenStream.currentToken().type;
-    let = (tt == TOK_LET || tt == TOK_LP);
-    JS_ASSERT(let || tt == TOK_VAR);
+    JS_ASSERT(kind == PNK_VAR || kind == PNK_CONST || kind == PNK_LET || kind == PNK_LP);
 
-#if JS_HAS_BLOCK_SCOPE
-    bool popScope = (inLetHead || (let && (tc->flags & TCF_IN_FOR_INIT)));
-    StmtInfo *save = tc->topStmt, *saveScope = tc->topScopeStmt;
-#endif
-
-    /* Make sure that statement set up the tree context correctly. */
-    scopeStmt = tc->topScopeStmt;
-    if (let) {
-        while (scopeStmt && !(scopeStmt->flags & SIF_SCOPE)) {
-            JS_ASSERT(!STMT_MAYBE_SCOPE(scopeStmt));
-            scopeStmt = scopeStmt->downScope;
-        }
-        JS_ASSERT(scopeStmt);
-    }
-
-    data.op = let ? JSOP_NOP : tokenStream.currentToken().t_op;
-    pn = ListNode::create(tc);
+    ParseNode *pn = ListNode::create(kind, tc);
     if (!pn)
         return NULL;
-    pn->setOp(data.op);
+
+    pn->setOp(blockObj ? JSOP_NOP : kind == PNK_VAR ? JSOP_DEFVAR : JSOP_DEFCONST);
     pn->makeEmpty();
 
     /*
@@ -4829,16 +4305,15 @@ Parser::variables(bool inLetHead)
      * var, whereas let is block scoped. ES-Harmony wants block-scoped const so
      * this code will change soon.
      */
-    if (let) {
-        JS_ASSERT(tc->blockChainBox == scopeStmt->blockBox);
-        data.binder = BindLet;
-        data.let.overflow = JSMSG_TOO_MANY_LOCALS;
-    } else {
-        data.binder = BindVarOrConst;
-    }
+    BindData data;
+    if (blockObj)
+        data.initLet(varContext, *blockObj, JSMSG_TOO_MANY_LOCALS);
+    else
+        data.initVarOrConst(pn->getOp());
 
+    ParseNode *pn2;
     do {
-        tt = tokenStream.getToken();
+        TokenKind tt = tokenStream.getToken();
 #if JS_HAS_DESTRUCTURING
         if (tt == TOK_LB || tt == TOK_LC) {
             tc->flags |= TCF_DECL_DESTRUCTURING;
@@ -4855,28 +4330,14 @@ Parser::variables(bool inLetHead)
             }
 
             MUST_MATCH_TOKEN(TOK_ASSIGN, JSMSG_BAD_DESTRUCT_DECL);
-            if (tokenStream.currentToken().t_op != JSOP_NOP)
-                goto bad_var_init;
+            JS_ASSERT(tokenStream.currentToken().t_op == JSOP_NOP);
 
-#if JS_HAS_BLOCK_SCOPE
-            if (popScope) {
-                tc->topStmt = save->down;
-                tc->topScopeStmt = saveScope->downScope;
-            }
-#endif
             ParseNode *init = assignExpr();
-#if JS_HAS_BLOCK_SCOPE
-            if (popScope) {
-                tc->topStmt = save;
-                tc->topScopeStmt = saveScope;
-            }
-#endif
-
             if (!init)
                 return NULL;
             UndominateInitializers(pn2, init->pn_pos.end, tc);
 
-            pn2 = ParseNode::newBinaryOrAppend(TOK_ASSIGN, JSOP_NOP, pn2, init, tc);
+            pn2 = ParseNode::newBinaryOrAppend(PNK_ASSIGN, JSOP_NOP, pn2, init, tc);
             if (!pn2)
                 return NULL;
             pn->append(pn2);
@@ -4891,7 +4352,7 @@ Parser::variables(bool inLetHead)
         }
 
         PropertyName *name = tokenStream.currentToken().name();
-        pn2 = NewBindingNode(name, tc, let);
+        pn2 = NewBindingNode(name, tc, blockObj, varContext);
         if (!pn2)
             return NULL;
         if (data.op == JSOP_DEFCONST)
@@ -4902,22 +4363,9 @@ Parser::variables(bool inLetHead)
         pn->append(pn2);
 
         if (tokenStream.matchToken(TOK_ASSIGN)) {
-            if (tokenStream.currentToken().t_op != JSOP_NOP)
-                goto bad_var_init;
+            JS_ASSERT(tokenStream.currentToken().t_op == JSOP_NOP);
 
-#if JS_HAS_BLOCK_SCOPE
-            if (popScope) {
-                tc->topStmt = save->down;
-                tc->topScopeStmt = saveScope->downScope;
-            }
-#endif
             ParseNode *init = assignExpr();
-#if JS_HAS_BLOCK_SCOPE
-            if (popScope) {
-                tc->topStmt = save;
-                tc->topScopeStmt = saveScope;
-            }
-#endif
             if (!init)
                 return NULL;
 
@@ -4946,7 +4394,7 @@ Parser::variables(bool inLetHead)
 
             if (tc->inFunction() && name == context->runtime->atomState.argumentsAtom) {
                 tc->noteArgumentsUse(pn2);
-                if (!let)
+                if (!blockObj)
                     tc->flags |= TCF_FUN_HEAVYWEIGHT;
             }
         }
@@ -4954,10 +4402,6 @@ Parser::variables(bool inLetHead)
 
     pn->pn_pos.end = pn->last()->pn_pos.end;
     return pn;
-
-bad_var_init:
-    reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_VAR_INIT);
-    return NULL;
 }
 
 ParseNode *
@@ -4965,7 +4409,7 @@ Parser::expr()
 {
     ParseNode *pn = assignExpr();
     if (pn && tokenStream.matchToken(TOK_COMMA)) {
-        ParseNode *pn2 = ListNode::create(tc);
+        ParseNode *pn2 = ListNode::create(PNK_COMMA, tc);
         if (!pn2)
             return NULL;
         pn2->pn_pos.begin = pn->pn_pos.begin;
@@ -4974,7 +4418,7 @@ Parser::expr()
         do {
 #if JS_HAS_GENERATORS
             pn2 = pn->last();
-            if (pn2->isKind(TOK_YIELD) && !pn2->isInParens()) {
+            if (pn2->isKind(PNK_YIELD) && !pn2->isInParens()) {
                 reportErrorNumber(pn2, JSREPORT_ERROR, JSMSG_BAD_GENERATOR_SYNTAX, js_yield_str);
                 return NULL;
             }
@@ -5007,7 +4451,6 @@ Parser::expr()
 
 BEGIN_EXPR_PARSER(mulExpr1)
 {
-    TokenKind tt;
     ParseNode *pn = unaryExpr();
 
     /*
@@ -5015,10 +4458,15 @@ BEGIN_EXPR_PARSER(mulExpr1)
      * isCurrentTokenType() because unaryExpr() doesn't leave the TokenStream
      * state one past the end of the unary expression.
      */
-    while (pn && ((tt = tokenStream.getToken()) == TOK_STAR || tt == TOK_DIVOP)) {
-        tt = tokenStream.currentToken().type;
+    TokenKind tt;
+    while (pn && ((tt = tokenStream.getToken()) == TOK_STAR || tt == TOK_DIV || tt == TOK_MOD)) {
+        ParseNodeKind kind = (tt == TOK_STAR)
+                             ? PNK_STAR
+                             : (tt == TOK_DIV)
+                             ? PNK_DIV
+                             : PNK_MOD;
         JSOp op = tokenStream.currentToken().t_op;
-        pn = ParseNode::newBinaryOrAppend(tt, op, pn, unaryExpr(), tc);
+        pn = ParseNode::newBinaryOrAppend(kind, op, pn, unaryExpr(), tc);
     }
     return pn;
 }
@@ -5030,22 +4478,61 @@ BEGIN_EXPR_PARSER(addExpr1)
     while (pn && tokenStream.isCurrentTokenType(TOK_PLUS, TOK_MINUS)) {
         TokenKind tt = tokenStream.currentToken().type;
         JSOp op = (tt == TOK_PLUS) ? JSOP_ADD : JSOP_SUB;
-        pn = ParseNode::newBinaryOrAppend(tt, op, pn, mulExpr1n(), tc);
+        ParseNodeKind kind = (tt == TOK_PLUS) ? PNK_ADD : PNK_SUB;
+        pn = ParseNode::newBinaryOrAppend(kind, op, pn, mulExpr1n(), tc);
     }
     return pn;
 }
 END_EXPR_PARSER(addExpr1)
 
+inline ParseNodeKind
+ShiftTokenToParseNodeKind(const Token &token)
+{
+    switch (token.type) {
+      case TOK_LSH:
+        return PNK_LSH;
+      case TOK_RSH:
+        return PNK_RSH;
+      default:
+        JS_ASSERT(token.type == TOK_URSH);
+        return PNK_URSH;
+    }
+}
+
 BEGIN_EXPR_PARSER(shiftExpr1)
 {
-    ParseNode *pn = addExpr1i();
-    while (pn && tokenStream.isCurrentTokenType(TOK_SHOP)) {
+    ParseNode *left = addExpr1i();
+    while (left && tokenStream.isCurrentTokenShift()) {
+        ParseNodeKind kind = ShiftTokenToParseNodeKind(tokenStream.currentToken());
         JSOp op = tokenStream.currentToken().t_op;
-        pn = ParseNode::newBinaryOrAppend(TOK_SHOP, op, pn, addExpr1n(), tc);
+        ParseNode *right = addExpr1n();
+        if (!right)
+            return NULL;
+        left = tc->parser->new_<BinaryNode>(kind, op, left, right);
     }
-    return pn;
+    return left;
 }
 END_EXPR_PARSER(shiftExpr1)
+
+inline ParseNodeKind
+RelationalTokenToParseNodeKind(const Token &token)
+{
+    switch (token.type) {
+      case TOK_IN:
+        return PNK_IN;
+      case TOK_INSTANCEOF:
+        return PNK_INSTANCEOF;
+      case TOK_LT:
+        return PNK_LT;
+      case TOK_LE:
+        return PNK_LE;
+      case TOK_GT:
+        return PNK_GT;
+      default:
+        JS_ASSERT(token.type == TOK_GE);
+        return PNK_GE;
+    }
+}
 
 BEGIN_EXPR_PARSER(relExpr1)
 {
@@ -5059,16 +4546,16 @@ BEGIN_EXPR_PARSER(relExpr1)
 
     ParseNode *pn = shiftExpr1i();
     while (pn &&
-           (tokenStream.isCurrentTokenType(TOK_RELOP) ||
+           (tokenStream.isCurrentTokenRelational() ||
             /*
              * Recognize the 'in' token as an operator only if we're not
              * currently in the init expr of a for loop.
              */
             (inForInitFlag == 0 && tokenStream.isCurrentTokenType(TOK_IN)) ||
             tokenStream.isCurrentTokenType(TOK_INSTANCEOF))) {
-        TokenKind tt = tokenStream.currentToken().type;
+        ParseNodeKind kind = RelationalTokenToParseNodeKind(tokenStream.currentToken());
         JSOp op = tokenStream.currentToken().t_op;
-        pn = ParseNode::newBinaryOrAppend(tt, op, pn, shiftExpr1n(), tc);
+        pn = ParseNode::newBinaryOrAppend(kind, op, pn, shiftExpr1n(), tc);
     }
     /* Restore previous state of inForInit flag. */
     tc->flags |= inForInitFlag;
@@ -5077,14 +4564,34 @@ BEGIN_EXPR_PARSER(relExpr1)
 }
 END_EXPR_PARSER(relExpr1)
 
+inline ParseNodeKind
+EqualityTokenToParseNodeKind(const Token &token)
+{
+    switch (token.type) {
+      case TOK_STRICTEQ:
+        return PNK_STRICTEQ;
+      case TOK_EQ:
+        return PNK_EQ;
+      case TOK_STRICTNE:
+        return PNK_STRICTNE;
+      default:
+        JS_ASSERT(token.type == TOK_NE);
+        return PNK_NE;
+    }
+}
+
 BEGIN_EXPR_PARSER(eqExpr1)
 {
-    ParseNode *pn = relExpr1i();
-    while (pn && tokenStream.isCurrentTokenType(TOK_EQOP)) {
+    ParseNode *left = relExpr1i();
+    while (left && tokenStream.isCurrentTokenEquality()) {
+        ParseNodeKind kind = EqualityTokenToParseNodeKind(tokenStream.currentToken());
         JSOp op = tokenStream.currentToken().t_op;
-        pn = ParseNode::newBinaryOrAppend(TOK_EQOP, op, pn, relExpr1n(), tc);
+        ParseNode *right = relExpr1n();
+        if (!right)
+            return NULL;
+        left = tc->parser->new_<BinaryNode>(kind, op, left, right);
     }
-    return pn;
+    return left;
 }
 END_EXPR_PARSER(eqExpr1)
 
@@ -5092,7 +4599,7 @@ BEGIN_EXPR_PARSER(bitAndExpr1)
 {
     ParseNode *pn = eqExpr1i();
     while (pn && tokenStream.isCurrentTokenType(TOK_BITAND))
-        pn = ParseNode::newBinaryOrAppend(TOK_BITAND, JSOP_BITAND, pn, eqExpr1n(), tc);
+        pn = ParseNode::newBinaryOrAppend(PNK_BITAND, JSOP_BITAND, pn, eqExpr1n(), tc);
     return pn;
 }
 END_EXPR_PARSER(bitAndExpr1)
@@ -5101,7 +4608,7 @@ BEGIN_EXPR_PARSER(bitXorExpr1)
 {
     ParseNode *pn = bitAndExpr1i();
     while (pn && tokenStream.isCurrentTokenType(TOK_BITXOR))
-        pn = ParseNode::newBinaryOrAppend(TOK_BITXOR, JSOP_BITXOR, pn, bitAndExpr1n(), tc);
+        pn = ParseNode::newBinaryOrAppend(PNK_BITXOR, JSOP_BITXOR, pn, bitAndExpr1n(), tc);
     return pn;
 }
 END_EXPR_PARSER(bitXorExpr1)
@@ -5110,7 +4617,7 @@ BEGIN_EXPR_PARSER(bitOrExpr1)
 {
     ParseNode *pn = bitXorExpr1i();
     while (pn && tokenStream.isCurrentTokenType(TOK_BITOR))
-        pn = ParseNode::newBinaryOrAppend(TOK_BITOR, JSOP_BITOR, pn, bitXorExpr1n(), tc);
+        pn = ParseNode::newBinaryOrAppend(PNK_BITOR, JSOP_BITOR, pn, bitXorExpr1n(), tc);
     return pn;
 }
 END_EXPR_PARSER(bitOrExpr1)
@@ -5119,7 +4626,7 @@ BEGIN_EXPR_PARSER(andExpr1)
 {
     ParseNode *pn = bitOrExpr1i();
     while (pn && tokenStream.isCurrentTokenType(TOK_AND))
-        pn = ParseNode::newBinaryOrAppend(TOK_AND, JSOP_AND, pn, bitOrExpr1n(), tc);
+        pn = ParseNode::newBinaryOrAppend(PNK_AND, JSOP_AND, pn, bitOrExpr1n(), tc);
     return pn;
 }
 END_EXPR_PARSER(andExpr1)
@@ -5129,65 +4636,58 @@ Parser::orExpr1()
 {
     ParseNode *pn = andExpr1i();
     while (pn && tokenStream.isCurrentTokenType(TOK_OR))
-        pn = ParseNode::newBinaryOrAppend(TOK_OR, JSOP_OR, pn, andExpr1n(), tc);
+        pn = ParseNode::newBinaryOrAppend(PNK_OR, JSOP_OR, pn, andExpr1n(), tc);
     return pn;
 }
 
 JS_ALWAYS_INLINE ParseNode *
 Parser::condExpr1()
 {
-    ParseNode *pn = orExpr1();
-    if (pn && tokenStream.isCurrentTokenType(TOK_HOOK)) {
-        ParseNode *pn1 = pn;
-        pn = TernaryNode::create(tc);
-        if (!pn)
-            return NULL;
+    ParseNode *condition = orExpr1();
+    if (!condition || !tokenStream.isCurrentTokenType(TOK_HOOK))
+        return condition;
 
-        /*
-         * Always accept the 'in' operator in the middle clause of a ternary,
-         * where it's unambiguous, even if we might be parsing the init of a
-         * for statement.
-         */
-        uintN oldflags = tc->flags;
-        tc->flags &= ~TCF_IN_FOR_INIT;
-        ParseNode *pn2 = assignExpr();
-        tc->flags = oldflags | (tc->flags & TCF_FUN_FLAGS);
+    /*
+     * Always accept the 'in' operator in the middle clause of a ternary,
+     * where it's unambiguous, even if we might be parsing the init of a
+     * for statement.
+     */
+    uintN oldflags = tc->flags;
+    tc->flags &= ~TCF_IN_FOR_INIT;
+    ParseNode *thenExpr = assignExpr();
+    tc->flags = oldflags | (tc->flags & TCF_FUN_FLAGS);
+    if (!thenExpr)
+        return NULL;
 
-        if (!pn2)
-            return NULL;
-        MUST_MATCH_TOKEN(TOK_COLON, JSMSG_COLON_IN_COND);
-        ParseNode *pn3 = assignExpr();
-        if (!pn3)
-            return NULL;
-        pn->pn_pos.begin = pn1->pn_pos.begin;
-        pn->pn_pos.end = pn3->pn_pos.end;
-        pn->pn_kid1 = pn1;
-        pn->pn_kid2 = pn2;
-        pn->pn_kid3 = pn3;
-        tokenStream.getToken();     /* need to read one token past the end */
-    }
-    return pn;
+    MUST_MATCH_TOKEN(TOK_COLON, JSMSG_COLON_IN_COND);
+
+    ParseNode *elseExpr = assignExpr();
+    if (!elseExpr)
+        return NULL;
+
+    tokenStream.getToken(); /* read one token past the end */
+    return new_<ConditionalExpression>(condition, thenExpr, elseExpr);
 }
 
 bool
 Parser::setAssignmentLhsOps(ParseNode *pn, JSOp op)
 {
     switch (pn->getKind()) {
-      case TOK_NAME:
+      case PNK_NAME:
         if (!CheckStrictAssignment(context, tc, pn))
             return false;
         pn->setOp(pn->isOp(JSOP_GETLOCAL) ? JSOP_SETLOCAL : JSOP_SETNAME);
         NoteLValue(context, pn, tc);
         break;
-      case TOK_DOT:
+      case PNK_DOT:
         pn->setOp(JSOP_SETPROP);
         break;
-      case TOK_LB:
+      case PNK_LB:
         pn->setOp(JSOP_SETELEM);
         break;
 #if JS_HAS_DESTRUCTURING
-      case TOK_RB:
-      case TOK_RC:
+      case PNK_RB:
+      case PNK_RC:
         if (op != JSOP_NOP) {
             reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_DESTRUCT_ASS);
             return false;
@@ -5196,17 +4696,15 @@ Parser::setAssignmentLhsOps(ParseNode *pn, JSOp op)
             return false;
         break;
 #endif
-      case TOK_LP:
+      case PNK_LP:
         if (!MakeSetCall(context, pn, tc, JSMSG_BAD_LEFTSIDE_OF_ASS))
             return false;
         break;
 #if JS_HAS_XML_SUPPORT
-      case TOK_UNARYOP:
-        if (pn->isOp(JSOP_XMLNAME)) {
-            pn->setOp(JSOP_SETXMLNAME);
-            break;
-        }
-        /* FALL THROUGH */
+      case PNK_XMLUNARY:
+        JS_ASSERT(pn->isOp(JSOP_XMLNAME));
+        pn->setOp(JSOP_SETXMLNAME);
+        break;
 #endif
       default:
         reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_LEFTSIDE_OF_ASS);
@@ -5225,24 +4723,39 @@ Parser::assignExpr()
         return returnOrYield(true);
 #endif
 
-    ParseNode *pn = condExpr1();
-    if (!pn)
+    ParseNode *lhs = condExpr1();
+    if (!lhs)
         return NULL;
 
-    if (!tokenStream.isCurrentTokenType(TOK_ASSIGN)) {
+    ParseNodeKind kind;
+    switch (tokenStream.currentToken().type) {
+      case TOK_ASSIGN:       kind = PNK_ASSIGN;       break;
+      case TOK_ADDASSIGN:    kind = PNK_ADDASSIGN;    break;
+      case TOK_SUBASSIGN:    kind = PNK_SUBASSIGN;    break;
+      case TOK_BITORASSIGN:  kind = PNK_BITORASSIGN;  break;
+      case TOK_BITXORASSIGN: kind = PNK_BITXORASSIGN; break;
+      case TOK_BITANDASSIGN: kind = PNK_BITANDASSIGN; break;
+      case TOK_LSHASSIGN:    kind = PNK_LSHASSIGN;    break;
+      case TOK_RSHASSIGN:    kind = PNK_RSHASSIGN;    break;
+      case TOK_URSHASSIGN:   kind = PNK_URSHASSIGN;   break;
+      case TOK_MULASSIGN:    kind = PNK_MULASSIGN;    break;
+      case TOK_DIVASSIGN:    kind = PNK_DIVASSIGN;    break;
+      case TOK_MODASSIGN:    kind = PNK_MODASSIGN;    break;
+      default:
+        JS_ASSERT(!tokenStream.isCurrentTokenAssignment());
         tokenStream.ungetToken();
-        return pn;
+        return lhs;
     }
 
     JSOp op = tokenStream.currentToken().t_op;
-    if (!setAssignmentLhsOps(pn, op))
+    if (!setAssignmentLhsOps(lhs, op))
         return NULL;
 
     ParseNode *rhs = assignExpr();
     if (!rhs)
         return NULL;
-    if (pn->isKind(TOK_NAME) && pn->isUsed()) {
-        Definition *dn = pn->pn_lexdef;
+    if (lhs->isKind(PNK_NAME) && lhs->isUsed()) {
+        Definition *dn = lhs->pn_lexdef;
 
         /*
          * If the definition is not flagged as assigned, we must have imputed
@@ -5257,67 +4770,67 @@ Parser::assignExpr()
         }
     }
 
-    return ParseNode::newBinaryOrAppend(TOK_ASSIGN, op, pn, rhs, tc);
+    return ParseNode::newBinaryOrAppend(kind, op, lhs, rhs, tc);
 }
 
-static ParseNode *
+static bool
 SetLvalKid(JSContext *cx, TokenStream *ts, TreeContext *tc, ParseNode *pn, ParseNode *kid,
            const char *name)
 {
-    if (!kid->isKind(TOK_NAME) &&
-        !kid->isKind(TOK_DOT) &&
-        (!kid->isKind(TOK_LP) ||
+    if (!kid->isKind(PNK_NAME) &&
+        !kid->isKind(PNK_DOT) &&
+        (!kid->isKind(PNK_LP) ||
          (!kid->isOp(JSOP_CALL) && !kid->isOp(JSOP_EVAL) &&
           !kid->isOp(JSOP_FUNCALL) && !kid->isOp(JSOP_FUNAPPLY))) &&
 #if JS_HAS_XML_SUPPORT
-        (!kid->isKind(TOK_UNARYOP) || !kid->isOp(JSOP_XMLNAME)) &&
+        !kid->isKind(PNK_XMLUNARY) &&
 #endif
-        !kid->isKind(TOK_LB)) {
+        !kid->isKind(PNK_LB))
+    {
         ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR, JSMSG_BAD_OPERAND, name);
-        return NULL;
+        return false;
     }
     if (!CheckStrictAssignment(cx, tc, kid))
-        return NULL;
+        return false;
     pn->pn_kid = kid;
-    return kid;
+    return true;
 }
 
 static const char incop_name_str[][10] = {"increment", "decrement"};
 
 static JSBool
 SetIncOpKid(JSContext *cx, TokenStream *ts, TreeContext *tc, ParseNode *pn, ParseNode *kid,
-            TokenKind tt, JSBool preorder)
+            TokenKind tt, bool preorder)
 {
     JSOp op;
 
-    kid = SetLvalKid(cx, ts, tc, pn, kid, incop_name_str[tt == TOK_DEC]);
-    if (!kid)
-        return JS_FALSE;
+    if (!SetLvalKid(cx, ts, tc, pn, kid, incop_name_str[tt == TOK_DEC]))
+        return false;
     switch (kid->getKind()) {
-      case TOK_NAME:
+      case PNK_NAME:
         op = (tt == TOK_INC)
              ? (preorder ? JSOP_INCNAME : JSOP_NAMEINC)
              : (preorder ? JSOP_DECNAME : JSOP_NAMEDEC);
         NoteLValue(cx, kid, tc);
         break;
 
-      case TOK_DOT:
+      case PNK_DOT:
         op = (tt == TOK_INC)
              ? (preorder ? JSOP_INCPROP : JSOP_PROPINC)
              : (preorder ? JSOP_DECPROP : JSOP_PROPDEC);
         break;
 
-      case TOK_LP:
+      case PNK_LP:
         if (!MakeSetCall(cx, kid, tc, JSMSG_BAD_INCOP_OPERAND))
             return JS_FALSE;
         /* FALL THROUGH */
 #if JS_HAS_XML_SUPPORT
-      case TOK_UNARYOP:
+      case PNK_XMLUNARY:
         if (kid->isOp(JSOP_XMLNAME))
             kid->setOp(JSOP_SETXMLNAME);
         /* FALL THROUGH */
 #endif
-      case TOK_LB:
+      case PNK_LB:
         op = (tt == TOK_INC)
              ? (preorder ? JSOP_INCELEM : JSOP_ELEMINC)
              : (preorder ? JSOP_DECELEM : JSOP_ELEMDEC);
@@ -5332,45 +4845,52 @@ SetIncOpKid(JSContext *cx, TokenStream *ts, TreeContext *tc, ParseNode *pn, Pars
 }
 
 ParseNode *
+Parser::unaryOpExpr(ParseNodeKind kind, JSOp op)
+{
+    TokenPtr begin = tokenStream.currentToken().pos.begin;
+    ParseNode *kid = unaryExpr();
+    if (!kid)
+        return NULL;
+    return new_<UnaryNode>(kind, op, TokenPos::make(begin, kid->pn_pos.end), kid);
+}
+
+ParseNode *
 Parser::unaryExpr()
 {
     ParseNode *pn, *pn2;
 
     JS_CHECK_RECURSION(context, return NULL);
 
-    TokenKind tt = tokenStream.getToken(TSF_OPERAND);
-    switch (tt) {
-      case TOK_UNARYOP:
+    switch (TokenKind tt = tokenStream.getToken(TSF_OPERAND)) {
+      case TOK_TYPEOF:
+        return unaryOpExpr(PNK_TYPEOF, JSOP_TYPEOF);
+      case TOK_VOID:
+        return unaryOpExpr(PNK_VOID, JSOP_VOID);
+      case TOK_NOT:
+        return unaryOpExpr(PNK_NOT, JSOP_NOT);
+      case TOK_BITNOT:
+        return unaryOpExpr(PNK_BITNOT, JSOP_BITNOT);
       case TOK_PLUS:
+        return unaryOpExpr(PNK_POS, JSOP_POS);
       case TOK_MINUS:
-        pn = UnaryNode::create(tc);
-        if (!pn)
-            return NULL;
-        pn->setKind(TOK_UNARYOP);      /* PLUS and MINUS are binary */
-        pn->setOp(tokenStream.currentToken().t_op);
-        pn2 = unaryExpr();
-        if (!pn2)
-            return NULL;
-        pn->pn_pos.end = pn2->pn_pos.end;
-        pn->pn_kid = pn2;
-        break;
+        return unaryOpExpr(PNK_NEG, JSOP_NEG);
 
       case TOK_INC:
       case TOK_DEC:
-        pn = UnaryNode::create(tc);
+        pn = UnaryNode::create((tt == TOK_INC) ? PNK_PREINCREMENT : PNK_PREDECREMENT, tc);
         if (!pn)
             return NULL;
         pn2 = memberExpr(JS_TRUE);
         if (!pn2)
             return NULL;
-        if (!SetIncOpKid(context, &tokenStream, tc, pn, pn2, tt, JS_TRUE))
+        if (!SetIncOpKid(context, &tokenStream, tc, pn, pn2, tt, true))
             return NULL;
         pn->pn_pos.end = pn2->pn_pos.end;
         break;
 
       case TOK_DELETE:
       {
-        pn = UnaryNode::create(tc);
+        pn = UnaryNode::create(PNK_DELETE, tc);
         if (!pn)
             return NULL;
         pn2 = unaryExpr();
@@ -5386,7 +4906,7 @@ Parser::unaryExpr()
         if (foldConstants && !FoldConstants(context, pn2, tc))
             return NULL;
         switch (pn2->getKind()) {
-          case TOK_LP:
+          case PNK_LP:
             if (!(pn2->pn_xflags & PNX_SETCALL)) {
                 /*
                  * Call MakeSetCall to check for errors, but clear PNX_SETCALL
@@ -5397,7 +4917,7 @@ Parser::unaryExpr()
                 pn2->pn_xflags &= ~PNX_SETCALL;
             }
             break;
-          case TOK_NAME:
+          case PNK_NAME:
             if (!ReportStrictModeError(context, &tokenStream, tc, pn,
                                        JSMSG_DEPRECATED_DELETE_OPERAND)) {
                 return NULL;
@@ -5426,11 +4946,11 @@ Parser::unaryExpr()
         if (tokenStream.onCurrentLine(pn->pn_pos)) {
             tt = tokenStream.peekTokenSameLine(TSF_OPERAND);
             if (tt == TOK_INC || tt == TOK_DEC) {
-                (void) tokenStream.getToken();
-                pn2 = UnaryNode::create(tc);
+                tokenStream.consumeKnownToken(tt);
+                pn2 = UnaryNode::create((tt == TOK_INC) ? PNK_POSTINCREMENT : PNK_POSTDECREMENT, tc);
                 if (!pn2)
                     return NULL;
-                if (!SetIncOpKid(context, &tokenStream, tc, pn2, pn, tt, JS_FALSE))
+                if (!SetIncOpKid(context, &tokenStream, tc, pn2, pn, tt, false))
                     return NULL;
                 pn2->pn_pos.begin = pn->pn_pos.begin;
                 pn = pn2;
@@ -5489,7 +5009,7 @@ class CompExprTransplanter {
  * Use in any context which may turn out to be inside a generator expression. This
  * includes parenthesized expressions and argument lists, and it includes the tail
  * of generator expressions.
- * 
+ *
  * The guard will keep track of any |yield| or |arguments| tokens that occur while
  * parsing the body. As soon as the parser reaches the end of the body expression,
  * call endBody() to reset the context's state, and then immediately call:
@@ -5499,8 +5019,8 @@ class CompExprTransplanter {
  */
 class GenexpGuard {
     TreeContext     *tc;
-    uint32          startYieldCount;
-    uint32          startArgumentsCount;
+    uint32_t        startYieldCount;
+    uint32_t        startArgumentsCount;
 
   public:
     explicit GenexpGuard(TreeContext *tc)
@@ -5738,7 +5258,7 @@ CompExprTransplanter::transplant(ParseNode *pn)
                         return false;
                     dn2->pn_pos = root->pn_pos;
 
-                    /* 
+                    /*
                      * Change all uses of |dn| that lie within the generator's
                      * |yield| expression into uses of dn2.
                      */
@@ -5790,11 +5310,11 @@ CompExprTransplanter::transplant(ParseNode *pn)
  *
  * Return null on failure, else return the top-most parse node for the array
  * comprehension or generator expression, with a unary node as the body of the
- * (possibly nested) for-loop, initialized by |type, op, kid|.
+ * (possibly nested) for-loop, initialized by |kind, op, kid|.
  */
 ParseNode *
 Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
-                          TokenKind type, JSOp op)
+                          ParseNodeKind kind, JSOp op)
 {
     uintN adjust;
     ParseNode *pn, *pn2, *pn3, **pnp;
@@ -5804,18 +5324,18 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
 
     JS_ASSERT(tokenStream.currentToken().type == TOK_FOR);
 
-    if (type == TOK_SEMI) {
+    if (kind == PNK_SEMI) {
         /*
          * Generator expression desugars to an immediately applied lambda that
          * yields the next value from a for-in loop (possibly nested, and with
          * optional if guard). Make pn be the TOK_LC body node.
          */
-        pn = PushLexicalScope(context, &tokenStream, tc, &stmtInfo);
+        pn = PushLexicalScope(context, tc, &stmtInfo);
         if (!pn)
             return NULL;
         adjust = pn->pn_blockid - blockid;
     } else {
-        JS_ASSERT(type == TOK_ARRAYPUSH);
+        JS_ASSERT(kind == PNK_ARRAYPUSH);
 
         /*
          * Make a parse-node and literal object representing the block scope of
@@ -5830,7 +5350,7 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
          * block scope.
          */
         adjust = tc->blockid();
-        pn = PushLexicalScope(context, &tokenStream, tc, &stmtInfo);
+        pn = PushLexicalScope(context, tc, &stmtInfo);
         if (!pn)
             return NULL;
 
@@ -5844,13 +5364,11 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
 
     pnp = &pn->pn_expr;
 
-    CompExprTransplanter transplanter(kid, tc, type == TOK_SEMI, adjust);
+    CompExprTransplanter transplanter(kid, tc, kind == PNK_SEMI, adjust);
     transplanter.transplant(kid);
 
-    data.pn = NULL;
-    data.op = JSOP_NOP;
-    data.binder = BindLet;
-    data.let.overflow = JSMSG_ARRAY_INIT_TOO_BIG;
+    JS_ASSERT(tc->blockChain && tc->blockChain == pn->pn_objbox->object);
+    data.initLet(HoistVars, *tc->blockChain, JSMSG_ARRAY_INIT_TOO_BIG);
 
     do {
         /*
@@ -5858,7 +5376,7 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
          * index to count each block-local let-variable on the left-hand side
          * of the IN.
          */
-        pn2 = BinaryNode::create(tc);
+        pn2 = BinaryNode::create(PNK_FOR, tc);
         if (!pn2)
             return NULL;
 
@@ -5898,7 +5416,7 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
              * and it tries to bind all names to slots, so we must let it do
              * the deed.
              */
-            pn3 = NewBindingNode(name, tc, true);
+            pn3 = NewBindingNode(name, tc);
             if (!pn3)
                 return NULL;
             break;
@@ -5935,7 +5453,7 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
 
             if (versionNumber() == JSVERSION_1_7) {
                 /* Destructuring requires [key, value] enumeration in JS1.7. */
-                if (!pn3->isKind(TOK_RB) || pn3->pn_count != 2) {
+                if (!pn3->isKind(PNK_RB) || pn3->pn_count != 2) {
                     reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_FOR_LEFTSIDE);
                     return NULL;
                 }
@@ -5961,11 +5479,10 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
          * Synthesize a declaration. Every definition must appear in the parse
          * tree in order for ComprehensionTranslator to work.
          */
-        ParseNode *vars = ListNode::create(tc);
+        ParseNode *vars = ListNode::create(PNK_VAR, tc);
         if (!vars)
             return NULL;
         vars->setOp(JSOP_NOP);
-        vars->setKind(TOK_VAR);
         vars->pn_pos = pn3->pn_pos;
         vars->makeEmpty();
         vars->append(pn3);
@@ -5976,7 +5493,7 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
         if (!pn3)
             return NULL;
 
-        pn2->pn_left = new_<TernaryNode>(TOK_IN, JSOP_NOP, vars, pn3, pn4);
+        pn2->pn_left = new_<TernaryNode>(PNK_FORIN, JSOP_NOP, vars, pn3, pn4);
         if (!pn2->pn_left)
             return NULL;
         *pnp = pn2;
@@ -5984,7 +5501,7 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
     } while (tokenStream.matchToken(TOK_FOR));
 
     if (tokenStream.matchToken(TOK_IF)) {
-        pn2 = TernaryNode::create(tc);
+        pn2 = TernaryNode::create(PNK_IF, tc);
         if (!pn2)
             return NULL;
         pn2->pn_kid1 = condition();
@@ -5994,10 +5511,9 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
         pnp = &pn2->pn_kid2;
     }
 
-    pn2 = UnaryNode::create(tc);
+    pn2 = UnaryNode::create(kind, tc);
     if (!pn2)
         return NULL;
-    pn2->setKind(type);
     pn2->setOp(op);
     pn2->pn_kid = kid;
     *pnp = pn2;
@@ -6026,11 +5542,12 @@ Parser::comprehensionTail(ParseNode *kid, uintN blockid, bool isGenexp,
 ParseNode *
 Parser::generatorExpr(ParseNode *kid)
 {
+    JS_ASSERT(tokenStream.isCurrentTokenType(TOK_FOR));
+
     /* Create a |yield| node for |kid|. */
-    ParseNode *pn = UnaryNode::create(tc);
+    ParseNode *pn = UnaryNode::create(PNK_YIELD, tc);
     if (!pn)
         return NULL;
-    pn->setKind(TOK_YIELD);
     pn->setOp(JSOP_YIELD);
     pn->setInParens(true);
     pn->pn_pos = kid->pn_pos;
@@ -6038,10 +5555,9 @@ Parser::generatorExpr(ParseNode *kid)
     pn->pn_hidden = true;
 
     /* Make a new node for the desugared generator function. */
-    ParseNode *genfn = FunctionNode::create(tc);
+    ParseNode *genfn = FunctionNode::create(PNK_FUNCTION, tc);
     if (!genfn)
         return NULL;
-    genfn->setKind(TOK_FUNCTION);
     genfn->setOp(JSOP_LAMBDA);
     JS_ASSERT(!genfn->pn_body);
     genfn->pn_dflags = PND_FUNARG;
@@ -6055,19 +5571,6 @@ Parser::generatorExpr(ParseNode *kid)
         FunctionBox *funbox = EnterFunction(genfn, &gentc);
         if (!funbox)
             return NULL;
-
-        /*
-         * We have to dance around a bit to propagate sharp variables from
-         * outertc to gentc before setting TCF_HAS_SHARPS implicitly by
-         * propagating all of outertc's TCF_FUN_FLAGS flags. As below, we have
-         * to be conservative by leaving TCF_HAS_SHARPS set in outertc if we
-         * do propagate to gentc.
-         */
-        if (outertc->flags & TCF_HAS_SHARPS) {
-            gentc.flags |= TCF_IN_FUNCTION;
-            if (!gentc.ensureSharpSlots())
-                return NULL;
-        }
 
         /*
          * We assume conservatively that any deoptimization flag in tc->flags
@@ -6098,10 +5601,9 @@ Parser::generatorExpr(ParseNode *kid)
      * Our result is a call expression that invokes the anonymous generator
      * function object.
      */
-    ParseNode *result = ListNode::create(tc);
+    ParseNode *result = ListNode::create(PNK_LP, tc);
     if (!result)
         return NULL;
-    result->setKind(TOK_LP);
     result->setOp(JSOP_CALL);
     result->pn_pos.begin = genfn->pn_pos.begin;
     result->initList(genfn);
@@ -6130,7 +5632,7 @@ Parser::argumentList(ParseNode *listNode)
             guard.endBody();
 
 #if JS_HAS_GENERATORS
-        if (argNode->isKind(TOK_YIELD) &&
+        if (argNode->isKind(PNK_YIELD) &&
             !argNode->isInParens() &&
             tokenStream.peekToken() == TOK_COMMA) {
             reportErrorNumber(argNode, JSREPORT_ERROR, JSMSG_BAD_GENERATOR_SYNTAX, js_yield_str);
@@ -6171,7 +5673,7 @@ Parser::argumentList(ParseNode *listNode)
 static ParseNode *
 CheckForImmediatelyAppliedLambda(ParseNode *pn)
 {
-    if (pn->isKind(TOK_FUNCTION)) {
+    if (pn->isKind(PNK_FUNCTION)) {
         JS_ASSERT(pn->isArity(PN_FUNC));
 
         FunctionBox *funbox = pn->pn_funbox;
@@ -6185,175 +5687,197 @@ CheckForImmediatelyAppliedLambda(ParseNode *pn)
 ParseNode *
 Parser::memberExpr(JSBool allowCallSyntax)
 {
-    ParseNode *pn, *pn2, *pn3;
+    ParseNode *lhs;
 
     JS_CHECK_RECURSION(context, return NULL);
 
     /* Check for new expression first. */
     TokenKind tt = tokenStream.getToken(TSF_OPERAND);
     if (tt == TOK_NEW) {
-        pn = ListNode::create(tc);
-        if (!pn)
+        lhs = ListNode::create(PNK_NEW, tc);
+        if (!lhs)
             return NULL;
-        pn2 = memberExpr(JS_FALSE);
-        if (!pn2)
+        ParseNode *ctorExpr = memberExpr(JS_FALSE);
+        if (!ctorExpr)
             return NULL;
-        pn2 = CheckForImmediatelyAppliedLambda(pn2);
-        pn->setOp(JSOP_NEW);
-        pn->initList(pn2);
-        pn->pn_pos.begin = pn2->pn_pos.begin;
+        ctorExpr = CheckForImmediatelyAppliedLambda(ctorExpr);
+        lhs->setOp(JSOP_NEW);
+        lhs->initList(ctorExpr);
+        lhs->pn_pos.begin = ctorExpr->pn_pos.begin;
 
-        if (tokenStream.matchToken(TOK_LP) && !argumentList(pn))
+        if (tokenStream.matchToken(TOK_LP) && !argumentList(lhs))
             return NULL;
-        if (pn->pn_count > ARGC_LIMIT) {
+        if (lhs->pn_count > ARGC_LIMIT) {
             JS_ReportErrorNumber(context, js_GetErrorMessage, NULL,
                                  JSMSG_TOO_MANY_CON_ARGS);
             return NULL;
         }
-        pn->pn_pos.end = pn->last()->pn_pos.end;
+        lhs->pn_pos.end = lhs->last()->pn_pos.end;
     } else {
-        pn = primaryExpr(tt, JS_FALSE);
-        if (!pn)
+        lhs = primaryExpr(tt, JS_FALSE);
+        if (!lhs)
             return NULL;
 
-        if (pn->isKind(TOK_ANYNAME) || pn->isKind(TOK_AT) || pn->isKind(TOK_DBLCOLON)) {
-            pn = new_<UnaryNode>(TOK_UNARYOP, JSOP_XMLNAME, pn->pn_pos, pn);
-            if (!pn)
+        if (lhs->isXMLNameOp()) {
+            lhs = new_<UnaryNode>(PNK_XMLUNARY, JSOP_XMLNAME, lhs->pn_pos, lhs);
+            if (!lhs)
                 return NULL;
         }
     }
 
     while ((tt = tokenStream.getToken()) > TOK_EOF) {
+        ParseNode *nextMember;
         if (tt == TOK_DOT) {
-            pn2 = NameNode::create(NULL, tc);
-            if (!pn2)
+            tt = tokenStream.getToken(TSF_KEYWORD_IS_NAME);
+            if (tt == TOK_ERROR)
                 return NULL;
+            if (tt == TOK_NAME) {
 #if JS_HAS_XML_SUPPORT
-            tt = tokenStream.getToken(TSF_OPERAND | TSF_KEYWORD_IS_NAME);
+                if (!tc->inStrictMode() && tokenStream.peekToken() == TOK_DBLCOLON) {
+                    ParseNode *propertyId = propertyQualifiedIdentifier();
+                    if (!propertyId)
+                        return NULL;
 
-            /* Treat filters as 'with' statements for name deoptimization. */
-            ParseNode *oldWith = tc->innermostWith;
-            StmtInfo stmtInfo;
-            if (tt == TOK_LP) {
-                tc->innermostWith = pn;
-                PushStatement(tc, &stmtInfo, STMT_WITH, -1);
+                    nextMember = new_<XMLDoubleColonProperty>(lhs, propertyId,
+                                                              lhs->pn_pos.begin,
+                                                              tokenStream.currentToken().pos.end);
+                    if (!nextMember)
+                        return NULL;
+                } else
+#endif
+                {
+                    nextMember = new_<PropertyAccess>(lhs, tokenStream.currentToken().name(),
+                                                      lhs->pn_pos.begin,
+                                                      tokenStream.currentToken().pos.end);
+                    if (!nextMember)
+                        return NULL;
+                }
             }
-
-            pn3 = primaryExpr(tt, JS_TRUE);
-            if (!pn3)
-                return NULL;
-
-            if (tt == TOK_LP) {
-                tc->innermostWith = oldWith;
-                PopStatement(tc);
-            }
-
-            /* Check both tt and pn_type, to distinguish |x.(y)| and |x.y::z| from |x.y|. */
-            if (tt == TOK_NAME && pn3->isKind(TOK_NAME)) {
-                pn2->setOp(JSOP_GETPROP);
-                pn2->pn_expr = pn;
-                pn2->pn_atom = pn3->pn_atom;
-                freeTree(pn3);
-            } else {
+#if JS_HAS_XML_SUPPORT
+            else if (!tc->inStrictMode()) {
+                TokenPtr begin = lhs->pn_pos.begin;
                 if (tt == TOK_LP) {
-                    pn2->setKind(TOK_FILTER);
-                    pn2->setOp(JSOP_FILTER);
-
-                    /* A filtering predicate is like a with statement. */
+                    /* Filters are effectively 'with', so deoptimize names. */
                     tc->flags |= TCF_FUN_HEAVYWEIGHT;
-                } else if (TokenKindIsXML(pn3->getKind())) {
-                    pn2->setKind(TOK_LB);
-                    pn2->setOp(JSOP_GETELEM);
+
+                    StmtInfo stmtInfo;
+                    ParseNode *oldWith = tc->innermostWith;
+                    tc->innermostWith = lhs;
+                    PushStatement(tc, &stmtInfo, STMT_WITH, -1);
+
+                    ParseNode *filter = bracketedExpr();
+                    if (!filter)
+                        return NULL;
+                    filter->setInParens(true);
+                    MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_IN_PAREN);
+
+                    tc->innermostWith = oldWith;
+                    PopStatement(tc);
+
+                    nextMember =
+                        new_<XMLFilterExpression>(lhs, filter,
+                                                  begin, tokenStream.currentToken().pos.end);
+                    if (!nextMember)
+                        return NULL;
+                } else if (tt == TOK_AT || tt == TOK_STAR) {
+                    ParseNode *propertyId = starOrAtPropertyIdentifier(tt);
+                    if (!propertyId)
+                        return NULL;
+                    nextMember = new_<XMLProperty>(lhs, propertyId,
+                                                   begin, tokenStream.currentToken().pos.end);
+                    if (!nextMember)
+                        return NULL;
                 } else {
                     reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_NAME_AFTER_DOT);
                     return NULL;
                 }
-                pn2->setArity(PN_BINARY);
-                pn2->pn_left = pn;
-                pn2->pn_right = pn3;
             }
-#else
-            MUST_MATCH_TOKEN_WITH_FLAGS(TOK_NAME, JSMSG_NAME_AFTER_DOT, TSF_KEYWORD_IS_NAME);
-            pn2->setOp(JSOP_GETPROP);
-            pn2->pn_expr = pn;
-            pn2->pn_atom = tokenStream.currentToken().name();
 #endif
-            pn2->pn_pos.begin = pn->pn_pos.begin;
-            pn2->pn_pos.end = tokenStream.currentToken().pos.end;
-#if JS_HAS_XML_SUPPORT
-        } else if (tt == TOK_DBLDOT) {
-            pn2 = BinaryNode::create(tc);
-            if (!pn2)
-                return NULL;
-            tt = tokenStream.getToken(TSF_OPERAND | TSF_KEYWORD_IS_NAME);
-            pn3 = primaryExpr(tt, JS_TRUE);
-            if (!pn3)
-                return NULL;
-            tt = pn3->getKind();
-            if (tt == TOK_NAME && !pn3->isInParens()) {
-                pn3->setKind(TOK_STRING);
-                pn3->setArity(PN_NULLARY);
-                pn3->setOp(JSOP_QNAMEPART);
-            } else if (!TokenKindIsXML(tt)) {
+            else {
                 reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_NAME_AFTER_DOT);
                 return NULL;
             }
-            pn2->setOp(JSOP_DESCENDANTS);
-            pn2->pn_left = pn;
-            pn2->pn_right = pn3;
-            pn2->pn_pos.begin = pn->pn_pos.begin;
-            pn2->pn_pos.end = tokenStream.currentToken().pos.end;
-#endif
-        } else if (tt == TOK_LB) {
-            pn2 = BinaryNode::create(tc);
-            if (!pn2)
+        }
+#if JS_HAS_XML_SUPPORT
+        else if (tt == TOK_DBLDOT) {
+            if (tc->inStrictMode()) {
+                reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_NAME_AFTER_DOT);
                 return NULL;
-            pn3 = expr();
+            }
+
+            nextMember = BinaryNode::create(PNK_DBLDOT, tc);
+            if (!nextMember)
+                return NULL;
+            tt = tokenStream.getToken(TSF_OPERAND | TSF_KEYWORD_IS_NAME);
+            ParseNode *pn3 = primaryExpr(tt, JS_TRUE);
             if (!pn3)
+                return NULL;
+            if (pn3->isKind(PNK_NAME) && !pn3->isInParens()) {
+                pn3->setKind(PNK_STRING);
+                pn3->setArity(PN_NULLARY);
+                pn3->setOp(JSOP_QNAMEPART);
+            } else if (!pn3->isXMLPropertyIdentifier()) {
+                reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_NAME_AFTER_DOT);
+                return NULL;
+            }
+            nextMember->setOp(JSOP_DESCENDANTS);
+            nextMember->pn_left = lhs;
+            nextMember->pn_right = pn3;
+            nextMember->pn_pos.begin = lhs->pn_pos.begin;
+            nextMember->pn_pos.end = tokenStream.currentToken().pos.end;
+        }
+#endif
+        else if (tt == TOK_LB) {
+            ParseNode *propExpr = expr();
+            if (!propExpr)
                 return NULL;
 
             MUST_MATCH_TOKEN(TOK_RB, JSMSG_BRACKET_IN_INDEX);
-            pn2->pn_pos.begin = pn->pn_pos.begin;
-            pn2->pn_pos.end = tokenStream.currentToken().pos.end;
+            TokenPtr begin = lhs->pn_pos.begin, end = tokenStream.currentToken().pos.end;
 
             /*
-             * Optimize o['p'] to o.p by rewriting pn2, but avoid rewriting
-             * o['0'] to use JSOP_GETPROP, to keep fast indexing disjoint in
-             * the interpreter from fast property access. However, if the
-             * bracketed string is a uint32, we rewrite pn3 to be a number
-             * instead of a string.
+             * Optimize property name lookups.  If the name is a PropertyName,
+             * then make a name-based node so the emitter will use a name-based
+             * bytecode.  Otherwise make a node using the property expression
+             * by value.  If the node is a string containing an index, convert
+             * it to a number to save work later.
              */
-            do {
-                if (pn3->isKind(TOK_STRING)) {
-                    jsuint index;
-
-                    if (!js_IdIsIndex(ATOM_TO_JSID(pn3->pn_atom), &index)) {
-                        pn2->setKind(TOK_DOT);
-                        pn2->setOp(JSOP_GETPROP);
-                        pn2->setArity(PN_NAME);
-                        pn2->pn_expr = pn;
-                        pn2->pn_atom = pn3->pn_atom;
-                        break;
-                    }
-                    pn3->setKind(TOK_NUMBER);
-                    pn3->setOp(JSOP_DOUBLE);
-                    pn3->pn_dval = index;
+            uint32_t index;
+            PropertyName *name = NULL;
+            if (propExpr->isKind(PNK_STRING)) {
+                JSAtom *atom = propExpr->pn_atom;
+                if (atom->isIndex(&index)) {
+                    propExpr->setKind(PNK_NUMBER);
+                    propExpr->setOp(JSOP_DOUBLE);
+                    propExpr->pn_dval = index;
+                } else {
+                    name = atom->asPropertyName();
                 }
-                pn2->setOp(JSOP_GETELEM);
-                pn2->pn_left = pn;
-                pn2->pn_right = pn3;
-            } while (0);
-        } else if (allowCallSyntax && tt == TOK_LP) {
-            pn2 = ListNode::create(tc);
-            if (!pn2)
-                return NULL;
-            pn2->setOp(JSOP_CALL);
+            } else if (propExpr->isKind(PNK_NUMBER)) {
+                JSAtom *atom;
+                if (!js_ValueToAtom(context, NumberValue(propExpr->pn_dval), &atom))
+                    return NULL;
+                if (!atom->isIndex(&index))
+                    name = atom->asPropertyName();
+            }
 
-            pn = CheckForImmediatelyAppliedLambda(pn);
-            if (pn->isOp(JSOP_NAME)) {
-                if (pn->pn_atom == context->runtime->atomState.evalAtom) {
+            if (name)
+                nextMember = new_<PropertyAccess>(lhs, name, begin, end);
+            else
+                nextMember = new_<PropertyByValue>(lhs, propExpr, begin, end);
+            if (!nextMember)
+                return NULL;
+        } else if (allowCallSyntax && tt == TOK_LP) {
+            nextMember = ListNode::create(PNK_LP, tc);
+            if (!nextMember)
+                return NULL;
+            nextMember->setOp(JSOP_CALL);
+
+            lhs = CheckForImmediatelyAppliedLambda(lhs);
+            if (lhs->isOp(JSOP_NAME)) {
+                if (lhs->pn_atom == context->runtime->atomState.evalAtom) {
                     /* Select JSOP_EVAL and flag tc as heavyweight. */
-                    pn2->setOp(JSOP_EVAL);
+                    nextMember->setOp(JSOP_EVAL);
                     tc->noteCallsEval();
                     tc->flags |= TCF_FUN_HEAVYWEIGHT;
                     /*
@@ -6363,35 +5887,35 @@ Parser::memberExpr(JSBool allowCallSyntax)
                     if (!tc->inStrictMode())
                         tc->noteHasExtensibleScope();
                 }
-            } else if (pn->isOp(JSOP_GETPROP)) {
+            } else if (lhs->isOp(JSOP_GETPROP)) {
                 /* Select JSOP_FUNAPPLY given foo.apply(...). */
-                if (pn->pn_atom == context->runtime->atomState.applyAtom)
-                    pn2->setOp(JSOP_FUNAPPLY);
-                else if (pn->pn_atom == context->runtime->atomState.callAtom)
-                    pn2->setOp(JSOP_FUNCALL);
+                if (lhs->pn_atom == context->runtime->atomState.applyAtom)
+                    nextMember->setOp(JSOP_FUNAPPLY);
+                else if (lhs->pn_atom == context->runtime->atomState.callAtom)
+                    nextMember->setOp(JSOP_FUNCALL);
             }
 
-            pn2->initList(pn);
-            pn2->pn_pos.begin = pn->pn_pos.begin;
+            nextMember->initList(lhs);
+            nextMember->pn_pos.begin = lhs->pn_pos.begin;
 
-            if (!argumentList(pn2))
+            if (!argumentList(nextMember))
                 return NULL;
-            if (pn2->pn_count > ARGC_LIMIT) {
+            if (nextMember->pn_count > ARGC_LIMIT) {
                 JS_ReportErrorNumber(context, js_GetErrorMessage, NULL,
                                      JSMSG_TOO_MANY_FUN_ARGS);
                 return NULL;
             }
-            pn2->pn_pos.end = tokenStream.currentToken().pos.end;
+            nextMember->pn_pos.end = tokenStream.currentToken().pos.end;
         } else {
             tokenStream.ungetToken();
-            return pn;
+            return lhs;
         }
 
-        pn = pn2;
+        lhs = nextMember;
     }
     if (tt == TOK_ERROR)
         return NULL;
-    return pn;
+    return lhs;
 }
 
 ParseNode *
@@ -6417,6 +5941,8 @@ Parser::bracketedExpr()
 ParseNode *
 Parser::endBracketedExpr()
 {
+    JS_ASSERT(!tc->inStrictMode());
+
     ParseNode *pn = bracketedExpr();
     if (!pn)
         return NULL;
@@ -6479,34 +6005,35 @@ Parser::endBracketedExpr()
 ParseNode *
 Parser::propertySelector()
 {
-    DebugOnly<const Token *> tp = &tokenStream.currentToken();
-    JS_ASSERT(tp->type == TOK_STAR || tp->type == TOK_NAME);
+    JS_ASSERT(!tc->inStrictMode());
 
-    ParseNode *pn = NullaryNode::create(tc);
-    if (!pn)
-        return NULL;
-    if (pn->isKind(TOK_STAR)) {
-        pn->setKind(TOK_ANYNAME);
-        pn->setOp(JSOP_ANYNAME);
-        pn->pn_atom = context->runtime->atomState.starAtom;
+    ParseNode *selector;
+    if (tokenStream.isCurrentTokenType(TOK_STAR)) {
+        selector = NullaryNode::create(PNK_ANYNAME, tc);
+        if (!selector)
+            return NULL;
+        selector->setOp(JSOP_ANYNAME);
+        selector->pn_atom = context->runtime->atomState.starAtom;
     } else {
-        JS_ASSERT(pn->isKind(TOK_NAME));
-        pn->setOp(JSOP_QNAMEPART);
-        pn->setArity(PN_NAME);
-        pn->pn_atom = tokenStream.currentToken().name();
-        pn->pn_cookie.makeFree();
+        JS_ASSERT(tokenStream.isCurrentTokenType(TOK_NAME));
+        selector = NullaryNode::create(PNK_NAME, tc);
+        if (!selector)
+            return NULL;
+        selector->setOp(JSOP_QNAMEPART);
+        selector->setArity(PN_NAME);
+        selector->pn_atom = tokenStream.currentToken().name();
+        selector->pn_cookie.makeFree();
     }
-    return pn;
+    return selector;
 }
 
 ParseNode *
 Parser::qualifiedSuffix(ParseNode *pn)
 {
-    ParseNode *pn2, *pn3;
-    TokenKind tt;
+    JS_ASSERT(!tc->inStrictMode());
 
     JS_ASSERT(tokenStream.currentToken().type == TOK_DBLCOLON);
-    pn2 = NameNode::create(NULL, tc);
+    ParseNode *pn2 = NameNode::create(PNK_DBLCOLON, NULL, tc);
     if (!pn2)
         return NULL;
 
@@ -6514,7 +6041,7 @@ Parser::qualifiedSuffix(ParseNode *pn)
     if (pn->isOp(JSOP_QNAMEPART))
         pn->setOp(JSOP_NAME);
 
-    tt = tokenStream.getToken(TSF_KEYWORD_IS_NAME);
+    TokenKind tt = tokenStream.getToken(TSF_KEYWORD_IS_NAME);
     if (tt == TOK_STAR || tt == TOK_NAME) {
         /* Inline and specialize propertySelector for JSOP_QNAMECONST. */
         pn2->setOp(JSOP_QNAMECONST);
@@ -6531,7 +6058,7 @@ Parser::qualifiedSuffix(ParseNode *pn)
         reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_SYNTAX_ERROR);
         return NULL;
     }
-    pn3 = endBracketedExpr();
+    ParseNode *pn3 = endBracketedExpr();
     if (!pn3)
         return NULL;
 
@@ -6547,8 +6074,7 @@ Parser::qualifiedSuffix(ParseNode *pn)
 ParseNode *
 Parser::qualifiedIdentifier()
 {
-    DebugOnly<const Token *> tp = &tokenStream.currentToken();
-    JS_ASSERT(tp->type == TOK_STAR || tp->type == TOK_NAME);
+    JS_ASSERT(!tc->inStrictMode());
 
     ParseNode *pn = propertySelector();
     if (!pn)
@@ -6564,15 +6090,16 @@ Parser::qualifiedIdentifier()
 ParseNode *
 Parser::attributeIdentifier()
 {
-    ParseNode *pn, *pn2;
-    TokenKind tt;
+    JS_ASSERT(!tc->inStrictMode());
 
     JS_ASSERT(tokenStream.currentToken().type == TOK_AT);
-    pn = UnaryNode::create(tc);
+    ParseNode *pn = UnaryNode::create(PNK_AT, tc);
     if (!pn)
         return NULL;
     pn->setOp(JSOP_TOATTRNAME);
-    tt = tokenStream.getToken(TSF_KEYWORD_IS_NAME);
+
+    ParseNode *pn2;
+    TokenKind tt = tokenStream.getToken(TSF_KEYWORD_IS_NAME);
     if (tt == TOK_STAR || tt == TOK_NAME) {
         pn2 = qualifiedIdentifier();
     } else if (tt == TOK_LB) {
@@ -6593,10 +6120,10 @@ Parser::attributeIdentifier()
 ParseNode *
 Parser::xmlExpr(JSBool inTag)
 {
-    ParseNode *pn, *pn2;
+    JS_ASSERT(!tc->inStrictMode());
 
     JS_ASSERT(tokenStream.currentToken().type == TOK_LC);
-    pn = UnaryNode::create(tc);
+    ParseNode *pn = UnaryNode::create(PNK_XMLCURLYEXPR, tc);
     if (!pn)
         return NULL;
 
@@ -6608,7 +6135,7 @@ Parser::xmlExpr(JSBool inTag)
      */
     bool oldflag = tokenStream.isXMLTagMode();
     tokenStream.setXMLTagMode(false);
-    pn2 = expr();
+    ParseNode *pn2 = expr();
     if (!pn2)
         return NULL;
 
@@ -6619,27 +6146,16 @@ Parser::xmlExpr(JSBool inTag)
     return pn;
 }
 
-/*
- * Make a terminal node for one of TOK_XMLNAME, TOK_XMLATTR, TOK_XMLSPACE,
- * TOK_XMLTEXT, TOK_XMLCDATA, TOK_XMLCOMMENT, or TOK_XMLPI.  When converting
- * parse tree to XML, we preserve a TOK_XMLSPACE node only if it's the sole
- * child of a container tag.
- */
 ParseNode *
-Parser::xmlAtomNode()
+Parser::atomNode(ParseNodeKind kind, JSOp op)
 {
-    ParseNode *pn = NullaryNode::create(tc);
-    if (!pn)
+    ParseNode *node = NullaryNode::create(kind, tc);
+    if (!node)
         return NULL;
+    node->setOp(op);
     const Token &tok = tokenStream.currentToken();
-    pn->setOp(tok.t_op);
-    if (tok.type == TOK_XMLPI) {
-        pn->pn_pitarget = tok.xmlPITarget();
-        pn->pn_pidata = tok.xmlPIData();
-    } else {
-        pn->pn_atom = tok.atom();
-    }
-    return pn;
+    node->pn_atom = tok.atom();
+    return node;
 }
 
 /*
@@ -6651,12 +6167,14 @@ Parser::xmlAtomNode()
  *
  * Return a PN_LIST, PN_UNARY, or PN_NULLARY according as XMLNameExpr produces
  * a list of names and/or expressions, a single expression, or a single name.
- * If PN_LIST or PN_NULLARY, pn_type will be TOK_XMLNAME; if PN_UNARY, pn_type
- * will be TOK_LC.
+ * If PN_LIST or PN_NULLARY, getKind() will be PNK_XMLNAME.  Otherwise if
+ * PN_UNARY, getKind() will be PNK_XMLCURLYEXPR.
  */
 ParseNode *
 Parser::xmlNameExpr()
 {
+    JS_ASSERT(!tc->inStrictMode());
+
     ParseNode *pn, *pn2, *list;
     TokenKind tt;
 
@@ -6669,7 +6187,8 @@ Parser::xmlNameExpr()
                 return NULL;
         } else {
             JS_ASSERT(tt == TOK_XMLNAME);
-            pn2 = xmlAtomNode();
+            JS_ASSERT(tokenStream.currentToken().t_op == JSOP_STRING);
+            pn2 = atomNode(PNK_XMLNAME, JSOP_STRING);
             if (!pn2)
                 return NULL;
         }
@@ -6678,10 +6197,9 @@ Parser::xmlNameExpr()
             pn = pn2;
         } else {
             if (!list) {
-                list = ListNode::create(tc);
+                list = ListNode::create(PNK_XMLNAME, tc);
                 if (!list)
                     return NULL;
-                list->setKind(TOK_XMLNAME);
                 list->pn_pos.begin = pn->pn_pos.begin;
                 list->initList(pn);
                 list->pn_xflags = PNX_CANTFOLD;
@@ -6702,7 +6220,7 @@ Parser::xmlNameExpr()
  */
 #define XML_FOLDABLE(pn)        ((pn)->isArity(PN_LIST)                     \
                                  ? ((pn)->pn_xflags & PNX_CANTFOLD) == 0    \
-                                 : !(pn)->isKind(TOK_LC))
+                                 : !(pn)->isKind(PNK_XMLCURLYEXPR))
 
 /*
  * Parse the productions:
@@ -6716,14 +6234,16 @@ Parser::xmlNameExpr()
  * produces a list of name and attribute values and/or braced expressions, a
  * single expression, or a single name.
  *
- * If PN_LIST or PN_NULLARY, pn_type will be TOK_XMLNAME for the case where
- * XMLTagContent: XMLNameExpr.  If pn_type is not TOK_XMLNAME but pn_arity is
- * PN_LIST, pn_type will be tagtype.  If PN_UNARY, pn_type will be TOK_LC and
- * we parsed exactly one expression.
+ * If PN_LIST or PN_NULLARY, getKind() will be PNK_XMLNAME for the case where
+ * XMLTagContent: XMLNameExpr.  If getKind() is not PNK_XMLNAME but getArity()
+ * is PN_LIST, getKind() will be tagkind.  If PN_UNARY, getKind() will be
+ * PNK_XMLCURLYEXPR and we parsed exactly one expression.
  */
 ParseNode *
-Parser::xmlTagContent(TokenKind tagtype, JSAtom **namep)
+Parser::xmlTagContent(ParseNodeKind tagkind, JSAtom **namep)
 {
+    JS_ASSERT(!tc->inStrictMode());
+
     ParseNode *pn, *pn2, *list;
     TokenKind tt;
 
@@ -6744,10 +6264,9 @@ Parser::xmlTagContent(TokenKind tagtype, JSAtom **namep)
         if (!pn2)
             return NULL;
         if (!list) {
-            list = ListNode::create(tc);
+            list = ListNode::create(tagkind, tc);
             if (!list)
                 return NULL;
-            list->setKind(tagtype);
             list->pn_pos.begin = pn->pn_pos.begin;
             list->initList(pn);
             pn = list;
@@ -6762,7 +6281,8 @@ Parser::xmlTagContent(TokenKind tagtype, JSAtom **namep)
 
         tt = tokenStream.getToken();
         if (tt == TOK_XMLATTR) {
-            pn2 = xmlAtomNode();
+            JS_ASSERT(tokenStream.currentToken().t_op == JSOP_STRING);
+            pn2 = atomNode(PNK_XMLATTR, JSOP_STRING);
         } else if (tt == TOK_LC) {
             pn2 = xmlExpr(JS_TRUE);
             pn->pn_xflags |= PNX_CANTFOLD;
@@ -6796,6 +6316,8 @@ Parser::xmlTagContent(TokenKind tagtype, JSAtom **namep)
 JSBool
 Parser::xmlElementContent(ParseNode *pn)
 {
+    JS_ASSERT(!tc->inStrictMode());
+
     tokenStream.setXMLTagMode(false);
     for (;;) {
         TokenKind tt = tokenStream.getToken(TSF_XMLTEXTMODE);
@@ -6805,9 +6327,11 @@ Parser::xmlElementContent(ParseNode *pn)
         JSAtom *textAtom = tokenStream.currentToken().atom();
         if (textAtom) {
             /* Non-zero-length XML text scanned. */
-            ParseNode *pn2 = xmlAtomNode();
+            JS_ASSERT(tokenStream.currentToken().t_op == JSOP_STRING);
+            ParseNode *pn2 = atomNode(tt == TOK_XMLSPACE ? PNK_XMLSPACE : PNK_XMLTEXT,
+                                      JSOP_STRING);
             if (!pn2)
-                return JS_FALSE;
+                return false;
             pn->pn_pos.end = pn2->pn_pos.end;
             pn->append(pn2);
         }
@@ -6820,20 +6344,27 @@ Parser::xmlElementContent(ParseNode *pn)
         ParseNode *pn2;
         if (tt == TOK_LC) {
             pn2 = xmlExpr(JS_FALSE);
+            if (!pn2)
+                return false;
             pn->pn_xflags |= PNX_CANTFOLD;
         } else if (tt == TOK_XMLSTAGO) {
             pn2 = xmlElementOrList(JS_FALSE);
-            if (pn2) {
-                pn2->pn_xflags &= ~PNX_XMLROOT;
-                pn->pn_xflags |= pn2->pn_xflags;
-            }
+            if (!pn2)
+                return false;
+            pn2->pn_xflags &= ~PNX_XMLROOT;
+            pn->pn_xflags |= pn2->pn_xflags;
+        } else if (tt == TOK_XMLPI) {
+            const Token &tok = tokenStream.currentToken();
+            pn2 = new_<XMLProcessingInstruction>(tok.xmlPITarget(), tok.xmlPIData(), tok.pos);
+            if (!pn2)
+                return false;
         } else {
-            JS_ASSERT(tt == TOK_XMLCDATA || tt == TOK_XMLCOMMENT ||
-                      tt == TOK_XMLPI);
-            pn2 = xmlAtomNode();
+            JS_ASSERT(tt == TOK_XMLCDATA || tt == TOK_XMLCOMMENT);
+            pn2 = atomNode(tt == TOK_XMLCDATA ? PNK_XMLCDATA : PNK_XMLCOMMENT,
+                           tokenStream.currentToken().t_op);
+            if (!pn2)
+                return false;
         }
-        if (!pn2)
-            return JS_FALSE;
         pn->pn_pos.end = pn2->pn_pos.end;
         pn->append(pn2);
     }
@@ -6849,6 +6380,8 @@ Parser::xmlElementContent(ParseNode *pn)
 ParseNode *
 Parser::xmlElementOrList(JSBool allowList)
 {
+    JS_ASSERT(!tc->inStrictMode());
+
     ParseNode *pn, *pn2, *list;
     TokenKind tt;
     JSAtom *startAtom, *endAtom;
@@ -6856,7 +6389,7 @@ Parser::xmlElementOrList(JSBool allowList)
     JS_CHECK_RECURSION(context, return NULL);
 
     JS_ASSERT(tokenStream.currentToken().type == TOK_XMLSTAGO);
-    pn = ListNode::create(tc);
+    pn = ListNode::create(PNK_XMLSTAGO, tc);
     if (!pn)
         return NULL;
 
@@ -6869,7 +6402,7 @@ Parser::xmlElementOrList(JSBool allowList)
         /*
          * XMLElement.  Append the tag and its contents, if any, to pn.
          */
-        pn2 = xmlTagContent(TOK_XMLSTAGO, &startAtom);
+        pn2 = xmlTagContent(PNK_XMLSTAGO, &startAtom);
         if (!pn2)
             return NULL;
         tokenStream.matchToken(TOK_XMLSPACE);
@@ -6877,18 +6410,17 @@ Parser::xmlElementOrList(JSBool allowList)
         tt = tokenStream.getToken();
         if (tt == TOK_XMLPTAGC) {
             /* Point tag (/>): recycle pn if pn2 is a list of tag contents. */
-            if (pn2->isKind(TOK_XMLSTAGO)) {
+            if (pn2->isKind(PNK_XMLSTAGO)) {
                 pn->makeEmpty();
                 freeTree(pn);
                 pn = pn2;
             } else {
-                JS_ASSERT(pn2->isKind(TOK_XMLNAME) ||
-                          pn2->isKind(TOK_LC));
+                JS_ASSERT(pn2->isKind(PNK_XMLNAME) || pn2->isKind(PNK_XMLCURLYEXPR));
                 pn->initList(pn2);
                 if (!XML_FOLDABLE(pn2))
                     pn->pn_xflags |= PNX_CANTFOLD;
             }
-            pn->setKind(TOK_XMLPTAGC);
+            pn->setKind(PNK_XMLPTAGC);
             pn->pn_xflags |= PNX_XMLROOT;
         } else {
             /* We had better have a tag-close (>) at this point. */
@@ -6899,18 +6431,18 @@ Parser::xmlElementOrList(JSBool allowList)
             pn2->pn_pos.end = tokenStream.currentToken().pos.end;
 
             /* Make sure pn2 is a TOK_XMLSTAGO list containing tag contents. */
-            if (!pn2->isKind(TOK_XMLSTAGO)) {
+            if (!pn2->isKind(PNK_XMLSTAGO)) {
                 pn->initList(pn2);
                 if (!XML_FOLDABLE(pn2))
                     pn->pn_xflags |= PNX_CANTFOLD;
                 pn2 = pn;
-                pn = ListNode::create(tc);
+                pn = ListNode::create(PNK_XMLTAGC, tc);
                 if (!pn)
                     return NULL;
             }
 
             /* Now make pn a nominal-root TOK_XMLELEM list containing pn2. */
-            pn->setKind(TOK_XMLELEM);
+            pn->setKind(PNK_XMLELEM);
             pn->pn_pos.begin = pn2->pn_pos.begin;
             pn->initList(pn2);
             if (!XML_FOLDABLE(pn2))
@@ -6929,10 +6461,10 @@ Parser::xmlElementOrList(JSBool allowList)
             }
 
             /* Parse end tag; check mismatch at compile-time if we can. */
-            pn2 = xmlTagContent(TOK_XMLETAGO, &endAtom);
+            pn2 = xmlTagContent(PNK_XMLETAGO, &endAtom);
             if (!pn2)
                 return NULL;
-            if (pn2->isKind(TOK_XMLETAGO)) {
+            if (pn2->isKind(PNK_XMLETAGO)) {
                 /* Oops, end tag has attributes! */
                 reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_BAD_XML_TAG_SYNTAX);
                 return NULL;
@@ -6945,11 +6477,10 @@ Parser::xmlElementOrList(JSBool allowList)
             }
 
             /* Make a TOK_XMLETAGO list with pn2 as its single child. */
-            JS_ASSERT(pn2->isKind(TOK_XMLNAME) || pn2->isKind(TOK_LC));
-            list = ListNode::create(tc);
+            JS_ASSERT(pn2->isKind(PNK_XMLNAME) || pn2->isKind(PNK_XMLCURLYEXPR));
+            list = ListNode::create(PNK_XMLETAGO, tc);
             if (!list)
                 return NULL;
-            list->setKind(TOK_XMLETAGO);
             list->initList(pn2);
             pn->append(list);
             if (!XML_FOLDABLE(pn2)) {
@@ -6965,7 +6496,7 @@ Parser::xmlElementOrList(JSBool allowList)
         pn->setOp(JSOP_TOXML);
     } else if (allowList && tt == TOK_XMLTAGC) {
         /* XMLList Initialiser. */
-        pn->setKind(TOK_XMLLIST);
+        pn->setKind(PNK_XMLLIST);
         pn->setOp(JSOP_TOXMLLIST);
         pn->makeEmpty();
         pn->pn_xflags |= PNX_XMLROOT;
@@ -6986,6 +6517,8 @@ Parser::xmlElementOrList(JSBool allowList)
 ParseNode *
 Parser::xmlElementOrListRoot(JSBool allowList)
 {
+    JS_ASSERT(!tc->inStrictMode());
+
     /*
      * Force XML support to be enabled so that comments and CDATA literals
      * are recognized, instead of <! followed by -- starting an HTML comment
@@ -7010,6 +6543,7 @@ Parser::parseXMLText(JSObject *chain, bool allowList)
     TreeContext xmltc(this);
     if (!xmltc.init(context))
         return NULL;
+    JS_ASSERT(!xmltc.inStrictMode());
     xmltc.setScopeChain(chain);
 
     /* Set XML-only mode to turn off special treatment of {expr} in XML. */
@@ -7030,43 +6564,181 @@ Parser::parseXMLText(JSObject *chain, bool allowList)
 
 #endif /* JS_HAS_XMLSUPPORT */
 
-#if JS_HAS_BLOCK_SCOPE
-/*
- * Check whether blockid is an active scoping statement in tc. This code is
- * necessary to qualify tc->decls.lookup() hits in primaryExpr's TOK_NAME case
- * (below) where the hits come from Scheme-ish let bindings in for loop heads
- * and let blocks and expressions (not let declarations).
- *
- * Unlike let declarations ("let as the new var"), which is a kind of letrec
- * due to hoisting, let in a for loop head, let block, or let expression acts
- * like Scheme's let: initializers are evaluated without the new let bindings
- * being in scope.
- *
- * Name binding analysis is eager with fixups, rather than multi-pass, and let
- * bindings push on the front of the tc->decls AtomDecls (either the singular
- * list or on a hash chain -- see JSAtomMultiList::add*) in order to shadow
- * outer scope bindings of the same name.
- *
- * This simplifies binding lookup code at the price of a linear search here,
- * but only if code uses let (var predominates), and even then this function's
- * loop iterates more than once only in crazy cases.
- */
-static inline bool
-BlockIdInScope(uintN blockid, TreeContext *tc)
+bool
+Parser::checkForFunctionNode(PropertyName *name, ParseNode *node)
 {
-    if (blockid > tc->blockid())
-        return false;
-    for (StmtInfo *stmt = tc->topScopeStmt; stmt; stmt = stmt->downScope) {
-        if (stmt->blockid == blockid)
-            return true;
+    /*
+     * In |a.ns::name|, |ns| refers to an in-scope variable, so |ns| can't be a
+     * keyword.  (Exception: |function::name| is the actual name property, not
+     * what E4X would expose.)  We parsed |ns| accepting a keyword as a name,
+     * so we must implement the keyword restriction manually in this case.
+     */
+    if (const KeywordInfo *ki = FindKeyword(name->charsZ(), name->length())) {
+        if (ki->tokentype != TOK_FUNCTION) {
+            reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_KEYWORD_NOT_NS);
+            return false;
+        }
+
+        node->setArity(PN_NULLARY);
+        node->setKind(PNK_FUNCTION);
     }
-    return false;
+
+    return true;
+}
+
+#if JS_HAS_XML_SUPPORT
+ParseNode *
+Parser::propertyQualifiedIdentifier()
+{
+    JS_ASSERT(!tc->inStrictMode());
+    JS_ASSERT(tokenStream.isCurrentTokenType(TOK_NAME));
+    JS_ASSERT(tokenStream.currentToken().t_op == JSOP_NAME);
+    JS_ASSERT(tokenStream.peekToken() == TOK_DBLCOLON);
+
+    /* Deoptimize QualifiedIdentifier properties to avoid tricky analysis. */
+    tc->flags |= TCF_FUN_HEAVYWEIGHT;
+
+    PropertyName *name = tokenStream.currentToken().name();
+    ParseNode *node = NameNode::create(PNK_NAME, name, tc);
+    if (!node)
+        return NULL;
+    node->setOp(JSOP_NAME);
+    node->pn_dflags |= PND_DEOPTIMIZED;
+
+    if (!checkForFunctionNode(name, node))
+        return NULL;
+
+    tokenStream.consumeKnownToken(TOK_DBLCOLON);
+    return qualifiedSuffix(node);
+}
+#endif
+
+ParseNode *
+Parser::identifierName(bool afterDot)
+{
+    JS_ASSERT(tokenStream.isCurrentTokenType(TOK_NAME));
+
+    PropertyName *name = tokenStream.currentToken().name();
+    ParseNode *node = NameNode::create(PNK_NAME, name, tc);
+    if (!node)
+        return NULL;
+    JS_ASSERT(tokenStream.currentToken().t_op == JSOP_NAME);
+    node->setOp(JSOP_NAME);
+
+    if ((tc->flags & (TCF_IN_FUNCTION | TCF_FUN_PARAM_ARGUMENTS)) == TCF_IN_FUNCTION &&
+        name == context->runtime->atomState.argumentsAtom) {
+        /*
+         * Flag arguments usage so we can avoid unsafe optimizations such
+         * as formal parameter assignment analysis (because of the hated
+         * feature whereby arguments alias formals). We do this even for
+         * a reference of the form foo.arguments, which ancient code may
+         * still use instead of arguments (more hate).
+         */
+        tc->noteArgumentsUse(node);
+
+        /*
+         * Bind early to JSOP_ARGUMENTS to relieve later code from having
+         * to do this work (new rule for the emitter to count on).
+         */
+        if (!afterDot && !(tc->flags & TCF_DECL_DESTRUCTURING)
+            && !tc->inStatement(STMT_WITH)) {
+            node->setOp(JSOP_ARGUMENTS);
+            node->pn_dflags |= PND_BOUND;
+        }
+    } else if ((!afterDot
+#if JS_HAS_XML_SUPPORT
+                || (!tc->inStrictMode() && tokenStream.peekToken() == TOK_DBLCOLON)
+#endif
+               ) && !(tc->flags & TCF_DECL_DESTRUCTURING))
+    {
+        /* In case this is a generator expression outside of any function. */
+        if (!tc->inFunction() && name == context->runtime->atomState.argumentsAtom)
+            tc->countArgumentsUse(node);
+
+        StmtInfo *stmt = LexicalLookup(tc, name, NULL);
+
+        MultiDeclRange mdl = tc->decls.lookupMulti(name);
+
+        Definition *dn;
+        if (!mdl.empty()) {
+            dn = mdl.front();
+        } else {
+            if (AtomDefnAddPtr p = tc->lexdeps->lookupForAdd(name)) {
+                dn = p.value();
+            } else {
+                /*
+                 * No definition before this use in any lexical scope.
+                 * Create a placeholder definition node to either:
+                 * - Be adopted when we parse the real defining
+                 *   declaration, or
+                 * - Be left as a free variable definition if we never
+                 *   see the real definition.
+                 */
+                dn = MakePlaceholder(node, tc);
+                if (!dn || !tc->lexdeps->add(p, name, dn))
+                    return NULL;
+
+                /*
+                 * In case this is a forward reference to a function,
+                 * we pessimistically set PND_FUNARG if the next token
+                 * is not a left parenthesis.
+                 *
+                 * If the definition eventually parsed into dn is not a
+                 * function, this flag won't hurt, and if we do parse a
+                 * function with pn's name, then the PND_FUNARG flag is
+                 * necessary for safe context->display-based optimiza-
+                 * tion of the closure's static link.
+                 */
+                if (tokenStream.peekToken() != TOK_LP)
+                    dn->pn_dflags |= PND_FUNARG;
+            }
+        }
+
+        JS_ASSERT(dn->isDefn());
+        LinkUseToDef(node, dn, tc);
+
+        /* Here we handle the backward function reference case. */
+        if (tokenStream.peekToken() != TOK_LP)
+            dn->pn_dflags |= PND_FUNARG;
+
+        node->pn_dflags |= (dn->pn_dflags & PND_FUNARG);
+        if (stmt && stmt->type == STMT_WITH)
+            node->pn_dflags |= PND_DEOPTIMIZED;
+    }
+
+#if JS_HAS_XML_SUPPORT
+    if (!tc->inStrictMode() && tokenStream.matchToken(TOK_DBLCOLON)) {
+        if (afterDot) {
+            if (!checkForFunctionNode(name, node))
+                return NULL;
+        }
+        node = qualifiedSuffix(node);
+        if (!node)
+            return NULL;
+    }
+#endif
+
+    return node;
+}
+
+#if JS_HAS_XML_SUPPORT
+ParseNode *
+Parser::starOrAtPropertyIdentifier(TokenKind tt)
+{
+    JS_ASSERT(tt == TOK_AT || tt == TOK_STAR);
+    if (tc->inStrictMode()) {
+        reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_SYNTAX_ERROR);
+        return NULL;
+    }
+    return (tt == TOK_AT) ? attributeIdentifier() : qualifiedIdentifier();
 }
 #endif
 
 ParseNode *
 Parser::primaryExpr(TokenKind tt, JSBool afterDot)
 {
+    JS_ASSERT(tokenStream.isCurrentTokenType(tt));
+
     ParseNode *pn, *pn2, *pn3;
     JSOp op;
 
@@ -7075,11 +6747,10 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
     switch (tt) {
       case TOK_FUNCTION:
 #if JS_HAS_XML_SUPPORT
-        if (tokenStream.matchToken(TOK_DBLCOLON, TSF_KEYWORD_IS_NAME)) {
-            pn2 = NullaryNode::create(tc);
+        if (!tc->inStrictMode() && tokenStream.matchToken(TOK_DBLCOLON, TSF_KEYWORD_IS_NAME)) {
+            pn2 = NullaryNode::create(PNK_FUNCTION, tc);
             if (!pn2)
                 return NULL;
-            pn2->setKind(TOK_FUNCTION);
             pn = qualifiedSuffix(pn2);
             if (!pn)
                 return NULL;
@@ -7096,10 +6767,9 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
         JSBool matched;
         jsuint index;
 
-        pn = ListNode::create(tc);
+        pn = ListNode::create(PNK_RB, tc);
         if (!pn)
             return NULL;
-        pn->setKind(TOK_RB);
         pn->setOp(JSOP_NEWINIT);
         pn->makeEmpty();
 
@@ -7124,7 +6794,7 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
                 if (tt == TOK_COMMA) {
                     /* So CURRENT_TOKEN gets TOK_COMMA and not TOK_LB. */
                     tokenStream.matchToken(TOK_COMMA);
-                    pn2 = NullaryNode::create(tc);
+                    pn2 = NullaryNode::create(PNK_COMMA, tc);
                     pn->pn_xflags |= PNX_HOLEY | PNX_NONCONST;
                 } else {
                     pn2 = assignExpr();
@@ -7188,7 +6858,7 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
                 ParseNode *pnexp, *pntop;
 
                 /* Relabel pn as an array comprehension node. */
-                pn->setKind(TOK_ARRAYCOMP);
+                pn->setKind(PNK_ARRAYCOMP);
 
                 /*
                  * Remove the comprehension expression from pn's linked list
@@ -7202,7 +6872,7 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
                 *pn->pn_tail = NULL;
 
                 pntop = comprehensionTail(pnexp, pn->pn_blockid, false,
-                                          TOK_ARRAYPUSH, JSOP_ARRAYPUSH);
+                                          PNK_ARRAYPUSH, JSOP_ARRAYPUSH);
                 if (!pntop)
                     return NULL;
                 pn->append(pntop);
@@ -7231,70 +6901,100 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
             VALUE   = 0x4 | GET | SET
         };
 
-        pn = ListNode::create(tc);
+        pn = ListNode::create(PNK_RC, tc);
         if (!pn)
             return NULL;
-        pn->setKind(TOK_RC);
         pn->setOp(JSOP_NEWINIT);
         pn->makeEmpty();
 
         for (;;) {
             JSAtom *atom;
-            tt = tokenStream.getToken(TSF_KEYWORD_IS_NAME);
-            switch (tt) {
+            TokenKind ltok = tokenStream.getToken(TSF_KEYWORD_IS_NAME);
+            switch (ltok) {
               case TOK_NUMBER:
-                pn3 = NullaryNode::create(tc);
+                pn3 = NullaryNode::create(PNK_NUMBER, tc);
                 if (!pn3)
                     return NULL;
-                pn3->pn_dval = tokenStream.currentToken().t_dval;
+                pn3->pn_dval = tokenStream.currentToken().number();
                 if (!js_ValueToAtom(context, DoubleValue(pn3->pn_dval), &atom))
                     return NULL;
                 break;
               case TOK_NAME:
                 {
                     atom = tokenStream.currentToken().name();
-                    if (atom == context->runtime->atomState.getAtom)
+                    if (atom == context->runtime->atomState.getAtom) {
                         op = JSOP_GETTER;
-                    else if (atom == context->runtime->atomState.setAtom)
+                    } else if (atom == context->runtime->atomState.setAtom) {
                         op = JSOP_SETTER;
-                    else
-                        goto property_name;
+                    } else {
+                        pn3 = NullaryNode::create(PNK_NAME, tc);
+                        if (!pn3)
+                            return NULL;
+                        pn3->pn_atom = atom;
+                        break;
+                    }
 
                     tt = tokenStream.getToken(TSF_KEYWORD_IS_NAME);
-                    if (tt == TOK_NAME || tt == TOK_STRING) {
-                        atom = (tt == TOK_NAME)
-                               ? tokenStream.currentToken().name()
-                               : tokenStream.currentToken().atom();
-                        pn3 = NameNode::create(atom, tc);
+                    if (tt == TOK_NAME) {
+                        atom = tokenStream.currentToken().name();
+                        pn3 = NameNode::create(PNK_NAME, atom, tc);
                         if (!pn3)
                             return NULL;
+                    } else if (tt == TOK_STRING) {
+                        atom = tokenStream.currentToken().atom();
+
+                        uint32_t index;
+                        if (atom->isIndex(&index)) {
+                            pn3 = NullaryNode::create(PNK_NUMBER, tc);
+                            if (!pn3)
+                                return NULL;
+                            pn3->pn_dval = index;
+                            if (!js_ValueToAtom(context, DoubleValue(pn3->pn_dval), &atom))
+                                return NULL;
+                        } else {
+                            pn3 = NameNode::create(PNK_STRING, atom, tc);
+                            if (!pn3)
+                                return NULL;
+                        }
                     } else if (tt == TOK_NUMBER) {
-                        pn3 = NullaryNode::create(tc);
+                        pn3 = NullaryNode::create(PNK_NUMBER, tc);
                         if (!pn3)
                             return NULL;
-                        pn3->pn_dval = tokenStream.currentToken().t_dval;
+                        pn3->pn_dval = tokenStream.currentToken().number();
                         if (!js_ValueToAtom(context, DoubleValue(pn3->pn_dval), &atom))
                             return NULL;
                     } else {
                         tokenStream.ungetToken();
-                        goto property_name;
+                        pn3 = NullaryNode::create(PNK_NAME, tc);
+                        if (!pn3)
+                            return NULL;
+                        pn3->pn_atom = atom;
+                        break;
                     }
 
                     pn->pn_xflags |= PNX_NONCONST;
 
                     /* NB: Getter function in { get x(){} } is unnamed. */
                     pn2 = functionDef(NULL, op == JSOP_GETTER ? Getter : Setter, Expression);
-                    pn2 = ParseNode::newBinaryOrAppend(TOK_COLON, op, pn3, pn2, tc);
+                    pn2 = ParseNode::newBinaryOrAppend(PNK_COLON, op, pn3, pn2, tc);
                     goto skip;
                 }
-              case TOK_STRING:
+              case TOK_STRING: {
                 atom = tokenStream.currentToken().atom();
-              property_name:
-                pn3 = NullaryNode::create(tc);
-                if (!pn3)
-                    return NULL;
-                pn3->pn_atom = atom;
+                uint32_t index;
+                if (atom->isIndex(&index)) {
+                    pn3 = NullaryNode::create(PNK_NUMBER, tc);
+                    if (!pn3)
+                        return NULL;
+                    pn3->pn_dval = index;
+                } else {
+                    pn3 = NullaryNode::create(PNK_STRING, tc);
+                    if (!pn3)
+                        return NULL;
+                    pn3->pn_atom = atom;
+                }
                 break;
+              }
               case TOK_RC:
                 goto end_obj_init;
               default:
@@ -7316,30 +7016,29 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
                     atom == context->runtime->atomState.protoAtom) {
                     pn->pn_xflags |= PNX_NONCONST;
                 }
-            } else {
+            }
 #if JS_HAS_DESTRUCTURING_SHORTHAND
-                if (tt != TOK_COMMA && tt != TOK_RC) {
-#endif
-                    reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_COLON_AFTER_ID);
-                    return NULL;
-#if JS_HAS_DESTRUCTURING_SHORTHAND
-                }
-
+            else if (ltok == TOK_NAME && (tt == TOK_COMMA || tt == TOK_RC)) {
                 /*
                  * Support, e.g., |var {x, y} = o| as destructuring shorthand
                  * for |var {x: x, y: y} = o|, per proposed JS2/ES4 for JS1.8.
                  */
                 tokenStream.ungetToken();
+                if (!tokenStream.checkForKeyword(atom->charsZ(), atom->length(), NULL, NULL))
+                    return NULL;
                 pn->pn_xflags |= PNX_DESTRUCT | PNX_NONCONST;
                 pnval = pn3;
-                if (pnval->isKind(TOK_NAME)) {
-                    pnval->setArity(PN_NAME);
-                    ((NameNode *)pnval)->initCommon(tc);
-                }
+                JS_ASSERT(pnval->isKind(PNK_NAME));
+                pnval->setArity(PN_NAME);
+                ((NameNode *)pnval)->initCommon(tc);
+            }
 #endif
+            else {
+                reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_COLON_AFTER_ID);
+                return NULL;
             }
 
-            pn2 = ParseNode::newBinaryOrAppend(TOK_COLON, op, pn3, pnval, tc);
+            pn2 = ParseNode::newBinaryOrAppend(PNK_COLON, op, pn3, pnval, tc);
           skip:
             if (!pn2)
                 return NULL;
@@ -7407,44 +7106,11 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
 
 #if JS_HAS_BLOCK_SCOPE
       case TOK_LET:
-        pn = letBlock(JS_FALSE);
+        pn = letBlock(LetExpresion);
         if (!pn)
             return NULL;
         break;
 #endif
-
-#if JS_HAS_SHARP_VARS
-      case TOK_DEFSHARP:
-        pn = UnaryNode::create(tc);
-        if (!pn)
-            return NULL;
-        pn->pn_num = (jsint) tokenStream.currentToken().t_dval;
-        tt = tokenStream.getToken(TSF_OPERAND);
-        pn->pn_kid = primaryExpr(tt, JS_FALSE);
-        if (!pn->pn_kid)
-            return NULL;
-        if (pn->pn_kid->isKind(TOK_USESHARP) ||
-            pn->pn_kid->isKind(TOK_DEFSHARP) ||
-            pn->pn_kid->isKind(TOK_STRING) ||
-            pn->pn_kid->isKind(TOK_NUMBER) ||
-            pn->pn_kid->isKind(TOK_PRIMARY)) {
-            reportErrorNumber(pn->pn_kid, JSREPORT_ERROR, JSMSG_BAD_SHARP_VAR_DEF);
-            return NULL;
-        }
-        if (!tc->ensureSharpSlots())
-            return NULL;
-        break;
-
-      case TOK_USESHARP:
-        /* Check for forward/dangling references at runtime, to allow eval. */
-        pn = NullaryNode::create(tc);
-        if (!pn)
-            return NULL;
-        if (!tc->ensureSharpSlots())
-            return NULL;
-        pn->pn_num = (jsint) tokenStream.currentToken().t_dval;
-        break;
-#endif /* JS_HAS_SHARP_VARS */
 
       case TOK_LP:
       {
@@ -7459,17 +7125,16 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
         break;
       }
 
-#if JS_HAS_XML_SUPPORT
-      case TOK_STAR:
-        pn = qualifiedIdentifier();
+      case TOK_STRING:
+        pn = atomNode(PNK_STRING, JSOP_STRING);
         if (!pn)
             return NULL;
         break;
 
+#if JS_HAS_XML_SUPPORT
       case TOK_AT:
-        pn = attributeIdentifier();
-        if (!pn)
-            return NULL;
+      case TOK_STAR:
+        pn = starOrAtPropertyIdentifier(tt);
         break;
 
       case TOK_XMLSTAGO:
@@ -7477,173 +7142,44 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
         if (!pn)
             return NULL;
         break;
-#endif /* JS_HAS_XML_SUPPORT */
 
-      case TOK_STRING:
-#if JS_HAS_XML_SUPPORT
       case TOK_XMLCDATA:
-      case TOK_XMLCOMMENT:
-#endif
-        pn = NullaryNode::create(tc);
+        JS_ASSERT(!tc->inStrictMode());
+        pn = atomNode(PNK_XMLCDATA, JSOP_XMLCDATA);
         if (!pn)
             return NULL;
-        pn->pn_atom = tokenStream.currentToken().atom();
-        pn->setOp(tokenStream.currentToken().t_op);
         break;
 
-#if JS_HAS_XML_SUPPORT
-      case TOK_XMLPI:
-        pn = NullaryNode::create(tc);
+      case TOK_XMLCOMMENT:
+        JS_ASSERT(!tc->inStrictMode());
+        pn = atomNode(PNK_XMLCOMMENT, JSOP_XMLCOMMENT);
         if (!pn)
             return NULL;
-        pn->pn_pitarget = tokenStream.currentToken().xmlPITarget();
-        pn->pn_pidata = tokenStream.currentToken().xmlPIData();
         break;
+
+      case TOK_XMLPI: {
+        JS_ASSERT(!tc->inStrictMode());
+        const Token &tok = tokenStream.currentToken();
+        pn = new_<XMLProcessingInstruction>(tok.xmlPITarget(), tok.xmlPIData(), tok.pos);
+        if (!pn)
+            return NULL;
+        break;
+      }
 #endif
 
       case TOK_NAME:
-        pn = NameNode::create(tokenStream.currentToken().name(), tc);
-        if (!pn)
-            return NULL;
-        JS_ASSERT(tokenStream.currentToken().t_op == JSOP_NAME);
-        pn->setOp(JSOP_NAME);
-
-        if ((tc->flags & (TCF_IN_FUNCTION | TCF_FUN_PARAM_ARGUMENTS)) == TCF_IN_FUNCTION &&
-            pn->pn_atom == context->runtime->atomState.argumentsAtom) {
-            /*
-             * Flag arguments usage so we can avoid unsafe optimizations such
-             * as formal parameter assignment analysis (because of the hated
-             * feature whereby arguments alias formals). We do this even for
-             * a reference of the form foo.arguments, which ancient code may
-             * still use instead of arguments (more hate).
-             */
-            tc->noteArgumentsUse(pn);
-
-            /*
-             * Bind early to JSOP_ARGUMENTS to relieve later code from having
-             * to do this work (new rule for the emitter to count on).
-             */
-            if (!afterDot && !(tc->flags & TCF_DECL_DESTRUCTURING)
-                && !tc->inStatement(STMT_WITH)) {
-                pn->setOp(JSOP_ARGUMENTS);
-                pn->pn_dflags |= PND_BOUND;
-            }
-        } else if ((!afterDot
-#if JS_HAS_XML_SUPPORT
-                    || tokenStream.peekToken() == TOK_DBLCOLON
-#endif
-                   ) && !(tc->flags & TCF_DECL_DESTRUCTURING)) {
-            /* In case this is a generator expression outside of any function. */
-            if (!tc->inFunction() &&
-                pn->pn_atom == context->runtime->atomState.argumentsAtom) {
-                tc->countArgumentsUse(pn);
-            }
-
-            StmtInfo *stmt = LexicalLookup(tc, pn->pn_atom, NULL);
-
-            MultiDeclRange mdl = tc->decls.lookupMulti(pn->pn_atom);
-            Definition *dn;
-
-            if (!mdl.empty()) {
-                dn = mdl.front();
-#if JS_HAS_BLOCK_SCOPE
-                /*
-                 * Skip out-of-scope let bindings along an ALE list or hash
-                 * chain. These can happen due to |let (x = x) x| block and
-                 * expression bindings, where the x on the right of = comes
-                 * from an outer scope. See bug 496532.
-                 */
-                while (dn->isLet() && !BlockIdInScope(dn->pn_blockid, tc)) {
-                    mdl.popFront();
-                    if (mdl.empty())
-                        break;
-                    dn = mdl.front();
-                }
-#endif
-            }
-
-            if (!mdl.empty()) {
-                dn = mdl.front();
-            } else {
-                AtomDefnAddPtr p = tc->lexdeps->lookupForAdd(pn->pn_atom);
-                if (p) {
-                    dn = p.value();
-                } else {
-                    /*
-                     * No definition before this use in any lexical scope.
-                     * Create a placeholder definition node to either:
-                     * - Be adopted when we parse the real defining
-                     *   declaration, or
-                     * - Be left as a free variable definition if we never
-                     *   see the real definition.
-                     */
-                    dn = MakePlaceholder(pn, tc);
-                    if (!dn || !tc->lexdeps->add(p, dn->pn_atom, dn))
-                        return NULL;
-
-                    /*
-                     * In case this is a forward reference to a function,
-                     * we pessimistically set PND_FUNARG if the next token
-                     * is not a left parenthesis.
-                     *
-                     * If the definition eventually parsed into dn is not a
-                     * function, this flag won't hurt, and if we do parse a
-                     * function with pn's name, then the PND_FUNARG flag is
-                     * necessary for safe context->display-based optimiza-
-                     * tion of the closure's static link.
-                     */
-                    if (tokenStream.peekToken() != TOK_LP)
-                        dn->pn_dflags |= PND_FUNARG;
-                }
-            }
-
-            JS_ASSERT(dn->isDefn());
-            LinkUseToDef(pn, dn, tc);
-
-            /* Here we handle the backward function reference case. */
-            if (tokenStream.peekToken() != TOK_LP)
-                dn->pn_dflags |= PND_FUNARG;
-
-            pn->pn_dflags |= (dn->pn_dflags & PND_FUNARG);
-            if (stmt && stmt->type == STMT_WITH)
-                pn->pn_dflags |= PND_DEOPTIMIZED;
-        }
-
-#if JS_HAS_XML_SUPPORT
-        if (tokenStream.matchToken(TOK_DBLCOLON)) {
-            if (afterDot) {
-                /*
-                 * Here primaryExpr is called after . or .. followed by a name
-                 * followed by ::. This is the only case where a keyword after
-                 * . or .. is not treated as a property name.
-                 */
-                const KeywordInfo *ki = FindKeyword(pn->pn_atom->charsZ(), pn->pn_atom->length());
-                if (ki) {
-                    if (ki->tokentype != TOK_FUNCTION) {
-                        reportErrorNumber(NULL, JSREPORT_ERROR, JSMSG_KEYWORD_NOT_NS);
-                        return NULL;
-                    }
-
-                    pn->setArity(PN_NULLARY);
-                    pn->setKind(TOK_FUNCTION);
-                }
-            }
-            pn = qualifiedSuffix(pn);
-            if (!pn)
-                return NULL;
-        }
-#endif
+        pn = identifierName(afterDot);
         break;
 
       case TOK_REGEXP:
       {
-        pn = NullaryNode::create(tc);
+        pn = NullaryNode::create(PNK_REGEXP, tc);
         if (!pn)
             return NULL;
 
         const jschar *chars = tokenStream.getTokenbuf().begin();
         size_t length = tokenStream.getTokenbuf().length();
-        RegExpFlag flags = RegExpFlag(tokenStream.currentToken().t_reflags);
+        RegExpFlag flags = tokenStream.currentToken().regExpFlags();
         RegExpStatics *res = context->regExpStatics();
 
         RegExpObject *reobj;
@@ -7656,8 +7192,10 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
             return NULL;
 
         if (!tc->compileAndGo()) {
-            reobj->clearParent();
-            reobj->clearType();
+            if (!reobj->clearParent(context))
+                return NULL;
+            if (!reobj->clearType(context))
+                return NULL;
         }
 
         pn->pn_objbox = tc->parser->newObjectBox(reobj);
@@ -7669,19 +7207,21 @@ Parser::primaryExpr(TokenKind tt, JSBool afterDot)
       }
 
       case TOK_NUMBER:
-        pn = NullaryNode::create(tc);
+        pn = NullaryNode::create(PNK_NUMBER, tc);
         if (!pn)
             return NULL;
         pn->setOp(JSOP_DOUBLE);
-        pn->pn_dval = tokenStream.currentToken().t_dval;
+        pn->pn_dval = tokenStream.currentToken().number();
         break;
 
-      case TOK_PRIMARY:
-        pn = NullaryNode::create(tc);
-        if (!pn)
-            return NULL;
-        pn->setOp(tokenStream.currentToken().t_op);
-        break;
+      case TOK_TRUE:
+        return new_<BooleanLiteral>(true, tokenStream.currentToken().pos);
+      case TOK_FALSE:
+        return new_<BooleanLiteral>(false, tokenStream.currentToken().pos);
+      case TOK_THIS:
+        return new_<ThisLiteral>(tokenStream.currentToken().pos);
+      case TOK_NULL:
+        return new_<NullLiteral>(tokenStream.currentToken().pos);
 
       case TOK_ERROR:
         /* The scanner or one of its subroutines reported the error. */
@@ -7717,8 +7257,8 @@ Parser::parenExpr(JSBool *genexp)
     if (tokenStream.matchToken(TOK_FOR)) {
         if (!guard.checkValidBody(pn))
             return NULL;
-        JS_ASSERT(!pn->isKind(TOK_YIELD));
-        if (pn->isKind(TOK_COMMA) && !pn->isInParens()) {
+        JS_ASSERT(!pn->isKind(PNK_YIELD));
+        if (pn->isKind(PNK_COMMA) && !pn->isInParens()) {
             reportErrorNumber(pn->last(), JSREPORT_ERROR, JSMSG_BAD_GENERATOR_SYNTAX,
                               js_generator_str);
             return NULL;

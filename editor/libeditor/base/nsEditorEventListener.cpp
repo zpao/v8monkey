@@ -55,6 +55,7 @@
 #include "nsIEditorMailSupport.h"
 #include "nsFocusManager.h"
 #include "nsEventListenerManager.h"
+#include "nsIMEStateManager.h"
 #include "mozilla/Preferences.h"
 
 // Drag & Drop, Clipboard
@@ -64,7 +65,7 @@
 #include "nsIDragSession.h"
 #include "nsIContent.h"
 #include "nsISupportsPrimitives.h"
-#include "nsIDOMNSRange.h"
+#include "nsIDOMRange.h"
 #include "nsEditorUtils.h"
 #include "nsISelectionPrivate.h"
 #include "nsIDOMDragEvent.h"
@@ -156,7 +157,6 @@ nsEditorEventListener::InstallToEditor()
   elmP->AddEventListenerByType(this,
                                NS_LITERAL_STRING("keypress"),
                                NS_EVENT_FLAG_BUBBLE |
-                               NS_PRIV_EVENT_UNTRUSTED_PERMITTED |
                                NS_EVENT_FLAG_SYSTEM_EVENT);
   // See bug 455215, we cannot use the standard dragstart event yet
   elmP->AddEventListenerByType(this,
@@ -179,6 +179,11 @@ nsEditorEventListener::InstallToEditor()
                                NS_LITERAL_STRING("drop"),
                                NS_EVENT_FLAG_BUBBLE |
                                NS_EVENT_FLAG_SYSTEM_EVENT);
+  // XXX We should add the mouse event listeners as system event group.
+  //     E.g., web applications cannot prevent middle mouse paste by
+  //     preventDefault() of click event at bubble phase.
+  //     However, if we do so, all click handlers in any frames and frontend
+  //     code need to check if it's editable.  It makes easier create new bugs.
   elmP->AddEventListenerByType(this,
                                NS_LITERAL_STRING("mousedown"),
                                NS_EVENT_FLAG_CAPTURE);
@@ -198,13 +203,16 @@ nsEditorEventListener::InstallToEditor()
                                NS_EVENT_FLAG_CAPTURE);
   elmP->AddEventListenerByType(this,
                                NS_LITERAL_STRING("text"),
-                               NS_EVENT_FLAG_BUBBLE);
+                               NS_EVENT_FLAG_BUBBLE |
+                               NS_EVENT_FLAG_SYSTEM_EVENT);
   elmP->AddEventListenerByType(this,
                                NS_LITERAL_STRING("compositionstart"),
-                               NS_EVENT_FLAG_BUBBLE);
+                               NS_EVENT_FLAG_BUBBLE |
+                               NS_EVENT_FLAG_SYSTEM_EVENT);
   elmP->AddEventListenerByType(this,
                                NS_LITERAL_STRING("compositionend"),
-                               NS_EVENT_FLAG_BUBBLE);
+                               NS_EVENT_FLAG_BUBBLE |
+                               NS_EVENT_FLAG_SYSTEM_EVENT);
 
   return NS_OK;
 }
@@ -284,13 +292,16 @@ nsEditorEventListener::UninstallFromEditor()
                                   NS_EVENT_FLAG_CAPTURE);
   elmP->RemoveEventListenerByType(this,
                                   NS_LITERAL_STRING("text"),
-                                  NS_EVENT_FLAG_BUBBLE);
+                                  NS_EVENT_FLAG_BUBBLE |
+                                  NS_EVENT_FLAG_SYSTEM_EVENT);
   elmP->RemoveEventListenerByType(this,
                                   NS_LITERAL_STRING("compositionstart"),
-                                  NS_EVENT_FLAG_BUBBLE);
+                                  NS_EVENT_FLAG_BUBBLE |
+                                  NS_EVENT_FLAG_SYSTEM_EVENT);
   elmP->RemoveEventListenerByType(this,
                                   NS_LITERAL_STRING("compositionend"),
-                                  NS_EVENT_FLAG_BUBBLE);
+                                  NS_EVENT_FLAG_BUBBLE |
+                                  NS_EVENT_FLAG_SYSTEM_EVENT);
 }
 
 already_AddRefed<nsIPresShell>
@@ -491,12 +502,10 @@ nsEditorEventListener::KeyPress(nsIDOMEvent* aKeyEvent)
   // If the client pass cancelled the event, defaultPrevented will be true
   // below.
 
-  if (NSEvent) {
-    bool defaultPrevented;
-    NSEvent->GetPreventDefault(&defaultPrevented);
-    if (defaultPrevented) {
-      return NS_OK;
-    }
+  bool defaultPrevented;
+  aKeyEvent->GetDefaultPrevented(&defaultPrevented);
+  if (defaultPrevented) {
+    return NS_OK;
   }
 
   nsCOMPtr<nsIDOMKeyEvent> keyEvent = do_QueryInterface(aKeyEvent);
@@ -514,16 +523,31 @@ nsEditorEventListener::MouseClick(nsIDOMEvent* aMouseEvent)
   NS_ENSURE_TRUE(mEditor, NS_ERROR_NOT_AVAILABLE);
 
   nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aMouseEvent);
-  nsCOMPtr<nsIDOMNSEvent> nsevent = do_QueryInterface(aMouseEvent);
-  bool isTrusted = false;
-  if (!mouseEvent || !nsevent ||
-      NS_FAILED(nsevent->GetIsTrusted(&isTrusted)) || !isTrusted) {
-    // Non-ui or non-trusted event passed in. Bad things.
+  NS_ENSURE_TRUE(mouseEvent, NS_OK);
+
+  // nothing to do if editor isn't editable or clicked on out of the editor.
+  if (mEditor->IsReadonly() || mEditor->IsDisabled() ||
+      !mEditor->IsAcceptableInputEvent(aMouseEvent)) {
     return NS_OK;
   }
 
+  // Notifies clicking on editor to IMEStateManager even when the event was
+  // consumed.
+  nsCOMPtr<nsIContent> focusedContent = mEditor->GetFocusedContent();
+  if (focusedContent) {
+    nsIDocument* currentDoc = focusedContent->GetCurrentDoc();
+    nsCOMPtr<nsIPresShell> presShell = GetPresShell();
+    nsPresContext* presContext =
+      presShell ? presShell->GetPresContext() : nsnull;
+    if (presContext && currentDoc) {
+      nsIMEStateManager::OnClickInEditor(presContext,
+        currentDoc->HasFlag(NODE_IS_EDITABLE) ? nsnull : focusedContent,
+        mouseEvent);
+    }
+  }
+
   bool preventDefault;
-  nsresult rv = nsevent->GetPreventDefault(&preventDefault);
+  nsresult rv = aMouseEvent->GetDefaultPrevented(&preventDefault);
   if (NS_FAILED(rv) || preventDefault) {
     // We're done if 'preventdefault' is true (see for example bug 70698).
     return rv;
@@ -561,13 +585,16 @@ nsEditorEventListener::MouseClick(nsIDOMEvent* aMouseEvent)
       if (ctrlKey)
         mailEditor = do_QueryObject(mEditor);
 
-      PRInt32 clipboard;
-
-#if defined(XP_OS2) || defined(XP_WIN32)
-      clipboard = nsIClipboard::kGlobalClipboard;
-#else
-      clipboard = nsIClipboard::kSelectionClipboard;
-#endif
+      PRInt32 clipboard = nsIClipboard::kGlobalClipboard;
+      nsCOMPtr<nsIClipboard> clipboardService =
+        do_GetService("@mozilla.org/widget/clipboard;1", &rv);
+      if (NS_SUCCEEDED(rv)) {
+        bool selectionSupported;
+        rv = clipboardService->SupportsSelectionClipboard(&selectionSupported);
+        if (NS_SUCCEEDED(rv) && selectionSupported) {
+          clipboard = nsIClipboard::kSelectionClipboard;
+        }
+      }
 
       if (mailEditor)
         mailEditor->PasteAsQuotation(clipboard);
@@ -620,6 +647,10 @@ nsEditorEventListener::HandleText(nsIDOMEvent* aTextEvent)
     return NS_OK;
   }
 
+  // Transfer the event's trusted-ness to our editor
+  nsCOMPtr<nsIDOMNSEvent> NSEvent = do_QueryInterface(aTextEvent);
+  nsAutoEditorKeypressOperation operation(mEditor, NSEvent);
+
   return mEditor->UpdateIMEComposition(composedText, textRangeList);
 }
 
@@ -660,12 +691,10 @@ nsresult
 nsEditorEventListener::DragOver(nsIDOMDragEvent* aDragEvent)
 {
   nsCOMPtr<nsIDOMNode> parent;
-  nsCOMPtr<nsIDOMNSEvent> domNSEvent = do_QueryInterface(aDragEvent);
-  if (domNSEvent) {
-    bool defaultPrevented;
-    domNSEvent->GetPreventDefault(&defaultPrevented);
-    if (defaultPrevented)
-      return NS_OK;
+  bool defaultPrevented;
+  aDragEvent->GetDefaultPrevented(&defaultPrevented);
+  if (defaultPrevented) {
+    return NS_OK;
   }
 
   aDragEvent->GetRangeParent(getter_AddRefs(parent));
@@ -735,12 +764,10 @@ nsEditorEventListener::Drop(nsIDOMDragEvent* aMouseEvent)
 {
   CleanupDragDropCaret();
 
-  nsCOMPtr<nsIDOMNSEvent> domNSEvent = do_QueryInterface(aMouseEvent);
-  if (domNSEvent) {
-    bool defaultPrevented;
-    domNSEvent->GetPreventDefault(&defaultPrevented);
-    if (defaultPrevented)
-      return NS_OK;
+  bool defaultPrevented;
+  aMouseEvent->GetDefaultPrevented(&defaultPrevented);
+  if (defaultPrevented) {
+    return NS_OK;
   }
 
   nsCOMPtr<nsIDOMNode> parent;
@@ -855,12 +882,11 @@ nsEditorEventListener::CanDrop(nsIDOMDragEvent* aEvent)
       {
         nsCOMPtr<nsIDOMRange> range;
         rv = selection->GetRangeAt(i, getter_AddRefs(range));
-        nsCOMPtr<nsIDOMNSRange> nsrange(do_QueryInterface(range));
-        if (NS_FAILED(rv) || !nsrange) 
+        if (NS_FAILED(rv) || !range) 
           continue; //don't bail yet, iterate through them all
 
         bool inRange = true;
-        (void)nsrange->IsPointInRange(parent, offset, &inRange);
+        (void)range->IsPointInRange(parent, offset, &inRange);
         if (inRange)
           return false;  //okay, now you can bail, we are over the orginal selection
       }

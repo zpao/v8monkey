@@ -49,6 +49,7 @@
 
 using namespace mozilla;
 using namespace mozilla::layers;
+using namespace mozilla::gfx;
 
 static PRUint8 sUnpremultiplyTable[256*256];
 static PRUint8 sPremultiplyTable[256*256];
@@ -296,11 +297,11 @@ struct NS_STACK_CLASS AutoCairoPixmanBugWorkaround
     AutoCairoPixmanBugWorkaround(gfxContext*      aContext,
                                  const gfxMatrix& aDeviceSpaceToImageSpace,
                                  const gfxRect&   aFill,
-                                 const gfxASurface::gfxSurfaceType& aSurfaceType)
+                                 const gfxASurface* aSurface)
      : mContext(aContext), mSucceeded(true), mPushedGroup(false)
     {
         // Quartz's limits for matrix are much larger than pixman
-        if (aSurfaceType == gfxASurface::SurfaceTypeQuartz)
+        if (!aSurface || aSurface->GetType() == gfxASurface::SurfaceTypeQuartz)
             return;
 
         if (!IsSafeImageTransformComponent(aDeviceSpaceToImageSpace.xx) ||
@@ -380,12 +381,11 @@ gfxUtils::DrawPixelSnapped(gfxContext*      aContext,
     bool doTile = !aImageRect.Contains(aSourceRect);
 
     nsRefPtr<gfxASurface> currentTarget = aContext->CurrentSurface();
-    gfxASurface::gfxSurfaceType surfaceType = currentTarget->GetType();
     gfxMatrix deviceSpaceToImageSpace =
         DeviceToImageTransform(aContext, aUserSpaceToImageSpace);
 
     AutoCairoPixmanBugWorkaround workaround(aContext, deviceSpaceToImageSpace,
-                                            aFill, surfaceType);
+                                            aFill, currentTarget);
     if (!workaround.Succeeded())
         return;
 
@@ -655,3 +655,41 @@ gfxUtils::ConvertYCbCrToRGB(const PlanarYCbCrImage::Data& aData,
                                yuvtype);
   }
 }
+
+#ifdef MOZ_DUMP_PAINTING
+/* static */ void
+gfxUtils::WriteAsPNG(DrawTarget* aDT, const char* aFile)
+{
+  aDT->Flush();
+  nsRefPtr<gfxASurface> surf = gfxPlatform::GetPlatform()->GetThebesSurfaceForDrawTarget(aDT);
+  if (surf) {
+    surf->WriteAsPNG(aFile);
+  } else {
+    NS_WARNING("Failed to get Thebes surface!");
+  }
+}
+
+/* static */ void
+gfxUtils::DumpAsDataURL(DrawTarget* aDT)
+{
+  aDT->Flush();
+  nsRefPtr<gfxASurface> surf = gfxPlatform::GetPlatform()->GetThebesSurfaceForDrawTarget(aDT);
+  if (surf) {
+    surf->DumpAsDataURL();
+  } else {
+    NS_WARNING("Failed to get Thebes surface!");
+  }
+}
+
+/* static */ void
+gfxUtils::CopyAsDataURL(DrawTarget* aDT)
+{
+  aDT->Flush();
+  nsRefPtr<gfxASurface> surf = gfxPlatform::GetPlatform()->GetThebesSurfaceForDrawTarget(aDT);
+  if (surf) {
+    surf->CopyAsDataURL();
+  } else {
+    NS_WARNING("Failed to get Thebes surface!");
+  }
+}
+#endif

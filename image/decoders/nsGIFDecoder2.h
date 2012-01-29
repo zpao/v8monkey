@@ -48,7 +48,7 @@
 #include "GIF2.h"
 
 namespace mozilla {
-namespace imagelib {
+namespace image {
 class RasterImage;
 
 //////////////////////////////////////////////////////////////////////
@@ -58,7 +58,7 @@ class nsGIFDecoder2 : public Decoder
 {
 public:
 
-  nsGIFDecoder2(RasterImage *aImage, imgIDecoderObserver* aObserver);
+  nsGIFDecoder2(RasterImage &aImage, imgIDecoderObserver* aObserver);
   ~nsGIFDecoder2();
 
   virtual void WriteInternal(const char* aBuffer, PRUint32 aCount);
@@ -102,7 +102,7 @@ private:
   gif_struct mGIFStruct;
 };
 
-} // namespace imagelib
+} // namespace image
 } // namespace mozilla
 
 #endif

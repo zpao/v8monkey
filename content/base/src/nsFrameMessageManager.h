@@ -92,7 +92,7 @@ public:
                         bool aGlobal = false,
                         bool aProcessManager = false)
   : mChrome(aChrome), mGlobal(aGlobal), mIsProcessManager(aProcessManager),
-    mParentManager(aParentManager),
+    mHandlingMessage(false), mDisconnected(false), mParentManager(aParentManager),
     mSyncCallback(aSyncCallback), mAsyncCallback(aAsyncCallback),
     mLoadScriptCallback(aLoadScriptCallback), mCallbackData(aCallbackData),
     mContext(aContext)
@@ -156,12 +156,15 @@ public:
 
   void Disconnect(bool aRemoveFromParent = true);
   void SetCallbackData(void* aData, bool aLoadScripts = true);
+  void* GetCallbackData() { return mCallbackData; }
   void GetParamsForMessage(const jsval& aObject,
                            JSContext* aCx,
                            nsAString& aJSON);
   nsresult SendAsyncMessageInternal(const nsAString& aMessage,
                                     const nsAString& aJSON);
   JSContext* GetJSContext() { return mContext; }
+  void SetJSContext(JSContext* aCx) { mContext = aCx; }
+  void RemoveFromParent();
   nsFrameMessageManager* GetParentManager() { return mParentManager; }
   void SetParentManager(nsFrameMessageManager* aParent)
   {
@@ -181,11 +184,14 @@ public:
     return sChildProcessManager;
   }
 protected:
+  friend class MMListenerRemover;
   nsTArray<nsMessageListenerInfo> mListeners;
   nsCOMArray<nsIContentFrameMessageManager> mChildManagers;
   bool mChrome;
   bool mGlobal;
   bool mIsProcessManager;
+  bool mHandlingMessage;
+  bool mDisconnected;
   nsFrameMessageManager* mParentManager;
   nsSyncMessageCallback mSyncCallback;
   nsAsyncMessageCallback mAsyncCallback;
@@ -231,6 +237,7 @@ protected:
   // Call this when you want to destroy mCx.
   void DestroyCx();
   void LoadFrameScriptInternal(const nsAString& aURL);
+  bool InitTabChildGlobalInternal(nsISupports* aScope);
   static void Traverse(nsFrameScriptExecutor *tmp,
                        nsCycleCollectionTraversalCallback &cb);
   nsCOMPtr<nsIXPConnectJSObjectHolder> mGlobal;

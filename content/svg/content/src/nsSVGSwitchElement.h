@@ -39,13 +39,15 @@
 #ifndef __NS_SVGSWITCHELEMENT_H__
 #define __NS_SVGSWITCHELEMENT_H__
 
-#include "nsSVGGraphicElement.h"
+#include "DOMSVGTests.h"
 #include "nsIDOMSVGSwitchElement.h"
+#include "nsSVGGraphicElement.h"
 
 typedef nsSVGGraphicElement nsSVGSwitchElementBase;
 
 class nsSVGSwitchElement : public nsSVGSwitchElementBase,
-                           public nsIDOMSVGSwitchElement
+                           public nsIDOMSVGSwitchElement,
+                           public DOMSVGTests
 {
   friend class nsSVGSwitchFrame;
 protected:

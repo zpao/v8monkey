@@ -260,7 +260,13 @@ private:
   nsIDOMCSSValue* DoGetBorderTopLeftRadius();
   nsIDOMCSSValue* DoGetBorderTopRightRadius();
   nsIDOMCSSValue* DoGetFloatEdge();
-  nsIDOMCSSValue* DoGetBorderImage();
+
+  /* Border Image */
+  nsIDOMCSSValue* DoGetBorderImageSource();
+  nsIDOMCSSValue* DoGetBorderImageSlice();
+  nsIDOMCSSValue* DoGetBorderImageWidth();
+  nsIDOMCSSValue* DoGetBorderImageOutset();
+  nsIDOMCSSValue* DoGetBorderImageRepeat();
 
   /* Box Shadow */
   nsIDOMCSSValue* DoGetBoxShadow();
@@ -307,6 +313,7 @@ private:
   /* Text Properties */
   nsIDOMCSSValue* DoGetLineHeight();
   nsIDOMCSSValue* DoGetTextAlign();
+  nsIDOMCSSValue* DoGetTextAlignLast();
   nsIDOMCSSValue* DoGetMozTextBlink();
   nsIDOMCSSValue* DoGetTextDecoration();
   nsIDOMCSSValue* DoGetMozTextDecorationColor();
@@ -322,6 +329,7 @@ private:
   nsIDOMCSSValue* DoGetWordWrap();
   nsIDOMCSSValue* DoGetHyphens();
   nsIDOMCSSValue* DoGetMozTabSize();
+  nsIDOMCSSValue* DoGetTextSizeAdjust();
 
   /* Visibility properties */
   nsIDOMCSSValue* DoGetOpacity();
@@ -364,6 +372,7 @@ private:
 
   /* Column properties */
   nsIDOMCSSValue* DoGetColumnCount();
+  nsIDOMCSSValue* DoGetColumnFill();
   nsIDOMCSSValue* DoGetColumnWidth();
   nsIDOMCSSValue* DoGetColumnGap();
   nsIDOMCSSValue* DoGetColumnRuleWidth();
@@ -444,8 +453,8 @@ private:
    * the percent value of aCoord is set as a percent value on aValue.  aTable,
    * if not null, is the keyword table to handle eStyleUnit_Enumerated.  When
    * calling SetAppUnits on aValue (for coord or percent values), the value
-   * passed in will be NS_MAX of the value in aMinAppUnits and the NS_MIN of
-   * the actual value in aCoord and the value in aMaxAppUnits.
+   * passed in will be clamped to be no less than aMinAppUnits and no more than
+   * aMaxAppUnits.
    *
    * XXXbz should caller pass in some sort of bitfield indicating which units
    * can be expected or something?

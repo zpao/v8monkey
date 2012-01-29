@@ -144,18 +144,25 @@ public:
   struct ContainerParameters {
     ContainerParameters() :
       mXScale(1), mYScale(1),
-      mInTransformedSubtree(false), mInActiveTransformedSubtree(false) {}
+      mInTransformedSubtree(false), mInActiveTransformedSubtree(false),
+      mDisableSubpixelAntialiasingInDescendants(false)
+    {}
     ContainerParameters(float aXScale, float aYScale) :
       mXScale(aXScale), mYScale(aYScale),
-      mInTransformedSubtree(false), mInActiveTransformedSubtree(false) {}
+      mInTransformedSubtree(false), mInActiveTransformedSubtree(false),
+      mDisableSubpixelAntialiasingInDescendants(false)
+    {}
     ContainerParameters(float aXScale, float aYScale,
                         const ContainerParameters& aParent) :
       mXScale(aXScale), mYScale(aYScale),
       mInTransformedSubtree(aParent.mInTransformedSubtree),
-      mInActiveTransformedSubtree(aParent.mInActiveTransformedSubtree) {}
+      mInActiveTransformedSubtree(aParent.mInActiveTransformedSubtree),
+      mDisableSubpixelAntialiasingInDescendants(aParent.mDisableSubpixelAntialiasingInDescendants)
+    {}
     float mXScale, mYScale;
     bool mInTransformedSubtree;
     bool mInActiveTransformedSubtree;
+    bool mDisableSubpixelAntialiasingInDescendants;
   };
   /**
    * Build a container layer for a display item that contains a child
@@ -237,7 +244,7 @@ public:
                               const nsIntRegion& aRegionToInvalidate,
                               void* aCallbackData);
 
-#ifdef DEBUG
+#ifdef MOZ_DUMP_PAINTING
   /**
    * Dumps this FrameLayerBuilder's retained layer manager's retained
    * layer tree to stderr.
@@ -440,6 +447,9 @@ protected:
 
   // LayerManagerData needs to see DisplayItemDataEntry.
   friend class LayerManagerData;
+
+  // Flash the area within the context clip if paint flashing is enabled.
+  static void FlashPaint(gfxContext *aContext);
 
   /*
    * Get the DisplayItemData array associated with this frame, or null if one

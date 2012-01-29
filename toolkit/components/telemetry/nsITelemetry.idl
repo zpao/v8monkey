@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *   Taras Glek <tglek@mozilla.com>
+ *   Vladan Djeric <vdjeric@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -37,8 +38,39 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsISupports.idl"
+#include "nsIFile.idl"
 
-[scriptable, uuid(db854295-478d-4de9-8211-d73ed7d81cd0)]
+[scriptable, uuid(c177b6b0-5ef1-44f5-bc67-6bcf7d2518e5)]
+interface nsITelemetrySessionData : nsISupports
+{
+  /**
+   * The UUID of our previous session.
+   */
+  readonly attribute ACString uuid;
+
+  /**
+   * An object containing a snapshot from all registered histograms that had
+   * data recorded in the previous session.
+   * { name1: data1, name2: data2, .... }
+   * where the individual dataN are as nsITelemetry.histogramSnapshots.
+   */
+  [implicit_jscontext]
+  readonly attribute jsval snapshots;
+};
+
+[scriptable, function, uuid(aff36c9d-7e4c-41ab-a9b6-53773bbca0cd)]
+interface nsITelemetryLoadSessionDataCallback : nsISupports
+{
+  void handle(in nsITelemetrySessionData data);
+};
+
+[scriptable, function, uuid(40065f26-afd2-4417-93de-c1de9adb1548)]
+interface nsITelemetrySaveSessionDataCallback : nsISupports
+{
+  void handle(in bool success);
+};
+
+[scriptable, uuid(22fc825e-288f-457e-80d5-5bb35f06d37e)]
 interface nsITelemetry : nsISupports
 {
   /**
@@ -66,6 +98,32 @@ interface nsITelemetry : nsISupports
   [implicit_jscontext]
   readonly attribute jsval histogramSnapshots;
 
+  /*
+   * An object containing information about slow SQL prepared statements.
+   *
+   * {
+   *   mainThread: { "sqlString1": [<hit count>, <total time>], "sqlString2": [...], ... },
+   *   otherThreads: { "sqlString3": [<hit count>, <total time>], "sqlString4": [...], ... }
+   * }
+   *
+   * where:
+   *   mainThread: Slow statements that executed on the main thread
+   *   otherThreads: Slow statements that executed on a non-main thread
+   *   sqlString - String of the offending prepared statement
+   *   hit count - The number of times this statement required longer than the threshold time to execute
+   *   total time - The sum of all execution times above the threshold time for this statement
+   */
+  [implicit_jscontext]
+  readonly attribute jsval slowSQL;
+
+  /**
+   * An object whose properties are the names of histograms defined in
+   * TelemetryHistograms.h and whose corresponding values are the textual
+   * comments associated with said histograms.
+   */
+  [implicit_jscontext]
+  readonly attribute jsval registeredHistograms;
+
   /** 
    * Create and return a histogram where bucket sizes increase exponentially. Parameters:
    *
@@ -82,12 +140,51 @@ interface nsITelemetry : nsISupports
   jsval newHistogram(in ACString name, in PRUint32 min, in PRUint32 max, in PRUint32 bucket_count, in unsigned long histogram_type);
 
   /**
+   * Create a histogram using the current state of an existing histogram.  The
+   * existing histogram must be registered in TelemetryHistograms.h.
+   *
+   * @param name Unique histogram name
+   * @param existing_name Existing histogram name
+   * The returned object has the same functions as a histogram returned from newHistogram.
+   */
+  [implicit_jscontext]
+  jsval histogramFrom(in ACString name, in ACString existing_name);
+
+  /**
    * Same as newHistogram above, but for histograms registered in TelemetryHistograms.h.
    *
    * @param id - unique identifier from TelemetryHistograms.h
    */
   [implicit_jscontext]
   jsval getHistogramById(in ACString id);
+
+  /**
+   * Save persistent histograms to the given file.
+   *
+   * @param file - filename for saving
+   * @param uuid - UUID of this session
+   * @param callback - function to be caled when file writing is complete
+   * @param isSynchronous - whether the save is done synchronously.  Defaults
+   *        to asynchronous saving.
+   */
+  void saveHistograms(in nsIFile file, in ACString uuid,
+                      in nsITelemetrySaveSessionDataCallback callback,
+                      [optional] in boolean isSynchronous);
+
+  /* Reconstruct an nsITelemetryDataSession object containing histogram
+   * information from the given file; the file must have been produced
+   * via saveHistograms.  The file is read asynchronously.
+   *
+   * This method does not modify the histogram information being
+   * collected in the current session.
+   *
+   * The reconstructed object is then passed to the given callback.
+   *
+   * @param file - the file to load histogram information from
+   * @param callback - function to process histogram information
+   */
+  void loadHistograms(in nsIFile file,
+                      in nsITelemetryLoadSessionDataCallback callback);
 
   /**
    * Set this to false to disable gathering of telemetry statistics.

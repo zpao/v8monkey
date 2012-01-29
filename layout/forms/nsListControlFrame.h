@@ -145,7 +145,7 @@ public:
   virtual already_AddRefed<nsAccessible> CreateAccessible();
 #endif
 
-    // nsHTMLContainerFrame
+    // nsContainerFrame
   virtual PRIntn GetSkipSides() const;
 
     // nsIListControlFrame
@@ -239,8 +239,10 @@ public:
    * that PaintFocus will or could have painted --- basically the whole
    * GetOptionsContainer, plus some extra stuff if there are no options. This
    * must be called every time mEndSelectionIndex changes.
+   *
+   * Pass non-null aReflowState if during reflow.
    */
-  void InvalidateFocus();
+  void InvalidateFocus(const nsHTMLReflowState* aReflowState = nsnull);
 
   /**
    * Function to calculate the height a row, for use with the "size" attribute.
@@ -332,8 +334,11 @@ protected:
   /**
    * Resets the select back to it's original default values;
    * those values as determined by the original HTML
+   *
+   * Pass non-null aReflowState if during reflow.
    */
-  virtual void ResetList(bool aAllowScrolling);
+  virtual void ResetList(bool aAllowScrolling,
+                         const nsHTMLReflowState* aReflowState = nsnull);
 
   nsListControlFrame(nsIPresShell* aShell, nsIDocument* aDocument, nsStyleContext* aContext);
   virtual ~nsListControlFrame();
@@ -373,7 +378,7 @@ protected:
   bool     IsLeftButton(nsIDOMEvent* aMouseEvent);
 
   // guess at a row height based on our own style.
-  nscoord  CalcFallbackRowHeight();
+  nscoord  CalcFallbackRowHeight(float aFontSizeInflation);
 
   // CalcIntrinsicHeight computes our intrinsic height (taking the "size"
   // attribute into account).  This should only be called in non-dropdown mode.

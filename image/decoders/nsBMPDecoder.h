@@ -48,7 +48,7 @@
 #include "BMPFileHeaders.h"
 
 namespace mozilla {
-namespace imagelib {
+namespace image {
 
 class RasterImage;
 
@@ -59,7 +59,7 @@ class nsBMPDecoder : public Decoder
 {
 public:
 
-    nsBMPDecoder(RasterImage *aImage, imgIDecoderObserver* aObserver);
+    nsBMPDecoder(RasterImage &aImage, imgIDecoderObserver* aObserver);
     ~nsBMPDecoder();
 
     // Specifies whether or not the BMP file will contain alpha data
@@ -163,7 +163,7 @@ inline void Set4BitPixel(PRUint32*& aDecoded, PRUint8 aData,
     }
 }
 
-} // namespace imagelib
+} // namespace image
 } // namespace mozilla
 
 

@@ -194,7 +194,11 @@ static const char sPrintOptionsContractID[]         = "@mozilla.org/gfx/printset
 //switch to page layout
 #include "nsGfxCIID.h"
 
+#include "nsObserverService.h"
+
 #include "mozilla/dom/Element.h"
+
+#include "jsfriendapi.h"
 
 using namespace mozilla;
 
@@ -509,6 +513,18 @@ public:
   nsCOMPtr<nsIDocument> mTop;
 };
 
+class nsDocumentShownDispatcher : public nsRunnable
+{
+public:
+  nsDocumentShownDispatcher(nsCOMPtr<nsIDocument> aDocument)
+  : mDocument(aDocument) {}
+
+  NS_IMETHOD Run();
+
+private:
+  nsCOMPtr<nsIDocument> mDocument;
+};
+
 
 //------------------------------------------------------------------
 // DocumentViewerImpl
@@ -657,10 +673,11 @@ DocumentViewerImpl::SyncParentSubDocMap()
       nsCOMPtr<nsIDocument> parent_doc(do_QueryInterface(dom_doc));
 
       if (parent_doc) {
-        if (mDocument && parent_doc->GetSubDocumentFor(content) != mDocument) {
+        if (mDocument &&
+            parent_doc->GetSubDocumentFor(content) != mDocument) {
           mDocument->SuppressEventHandling(parent_doc->EventHandlingSuppressed());
         }
-        return parent_doc->SetSubDocumentFor(content, mDocument);
+        return parent_doc->SetSubDocumentFor(content->AsElement(), mDocument);
       }
     }
   }
@@ -1272,7 +1289,7 @@ DocumentViewerImpl::PageHide(bool aIsUnload)
 
   if (aIsUnload) {
     // Poke the GC. The window might be collectable garbage now.
-    nsJSContext::PokeGC();
+    nsJSContext::PokeGC(js::gcreason::PAGE_HIDE);
 
     // if Destroy() was called during OnPageHide(), mDocument is nsnull.
     NS_ENSURE_STATE(mDocument);
@@ -1553,9 +1570,8 @@ DocumentViewerImpl::Destroy()
           // The invalidate that removing this view causes is dropped because
           // the Freeze call above sets painting to be suppressed for our
           // document. So we do it ourselves and make it happen.
-          vm->UpdateViewNoSuppression(rootView,
-            rootView->GetBounds() - rootView->GetPosition(),
-            NS_VMREFRESH_NO_SYNC);
+          vm->InvalidateViewNoSuppression(rootView,
+            rootView->GetBounds() - rootView->GetPosition());
 
           nsIView *rootViewParent = rootView->GetParent();
           if (rootViewParent) {
@@ -1887,14 +1903,19 @@ DocumentViewerImpl::SetBounds(const nsIntRect& aBounds)
     // window frame.
     // Don't have the widget repaint. Layout will generate repaint requests
     // during reflow.
-    if (mAttachedToParent)
-      mWindow->ResizeClient(aBounds.x, aBounds.y,
-                            aBounds.width, aBounds.height,
-                            false);
-    else
+    if (mAttachedToParent) {
+      if (aBounds.x != 0 || aBounds.y != 0) {
+        mWindow->ResizeClient(aBounds.x, aBounds.y,
+                              aBounds.width, aBounds.height,
+                              false);
+      } else {
+        mWindow->ResizeClient(aBounds.width, aBounds.height, false);
+      }
+    } else {
       mWindow->Resize(aBounds.x, aBounds.y,
                       aBounds.width, aBounds.height,
                       false);
+    }
   } else if (mPresContext && mViewManager) {
     PRInt32 p2a = mPresContext->AppUnitsPerDevPixel();
     mViewManager->SetWindowDimensions(NSIntPixelsToAppUnits(mBounds.width, p2a),
@@ -1959,7 +1980,7 @@ DocumentViewerImpl::Show(void)
         printf("About to evict content viewers: prev=%d, loaded=%d\n",
                prevIndex, loadedIndex);
 #endif
-        historyInt->EvictContentViewers(prevIndex, loadedIndex);
+        historyInt->EvictOutOfRangeContentViewers(loadedIndex);
       }
     }
   }
@@ -2032,6 +2053,10 @@ DocumentViewerImpl::Show(void)
       mPresShell->UnsuppressPainting();
     }
   }
+
+  // Notify observers that a new page has been shown. (But not right now;
+  // running JS at this time is not safe.)
+  NS_DispatchToMainThread(new nsDocumentShownDispatcher(mDocument));
 
   return NS_OK;
 }
@@ -2216,6 +2241,11 @@ DocumentViewerImpl::CreateStyleSet(nsIDocument* aDocument,
   sheet = nsLayoutStylesheetCache::FormsSheet();
   if (sheet) {
     styleSet->PrependStyleSheet(nsStyleSet::eAgentSheet, sheet);
+  }
+
+  sheet = nsLayoutStylesheetCache::FullScreenOverrideSheet();
+  if (sheet) {
+    styleSet->PrependStyleSheet(nsStyleSet::eOverrideSheet, sheet);
   }
 
   // Make sure to clone the quirk sheet so that it can be usefully
@@ -2798,8 +2828,6 @@ DocumentViewerImpl::SetTextZoom(float aTextZoom)
 
   mTextZoom = aTextZoom;
 
-  nsIViewManager::UpdateViewBatch batch(GetViewManager());
-      
   // Set the text zoom on all children of mContainer (even if our zoom didn't
   // change, our children's zoom may be different, though it would be unusual).
   // Do this first, in case kids are auto-sizing and post reflow commands on
@@ -2816,8 +2844,6 @@ DocumentViewerImpl::SetTextZoom(float aTextZoom)
   // And do the external resources
   mDocument->EnumerateExternalResources(SetExtResourceTextZoom, &ZoomInfo);
 
-  batch.EndUpdateViewBatch(NS_VMREFRESH_NO_SYNC);
-  
   return NS_OK;
 }
 
@@ -2839,8 +2865,6 @@ DocumentViewerImpl::SetMinFontSize(PRInt32 aMinFontSize)
 
   mMinFontSize = aMinFontSize;
 
-  nsIViewManager::UpdateViewBatch batch(GetViewManager());
-      
   // Set the min font on all children of mContainer (even if our min font didn't
   // change, our children's min font may be different, though it would be unusual).
   // Do this first, in case kids are auto-sizing and post reflow commands on
@@ -2857,8 +2881,6 @@ DocumentViewerImpl::SetMinFontSize(PRInt32 aMinFontSize)
   mDocument->EnumerateExternalResources(SetExtResourceMinFontSize,
                                         NS_INT32_TO_PTR(aMinFontSize));
 
-  batch.EndUpdateViewBatch(NS_VMREFRESH_NO_SYNC);
-  
   return NS_OK;
 }
 
@@ -2881,7 +2903,6 @@ DocumentViewerImpl::SetFullZoom(float aFullZoom)
     nsCOMPtr<nsIPresShell> shell = pc->GetPresShell();
     NS_ENSURE_TRUE(shell, NS_OK);
 
-    nsIViewManager::UpdateViewBatch batch(shell->GetViewManager());
     if (!mPrintPreviewZoomed) {
       mOriginalPrintPreviewScale = pc->GetPrintPreviewScale();
       mPrintPreviewZoomed = true;
@@ -2900,14 +2921,11 @@ DocumentViewerImpl::SetFullZoom(float aFullZoom)
       nsRect rect(nsPoint(0, 0), rootFrame->GetSize());
       rootFrame->Invalidate(rect);
     }
-    batch.EndUpdateViewBatch(NS_VMREFRESH_NO_SYNC);
     return NS_OK;
   }
 #endif
 
   mPageZoom = aFullZoom;
-
-  nsIViewManager::UpdateViewBatch batch(GetViewManager());
 
   struct ZoomInfo ZoomInfo = { aFullZoom };
   CallChildren(SetChildFullZoom, &ZoomInfo);
@@ -2919,8 +2937,6 @@ DocumentViewerImpl::SetFullZoom(float aFullZoom)
 
   // And do the external resources
   mDocument->EnumerateExternalResources(SetExtResourceFullZoom, &ZoomInfo);
-
-  batch.EndUpdateViewBatch(NS_VMREFRESH_NO_SYNC);
 
   return NS_OK;
 }
@@ -3592,10 +3608,8 @@ DocumentViewerImpl::Print(nsIPrintSettings*       aPrintSettings,
     return NS_ERROR_GFX_PRINTER_DOC_IS_BUSY;
   }
 
-  nsCOMPtr<nsIPresShell> presShell;
-  docShell->GetPresShell(getter_AddRefs(presShell));
-  if (!presShell || !mDocument || !mDeviceContext) {
-    PR_PL(("Can't Print without pres shell, document etc"));
+  if (!mDocument || !mDeviceContext) {
+    PR_PL(("Can't Print without a document and a device context"));
     return NS_ERROR_FAILURE;
   }
 
@@ -3762,13 +3776,9 @@ DocumentViewerImpl::PrintPreviewNavigate(PRInt16 aType, PRInt32 aPageNum)
 
   // Now, locate the current page we are on and
   // and the page of the page number
-  nscoord gap = 0;
   nsIFrame* pageFrame = seqFrame->GetFirstPrincipalChild();
   while (pageFrame != nsnull) {
     nsRect pageRect = pageFrame->GetRect();
-    if (pageNum == 1) {
-      gap = pageRect.y;
-    }
     if (pageRect.Contains(pageRect.x, pt.y)) {
       currentPage = pageFrame;
     }
@@ -4366,3 +4376,17 @@ DocumentViewerImpl::SetPrintPreviewPresentation(nsIViewManager* aViewManager,
   mPresContext = aPresContext;
   mPresShell = aPresShell;
 }
+
+// Fires the "document-shown" event so that interested parties (right now, the
+// mobile browser) are aware of it.
+NS_IMETHODIMP
+nsDocumentShownDispatcher::Run()
+{
+  nsCOMPtr<nsIObserverService> observerService =
+    mozilla::services::GetObserverService();
+  if (observerService) {
+    observerService->NotifyObservers(mDocument, "document-shown", NULL);
+  }
+  return NS_OK;
+}
+

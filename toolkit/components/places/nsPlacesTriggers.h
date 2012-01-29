@@ -50,27 +50,6 @@
  *  7 - FRAMED_LINK
  **/
 #define EXCLUDED_VISIT_TYPES "0, 4, 7, 8"
-/**
- * Trigger checks to ensure that at least one bookmark is still using a keyword
- * when any bookmark is deleted.  If there are no more bookmarks using it, the
- * keyword is deleted.
- */
-#define CREATE_KEYWORD_VALIDITY_TRIGGER NS_LITERAL_CSTRING( \
-  "CREATE TRIGGER moz_bookmarks_beforedelete_v1_trigger " \
-  "BEFORE DELETE ON moz_bookmarks FOR EACH ROW " \
-  "WHEN OLD.keyword_id NOT NULL " \
-  "BEGIN " \
-    "DELETE FROM moz_keywords " \
-    "WHERE id = OLD.keyword_id " \
-    "AND NOT EXISTS ( " \
-      "SELECT id " \
-      "FROM moz_bookmarks " \
-      "WHERE keyword_id = OLD.keyword_id " \
-      "AND id <> OLD.id " \
-      "LIMIT 1 " \
-    ");" \
-  "END" \
-)
 
 /**
  * This triggers update visit_count and last_visit_date based on historyvisits
@@ -97,6 +76,44 @@
                          "WHERE place_id = OLD.place_id " \
                          "ORDER BY visit_date DESC LIMIT 1) " \
     "WHERE id = OLD.place_id;" \
+  "END" \
+)
+
+/**
+ * These triggers update the hostnames table whenever moz_places changes.
+ */
+#define CREATE_PLACES_AFTERINSERT_TRIGGER NS_LITERAL_CSTRING( \
+  "CREATE TEMP TRIGGER moz_places_afterinsert_trigger " \
+  "AFTER INSERT ON moz_places FOR EACH ROW " \
+  "WHEN LENGTH(NEW.rev_host) > 1 " \
+  "BEGIN " \
+    "INSERT OR REPLACE INTO moz_hosts (id, host, frecency) " \
+    "VALUES (" \
+      "(SELECT id FROM moz_hosts WHERE host = fixup_url(get_unreversed_host(NEW.rev_host))), " \
+      "fixup_url(get_unreversed_host(NEW.rev_host)), " \
+      "MAX((SELECT frecency FROM moz_hosts WHERE host = fixup_url(get_unreversed_host(NEW.rev_host))), NEW.frecency) " \
+    "); " \
+  "END" \
+)
+
+#define CREATE_PLACES_AFTERDELETE_TRIGGER NS_LITERAL_CSTRING( \
+  "CREATE TEMP TRIGGER moz_places_afterdelete_trigger " \
+  "AFTER DELETE ON moz_places FOR EACH ROW " \
+  "BEGIN " \
+    "DELETE FROM moz_hosts " \
+    "WHERE host = fixup_url(get_unreversed_host(OLD.rev_host)) " \
+      "AND NOT EXISTS(SELECT 1 FROM moz_places WHERE rev_host = OLD.rev_host); " \
+  "END" \
+)
+
+#define CREATE_PLACES_AFTERUPDATE_TRIGGER NS_LITERAL_CSTRING( \
+  "CREATE TEMP TRIGGER moz_places_afterupdate_frecency_trigger " \
+  "AFTER UPDATE OF frecency ON moz_places FOR EACH ROW " \
+  "WHEN NEW.frecency >= 0 " \
+  "BEGIN " \
+    "UPDATE moz_hosts " \
+    "SET frecency = (SELECT MAX(frecency) FROM moz_places WHERE rev_host = NEW.rev_host OR rev_host = NEW.rev_host || 'www.') " \
+    "WHERE host = fixup_url(get_unreversed_host(NEW.rev_host)); " \
   "END" \
 )
 

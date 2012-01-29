@@ -5,6 +5,26 @@
 #ifndef OPENTYPE_SANITISER_H_
 #define OPENTYPE_SANITISER_H_
 
+#if defined(_WIN32) || defined(__CYGWIN__)
+  #define OTS_DLL_IMPORT __declspec(dllimport)
+  #define OTS_DLL_EXPORT __declspec(dllexport)
+#else
+  #if __GNUC__ >= 4
+    #define OTS_DLL_IMPORT __attribute__((visibility ("default")))
+    #define OTS_DLL_EXPORT __attribute__((visibility ("default")))
+  #endif
+#endif
+
+#ifdef OTS_DLL
+  #ifdef OTS_DLL_EXPORTS
+    #define OTS_API OTS_DLL_EXPORT
+  #else
+    #define OTS_API OTS_DLL_IMPORT
+  #endif
+#else
+  #define OTS_API
+#endif
+
 #if defined(_WIN32)
 typedef signed char int8_t;
 typedef unsigned char uint8_t;
@@ -22,6 +42,7 @@ typedef unsigned __int64 uint64_t;
 
 #include <algorithm>  // for std::min
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 
 namespace ots {
@@ -180,8 +201,10 @@ class OTSStream {
 //     partial output may have been written.
 //   input: the OpenType file
 //   length: the size, in bytes, of |input|
+//   preserve_graphite_tables: whether to preserve Graphite Layout tables
 // -----------------------------------------------------------------------------
-bool Process(OTSStream *output, const uint8_t *input, size_t length);
+bool OTS_API Process(OTSStream *output, const uint8_t *input, size_t length,
+                     bool preserve_graphite_tables = false);
 
 // Force to disable debug output even when the library is compiled with
 // -DOTS_DEBUG.

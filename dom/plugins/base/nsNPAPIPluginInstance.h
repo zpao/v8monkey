@@ -49,16 +49,12 @@
 #include "nsIChannel.h"
 #include "nsInterfaceHashtable.h"
 #include "nsHashKeys.h"
-
-#include "gfxASurface.h"
-#include "gfxImageSurface.h"
+#ifdef MOZ_WIDGET_ANDROID
+#include "nsIRunnable.h"
+#endif
 
 #include "mozilla/TimeStamp.h"
 #include "mozilla/PluginLibrary.h"
-
-#ifdef ANDROID
-#include "mozilla/Mutex.h"
-#endif
 
 struct JSObject;
 
@@ -93,7 +89,7 @@ public:
   nsresult NewStreamToPlugin(nsIPluginStreamListener** listener);
   nsresult NewStreamFromPlugin(const char* type, const char* target, nsIOutputStream* *result);
   nsresult Print(NPPrint* platformPrint);
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
   nsresult PostEvent(void* event) { return 0; };
 #endif
   nsresult HandleEvent(void* event, PRInt16* result);
@@ -102,6 +98,7 @@ public:
   nsresult IsRemoteDrawingCoreAnimation(bool* aDrawing);
   nsresult GetJSObject(JSContext *cx, JSObject** outObject);
   nsresult DefineJavaProperties();
+  bool ShouldCache();
   nsresult IsWindowless(bool* isWindowless);
   nsresult AsyncSetWindow(NPWindow* window);
   nsresult GetImage(ImageContainer* aContainer, Image** aImage);
@@ -152,16 +149,12 @@ public:
   void SetEventModel(NPEventModel aModel);
 #endif
 
-#ifdef ANDROID
-  void SetDrawingModel(PRUint32 aModel);
+#ifdef MOZ_WIDGET_ANDROID
+  PRUint32 GetANPDrawingModel() { return mANPDrawingModel; }
+  void SetANPDrawingModel(PRUint32 aModel);
   void* GetJavaSurface();
-
-  gfxImageSurface* LockTargetSurface();
-  gfxImageSurface* LockTargetSurface(PRUint32 aWidth, PRUint32 aHeight, gfxASurface::gfxImageFormat aFormat,
-                                     NPRect* aRect);
-  void UnlockTargetSurface(bool aInvalidate);
-
-  static nsNPAPIPluginInstance* FindByJavaSurface(void* aJavaSurface);
+  void SetJavaSurface(void* aSurface);
+  void RequestJavaSurface();
 #endif
 
   nsresult NewStreamListener(const char* aURL, void* notifyData,
@@ -186,6 +179,12 @@ public:
   bool CanFireNotifications() {
     return mRunning == RUNNING || mRunning == DESTROYING;
   }
+
+  // return is only valid when the plugin is not running
+  mozilla::TimeStamp StopTime();
+
+  // cache this NPAPI plugin
+  nsresult SetCached(bool aCache);
 
   already_AddRefed<nsPIDOMWindow> GetDOMWindow();
 
@@ -230,8 +229,9 @@ protected:
   NPDrawingModel mDrawingModel;
 #endif
 
-#ifdef ANDROID
-  PRUint32 mDrawingModel;
+#ifdef MOZ_WIDGET_ANDROID
+  PRUint32 mANPDrawingModel;
+  nsCOMPtr<nsIRunnable> mSurfaceGetter;
 #endif
 
   enum {
@@ -246,6 +246,7 @@ protected:
   bool mWindowless;
   bool mWindowlessLocal;
   bool mTransparent;
+  bool mCached;
   bool mUsesDOMForCursor;
 
 public:
@@ -274,16 +275,15 @@ private:
   // non-null during a HandleEvent call
   void* mCurrentPluginEvent;
 
+  // Timestamp for the last time this plugin was stopped.
+  // This is only valid when the plugin is actually stopped!
+  mozilla::TimeStamp mStopTime;
+
   nsCOMPtr<nsIURI> mURI;
 
   bool mUsePluginLayersPref;
-#ifdef ANDROID
-  void InvalidateTargetRect();
-  
+#ifdef MOZ_WIDGET_ANDROID
   void* mSurface;
-  gfxImageSurface *mTargetSurface;
-  mozilla::Mutex* mTargetSurfaceLock;
-  NPRect mTargetLockRect;
 #endif
 };
 

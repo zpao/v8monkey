@@ -42,7 +42,7 @@
 #include "prtypes.h"
 #include "prlog.h"
 #include "nsTArray.h"
-#include "nsString.h"
+#include "nsStringGlue.h"
 #include "nsIObserver.h"
 
 #include "gfxTypes.h"
@@ -53,6 +53,7 @@
 
 #include "gfx2DGlue.h"
 #include "mozilla/RefPtr.h"
+#include "GfxInfoCollector.h"
 
 #ifdef XP_OS2
 #undef OS2EMX_PLAIN_CHAR
@@ -69,6 +70,9 @@ class gfxPlatformFontList;
 class gfxTextRun;
 class nsIURI;
 class nsIAtom;
+
+extern mozilla::gfx::UserDataKey ThebesSurfaceKey;
+void DestroyThebesSurface(void *data);
 
 extern cairo_user_data_key_t kDrawTarget;
 
@@ -142,6 +146,24 @@ const PRUint32 kMaxLenPrefLangList = 32;
 
 typedef gfxASurface::gfxImageFormat gfxImageFormat;
 
+inline const char*
+GetBackendName(mozilla::gfx::BackendType aBackend)
+{
+  switch (aBackend) {
+      case mozilla::gfx::BACKEND_DIRECT2D:
+        return "direct2d";
+      case mozilla::gfx::BACKEND_COREGRAPHICS:
+        return "quartz";
+      case mozilla::gfx::BACKEND_CAIRO:
+        return "cairo";
+      case mozilla::gfx::BACKEND_SKIA:
+        return "skia";
+      default:
+        NS_ERROR("Invalid backend type!");
+        return "";
+  }
+}
+
 class THEBES_API gfxPlatform {
 public:
     /**
@@ -184,6 +206,18 @@ public:
 
     virtual already_AddRefed<gfxASurface>
       GetThebesSurfaceForDrawTarget(mozilla::gfx::DrawTarget *aTarget);
+
+    virtual mozilla::RefPtr<mozilla::gfx::DrawTarget>
+      CreateOffscreenDrawTarget(const mozilla::gfx::IntSize& aSize, mozilla::gfx::SurfaceFormat aFormat);
+
+    virtual bool SupportsAzure(mozilla::gfx::BackendType& aBackend) { return false; }
+
+    void GetAzureBackendInfo(mozilla::widget::InfoObject &aObj) {
+      mozilla::gfx::BackendType backend;
+      if (SupportsAzure(backend)) {
+        aObj.DefineProperty("AzureBackend", GetBackendName(backend)); 
+      }
+    }
 
     /*
      * Font bits
@@ -274,6 +308,14 @@ public:
      */
     bool SanitizeDownloadedFonts();
 
+#ifdef MOZ_GRAPHITE
+    /**
+     * Whether to use the SIL Graphite rendering engine
+     * (for fonts that include Graphite tables)
+     */
+    bool UseGraphiteShaping();
+#endif
+
     /**
      * Whether to use the harfbuzz shaper (depending on script complexity).
      *
@@ -317,6 +359,9 @@ public:
     
     // helper method to add a pref lang to an array, if not already in array
     static void AppendPrefLang(eFontPrefLang aPrefLangs[], PRUint32& aLen, eFontPrefLang aAddLang);
+
+    // helper method to indicate if we want to use Azure content drawing
+    static bool UseAzureContentDrawing();
     
     /**
      * Are we going to try color management?
@@ -369,6 +414,8 @@ public:
 
     virtual void FontsPrefsChanged(const char *aPref);
 
+    PRInt32 GetBidiNumeralOption();
+
     /**
      * Returns a 1x1 surface that can be used to create graphics contexts
      * for measuring text etc as if they will be rendered to the screen
@@ -392,6 +439,11 @@ protected:
                                                
     PRInt8  mAllowDownloadableFonts;
     PRInt8  mDownloadableFontsSanitize;
+#ifdef MOZ_GRAPHITE
+    PRInt8  mGraphiteShapingEnabled;
+#endif
+
+    PRInt8  mBidiNumeralOption;
 
     // which scripts should be shaped with harfbuzz
     PRInt32 mUseHarfBuzzScripts;
@@ -403,6 +455,7 @@ private:
     nsTArray<PRUint32> mCJKPrefLangs;
     nsCOMPtr<nsIObserver> mSRGBOverrideObserver;
     nsCOMPtr<nsIObserver> mFontPrefsObserver;
+    mozilla::widget::GfxInfoCollector<gfxPlatform> mAzureBackendCollector;
 };
 
 #endif /* GFX_PLATFORM_H */

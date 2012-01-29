@@ -111,6 +111,7 @@
 #include "nsIObserverService.h"
 #include "nsIScrollableFrame.h"
 #include "mozilla/Preferences.h"
+#include "sampler.h"
 
 // headers for plugin scriptability
 #include "nsIScriptGlobalObject.h"
@@ -468,7 +469,7 @@ nsObjectFrame::CreateWidget(nscoord aWidth,
     // mWidget isn't the view's designated widget.
     EVENT_CALLBACK eventHandler = mInnerView->AttachWidgetEventHandler(mWidget);
     rv = mWidget->Create(parentWidget, nsnull, nsIntRect(0,0,0,0),
-                         eventHandler, dx, nsnull, &initData);
+                         eventHandler, dx, &initData);
     if (NS_FAILED(rv)) {
       mWidget->Destroy();
       mWidget = nsnull;
@@ -582,14 +583,14 @@ nsObjectFrame::GetDesiredSize(nsPresContext* aPresContext,
   nsIAtom *atom = mContent->Tag();
   if (atom == nsGkAtoms::applet || atom == nsGkAtoms::embed) {
     if (aMetrics.width == NS_UNCONSTRAINEDSIZE) {
-      aMetrics.width = NS_MIN(NS_MAX(nsPresContext::CSSPixelsToAppUnits(EMBED_DEF_WIDTH),
-                                     aReflowState.mComputedMinWidth),
-                              aReflowState.mComputedMaxWidth);
+      aMetrics.width = clamped(nsPresContext::CSSPixelsToAppUnits(EMBED_DEF_WIDTH),
+                               aReflowState.mComputedMinWidth,
+                               aReflowState.mComputedMaxWidth);
     }
     if (aMetrics.height == NS_UNCONSTRAINEDSIZE) {
-      aMetrics.height = NS_MIN(NS_MAX(nsPresContext::CSSPixelsToAppUnits(EMBED_DEF_HEIGHT),
-                                      aReflowState.mComputedMinHeight),
-                               aReflowState.mComputedMaxHeight);
+      aMetrics.height = clamped(nsPresContext::CSSPixelsToAppUnits(EMBED_DEF_HEIGHT),
+                                aReflowState.mComputedMinHeight,
+                                aReflowState.mComputedMaxHeight);
     }
 
 #if defined (MOZ_WIDGET_GTK2)
@@ -698,6 +699,7 @@ nsObjectFrame::InstantiatePlugin(nsPluginHost* aPluginHost,
                                  const char* aMimeType,
                                  nsIURI* aURI)
 {
+  SAMPLE_LABEL("nsObjectFrame", "InstantiatePlugin");
   NS_ASSERTION(mPreventInstantiation,
                "Instantiation should be prevented here!");
 
@@ -751,7 +753,11 @@ nsObjectFrame::FixupWindow(const nsSize& aSize)
   NS_ENSURE_TRUE(window, /**/);
 
 #ifdef XP_MACOSX
+  nsWeakFrame weakFrame(this);
   mInstanceOwner->FixUpPluginWindow(nsPluginInstanceOwner::ePluginPaintDisable);
+  if (!weakFrame.IsAlive()) {
+    return;
+  }
 #endif
 
   bool windowless = (window->type == NPWindowTypeDrawable);
@@ -795,7 +801,11 @@ nsObjectFrame::CallSetWindow(bool aCheckIsHidden)
 
   nsPluginNativeWindow *window = (nsPluginNativeWindow *)win;
 #ifdef XP_MACOSX
+  nsWeakFrame weakFrame(this);
   mInstanceOwner->FixUpPluginWindow(nsPluginInstanceOwner::ePluginPaintDisable);
+  if (!weakFrame.IsAlive()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 #endif
 
   if (aCheckIsHidden && IsHidden())
@@ -819,8 +829,13 @@ nsObjectFrame::CallSetWindow(bool aCheckIsHidden)
   window->width = intBounds.width;
   window->height = intBounds.height;
 
-  // this will call pi->SetWindow and take care of window subclassing
-  // if needed, see bug 132759.
+  // Calling SetWindow might destroy this frame. We need to use the instance
+  // owner to clean up so hold a ref.
+  nsRefPtr<nsPluginInstanceOwner> instanceOwnerRef(mInstanceOwner);
+
+  // This will call pi->SetWindow and take care of window subclassing
+  // if needed, see bug 132759. Calling SetWindow can destroy this frame
+  // so check for that before doing anything else with this frame's memory.
   if (mInstanceOwner->UseAsyncRendering()) {
     rv = pi->AsyncSetWindow(window);
   }
@@ -828,7 +843,8 @@ nsObjectFrame::CallSetWindow(bool aCheckIsHidden)
     rv = window->CallSetWindow(pi);
   }
 
-  mInstanceOwner->ReleasePluginPort(window->window);
+  instanceOwnerRef->ReleasePluginPort(window->window);
+
   return rv;
 }
 
@@ -1406,6 +1422,8 @@ nsObjectFrame::PrintPlugin(nsRenderingContext& aRenderingContext,
   /* XXX this just flat-out doesn't work in a thebes world --
    * RenderEPS is a no-op.  So don't bother to do any work here.
    */
+  (void)window;
+  (void)npprint;
 
 #elif defined(XP_OS2)
   void *hps = GetPSFromRC(aRenderingContext);
@@ -1691,7 +1709,7 @@ nsObjectFrame::PaintPlugin(nsDisplayListBuilder* aBuilder,
                            nsRenderingContext& aRenderingContext,
                            const nsRect& aDirtyRect, const nsRect& aPluginRect)
 {
-#if defined(ANDROID)
+#if defined(MOZ_WIDGET_ANDROID)
   if (mInstanceOwner) {
     NPWindow *window;
     mInstanceOwner->GetWindow(window);
@@ -1702,7 +1720,18 @@ nsObjectFrame::PaintPlugin(nsDisplayListBuilder* aBuilder,
       PresContext()->AppUnitsToGfxUnits(aDirtyRect);
     gfxContext* ctx = aRenderingContext.ThebesContext();
 
-    mInstanceOwner->Paint(ctx, frameGfxRect, dirtyGfxRect);
+    gfx3DMatrix matrix3d = nsLayoutUtils::GetTransformToAncestor(this, nsnull);
+
+    gfxMatrix matrix2d;
+    if (!matrix3d.Is2D(&matrix2d))
+      return;
+
+    // The matrix includes the frame's position, so we need to transform
+    // from 0,0 to get the correct coordinates.
+    frameGfxRect.MoveTo(0, 0);
+    matrix2d.NudgeToIntegers();
+
+    mInstanceOwner->Paint(ctx, matrix2d.Transform(frameGfxRect), dirtyGfxRect);
     return;
   }
 #endif
@@ -2134,6 +2163,7 @@ nsObjectFrame::PrepareInstanceOwner()
 nsresult
 nsObjectFrame::Instantiate(nsIChannel* aChannel, nsIStreamListener** aStreamListener)
 {
+  SAMPLE_LABEL("plugin", "nsObjectFrame::Instantiate");
   if (mPreventInstantiation) {
     return NS_OK;
   }
@@ -2184,6 +2214,7 @@ nsObjectFrame::Instantiate(nsIChannel* aChannel, nsIStreamListener** aStreamList
 nsresult
 nsObjectFrame::Instantiate(const char* aMimeType, nsIURI* aURI)
 {
+  SAMPLE_LABEL("plugin", "nsObjectFrame::Instantiate");
   PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG,
          ("nsObjectFrame::Instantiate(%s) called on frame %p\n", aMimeType,
           this));
@@ -2332,6 +2363,7 @@ DoDelayedStop(nsPluginInstanceOwner *aInstanceOwner, bool aDelayedStop)
 static void
 DoStopPlugin(nsPluginInstanceOwner *aInstanceOwner, bool aDelayedStop)
 {
+  SAMPLE_LABEL("plugin", "DoStopPlugin");
   nsRefPtr<nsNPAPIPluginInstance> inst;
   aInstanceOwner->GetInstance(getter_AddRefs(inst));
   if (inst) {
@@ -2374,6 +2406,7 @@ nsStopPluginRunnable::Notify(nsITimer *aTimer)
 NS_IMETHODIMP
 nsStopPluginRunnable::Run()
 {
+  SAMPLE_LABEL("plugin", "nsStopPluginRunnable::Run");
   // InitWithCallback calls Release before AddRef so we need to hold a
   // strong ref on 'this' since we fall through to this scope if it fails.
   nsCOMPtr<nsITimerCallback> kungFuDeathGrip = this;

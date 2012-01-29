@@ -116,12 +116,12 @@ SDK_XPIDLSRCS =					\
 	nsIDOMHTMLAudioElement.idl		\
 	nsIDOMValidityState.idl		\
 	nsIDOMDOMStringMap.idl		\
+	nsIDOMMozBrowserFrame.idl		\
 	$(NULL)
 
 XPIDLSRCS = 					\
 	nsIDOMHTMLCanvasElement.idl		\
 	nsIDOMHTMLUnknownElement.idl \
-	nsIDOMNSHTMLElement.idl			\
 	$(NULL)
 
 include $(topsrcdir)/config/rules.mk

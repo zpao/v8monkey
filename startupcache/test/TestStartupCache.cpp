@@ -51,6 +51,8 @@
 #include "nsIObjectOutputStream.h"
 #include "nsIURI.h"
 #include "nsStringAPI.h"
+#include "nsIPrefBranch.h"
+#include "nsIPrefService.h"
 
 namespace mozilla {
 namespace scache {
@@ -91,6 +93,7 @@ WaitForStartupTimer() {
   
   bool complete;
   while (true) {
+    
     NS_ProcessPendingEvents(nsnull);
     rv = sc->StartupWriteComplete(&complete);
     if (NS_FAILED(rv) || complete)
@@ -113,8 +116,8 @@ TestStartupWriteRead() {
   }
   sc->InvalidateCache();
   
-  char* buf = "Market opportunities for BeardBook";
-  char* id = "id";
+  const char* buf = "Market opportunities for BeardBook";
+  const char* id = "id";
   char* outbufPtr = NULL;
   nsAutoArrayPtr<char> outbuf;  
   PRUint32 len;
@@ -142,8 +145,8 @@ TestStartupWriteRead() {
 nsresult
 TestWriteInvalidateRead() {
   nsresult rv;
-  char* buf = "BeardBook competitive analysis";
-  char* id = "id";
+  const char* buf = "BeardBook competitive analysis";
+  const char* id = "id";
   char* outbuf = NULL;
   PRUint32 len;
   nsCOMPtr<nsIStartupCache> sc 
@@ -191,7 +194,7 @@ TestWriteObject() {
   // NewObjectOutputWrappedStorageStream, but that uses
   // StartupCache::GetSingleton in debug builds, and we
   // don't have access to that here. Obviously.
-  char* id = "id";
+  const char* id = "id";
   nsCOMPtr<nsIStorageStream> storageStream
     = do_CreateInstance("@mozilla.org/storagestream;1");
   NS_ENSURE_ARG_POINTER(storageStream);
@@ -282,8 +285,8 @@ TestEarlyShutdown() {
     = do_GetService("@mozilla.org/startupcache/cache;1", &rv);
   sc->InvalidateCache();
 
-  char* buf = "Find your soul beardmate on BeardBook";
-  char* id = "id";
+  const char* buf = "Find your soul beardmate on BeardBook";
+  const char* id = "id";
   PRUint32 len;
   char* outbuf = NULL;
   
@@ -316,10 +319,14 @@ TestEarlyShutdown() {
 
 int main(int argc, char** argv)
 {
-  int rv = 0;
-  nsresult rv2;
   ScopedXPCOM xpcom("Startup Cache");
+  if (xpcom.failed())
+    return 1;
+
+  nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
+  prefs->SetIntPref("hangmonitor.timeout", 0);
   
+  int rv = 0;
   if (NS_FAILED(TestStartupWriteRead()))
     rv = 1;
   if (NS_FAILED(TestWriteInvalidateRead()))

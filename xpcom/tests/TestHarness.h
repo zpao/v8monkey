@@ -65,6 +65,7 @@
 #include "nsIDirectoryService.h"
 #include "nsIFile.h"
 #include "nsIProperties.h"
+#include "nsIObserverService.h"
 #include "nsXULAppAPI.h"
 #include "jsdbgapi.h"
 #include <stdio.h>
@@ -194,8 +195,18 @@ class ScopedXPCOM : public nsIDirectoryServiceProvider2
     {
       // If we created a profile directory, we need to remove it.
       if (mProfD) {
-        if (NS_FAILED(mProfD->Remove(true)))
-          NS_WARNING("Problem removing profile direrctory");
+        nsCOMPtr<nsIObserverService> os =
+          do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+        MOZ_ASSERT(os);
+        if (os) {
+          MOZ_ALWAYS_TRUE(NS_SUCCEEDED(os->NotifyObservers(nsnull, "profile-change-net-teardown", nsnull)));
+          MOZ_ALWAYS_TRUE(NS_SUCCEEDED(os->NotifyObservers(nsnull, "profile-change-teardown", nsnull)));
+          MOZ_ALWAYS_TRUE(NS_SUCCEEDED(os->NotifyObservers(nsnull, "profile-before-change", nsnull)));
+        }
+
+        if (NS_FAILED(mProfD->Remove(true))) {
+          NS_WARNING("Problem removing profile directory");
+        }
 
         mProfD = nsnull;
       }

@@ -47,7 +47,6 @@
 #include "nsNSSComponent.h"
 #include "nsNSSCallbacks.h"
 #include "nsNSSIOLayer.h"
-#include "nsSSLThread.h"
 #include "nsCertVerificationThread.h"
 
 #include "nsNetUtil.h"
@@ -59,7 +58,6 @@
 #include "nsIDOMNode.h"
 #include "nsCURILoader.h"
 #include "nsDirectoryServiceDefs.h"
-#include "nsIProxyObjectManager.h"
 #include "nsIX509Cert.h"
 #include "nsIX509CertDB.h"
 #include "nsIProfileChangeStatus.h"
@@ -86,7 +84,6 @@
 
 #include "nsIWindowWatcher.h"
 #include "nsIPrompt.h"
-#include "nsProxiedService.h"
 #include "nsIPrincipal.h"
 #include "nsReadableUtils.h"
 #include "nsIDateTimeFormat.h"
@@ -366,7 +363,7 @@ nsNSSComponent::nsNSSComponent()
    mNSSInitialized(false),
    mCrlTimerLock("nsNSSComponent.mCrlTimerLock"),
    mThreadList(nsnull),
-   mSSLThread(NULL), mCertVerificationThread(NULL)
+   mCertVerificationThread(NULL)
 {
 #ifdef PR_LOGGING
   if (!gPIPNSSLog)
@@ -393,12 +390,6 @@ nsNSSComponent::nsNSSComponent()
 void 
 nsNSSComponent::deleteBackgroundThreads()
 {
-  if (mSSLThread)
-  {
-    mSSLThread->requestExit();
-    delete mSSLThread;
-    mSSLThread = nsnull;
-  }
   if (mCertVerificationThread)
   {
     mCertVerificationThread->requestExit();
@@ -410,20 +401,11 @@ nsNSSComponent::deleteBackgroundThreads()
 void
 nsNSSComponent::createBackgroundThreads()
 {
-  NS_ASSERTION(mSSLThread == nsnull, "SSL thread already created.");
   NS_ASSERTION(mCertVerificationThread == nsnull,
                "Cert verification thread already created.");
 
-  mSSLThread = new nsSSLThread;
-  nsresult rv = mSSLThread->startThread();
-  if (NS_FAILED(rv)) {
-    delete mSSLThread;
-    mSSLThread = nsnull;
-    return;
-  }
-
   mCertVerificationThread = new nsCertVerificationThread;
-  rv = mCertVerificationThread->startThread();
+  nsresult rv = mCertVerificationThread->startThread();
   if (NS_FAILED(rv)) {
     delete mCertVerificationThread;
     mCertVerificationThread = nsnull;
@@ -846,7 +828,10 @@ nsNSSComponent::InstallLoadableRoots()
   if (!directoryService)
     return;
 
+  static const char nss_lib[] = "nss3";
   const char *possible_ckbi_locations[] = {
+    nss_lib, // This special value means: search for ckbi in the directory
+             // where nss3 is.
     NS_XPCOM_CURRENT_PROCESS_DIR,
     NS_GRE_DIR,
     0 // This special value means: 
@@ -864,9 +849,30 @@ nsNSSComponent::InstallLoadableRoots()
     }
     else
     {
-      directoryService->Get( possible_ckbi_locations[il],
-                             NS_GET_IID(nsILocalFile), 
-                             getter_AddRefs(mozFile));
+      if (possible_ckbi_locations[il] == nss_lib) {
+        // Get the location of the nss3 library.
+        char *nss_path = PR_GetLibraryFilePathname(DLL_PREFIX "nss3" DLL_SUFFIX,
+                                                   (PRFuncPtr) NSS_Initialize);
+        if (!nss_path) {
+          continue;
+        }
+        // Get the directory containing the nss3 library.
+        nsCOMPtr<nsILocalFile> nssLib(do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv));
+        if (NS_SUCCEEDED(rv)) {
+          rv = nssLib->InitWithNativePath(nsDependentCString(nss_path));
+        }
+        PR_Free(nss_path);
+        if (NS_SUCCEEDED(rv)) {
+          nsCOMPtr<nsIFile> file;
+          if (NS_SUCCEEDED(nssLib->GetParent(getter_AddRefs(file)))) {
+            mozFile = do_QueryInterface(file);
+          }
+        }
+      } else {
+        directoryService->Get( possible_ckbi_locations[il],
+                               NS_GET_IID(nsILocalFile), 
+                               getter_AddRefs(mozFile));
+      }
   
       if (!mozFile) {
         continue;
@@ -1869,7 +1875,7 @@ nsNSSComponent::InitializeNSS(bool showWarningBox)
     // We might want to use different messages, depending on what failed.
     // For now, let's use the same message.
     if (showWarningBox) {
-      ShowAlert(ai_nss_init_problem);
+      ShowAlertFromStringBundle("NSSInitProblemX");
     }
   }
 
@@ -2001,7 +2007,7 @@ nsNSSComponent::Init()
     mClientAuthRememberService->Init();
 
   createBackgroundThreads();
-  if (!mSSLThread || !mCertVerificationThread)
+  if (!mCertVerificationThread)
   {
     PR_LOG(gPIPNSSLog, PR_LOG_DEBUG, ("NSS init, could not create threads\n"));
 
@@ -2374,55 +2380,57 @@ nsNSSComponent::Observe(nsISupports *aSubject, const char *aTopic,
   return NS_OK;
 }
 
-void nsNSSComponent::ShowAlert(AlertIdentifier ai)
+/*static*/ nsresult
+nsNSSComponent::GetNewPrompter(nsIPrompt ** result)
+{
+  NS_ENSURE_ARG_POINTER(result);
+  *result = nsnull;
+
+  if (!NS_IsMainThread()) {
+    NS_ERROR("nsSDRContext::GetNewPrompter called off the main thread");
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
+  nsresult rv;
+  nsCOMPtr<nsIWindowWatcher> wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID, &rv));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = wwatch->GetNewPrompter(0, result);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return rv;
+}
+
+/*static*/ nsresult
+nsNSSComponent::ShowAlertWithConstructedString(const nsString & message)
+{
+  nsCOMPtr<nsIPrompt> prompter;
+  nsresult rv = GetNewPrompter(getter_AddRefs(prompter));
+  if (prompter) {
+    nsPSMUITracker tracker;
+    if (tracker.isUIForbidden()) {
+      NS_WARNING("Suppressing alert because PSM UI is forbidden");
+      rv = NS_ERROR_UNEXPECTED;
+    } else {
+      rv = prompter->Alert(nsnull, message.get());
+    }
+  }
+  return rv;
+}
+
+NS_IMETHODIMP
+nsNSSComponent::ShowAlertFromStringBundle(const char * messageID)
 {
   nsString message;
   nsresult rv;
 
-  switch (ai) {
-    case ai_nss_init_problem:
-      rv = GetPIPNSSBundleString("NSSInitProblemX", message);
-      break;
-    case ai_sockets_still_active:
-      rv = GetPIPNSSBundleString("ProfileSwitchSocketsStillActive", message);
-      break;
-    case ai_crypto_ui_active:
-      rv = GetPIPNSSBundleString("ProfileSwitchCryptoUIActive", message);
-      break;
-    case ai_incomplete_logout:
-      rv = GetPIPNSSBundleString("LogoutIncompleteUIActive", message);
-      break;
-    default:
-      return;
+  rv = GetPIPNSSBundleString(messageID, message);
+  if (NS_FAILED(rv)) {
+    NS_ERROR("GetPIPNSSBundleString failed");
+    return rv;
   }
-  
-  if (NS_FAILED(rv))
-    return;
 
-  nsCOMPtr<nsIWindowWatcher> wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID));
-  if (!wwatch) {
-    PR_LOG(gPIPNSSLog, PR_LOG_DEBUG, ("can't get window watcher\n"));
-  }
-  else {
-    nsCOMPtr<nsIPrompt> prompter;
-    wwatch->GetNewPrompter(0, getter_AddRefs(prompter));
-    if (!prompter) {
-      PR_LOG(gPIPNSSLog, PR_LOG_DEBUG, ("can't get window prompter\n"));
-    }
-    else {
-      nsCOMPtr<nsIPrompt> proxyPrompt;
-      NS_GetProxyForObject(NS_PROXY_TO_MAIN_THREAD,
-                           NS_GET_IID(nsIPrompt),
-                           prompter, NS_PROXY_SYNC,
-                           getter_AddRefs(proxyPrompt));
-      if (!proxyPrompt) {
-        PR_LOG(gPIPNSSLog, PR_LOG_DEBUG, ("can't get proxy for nsIPrompt\n"));
-      }
-      else {
-        proxyPrompt->Alert(nsnull, message.get());
-      }
-    }
-  }
+  return ShowAlertWithConstructedString(message);
 }
 
 nsresult nsNSSComponent::LogoutAuthenticatedPK11()
@@ -2529,11 +2537,16 @@ nsNSSComponent::RememberCert(CERTCertificate *cert)
   return NS_OK;
 }
 
+static const char PROFILE_SWITCH_CRYPTO_UI_ACTIVE[] =
+                        "ProfileSwitchCryptoUIActive";
+static const char PROFILE_SWITCH_SOCKETS_STILL_ACTIVE[] =
+                        "ProfileSwitchSocketsStillActive";
+
 void
 nsNSSComponent::DoProfileApproveChange(nsISupports* aSubject)
 {
   if (mShutdownObjectList->isUIActive()) {
-    ShowAlert(ai_crypto_ui_active);
+    ShowAlertFromStringBundle(PROFILE_SWITCH_CRYPTO_UI_ACTIVE);
     nsCOMPtr<nsIProfileChangeStatus> status = do_QueryInterface(aSubject);
     if (status) {
       status->VetoChange();
@@ -2544,8 +2557,6 @@ nsNSSComponent::DoProfileApproveChange(nsISupports* aSubject)
 void
 nsNSSComponent::DoProfileChangeNetTeardown()
 {
-  if (mSSLThread)
-    mSSLThread->requestExit();
   if (mCertVerificationThread)
     mCertVerificationThread->requestExit();
   mIsNetworkDown = true;
@@ -2558,11 +2569,11 @@ nsNSSComponent::DoProfileChangeTeardown(nsISupports* aSubject)
 
   if (!mShutdownObjectList->ifPossibleDisallowUI()) {
     callVeto = true;
-    ShowAlert(ai_crypto_ui_active);
+    ShowAlertFromStringBundle(PROFILE_SWITCH_CRYPTO_UI_ACTIVE);
   }
   else if (mShutdownObjectList->areSSLSocketsActive()) {
     callVeto = true;
-    ShowAlert(ai_sockets_still_active);
+    ShowAlertFromStringBundle(PROFILE_SWITCH_SOCKETS_STILL_ACTIVE);
   }
 
   if (callVeto) {
@@ -3048,43 +3059,39 @@ PipUIContext::~PipUIContext()
 /* void getInterface (in nsIIDRef uuid, [iid_is (uuid), retval] out nsQIResult result); */
 NS_IMETHODIMP PipUIContext::GetInterface(const nsIID & uuid, void * *result)
 {
-  nsresult rv = NS_OK;
+  NS_ENSURE_ARG_POINTER(result);
+  *result = nsnull;
 
-  if (uuid.Equals(NS_GET_IID(nsIPrompt))) {
-    nsCOMPtr<nsIPrompt> prompter;
-    nsCOMPtr<nsIWindowWatcher> wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID));
-    if (wwatch) {
-      wwatch->GetNewPrompter(0, getter_AddRefs(prompter));
-      if (prompter) {
-        nsCOMPtr<nsIPrompt> proxyPrompt;
-        NS_GetProxyForObject(NS_PROXY_TO_MAIN_THREAD,
-                             NS_GET_IID(nsIPrompt),
-                             prompter, NS_PROXY_SYNC,
-                             getter_AddRefs(proxyPrompt));
-        if (!proxyPrompt) return NS_ERROR_FAILURE;
-        *result = proxyPrompt;
-        NS_ADDREF((nsIPrompt*)*result);
-      }
-    }
-  } else {
-    rv = NS_ERROR_NO_INTERFACE;
+  if (!NS_IsMainThread()) {
+    NS_ERROR("PipUIContext::GetInterface called off the main thread");
+    return NS_ERROR_NOT_SAME_THREAD;
   }
 
+  if (!uuid.Equals(NS_GET_IID(nsIPrompt)))
+    return NS_ERROR_NO_INTERFACE;
+
+  nsIPrompt * prompt = nsnull;
+  nsresult rv = nsNSSComponent::GetNewPrompter(&prompt);
+  *result = prompt;
   return rv;
 }
 
 nsresult 
 getNSSDialogs(void **_result, REFNSIID aIID, const char *contract)
 {
+  if (!NS_IsMainThread()) {
+    NS_ERROR("getNSSDialogs called off the main thread");
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   nsresult rv;
 
   nsCOMPtr<nsISupports> svc = do_GetService(contract, &rv);
   if (NS_FAILED(rv)) 
     return rv;
 
-  rv = NS_GetProxyForObject(NS_PROXY_TO_MAIN_THREAD,
-                            aIID, svc, NS_PROXY_SYNC,
-                            _result);
+  rv = svc->QueryInterface(aIID, _result);
+
   return rv;
 }
 
@@ -3308,24 +3315,13 @@ PSMContentDownloader::handleContentDownloadError(nsresult errCode)
       prefSvc->SavePrefFile(nsnull);
     }else{
       nsString message;
-      nsCOMPtr<nsIWindowWatcher> wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID));
-      nsCOMPtr<nsIPrompt> prompter;
-      if (wwatch){
-        wwatch->GetNewPrompter(0, getter_AddRefs(prompter));
-        nssComponent->GetPIPNSSBundleString("CrlImportFailure1x", message);
-        message.Append(NS_LITERAL_STRING("\n").get());
-        message.Append(tmpMessage);
-        nssComponent->GetPIPNSSBundleString("CrlImportFailure2", tmpMessage);
-        message.Append(NS_LITERAL_STRING("\n").get());
-        message.Append(tmpMessage);
-
-        if(prompter) {
-          nsPSMUITracker tracker;
-          if (!tracker.isUIForbidden()) {
-            prompter->Alert(0, message.get());
-          }
-        }
-      }
+      nssComponent->GetPIPNSSBundleString("CrlImportFailure1x", message);
+      message.Append(NS_LITERAL_STRING("\n").get());
+      message.Append(tmpMessage);
+      nssComponent->GetPIPNSSBundleString("CrlImportFailure2", tmpMessage);
+      message.Append(NS_LITERAL_STRING("\n").get());
+      message.Append(tmpMessage);
+      nsNSSComponent::ShowAlertWithConstructedString(message);
     }
     break;
   default:

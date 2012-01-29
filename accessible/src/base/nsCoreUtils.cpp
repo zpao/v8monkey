@@ -46,7 +46,7 @@
 #include "nsIDOMDocument.h"
 #include "nsIDOMHTMLDocument.h"
 #include "nsIDOMHTMLElement.h"
-#include "nsIDOMRange.h"
+#include "nsRange.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMXULElement.h"
 #include "nsIDocShell.h"
@@ -63,12 +63,9 @@
 #include "nsIView.h"
 #include "nsLayoutUtils.h"
 
-#include "nsContentCID.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "mozilla/dom/Element.h"
-
-static NS_DEFINE_IID(kRangeCID, NS_RANGE_CID);
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsCoreUtils
@@ -317,9 +314,7 @@ nsCoreUtils::ScrollSubstringTo(nsIFrame *aFrame,
 
   nsPresContext *presContext = aFrame->PresContext();
 
-  nsCOMPtr<nsIDOMRange> scrollToRange = do_CreateInstance(kRangeCID);
-  NS_ENSURE_TRUE(scrollToRange, NS_ERROR_FAILURE);
-
+  nsRefPtr<nsIDOMRange> scrollToRange = new nsRange();
   nsCOMPtr<nsISelectionController> selCon;
   aFrame->GetSelectionController(presContext, getter_AddRefs(selCon));
   NS_ENSURE_TRUE(selCon, NS_ERROR_FAILURE);
@@ -660,22 +655,6 @@ nsCoreUtils::GetFirstSensibleColumn(nsITreeBoxObject *aTree)
   return column.forget();
 }
 
-already_AddRefed<nsITreeColumn>
-nsCoreUtils::GetLastSensibleColumn(nsITreeBoxObject *aTree)
-{
-  nsCOMPtr<nsITreeColumns> cols;
-  aTree->GetColumns(getter_AddRefs(cols));
-  if (!cols)
-    return nsnull;
-
-  nsCOMPtr<nsITreeColumn> column;
-  cols->GetLastColumn(getter_AddRefs(column));
-  if (column && IsColumnHidden(column))
-    return GetPreviousSensibleColumn(column);
-
-  return column.forget();
-}
-
 PRUint32
 nsCoreUtils::GetSensibleColumnCount(nsITreeBoxObject *aTree)
 {
@@ -756,31 +735,6 @@ nsCoreUtils::IsColumnHidden(nsITreeColumn *aColumn)
   nsCOMPtr<nsIContent> content = do_QueryInterface(element);
   return content->AttrValueIs(kNameSpaceID_None, nsGkAtoms::hidden,
                               nsGkAtoms::_true, eCaseMatters);
-}
-
-bool
-nsCoreUtils::CheckVisibilityInParentChain(nsIFrame* aFrame)
-{
-  nsIView* view = aFrame->GetClosestView();
-  if (view && !view->IsEffectivelyVisible())
-    return false;
-
-  nsIPresShell* presShell = aFrame->PresContext()->GetPresShell();
-  while (presShell) {
-    if (!presShell->IsActive()) {
-      return false;
-    }
-
-    nsIFrame* rootFrame = presShell->GetRootFrame();
-    presShell = nsnull;
-    if (rootFrame) {
-      nsIFrame* frame = nsLayoutUtils::GetCrossDocParentFrame(rootFrame);
-      if (frame) {
-        presShell = frame->PresContext()->GetPresShell();
-      }
-    }
-  }
-  return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

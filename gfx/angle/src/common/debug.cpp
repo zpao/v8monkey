@@ -23,7 +23,7 @@ static void output(bool traceFileDebugOnly, PerfOutputFunction perfFunc, const c
 #if !defined(ANGLE_DISABLE_PERF)
     if (perfActive())
     {
-        char message[4096];
+        char message[32768];
         int len = vsprintf_s(message, format, vararg);
         if (len < 0)
         {
@@ -31,7 +31,7 @@ static void output(bool traceFileDebugOnly, PerfOutputFunction perfFunc, const c
         }
 
         // There are no ASCII variants of these D3DPERF functions.
-        wchar_t wideMessage[4096];
+        wchar_t wideMessage[32768];
         for (int i = 0; i < len; ++i)
         {
             wideMessage[i] = message[i];
@@ -63,7 +63,11 @@ void trace(bool traceFileDebugOnly, const char *format, ...)
 {
     va_list vararg;
     va_start(vararg, format);
+#if defined(ANGLE_DISABLE_PERF)
+    output(traceFileDebugOnly, NULL, format, vararg);
+#else
     output(traceFileDebugOnly, D3DPERF_SetMarker, format, vararg);
+#endif
     va_end(vararg);
 }
 
@@ -79,10 +83,12 @@ bool perfActive()
 
 ScopedPerfEventHelper::ScopedPerfEventHelper(const char* format, ...)
 {
+#if !defined(ANGLE_DISABLE_PERF)
     va_list vararg;
     va_start(vararg, format);
     output(true, reinterpret_cast<PerfOutputFunction>(D3DPERF_BeginEvent), format, vararg);
     va_end(vararg);
+#endif
 }
 
 ScopedPerfEventHelper::~ScopedPerfEventHelper()

@@ -532,11 +532,7 @@ class Interface(object):
             self.doccomments = parent.getName(self.name, None).doccomments
 
         parent.setName(self)
-        if self.base is None:
-            if self.name != 'nsISupports':
-                print >>sys.stderr, IDLError("interface '%s' not derived from nsISupports" % self.name,
-                                             self.location, warning=True)
-        else:
+        if self.base is not None:
             realbase = parent.getName(self.base, self.location)
             if realbase.kind != 'interface':
                 raise IDLError("interface '%s' inherits from non-interface type '%s'" % (self.name, self.base), self.location)
@@ -1442,20 +1438,23 @@ class IDLParser(object):
         p[0].insert(0, p[1])
 
     def p_error(self, t):
-        location = Location(self.lexer, t.lineno, t.lexpos)
-        raise IDLError("invalid syntax", location)
+        if not t:
+            raise IDLError("Syntax Error at end of file. Possibly due to missing semicolon(;), braces(}) or both", None)
+        else:
+            location = Location(self.lexer, t.lineno, t.lexpos)
+            raise IDLError("invalid syntax", location)
 
-    def __init__(self, outputdir='', regen=False):
+    def __init__(self, outputdir=''):
         self._doccomments = []
         self.lexer = lex.lex(object=self,
                              outputdir=outputdir,
                              lextab='xpidllex',
-                             optimize=0 if regen else 1)
+                             optimize=1)
         self.parser = yacc.yacc(module=self,
                                 outputdir=outputdir,
                                 debugfile='xpidl_debug',
                                 tabmodule='xpidlyacc',
-                                optimize=0 if regen else 1)
+                                optimize=1)
 
     def clearComments(self):
         self._doccomments = []

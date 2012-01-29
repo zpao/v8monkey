@@ -1,0 +1,137 @@
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
+ *
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
+ *
+ * The Original Code is Mozilla Mobile Browser.
+ *
+ * The Initial Developer of the Original Code is
+ * Mozilla Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 2008
+ * the Initial Developer. All Rights Reserved.
+ *
+ * Contributor(s):
+ *   Gavin Sharp <gavin@gavinsharp.com>
+ *   Steffen Wilberg <steffen.wilberg@web.de>
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
+
+body {
+  -moz-text-size-adjust: none;
+  font-family: "Droid Sans",helvetica,arial,clean,sans-serif;
+  font-size: 23px;
+  color: #222222;
+  background-image: url("chrome://browser/skin/images/about-bg-lightblue.png");
+}
+
+#header {
+  height: 80px;
+}
+
+#wordmark {
+  margin: 30px 0 0 15px;
+  width: 123px;
+  height: 36px;
+  background: url("chrome://browser/skin/images/wordmark-hdpi.png") no-repeat;
+}
+
+#version {
+  margin: 0 0 0 15px;
+  font-size: 15px;
+}
+
+#banner {
+  margin: 0 -10px;
+  height: 150px;
+  background-image: url("chrome://browser/skin/images/about-bg-darkblue.png");
+}
+
+#logo {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 375px;
+  height: 300px;
+  background: url("chrome://browser/skin/images/logo-hdpi.png") no-repeat;
+}
+
+#updateBox {
+  position: relative;
+  top: 40px;
+  margin: 0 auto;
+  width: 60%; /* looks much larger!? */
+  padding: 20px 1em;
+  text-align: center;
+  background-image: url("chrome://browser/skin/images/about-btn-darkgrey.png");
+  background-size: contain;
+  border-bottom-width: 4px;
+  border-bottom-style: solid;
+  border-bottom-color: #3A3F44;
+  border-radius: 8px;
+  box-shadow: 0 5px 5px rgba(0, 0, 0, 0.3);
+}
+
+#update-message-checking,
+#update-message-none,
+#update-message-found {
+  display: none;
+}
+
+#aboutLinks {
+  margin: 0 -10px 15px -10px;
+  padding: 0;
+}
+
+#aboutLinks > li {
+  line-height: 2.6;
+  border-top: 1px solid white;
+  border-bottom: 1px solid #C1C7CC;
+}
+
+#aboutLinks > li > a {
+  padding-left: 25px;
+  display: block;
+}
+
+#aboutDetails {
+  padding-left: 15px;
+  font-size: 15px;
+}
+
+.top-border {
+  border-bottom: 1px solid #C1C7CC;
+}
+
+.bottom-border {
+  border-top: 1px solid white;
+}
+
+a, span {
+  text-decoration: none;
+  color: #222222;
+}
+
+#updateBox > a,
+#updateBox > span {
+  color: #e5f2ff;
+}

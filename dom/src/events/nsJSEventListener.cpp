@@ -54,8 +54,10 @@
 #include "nsGkAtoms.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIJSContextStack.h"
-#ifdef NS_DEBUG
+#include "xpcpublic.h"
+#include "nsJSEnvironment.h"
 #include "nsDOMJSUtils.h"
+#ifdef NS_DEBUG
 
 #include "nspr.h" // PR_fprintf
 
@@ -73,10 +75,10 @@ static EventListenerCounter sEventListenerCounter;
  * nsJSEventListener implementation
  */
 nsJSEventListener::nsJSEventListener(nsIScriptContext *aContext,
-                                     void *aScopeObject,
+                                     JSObject* aScopeObject,
                                      nsISupports *aTarget,
                                      nsIAtom* aType,
-                                     void *aHandler)
+                                     JSObject *aHandler)
   : nsIJSEventListener(aContext, aScopeObject, aTarget, aHandler),
     mEventName(aType)
 {
@@ -103,7 +105,6 @@ nsJSEventListener::~nsJSEventListener()
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsJSEventListener)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsJSEventListener)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mTarget)
   if (tmp->mContext) {
     if (tmp->mContext->GetScriptTypeID() == nsIProgrammingLanguage::JAVASCRIPT) {
       NS_DROP_JS_OBJECTS(tmp, nsJSEventListener);
@@ -117,7 +118,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsJSEventListener)
   }
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsJSEventListener)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mTarget)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mContext)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
@@ -129,6 +129,18 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(nsJSEventListener)
                                                  mHandler)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(nsJSEventListener)
+  return tmp->IsBlackForCC();
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_END
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_BEGIN(nsJSEventListener)
+  return tmp->IsBlackForCC();
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_END
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_BEGIN(nsJSEventListener)
+  return tmp->IsBlackForCC();
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
+
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsJSEventListener)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
   NS_INTERFACE_MAP_ENTRY(nsIJSEventListener)
@@ -137,6 +149,20 @@ NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsJSEventListener)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsJSEventListener)
+
+bool
+nsJSEventListener::IsBlackForCC()
+{
+  if ((mContext && mContext->GetScriptTypeID() ==
+         nsIProgrammingLanguage::JAVASCRIPT) &&
+      (!mScopeObject || !xpc_IsGrayGCThing(mScopeObject)) &&
+      (!mHandler || !xpc_IsGrayGCThing(mHandler))) {
+    nsIScriptGlobalObject* sgo =
+      static_cast<nsJSContext*>(mContext.get())->GetCachedGlobalObject();
+    return sgo && sgo->IsBlackForCC();
+  }
+  return false;
+}
 
 nsresult
 nsJSEventListener::HandleEvent(nsIDOMEvent* aEvent)
@@ -256,7 +282,7 @@ nsJSEventListener::HandleEvent(nsIDOMEvent* aEvent)
 }
 
 /* virtual */ void
-nsJSEventListener::SetHandler(void *aHandler)
+nsJSEventListener::SetHandler(JSObject *aHandler)
 {
   // Technically we should drop the old mHandler and hold the new
   // one... except for JS this is a no-op, and we're really not
@@ -272,17 +298,14 @@ nsJSEventListener::SetHandler(void *aHandler)
  */
 
 nsresult
-NS_NewJSEventListener(nsIScriptContext *aContext, void *aScopeObject,
+NS_NewJSEventListener(nsIScriptContext* aContext, JSObject* aScopeObject,
                       nsISupports*aTarget, nsIAtom* aEventType,
-                      void *aHandler, nsIDOMEventListener ** aReturn)
+                      JSObject* aHandler, nsIJSEventListener** aReturn)
 {
   NS_ENSURE_ARG(aEventType);
   nsJSEventListener* it =
     new nsJSEventListener(aContext, aScopeObject, aTarget, aEventType,
                           aHandler);
-  if (!it) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
   NS_ADDREF(*aReturn = it);
 
   return NS_OK;

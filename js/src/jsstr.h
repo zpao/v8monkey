@@ -46,6 +46,7 @@
 #include "jsprvtd.h"
 #include "jslock.h"
 #include "jscell.h"
+#include "jsutil.h"
 
 #include "js/HashTable.h"
 #include "vm/Unicode.h"
@@ -139,26 +140,26 @@ extern const char *
 js_ValueToPrintable(JSContext *cx, const js::Value &,
                     JSAutoByteString *bytes, bool asSource = false);
 
-/*
- * Convert a value to a string, returning null after reporting an error,
- * otherwise returning a new string reference.
- */
-extern JSString *
-js_ValueToString(JSContext *cx, const js::Value &v);
-
 namespace js {
 
 /*
- * Most code that calls js_ValueToString knows the value is (probably) not a
- * string, so it does not make sense to put this inline fast path into
- * js_ValueToString.
+ * Convert a non-string value to a string, returning null after reporting an
+ * error, otherwise returning a new string reference.
+ */
+extern JSString *
+ToStringSlow(JSContext *cx, const Value &v);
+
+/*
+ * Convert the given value to a string.  This method includes an inline
+ * fast-path for the case where the value is already a string; if the value is
+ * known not to be a string, use ToStringSlow instead.
  */
 static JS_ALWAYS_INLINE JSString *
-ValueToString_TestForStringInline(JSContext *cx, const Value &v)
+ToString(JSContext *cx, const js::Value &v)
 {
     if (v.isString())
         return v.toString();
-    return js_ValueToString(cx, v);
+    return ToStringSlow(cx, v);
 }
 
 /*
@@ -185,7 +186,11 @@ namespace js {
  * or str2 are not GC-allocated things.
  */
 extern bool
-EqualStrings(JSContext *cx, JSString *str1, JSString *str2, JSBool *result);
+EqualStrings(JSContext *cx, JSString *str1, JSString *str2, bool *result);
+
+/* Use the infallible method instead! */
+extern bool
+EqualStrings(JSContext *cx, JSLinearString *str1, JSLinearString *str2, bool *result) MOZ_DELETE;
 
 /* EqualStrings is infallible on linear strings. */
 extern bool
@@ -196,7 +201,7 @@ EqualStrings(JSLinearString *str1, JSLinearString *str2);
  * str1 is less than, equal to, or greater than str2.
  */
 extern bool
-CompareStrings(JSContext *cx, JSString *str1, JSString *str2, int32 *result);
+CompareStrings(JSContext *cx, JSString *str1, JSString *str2, int32_t *result);
 
 /*
  * Return true if the string matches the given sequence of ASCII bytes.
@@ -204,7 +209,7 @@ CompareStrings(JSContext *cx, JSString *str1, JSString *str2, int32 *result);
 extern bool
 StringEqualsAscii(JSLinearString *str, const char *asciiBytes);
 
-} /* namespacejs */
+} /* namespace js */
 
 extern size_t
 js_strlen(const jschar *s);
@@ -215,7 +220,11 @@ js_strchr(const jschar *s, jschar c);
 extern jschar *
 js_strchr_limit(const jschar *s, jschar c, const jschar *limit);
 
-#define js_strncpy(t, s, n)     memcpy((t), (s), (n) * sizeof(jschar))
+static JS_ALWAYS_INLINE void
+js_strncpy(jschar *dst, const jschar *src, size_t nelem)
+{
+    return js::PodCopy(dst, src, nelem);
+}
 
 namespace js {
 
@@ -275,16 +284,17 @@ DeflateStringToUTF8Buffer(JSContext *cx, const jschar *chars,
                           size_t charsLength, char *bytes, size_t *length,
                           FlationCoding fc = NormalEncoding);
 
-} /* namespace js */
-
 /*
  * The String.prototype.replace fast-native entry point is exported for joined
  * function optimization in js{interp,tracer}.cpp.
  */
-namespace js {
 extern JSBool
 str_replace(JSContext *cx, uintN argc, js::Value *vp);
-}
+
+extern JSBool
+str_fromCharCode(JSContext *cx, uintN argc, Value *vp);
+
+} /* namespace js */
 
 extern JSBool
 js_str_toString(JSContext *cx, uintN argc, js::Value *vp);
@@ -300,12 +310,12 @@ js_str_charCodeAt(JSContext *cx, uintN argc, js::Value *vp);
  * least 6 bytes long.  Return the number of UTF-8 bytes of data written.
  */
 extern int
-js_OneUcs4ToUtf8Char(uint8 *utf8Buffer, uint32 ucs4Char);
+js_OneUcs4ToUtf8Char(uint8_t *utf8Buffer, uint32_t ucs4Char);
 
 namespace js {
 
 extern size_t
-PutEscapedStringImpl(char *buffer, size_t size, FILE *fp, JSLinearString *str, uint32 quote);
+PutEscapedStringImpl(char *buffer, size_t size, FILE *fp, JSLinearString *str, uint32_t quote);
 
 /*
  * Write str into buffer escaping any non-printable or non-ASCII character
@@ -317,7 +327,7 @@ PutEscapedStringImpl(char *buffer, size_t size, FILE *fp, JSLinearString *str, u
  * be a single or double quote character that will quote the output.
 */
 inline size_t
-PutEscapedString(char *buffer, size_t size, JSLinearString *str, uint32 quote)
+PutEscapedString(char *buffer, size_t size, JSLinearString *str, uint32_t quote)
 {
     size_t n = PutEscapedStringImpl(buffer, size, NULL, str, quote);
 
@@ -332,7 +342,7 @@ PutEscapedString(char *buffer, size_t size, JSLinearString *str, uint32 quote)
  * will quote the output.
 */
 inline bool
-FileEscapedString(FILE *fp, JSLinearString *str, uint32 quote)
+FileEscapedString(FILE *fp, JSLinearString *str, uint32_t quote)
 {
     return PutEscapedStringImpl(NULL, 0, fp, str, quote) != size_t(-1);
 }

@@ -122,6 +122,19 @@ testxpcobjdir = $(DEPTH)/_tests/xpcshell
 
 ifdef ENABLE_TESTS
 
+# Add test directories to the regular directories list. TEST_DIRS should
+# arguably have the same status as TOOL_DIRS and other *_DIRS variables. It is
+# coded this way until Makefiles stop using the "ifdef ENABLE_TESTS; DIRS +="
+# convention.
+#
+# The current developer workflow expects tests to be updated when processing
+# the default target. If we ever change this implementation, the behavior
+# should be preserved or the change should be widely communicated. A
+# consequence of not processing test dir targets during the default target is
+# that changes to tests may not be updated and code could assume to pass
+# locally against non-current test code.
+DIRS += $(TEST_DIRS)
+
 ifdef XPCSHELL_TESTS
 ifndef relativesrcdir
 $(error Must define relativesrcdir when defining XPCSHELL_TESTS.)
@@ -360,11 +373,15 @@ ifdef MAPFILE
 OS_LDFLAGS += -MAP:$(MAPFILE)
 endif
 
+else #!GNU_CC
+
+ifdef DEFFILE
+OS_LDFLAGS += $(call normalizepath,$(DEFFILE))
+EXTRA_DEPS += $(DEFFILE)
+endif
+
 endif # !GNU_CC
 
-ifdef ENABLE_CXX_EXCEPTIONS
-CXXFLAGS += $(MOZ_EXCEPTIONS_FLAGS_ON) -DMOZ_CPP_EXCEPTIONS=1
-endif # ENABLE_CXX_EXCEPTIONS
 endif # WINNT
 
 ifeq ($(SOLARIS_SUNPRO_CXX),1)
@@ -437,6 +454,7 @@ ALL_TRASH_DIRS = \
 
 ifdef QTDIR
 GARBAGE                 += $(MOCSRCS)
+GARBAGE                 += $(RCCSRCS)
 endif
 
 ifdef SIMPLE_PROGRAMS
@@ -774,7 +792,7 @@ endif
 
 # Create dependencies on static (and shared EXTRA_DSO_LIBS) libraries
 DO_EXPAND_LIBS = $(foreach f,$(1),$(if $(filter %.$(LIB_SUFFIX),$(f)),$(if $(wildcard $(f).$(LIBS_DESC_SUFFIX)),$(f).$(LIBS_DESC_SUFFIX),$(if $(wildcard $(f)),$(f)))))
-LIBS_DEPS = $(call DO_EXPAND_LIBS,$(filter %.$(LIB_SUFFIX),$(LIBS)))
+LIBS_DEPS = $(call DO_EXPAND_LIBS,$(filter %.$(LIB_SUFFIX),$(LIBS) $(if $(PROGRAM)$(SIMPLE_PROGRAMS),$(MOZ_GLUE_PROGRAM_LDFLAGS))))
 SHARED_LIBRARY_LIBS_DEPS = $(call DO_EXPAND_LIBS,$(SHARED_LIBRARY_LIBS))
 HOST_LIBS_DEPS = $(filter %.$(LIB_SUFFIX),$(HOST_LIBS))
 DSO_LDOPTS_DEPS = $(call DO_EXPAND_LIBS,$(EXTRA_DSO_LIBS) $(filter %.$(LIB_SUFFIX), $(EXTRA_DSO_LDOPTS)))
@@ -808,11 +826,11 @@ ifneq (,$(SHARED_LIBRARY)$(PROGRAM))
 export::
 ifdef PROGRAM
 	$(PYTHON) $(topsrcdir)/build/win32/pgomerge.py \
-	  $(PROGRAM:$(BIN_SUFFIX)=) $(DIST)/$(MOZ_APP_NAME)
+	  $(PROGRAM:$(BIN_SUFFIX)=) $(DIST)/bin
 endif
 ifdef SHARED_LIBRARY
 	$(PYTHON) $(topsrcdir)/build/win32/pgomerge.py \
-	  $(SHARED_LIBRARY_NAME) $(DIST)/$(MOZ_APP_NAME)
+	  $(SHARED_LIBRARY_NAME) $(DIST)/bin
 endif
 endif # SHARED_LIBRARY || PROGRAM
 endif # WINNT_
@@ -875,7 +893,7 @@ alltags:
 $(PROGRAM): $(PROGOBJS) $(LIBS_DEPS) $(EXTRA_DEPS) $(EXE_DEF_FILE) $(RESFILE) $(GLOBAL_DEPS)
 	@$(RM) $@.manifest
 ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
-	$(EXPAND_LD) -NOLOGO -OUT:$@ -PDB:$(LINK_PDBFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_UTILS_PROGRAM_LDFLAGS) $(PROGOBJS) $(RESFILE) $(LIBS) $(EXTRA_LIBS) $(OS_LIBS)
+	$(EXPAND_LD) -NOLOGO -OUT:$@ -PDB:$(LINK_PDBFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_GLUE_PROGRAM_LDFLAGS) $(PROGOBJS) $(RESFILE) $(LIBS) $(EXTRA_LIBS) $(OS_LIBS)
 ifdef MSMANIFEST_TOOL
 	@if test -f $@.manifest; then \
 		if test -f "$(srcdir)/$@.manifest"; then \
@@ -897,10 +915,10 @@ ifdef MOZ_PROFILE_GENERATE
 endif
 else # !WINNT || GNU_CC
 ifeq ($(CPP_PROG_LINK),1)
-	$(EXPAND_CCC) -o $@ $(CXXFLAGS) $(PROGOBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(WRAP_LDFLAGS) $(MOZ_UTILS_PROGRAM_LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS) $(EXE_DEF_FILE)
+	$(EXPAND_CCC) -o $@ $(CXXFLAGS) $(PROGOBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(WRAP_LDFLAGS) $(MOZ_GLUE_PROGRAM_LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS) $(EXE_DEF_FILE)
 	@$(call CHECK_STDCXX,$@)
 else # ! CPP_PROG_LINK
-	$(EXPAND_CC) -o $@ $(CFLAGS) $(PROGOBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_UTILS_PROGRAM_LDFLAGS) $(WRAP_LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS) $(EXE_DEF_FILE)
+	$(EXPAND_CC) -o $@ $(CFLAGS) $(PROGOBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_GLUE_PROGRAM_LDFLAGS) $(WRAP_LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS) $(EXE_DEF_FILE)
 endif # CPP_PROG_LINK
 endif # WINNT && !GNU_CC
 
@@ -946,7 +964,7 @@ endif
 #
 $(SIMPLE_PROGRAMS): %$(BIN_SUFFIX): %.$(OBJ_SUFFIX) $(LIBS_DEPS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
 ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
-	$(EXPAND_LD) -nologo -out:$@ -pdb:$(LINK_PDBFILE) $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_UTILS_PROGRAM_LDFLAGS) $(LIBS) $(EXTRA_LIBS) $(OS_LIBS)
+	$(EXPAND_LD) -nologo -out:$@ -pdb:$(LINK_PDBFILE) $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_GLUE_PROGRAM_LDFLAGS) $(LIBS) $(EXTRA_LIBS) $(OS_LIBS)
 ifdef MSMANIFEST_TOOL
 	@if test -f $@.manifest; then \
 		mt.exe -NOLOGO -MANIFEST $@.manifest -OUTPUTRESOURCE:$@\;1; \
@@ -955,10 +973,10 @@ ifdef MSMANIFEST_TOOL
 endif	# MSVC with manifest tool
 else
 ifeq ($(CPP_PROG_LINK),1)
-	$(EXPAND_CCC) $(CXXFLAGS) -o $@ $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_UTILS_PROGRAM_LDFLAGS) $(WRAP_LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS)
+	$(EXPAND_CCC) $(CXXFLAGS) -o $@ $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_GLUE_PROGRAM_LDFLAGS) $(WRAP_LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS)
 	@$(call CHECK_STDCXX,$@)
 else
-	$(EXPAND_CC) $(CFLAGS) $(OUTOPTION)$@ $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_UTILS_PROGRAM_LDFLAGS) $(WRAP_LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS)
+	$(EXPAND_CC) $(CFLAGS) $(OUTOPTION)$@ $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_GLUE_PROGRAM_LDFLAGS) $(WRAP_LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS)
 endif # CPP_PROG_LINK
 endif # WINNT && !GNU_CC
 
@@ -1071,10 +1089,10 @@ ifdef DTRACE_LIB_DEPENDENT
 ifndef XP_MACOSX
 	dtrace -G -C -s $(MOZILLA_DTRACE_SRC) -o  $(DTRACE_PROBE_OBJ) $(shell $(EXPAND_LIBS) $(MOZILLA_PROBE_LIBS))
 endif
-	$(EXPAND_MKSHLIB) $(SHLIB_LDSTARTFILE) $(OBJS) $(LOBJS) $(SUB_SHLOBJS) $(DTRACE_PROBE_OBJ) $(MOZILLA_PROBE_LIBS) $(RESFILE) $(LDFLAGS) $(MOZ_UTILS_LDFLAGS) $(WRAP_LDFLAGS) $(SHARED_LIBRARY_LIBS) $(EXTRA_DSO_LDOPTS) $(OS_LIBS) $(EXTRA_LIBS) $(DEF_FILE) $(SHLIB_LDENDFILE)
+	$(EXPAND_MKSHLIB) $(SHLIB_LDSTARTFILE) $(OBJS) $(LOBJS) $(SUB_SHLOBJS) $(DTRACE_PROBE_OBJ) $(MOZILLA_PROBE_LIBS) $(RESFILE) $(LDFLAGS) $(MOZ_GLUE_LDFLAGS) $(WRAP_LDFLAGS) $(SHARED_LIBRARY_LIBS) $(EXTRA_DSO_LDOPTS) $(OS_LIBS) $(EXTRA_LIBS) $(DEF_FILE) $(SHLIB_LDENDFILE)
 	@$(RM) $(DTRACE_PROBE_OBJ)
 else # ! DTRACE_LIB_DEPENDENT
-	$(EXPAND_MKSHLIB) $(SHLIB_LDSTARTFILE) $(OBJS) $(LOBJS) $(SUB_SHLOBJS) $(RESFILE) $(LDFLAGS) $(MOZ_UTILS_LDFLAGS) $(WRAP_LDFLAGS) $(SHARED_LIBRARY_LIBS) $(EXTRA_DSO_LDOPTS) $(OS_LIBS) $(EXTRA_LIBS) $(DEF_FILE) $(SHLIB_LDENDFILE)
+	$(EXPAND_MKSHLIB) $(SHLIB_LDSTARTFILE) $(OBJS) $(LOBJS) $(SUB_SHLOBJS) $(RESFILE) $(LDFLAGS) $(MOZ_GLUE_LDFLAGS) $(WRAP_LDFLAGS) $(SHARED_LIBRARY_LIBS) $(EXTRA_DSO_LDOPTS) $(OS_LIBS) $(EXTRA_LIBS) $(DEF_FILE) $(SHLIB_LDENDFILE)
 endif # DTRACE_LIB_DEPENDENT
 	@$(call CHECK_STDCXX,$@)
 
@@ -1173,11 +1191,13 @@ host_%.$(OBJ_SUFFIX): %.mm $(GLOBAL_DEPS)
 # 'moc' only knows about #defines it gets on the command line (-D...), not in
 # included headers like mozilla-config.h
 moc_%.cpp: %.h $(GLOBAL_DEPS)
-	$(MOC) $(DEFINES) $(ACDEFINES) $< $(OUTOPTION)$@
+	$(ELOG) $(MOC) $(DEFINES) $(ACDEFINES) $< $(OUTOPTION)$@
 
 moc_%.cc: %.cc $(GLOBAL_DEPS)
-	$(REPORT_BUILD)
 	$(ELOG) $(MOC) $(DEFINES) $(ACDEFINES) $(_VPATH_SRCS:.cc=.h) $(OUTOPTION)$@
+
+qrc_%.cpp: %.qrc $(GLOBAL_DEPS)
+	$(ELOG) $(RCC) -name $* $< $(OUTOPTION)$@
 
 ifdef ASFILES
 # The AS_DASH_C_FLAG is needed cause not all assemblers (Solaris) accept
@@ -1472,7 +1492,7 @@ $(XPIDL_GEN_DIR)/%.h: %.idl $(XPIDL_DEPS) $(XPIDL_GEN_DIR)/.done
 	$(PYTHON_PATH) \
 	  -I$(topsrcdir)/other-licenses/ply \
 	  -I$(topsrcdir)/xpcom/idl-parser \
-	  $(topsrcdir)/xpcom/idl-parser/header.py --cachedir=$(topsrcdir)/xpcom/idl-parser $(XPIDL_FLAGS) $(_VPATH_SRCS) -d $(MDDEPDIR)/$(@F).pp -o $@
+	  $(topsrcdir)/xpcom/idl-parser/header.py --cachedir=$(DEPTH)/xpcom/idl-parser $(XPIDL_FLAGS) $(_VPATH_SRCS) -d $(MDDEPDIR)/$(@F).pp -o $@
 	@if test -n "$(findstring $*.h, $(EXPORTS))"; \
 	  then echo "*** WARNING: file $*.h generated from $*.idl overrides $(srcdir)/$*.h"; else true; fi
 
@@ -1485,7 +1505,7 @@ $(XPIDL_GEN_DIR)/%.xpt: %.idl $(XPIDL_DEPS) $(XPIDL_GEN_DIR)/.done
 	  -I$(topsrcdir)/other-licenses/ply \
 	  -I$(topsrcdir)/xpcom/idl-parser \
 	  -I$(topsrcdir)/xpcom/typelib/xpt/tools \
-	  $(topsrcdir)/xpcom/idl-parser/typelib.py --cachedir=$(topsrcdir)/xpcom/idl-parser $(XPIDL_FLAGS) $(_VPATH_SRCS) -d $(MDDEPDIR)/$(@F).pp -o $@
+	  $(topsrcdir)/xpcom/idl-parser/typelib.py --cachedir=$(DEPTH)/xpcom/idl-parser $(XPIDL_FLAGS) $(_VPATH_SRCS) -d $(MDDEPDIR)/$(@F).pp -o $@
 
 # no need to link together if XPIDLSRCS contains only XPIDL_MODULE
 ifneq ($(XPIDL_MODULE).idl,$(strip $(XPIDLSRCS)))
@@ -1639,9 +1659,9 @@ chrome::
 $(FINAL_TARGET)/chrome:
 	$(NSINSTALL) -D $@
 
-libs realchrome:: $(CHROME_DEPS) $(FINAL_TARGET)/chrome
 ifneq (,$(wildcard $(JAR_MANIFEST)))
 ifndef NO_DIST_INSTALL
+libs realchrome:: $(CHROME_DEPS) $(FINAL_TARGET)/chrome
 	$(PYTHON) $(MOZILLA_DIR)/config/JarMaker.py \
 	  $(QUIET) -j $(FINAL_TARGET)/chrome \
 	  $(MAKE_JARS_FLAGS) $(XULPPFLAGS) $(DEFINES) $(ACDEFINES) \

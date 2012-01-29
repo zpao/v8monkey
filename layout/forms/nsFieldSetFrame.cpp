@@ -38,7 +38,7 @@
 // YY need to pass isMultiple before create called
 
 //#include "nsFormControlFrame.h"
-#include "nsHTMLContainerFrame.h"
+#include "nsContainerFrame.h"
 #include "nsLegendFrame.h"
 #include "nsIDOMNode.h"
 #include "nsIDOMHTMLFieldSetElement.h"
@@ -63,9 +63,12 @@
 #include "nsDisplayList.h"
 #include "nsRenderingContext.h"
 
+using namespace mozilla;
+using namespace mozilla::layout;
+
 class nsLegendFrame;
 
-class nsFieldSetFrame : public nsHTMLContainerFrame {
+class nsFieldSetFrame : public nsContainerFrame {
 public:
   NS_DECL_FRAMEARENA_HELPERS
 
@@ -138,7 +141,7 @@ NS_NewFieldSetFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
 NS_IMPL_FRAMEARENA_HELPERS(nsFieldSetFrame)
 
 nsFieldSetFrame::nsFieldSetFrame(nsStyleContext* aContext)
-  : nsHTMLContainerFrame(aContext)
+  : nsContainerFrame(aContext)
 {
   mContentFrame = nsnull;
   mLegendFrame  = nsnull;
@@ -149,7 +152,7 @@ void
 nsFieldSetFrame::DestroyFrom(nsIFrame* aDestructRoot)
 {
   DestroyAbsoluteFrames(aDestructRoot);
-  nsHTMLContainerFrame::DestroyFrom(aDestructRoot);
+  nsContainerFrame::DestroyFrom(aDestructRoot);
 }
 
 nsIAtom*
@@ -173,7 +176,7 @@ nsFieldSetFrame::SetInitialChildList(ChildListID    aListID,
   }
 
   // Queue up the frames for the content frame
-  return nsHTMLContainerFrame::SetInitialChildList(kPrincipalList, aChildList);
+  return nsContainerFrame::SetInitialChildList(kPrincipalList, aChildList);
 }
 
 class nsDisplayFieldSetBorderBackground : public nsDisplayItem {
@@ -399,11 +402,15 @@ nsFieldSetFrame::ComputeSize(nsRenderingContext *aRenderingContext,
                              bool aShrinkWrap)
 {
   nsSize result =
-    nsHTMLContainerFrame::ComputeSize(aRenderingContext, aCBSize,
-                                      aAvailableWidth,
-                                      aMargin, aBorder, aPadding, aShrinkWrap);
+    nsContainerFrame::ComputeSize(aRenderingContext, aCBSize, aAvailableWidth,
+                                  aMargin, aBorder, aPadding, aShrinkWrap);
 
   // Fieldsets never shrink below their min width.
+
+  // If we're a container for font size inflation, then shrink
+  // wrapping inside of us should not apply font size inflation.
+  AutoMaybeNullInflationContainer an(this);
+
   nscoord minWidth = GetMinWidth(aRenderingContext);
   if (minWidth > result.width)
     result.width = minWidth;

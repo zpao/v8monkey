@@ -64,12 +64,10 @@
 #include "nsIFormControl.h"
 #include "nsIComboboxControlFrame.h"
 #include "nsIScrollableFrame.h"
-#include "nsIDOMNSHTMLElement.h"
+#include "nsIDOMHTMLElement.h"
 #include "nsIDOMXULControlElement.h"
 #include "nsINameSpaceManager.h"
 #include "nsIBaseWindow.h"
-#include "nsIView.h"
-#include "nsIViewManager.h"
 #include "nsISelection.h"
 #include "nsFrameSelection.h"
 #include "nsIPrivateDOMEvent.h"
@@ -137,6 +135,7 @@
 
 #include "mozilla/Preferences.h"
 #include "mozilla/LookAndFeel.h"
+#include "sampler.h"
 
 #ifdef XP_MACOSX
 #import <ApplicationServices/ApplicationServices.h>
@@ -1030,8 +1029,7 @@ nsresult
 nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
                                     nsEvent *aEvent,
                                     nsIFrame* aTargetFrame,
-                                    nsEventStatus* aStatus,
-                                    nsIView* aView)
+                                    nsEventStatus* aStatus)
 {
   NS_ENSURE_ARG_POINTER(aStatus);
   NS_ENSURE_ARG(aPresContext);
@@ -1148,6 +1146,9 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
     GenerateDragGesture(aPresContext, (nsMouseEvent*)aEvent);
     UpdateCursor(aPresContext, aEvent, mCurrentTarget, aStatus);
     GenerateMouseEnterExit((nsGUIEvent*)aEvent);
+    // Flush pending layout changes, so that later mouse move events
+    // will go to the right nodes.
+    FlushPendingEvents(aPresContext);
     break;
   case NS_DRAGDROP_GESTURE:
     if (mClickHoldContextMenu) {
@@ -1442,10 +1443,7 @@ IsAccessKeyTarget(nsIContent* aContent, nsIFrame* aFrame, nsAString& aKey)
   if (aFrame->IsFocusable())
     return true;
 
-  if (!aFrame->GetStyleVisibility()->IsVisible())
-    return false;
-
-  if (!aFrame->AreAncestorViewsVisible())
+  if (!aFrame->IsVisibleConsideringAncestors())
     return false;
 
   // XUL controls can be activated.
@@ -2099,6 +2097,7 @@ nsEventStateManager::GenerateDragGesture(nsPresContext* aPresContext,
       if (!targetContent)
         return;
 
+      sLastDragOverFrame = nsnull;
       nsCOMPtr<nsIWidget> widget = mCurrentTarget->GetNearestWidget();
 
       // get the widget from the target frame
@@ -2223,7 +2222,7 @@ nsEventStateManager::DetermineDragTarget(nsPresContext* aPresContext,
   // found, just use the clicked node.
   if (!*aIsSelection) {
     while (dragContent) {
-      nsCOMPtr<nsIDOMNSHTMLElement> htmlElement = do_QueryInterface(dragContent);
+      nsCOMPtr<nsIDOMHTMLElement> htmlElement = do_QueryInterface(dragContent);
       if (htmlElement) {
         bool draggable = false;
         htmlElement->GetDraggable(&draggable);
@@ -2517,7 +2516,7 @@ nsEventStateManager::DoScrollZoom(nsIFrame *aTargetFrame,
       // positive adjustment to decrease zoom, negative to increase
       PRInt32 change = (adjustment > 0) ? -1 : 1;
 
-      if (Preferences::GetBool("browser.zoom.full")) {
+      if (Preferences::GetBool("browser.zoom.full") || content->GetCurrentDoc()->IsSyntheticDocument()) {
         ChangeFullZoom(change);
       } else {
         ChangeTextSize(change);
@@ -2549,7 +2548,9 @@ GetScrollableLineHeight(nsIFrame* aTargetFrame)
 
   // Fall back to the font height of the target frame.
   nsRefPtr<nsFontMetrics> fm;
-  nsLayoutUtils::GetFontMetricsForFrame(aTargetFrame, getter_AddRefs(fm));
+  nsLayoutUtils::GetFontMetricsForFrame(aTargetFrame, getter_AddRefs(fm),
+    nsLayoutUtils::FontSizeInflationFor(aTargetFrame,
+                                        nsLayoutUtils::eNotInReflow));
   NS_ASSERTION(fm, "FontMetrics is null!");
   if (fm)
     return fm->MaxHeight();
@@ -3031,8 +3032,7 @@ nsresult
 nsEventStateManager::PostHandleEvent(nsPresContext* aPresContext,
                                      nsEvent *aEvent,
                                      nsIFrame* aTargetFrame,
-                                     nsEventStatus* aStatus,
-                                     nsIView* aView)
+                                     nsEventStatus* aStatus)
 {
   NS_ENSURE_ARG(aPresContext);
   NS_ENSURE_ARG_POINTER(aStatus);
@@ -3425,6 +3425,7 @@ nsEventStateManager::PostHandleEvent(nsPresContext* aPresContext,
                                            targetContent, &status);
         }
       }
+      sLastDragOverFrame = nsnull;
       ClearGlobalActiveContent(this);
       break;
     }
@@ -3812,6 +3813,7 @@ nsEventStateManager::DispatchMouseEvent(nsGUIEvent* aEvent, PRUint32 aMessage,
                                         nsIContent* aTargetContent,
                                         nsIContent* aRelatedContent)
 {
+  SAMPLE_LABEL("Input", "DispatchMouseEvent");
   nsEventStatus status = nsEventStatus_eIgnore;
   nsMouseEvent event(NS_IS_TRUSTED_EVENT(aEvent), aMessage, aEvent->widget,
                      nsMouseEvent::eReal);
@@ -4448,12 +4450,22 @@ static nsIContent* FindCommonAncestor(nsIContent *aNode1, nsIContent *aNode2)
   return nsnull;
 }
 
+static Element*
+GetParentElement(Element* aElement)
+{
+  nsIContent* p = aElement->GetParent();
+  return (p && p->IsElement()) ? p->AsElement() : nsnull;
+}
+
 /* static */
 void
-nsEventStateManager::SetFullScreenState(Element* aElement,
-                                        bool aIsFullScreen)
+nsEventStateManager::SetFullScreenState(Element* aElement, bool aIsFullScreen)
 {
   DoStateChange(aElement, NS_EVENT_STATE_FULL_SCREEN, aIsFullScreen);
+  Element* ancestor = aElement;
+  while ((ancestor = GetParentElement(ancestor))) {
+    DoStateChange(ancestor, NS_EVENT_STATE_FULL_SCREEN_ANCESTOR, aIsFullScreen);
+  }
 }
 
 /* static */
@@ -4498,6 +4510,31 @@ nsEventStateManager::UpdateAncestorState(nsIContent* aStartNode,
     Element* labelTarget = GetLabelTarget(element);
     if (labelTarget) {
       DoStateChange(labelTarget, aState, aAddState);
+    }
+  }
+
+  if (aAddState) {
+    // We might be in a situation where a node was in hover both
+    // because it was hovered and because the label for it was
+    // hovered, and while we stopped hovering the node the label is
+    // still hovered.  Or we might have had two nested labels for the
+    // same node, and while one is no longer hovered the other still
+    // is.  In that situation, the label that's still hovered will be
+    // aStopBefore or some ancestor of it, and the call we just made
+    // to UpdateAncestorState with aAddState = false would have
+    // removed the hover state from the node.  But the node should
+    // still be in hover state.  To handle this situation we need to
+    // keep walking up the tree and any time we find a label mark its
+    // corresponding node as still in our state.
+    for ( ; aStartNode; aStartNode = aStartNode->GetParent()) {
+      if (!aStartNode->IsElement()) {
+        continue;
+      }
+
+      Element* labelTarget = GetLabelTarget(aStartNode->AsElement());
+      if (labelTarget && !labelTarget->State().HasState(aState)) {
+        DoStateChange(labelTarget, aState, true);
+      }
     }
   }
 }

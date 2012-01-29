@@ -67,7 +67,7 @@
 // base::FileDescriptor acts as a static assert that we only get one
 // def or the other (or neither, in which case code using
 // FileDescriptor fails to build)
-namespace base { class FileDescriptor { }; }
+namespace base { struct FileDescriptor { }; }
 #endif
 
 using mozilla::layers::LayerManager;
@@ -95,6 +95,37 @@ struct null_t {
 } // namespace mozilla
 
 namespace IPC {
+
+/**
+ * Generic enum serializer.
+ * E is the enum type.
+ * lowBound is the lowest allowed value of the enum.
+ * highBound is the value higher than highest allowed value of the enum.
+ *  In other words, it's the lowest unallowed value.
+ */
+template <typename E, E lowBound, E highBound>
+struct EnumSerializer {
+  typedef E paramType;
+
+  static bool IsLegalValue(const paramType &aValue) {
+    return lowBound <= aValue && aValue < highBound;
+  }
+
+  static void Write(Message* aMsg, const paramType& aValue) {
+    MOZ_ASSERT(IsLegalValue(aValue));
+    WriteParam(aMsg, (int32)aValue);
+  }
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult) {
+    int32 value;
+    if(!ReadParam(aMsg, aIter, &value) ||
+       !IsLegalValue(paramType(value))) {
+      return false;
+    }
+    *aResult = paramType(value);
+    return true;
+  }
+};
 
 template<>
 struct ParamTraits<PRInt8>
@@ -453,10 +484,8 @@ struct ParamTraits<mozilla::GraphicsFilterType>
       WriteParam(msg, int32(param));
       return;
 
-    default:
-      NS_RUNTIMEABORT("not reached");
-      return;
     }
+    NS_RUNTIMEABORT("not reached");
   }
 
   static bool Read(const Message* msg, void** iter, paramType* result)

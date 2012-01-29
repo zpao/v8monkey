@@ -41,8 +41,22 @@
 
 // Services = object with smart getters for common XPCOM services
 Components.utils.import("resource://gre/modules/Services.jsm");
+Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+
+XPCOMUtils.defineLazyGetter(this, "BROWSER_NEW_TAB_URL", function () {
+  return Services.prefs.getCharPref("browser.newtab.url") || "about:blank";
+});
+
+var TAB_DROP_TYPE = "application/x-moz-tabbrowser-tab";
 
 var gBidiUI = false;
+
+/**
+ * Determines whether the given url is considered a special URL for new tabs.
+ */
+function isBlankPageURL(aURL) {
+  return aURL == "about:blank" || aURL == BROWSER_NEW_TAB_URL;
+}
 
 function getBrowserURL()
 {
@@ -54,7 +68,7 @@ function getTopWin(skipPopups) {
   // whether it's the frontmost window, since commands can be executed in
   // background windows (bug 626148).
   if (top.document.documentElement.getAttribute("windowtype") == "navigator:browser" &&
-      (!skipPopups || !top.document.documentElement.getAttribute("chromehidden")))
+      (!skipPopups || top.toolbar.visible))
     return top;
 
   if (skipPopups) {
@@ -98,12 +112,7 @@ function openUILink( url, e, ignoreButton, ignoreAlt, allowKeywordFixup, postDat
  * Ctrl+Shift  new tab, in background
  * Alt         save
  *
- * You can swap Ctrl and Ctrl+shift by toggling the hidden pref
- * browser.tabs.loadBookmarksInBackground (not browser.tabs.loadInBackground, which
- * is for content area links).
- *
- * Middle-clicking is the same as Ctrl+clicking (it opens a new tab) and it is
- * subject to the shift modifier and pref in the same way.
+ * Middle-clicking is the same as Ctrl+clicking (it opens a new tab).
  *
  * Exceptions: 
  * - Alt is ignored for menu items selected using the keyboard so you don't accidentally save stuff.  
@@ -197,6 +206,8 @@ function openLinkIn(url, where, params) {
   var aRelatedToCurrent     = params.relatedToCurrent;
   var aInBackground         = params.inBackground;
   var aDisallowInheritPrincipal = params.disallowInheritPrincipal;
+  // Currently, this parameter works only for where=="tab" or "current"
+  var aIsUTF8               = params.isUTF8;
 
   if (where == "save") {
     saveURL(url, null, null, true, null, aReferrerURI);
@@ -207,7 +218,7 @@ function openLinkIn(url, where, params) {
 
   var w = getTopWin();
   if ((where == "tab" || where == "tabshifted") &&
-      w && w.document.documentElement.getAttribute("chromehidden")) {
+      w && !w.toolbar.visible) {
     w = getTopWin(true);
     aRelatedToCurrent = false;
   }
@@ -242,10 +253,10 @@ function openLinkIn(url, where, params) {
     return;
   }
 
-  let loadInBackground = aInBackground;
+  let loadInBackground = where == "current" ? false : aInBackground;
   if (loadInBackground == null) {
     loadInBackground = aFromChrome ?
-                         getBoolPref("browser.tabs.loadBookmarksInBackground") :
+                         false :
                          getBoolPref("browser.tabs.loadInBackground");
   }
 
@@ -270,6 +281,8 @@ function openLinkIn(url, where, params) {
       flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
     if (aDisallowInheritPrincipal)
       flags |= Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_OWNER;
+    if (aIsUTF8)
+      flags |= Ci.nsIWebNavigation.LOAD_FLAGS_URI_IS_UTF8;
     w.gBrowser.loadURIWithFlags(url, flags, aReferrerURI, null, aPostData);
     break;
   case "tabshifted":
@@ -283,7 +296,8 @@ function openLinkIn(url, where, params) {
                        postData: aPostData,
                        inBackground: loadInBackground,
                        allowThirdPartyFixup: aAllowThirdPartyFixup,
-                       relatedToCurrent: aRelatedToCurrent});
+                       relatedToCurrent: aRelatedToCurrent,
+                       isUTF8: aIsUTF8});
     break;
   }
 
@@ -296,6 +310,9 @@ function openLinkIn(url, where, params) {
     w.content.focus();
   else
     w.gBrowser.selectedBrowser.focus();
+
+  if (!loadInBackground && isBlankPageURL(url))
+    w.focusAndSelectUrlBar();
 }
 
 // Used as an onclick handler for UI elements with link-like behavior.
@@ -361,13 +378,13 @@ function gatherTextUnder ( root )
       node = node.firstChild;
       depth++;
     } else {
-      // No children, try next sibling.
+      // No children, try next sibling (or parent next sibling).
+      while ( depth > 0 && !node.nextSibling ) {
+        node = node.parentNode;
+        depth--;
+      }
       if ( node.nextSibling ) {
         node = node.nextSibling;
-      } else {
-        // Last resort is our next oldest uncle/aunt.
-        node = node.parentNode.nextSibling;
-        depth--;
       }
     }
   }
@@ -628,8 +645,10 @@ function openPrefsHelp() {
 }
 
 function trimURL(aURL) {
+  // This function must not modify the given URL such that calling
+  // nsIURIFixup::createFixupURI with the result will produce a different URI.
   return aURL /* remove single trailing slash for http/https/ftp URLs */
              .replace(/^((?:http|https|ftp):\/\/[^/]+)\/$/, "$1")
-              /* remove http:// unless the host starts with "ftp." or contains "@" */
-             .replace(/^http:\/\/((?!ftp\.)[^\/@]+(?:\/|$))/, "$1");
+              /* remove http:// unless the host starts with "ftp\d*\." or contains "@" */
+             .replace(/^http:\/\/((?!ftp\d*\.)[^\/@]+(?:\/|$))/, "$1");
 }

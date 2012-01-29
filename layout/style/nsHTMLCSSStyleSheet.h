@@ -42,6 +42,8 @@
 #ifndef nsHTMLCSSStyleSheet_h_
 #define nsHTMLCSSStyleSheet_h_
 
+#include "mozilla/Attributes.h"
+
 #include "nsIStyleSheet.h"
 #include "nsIStyleRuleProcessor.h"
 
@@ -84,12 +86,14 @@ public:
   virtual nsRestyleHint
     HasAttributeDependentStyle(AttributeRuleProcessorData* aData);
   virtual bool MediumFeaturesChanged(nsPresContext* aPresContext);
-  virtual PRInt64 SizeOf() const { return sizeof(*this); }
+  virtual NS_MUST_OVERRIDE size_t
+    SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const MOZ_OVERRIDE;
+  virtual NS_MUST_OVERRIDE size_t
+    SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const MOZ_OVERRIDE;
 
 private: 
-  // These are not supported and are not implemented! 
-  nsHTMLCSSStyleSheet(const nsHTMLCSSStyleSheet& aCopy); 
-  nsHTMLCSSStyleSheet& operator=(const nsHTMLCSSStyleSheet& aCopy); 
+  nsHTMLCSSStyleSheet(const nsHTMLCSSStyleSheet& aCopy) MOZ_DELETE;
+  nsHTMLCSSStyleSheet& operator=(const nsHTMLCSSStyleSheet& aCopy) MOZ_DELETE;
 
 protected:
   nsCOMPtr<nsIURI> mURL;

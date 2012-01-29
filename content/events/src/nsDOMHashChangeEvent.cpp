@@ -34,6 +34,7 @@
 
 #include "nsDOMHashChangeEvent.h"
 #include "nsContentUtils.h"
+#include "DictionaryHelpers.h"
 
 NS_IMPL_ADDREF_INHERITED(nsDOMHashChangeEvent, nsDOMEvent)
 NS_IMPL_RELEASE_INHERITED(nsDOMHashChangeEvent, nsDOMEvent)
@@ -76,6 +77,16 @@ nsDOMHashChangeEvent::InitHashChangeEvent(const nsAString &aTypeArg,
   mOldURL.Assign(aOldURL);
   mNewURL.Assign(aNewURL);
   return NS_OK;
+}
+
+nsresult
+nsDOMHashChangeEvent::InitFromCtor(const nsAString& aType,
+                                   JSContext* aCx, jsval* aVal)
+{
+  mozilla::dom::HashChangeEventInit d;
+  nsresult rv = d.Init(aCx, aVal);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return InitHashChangeEvent(aType, d.bubbles, d.cancelable, d.oldURL, d.newURL);
 }
 
 nsresult NS_NewDOMHashChangeEvent(nsIDOMEvent** aInstancePtrResult,

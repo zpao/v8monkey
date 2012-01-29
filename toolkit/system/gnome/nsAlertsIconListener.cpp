@@ -144,7 +144,8 @@ nsAlertsIconListener::OnStopDecode(imgIRequest* aRequest,
 }
 
 NS_IMETHODIMP
-nsAlertsIconListener::FrameChanged(imgIContainer* aContainer,
+nsAlertsIconListener::FrameChanged(imgIRequest* aRequest, 
+                                   imgIContainer* aContainer,
                                    const nsIntRect* aDirtyRect)
 {
   return NS_OK;
@@ -171,6 +172,12 @@ nsAlertsIconListener::OnStopRequest(imgIRequest* aRequest,
 
 NS_IMETHODIMP
 nsAlertsIconListener::OnDiscard(imgIRequest *aRequest)
+{
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsAlertsIconListener::OnImageIsAnimated(imgIRequest *aRequest)
 {
   return NS_OK;
 }

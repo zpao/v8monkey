@@ -39,6 +39,7 @@
 #ifndef nsString_h___
 #define nsString_h___
 
+#include "mozilla/Attributes.h"
 
 #ifndef nsSubstring_h___
 #include "nsSubstring.h"
@@ -97,7 +98,7 @@ class NS_LossyConvertUTF16toASCII : public nsCAutoString
 
       NS_LossyConvertUTF16toASCII( const PRUnichar* aString, PRUint32 aLength )
         {
-          LossyAppendUTF16toASCII(Substring(aString, aString + aLength), *this);
+          LossyAppendUTF16toASCII(Substring(aString, aLength), *this);
         }
 
       explicit
@@ -123,7 +124,7 @@ class NS_ConvertASCIItoUTF16 : public nsAutoString
 
       NS_ConvertASCIItoUTF16( const char* aCString, PRUint32 aLength )
         {
-          AppendASCIItoUTF16(Substring(aCString, aCString + aLength), *this);
+          AppendASCIItoUTF16(Substring(aCString, aLength), *this);
         }
 
       explicit
@@ -152,7 +153,7 @@ class NS_ConvertUTF16toUTF8 : public nsCAutoString
 
       NS_ConvertUTF16toUTF8( const PRUnichar* aString, PRUint32 aLength )
         {
-          AppendUTF16toUTF8(Substring(aString, aString + aLength), *this);
+          AppendUTF16toUTF8(Substring(aString, aLength), *this);
         }
 
       explicit
@@ -178,7 +179,7 @@ class NS_ConvertUTF8toUTF16 : public nsAutoString
 
       NS_ConvertUTF8toUTF16( const char* aCString, PRUint32 aLength )
         {
-          AppendUTF8toUTF16(Substring(aCString, aCString + aLength), *this);
+          AppendUTF8toUTF16(Substring(aCString, aLength), *this);
         }
 
       explicit

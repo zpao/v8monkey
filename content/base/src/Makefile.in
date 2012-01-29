@@ -58,12 +58,14 @@ EXPORTS		= \
 		nsNodeInfoManager.h \
 		nsNodeUtils.h \
 		nsPropertyTable.h \
+		nsRange.h \
 		nsScriptLoader.h \
 		nsStubDocumentObserver.h \
 		nsStubImageDecoderObserver.h \
 		nsStubMutationObserver.h \
 		nsTextFragment.h \
 		mozAutoDocUpdate.h \
+		nsFrameMessageManager.h \
 		$(NULL)
 
 EXPORTS_NAMESPACES = mozilla/dom
@@ -149,7 +151,7 @@ CPPSRCS		= \
 		nsXMLHttpRequest.cpp \
 		nsXMLNameSpaceMap.cpp \
 		Link.cpp \
-		nsFileDataProtocolHandler.cpp \
+		nsBlobProtocolHandler.cpp \
 		nsFrameMessageManager.cpp \
 		nsInProcessTabChildGlobal.cpp \
 		ThirdPartyUtil.cpp \
@@ -193,6 +195,7 @@ INCLUDES	+= \
 		-I$(srcdir)/../../xml/content/src \
 		-I$(srcdir)/../../../layout/xul/base/src \
 		-I$(srcdir)/../../xul/content/src \
+		-I$(srcdir)/../../xul/document/src \
 		-I$(srcdir)/../../html/content/src \
 		-I$(srcdir)/../../base/src \
 		-I$(srcdir)/../../xbl/src \

@@ -69,10 +69,8 @@ public:
    * from the network.
    */
   enum {
-    ACTION_REFLOW_ON_DECODE = 0x01,
-    ACTION_REDRAW_ON_DECODE = 0x02,
-    ACTION_REFLOW_ON_LOAD   = 0x04,
-    ACTION_REDRAW_ON_LOAD   = 0x08
+    ACTION_REDRAW_ON_DECODE = 0x01,
+    ACTION_REDRAW_ON_LOAD   = 0x02,
   };
   static already_AddRefed<nsImageLoader>
     Create(nsIFrame *aFrame, imgIRequest *aRequest,
@@ -84,6 +82,7 @@ public:
   NS_IMETHOD OnStartContainer(imgIRequest *aRequest, imgIContainer *aImage);
   NS_IMETHOD OnStopFrame(imgIRequest *aRequest, PRUint32 aFrame);
   NS_IMETHOD OnStopRequest(imgIRequest *aRequest, bool aLastPart);
+  NS_IMETHOD OnImageIsAnimated(imgIRequest *aRequest);
   // Do not override OnDataAvailable since background images are not
   // displayed incrementally; they are displayed after the entire image
   // has been loaded.
@@ -91,7 +90,8 @@ public:
   // incrementally in nsImageFrame.cpp.
 
   // imgIContainerObserver (override nsStubImageDecoderObserver)
-  NS_IMETHOD FrameChanged(imgIContainer *aContainer,
+  NS_IMETHOD FrameChanged(imgIRequest *aRequest,
+                          imgIContainer *aContainer,
                           const nsIntRect *aDirtyRect);
 
   void Destroy();
@@ -101,7 +101,6 @@ public:
 
 private:
   nsresult Load(imgIRequest *aImage);
-  void DoReflow();
   /* if aDamageRect is nsnull, the whole frame is redrawn. */
   void DoRedraw(const nsRect* aDamageRect);
 
@@ -109,4 +108,8 @@ private:
   nsCOMPtr<imgIRequest> mRequest;
   PRUint32 mActions;
   nsRefPtr<nsImageLoader> mNextLoader;
+
+  // This is a boolean flag indicating whether or not the current image request
+  // has been registered with the refresh driver.
+  bool mRequestRegistered;
 };

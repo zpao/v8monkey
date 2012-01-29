@@ -39,10 +39,10 @@
 #ifndef __NS_SVGSTYLABLEELEMENT_H__
 #define __NS_SVGSTYLABLEELEMENT_H__
 
-#include "nsSVGElement.h"
+#include "nsAutoPtr.h"
 #include "nsIDOMSVGStylable.h"
 #include "nsSVGClass.h"
-#include "nsAutoPtr.h"
+#include "nsSVGElement.h"
 
 typedef nsSVGElement nsSVGStylableElementBase;
 
@@ -69,9 +69,7 @@ public:
   virtual nsresult UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttribute,
                              bool aNotify);
 
-#ifdef MOZ_SMIL
   virtual nsISMILAttr* GetAnimatedAttr(PRInt32 aNamespaceID, nsIAtom* aName);
-#endif
 
   void DidAnimateClass();
 

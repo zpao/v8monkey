@@ -58,8 +58,11 @@ public:
   NS_IMETHOD OnStopContainer(imgIRequest *request, imgIContainer *image);
   NS_IMETHOD OnStopDecode(imgIRequest *request, nsresult status,
                           const PRUnichar *statusArg);
+  NS_IMETHOD OnImageIsAnimated(imgIRequest* aRequest);
+
   // imgIContainerObserver (override nsStubImageDecoderObserver)
-  NS_IMETHOD FrameChanged(imgIContainer *aContainer,
+  NS_IMETHOD FrameChanged(imgIRequest *aRequest,
+                          imgIContainer *aContainer,
                           const nsIntRect *aDirtyRect);
 
   void SetFrame(nsImageBoxFrame *frame) { mFrame = frame; }
@@ -122,7 +125,10 @@ public:
   NS_IMETHOD OnStopDecode(imgIRequest *request,
                           nsresult status,
                           const PRUnichar *statusArg);
-  NS_IMETHOD FrameChanged(imgIContainer *aContainer,
+  NS_IMETHOD OnImageIsAnimated(imgIRequest* aRequest);
+
+  NS_IMETHOD FrameChanged(imgIRequest *aRequest,
+                          imgIContainer *aContainer,
                           const nsIntRect *aDirtyRect);
 
   virtual ~nsImageBoxFrame();
@@ -141,6 +147,10 @@ private:
   nsRect mSubRect; ///< If set, indicates that only the portion of the image specified by the rect should be used.
   nsSize mIntrinsicSize;
   nsSize mImageSize;
+
+  // Boolean variable to determine if the current image request has been
+  // registered with the refresh driver.
+  bool mRequestRegistered;
 
   nsCOMPtr<imgIRequest> mImageRequest;
   nsCOMPtr<imgIDecoderObserver> mListener;

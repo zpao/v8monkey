@@ -41,6 +41,9 @@
 #include "gfxMacFont.h"
 #include "gfxCoreTextShaper.h"
 #include "gfxHarfBuzzShaper.h"
+#ifdef MOZ_GRAPHITE
+#include "gfxGraphiteShaper.h"
+#endif
 #include "gfxPlatformMac.h"
 #include "gfxContext.h"
 #include "gfxUnicodeProperties.h"
@@ -49,13 +52,13 @@
 #include "cairo-quartz.h"
 
 using namespace mozilla;
+using namespace mozilla::gfx;
 
 gfxMacFont::gfxMacFont(MacOSFontEntry *aFontEntry, const gfxFontStyle *aFontStyle,
                        bool aNeedsBold)
     : gfxFont(aFontEntry, aFontStyle),
       mCGFont(nsnull),
-      mFontFace(nsnull),
-      mScaledFont(nsnull)
+      mFontFace(nsnull)
 {
     mApplySyntheticBold = aNeedsBold;
 
@@ -132,6 +135,11 @@ gfxMacFont::gfxMacFont(MacOSFontEntry *aFontEntry, const gfxFontStyle *aFontStyl
 #endif
     }
 
+#ifdef MOZ_GRAPHITE
+    if (FontCanSupportGraphite()) {
+        mGraphiteShaper = new gfxGraphiteShaper(this);
+    }
+#endif
     if (FontCanSupportHarfBuzz()) {
         mHarfBuzzShaper = new gfxHarfBuzzShaper(this);
     }
@@ -148,26 +156,19 @@ gfxMacFont::~gfxMacFont()
 }
 
 bool
-gfxMacFont::InitTextRun(gfxContext *aContext,
-                        gfxTextRun *aTextRun,
-                        const PRUnichar *aString,
-                        PRUint32 aRunStart,
-                        PRUint32 aRunLength,
-                        PRInt32 aRunScript,
-                        bool aPreferPlatformShaping)
+gfxMacFont::ShapeWord(gfxContext *aContext,
+                      gfxShapedWord *aShapedWord,
+                      const PRUnichar *aText,
+                      bool aPreferPlatformShaping)
 {
     if (!mIsValid) {
         NS_WARNING("invalid font! expect incorrect text rendering");
         return false;
     }
 
-    bool ok = gfxFont::InitTextRun(aContext, aTextRun, aString,
-                                     aRunStart, aRunLength, aRunScript,
-        static_cast<MacOSFontEntry*>(GetFontEntry())->RequiresAATLayout());
-
-    aTextRun->AdjustAdvancesForSyntheticBold(aContext, aRunStart, aRunLength);
-
-    return ok;
+    bool requiresAAT =
+        static_cast<MacOSFontEntry*>(GetFontEntry())->RequiresAATLayout();
+    return gfxFont::ShapeWord(aContext, aShapedWord, aText, requiresAAT);
 }
 
 void
@@ -495,3 +496,18 @@ gfxMacFont::InitMetricsFromATSMetrics(ATSFontRef aFontRef)
 
     mIsValid = true;
 }
+
+RefPtr<ScaledFont>
+gfxMacFont::GetScaledFont()
+{
+  if (!mAzureFont) {
+    NativeFont nativeFont;
+    nativeFont.mType = NATIVE_FONT_MAC_FONT_FACE;
+    nativeFont.mFont = GetCGFontRef();
+    mAzureFont =
+      mozilla::gfx::Factory::CreateScaledFontForNativeFont(nativeFont, GetAdjustedSize());
+  }
+
+  return mAzureFont;
+}
+

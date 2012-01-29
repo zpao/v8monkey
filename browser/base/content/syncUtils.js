@@ -109,17 +109,8 @@ let gSyncUtils = {
     this._openLink(Weave.Svc.Prefs.get("privacyURL"));
   },
 
-  // xxxmpc - fix domain before 1.3 final (bug 583652)
-  _baseURL: "http://www.mozilla.com/firefox/sync/",
-
-  openFirstClientFirstrun: function () {
-    let url = this._baseURL + "firstrun.html";
-    this._openLink(url);
-  },
-
-  openAddedClientFirstrun: function () {
-    let url = this._baseURL + "secondrun.html";
-    this._openLink(url);
+  openFirstSyncProgressPage: function () {
+    this._openLink("about:sync-progress");
   },
 
   /**
@@ -206,7 +197,7 @@ let gSyncUtils = {
           || rv == Ci.nsIFilePicker.returnReplace) {
         let stream = Cc["@mozilla.org/network/file-output-stream;1"]
                        .createInstance(Ci.nsIFileOutputStream);
-        stream.init(filepicker.file, -1, -1, 0);
+        stream.init(filepicker.file, -1, 0600, 0);
 
         let serializer = new XMLSerializer();
         let output = serializer.serializeToString(iframe.contentDocument);

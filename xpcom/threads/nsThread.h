@@ -57,8 +57,12 @@ public:
   NS_DECL_NSITHREADINTERNAL
   NS_DECL_NSISUPPORTSPRIORITY
 
-  nsThread();
-  nsThread(PRUint32 aStackSize);
+  enum MainThreadFlag {
+    MAIN_THREAD,
+    NOT_MAIN_THREAD
+  };
+
+  nsThread(MainThreadFlag aMainThread, PRUint32 aStackSize);
 
   // Initialize this as a wrapper for a new PRThread.
   nsresult Init();
@@ -73,8 +77,8 @@ public:
   // nsIThreadManager::NewThread.
   bool ShutdownRequired() { return mShutdownRequired; }
 
-  // The global thread observer
-  static nsIThreadObserver* sGlobalObserver;
+  // Clear the observer list.
+  void ClearObservers() { mEventObservers.Clear(); }
 
 private:
   friend class nsThreadShutdownEvent;
@@ -147,6 +151,7 @@ private:
   bool mShutdownPending;
   // Set to true when events posted to this thread will never run.
   bool mEventsAreDoomed;
+  MainThreadFlag mIsMainThread;
 };
 
 //-----------------------------------------------------------------------------
@@ -172,5 +177,17 @@ private:
   nsCOMPtr<nsIRunnable> mSyncTask;
   nsresult mResult;
 };
+
+namespace mozilla {
+
+/**
+ * This function causes the main thread to fire a memory pressure event at its
+ * next available opportunity.
+ *
+ * You may call this function from any thread.
+ */
+void ScheduleMemoryPressureEvent();
+
+} // namespace mozilla
 
 #endif  // nsThread_h__

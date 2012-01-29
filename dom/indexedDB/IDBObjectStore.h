@@ -41,13 +41,13 @@
 #define mozilla_dom_indexeddb_idbobjectstore_h__
 
 #include "mozilla/dom/indexedDB/IndexedDatabase.h"
-#include "mozilla/dom/indexedDB/IDBTransaction.h"
-#include "mozilla/dom/indexedDB/Key.h"
 
 #include "nsIIDBObjectStore.h"
 #include "nsIIDBTransaction.h"
 
 #include "nsCycleCollectionParticipant.h"
+
+#include "mozilla/dom/indexedDB/IDBTransaction.h"
 
 class nsIScriptContext;
 class nsPIDOMWindow;
@@ -55,10 +55,13 @@ class nsPIDOMWindow;
 BEGIN_INDEXEDDB_NAMESPACE
 
 class AsyncConnectionHelper;
+class Key;
 
 struct ObjectStoreInfo;
 struct IndexInfo;
 struct IndexUpdateInfo;
+struct StructuredCloneReadInfo;
+struct StructuredCloneWriteInfo;
 
 class IDBObjectStore : public nsIIDBObjectStore
 {
@@ -70,65 +73,65 @@ public:
 
   static already_AddRefed<IDBObjectStore>
   Create(IDBTransaction* aTransaction,
-         const ObjectStoreInfo* aInfo);
+         ObjectStoreInfo* aInfo,
+         nsIAtom* aDatabaseId);
+
+  static bool
+  IsValidKeyPath(JSContext* aCx, const nsAString& aKeyPath);
 
   static nsresult
-  GetKeyFromVariant(nsIVariant* aKeyVariant,
-                    Key& aKey);
-
-  static nsresult
-  GetKeyFromJSVal(jsval aKeyVal,
-                  JSContext* aCx,
-                  Key& aKey);
-
-  static nsresult
-  GetJSValFromKey(const Key& aKey,
-                  JSContext* aCx,
-                  jsval* aKeyVal);
-
-  static nsresult
-  GetKeyPathValueFromStructuredData(const PRUint8* aData,
-                                    PRUint32 aDataLength,
-                                    const nsAString& aKeyPath,
-                                    JSContext* aCx,
-                                    Key& aValue);
-
-  static nsresult
-  GetIndexUpdateInfo(ObjectStoreInfo* aObjectStoreInfo,
-                     JSContext* aCx,
-                     jsval aObject,
-                     nsTArray<IndexUpdateInfo>& aUpdateInfoArray);
+  AppendIndexUpdateInfo(PRInt64 aIndexID,
+                        const nsAString& aKeyPath,
+                        const nsTArray<nsString>& aKeyPathArray,
+                        bool aUnique,
+                        bool aMultiEntry,
+                        JSContext* aCx,
+                        jsval aObject,
+                        nsTArray<IndexUpdateInfo>& aUpdateInfoArray);
 
   static nsresult
   UpdateIndexes(IDBTransaction* aTransaction,
                 PRInt64 aObjectStoreId,
                 const Key& aObjectStoreKey,
-                bool aAutoIncrement,
                 bool aOverwrite,
                 PRInt64 aObjectDataId,
                 const nsTArray<IndexUpdateInfo>& aUpdateInfoArray);
 
   static nsresult
-  GetStructuredCloneDataFromStatement(mozIStorageStatement* aStatement,
-                                      PRUint32 aIndex,
-                                      JSAutoStructuredCloneBuffer& aBuffer);
+  GetStructuredCloneReadInfoFromStatement(mozIStorageStatement* aStatement,
+                                          PRUint32 aDataIndex,
+                                          PRUint32 aFileIdsIndex,
+                                          FileManager* aFileManager,
+                                          StructuredCloneReadInfo& aInfo);
 
   static void
   ClearStructuredCloneBuffer(JSAutoStructuredCloneBuffer& aBuffer);
 
   static bool
   DeserializeValue(JSContext* aCx,
-                   JSAutoStructuredCloneBuffer& aBuffer,
-                   jsval* aValue,
-                   JSStructuredCloneCallbacks* aCallbacks = nsnull,
-                   void* aClosure = nsnull);
+                   StructuredCloneReadInfo& aCloneReadInfo,
+                   jsval* aValue);
 
   static bool
   SerializeValue(JSContext* aCx,
-                 JSAutoStructuredCloneBuffer& aBuffer,
-                 jsval aValue,
-                 JSStructuredCloneCallbacks* aCallbacks = nsnull,
-                 void* aClosure = nsnull);
+                 StructuredCloneWriteInfo& aCloneWriteInfo,
+                 jsval aValue);
+
+  static JSObject*
+  StructuredCloneReadCallback(JSContext* aCx,
+                              JSStructuredCloneReader* aReader,
+                              uint32_t aTag,
+                              uint32_t aData,
+                              void* aClosure);
+  static JSBool
+  StructuredCloneWriteCallback(JSContext* aCx,
+                               JSStructuredCloneWriter* aWriter,
+                               JSObject* aObj,
+                               void* aClosure);
+
+  static nsresult
+  ConvertFileIdsToArray(const nsAString& aFileIds,
+                        nsTArray<PRInt64>& aResult);
 
   const nsString& Name() const
   {
@@ -156,14 +159,30 @@ public:
     return mKeyPath;
   }
 
+  const bool HasKeyPath() const
+  {
+    return !mKeyPath.IsVoid() || !mKeyPathArray.IsEmpty();
+  }
+
+  bool UsesKeyPathArray() const
+  {
+    return !mKeyPathArray.IsEmpty();
+  }
+  
+  const nsTArray<nsString>& KeyPathArray() const
+  {
+    return mKeyPathArray;
+  }
+
   IDBTransaction* Transaction()
   {
     return mTransaction;
   }
 
-  nsresult ModifyValueForNewKey(JSAutoStructuredCloneBuffer& aBuffer,
-                                Key& aKey,
-                                PRUint64 aOffsetToKeyProp);
+  ObjectStoreInfo* Info()
+  {
+    return mInfo;
+  }
 
 protected:
   IDBObjectStore();
@@ -172,10 +191,9 @@ protected:
   nsresult GetAddInfo(JSContext* aCx,
                       jsval aValue,
                       jsval aKeyVal,
-                      JSAutoStructuredCloneBuffer& aCloneBuffer,
+                      StructuredCloneWriteInfo& aCloneWriteInfo,
                       Key& aKey,
-                      nsTArray<IndexUpdateInfo>& aUpdateInfoArray,
-                      PRUint64* aOffsetToKeyProp);
+                      nsTArray<IndexUpdateInfo>& aUpdateInfoArray);
 
   nsresult AddOrPut(const jsval& aValue,
                     const jsval& aKey,
@@ -187,14 +205,13 @@ protected:
 private:
   nsRefPtr<IDBTransaction> mTransaction;
 
-  nsCOMPtr<nsIScriptContext> mScriptContext;
-  nsCOMPtr<nsPIDOMWindow> mOwner;
-
   PRInt64 mId;
   nsString mName;
   nsString mKeyPath;
+  nsTArray<nsString> mKeyPathArray;
   bool mAutoIncrement;
-  PRUint32 mDatabaseId;
+  nsCOMPtr<nsIAtom> mDatabaseId;
+  nsRefPtr<ObjectStoreInfo> mInfo;
   PRUint32 mStructuredCloneVersion;
 
   nsTArray<nsRefPtr<IDBIndex> > mCreatedIndexes;

@@ -41,19 +41,18 @@
 #define mozilla_dom_indexeddb_asyncconnectionhelper_h__
 
 // Only meant to be included in IndexedDB source files, not exported.
+#include "DatabaseInfo.h"
 #include "IndexedDatabase.h"
 #include "IDBDatabase.h"
 #include "IDBRequest.h"
 
 #include "mozIStorageProgressHandler.h"
 #include "nsIRunnable.h"
-#include "nsIThread.h"
 
 #include "nsDOMEvent.h"
 
-#include "mozilla/TimeStamp.h"
-
 class mozIStorageConnection;
+class nsIEventTarget;
 
 BEGIN_INDEXEDDB_NAMESPACE
 
@@ -75,6 +74,8 @@ protected:
     : mRequest(aRequest)
   { }
 
+  virtual ~HelperBase();
+
   /**
    * Helper to wrap a native into a jsval. Uses the global object of the request
    * to parent the native.
@@ -82,6 +83,13 @@ protected:
   nsresult WrapNative(JSContext* aCx,
                       nsISupports* aNative,
                       jsval* aResult);
+
+  /**
+   * Gives the subclass a chance to release any objects that must be released
+   * on the main thread, regardless of success or failure. Subclasses that
+   * implement this method *MUST* call the base class implementation as well.
+   */
+  virtual void ReleaseMainThreadObjects();
 
   nsRefPtr<IDBRequest> mRequest;
 };
@@ -116,6 +124,11 @@ public:
 
   static IDBTransaction* GetCurrentTransaction();
 
+  bool HasTransaction()
+  {
+    return mTransaction;
+  }
+
   nsISupports* GetSource()
   {
     return mRequest ? mRequest->Source() : nsnull;
@@ -134,14 +147,6 @@ protected:
                         IDBRequest* aRequest);
 
   virtual ~AsyncConnectionHelper();
-
-  /**
-   * Set the timeout duration in milliseconds.
-   */
-  void SetTimeoutMS(PRUint32 aTimeoutMS)
-  {
-    mTimeoutDuration = TimeDuration::FromMilliseconds(aTimeoutMS);
-  }
 
   /**
    * This is called on the main thread after Dispatch is called but before the
@@ -194,9 +199,9 @@ protected:
   /**
    * Helper to make a JS array object out of an array of clone buffers.
    */
-  static nsresult ConvertCloneBuffersToArray(
+  static nsresult ConvertCloneReadInfosToArray(
                                 JSContext* aCx,
-                                nsTArray<JSAutoStructuredCloneBuffer>& aBuffers,
+                                nsTArray<StructuredCloneReadInfo>& aReadInfos,
                                 jsval* aResult);
 
 protected:
@@ -205,10 +210,6 @@ protected:
 
 private:
   nsCOMPtr<mozIStorageProgressHandler> mOldProgressHandler;
-
-  mozilla::TimeStamp mStartTime;
-  mozilla::TimeDuration mTimeoutDuration;
-
   nsresult mResultCode;
   bool mDispatched;
 };

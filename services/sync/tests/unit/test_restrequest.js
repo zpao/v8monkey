@@ -42,6 +42,47 @@ add_test(function test_attributes() {
 });
 
 /**
+ * Verify that a proxy auth redirect doesn't break us. This has to be the first
+ * request made in the file!
+ */
+add_test(function test_proxy_auth_redirect() {
+  let pacFetched = false;
+  function pacHandler(metadata, response) {
+    pacFetched = true;
+    let body = 'function FindProxyForURL(url, host) { return "DIRECT"; }';
+    response.setStatusLine(metadata.httpVersion, 200, "OK");
+    response.setHeader("Content-Type", "application/x-ns-proxy-autoconfig", false);
+    response.bodyOutputStream.write(body, body.length);
+  }
+
+  let fetched = false;
+  function original(metadata, response) {
+    fetched = true;
+    let body = "TADA!";
+    response.setStatusLine(metadata.httpVersion, 200, "OK");
+    response.bodyOutputStream.write(body, body.length);
+  }
+
+  let server = httpd_setup({
+    "/original": original,
+    "/pac3":     pacHandler
+  });
+  PACSystemSettings.PACURI = "http://localhost:8080/pac3";
+  installFakePAC();
+
+  let res = new RESTRequest("http://localhost:8080/original");
+  res.get(function (error) {
+    do_check_true(pacFetched);
+    do_check_true(fetched);
+    do_check_true(!error);
+    do_check_true(this.response.success);
+    do_check_eq("TADA!", this.response.body);
+    uninstallFakePAC();
+    server.stop(run_next_test);
+  });
+});
+
+/**
  * Demonstrate API short-hand: create a request and dispatch it immediately.
  */
 add_test(function test_simple_get() {
@@ -577,5 +618,46 @@ add_test(function test_exception_in_onProgress() {
     do_check_eq(this.status, this.ABORTED);
 
     server.stop(run_next_test);
+  });
+});
+
+add_test(function test_new_channel() {
+  _("Ensure a redirect to a new channel is handled properly.");
+
+  let redirectRequested = false;
+  function redirectHandler(metadata, response) {
+    redirectRequested = true;
+
+    let body = "Redirecting";
+    response.setStatusLine(metadata.httpVersion, 307, "TEMPORARY REDIRECT");
+    response.setHeader("Location", "http://localhost:8081/resource");
+    response.bodyOutputStream.write(body, body.length);
+  }
+
+  let resourceRequested = false;
+  function resourceHandler(metadata, response) {
+    resourceRequested = true;
+
+    let body = "Test";
+    response.setHeader("Content-Type", "text/plain");
+    response.bodyOutputStream.write(body, body.length);
+  }
+  let server1 = httpd_setup({"/redirect": redirectHandler}, 8080);
+  let server2 = httpd_setup({"/resource": resourceHandler}, 8081);
+
+  function advance() {
+    server1.stop(function () {
+      server2.stop(run_next_test);
+    });
+  }
+
+  let request = new RESTRequest("http://localhost:8080/redirect");
+  request.get(function onComplete(error) {
+    let response = this.response;
+
+    do_check_eq(200, response.status);
+    do_check_eq("Test", response.body);
+
+    advance();
   });
 });

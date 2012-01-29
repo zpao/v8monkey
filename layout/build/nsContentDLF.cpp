@@ -87,7 +87,8 @@ nsresult
 NS_NewContentViewer(nsIContentViewer** aResult);
 
 // XXXbz if you change the MIME types here, be sure to update
-// nsIParser.h and DetermineParseMode in nsParser.cpp accordingly.
+// nsIParser.h and DetermineParseMode in nsParser.cpp and
+// nsHTMLDocument::StartDocumentLoad accordingly.
 static const char* const gHTMLTypes[] = {
   TEXT_HTML,
   TEXT_PLAIN,
@@ -309,7 +310,7 @@ nsContentDLF::CreateInstance(const char* aCommand,
   nsCOMPtr<nsIPluginHost> pluginHostCOM(do_GetService(MOZ_PLUGIN_HOST_CONTRACTID));
   nsPluginHost *pluginHost = static_cast<nsPluginHost*>(pluginHostCOM.get());
   if(pluginHost &&
-     NS_SUCCEEDED(pluginHost->IsPluginEnabledForType(aContentType))) {
+     NS_SUCCEEDED(pluginHost->IsPluginEnabledForType(aContentType, true))) {
     return CreateDocument(aCommand,
                           aChannel, aLoadGroup,
                           aContainer, kPluginDocumentCID,

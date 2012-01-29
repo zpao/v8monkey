@@ -90,6 +90,7 @@
 #include "nsSVGUtils.h"
 #include "nsMathMLAtoms.h"
 #include "nsMathMLOperators.h"
+#include "Navigator.h"
 
 #ifdef MOZ_XUL
 #include "nsXULPopupManager.h"
@@ -124,10 +125,12 @@
 #include "nsHyphenationManager.h"
 #include "nsEditorSpellCheck.h"
 #include "nsDOMMemoryReporter.h"
+#include "mozilla/dom/sms/SmsRequestManager.h"
 
 extern void NS_ShutdownChainItemPool();
 
 using namespace mozilla;
+using namespace mozilla::dom;
 
 nsrefcnt nsLayoutStatics::sLayoutStaticRefcnt = 0;
 
@@ -160,6 +163,7 @@ nsLayoutStatics::Initialize()
   }
 
   nsGlobalWindow::Init();
+  Navigator::Init();
 
   rv = nsContentUtils::Init();
   if (NS_FAILED(rv)) {
@@ -256,6 +260,7 @@ nsLayoutStatics::Initialize()
 
   nsContentSink::InitializeStatics();
   nsHtml5Module::InitializeStatics();
+  nsLayoutUtils::Initialize();
   nsIPresShell::InitializeStatics();
   nsRefreshDriver::InitializeStatics();
 
@@ -265,7 +270,9 @@ nsLayoutStatics::Initialize()
 
   NS_SealStaticAtomTable();
 
-  nsDOMMemoryReporter::Init();
+  nsDOMMemoryMultiReporter::Init();
+
+  sms::SmsRequestManager::Init();
 
   return NS_OK;
 }
@@ -273,6 +280,8 @@ nsLayoutStatics::Initialize()
 void
 nsLayoutStatics::Shutdown()
 {
+  sms::SmsRequestManager::Shutdown();
+
   // Don't need to shutdown nsDOMMemoryReporter, that will be done by the memory
   // reporter manager.
 

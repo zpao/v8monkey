@@ -4,10 +4,22 @@
 
 {
   'variables': {
-    'library%': 'shared_library',
+    'component%': 'static_library',
   },
   'target_defaults': {
     'default_configuration': 'Debug',
+    'variables': {
+      'warn_as_error%': 1,
+    },
+    'target_conditions': [
+      ['warn_as_error == 1', {
+        'msvs_settings': {
+          'VCCLCompilerTool': {
+            'WarnAsError': 'true',
+          },
+        },
+      }],
+    ],
     'configurations': {
       'Common': {
         'abstract': 1,
@@ -81,6 +93,11 @@
         },
       },  # Release
     },  # configurations
+    'conditions': [
+      ['component=="shared_library"', {
+        'defines': ['COMPONENT_BUILD'],
+      }],
+    ],
   },  # target_defaults
   'conditions': [
     ['OS=="win"', {

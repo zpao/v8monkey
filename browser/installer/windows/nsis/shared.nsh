@@ -19,6 +19,7 @@
 #
 # Contributor(s):
 #  Robert Strong <robert.bugzilla@gmail.com>
+#  Brian R. Bondy <netzen@gmail.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -44,6 +45,10 @@
   ${RegCleanMain} "Software\Mozilla"
   ${RegCleanUninstall}
   ${UpdateProtocolHandlers}
+
+  ; setup the application model id registration value
+  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+
   ; Win7 taskbar and start menu link maintenance
   Call FixShortcutAppModelIDs
 
@@ -101,6 +106,48 @@
   ${CleanVirtualStore}
 
   ${RemoveDeprecatedFiles}
+
+!ifdef MOZ_MAINTENANCE_SERVICE
+  Call IsUserAdmin
+  Pop $R0
+  ${If} $R0 == "true"
+  ; Only proceed if we have HKLM write access
+  ${AndIf} $TmpVal == "HKLM"
+  ; On Windows 2000 we do not install the maintenance service.
+  ${AndIf} ${AtLeastWinXP}
+    ; Add the registry keys for allowed certificates.
+    ${AddMaintCertKeys}
+
+    ; We check to see if the maintenance service install was already attempted.
+    ; Since the Maintenance service can be installed either x86 or x64,
+    ; always use the 64-bit registry for checking if an attempt was made.
+    SetRegView 64
+    ReadRegDWORD $5 HKLM "Software\Mozilla\MaintenanceService" "Attempted"
+    ClearErrors
+    SetRegView lastused
+
+    ; If the maintenance service is already installed, do nothing.
+    ; The maintenance service will launch:
+    ; maintenanceservice_installer.exe /Upgrade to upgrade the maintenance
+    ; service if necessary.   If the update was done from updater.exe without 
+    ; the service (i.e. service is failing), updater.exe will do the update of 
+    ; the service.  The reasons we do not do it here is because we don't want 
+    ; to have to prompt for limited user accounts when the service isn't used 
+    ; and we currently call the PostUpdate twice, once for the user and once
+    ; for the SYSTEM account.  Also, this would stop the maintenance service
+    ; and we need a return result back to the service when run that way.
+    ${If} $5 == ""
+      ; An install of maintenance service was never attempted.
+      ; We know we are an Admin and that we have write access into HKLM
+      ; based on the above checks, so attempt to just run the EXE.
+      ; In the worst case, in case there is some edge case with the 
+      ; IsAdmin check and the permissions check, the maintenance service
+      ; will just fail to be attempted to be installed. 
+      nsExec::Exec "$INSTDIR\maintenanceservice_installer.exe" 
+    ${EndIf}
+  ${EndIf}
+!endif
+
 !macroend
 !define PostUpdate "!insertmacro PostUpdate"
 
@@ -190,7 +237,8 @@
     ${If} ${FileExists} "$DESKTOP\${BrandFullName}.lnk"
       ShellLink::SetShortCutWorkingDirectory "$DESKTOP\${BrandFullName}.lnk" "$INSTDIR"
       ${If} ${AtLeastWin7}
-        ApplicationID::Set "$DESKTOP\${BrandFullName}.lnk" "${AppUserModelID}"
+      ${AndIf} "$AppUserModelID" != ""
+        ApplicationID::Set "$DESKTOP\${BrandFullName}.lnk" "$AppUserModelID"
       ${EndIf}
     ${Else}
       SetShellVarContext current  ; Set $DESKTOP to the current user's desktop
@@ -200,7 +248,8 @@
           ShellLink::SetShortCutWorkingDirectory "$DESKTOP\${BrandFullName}.lnk" \
                                                  "$INSTDIR"
           ${If} ${AtLeastWin7}
-            ApplicationID::Set "$DESKTOP\${BrandFullName}.lnk" "${AppUserModelID}"
+          ${AndIf} "$AppUserModelID" != ""
+            ApplicationID::Set "$DESKTOP\${BrandFullName}.lnk" "$AppUserModelID"
           ${EndIf}
         ${EndIf}
       ${EndUnless}
@@ -214,7 +263,8 @@
       ShellLink::SetShortCutWorkingDirectory "$SMPROGRAMS\${BrandFullName}.lnk" \
                                              "$INSTDIR"
       ${If} ${AtLeastWin7}
-        ApplicationID::Set "$SMPROGRAMS\${BrandFullName}.lnk" "${AppUserModelID}"
+      ${AndIf} "$AppUserModelID" != ""
+        ApplicationID::Set "$SMPROGRAMS\${BrandFullName}.lnk" "$AppUserModelID"
       ${EndIf}
     ${Else}
       SetShellVarContext current  ; Set $SMPROGRAMS to the current user's Start
@@ -225,7 +275,8 @@
           ShellLink::SetShortCutWorkingDirectory "$SMPROGRAMS\${BrandFullName}.lnk" \
                                                  "$INSTDIR"
           ${If} ${AtLeastWin7}
-            ApplicationID::Set "$SMPROGRAMS\${BrandFullName}.lnk" "${AppUserModelID}"
+          ${AndIf} "$AppUserModelID" != ""
+            ApplicationID::Set "$SMPROGRAMS\${BrandFullName}.lnk" "$AppUserModelID"
           ${EndIf}
         ${EndIf}
       ${EndUnless}
@@ -289,7 +340,7 @@
 
   ; An empty string is used for the 5th param because FirefoxHTML is not a
   ; protocol handler
-  ${AddDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" "${AppRegName} Document" "" \
+  ${AddDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" "${AppRegName} HTML Document" "" \
                          "${DDEApplication}" "$3" "WWW_OpenURL"
 
   ${AddDDEHandlerValues} "FirefoxURL" "$2" "$8,1" "${AppRegName} URL" "true" \
@@ -386,7 +437,7 @@
   ClearErrors
   ReadRegStr $1 HKLM "Software\Classes\FirefoxHTML\ShellEx\IconHandler" ""
   ${Unless} ${Errors}
-    ReadRegStr $1 HKLM "Software\Classes\FirefoxHTML\" ""
+    ReadRegStr $1 HKLM "Software\Classes\FirefoxHTML\DefaultIcon" ""
     ${GetLongPath} "$INSTDIR\${FileMainEXE}" $2
     ${If} "$1" != "$2,1"
       WriteRegStr HKLM "Software\Classes\FirefoxHTML\DefaultIcon" "" "$2,1"
@@ -429,38 +480,51 @@
 !macro SetUninstallKeys
   StrCpy $0 "Software\Microsoft\Windows\CurrentVersion\Uninstall\${BrandFullNameInternal} ${AppVersion} (${ARCH} ${AB_CD})"
 
+  StrCpy $2 ""
+  ClearErrors
   WriteRegStr HKLM "$0" "${BrandShortName}InstallerTest" "Write Test"
   ${If} ${Errors}
-    StrCpy $1 "HKCU"
-    SetShellVarContext current  ; Set SHCTX to the current user (e.g. HKCU)
+    ; If the uninstall keys already exist in HKLM don't create them in HKCU
+    ClearErrors
+    ReadRegStr $2 "HKLM" $0 "DisplayName"
+    ${If} $2 == ""
+      ; Otherwise we don't have any keys for this product in HKLM so proceeed
+      ; to create them in HKCU.  Better handling for this will be done in:
+      ; Bug 711044 - Better handling for 2 uninstall icons
+      StrCpy $1 "HKCU"
+      SetShellVarContext current  ; Set SHCTX to the current user (e.g. HKCU)
+    ${EndIf}
+    ClearErrors
   ${Else}
     StrCpy $1 "HKLM"
     SetShellVarContext all     ; Set SHCTX to all users (e.g. HKLM)
     DeleteRegValue HKLM "$0" "${BrandShortName}InstallerTest"
   ${EndIf}
 
-  ${GetLongPath} "$INSTDIR" $8
+  ${If} $2 == ""
+    ${GetLongPath} "$INSTDIR" $8
 
-  ; Write the uninstall registry keys
-  ${WriteRegStr2} $1 "$0" "Comments" "${BrandFullNameInternal} ${AppVersion} (${ARCH} ${AB_CD})" 0
-  ${WriteRegStr2} $1 "$0" "DisplayIcon" "$8\${FileMainEXE},0" 0
-  ${WriteRegStr2} $1 "$0" "DisplayName" "${BrandFullNameInternal} ${AppVersion} (${ARCH} ${AB_CD})" 0
-  ${WriteRegStr2} $1 "$0" "DisplayVersion" "${AppVersion}" 0
-  ${WriteRegStr2} $1 "$0" "InstallLocation" "$8" 0
-  ${WriteRegStr2} $1 "$0" "Publisher" "Mozilla" 0
-  ${WriteRegStr2} $1 "$0" "UninstallString" "$8\uninstall\helper.exe" 0
-  ${WriteRegStr2} $1 "$0" "URLInfoAbout" "${URLInfoAbout}" 0
-  ${WriteRegStr2} $1 "$0" "URLUpdateInfo" "${URLUpdateInfo}" 0
-  ${WriteRegDWORD2} $1 "$0" "NoModify" 1 0
-  ${WriteRegDWORD2} $1 "$0" "NoRepair" 1 0
+    ; Write the uninstall registry keys
+    ${WriteRegStr2} $1 "$0" "Comments" "${BrandFullNameInternal} ${AppVersion} (${ARCH} ${AB_CD})" 0
+    ${WriteRegStr2} $1 "$0" "DisplayIcon" "$8\${FileMainEXE},0" 0
+    ${WriteRegStr2} $1 "$0" "DisplayName" "${BrandFullNameInternal} ${AppVersion} (${ARCH} ${AB_CD})" 0
+    ${WriteRegStr2} $1 "$0" "DisplayVersion" "${AppVersion}" 0
+    ${WriteRegStr2} $1 "$0" "InstallLocation" "$8" 0
+    ${WriteRegStr2} $1 "$0" "Publisher" "Mozilla" 0
+    ${WriteRegStr2} $1 "$0" "UninstallString" "$8\uninstall\helper.exe" 0
+    ${WriteRegStr2} $1 "$0" "URLInfoAbout" "${URLInfoAbout}" 0
+    ${WriteRegStr2} $1 "$0" "URLUpdateInfo" "${URLUpdateInfo}" 0
+    ${WriteRegDWORD2} $1 "$0" "NoModify" 1 0
+    ${WriteRegDWORD2} $1 "$0" "NoRepair" 1 0
 
-  ${GetSize} "$8" "/S=0K" $R2 $R3 $R4
-  ${WriteRegDWORD2} $1 "$0" "EstimatedSize" $R2 0
+    ${GetSize} "$8" "/S=0K" $R2 $R3 $R4
+    ${WriteRegDWORD2} $1 "$0" "EstimatedSize" $R2 0
 
-  ${If} "$TmpVal" == "HKLM"
-    SetShellVarContext all     ; Set SHCTX to all users (e.g. HKLM)
-  ${Else}
-    SetShellVarContext current  ; Set SHCTX to the current user (e.g. HKCU)
+    ${If} "$TmpVal" == "HKLM"
+      SetShellVarContext all     ; Set SHCTX to all users (e.g. HKLM)
+    ${Else}
+      SetShellVarContext current  ; Set SHCTX to the current user (e.g. HKCU)
+    ${EndIf}
   ${EndIf}
 !macroend
 !define SetUninstallKeys "!insertmacro SetUninstallKeys"
@@ -509,7 +573,7 @@
   ${If} "$R9" == "true"
     ; An empty string is used for the 5th param because FirefoxHTML is not a
     ; protocol handler.
-    ${AddDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" "${AppRegName} Document" "" \
+    ${AddDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" "${AppRegName} HTML Document" "" \
                            "${DDEApplication}" "$3" "WWW_OpenURL"
   ${EndIf}
 
@@ -538,6 +602,35 @@
   ${EndIf}
 !macroend
 !define UpdateProtocolHandlers "!insertmacro UpdateProtocolHandlers"
+
+!ifdef MOZ_MAINTENANCE_SERVICE
+; Adds maintenance service certificate keys for the install dir.
+; For the cert to work, it must also be signed by a trusted cert for the user.
+!macro AddMaintCertKeys
+  Push $R0
+  ; Allow main Mozilla cert information for updates
+  ; This call will push the needed key on the stack
+  ServicesHelper::PathToUniqueRegistryPath "$INSTDIR"
+  Pop $R0
+  ${If} $R0 != ""
+    ; More than one certificate can be specified in a different subfolder
+    ; for example: $R0\1, but each individual binary can be signed
+    ; with at most one certificate.  A fallback certificate can only be used
+    ; if the binary is replaced with a different certificate.
+    ; We always use the 64bit registry for certs.
+    ; This call is ignored on 32-bit systems.
+    SetRegView 64
+    DeleteRegKey HKLM "$R0"
+    WriteRegStr HKLM "$R0\0" "name" "${CERTIFICATE_NAME}"
+    WriteRegStr HKLM "$R0\0" "issuer" "${CERTIFICATE_ISSUER}"
+    SetRegView lastused
+    ClearErrors
+  ${EndIf} 
+  ; Restore the previously used value back
+  Pop $R0
+!macroend
+!define AddMaintCertKeys "!insertmacro AddMaintCertKeys"
+!endif
 
 ; Removes various registry entries for reasons noted below (does not use SHCTX).
 !macro RemoveDeprecatedKeys
@@ -693,8 +786,38 @@
   ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0026-ABCDEFFEDCBA}"
     RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0026-ABCDEFFEDCBA}"
   ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0027-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0027-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0028-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0028-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0029-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0029-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0030-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0030-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0031-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0031-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0032-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0032-ABCDEFFEDCBA}"
+  ${EndIf}
   ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0000-ABCDEFFEDCBA}"
     RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0000-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0001-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0001-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0002-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0002-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0003-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0003-ABCDEFFEDCBA}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0004-ABCDEFFEDCBA}"
+    RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0017-0000-0004-ABCDEFFEDCBA}"
   ${EndIf}
 !macroend
 !define RemoveDeprecatedFiles "!insertmacro RemoveDeprecatedFiles"
@@ -753,7 +876,9 @@
               ${If} ${FileExists} "$SMPROGRAMS\$1"
                 ShellLink::SetShortCutWorkingDirectory "$SMPROGRAMS\$1" \
                                                        "$INSTDIR"
-                ApplicationID::Set "$SMPROGRAMS\$1" "${AppUserModelID}"
+                ${If} "$AppUserModelID" != ""
+                  ApplicationID::Set "$SMPROGRAMS\$1" "$AppUserModelID"
+                ${EndIf}
               ${EndIf}
             ${EndUnless}
           ${EndUnless}
@@ -835,8 +960,9 @@
                   ShellLink::SetShortCutWorkingDirectory "$SMPROGRAMS\${BrandFullName}.lnk" \
                                                          "$INSTDIR"
                   ${If} ${AtLeastWin7}
+                  ${AndIf} "$AppUserModelID" != ""
                     ApplicationID::Set "$SMPROGRAMS\${BrandFullName}.lnk" \
-                                       "${AppUserModelID}"
+                                       "$AppUserModelID"
                   ${EndIf}
                 ${EndIf}
               ${EndIf}
@@ -942,7 +1068,6 @@
 !macroend
 !define PushFilesToCheck "!insertmacro PushFilesToCheck"
 
-
 ; Sets this installation as the default browser by setting the registry keys
 ; under HKEY_CURRENT_USER via registry calls and using the AppAssocReg NSIS
 ; plugin for Vista and above. This is a function instead of a macro so it is
@@ -980,13 +1105,15 @@ Function SetAsDefaultAppUserHKCU
     ${EndUnless}
   ${EndIf}
   ${RemoveDeprecatedKeys}
-
   ${PinToTaskBar}
 FunctionEnd
 
 ; Helper for updating the shortcut application model IDs.
 Function FixShortcutAppModelIDs
-  ${UpdateShortcutAppModelIDs} "$INSTDIR\${FileMainEXE}" "${AppUserModelID}" $0
+  ${If} ${AtLeastWin7}
+  ${AndIf} "$AppUserModelID" != ""
+    ${UpdateShortcutAppModelIDs} "$INSTDIR\${FileMainEXE}" "$AppUserModelID" $0
+  ${EndIf}
 FunctionEnd
 
 ; The !ifdef NO_LOG prevents warnings when compiling the installer.nsi due to

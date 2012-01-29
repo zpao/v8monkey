@@ -112,7 +112,9 @@ void main()
   vec4 finalPosition = aVertexCoord;
   finalPosition = uLayerQuadTransform * finalPosition;
   finalPosition = uLayerTransform * finalPosition;
+  finalPosition.xyz /= finalPosition.w;
   finalPosition = finalPosition - uRenderTargetOffset;
+  finalPosition.xyz *= finalPosition.w;
   finalPosition = uMatrixProj * finalPosition;
 
   vTexCoord = aTexCoord;

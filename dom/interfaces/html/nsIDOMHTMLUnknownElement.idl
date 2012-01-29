@@ -43,7 +43,7 @@
  *
  * @see <http://www.whatwg.org/html/#htmlunknownelement>
  */
-[scriptable, uuid(04307827-03f8-43df-8ebf-f977e37ce15d)]
+[scriptable, uuid(50c480fa-d3dc-49ad-a21d-d4d5f7aec44e)]
 interface nsIDOMHTMLUnknownElement : nsIDOMHTMLElement
 {
 };

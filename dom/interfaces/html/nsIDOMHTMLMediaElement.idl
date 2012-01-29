@@ -57,7 +57,7 @@
 #endif
 %}
 
-[scriptable, uuid(ea907d2b-55af-4876-9886-1e01432d7c17)]
+[scriptable, uuid(6733a409-fab3-45e1-af23-9af8c361bdfd)]
 interface nsIDOMHTMLMediaElement : nsIDOMHTMLElement
 {
   // error state
@@ -66,6 +66,7 @@ interface nsIDOMHTMLMediaElement : nsIDOMHTMLElement
   // network state
            attribute DOMString src;
   readonly attribute DOMString currentSrc;
+           attribute DOMString crossorigin;
   const unsigned short NETWORK_EMPTY = 0;
   const unsigned short NETWORK_IDLE = 1;
   const unsigned short NETWORK_LOADING = 2;
@@ -94,6 +95,7 @@ interface nsIDOMHTMLMediaElement : nsIDOMHTMLElement
   readonly attribute boolean ended;
   readonly attribute boolean mozAutoplayEnabled;
            attribute boolean autoplay;
+           attribute boolean loop;
   void play();
   void pause();
 
@@ -101,6 +103,7 @@ interface nsIDOMHTMLMediaElement : nsIDOMHTMLElement
            attribute boolean controls;
            attribute double volume;
            attribute boolean muted;
+           attribute boolean defaultMuted;
 
   // Mozilla extension: extra stream metadata information, used as part
   // of MozAudioAvailable events and the mozWriteAudio() method.  The

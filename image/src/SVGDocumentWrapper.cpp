@@ -66,9 +66,7 @@
 using namespace mozilla::dom;
 
 namespace mozilla {
-namespace imagelib {
-
-nsIAtom* SVGDocumentWrapper::kSVGAtom = nsnull; // lazily initialized
+namespace image {
 
 NS_IMPL_ISUPPORTS4(SVGDocumentWrapper,
                    nsIStreamListener,
@@ -80,12 +78,6 @@ SVGDocumentWrapper::SVGDocumentWrapper()
   : mIgnoreInvalidation(false),
     mRegisteredForXPCOMShutdown(false)
 {
-  // Lazy-initialize our "svg" atom.  (It'd be nicer to just use nsGkAtoms::svg
-  // directly, but we can't access it from here in non-libxul builds.)
-  if (!SVGDocumentWrapper::kSVGAtom) {
-    SVGDocumentWrapper::kSVGAtom =
-      NS_NewPermanentAtom(NS_LITERAL_STRING("svg"));
-  }
 }
 
 SVGDocumentWrapper::~SVGDocumentWrapper()
@@ -185,13 +177,9 @@ SVGDocumentWrapper::FlushImageTransformInvalidation()
 bool
 SVGDocumentWrapper::IsAnimated()
 {
-#ifdef MOZ_SMIL
   nsIDocument* doc = mViewer->GetDocument();
   return doc && doc->HasAnimationController() &&
     doc->GetAnimationController()->HasRegisteredAnimations();
-#else
-  return false;
-#endif // MOZ_SMIL
 }
 
 void
@@ -204,12 +192,10 @@ SVGDocumentWrapper::StartAnimation()
 
   nsIDocument* doc = mViewer->GetDocument();
   if (doc) {
-#ifdef MOZ_SMIL
     nsSMILAnimationController* controller = doc->GetAnimationController();
     if (controller) {
       controller->Resume(nsSMILTimeContainer::PAUSE_IMAGE);
     }
-#endif // MOZ_SMIL
     doc->SetImagesNeedAnimating(true);
   }
 }
@@ -224,12 +210,10 @@ SVGDocumentWrapper::StopAnimation()
 
   nsIDocument* doc = mViewer->GetDocument();
   if (doc) {
-#ifdef MOZ_SMIL
     nsSMILAnimationController* controller = doc->GetAnimationController();
     if (controller) {
       controller->Pause(nsSMILTimeContainer::PAUSE_IMAGE);
     }
-#endif // MOZ_SMIL
     doc->SetImagesNeedAnimating(false);
   }
 }
@@ -473,14 +457,12 @@ SVGDocumentWrapper::GetRootSVGElem()
     return nsnull; // Can happen during destruction
 
   Element* rootElem = mViewer->GetDocument()->GetRootElement();
-  if (!rootElem ||
-      rootElem->GetNameSpaceID() != kNameSpaceID_SVG ||
-      rootElem->Tag() != SVGDocumentWrapper::kSVGAtom) {
+  if (!rootElem || !rootElem->IsSVG(nsGkAtoms::svg)) {
     return nsnull;
   }
 
   return static_cast<nsSVGSVGElement*>(rootElem);
 }
 
-} // namespace imagelib
+} // namespace image
 } // namespace mozilla

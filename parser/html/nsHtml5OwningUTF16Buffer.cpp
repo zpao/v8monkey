@@ -57,6 +57,15 @@ nsHtml5OwningUTF16Buffer::~nsHtml5OwningUTF16Buffer()
 {
   MOZ_COUNT_DTOR(nsHtml5OwningUTF16Buffer);
   DeleteBuffer();
+
+  // This is to avoid dtor recursion on 'next', bug 706932.
+  nsRefPtr<nsHtml5OwningUTF16Buffer> tail;
+  tail.swap(next);
+  while (tail && tail->mRefCnt == 1) {
+    nsRefPtr<nsHtml5OwningUTF16Buffer> tmp;
+    tmp.swap(tail->next);
+    tail.swap(tmp);
+  }
 }
 
 // static
@@ -76,6 +85,13 @@ nsHtml5OwningUTF16Buffer::FalliblyCreate(PRInt32 aLength)
   }
   return newObj.forget();
 }
+
+void
+nsHtml5OwningUTF16Buffer::Swap(nsHtml5OwningUTF16Buffer* aOther)
+{
+  nsHtml5UTF16Buffer::Swap(aOther);
+}
+
 
 // Not using macros for AddRef and Release in order to be able to refcount on
 // and create on different threads.

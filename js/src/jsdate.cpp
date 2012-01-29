@@ -60,13 +60,11 @@
 #include "mozilla/Util.h"
 
 #include "jstypes.h"
-#include "jsstdint.h"
 #include "jsprf.h"
 #include "prmjtime.h"
 #include "jsutil.h"
 #include "jsapi.h"
 #include "jsversion.h"
-#include "jsbuiltins.h"
 #include "jscntxt.h"
 #include "jsdate.h"
 #include "jsinterp.h"
@@ -79,6 +77,7 @@
 
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
+#include "jsstrinlines.h"
 
 #include "vm/Stack-inl.h"
 
@@ -431,8 +430,8 @@ DaylightSavingTA(jsdouble t, JSContext *cx)
         t = MakeDate(day, TimeWithinDay(t));
     }
 
-    int64 timeMilliseconds = static_cast<int64>(t);
-    int64 offsetMilliseconds = cx->dstOffsetCache.getDSTOffsetMilliseconds(timeMilliseconds, cx);
+    int64_t timeMilliseconds = static_cast<int64_t>(t);
+    int64_t offsetMilliseconds = cx->dstOffsetCache.getDSTOffsetMilliseconds(timeMilliseconds, cx);
     return static_cast<jsdouble>(offsetMilliseconds);
 }
 
@@ -1190,7 +1189,7 @@ date_parse(JSContext *cx, uintN argc, Value *vp)
         vp->setDouble(js_NaN);
         return true;
     }
-    str = js_ValueToString(cx, vp[2]);
+    str = ToString(cx, vp[2]);
     if (!str)
         return JS_FALSE;
     vp[2].setString(str);
@@ -1221,14 +1220,6 @@ date_now(JSContext *cx, uintN argc, Value *vp)
     return JS_TRUE;
 }
 
-#ifdef JS_TRACER
-static jsdouble FASTCALL
-date_now_tn(JSContext*)
-{
-    return NowAsMillis();
-}
-#endif
-
 /*
  * Set UTC time to a given time and invalidate cached local time.
  */
@@ -1237,9 +1228,11 @@ SetUTCTime(JSContext *cx, JSObject *obj, jsdouble t, Value *vp = NULL)
 {
     JS_ASSERT(obj->isDate());
 
-    size_t slotCap = JS_MIN(obj->numSlots(), JSObject::DATE_CLASS_RESERVED_SLOTS);
-    for (size_t ind = JSObject::JSSLOT_DATE_COMPONENTS_START; ind < slotCap; ind++)
+    for (size_t ind = JSObject::JSSLOT_DATE_COMPONENTS_START;
+         ind < JSObject::DATE_CLASS_RESERVED_SLOTS;
+         ind++) {
         obj->setSlot(ind, UndefinedValue());
+    }
 
     obj->setDateUTCTime(DoubleValue(t));
     if (vp)
@@ -1265,12 +1258,6 @@ FillLocalTimes(JSContext *cx, JSObject *obj)
     JS_ASSERT(obj->isDate());
 
     jsdouble utcTime = obj->getDateUTCTime().toNumber();
-
-    /* Make sure there are slots to store the cached information. */
-    if (obj->numSlots() < JSObject::DATE_CLASS_RESERVED_SLOTS) {
-        if (!obj->growSlots(cx, JSObject::DATE_CLASS_RESERVED_SLOTS))
-            return false;
-    }
 
     if (!JSDOUBLE_IS_FINITE(utcTime)) {
         for (size_t ind = JSObject::JSSLOT_DATE_COMPONENTS_START;
@@ -1306,8 +1293,8 @@ FillLocalTimes(JSContext *cx, JSObject *obj)
 
     obj->setSlot(JSObject::JSSLOT_DATE_LOCAL_YEAR, Int32Value(year));
 
-    uint64 yearTime = uint64(localTime - yearStartTime);
-    jsint yearSeconds = uint32(yearTime / 1000);
+    uint64_t yearTime = uint64_t(localTime - yearStartTime);
+    jsint yearSeconds = uint32_t(yearTime / 1000);
 
     jsint day = yearSeconds / jsint(SecondsPerDay);
 
@@ -2156,7 +2143,6 @@ date_toJSON(JSContext *cx, uintN argc, Value *vp)
     }
 
     /* Step 6. */
-    LeaveTrace(cx);
     InvokeArgsGuard args;
     if (!cx->stack.pushInvokeArgs(cx, 0, &args))
         return false;
@@ -2177,15 +2163,15 @@ new_explode(jsdouble timeval, PRMJTime *split, JSContext *cx)
 {
     jsint year = YearFromTime(timeval);
 
-    split->tm_usec = (int32) msFromTime(timeval) * 1000;
-    split->tm_sec = (int8) SecFromTime(timeval);
-    split->tm_min = (int8) MinFromTime(timeval);
-    split->tm_hour = (int8) HourFromTime(timeval);
-    split->tm_mday = (int8) DateFromTime(timeval);
-    split->tm_mon = (int8) MonthFromTime(timeval);
-    split->tm_wday = (int8) WeekDay(timeval);
+    split->tm_usec = int32_t(msFromTime(timeval)) * 1000;
+    split->tm_sec = int8_t(SecFromTime(timeval));
+    split->tm_min = int8_t(MinFromTime(timeval));
+    split->tm_hour = int8_t(HourFromTime(timeval));
+    split->tm_mday = int8_t(DateFromTime(timeval));
+    split->tm_mon = int8_t(MonthFromTime(timeval));
+    split->tm_wday = int8_t(WeekDay(timeval));
     split->tm_year = year;
-    split->tm_yday = (int16) DayWithinYear(timeval, year);
+    split->tm_yday = int16_t(DayWithinYear(timeval, year));
 
     /* not sure how this affects things, but it doesn't seem
        to matter. */
@@ -2430,7 +2416,7 @@ date_toLocaleFormat(JSContext *cx, uintN argc, Value *vp)
     if (!obj)
         return ok;
 
-    JSString *fmt = js_ValueToString(cx, args[0]);
+    JSString *fmt = ToString(cx, args[0]);
     if (!fmt)
         return false;
 
@@ -2469,9 +2455,6 @@ date_toDateString(JSContext *cx, uintN argc, Value *vp)
 }
 
 #if JS_HAS_TOSOURCE
-#include <string.h>
-#include "jsnum.h"
-
 static JSBool
 date_toSource(JSContext *cx, uintN argc, Value *vp)
 {
@@ -2482,23 +2465,14 @@ date_toSource(JSContext *cx, uintN argc, Value *vp)
     if (!obj)
         return ok;
 
-    double utctime = obj->getDateUTCTime().toNumber();
-
-    ToCStringBuf cbuf;
-    char *numStr = NumberToCString(cx, &cbuf, utctime);
-    if (!numStr) {
-        JS_ReportOutOfMemory(cx);
+    StringBuffer sb(cx);
+    if (!sb.append("(new Date(") || !NumberValueToStringBuffer(cx, obj->getDateUTCTime(), sb) ||
+        !sb.append("))"))
+    {
         return false;
     }
 
-    char *bytes = JS_smprintf("(new %s(%s))", js_Date_str, numStr);
-    if (!bytes) {
-        JS_ReportOutOfMemory(cx);
-        return false;
-    }
-
-    JSString *str = JS_NewStringCopyZ(cx, bytes);
-    cx->free_(bytes);
+    JSString *str = sb.finishString();
     if (!str)
         return false;
     args.rval().setString(str);
@@ -2536,7 +2510,7 @@ date_valueOf(JSContext *cx, uintN argc, Value *vp)
     }
 
     /* Convert to number only if the hint was given, otherwise favor string. */
-    JSString *str = js_ValueToString(cx, args[0]);
+    JSString *str = ToString(cx, args[0]);
     if (!str)
         return false;
     JSLinearString *linear_str = str->ensureLinear(cx);
@@ -2550,14 +2524,10 @@ date_valueOf(JSContext *cx, uintN argc, Value *vp)
     return date_format(cx, obj->getDateUTCTime().toNumber(), FORMATSPEC_FULL, args);
 }
 
-// Don't really need an argument here, but we don't support arg-less builtins
-JS_DEFINE_TRCINFO_1(date_now,
-    (1, (static, DOUBLE, date_now_tn, CONTEXT, 0, nanojit::ACCSET_STORE_ANY)))
-
 static JSFunctionSpec date_static_methods[] = {
     JS_FN("UTC",                 date_UTC,                MAXARGS,0),
     JS_FN("parse",               date_parse,              1,0),
-    JS_TN("now",                 date_now,                0,0, &date_now_trcinfo),
+    JS_FN("now",                 date_now,                0,0),
     JS_FS_END
 };
 
@@ -2635,7 +2605,7 @@ js_Date(JSContext *cx, uintN argc, Value *vp)
             d = TIMECLIP(d);
         } else {
             /* the argument is a string; parse it. */
-            JSString *str = js_ValueToString(cx, args[0]);
+            JSString *str = ToString(cx, args[0]);
             if (!str)
                 return false;
             args[0].setString(str);
@@ -2676,7 +2646,7 @@ js_InitDateClass(JSContext *cx, JSObject *obj)
     /* Set the static LocalTZA. */
     LocalTZA = -(PRMJ_LocalGMTDifference() * msPerSecond);
 
-    GlobalObject *global = obj->asGlobal();
+    GlobalObject *global = &obj->asGlobal();
 
     JSObject *dateProto = global->createBlankPrototype(cx, &DateClass);
     if (!dateProto)
@@ -2710,8 +2680,6 @@ js_InitDateClass(JSContext *cx, JSObject *obj)
     {
         return NULL;
     }
-    if (!cx->typeInferenceEnabled())
-        dateProto->brand(cx);
 
     if (!DefineConstructorAndPrototype(cx, global, JSProto_Date, ctor, dateProto))
         return NULL;
@@ -2723,7 +2691,7 @@ JS_FRIEND_API(JSObject *)
 js_NewDateObjectMsec(JSContext *cx, jsdouble msec_time)
 {
     JSObject *obj = NewBuiltinClassInstance(cx, &DateClass);
-    if (!obj || !obj->ensureSlots(cx, JSObject::DATE_CLASS_RESERVED_SLOTS))
+    if (!obj)
         return NULL;
     if (!SetUTCTime(cx, obj, msec_time))
         return NULL;
@@ -2836,17 +2804,17 @@ js_DateGetMsecSinceEpoch(JSContext *cx, JSObject *obj)
 #ifdef JS_THREADSAFE
 #include "prinrval.h"
 
-JS_FRIEND_API(uint32)
+JS_FRIEND_API(uint32_t)
 js_IntervalNow()
 {
-    return uint32(PR_IntervalToMilliseconds(PR_IntervalNow()));
+    return uint32_t(PR_IntervalToMilliseconds(PR_IntervalNow()));
 }
 
 #else /* !JS_THREADSAFE */
 
-JS_FRIEND_API(uint32)
+JS_FRIEND_API(uint32_t)
 js_IntervalNow()
 {
-    return uint32(PRMJ_Now() / PRMJ_USEC_PER_MSEC);
+    return uint32_t(PRMJ_Now() / PRMJ_USEC_PER_MSEC);
 }
 #endif

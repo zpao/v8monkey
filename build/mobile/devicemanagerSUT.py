@@ -266,6 +266,10 @@ class DeviceManagerSUT(DeviceManager):
       destname = destname.replace('\\', '/')
 
     if (self.debug >= 3): print "in push file with: " + localname + ", and: " + destname
+    if (self.dirExists(destname)):
+      if (not destname.endswith('/')):
+        destname = destname + '/'
+      destname = destname + os.path.basename(localname)
     if (self.validateFile(destname, localname) == True):
       if (self.debug >= 3): print "files are validated"
       return True
@@ -352,7 +356,10 @@ class DeviceManagerSUT(DeviceManager):
       parts = root.split(localDir)
       for file in files:
         remoteRoot = remoteDir + '/' + parts[1]
-        remoteName = remoteRoot + '/' + file
+        if (remoteRoot.endswith('/')):
+          remoteName = remoteRoot + file
+        else:
+          remoteName = remoteRoot + '/' + file
         if (parts[1] == ""): remoteRoot = remoteDir
         if (self.pushFile(os.path.join(root, file), remoteName) == False):
           # retry once
@@ -545,14 +552,14 @@ class DeviceManagerSUT(DeviceManager):
     pieces = appname.split(' ')
     parts = pieces[0].split('/')
     app = parts[-1]
-    procre = re.compile('.*' + app + '.*')
 
     procList = self.getProcessList()
     if (procList == []):
       return None
       
     for proc in procList:
-      if (procre.match(proc[1])):
+      procName = proc[1].split('/')[-1]
+      if (procName == app):
         pid = proc[0]
         break
     return pid
@@ -850,6 +857,15 @@ class DeviceManagerSUT(DeviceManager):
         return None
 
     return deviceRoot
+
+  def getAppRoot(self, packageName):
+    try:
+      data = self.verifySendCMD(['getapproot '+packageName])
+    except:
+      return None
+  
+    appRoot = self.stripPrompt(data).strip('\n')
+    return appRoot
 
   # external function
   # returns:

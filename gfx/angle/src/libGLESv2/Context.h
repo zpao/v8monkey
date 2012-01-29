@@ -21,9 +21,9 @@
 #include <hash_map>
 
 #include "common/angleutils.h"
+#include "common/RefCountObject.h"
 #include "libGLESv2/ResourceManager.h"
 #include "libGLESv2/HandleAllocator.h"
-#include "libGLESv2/RefCountObject.h"
 
 namespace egl
 {
@@ -55,22 +55,35 @@ class VertexDataManager;
 class IndexDataManager;
 class Blit;
 class Fence;
+class Query;
 
 enum
 {
+    D3D9_MAX_FLOAT_CONSTANTS = 256,
+    D3D9_MAX_BOOL_CONSTANTS = 16,
+    D3D9_MAX_INT_CONSTANTS = 16,
+
     MAX_VERTEX_ATTRIBS = 16,
-    MAX_VERTEX_UNIFORM_VECTORS = 256 - 2,   // 256 is the minimum for SM2, and in practice the maximum for DX9. Reserve space for dx_HalfPixelSize and dx_DepthRange.
+    MAX_VERTEX_UNIFORM_VECTORS = D3D9_MAX_FLOAT_CONSTANTS - 2,   // Reserve space for dx_HalfPixelSize and dx_DepthRange.
     MAX_VARYING_VECTORS_SM2 = 8,
     MAX_VARYING_VECTORS_SM3 = 10,
     MAX_TEXTURE_IMAGE_UNITS = 16,
     MAX_VERTEX_TEXTURE_IMAGE_UNITS_VTF = 4,   // For devices supporting vertex texture fetch
     MAX_COMBINED_TEXTURE_IMAGE_UNITS_VTF = MAX_TEXTURE_IMAGE_UNITS + MAX_VERTEX_TEXTURE_IMAGE_UNITS_VTF,    
-    MAX_FRAGMENT_UNIFORM_VECTORS_SM2 = 32 - 3,    // Reserve space for dx_Viewport, dx_Depth, and dx_DepthRange. dx_PointOrLines and dx_FrontCCW use separate bool registers.
+    MAX_FRAGMENT_UNIFORM_VECTORS_SM2 = 32 - 3,    // Reserve space for dx_Coord, dx_Depth, and dx_DepthRange. dx_PointOrLines and dx_FrontCCW use separate bool registers.
     MAX_FRAGMENT_UNIFORM_VECTORS_SM3 = 224 - 3,
     MAX_DRAW_BUFFERS = 1,
 
     IMPLEMENTATION_COLOR_READ_FORMAT = GL_RGB,
     IMPLEMENTATION_COLOR_READ_TYPE = GL_UNSIGNED_SHORT_5_6_5
+};
+
+enum QueryType
+{
+    QUERY_ANY_SAMPLES_PASSED,
+    QUERY_ANY_SAMPLES_PASSED_CONSERVATIVE,
+
+    QUERY_TYPE_COUNT
 };
 
 const float ALIASED_LINE_WIDTH_RANGE_MIN = 1.0f;
@@ -216,9 +229,11 @@ struct State
 
     VertexAttribute vertexAttribute[MAX_VERTEX_ATTRIBS];
     BindingPointer<Texture> samplerTexture[TEXTURE_TYPE_COUNT][MAX_COMBINED_TEXTURE_IMAGE_UNITS_VTF];
+    BindingPointer<Query> activeQuery[QUERY_TYPE_COUNT];
 
     GLint unpackAlignment;
     GLint packAlignment;
+    bool packReverseRowOrder;
 };
 
 // Helper class to construct and cache vertex declarations
@@ -228,7 +243,7 @@ class VertexDeclarationCache
     VertexDeclarationCache();
     ~VertexDeclarationCache();
 
-    GLenum applyDeclaration(TranslatedAttribute attributes[], Program *program);
+    GLenum applyDeclaration(IDirect3DDevice9 *device, TranslatedAttribute attributes[], Program *program);
 
     void markStateDirty();
 
@@ -258,13 +273,16 @@ class VertexDeclarationCache
 class Context
 {
   public:
-    Context(const egl::Config *config, const gl::Context *shareContext);
+    Context(const egl::Config *config, const gl::Context *shareContext, bool notifyResets, bool robustAccess);
 
     ~Context();
 
     void makeCurrent(egl::Display *display, egl::Surface *surface);
 
     void markAllStateDirty();
+
+    virtual void markContextLost();
+    bool isContextLost();
 
     // State manipulation
     void setClearColor(float red, float green, float blue, float alpha);
@@ -343,6 +361,8 @@ class Context
 
     GLuint getArrayBufferHandle() const;
 
+    GLuint getActiveQuery(GLenum target) const;
+
     void setEnableVertexAttribArray(unsigned int attribNum, bool enabled);
     const VertexAttribute &getVertexAttribState(unsigned int attribNum);
     void setVertexAttribState(unsigned int attribNum, Buffer *boundBuffer, GLint size, GLenum type,
@@ -356,6 +376,9 @@ class Context
 
     void setPackAlignment(GLint alignment);
     GLint getPackAlignment() const;
+
+    void setPackReverseRowOrder(bool reverseRowOrder);
+    bool getPackReverseRowOrder() const;
 
     // These create  and destroy methods are merely pass-throughs to 
     // ResourceManager, which owns these object types
@@ -378,6 +401,10 @@ class Context
     // Fences are owned by the Context.
     GLuint createFence();
     void deleteFence(GLuint fence);
+    
+    // Queries are owned by the Context;
+    GLuint createQuery();
+    void deleteQuery(GLuint query);
 
     void bindArrayBuffer(GLuint buffer);
     void bindElementArrayBuffer(GLuint buffer);
@@ -387,6 +414,9 @@ class Context
     void bindDrawFramebuffer(GLuint framebuffer);
     void bindRenderbuffer(GLuint renderbuffer);
     void useProgram(GLuint program);
+
+    void beginQuery(GLenum target, GLuint query);
+    void endQuery(GLenum target);
 
     void setFramebufferZero(Framebuffer *framebuffer);
 
@@ -401,6 +431,7 @@ class Context
     Texture *getTexture(GLuint handle);
     Framebuffer *getFramebuffer(GLuint handle);
     Renderbuffer *getRenderbuffer(GLuint handle);
+    Query *getQuery(GLuint handle, bool create, GLenum type);
 
     Buffer *getArrayBuffer();
     Buffer *getElementArrayBuffer();
@@ -417,16 +448,15 @@ class Context
 
     bool getQueryParameterInfo(GLenum pname, GLenum *type, unsigned int *numParams);
 
-    void readPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels);
+    void readPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLsizei *bufSize, void* pixels);
     void clear(GLbitfield mask);
     void drawArrays(GLenum mode, GLint first, GLsizei count);
     void drawElements(GLenum mode, GLsizei count, GLenum type, const void *indices);
-    void finish();
-    void flush();
+    void sync(bool block);   // flush/finish
 
 	// Draw the last segment of a line loop
-    void drawClosingLine(unsigned int first, unsigned int last);
-    void drawClosingLine(GLsizei count, GLenum type, const void *indices);
+    void drawClosingLine(unsigned int first, unsigned int last, int minIndex);
+    void drawClosingLine(GLsizei count, GLenum type, const void *indices, int minIndex);
 
     void recordInvalidEnum();
     void recordInvalidValue();
@@ -435,6 +465,8 @@ class Context
     void recordInvalidFramebufferOperation();
 
     GLenum getError();
+    GLenum getResetStatus();
+    virtual bool isResetNotificationEnabled();
 
     bool supportsShaderModel3() const;
     int getMaximumVaryingVectors() const;
@@ -450,15 +482,16 @@ class Context
     const char *getExtensionString() const;
     const char *getRendererString() const;
     bool supportsEventQueries() const;
+    bool supportsOcclusionQueries() const;
     bool supportsDXT1Textures() const;
     bool supportsDXT3Textures() const;
     bool supportsDXT5Textures() const;
-    bool supportsFloatTextures() const;
-    bool supportsFloatLinearFilter() const;
-    bool supportsFloatRenderableTextures() const;
-    bool supportsHalfFloatTextures() const;
-    bool supportsHalfFloatLinearFilter() const;
-    bool supportsHalfFloatRenderableTextures() const;
+    bool supportsFloat32Textures() const;
+    bool supportsFloat32LinearFilter() const;
+    bool supportsFloat32RenderableTextures() const;
+    bool supportsFloat16Textures() const;
+    bool supportsFloat16LinearFilter() const;
+    bool supportsFloat16RenderableTextures() const;
     bool supportsLuminanceTextures() const;
     bool supportsLuminanceAlphaTextures() const;
     bool supports32bitIndices() const;
@@ -497,6 +530,8 @@ class Context
     void initRendererString();
 
     const egl::Config *const mConfig;
+    egl::Display *mDisplay;
+    IDirect3DDevice9 *mDevice;
 
     State mState;
 
@@ -510,6 +545,10 @@ class Context
     typedef stdext::hash_map<GLuint, Fence*> FenceMap;
     FenceMap mFenceMap;
     HandleAllocator mFenceHandleAllocator;
+
+    typedef stdext::hash_map<GLuint, Query*> QueryMap;
+    QueryMap mQueryMap;
+    HandleAllocator mQueryHandleAllocator;
 
     std::string mExtensionString;
     std::string mRendererString;
@@ -530,7 +569,12 @@ class Context
     bool mOutOfMemory;
     bool mInvalidFramebufferOperation;
 
+    // Current/lost context flags
     bool mHasBeenCurrent;
+    bool mContextLost;
+    GLenum mResetStatus;
+    GLenum mResetStrategy;
+    bool mRobustAccess;
 
     unsigned int mAppliedTextureSerialPS[MAX_TEXTURE_IMAGE_UNITS];
     unsigned int mAppliedTextureSerialVS[MAX_VERTEX_TEXTURE_IMAGE_UNITS_VTF];
@@ -544,6 +588,9 @@ class Context
     D3DVIEWPORT9 mSetViewport;
     bool mRenderTargetDescInitialized;
     D3DSURFACE_DESC mRenderTargetDesc;
+    bool mDxUniformsDirty;
+    Program *mCachedCurrentProgram;
+    Framebuffer *mBoundDrawFramebuffer;
 
     bool mSupportsShaderModel3;
     bool mSupportsVertexTexture;
@@ -555,15 +602,16 @@ class Context
     std::map<D3DFORMAT, bool *> mMultiSampleSupport;
     GLsizei mMaxSupportedSamples;
     bool mSupportsEventQueries;
+    bool mSupportsOcclusionQueries;
     bool mSupportsDXT1Textures;
     bool mSupportsDXT3Textures;
     bool mSupportsDXT5Textures;
-    bool mSupportsFloatTextures;
-    bool mSupportsFloatLinearFilter;
-    bool mSupportsFloatRenderableTextures;
-    bool mSupportsHalfFloatTextures;
-    bool mSupportsHalfFloatLinearFilter;
-    bool mSupportsHalfFloatRenderableTextures;
+    bool mSupportsFloat32Textures;
+    bool mSupportsFloat32LinearFilter;
+    bool mSupportsFloat32RenderableTextures;
+    bool mSupportsFloat16Textures;
+    bool mSupportsFloat16LinearFilter;
+    bool mSupportsFloat16RenderableTextures;
     bool mSupportsLuminanceTextures;
     bool mSupportsLuminanceAlphaTextures;
     bool mSupports32bitIndices;
@@ -596,12 +644,12 @@ class Context
 extern "C"
 {
 // Exported functions for use by EGL
-gl::Context *glCreateContext(const egl::Config *config, const gl::Context *shareContext);
+gl::Context *glCreateContext(const egl::Config *config, const gl::Context *shareContext, bool notifyResets, bool robustAccess);
 void glDestroyContext(gl::Context *context);
 void glMakeCurrent(gl::Context *context, egl::Display *display, egl::Surface *surface);
 gl::Context *glGetCurrentContext();
 __eglMustCastToProperFunctionPointerType __stdcall glGetProcAddress(const char *procname);
-void __stdcall glBindTexImage(egl::Surface *surface);
+bool __stdcall glBindTexImage(egl::Surface *surface);
 }
 
 #endif   // INCLUDE_CONTEXT_H_

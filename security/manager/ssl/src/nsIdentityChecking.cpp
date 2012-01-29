@@ -574,6 +574,18 @@ static struct nsMyTrustedEVInfo myTrustedEVInfos[] = {
     nsnull
   },
   {
+    // CN=A-Trust-nQual-03,OU=A-Trust-nQual-03,O=A-Trust Ges. f. Sicherheitssysteme im elektr. Datenverkehr GmbH,C=AT
+    "1.2.40.0.17.1.22",
+    "A-Trust EV OID",
+    SEC_OID_UNKNOWN,
+    "D3:C0:63:F2:19:ED:07:3E:34:AD:5D:75:0B:32:76:29:FF:D5:9A:F2",
+    "MIGNMQswCQYDVQQGEwJBVDFIMEYGA1UECgw/QS1UcnVzdCBHZXMuIGYuIFNpY2hl"
+    "cmhlaXRzc3lzdGVtZSBpbSBlbGVrdHIuIERhdGVudmVya2VociBHbWJIMRkwFwYD"
+    "VQQLDBBBLVRydXN0LW5RdWFsLTAzMRkwFwYDVQQDDBBBLVRydXN0LW5RdWFsLTAz",
+    "AWwe",
+    nsnull
+  },
+  {
     // OU=Sample Certification Authority,O=\"Sample, Inc.\",C=US
     "0.0.0.0",
     0, // for real entries use a string like "Sample INVALID EV OID"
@@ -1086,53 +1098,32 @@ static SECStatus getFirstEVPolicy(CERTCertificate *cert, SECOidTag &outOidTag)
   return SECFailure;
 }
 
-bool
-nsNSSSocketInfo::hasCertErrors()
-{
-  if (!mSSLStatus) {
-    // if the status is unknown, assume the cert is bad, better safe than sorry
-    return true;
-  }
-
-  return mSSLStatus->mHaveCertErrorBits;
-}
-
 NS_IMETHODIMP
-nsNSSSocketInfo::GetIsExtendedValidation(bool* aIsEV)
+nsSSLStatus::GetIsExtendedValidation(bool* aIsEV)
 {
-  NS_ENSURE_ARG(aIsEV);
+  NS_ENSURE_ARG_POINTER(aIsEV);
   *aIsEV = false;
 
-  if (!mCert)
-    return NS_OK;
+  nsCOMPtr<nsIX509Cert> cert = mServerCert;
+  nsresult rv;
+  nsCOMPtr<nsIIdentityInfo> idinfo = do_QueryInterface(cert, &rv);
+
+  // mServerCert should never be null when this method is called because
+  // nsSSLStatus objects always have mServerCert set right after they are
+  // constructed and before they are returned. GetIsExtendedValidation should
+  // only be called in the chrome process (in e10s), and mServerCert will always
+  // implement nsIIdentityInfo in the chrome process.
+  if (!idinfo) {
+    NS_ERROR("nsSSLStatus has null mServerCert or was called in the content "
+             "process");
+    return NS_ERROR_UNEXPECTED;
+  }
 
   // Never allow bad certs for EV, regardless of overrides.
-  if (hasCertErrors())
+  if (mHaveCertErrorBits)
     return NS_OK;
-
-  nsresult rv;
-  nsCOMPtr<nsIIdentityInfo> idinfo = do_QueryInterface(mCert, &rv);
-  if (NS_FAILED(rv))
-    return rv;
 
   return idinfo->GetIsExtendedValidation(aIsEV);
-}
-
-NS_IMETHODIMP
-nsNSSSocketInfo::GetValidEVPolicyOid(nsACString &outDottedOid)
-{
-  if (!mCert)
-    return NS_OK;
-
-  if (hasCertErrors())
-    return NS_OK;
-
-  nsresult rv;
-  nsCOMPtr<nsIIdentityInfo> idinfo = do_QueryInterface(mCert, &rv);
-  if (NS_FAILED(rv))
-    return rv;
-
-  return idinfo->GetValidEVPolicyOid(outDottedOid);
 }
 
 nsresult

@@ -43,6 +43,8 @@
 #ifndef nsCSSRules_h_
 #define nsCSSRules_h_
 
+#include "mozilla/Attributes.h"
+
 #include "mozilla/css/GroupRule.h"
 #include "nsIDOMCSSMediaRule.h"
 #include "nsIDOMCSSMozDocumentRule.h"
@@ -70,8 +72,8 @@ class nsMediaList;
 namespace mozilla {
 namespace css {
 
-class NS_FINAL_CLASS MediaRule : public GroupRule,
-                                 public nsIDOMCSSMediaRule
+class MediaRule MOZ_FINAL : public GroupRule,
+                            public nsIDOMCSSMediaRule
 {
 public:
   MediaRule();
@@ -113,8 +115,8 @@ protected:
   nsRefPtr<nsMediaList> mMedia;
 };
 
-class NS_FINAL_CLASS DocumentRule : public GroupRule,
-                                    public nsIDOMCSSMozDocumentRule
+class DocumentRule MOZ_FINAL : public GroupRule,
+                               public nsIDOMCSSMozDocumentRule
 {
 public:
   DocumentRule();
@@ -192,14 +194,9 @@ public:
 
 protected:
   friend class nsCSSFontFaceRule;
-  nsCSSValue mFamily;
-  nsCSSValue mStyle;
-  nsCSSValue mWeight;
-  nsCSSValue mStretch;
-  nsCSSValue mSrc;
-  nsCSSValue mUnicodeRange;
-  nsCSSValue mFontFeatureSettings;
-  nsCSSValue mFontLanguageOverride;
+#define CSS_FONT_DESC(name_, method_) nsCSSValue m##method_;
+#include "nsCSSFontDescList.h"
+#undef CSS_FONT_DESC
 
   static nsCSSValue nsCSSFontFaceStyleDecl::* const Fields[];  
   inline nsCSSFontFaceRule* ContainingRule();
@@ -212,8 +209,8 @@ private:
   void* operator new(size_t size) CPP_THROW_NEW;
 };
 
-class NS_FINAL_CLASS nsCSSFontFaceRule : public mozilla::css::Rule,
-                                         public nsIDOMCSSFontFaceRule
+class nsCSSFontFaceRule MOZ_FINAL : public mozilla::css::Rule,
+                                    public nsIDOMCSSFontFaceRule
 {
 public:
   nsCSSFontFaceRule() {}
@@ -273,8 +270,8 @@ nsCSSFontFaceStyleDecl::ContainingRule() const
 namespace mozilla {
 namespace css {
 
-class NS_FINAL_CLASS CharsetRule : public Rule,
-                                   public nsIDOMCSSCharsetRule
+class CharsetRule MOZ_FINAL : public Rule,
+                              public nsIDOMCSSCharsetRule
 {
 public:
   CharsetRule(const nsAString& aEncoding);
@@ -313,8 +310,7 @@ private:
 
 class nsCSSKeyframeRule;
 
-class NS_FINAL_CLASS nsCSSKeyframeStyleDeclaration
-                         : public nsDOMCSSDeclaration
+class nsCSSKeyframeStyleDeclaration MOZ_FINAL : public nsDOMCSSDeclaration
 {
 public:
   nsCSSKeyframeStyleDeclaration(nsCSSKeyframeRule *aRule);
@@ -344,8 +340,8 @@ protected:
   nsCSSKeyframeRule *mRule;
 };
 
-class NS_FINAL_CLASS nsCSSKeyframeRule : public mozilla::css::Rule,
-                                         public nsIDOMMozCSSKeyframeRule
+class nsCSSKeyframeRule MOZ_FINAL : public mozilla::css::Rule,
+                                    public nsIDOMMozCSSKeyframeRule
 {
 public:
   // WARNING: Steals the contents of aKeys *and* aDeclaration
@@ -389,8 +385,8 @@ private:
   nsRefPtr<nsCSSKeyframeStyleDeclaration>    mDOMDeclaration;
 };
 
-class NS_FINAL_CLASS nsCSSKeyframesRule : public mozilla::css::GroupRule,
-                                          public nsIDOMMozCSSKeyframesRule
+class nsCSSKeyframesRule MOZ_FINAL : public mozilla::css::GroupRule,
+                                     public nsIDOMMozCSSKeyframesRule
 {
 public:
   nsCSSKeyframesRule(const nsSubstring& aName)

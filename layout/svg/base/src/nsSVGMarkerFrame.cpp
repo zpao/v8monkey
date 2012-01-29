@@ -175,37 +175,6 @@ nsSVGMarkerFrame::PaintMark(nsSVGRenderState *aContext,
   return NS_OK;
 }
 
-
-nsRect
-nsSVGMarkerFrame::RegionMark(nsSVGPathGeometryFrame *aMarkedFrame,
-                             const nsSVGMark *aMark, float aStrokeWidth)
-{
-  // If the flag is set when we get here, it means this marker frame
-  // has already been used in calculating the current mark region, and
-  // the document has a marker reference loop.
-  if (mInUse)
-    return nsRect(0,0,0,0);
-
-  AutoMarkerReferencer markerRef(this, aMarkedFrame);
-
-  mStrokeWidth = aStrokeWidth;
-  mX = aMark->x;
-  mY = aMark->y;
-  mAutoAngle = aMark->angle;
-
-  // Force children to update their covered region
-  for (nsIFrame* kid = mFrames.FirstChild();
-       kid;
-       kid = kid->GetNextSibling()) {
-    nsISVGChildFrame* child = do_QueryFrame(kid);
-    if (child)
-      child->UpdateCoveredRegion();
-  }
-
-  // Now get the combined covered region
-  return nsSVGUtils::GetCoveredRegion(mFrames);
-}
-
 gfxRect
 nsSVGMarkerFrame::GetMarkBBoxContribution(const gfxMatrix &aToBBoxUserspace,
                                           PRUint32 aFlags,
@@ -234,13 +203,14 @@ nsSVGMarkerFrame::GetMarkBBoxContribution(const gfxMatrix &aToBBoxUserspace,
   mY = aMark->y;
   mAutoAngle = aMark->angle;
 
-  gfxRect bbox;
-
   gfxMatrix markerTM =
     content->GetMarkerTransform(mStrokeWidth, mX, mY, mAutoAngle);
   gfxMatrix viewBoxTM = content->GetViewBoxTransform();
 
   gfxMatrix tm = viewBoxTM * markerTM * aToBBoxUserspace;
+
+  gfxRect bbox;
+  bool firstChild = true;
 
   for (nsIFrame* kid = mFrames.FirstChild();
        kid;
@@ -250,7 +220,17 @@ nsSVGMarkerFrame::GetMarkBBoxContribution(const gfxMatrix &aToBBoxUserspace,
       // When we're being called to obtain the invalidation area, we need to
       // pass down all the flags so that stroke is included. However, once DOM
       // getBBox() accepts flags, maybe we should strip some of those here?
-      bbox.UnionRect(bbox, child->GetBBoxContribution(tm, aFlags));
+
+      // We need to include zero width/height vertical/horizontal lines, so we have
+      // to use UnionEdges, but we must special case the first bbox so that we don't
+      // include the initial gfxRect(0,0,0,0).
+      gfxRect childBBox = child->GetBBoxContribution(tm, aFlags);
+      if (firstChild) {
+        bbox = childBBox;
+        firstChild = false;
+        continue;
+      }
+      bbox = bbox.UnionEdges(childBBox);
     }
   }
 

@@ -74,7 +74,7 @@ ycc_rgb_convert_argb (j_decompress_ptr cinfo,
 static void cmyk_convert_rgb(JSAMPROW row, JDIMENSION width);
 
 namespace mozilla {
-namespace imagelib {
+namespace image {
 
 #if defined(PR_LOGGING)
 PRLogModuleInfo *gJPEGlog = PR_NewLogModule("JPEGDecoder");
@@ -109,7 +109,7 @@ METHODDEF(void) my_error_exit (j_common_ptr cinfo);
 #define MAX_JPEG_MARKER_LENGTH  (((PRUint32)1 << 16) - 1)
 
 
-nsJPEGDecoder::nsJPEGDecoder(RasterImage *aImage, imgIDecoderObserver* aObserver)
+nsJPEGDecoder::nsJPEGDecoder(RasterImage &aImage, imgIDecoderObserver* aObserver)
  : Decoder(aImage, aObserver)
 {
   mState = JPEG_HEADER;
@@ -392,9 +392,9 @@ nsJPEGDecoder::WriteInternal(const char *aBuffer, PRUint32 aCount)
     jpeg_calc_output_dimensions(&mInfo);
 
     PRUint32 imagelength;
-    if (NS_FAILED(mImage->EnsureFrame(0, 0, 0, mInfo.image_width, mInfo.image_height,
-                                      gfxASurface::ImageFormatRGB24,
-                                      &mImageData, &imagelength))) {
+    if (NS_FAILED(mImage.EnsureFrame(0, 0, 0, mInfo.image_width, mInfo.image_height,
+                                     gfxASurface::ImageFormatRGB24,
+                                     &mImageData, &imagelength))) {
       mState = JPEG_ERROR;
       PostDecoderError(NS_ERROR_OUT_OF_MEMORY);
       PR_LOG(gJPEGDecoderAccountingLog, PR_LOG_DEBUG,
@@ -890,7 +890,7 @@ term_source (j_decompress_ptr jd)
   decoder->NotifyDone();
 }
 
-} // namespace imagelib
+} // namespace image
 } // namespace mozilla
 
 

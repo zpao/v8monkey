@@ -8,8 +8,15 @@ The Orion editor web site: http://www.eclipse.org/orion
 
 To upgrade Orion to a newer version see the UPGRADE file.
 
-Orion version: git clone from 2011-10-07
-               commit hash eedba6403b6dff4536bc0469d31126c3485deb56
+Orion version: git clone from 2011-12-09
+               commit hash d8a6dc01d9c561d6eb99f03b64c8c78ce785c59d
+  + patch for Eclipse Bug 366312 - right-clicking outside of the selection causes the caret to move
+    https://github.com/mihaisucan/orion.client/tree/bug-366312
+      see https://bugs.eclipse.org/bugs/show_bug.cgi?id=366312
+  + patch for Mozilla Bug 711737 - Orion should support all the CSS properties from CSS1, CSS2, CSS2.1 and CSS3
+    https://bugzilla.mozilla.org/show_bug.cgi?id=711737
+  + patch for Mozilla Bug 719028 - Style Editor does not highlight a few CSS2.0 and CSS3 properties
+    https://bugzilla.mozilla.org/show_bug.cgi?id=719028
 
 # License
 

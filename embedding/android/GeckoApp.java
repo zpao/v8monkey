@@ -87,6 +87,7 @@ abstract public class GeckoApp
     public Handler mMainHandler;
     private IntentFilter mConnectivityFilter;
     private BroadcastReceiver mConnectivityReceiver;
+    private BroadcastReceiver mBatteryReceiver;
 
     enum LaunchState {PreLaunch, Launching, WaitForDebugger,
                       Launched, GeckoRunning, GeckoExiting};
@@ -330,7 +331,9 @@ abstract public class GeckoApp
                 } catch (Exception e) {
                     Log.e(LOG_FILE_NAME, "top level exception", e);
                     StringWriter sw = new StringWriter();
-                    e.printStackTrace(new PrintWriter(sw));
+                    PrintWriter pw = new PrintWriter(sw);
+                    e.printStackTrace(pw);
+                    pw.flush();
                     GeckoAppShell.reportJavaCrash(sw.toString());
                 }
             }
@@ -354,7 +357,9 @@ abstract public class GeckoApp
                     } catch (Exception e) {
                         Log.e(LOG_FILE_NAME, "top level exception", e);
                         StringWriter sw = new StringWriter();
-                        e.printStackTrace(new PrintWriter(sw));
+                        PrintWriter pw = new PrintWriter(sw);
+                        e.printStackTrace(pw);
+                        pw.flush();
                         GeckoAppShell.reportJavaCrash(sw.toString());
                     }
                     // resetting this is kinda pointless, but oh well
@@ -395,9 +400,6 @@ abstract public class GeckoApp
                                                            0,
                                                            0));
 
-        // Some phones (eg. nexus S) need at least a 8x16 preview size
-        mainLayout.addView(cameraView, new AbsoluteLayout.LayoutParams(8, 16, 0, 0));
-
         setContentView(mainLayout,
                        new ViewGroup.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT,
                                                   ViewGroup.LayoutParams.FILL_PARENT));
@@ -405,6 +407,17 @@ abstract public class GeckoApp
         mConnectivityFilter = new IntentFilter();
         mConnectivityFilter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
         mConnectivityReceiver = new GeckoConnectivityReceiver();
+
+        IntentFilter batteryFilter = new IntentFilter();
+        batteryFilter.addAction(Intent.ACTION_BATTERY_CHANGED);
+        mBatteryReceiver = new GeckoBatteryManager();
+        registerReceiver(mBatteryReceiver, batteryFilter);
+
+        if (SmsManager.getInstance() != null) {
+            SmsManager.getInstance().start();
+        }
+
+        GeckoNetworkManager.getInstance().init();
 
         if (!checkAndSetLaunchState(LaunchState.PreLaunch,
                                     LaunchState.Launching))
@@ -425,6 +438,15 @@ abstract public class GeckoApp
                 res.updateConfiguration(config, res.getDisplayMetrics());
             }});
         mLibLoadThread.start();
+    }
+
+    public void enableCameraView() {
+        // Some phones (eg. nexus S) need at least a 8x16 preview size
+        mainLayout.addView(cameraView, new AbsoluteLayout.LayoutParams(8, 16, 0, 0));
+    }
+
+    public void disableCameraView() {
+        mainLayout.removeView(cameraView);
     }
 
     @Override
@@ -489,6 +511,7 @@ abstract public class GeckoApp
         super.onPause();
 
         unregisterReceiver(mConnectivityReceiver);
+        GeckoNetworkManager.getInstance().stop();
     }
 
     @Override
@@ -507,6 +530,7 @@ abstract public class GeckoApp
             onNewIntent(getIntent());
 
         registerReceiver(mConnectivityReceiver, mConnectivityFilter);
+        GeckoNetworkManager.getInstance().start();
     }
 
     @Override
@@ -523,7 +547,6 @@ abstract public class GeckoApp
         // Instead, what we should do here is save prefs, session,
         // etc., and generally mark the profile as 'clean', and then
         // dirty it again if we get an onResume.
-
 
         GeckoAppShell.sendEventToGecko(new GeckoEvent(GeckoEvent.ACTIVITY_STOPPING));
         super.onStop();
@@ -550,12 +573,23 @@ abstract public class GeckoApp
     public void onDestroy()
     {
         Log.i(LOG_FILE_NAME, "destroy");
+
         // Tell Gecko to shutting down; we'll end up calling System.exit()
         // in onXreExit.
         if (isFinishing())
             GeckoAppShell.sendEventToGecko(new GeckoEvent(GeckoEvent.ACTIVITY_SHUTDOWN));
 
+        if (SmsManager.getInstance() != null) {
+            SmsManager.getInstance().stop();
+            if (isFinishing())
+                SmsManager.getInstance().shutdown();
+        }
+
+        GeckoNetworkManager.getInstance().stop();
+
         super.onDestroy();
+
+        unregisterReceiver(mBatteryReceiver);
     }
 
     @Override
@@ -601,11 +635,6 @@ abstract public class GeckoApp
             // This file may not be there, so just log any errors and move on
             Log.w(LOG_FILE_NAME, "error removing files", ex);
         }
-        unpackFile(zip, buf, null, "application.ini");
-        unpackFile(zip, buf, null, getContentProcessName());
-        try {
-            unpackFile(zip, buf, null, "update.locale");
-        } catch (Exception e) {/* this is non-fatal */}
 
         // copy any .xpi file into an extensions/ directory
         Enumeration<? extends ZipEntry> zipEntries = zip.entries();
@@ -673,7 +702,6 @@ abstract public class GeckoApp
         Map<String,String> envMap = System.getenv();
         Set<Map.Entry<String,String>> envSet = envMap.entrySet();
         Iterator<Map.Entry<String,String>> envIter = envSet.iterator();
-        StringBuffer envstr = new StringBuffer();
         int c = 0;
         while (envIter.hasNext()) {
             Map.Entry<String,String> entry = envIter.next();

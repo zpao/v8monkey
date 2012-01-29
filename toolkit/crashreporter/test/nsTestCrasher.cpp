@@ -21,6 +21,8 @@ public:
 class B : A
 {
   void f() { }
+public:
+  void use() { }
 };
 
 void fcn( A* p )
@@ -32,12 +34,14 @@ void PureVirtualCall()
 {
   // generates a pure virtual function call
   B b;
+  b.use(); // make sure b's actually used
 }
 
 // Keep these in sync with CrashTestUtils.jsm!
 const PRInt16 CRASH_INVALID_POINTER_DEREF = 0;
 const PRInt16 CRASH_PURE_VIRTUAL_CALL     = 1;
 const PRInt16 CRASH_RUNTIMEABORT          = 2;
+const PRInt16 CRASH_OOM                   = 3;
 
 extern "C" NS_EXPORT
 void Crash(PRInt16 how)
@@ -56,6 +60,12 @@ void Crash(PRInt16 how)
   }
   case CRASH_RUNTIMEABORT: {
     NS_RUNTIMEABORT("Intentional crash");
+    break;
+  }
+  case CRASH_OOM: {
+    (void) moz_xmalloc((size_t) -1);
+    (void) moz_xmalloc((size_t) -1);
+    (void) moz_xmalloc((size_t) -1);
     break;
   }
   default:

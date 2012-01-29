@@ -390,9 +390,15 @@ interface nsIXPCFunctionThisTranslator : nsISupports
 #define NS_XPCONNECT_CID \
 { 0xcb6593e0, 0xf9b2, 0x11d2, \
     { 0xbd, 0xd6, 0x0, 0x0, 0x64, 0x65, 0x73, 0x74 } }
+
+enum nsGCType {
+    nsGCNormal,
+    nsGCShrinking,
+    nsGCIncremental
+};
 %}
 
-[uuid(a995b541-d514-43f1-ac0e-f49746c0b063)]
+[uuid(686bb1d0-4711-11e1-b86c-0800200c9a66)]
 interface nsIXPConnect : nsISupports
 {
 %{ C++
@@ -659,17 +665,6 @@ interface nsIXPConnect : nsISupports
     nsIVariant JSToVariant(in JSContextPtr ctx, in jsval value);
 
     /**
-     * Restore an old prototype for wrapped natives of type
-     * aClassInfo. This should be used only when restoring an old
-     * scope into a state close to where it was prior to
-     * being reinitialized.
-     */
-    void restoreWrappedNativePrototype(in JSContextPtr aJSContext,
-                                       in JSObjectPtr  aScope,
-                                       in nsIClassInfo aClassInfo,
-                                       in nsIXPConnectJSObjectHolder aPrototype);
-
-    /**
      * Create a sandbox for evaluating code in isolation using
      * evalInSandboxObject().
      *
@@ -734,8 +729,10 @@ interface nsIXPConnect : nsISupports
 
     /**
      * Trigger a JS garbage collection.
+     * Use a js::gcreason::Reason from jsfriendapi.h for the kind.
+     * Use the nsGCType enum for the kind.
      */
-    void GarbageCollect();
+    void GarbageCollect(in PRUint32 reason, in PRUint32 kind);
 
     /**
      * Define quick stubs on the given object, @a proto.
@@ -795,5 +792,6 @@ interface nsIXPConnect : nsISupports
      * This method will turn debug mode on or off when the context 
      * stack reaches zero length.
      */
-    [noscript] void setDebugModeWhenPossible(in boolean mode);
+    [noscript] void setDebugModeWhenPossible(in boolean mode,
+                                             in boolean allowSyncDisable);
 };

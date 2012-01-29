@@ -86,6 +86,77 @@ function testFailed(msg)
 {
     reportTestResultsToHarness(false, msg);
     debug('<span><span class="fail">FAIL</span> ' + escapeHTML(msg) + '</span>');
+    dump('FAIL: ' + msg + '\n');
+
+    var stack = (new Error).stack.split('\n');
+    if (!stack.length) {
+        return;
+    }
+
+    dump('STACK TRACE: \n');
+
+    stack.pop();
+    var index = 0, frame, messages = new Array();
+    // Match all .html files and print out the line in them.
+    while (stack.length && index != -1) {
+        frame = stack.pop();
+        index = frame.indexOf(".html:");
+        if (index != -1) {
+            messages.unshift(frame);
+        }
+    }
+
+    // Print out the first stack frame in JS and then stop.
+    if (stack.length) {
+        messages.unshift(stack.pop());
+    }
+
+    for (message in messages) {
+        dump(messages[message] + '\n');
+    }
+}
+
+function testFailedRender(msg, ref, test, width, height) 
+{
+    var refData;
+    if (typeof ref.getImageData == 'function') {
+        refData = ref.canvas.toDataURL();
+    } else {
+        refData = arrayToURLData(ref, width, height);
+    }
+
+    var testData;
+    if (typeof test.getImageData == 'function') {
+        testData = test.canvas.toDataURL();
+    } else {
+        testData = arrayToURLData(test, width, height);
+    }
+    
+    testFailed(msg);
+
+    var data = 'REFTEST TEST-DEBUG-INFO | ' + msg + ' | image comparison (==)\n' +
+               'REFTEST   IMAGE 1 (TEST): ' + testData + '\n' +
+               'REFTEST   IMAGE 2 (REFERENCE): ' + refData;
+    dump('FAIL: ' + data + '\n');
+    dump('To view the differences between these image renderings, go to the following link: https://hg.mozilla.org/mozilla-central/raw-file/tip/layout/tools/reftest/reftest-analyzer.xhtml#log=' +
+    encodeURIComponent(encodeURIComponent(data)) + '\n');
+}
+
+function arrayToURLData(buf, width, height)
+{
+    var cv = document.createElement('canvas');
+    cv.height = height;
+    cv.width = width;
+    var ctx = cv.getContext('2d');
+    var imgd = ctx.getImageData(0, 0, width, height);
+    for (i = 0; i < height * width; ++i) {
+        offset = i * 4;
+        for (j = 0; j < 4; j++) {
+            imgd.data[offset + j] = buf[offset + j];
+        }
+    }
+    ctx.putImageData(imgd, 0, 0);
+    return cv.toDataURL();
 }
 
 function areArraysEqual(_a, _b)
@@ -146,27 +217,52 @@ function evalAndLog(_a)
   return _av;
 }
 
-function shouldBe(_a, _b)
+function shouldBe(_a, _b, quiet)
 {
-  if (typeof _a != "string" || typeof _b != "string")
-    debug("WARN: shouldBe() expects string arguments");
-  var exception;
-  var _av;
-  try {
-     _av = eval(_a);
-  } catch (e) {
-     exception = e;
-  }
-  var _bv = eval(_b);
+    if (typeof _a != "string" || typeof _b != "string")
+        debug("WARN: shouldBe() expects string arguments");
+    var exception;
+    var _av;
+    try {
+        _av = eval(_a);
+    } catch (e) {
+        exception = e;
+    }
+    var _bv = eval(_b);
 
-  if (exception)
-    testFailed(_a + " should be " + _bv + ". Threw exception " + exception);
-  else if (isResultCorrect(_av, _bv))
-    testPassed(_a + " is " + _b);
-  else if (typeof(_av) == typeof(_bv))
-    testFailed(_a + " should be " + _bv + ". Was " + stringify(_av) + ".");
-  else
-    testFailed(_a + " should be " + _bv + " (of type " + typeof _bv + "). Was " + _av + " (of type " + typeof _av + ").");
+    if (exception)
+        testFailed(_a + " should be " + _bv + ". Threw exception " + exception);
+    else if (isResultCorrect(_av, _bv)) {
+        if (!quiet) {
+            testPassed(_a + " is " + _b);
+        }
+    } else if (typeof(_av) == typeof(_bv))
+        testFailed(_a + " should be " + _bv + ". Was " + stringify(_av) + ".");
+    else
+        testFailed(_a + " should be " + _bv + " (of type " + typeof _bv + "). Was " + _av + " (of type " + typeof _av + ").");
+}
+
+function shouldNotBe(_a, _b, quiet)
+{
+    if (typeof _a != "string" || typeof _b != "string")
+        debug("WARN: shouldNotBe() expects string arguments");
+    var exception;
+    var _av;
+    try {
+        _av = eval(_a);
+    } catch (e) {
+        exception = e;
+    }
+    var _bv = eval(_b);
+
+    if (exception)
+        testFailed(_a + " should not be " + _bv + ". Threw exception " + exception);
+    else if (!isResultCorrect(_av, _bv)) {
+        if (!quiet) {
+            testPassed(_a + " is not " + _b);
+        }
+    } else
+        testFailed(_a + " should not be " + _bv + ".");
 }
 
 function shouldBeTrue(_a) { shouldBe(_a, "true"); }

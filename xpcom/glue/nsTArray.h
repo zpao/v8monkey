@@ -39,6 +39,9 @@
 #ifndef nsTArray_h__
 #define nsTArray_h__
 
+#include "mozilla/Assertions.h"
+#include "mozilla/Util.h"
+
 #include <string.h>
 
 #include "prtypes.h"
@@ -47,7 +50,6 @@
 #include "nsQuickSort.h"
 #include "nsDebug.h"
 #include "nsTraceRefcnt.h"
-#include "mozilla/Util.h"
 #include NEW_H
 
 //
@@ -64,22 +66,22 @@
 // moz_free() end up calling the same underlying free()).
 //
 
+#if defined(MOZALLOC_HAVE_XMALLOC)
 struct nsTArrayFallibleAllocator
 {
   static void* Malloc(size_t size) {
-    return NS_Alloc(size);
+    return moz_malloc(size);
   }
 
   static void* Realloc(void* ptr, size_t size) {
-    return NS_Realloc(ptr, size);
+    return moz_realloc(ptr, size);
   }
 
   static void Free(void* ptr) {
-    NS_Free(ptr);
+    moz_free(ptr);
   }
 };
 
-#if defined(MOZALLOC_HAVE_XMALLOC)
 struct nsTArrayInfallibleAllocator
 {
   static void* Malloc(size_t size) {
@@ -94,6 +96,25 @@ struct nsTArrayInfallibleAllocator
     moz_free(ptr);
   }
 };
+
+#else
+
+#include <stdlib.h>
+struct nsTArrayFallibleAllocator
+{
+  static void* Malloc(size_t size) {
+    return malloc(size);
+  }
+
+  static void* Realloc(void* ptr, size_t size) {
+    return realloc(ptr, size);
+  }
+
+  static void Free(void* ptr) {
+    free(ptr);
+  }
+};
+
 #endif
 
 #if defined(MOZALLOC_HAVE_XMALLOC)
@@ -142,6 +163,39 @@ struct nsTArray_SafeElementAtHelper<E*, Derived>
   const elem_type SafeElementAt(index_type i) const {
     return static_cast<const Derived*> (this)->SafeElementAt(i, nsnull);
   }
+};
+
+// E is the base type that the smart pointer is templated over; the
+// smart pointer can act as E*.
+template <class E, class Derived>
+struct nsTArray_SafeElementAtSmartPtrHelper
+{
+  typedef E*       elem_type;
+  typedef PRUint32 index_type;
+
+  elem_type SafeElementAt(index_type i) {
+    return static_cast<Derived*> (this)->SafeElementAt(i, nsnull);
+  }
+
+  const elem_type SafeElementAt(index_type i) const {
+    return static_cast<const Derived*> (this)->SafeElementAt(i, nsnull);
+  }
+};
+
+template <class T> class nsCOMPtr;
+
+template <class E, class Derived>
+struct nsTArray_SafeElementAtHelper<nsCOMPtr<E>, Derived> :
+  public nsTArray_SafeElementAtSmartPtrHelper<E, Derived>
+{
+};
+
+template <class T> class nsRefPtr;
+
+template <class E, class Derived>
+struct nsTArray_SafeElementAtHelper<nsRefPtr<E>, Derived> :
+  public nsTArray_SafeElementAtSmartPtrHelper<E, Derived>
+{
 };
 
 //
@@ -377,14 +431,15 @@ public:
 //   class Comparator {
 //     public:
 //       /** @return True if the elements are equals; false otherwise. */
-//       bool Equals(const elem_type& a, const elem_type& b) const;
+//       bool Equals(const elem_type& a, const Item& b) const;
 //
 //       /** @return True if (a < b); false otherwise. */
-//       bool LessThan(const elem_type& a, const elem_type& b) const;
+//       bool LessThan(const elem_type& a, const Item& b) const;
 //   };
 //
 // The Equals method is used for searching, and the LessThan method is used
-// for sorting.
+// for sorting.  The |Item| type above can be arbitrary, but must match the
+// Item type passed to the sort or search function.
 //
 // The Alloc template parameter can be used to choose between
 // "fallible" and "infallible" nsTArray (if available), defaulting to
@@ -408,6 +463,7 @@ public:
   typedef nsTArray_SafeElementAtHelper<E, self_type> safeelementat_helper_type;
 
   using safeelementat_helper_type::SafeElementAt;
+  using base_type::EmptyHdr;
 
   // A special value that is used to indicate an invalid or unknown index
   // into the array.
@@ -480,11 +536,18 @@ public:
     return *this;
   }
 
-  // @return The amount of memory taken used by this nsTArray, not including
-  // sizeof(this)
-  size_t SizeOf() const {
-    return this->UsesAutoArrayBuffer() ?
-      0 : this->Capacity() * sizeof(elem_type) + sizeof(*this->Hdr());
+  // @return The amount of memory used by this nsTArray, excluding
+  // sizeof(*this).
+  size_t SizeOfExcludingThis(nsMallocSizeOfFun mallocSizeOf) const {
+    if (this->UsesAutoArrayBuffer() || Hdr() == EmptyHdr())
+      return 0;
+    return mallocSizeOf(this->Hdr());
+  }
+
+  // @return The amount of memory used by this nsTArray, including
+  // sizeof(*this).
+  size_t SizeOfIncludingThis(nsMallocSizeOfFun mallocSizeOf) const {
+    return mallocSizeOf(this) + SizeOfExcludingThis(mallocSizeOf);
   }
 
   //
@@ -1271,9 +1334,9 @@ private:
   friend class nsTArray_base;
 
   void Init() {
-    // We can't handle alignments greater than 8; see
-    // nsTArray_base::UsesAutoArrayBuffer().
-    PR_STATIC_ASSERT(MOZ_ALIGNOF(elem_type) <= 8);
+    MOZ_STATIC_ASSERT(MOZ_ALIGNOF(elem_type) <= 8,
+                      "can't handle alignments greater than 8, "
+                      "see nsTArray_base::UsesAutoArrayBuffer()");
 
     *base_type::PtrToHdr() = reinterpret_cast<Header*>(&mAutoBuf);
     base_type::Hdr()->mLength = 0;
@@ -1322,8 +1385,10 @@ public:
 // 64-bit system, where the compiler inserts 4 bytes of padding at the end of
 // the auto array to make its size a multiple of alignof(void*) == 8 bytes.
 
-PR_STATIC_ASSERT(sizeof(nsAutoTArray<PRUint32, 2>) ==
-                 sizeof(void*) + sizeof(nsTArrayHeader) + sizeof(PRUint32) * 2);
+MOZ_STATIC_ASSERT(sizeof(nsAutoTArray<PRUint32, 2>) ==
+                  sizeof(void*) + sizeof(nsTArrayHeader) + sizeof(PRUint32) * 2,
+                  "nsAutoTArray shouldn't contain any extra padding, "
+                  "see the comment");
 
 template<class E, PRUint32 N>
 class AutoFallibleTArray : public nsAutoArrayBase<FallibleTArray<E>, N>

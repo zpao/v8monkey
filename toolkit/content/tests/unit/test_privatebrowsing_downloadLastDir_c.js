@@ -43,41 +43,10 @@ function loadUtilsScript() {
   let loader = Cc["@mozilla.org/moz/jssubscript-loader;1"].
                getService(Ci.mozIJSSubScriptLoader);
   loader.loadSubScript("chrome://global/content/contentAreaUtils.js");
+  Components.utils.import("resource://gre/modules/DownloadLastDir.jsm");
 }
 
-// Code borrowed from toolkit/components/downloadmgr/test/unit/head_download_manager.js
-var dirSvc = Cc["@mozilla.org/file/directory_service;1"].
-             getService(Ci.nsIProperties);
-var profileDir = null;
-try {
-  profileDir = dirSvc.get("ProfD", Ci.nsIFile);
-} catch (e) { }
-if (!profileDir) {
-  // Register our own provider for the profile directory.
-  // It will simply return the current directory.
-  var provider = {
-    getFile: function(prop, persistent) {
-      persistent.value = true;
-      if (prop == "ProfD") {
-        return dirSvc.get("CurProcD", Ci.nsILocalFile);
-      } else if (prop == "DLoads") {
-        var file = dirSvc.get("CurProcD", Ci.nsILocalFile);
-        file.append("downloads.rdf");
-        return file;
-      }
-      print("*** Throwing trying to get " + prop);
-      throw Cr.NS_ERROR_FAILURE;
-    },
-    QueryInterface: function(iid) {
-      if (iid.equals(Ci.nsIDirectoryServiceProvider) ||
-          iid.equals(Ci.nsISupports)) {
-        return this;
-      }
-      throw Cr.NS_ERROR_NO_INTERFACE;
-    }
-  };
-  dirSvc.QueryInterface(Ci.nsIDirectoryService).registerProvider(provider);
-}
+do_get_profile();
 
 let window = {};
 function run_test()
@@ -98,6 +67,8 @@ function run_test()
                      QueryInterface(Ci.nsIPrefBranch);
   prefsService.setBoolPref("browser.privatebrowsing.keep_current_session", true);
   let prefs = prefsService.getBranch("browser.download.");
+  let dirSvc = Cc["@mozilla.org/file/directory_service;1"].
+               getService(Ci.nsIProperties);
   let tmpDir = dirSvc.get("TmpD", Ci.nsILocalFile);
   function newDirectory() {
     let dir = tmpDir.clone();
@@ -183,7 +154,10 @@ function run_test()
   do_check_eq(gDownloadLastDir.file.path, dir3.path);
 
   // cleanup
+  Cc["@mozilla.org/observer-service;1"]
+    .getService(Ci.nsIObserverService)
+    .notifyObservers(null, "quit-application", null);
+
   prefsService.clearUserPref("browser.privatebrowsing.keep_current_session");
   [dir1, dir2, dir3].forEach(function(dir) dir.remove(true));
-  dirSvc.QueryInterface(Ci.nsIDirectoryService).unregisterProvider(provider);
 }

@@ -44,13 +44,13 @@
 #include "imgIDecoderObserver.h"
 
 namespace mozilla {
-namespace imagelib {
+namespace image {
 
 class Decoder
 {
 public:
 
-  Decoder(RasterImage* aImage, imgIDecoderObserver* aObserver);
+  Decoder(RasterImage& aImage, imgIDecoderObserver* aObserver);
   virtual ~Decoder();
 
   /**
@@ -201,7 +201,7 @@ protected:
    * Member variables.
    *
    */
-  nsRefPtr<RasterImage> mImage;
+  RasterImage &mImage;
   nsCOMPtr<imgIDecoderObserver> mObserver;
 
   PRUint32 mDecodeFlags;
@@ -218,9 +218,10 @@ private:
   bool mInitialized;
   bool mSizeDecode;
   bool mInFrame;
+  bool mIsAnimated;
 };
 
-} // namespace imagelib
+} // namespace image
 } // namespace mozilla
 
 #endif // MOZILLA_IMAGELIB_DECODER_H_

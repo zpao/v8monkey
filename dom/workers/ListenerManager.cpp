@@ -36,15 +36,19 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+
 #include "ListenerManager.h"
 
+#include "jsalloc.h"
 #include "jsapi.h"
-#include "jscntxt.h"
+#include "jsfriendapi.h"
 #include "js/Vector.h"
 
 #include "Events.h"
 
-using mozilla::dom::workers::events::ListenerManager;
+using namespace mozilla;
+using dom::workers::events::ListenerManager;
 
 namespace {
 
@@ -313,6 +317,25 @@ ListenerManager::GetEventListener(JSContext* aCx, JSString* aType,
   return true;
 }
 
+class ExternallyUsableContextAllocPolicy
+{
+    JSContext *const cx;
+
+  public:
+    ExternallyUsableContextAllocPolicy(JSContext *cx) : cx(cx) {}
+    JSContext *context() const { return cx; }
+    void *malloc_(size_t bytes) {
+        JSAutoRequest ar(cx);
+        return JS_malloc(cx, bytes);
+    }
+    void *realloc_(void *p, size_t oldBytes, size_t bytes) {
+        JSAutoRequest ar(cx);
+        return JS_realloc(cx, p, bytes);
+    }
+    void free_(void *p) { JS_free(cx, p); }
+    void reportAllocOverflow() const { JS_ReportAllocationOverflow(cx); }
+};
+
 bool
 ListenerManager::DispatchEvent(JSContext* aCx, JSObject* aTarget,
                                JSObject* aEvent, bool* aPreventDefaultCalled)
@@ -364,8 +387,8 @@ ListenerManager::DispatchEvent(JSContext* aCx, JSObject* aTarget,
     return true;
   }
 
-  js::ContextAllocPolicy ap(aCx);
-  js::Vector<jsval, 10, js::ContextAllocPolicy> listeners(ap);
+  ExternallyUsableContextAllocPolicy ap(aCx);
+  js::Vector<jsval, 10, ExternallyUsableContextAllocPolicy> listeners(ap);
 
   for (PRCList* elem = PR_NEXT_LINK(&collection->mListenerHead);
        elem != &collection->mListenerHead;
@@ -389,6 +412,10 @@ ListenerManager::DispatchEvent(JSContext* aCx, JSObject* aTarget,
   }
 
   for (size_t index = 0; index < listeners.length(); index++) {
+    if (events::EventImmediatePropagationStopped(aCx, aEvent)) {
+      break;
+    }
+
     // If anything fails in here we want to report the exception and continue on
     // to the next listener rather than bailing out. If something fails and
     // does not set an exception then we bail out entirely as we've either run
@@ -426,7 +453,7 @@ ListenerManager::DispatchEvent(JSContext* aCx, JSObject* aTarget,
 
     jsval argv[] = { OBJECT_TO_JSVAL(aEvent) };
     jsval rval = JSVAL_VOID;
-    if (!JS_CallFunctionValue(aCx, aTarget, listenerVal, JS_ARRAY_LENGTH(argv),
+    if (!JS_CallFunctionValue(aCx, aTarget, listenerVal, ArrayLength(argv),
                               argv, &rval)) {
       if (!JS_ReportPendingException(aCx)) {
         return false;

@@ -43,6 +43,8 @@
 #ifndef nsZipArchive_h_
 #define nsZipArchive_h_
 
+#include "mozilla/Attributes.h"
+
 #define ZIP_TABSIZE   256
 #define ZIP_BUFLEN    (4*1024)      /* Used as output buffer when deflating items to a file */
 
@@ -56,6 +58,7 @@
 #include "nsAutoPtr.h"
 #include "nsILocalFile.h"
 #include "mozilla/FileUtils.h"
+#include "mozilla/FileLocation.h"
 
 #if defined(XP_WIN) && defined(_MSC_VER)
 #define MOZ_WIN_MEM_TRY_BEGIN __try {
@@ -221,8 +224,21 @@ public:
    */
   const PRUint8* GetData(nsZipItem* aItem);
 
+  /**
+   * Gets the amount of memory taken up by the archive's mapping.
+   * @return the size
+   */
+  PRInt64 SizeOfMapping();
+
+  /*
+   * Refcounting
+   */
+  NS_METHOD_(nsrefcnt) AddRef(void);
+  NS_METHOD_(nsrefcnt) Release(void);
+
 private:
   //--- private members ---
+  nsrefcnt      mRefCnt; /* ref count */
 
   nsZipItem*    mFiles[ZIP_TABSIZE];
   PLArenaPool   mArena;
@@ -236,14 +252,15 @@ private:
   // logging handle
   mozilla::AutoFDClose mLog;
 
-  //--- private methods ---
-  
-  nsZipArchive& operator=(const nsZipArchive& rhs); // prevent assignments
-  nsZipArchive(const nsZipArchive& rhs);            // prevent copies
 
+private:
+  //--- private methods ---
   nsZipItem*        CreateZipItem();
   nsresult          BuildFileList();
   nsresult          BuildSynthetics();
+
+  nsZipArchive& operator=(const nsZipArchive& rhs) MOZ_DELETE;
+  nsZipArchive(const nsZipArchive& rhs) MOZ_DELETE;
 };
 
 /** 
@@ -260,15 +277,14 @@ public:
   nsresult      FindNext(const char** aResult, PRUint16* aNameLen);
 
 private:
-  nsZipArchive* mArchive;
+  nsRefPtr<nsZipArchive> mArchive;
   char*         mPattern;
   nsZipItem*    mItem;
   PRUint16      mSlot;
   bool          mRegExp;
 
-  //-- prevent copies and assignments
-  nsZipFind& operator=(const nsZipFind& rhs);
-  nsZipFind(const nsZipFind& rhs);
+  nsZipFind& operator=(const nsZipFind& rhs) MOZ_DELETE;
+  nsZipFind(const nsZipFind& rhs) MOZ_DELETE;
 };
 
 /** 
@@ -297,9 +313,24 @@ public:
    * @param   aBytesRead  Outparam for number of bytes read.
    * @return  data read or NULL if item is corrupted.
    */
-  PRUint8* Read(PRUint32 *aBytesRead);
+  PRUint8* Read(PRUint32 *aBytesRead) {
+    return ReadOrCopy(aBytesRead, false);
+  }
+
+  /**
+   * Performs a copy. It always uses aBuf(passed in constructor).
+   *
+   * @param   aBytesRead  Outparam for number of bytes read.
+   * @return  data read or NULL if item is corrupted.
+   */
+  PRUint8* Copy(PRUint32 *aBytesRead) {
+    return ReadOrCopy(aBytesRead, true);
+  }
 
 private:
+  /* Actual implementation for both Read and Copy above */
+  PRUint8* ReadOrCopy(PRUint32 *aBytesRead, bool aCopy);
+
   nsZipItem *mItem; 
   PRUint8  *mBuf; 
   PRUint32  mBufSize; 
@@ -374,6 +405,7 @@ public:
 
 class nsZipHandle {
 friend class nsZipArchive;
+friend class mozilla::FileLocation;
 public:
   static nsresult Init(nsILocalFile *file, nsZipHandle **ret NS_OUTPARAM);
   static nsresult Init(nsZipArchive *zip, const char *entry,
@@ -382,10 +414,12 @@ public:
   NS_METHOD_(nsrefcnt) AddRef(void);
   NS_METHOD_(nsrefcnt) Release(void);
 
+  PRInt64 SizeOfMapping();
+
 protected:
   const PRUint8 * mFileData; /* pointer to mmaped file */
   PRUint32        mLen;      /* length of file and memory mapped area */
-  nsCOMPtr<nsILocalFile> mFile; /* source file if any, for logging */
+  mozilla::FileLocation mFile; /* source file if any, for logging */
 
 private:
   nsZipHandle();

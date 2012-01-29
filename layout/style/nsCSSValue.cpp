@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=2 et sw=2 tw=80: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -751,14 +752,6 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
     nsCSSValue::Array *array = GetArrayValue();
     bool mark = false;
     for (size_t i = 0, i_end = array->Count(); i < i_end; ++i) {
-      if (aProperty == eCSSProperty_border_image && i >= 5) {
-        if (array->Item(i).GetUnit() == eCSSUnit_Null) {
-          continue;
-        }
-        if (i == 5) {
-          aResult.AppendLiteral(" /");
-        }
-      }
       if (mark && array->Item(i).GetUnit() != eCSSUnit_Null) {
         if (unit == eCSSUnit_Array &&
             eCSSProperty_transition_timing_function != aProperty)
@@ -957,7 +950,23 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
         aResult.AppendLiteral("-moz-linear-gradient(");
     }
 
-    if (gradient->mBgPos.mXValue.GetUnit() != eCSSUnit_None ||
+    if (gradient->mIsToCorner) {
+      aResult.AppendLiteral("to");
+      NS_ABORT_IF_FALSE(gradient->mBgPos.mXValue.GetUnit() == eCSSUnit_Enumerated &&
+                        gradient->mBgPos.mYValue.GetUnit() == eCSSUnit_Enumerated,
+                        "unexpected unit");
+      if (!(gradient->mBgPos.mXValue.GetIntValue() & NS_STYLE_BG_POSITION_CENTER)) {
+        aResult.AppendLiteral(" ");
+        gradient->mBgPos.mXValue.AppendToString(eCSSProperty_background_position,
+                                                aResult);
+      }
+      if (!(gradient->mBgPos.mYValue.GetIntValue() & NS_STYLE_BG_POSITION_CENTER)) {
+        aResult.AppendLiteral(" ");
+        gradient->mBgPos.mYValue.AppendToString(eCSSProperty_background_position,
+                                                aResult);
+      }
+      aResult.AppendLiteral(", ");
+    } else if (gradient->mBgPos.mXValue.GetUnit() != eCSSUnit_None ||
         gradient->mBgPos.mYValue.GetUnit() != eCSSUnit_None ||
         gradient->mAngle.GetUnit() != eCSSUnit_None) {
       if (gradient->mBgPos.mXValue.GetUnit() != eCSSUnit_None) {
@@ -1195,17 +1204,31 @@ nsCSSRect::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
                     mTop.GetUnit() != eCSSUnit_Initial,
                     "parser should have used a bare value");
 
-  NS_NAMED_LITERAL_STRING(comma, ", ");
+  if (eCSSProperty_border_image_slice == aProperty ||
+      eCSSProperty_border_image_width == aProperty ||
+      eCSSProperty_border_image_outset == aProperty) {
+    NS_NAMED_LITERAL_STRING(space, " ");
 
-  aResult.AppendLiteral("rect(");
-  mTop.AppendToString(aProperty, aResult);
-  aResult.Append(comma);
-  mRight.AppendToString(aProperty, aResult);
-  aResult.Append(comma);
-  mBottom.AppendToString(aProperty, aResult);
-  aResult.Append(comma);
-  mLeft.AppendToString(aProperty, aResult);
-  aResult.Append(PRUnichar(')'));
+    mTop.AppendToString(aProperty, aResult);
+    aResult.Append(space);
+    mRight.AppendToString(aProperty, aResult);
+    aResult.Append(space);
+    mBottom.AppendToString(aProperty, aResult);
+    aResult.Append(space);
+    mLeft.AppendToString(aProperty, aResult);
+  } else {
+    NS_NAMED_LITERAL_STRING(comma, ", ");
+
+    aResult.AppendLiteral("rect(");
+    mTop.AppendToString(aProperty, aResult);
+    aResult.Append(comma);
+    mRight.AppendToString(aProperty, aResult);
+    aResult.Append(comma);
+    mBottom.AppendToString(aProperty, aResult);
+    aResult.Append(comma);
+    mLeft.AppendToString(aProperty, aResult);
+    aResult.Append(PRUnichar(')'));
+  }
 }
 
 void nsCSSRect::SetAllSidesTo(const nsCSSValue& aValue)
@@ -1439,6 +1462,7 @@ nsCSSValueGradient::nsCSSValueGradient(bool aIsRadial,
                                        bool aIsRepeating)
   : mIsRadial(aIsRadial),
     mIsRepeating(aIsRepeating),
+    mIsToCorner(false),
     mBgPos(eCSSUnit_None),
     mAngle(eCSSUnit_None),
     mRadialShape(eCSSUnit_None),

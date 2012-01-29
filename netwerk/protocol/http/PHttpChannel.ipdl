@@ -46,6 +46,7 @@ include "mozilla/net/NeckoMessageUtils.h";
 include "prio.h";
 
 using RequestHeaderTuples;
+using nsHttpHeaderArray;
 using nsHttpResponseHead;
 using nsHttpAtom;
 using IPC::URI;
@@ -81,7 +82,8 @@ parent:
             PRUint64            startPos,
             nsCString           entityID,
             bool                chooseApplicationCache,
-            nsCString           appCacheClientID);
+            nsCString           appCacheClientID,
+            bool                allowSpdy);
 
   // Used to connect redirected-to channel on the parent with redirected-to
   // channel on the child.
@@ -128,7 +130,7 @@ parent:
 child:
   OnStartRequest(nsHttpResponseHead  responseHead,
                  bool                useResponseHead,
-                 RequestHeaderTuples requestHeaders,
+                 nsHttpHeaderArray   requestHeaders,
                  bool                isFromCache,
                  bool                cacheEntryAvailable,
                  PRUint32            cacheExpirationTime,

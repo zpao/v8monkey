@@ -39,12 +39,11 @@
 #ifndef __NS_SVGPATHELEMENT_H__
 #define __NS_SVGPATHELEMENT_H__
 
-#include "nsSVGPathGeometryElement.h"
-#include "nsIDOMSVGPathElement.h"
 #include "nsIDOMSVGAnimatedPathData.h"
+#include "nsIDOMSVGPathElement.h"
 #include "nsSVGNumber2.h"
+#include "nsSVGPathGeometryElement.h"
 #include "SVGAnimatedPathSegList.h"
-#include "gfxPath.h"
 
 class gfxContext;
 
@@ -98,7 +97,17 @@ public:
     return nsGkAtoms::d;
   }
 
-  gfxFloat GetScale();
+  enum PathLengthScaleForType {
+    eForTextPath,
+    eForStroking
+  };
+
+  /**
+   * Gets the ratio of the actual path length to the content author's estimated
+   * length (as provided by the <path> element's 'pathLength' attribute). This
+   * is used to scale stroke dashing, and to scale offsets along a textPath.
+   */
+  gfxFloat GetPathLengthScale(PathLengthScaleForType aFor);
 
 protected:
 

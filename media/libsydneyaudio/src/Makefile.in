@@ -44,6 +44,9 @@ include $(DEPTH)/config/autoconf.mk
 MODULE		= sydneyaudio
 LIBRARY_NAME	= sydneyaudio
 FORCE_STATIC_LIB= 1
+ifeq (WINNT,$(OS_TARGET))
+VISIBILITY_FLAGS =
+endif
 
 ifneq (,$(filter DragonFly FreeBSD GNU GNU_% NetBSD OpenBSD,$(OS_ARCH)))
 CSRCS		= \
@@ -51,7 +54,11 @@ CSRCS		= \
 		$(NULL)
 endif
 
-ifeq ($(OS_TARGET),Android)
+ifeq ($(MOZ_WIDGET_TOOLKIT),gonk)
+CPPSRCS		= \
+		sydney_audio_gonk.cpp \
+		$(NULL)
+else ifeq ($(MOZ_WIDGET_TOOLKIT),android)
 CSRCS		= \
 		sydney_audio_android.c \
 		$(NULL)

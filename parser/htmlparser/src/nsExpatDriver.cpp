@@ -947,13 +947,12 @@ nsExpatDriver::HandleError()
   nsCOMPtr<nsIScriptError> serr(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
   nsresult rv = NS_ERROR_FAILURE;
   if (serr) {
-    nsCOMPtr<nsIScriptError2> serr2(do_QueryInterface(serr));
-    rv = serr2->InitWithWindowID(description.get(),
-                                 mURISpec.get(),
-                                 mLastLine.get(),
-                                 lineNumber, colNumber,
-                                 nsIScriptError::errorFlag, "malformed-xml",
-                                 mInnerWindowID);
+    rv = serr->InitWithWindowID(description.get(),
+                                mURISpec.get(),
+                                mLastLine.get(),
+                                lineNumber, colNumber,
+                                nsIScriptError::errorFlag, "malformed-xml",
+                                mInnerWindowID);
   }
 
   // If it didn't initialize, we can't do any logging.
@@ -1303,7 +1302,6 @@ nsExpatDriver::WillBuildModel(const CParserContext& aParserContext,
 
 NS_IMETHODIMP
 nsExpatDriver::BuildModel(nsITokenizer* aTokenizer,
-                          bool,// aCanInterrupt,
                           bool,// aCountLines,
                           const nsCString*)// aCharsetPtr)
 {

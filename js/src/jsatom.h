@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  *
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -49,8 +49,14 @@
 #include "jspubtd.h"
 #include "jslock.h"
 
+#include "gc/Barrier.h"
 #include "js/HashTable.h"
 #include "vm/String.h"
+
+struct JSIdArray {
+    jsint length;
+    js::HeapId vector[1];    /* actually, length jsid words */
+};
 
 /* Engine-internal extensions of jsid */
 
@@ -149,8 +155,8 @@ struct DefaultHasher<jsid>
 #if JS_BYTES_PER_WORD == 4
 # define ATOM_HASH(atom)          ((JSHashNumber)(atom) >> 2)
 #elif JS_BYTES_PER_WORD == 8
-# define ATOM_HASH(atom)          (((JSHashNumber)(jsuword)(atom) >> 3) ^     \
-                                   (JSHashNumber)((jsuword)(atom) >> 32))
+# define ATOM_HASH(atom)          (((JSHashNumber)(uintptr_t)(atom) >> 3) ^   \
+                                   (JSHashNumber)((uintptr_t)(atom) >> 32))
 #else
 # error "Unsupported configuration"
 #endif
@@ -165,16 +171,44 @@ js_AtomToPrintableString(JSContext *cx, JSAtom *atom, JSAutoByteString *bytes);
 namespace js {
 
 /* Compute a hash function from chars/length. */
-inline uint32
+inline uint32_t
 HashChars(const jschar *chars, size_t length)
 {
-    uint32 h = 0;
+    uint32_t h = 0;
     for (; length; chars++, length--)
         h = JS_ROTATE_LEFT32(h, 4) ^ *chars;
     return h;
 }
 
-typedef TaggedPointerEntry<JSAtom> AtomStateEntry;
+class AtomStateEntry
+{
+    uintptr_t bits;
+
+    static const uintptr_t NO_TAG_MASK = uintptr_t(-1) - 1;
+
+  public:
+    AtomStateEntry() : bits(0) {}
+    AtomStateEntry(const AtomStateEntry &other) : bits(other.bits) {}
+    AtomStateEntry(JSAtom *ptr, bool tagged)
+      : bits(uintptr_t(ptr) | uintptr_t(tagged))
+    {
+        JS_ASSERT((uintptr_t(ptr) & 0x1) == 0);
+    }
+
+    bool isTagged() const {
+        return bits & 0x1;
+    }
+
+    /*
+     * Non-branching code sequence. Note that the const_cast is safe because
+     * the hash function doesn't consider the tag to be a portion of the key.
+     */
+    void setTagged(bool enabled) const {
+        const_cast<AtomStateEntry *>(this)->bits |= uintptr_t(enabled);
+    }
+
+    JSAtom *asPtr() const;
+};
 
 struct AtomHasher
 {
@@ -233,10 +267,6 @@ enum FlationCoding
 struct JSAtomState
 {
     js::AtomSet         atoms;
-
-#ifdef JS_THREADSAFE
-    JSThinLock          lock;
-#endif
 
     /*
      * From this point until the end of struct definition the struct must

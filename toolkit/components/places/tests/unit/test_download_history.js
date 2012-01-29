@@ -2,29 +2,40 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 /**
- * The first part of this file runs a series of tests for the synchronous
- * behavior of the nsIDownloadHistory::AddDownload function.
+ * This file tests the nsIDownloadHistory interface.
  */
 
-// Get services
-var histsvc = Cc["@mozilla.org/browser/nav-history-service;1"].
-              getService(Ci.nsINavHistoryService);
-let bh = histsvc.QueryInterface(Ci.nsIBrowserHistory);
-var os = Cc["@mozilla.org/observer-service;1"].
-         getService(Ci.nsIObserverService);
-var prefs = Cc["@mozilla.org/preferences-service;1"].
-            getService(Ci.nsIPrefBranch);
-var dh = Cc["@mozilla.org/browser/download-history;1"].
-         getService(Ci.nsIDownloadHistory);
-// Test that this nsIDownloadHistory is the one places implements.
-do_check_true(dh instanceof Ci.nsINavHistoryService);
+////////////////////////////////////////////////////////////////////////////////
+/// Globals
 
-const NS_LINK_VISITED_EVENT_TOPIC = "link-visited";
-const ENABLE_HISTORY_PREF = "places.history.enabled";
-const PB_KEEP_SESSION_PREF = "browser.privatebrowsing.keep_current_session";
+XPCOMUtils.defineLazyServiceGetter(this, "gDownloadHistory",
+                                   "@mozilla.org/browser/download-history;1",
+                                   "nsIDownloadHistory");
 
-var testURI = uri("http://google.com/");
-var referrerURI = uri("http://yahoo.com");
+XPCOMUtils.defineLazyServiceGetter(this, "gHistory",
+                                   "@mozilla.org/browser/history;1",
+                                   "mozIAsyncHistory");
+
+const DOWNLOAD_URI = NetUtil.newURI("http://www.example.com/");
+const REFERRER_URI = NetUtil.newURI("http://www.example.org/");
+const PRIVATE_URI = NetUtil.newURI("http://www.example.net/");
+
+/**
+ * Waits for the first visit notification to be received.
+ *
+ * @param aCallback
+ *        This function is called with the same arguments of onVisit.
+ */
+function waitForOnVisit(aCallback) {
+  let historyObserver = {
+    __proto__: NavHistoryObserver.prototype,
+    onVisit: function HO_onVisit() {
+      PlacesUtils.history.removeObserver(this);
+      aCallback.apply(null, arguments);
+    }
+  };
+  PlacesUtils.history.addObserver(historyObserver, false);
+}
 
 /**
  * Checks to see that a URI is in the database.
@@ -34,114 +45,149 @@ var referrerURI = uri("http://yahoo.com");
  * @param aExpected
  *        Boolean result expected from the db lookup.
  */
-function uri_in_db(aURI, aExpected) {
-  var options = histsvc.getNewQueryOptions();
+function uri_in_db(aURI, aExpected)
+{
+  let options = PlacesUtils.history.getNewQueryOptions();
   options.maxResults = 1;
-  options.resultType = options.RESULTS_AS_URI;
   options.includeHidden = true;
-  var query = histsvc.getNewQuery();
+
+  let query = PlacesUtils.history.getNewQuery();
   query.uri = aURI;
-  var result = histsvc.executeQuery(query, options);
-  var root = result.root;
+
+  let root = PlacesUtils.history.executeQuery(query, options).root;
   root.containerOpen = true;
-  var cc = root.childCount;
+
+  do_check_eq(root.childCount, aExpected ? 1 : 0);
+
+  // Close the container explicitly to free resources up earlier.
   root.containerOpen = false;
-  var checker = aExpected ? do_check_true : do_check_false;
-  checker(cc == 1);
 }
 
-function test_dh() {
-  dh.addDownload(testURI, referrerURI, Date.now() * 1000);
+////////////////////////////////////////////////////////////////////////////////
+/// Tests
 
-  do_check_true(observer.topicReceived);
-  uri_in_db(testURI, true);
-  uri_in_db(referrerURI, true);
+function run_test()
+{
+  run_next_test();
 }
 
-function test_dh_privateBrowsing() {
-  var pb = null;
-  try {
-    // PrivateBrowsing component is not always available to Places implementers.
-     pb = Cc["@mozilla.org/privatebrowsing;1"].
-          getService(Ci.nsIPrivateBrowsingService);
-  } catch (ex) {
-    // Skip this test.
-    return;
-  }
-  prefs.setBoolPref(PB_KEEP_SESSION_PREF, true);
-  pb.privateBrowsingEnabled = true;
+add_test(function test_dh_is_from_places()
+{
+  // Test that this nsIDownloadHistory is the one places implements.
+  do_check_true(gDownloadHistory instanceof Ci.mozIAsyncHistory);
 
-  dh.addDownload(testURI, referrerURI, Date.now() * 1000);
+  waitForClearHistory(run_next_test);
+});
 
-  do_check_false(observer.topicReceived);
-  uri_in_db(testURI, false);
-  uri_in_db(referrerURI, false);
+add_test(function test_dh_addDownload()
+{
+  waitForOnVisit(function DHAD_onVisit(aURI) {
+    do_check_true(aURI.equals(DOWNLOAD_URI));
 
-  // Cleanup
-  pb.privateBrowsingEnabled = false;
-}
+    // Verify that the URI is already available in results at this time.
+    uri_in_db(DOWNLOAD_URI, true);
 
-function test_dh_disabledHistory() {
-  // Disable history
-  prefs.setBoolPref(ENABLE_HISTORY_PREF, false);
+    waitForClearHistory(run_next_test);
+  });
 
-  dh.addDownload(testURI, referrerURI, Date.now() * 1000);
+  gDownloadHistory.addDownload(DOWNLOAD_URI, null, Date.now() * 1000);
+});
 
-  do_check_false(observer.topicReceived);
-  uri_in_db(testURI, false);
-  uri_in_db(referrerURI, false);
+add_test(function test_dh_addDownload_referrer()
+{
+  waitForOnVisit(function DHAD_prepareReferrer(aURI, aVisitID) {
+    do_check_true(aURI.equals(REFERRER_URI));
+    let referrerVisitId = aVisitID;
 
-  // Cleanup
-  prefs.setBoolPref(ENABLE_HISTORY_PREF, true);
-}
+    waitForOnVisit(function DHAD_onVisit(aURI, aVisitID, aTime, aSessionID,
+                                              aReferringID) {
+      do_check_true(aURI.equals(DOWNLOAD_URI));
+      do_check_eq(aReferringID, referrerVisitId);
 
-var tests = [
-  test_dh,
-  test_dh_privateBrowsing,
-  test_dh_disabledHistory,
-];
+      // Verify that the URI is already available in results at this time.
+      uri_in_db(DOWNLOAD_URI, true);
 
-var observer = {
-  topicReceived: false,
-  observe: function tlvo_observe(aSubject, aTopic, aData)
+      waitForClearHistory(run_next_test);
+    });
+
+    gDownloadHistory.addDownload(DOWNLOAD_URI, REFERRER_URI, Date.now() * 1000);
+  });
+
+  // Note that we don't pass the optional callback argument here because we must
+  // ensure that we receive the onVisit notification before we call addDownload.
+  gHistory.updatePlaces({
+    uri: REFERRER_URI,
+    visits: [{
+      transitionType: Ci.nsINavHistoryService.TRANSITION_TYPED,
+      visitDate: Date.now() * 1000
+    }]
+  });
+});
+
+if ("@mozilla.org/privatebrowsing;1" in Cc) {
+  add_test(function test_dh_addDownload_privateBrowsing()
   {
-    if (NS_LINK_VISITED_EVENT_TOPIC == aTopic) {
-      this.topicReceived = true;
-    }
-  }
-};
-os.addObserver(observer, NS_LINK_VISITED_EVENT_TOPIC, false);
+    waitForOnVisit(function DHAD_onVisit(aURI) {
+      // We should only receive the notification for the non-private URI.  This
+      // test is based on the assumption that visit notifications are received
+      // in the same order of the addDownload calls, which is currently true
+      // because database access is serialized on the same worker thread.
+      do_check_true(aURI.equals(DOWNLOAD_URI));
 
-// main
-function run_test() {
-  while (tests.length) {
-    // Sanity checks
-    uri_in_db(testURI, false);
-    uri_in_db(referrerURI, false);
+      uri_in_db(DOWNLOAD_URI, true);
+      uri_in_db(PRIVATE_URI, false);
 
-    (tests.shift())();
+      waitForClearHistory(run_next_test);
+    });
 
-    // Cleanup
-    bh.removeAllPages();
-    observer.topicReceived = false;
-  }
+    let pb = Cc["@mozilla.org/privatebrowsing;1"]
+             .getService(Ci.nsIPrivateBrowsingService);
+    Services.prefs.setBoolPref("browser.privatebrowsing.keep_current_session",
+                               true);
+    pb.privateBrowsingEnabled = true;
+    gDownloadHistory.addDownload(PRIVATE_URI, REFERRER_URI, Date.now() * 1000);
 
-  os.removeObserver(observer, NS_LINK_VISITED_EVENT_TOPIC);
-
-  // Asynchronous part of the test.
-  test_dh_details();
+    // The addDownload functions calls CanAddURI synchronously, thus we can
+    // exit Private Browsing Mode immediately.
+    pb.privateBrowsingEnabled = false;
+    Services.prefs.clearUserPref("browser.privatebrowsing.keep_current_session");
+    gDownloadHistory.addDownload(DOWNLOAD_URI, REFERRER_URI, Date.now() * 1000);
+  });
 }
+
+add_test(function test_dh_addDownload_disabledHistory()
+{
+  waitForOnVisit(function DHAD_onVisit(aURI) {
+    // We should only receive the notification for the non-private URI.  This
+    // test is based on the assumption that visit notifications are received in
+    // the same order of the addDownload calls, which is currently true because
+    // database access is serialized on the same worker thread.
+    do_check_true(aURI.equals(DOWNLOAD_URI));
+
+    uri_in_db(DOWNLOAD_URI, true);
+    uri_in_db(PRIVATE_URI, false);
+
+    waitForClearHistory(run_next_test);
+  });
+
+  Services.prefs.setBoolPref("places.history.enabled", false);
+  gDownloadHistory.addDownload(PRIVATE_URI, REFERRER_URI, Date.now() * 1000);
+
+  // The addDownload functions calls CanAddURI synchronously, thus we can set
+  // the preference back to true immediately (not all apps enable places by
+  // default).
+  Services.prefs.setBoolPref("places.history.enabled", true);
+  gDownloadHistory.addDownload(DOWNLOAD_URI, REFERRER_URI, Date.now() * 1000);
+});
 
 /**
- * The second part of this file tests that nsIDownloadHistory::AddDownload saves
- * the additional download details if the optional destination URL is specified.
+ * Tests that nsIDownloadHistory::AddDownload saves the additional download
+ * details if the optional destination URL is specified.
  */
-
-function test_dh_details()
+add_test(function test_dh_details()
 {
-  do_test_pending();
-
-  const SOURCE_URI = uri("http://example.com/test_download_history_details");
+  const REMOTE_URI = NetUtil.newURI("http://localhost/");
+  const SOURCE_URI = NetUtil.newURI("http://example.com/test_dh_details");
   const DEST_FILE_NAME = "dest.txt";
 
   // We must build a real, valid file URI for the destination.
@@ -157,9 +203,7 @@ function test_dh_details()
       PlacesUtils.annotations.removeObserver(annoObserver);
       PlacesUtils.history.removeObserver(historyObserver);
 
-      // Cleanup.
-      bh.removeAllPages();
-      do_test_finished();
+      waitForClearHistory(run_next_test);
     }
   };
 
@@ -203,17 +247,18 @@ function test_dh_details()
     onDeleteURI: function() {},
     onClearHistory: function() {},
     onPageChanged: function() {},
-    onDeleteVisits: function() {}   
+    onDeleteVisits: function() {}
   };
 
   PlacesUtils.annotations.addObserver(annoObserver, false);
   PlacesUtils.history.addObserver(historyObserver, false);
 
   // Both null values and remote URIs should not cause errors.
-  dh.addDownload(SOURCE_URI, null, Date.now() * 1000);
-  dh.addDownload(SOURCE_URI, null, Date.now() * 1000, null);
-  dh.addDownload(SOURCE_URI, null, Date.now() * 1000, uri("http://localhost/"));
+  gDownloadHistory.addDownload(SOURCE_URI, null, Date.now() * 1000);
+  gDownloadHistory.addDownload(SOURCE_URI, null, Date.now() * 1000, null);
+  gDownloadHistory.addDownload(SOURCE_URI, null, Date.now() * 1000, REMOTE_URI);
 
   // Valid local file URIs should cause the download details to be saved.
-  dh.addDownload(SOURCE_URI, null, Date.now() * 1000, destFileUri);
-}
+  gDownloadHistory.addDownload(SOURCE_URI, null, Date.now() * 1000,
+                               destFileUri);
+});

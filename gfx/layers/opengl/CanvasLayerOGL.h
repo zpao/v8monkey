@@ -75,6 +75,7 @@ public:
   virtual Layer* GetLayer() { return this; }
   virtual void RenderLayer(int aPreviousFrameBuffer,
                            const nsIntPoint& aOffset);
+  virtual void CleanupResources();
 
 protected:
   void UpdateSurface();
@@ -82,6 +83,7 @@ protected:
   nsRefPtr<gfxASurface> mCanvasSurface;
   nsRefPtr<GLContext> mCanvasGLContext;
   gl::ShaderProgramType mLayerProgram;
+  RefPtr<gfx::DrawTarget> mDrawTarget;
 
   void MakeTexture();
   GLuint mTexture;
@@ -127,6 +129,7 @@ public:
   Layer* GetLayer();
   virtual void RenderLayer(int aPreviousFrameBuffer,
                            const nsIntPoint& aOffset);
+  virtual void CleanupResources();
 
 private:
   nsRefPtr<TextureImage> mTexImage;

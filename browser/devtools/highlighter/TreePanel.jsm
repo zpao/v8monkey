@@ -45,7 +45,7 @@ const Cu = Components.utils;
 
 Cu.import("resource:///modules/domplate.jsm");
 Cu.import("resource:///modules/InsideOutBox.jsm");
-Cu.import("resource:///modules/Services.jsm");
+Cu.import("resource://gre/modules/Services.jsm");
 
 var EXPORTED_SYMBOLS = ["TreePanel", "DOMHelpers"];
 
@@ -141,7 +141,7 @@ TreePanel.prototype = {
     this.treeLoaded = true;
     this.treeIFrame.addEventListener("click", this.onTreeClick.bind(this), false);
     this.treeIFrame.addEventListener("dblclick", this.onTreeDblClick.bind(this), false);
-    this.treeIFrame.addEventListener("keypress", this.IUI, false);
+    this.treeIFrame.focus();
     delete this.initializingTreePanel;
     Services.obs.notifyObservers(null,
       this.IUI.INSPECTOR_NOTIFICATIONS.TREEPANELREADY, null);
@@ -227,10 +227,19 @@ TreePanel.prototype = {
     treeBox = this.document.createElement("vbox");
     treeBox.id = "inspector-tree-box";
     treeBox.state = "open"; // for the registerTools API.
-    treeBox.minHeight = 10;
+    try {
+      treeBox.height =
+        Services.prefs.getIntPref("devtools.inspector.htmlHeight");
+    } catch(e) {
+      treeBox.height = 112;
+    }
+
+    treeBox.minHeight = 64;
     treeBox.flex = 1;
     toolbarParent.insertBefore(treeBox, toolbar);
-    this.createResizer();
+
+    this.IUI.toolbar.setAttribute("treepanel-open", "true");
+
     treeBox.appendChild(this.treeIFrame);
 
     let boundLoadedInitializeTreePanel = function loadedInitializeTreePanel()
@@ -252,28 +261,15 @@ TreePanel.prototype = {
   },
 
   /**
-   * Lame resizer on the toolbar.
-   */
-  createResizer: function TP_createResizer()
-  {
-    let resizer = this.document.createElement("resizer");
-    resizer.id = "inspector-horizontal-splitter";
-    resizer.setAttribute("dir", "top");
-    resizer.flex = 1;
-    resizer.setAttribute("element", "inspector-tree-box");
-    resizer.height = 24;
-    this.IUI.toolbar.appendChild(resizer);
-    this.resizer = resizer;
-  },
-
-  /**
    * Close the TreePanel.
    */
   close: function TP_close()
   {
     if (this.openInDock) {
-      this.IUI.toolbar.removeChild(this.resizer);
+      this.IUI.toolbar.removeAttribute("treepanel-open");
+
       let treeBox = this.container;
+      Services.prefs.setIntPref("devtools.inspector.htmlHeight", treeBox.height);
       let treeBoxParent = treeBox.parentNode;
       treeBoxParent.removeChild(treeBox);
     } else {
@@ -365,7 +361,7 @@ TreePanel.prototype = {
           this.IUI.stopInspecting(true);
         } else {
           this.IUI.select(node, true, false);
-          this.IUI.highlighter.highlightNode(node);
+          this.IUI.highlighter.highlight(node);
         }
       }
     }
@@ -527,8 +523,12 @@ TreePanel.prototype = {
   {
     if (aEvent.which == this.window.KeyEvent.DOM_VK_RETURN) {
       this.saveEditor();
+      aEvent.preventDefault();
+      aEvent.stopPropagation();
     } else if (aEvent.keyCode == this.window.KeyEvent.DOM_VK_ESCAPE) {
       this.closeEditor();
+      aEvent.preventDefault();
+      aEvent.stopPropagation();
     }
   },
 
@@ -579,6 +579,7 @@ TreePanel.prototype = {
     this.editingContext.attrObj.innerHTML = editorInput.value;
 
     this.IUI.isDirty = true;
+    this.IUI.nodeChanged(this.registrationObject);
 
     // event notification
     Services.obs.notifyObservers(null, this.IUI.INSPECTOR_NOTIFICATIONS.EDITOR_SAVED,
@@ -679,8 +680,6 @@ TreePanel.prototype = {
 
     domplateUtils.setDOM(null);
 
-    delete this.resizer;
-
     if (this.DOMHelpers) {
       this.DOMHelpers.destroy();
       delete this.DOMHelpers;
@@ -695,7 +694,6 @@ TreePanel.prototype = {
     }
 
     if (this.treeIFrame) {
-      this.treeIFrame.removeEventListener("keypress", this.IUI, false);
       this.treeIFrame.removeEventListener("dblclick", this.onTreeDblClick, false);
       this.treeIFrame.removeEventListener("click", this.onTreeClick, false);
       let parent = this.treeIFrame.parentNode;

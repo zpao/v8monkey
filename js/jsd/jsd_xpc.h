@@ -182,7 +182,7 @@ class jsdScript : public jsdIScript
     PRUint32    mBaseLineNumber, mLineExtent;
     PCMapEntry *mPPLineMap;
     PRUint32    mPCMapSize;
-    jsuword     mFirstPC;
+    uintptr_t   mFirstPC;
 };
 
 PRUint32 jsdScript::LastTag = 0;
@@ -291,6 +291,9 @@ class jsdService : public jsdIDebuggerService
 
     bool CheckInterruptHook() { return !!mInterruptHook; }
     
+    nsresult DoPause(PRUint32 *_rval, bool internalCall);
+    nsresult DoUnPause(PRUint32 *_rval, bool internalCall);
+
   private:
     bool        mOn;
     PRUint32    mPauseLevel;

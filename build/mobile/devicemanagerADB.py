@@ -3,6 +3,7 @@ from devicemanager import DeviceManager, DMError
 import re
 import os
 import sys
+import tempfile
 
 class DeviceManagerADB(DeviceManager):
 
@@ -13,6 +14,7 @@ class DeviceManagerADB(DeviceManager):
     self.retries = 0
     self._sock = None
     self.useRunAs = False
+    self.useZip = False
     self.packageName = None
     if packageName == None:
       if os.getenv('USER'):
@@ -30,6 +32,10 @@ class DeviceManagerADB(DeviceManager):
     except:
       self.useRunAs = False
       self.packageName = None
+    try:
+      self.verifyZip()
+    except:
+      self.useZip = False
     try:
       # a test to see if we have root privs
       files = self.listFiles("/data/data")
@@ -103,31 +109,48 @@ class DeviceManagerADB(DeviceManager):
   def pushDir(self, localDir, remoteDir):
     # adb "push" accepts a directory as an argument, but if the directory
     # contains symbolic links, the links are pushed, rather than the linked
-    # files; we push file-by-file to get around this limitation
+    # files; we either zip/unzip or push file-by-file to get around this 
+    # limitation
     try:
       if (not self.dirExists(remoteDir)):
         self.mkDirs(remoteDir+"/x")
-      for root, dirs, files in os.walk(localDir, followlinks='true'):
-        relRoot = os.path.relpath(root, localDir)
-        for file in files:
-          localFile = os.path.join(root, file)
-          remoteFile = remoteDir + "/"
-          if (relRoot!="."):
-            remoteFile = remoteFile + relRoot + "/"
-          remoteFile = remoteFile + file
-          self.pushFile(localFile, remoteFile)
-        for dir in dirs:
-          targetDir = remoteDir + "/"
-          if (relRoot!="."):
-            targetDir = targetDir + relRoot + "/"
-          targetDir = targetDir + dir
-          if (not self.dirExists(targetDir)):
-            self.mkDir(targetDir)
+      if (self.useZip):
+        try:
+          localZip = tempfile.mktemp()+".zip"
+          remoteZip = remoteDir + "/adbdmtmp.zip"
+          subprocess.check_output(["zip", "-r", localZip, '.'], cwd=localDir)
+          self.pushFile(localZip, remoteZip)
+          os.remove(localZip)
+          data = self.runCmdAs(["shell", "unzip", "-o", remoteZip, "-d", remoteDir]).stdout.read()
+          self.checkCmdAs(["shell", "rm", remoteZip])
+          if (re.search("unzip: exiting", data) or re.search("Operation not permitted", data)):
+            raise Exception("unzip failed, or permissions error")
+        except:
+          print "zip/unzip failure: falling back to normal push"
+          self.useZip = False
+          self.pushDir(localDir, remoteDir)
+      else:
+        for root, dirs, files in os.walk(localDir, followlinks='true'):
+          relRoot = os.path.relpath(root, localDir)
+          for file in files:
+            localFile = os.path.join(root, file)
+            remoteFile = remoteDir + "/"
+            if (relRoot!="."):
+              remoteFile = remoteFile + relRoot + "/"
+            remoteFile = remoteFile + file
+            self.pushFile(localFile, remoteFile)
+          for dir in dirs:
+            targetDir = remoteDir + "/"
+            if (relRoot!="."):
+              targetDir = targetDir + relRoot + "/"
+            targetDir = targetDir + dir
+            if (not self.dirExists(targetDir)):
+              self.mkDir(targetDir)
       self.checkCmdAs(["shell", "chmod", "777", remoteDir])
-      return True
+      return remoteDir
     except:
       print "pushing " + localDir + " to " + remoteDir + " failed"
-      return False
+      return None
 
   # external function
   # returns:
@@ -238,17 +261,35 @@ class DeviceManagerADB(DeviceManager):
   #  success: output filename
   #  failure: None
   def launchProcess(self, cmd, outputFile = "process.txt", cwd = '', env = '', failIfRunning=False):
+    if cmd[0] == "am":
+      self.checkCmd(["shell"] + cmd)
+      return outputFile
+
     acmd = ["shell", "am","start"]
     cmd = ' '.join(cmd).strip()
     i = cmd.find(" ")
+    # SUT identifies the URL by looking for :\\ -- another strategy to consider
+    re_url = re.compile('^[http|file|chrome|about].*')
+    last = cmd.rfind(" ")
+    uri = ""
+    args = ""
+    if re_url.match(cmd[last:].strip()):
+      args = cmd[i:last].strip()
+      uri = cmd[last:].strip()
+    else:
+      args = cmd[i:].strip()
     acmd.append("-n")
     acmd.append(cmd[0:i] + "/.App")
     acmd.append("--es")
-    acmd.append("args")
-    acmd.append(cmd[i:])
+    if args != "":
+      acmd.append("args")
+      acmd.append(args)
+    if uri != "":
+      acmd.append("-d")
+      acmd.append(''.join(['\'',uri, '\'']));
     print acmd
     self.checkCmd(acmd)
-    return outputFile;
+    return outputFile
 
   # external function
   # returns:
@@ -256,11 +297,11 @@ class DeviceManagerADB(DeviceManager):
   #  failure: None
   def killProcess(self, appname):
     procs = self.getProcessList()
-    for proc in procs:
-      if (proc[1] == appname):
-        p = self.runCmd(["shell", "ps"])
+    for (pid, name, user) in procs:
+      if name == appname:
+        p = self.runCmdAs(["shell", "kill", pid])
         return p.stdout.read()
-      return None
+    return None
 
   # external function
   # returns:
@@ -388,15 +429,14 @@ class DeviceManagerADB(DeviceManager):
   # returns:
   #  success: path for app root
   #  failure: None
-  def getAppRoot(self):
+  def getAppRoot(self, packageName):
     devroot = self.getDeviceRoot()
     if (devroot == None):
       return None
 
-    if (self.dirExists(devroot + '/fennec')):
-      return devroot + '/fennec'
-    elif (self.dirExists(devroot + '/firefox')):
-      return devroot + '/firefox'
+    if (packageName and self.dirExists('/data/data/' + packageName)):
+      self.packageName = packageName
+      return '/data/data/' + packageName
     elif (self.packageName and self.dirExists('/data/data/' + self.packageName)):
       return '/data/data/' + self.packageName
 
@@ -506,6 +546,12 @@ class DeviceManagerADB(DeviceManager):
     args.insert(0, "adb")
     return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+  def runCmdAs(self, args):
+    if self.useRunAs:
+      args.insert(1, "run-as")
+      args.insert(2, self.packageName)
+    return self.runCmd(args)
+
   def checkCmd(self, args):
     args.insert(0, "adb")
     return subprocess.check_call(args)
@@ -535,7 +581,7 @@ class DeviceManagerADB(DeviceManager):
     # Check to see if adb itself can be executed.
     try:
       self.runCmd(["version"])
-    except Exception as (ex):
+    except:
       print "unable to execute ADB: ensure Android SDK is installed and adb is in your $PATH"
     
   def isCpAvailable(self):
@@ -572,3 +618,25 @@ class DeviceManagerADB(DeviceManager):
       self.checkCmd(["shell", "rm", devroot + "/tmp/tmpfile"])
       self.checkCmd(["shell", "run-as", packageName, "rm", "-r", devroot + "/sanity"])
       
+  def isUnzipAvailable(self):
+    data = self.runCmdAs(["shell", "unzip"]).stdout.read()
+    if (re.search('Usage', data)):
+      return True
+    else:
+      return False
+
+  def isLocalZipAvailable(self):
+    try:
+      subprocess.check_call(["zip", "-?"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except:
+      return False
+    return True
+
+  def verifyZip(self):
+    # If "zip" can be run locally, and "unzip" can be run remotely, then pushDir
+    # can use these to push just one file per directory -- a significant
+    # optimization for large directories.
+    self.useZip = False
+    if (self.isUnzipAvailable() and self.isLocalZipAvailable()):
+      print "will use zip to push directories"
+      self.useZip = True

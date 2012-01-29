@@ -109,68 +109,16 @@ using namespace mozilla;
 
 PRLogModuleInfo* gContentSinkLogModuleInfo;
 
-class nsScriptLoaderObserverProxy : public nsIScriptLoaderObserver
-{
-public:
-  nsScriptLoaderObserverProxy(nsIScriptLoaderObserver* aInner)
-    : mInner(do_GetWeakReference(aInner))
-  {
-  }
-  virtual ~nsScriptLoaderObserverProxy()
-  {
-  }
-  
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSISCRIPTLOADEROBSERVER
-
-  nsWeakPtr mInner;
-};
-
-NS_IMPL_ISUPPORTS1(nsScriptLoaderObserverProxy, nsIScriptLoaderObserver)
-
-NS_IMETHODIMP
-nsScriptLoaderObserverProxy::ScriptAvailable(nsresult aResult,
-                                             nsIScriptElement *aElement,
-                                             bool aIsInline,
-                                             nsIURI *aURI,
-                                             PRInt32 aLineNo)
-{
-  nsCOMPtr<nsIScriptLoaderObserver> inner = do_QueryReferent(mInner);
-
-  if (inner) {
-    return inner->ScriptAvailable(aResult, aElement, aIsInline, aURI,
-                                  aLineNo);
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsScriptLoaderObserverProxy::ScriptEvaluated(nsresult aResult,
-                                             nsIScriptElement *aElement,
-                                             bool aIsInline)
-{
-  nsCOMPtr<nsIScriptLoaderObserver> inner = do_QueryReferent(mInner);
-
-  if (inner) {
-    return inner->ScriptEvaluated(aResult, aElement, aIsInline);
-  }
-
-  return NS_OK;
-}
-
-
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsContentSink)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsContentSink)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsContentSink)
   NS_INTERFACE_MAP_ENTRY(nsICSSLoaderObserver)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
-  NS_INTERFACE_MAP_ENTRY(nsIScriptLoaderObserver)
   NS_INTERFACE_MAP_ENTRY(nsIDocumentObserver)
   NS_INTERFACE_MAP_ENTRY(nsIMutationObserver)
   NS_INTERFACE_MAP_ENTRY(nsITimerCallback)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIScriptLoaderObserver)
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDocumentObserver)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsContentSink)
@@ -182,7 +130,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsContentSink)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mParser)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mNodeInfoManager)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mScriptLoader)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mScriptElements)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsContentSink)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mDocument)
@@ -190,7 +137,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsContentSink)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NATIVE_MEMBER(mNodeInfoManager,
                                                   nsNodeInfoManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mScriptLoader)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMARRAY(mScriptElements)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 
@@ -235,7 +181,6 @@ PRInt32 nsContentSink::sPerfParseTime;
 PRInt32 nsContentSink::sInteractiveTime;
 PRInt32 nsContentSink::sInitialPerfTime;
 PRInt32 nsContentSink::sEnablePerfMode;
-bool    nsContentSink::sCanInterruptParser;
 
 void
 nsContentSink::InitializeStatics()
@@ -272,8 +217,6 @@ nsContentSink::InitializeStatics()
                               "content.sink.initial_perf_time", 2000000);
   Preferences::AddIntVarCache(&sEnablePerfMode,
                               "content.sink.enable_perf_mode", 0);
-  Preferences::AddBoolVarCache(&sCanInterruptParser,
-                               "content.interrupt.parsing", true);
 }
 
 nsresult
@@ -295,20 +238,13 @@ nsContentSink::Init(nsIDocument* aDoc,
   mDocShell = do_QueryInterface(aContainer);
   mScriptLoader = mDocument->ScriptLoader();
 
-  if (!mFragmentMode) {
+  if (!mRunsToCompletion) {
     if (mDocShell) {
       PRUint32 loadType = 0;
       mDocShell->GetLoadType(&loadType);
       mDocument->SetChangeScrollPosWhenScrollingToRef(
         (loadType & nsIDocShell::LOAD_CMD_HISTORY) == 0);
     }
-
-    // use this to avoid a circular reference sink->document->scriptloader->sink
-    nsCOMPtr<nsIScriptLoaderObserver> proxy =
-      new nsScriptLoaderObserverProxy(this);
-    NS_ENSURE_TRUE(proxy, NS_ERROR_OUT_OF_MEMORY);
-
-    mScriptLoader->AddObserver(proxy);
 
     ProcessHTTPHeaders(aChannel);
   }
@@ -324,10 +260,6 @@ nsContentSink::Init(nsIDocument* aDoc,
     FavorPerformanceHint(!mDynamicLowerValue, 0);
   }
 
-  // prevent DropParserAndPerfHint from unblocking onload in the fragment
-  // case
-  mCanInterruptParser = !mFragmentMode && sCanInterruptParser;
-
   return NS_OK;
 }
 
@@ -336,7 +268,7 @@ nsContentSink::StyleSheetLoaded(nsCSSStyleSheet* aSheet,
                                 bool aWasAlternate,
                                 nsresult aStatus)
 {
-  NS_ASSERTION(!mFragmentMode, "How come a fragment parser observed sheets?");
+  NS_ASSERTION(!mRunsToCompletion, "How come a fragment parser observed sheets?");
   if (!aWasAlternate) {
     NS_ASSERTION(mPendingSheetCount > 0, "How'd that happen?");
     --mPendingSheetCount;
@@ -361,90 +293,6 @@ nsContentSink::StyleSheetLoaded(nsCSSStyleSheet* aSheet,
     }
     
     mScriptLoader->RemoveExecuteBlocker();
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsContentSink::ScriptAvailable(nsresult aResult,
-                               nsIScriptElement *aElement,
-                               bool aIsInline,
-                               nsIURI *aURI,
-                               PRInt32 aLineNo)
-{
-  PRUint32 count = mScriptElements.Count();
-
-  // aElement will not be in mScriptElements if a <script> was added
-  // using the DOM during loading or if DoneAddingChildren did not return
-  // NS_ERROR_HTMLPARSER_BLOCK.
-  NS_ASSERTION(count == 0 ||
-               mScriptElements.IndexOf(aElement) == PRInt32(count - 1) ||
-               mScriptElements.IndexOf(aElement) == -1,
-               "script found at unexpected position");
-
-  // Check if this is the element we were waiting for
-  if (count == 0 || aElement != mScriptElements[count - 1]) {
-    return NS_OK;
-  }
-
-  NS_ASSERTION(!aElement->GetScriptDeferred(), "defer script was in mScriptElements");
-  NS_ASSERTION(!aElement->GetScriptAsync(), "async script was in mScriptElements");
-
-  if (mParser && !mParser->IsParserEnabled()) {
-    // make sure to unblock the parser before evaluating the script,
-    // we must unblock the parser even if loading the script failed or
-    // if the script was empty, if we don't, the parser will never be
-    // unblocked.
-    mParser->UnblockParser();
-  }
-
-  if (NS_SUCCEEDED(aResult)) {
-    PreEvaluateScript();
-  } else {
-    mScriptElements.RemoveObjectAt(count - 1);
-
-    if (mParser && aResult != NS_BINDING_ABORTED) {
-      // Loading external script failed!. So, resume parsing since the parser
-      // got blocked when loading external script. See
-      // http://bugzilla.mozilla.org/show_bug.cgi?id=94903.
-      //
-      // XXX We don't resume parsing if we get NS_BINDING_ABORTED from the
-      //     script load, assuming that that error code means that the user
-      //     stopped the load through some action (like clicking a link). See
-      //     http://bugzilla.mozilla.org/show_bug.cgi?id=243392.
-      ContinueInterruptedParsingAsync();
-    }
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsContentSink::ScriptEvaluated(nsresult aResult,
-                               nsIScriptElement *aElement,
-                               bool aIsInline)
-{
-  mDeflectedCount = sPerfDeflectCount;
-
-  // Check if this is the element we were waiting for
-  PRInt32 count = mScriptElements.Count();
-  if (count == 0 || aElement != mScriptElements[count - 1]) {
-    return NS_OK;
-  }
-
-  NS_ASSERTION(!aElement->GetScriptDeferred(), "defer script was in mScriptElements");
-  NS_ASSERTION(!aElement->GetScriptAsync(), "async script was in mScriptElements");
-
-  // Pop the script element stack
-  mScriptElements.RemoveObjectAt(count - 1); 
-
-  if (NS_SUCCEEDED(aResult)) {
-    PostEvaluateScript(aElement);
-  }
-
-  if (mParser && mParser->IsParserEnabled()) {
-    ContinueInterruptedParsingAsync();
   }
 
   return NS_OK;
@@ -819,9 +667,7 @@ nsContentSink::ProcessLink(nsIContent* aElement,
                            const nsSubstring& aRel, const nsSubstring& aTitle,
                            const nsSubstring& aType, const nsSubstring& aMedia)
 {
-  // XXX seems overkill to generate this string array
-  nsTArray<nsString> linkTypes;
-  nsStyleLinkElement::ParseLinkTypes(aRel, linkTypes);
+  PRUint32 linkTypes = nsStyleLinkElement::ParseLinkTypes(aRel);
 
   // The link relation may apply to a different resource, specified
   // in the anchor parameter. For the link relations supported so far,
@@ -831,22 +677,22 @@ nsContentSink::ProcessLink(nsIContent* aElement,
     return NS_OK;
   }
   
-  bool hasPrefetch = linkTypes.Contains(NS_LITERAL_STRING("prefetch"));
+  bool hasPrefetch = linkTypes & PREFETCH;
   // prefetch href if relation is "next" or "prefetch"
-  if (hasPrefetch || linkTypes.Contains(NS_LITERAL_STRING("next"))) {
+  if (hasPrefetch || (linkTypes & NEXT)) {
     PrefetchHref(aHref, aElement, hasPrefetch);
   }
 
-  if ((!aHref.IsEmpty()) && linkTypes.Contains(NS_LITERAL_STRING("dns-prefetch"))) {
+  if (!aHref.IsEmpty() && (linkTypes & DNS_PREFETCH)) {
     PrefetchDNS(aHref);
   }
 
   // is it a stylesheet link?
-  if (!linkTypes.Contains(NS_LITERAL_STRING("stylesheet"))) {
+  if (!(linkTypes & STYLESHEET)) {
     return NS_OK;
   }
 
-  bool isAlternate = linkTypes.Contains(NS_LITERAL_STRING("alternate"));
+  bool isAlternate = linkTypes & ALTERNATE;
   return ProcessStyleLink(aElement, aHref, isAlternate, aTitle, aType,
                           aMedia);
 }
@@ -886,10 +732,10 @@ nsContentSink::ProcessStyleLink(nsIContent* aElement,
   // If this is a fragment parser, we don't want to observe.
   bool isAlternate;
   rv = mCSSLoader->LoadStyleLink(aElement, url, aTitle, aMedia, aAlternate,
-                                 mFragmentMode ? nsnull : this, &isAlternate);
+                                 mRunsToCompletion ? nsnull : this, &isAlternate);
   NS_ENSURE_SUCCESS(rv, rv);
   
-  if (!isAlternate && !mFragmentMode) {
+  if (!isAlternate && !mRunsToCompletion) {
     ++mPendingSheetCount;
     mScriptLoader->AddExecuteBlocker();
   }
@@ -955,7 +801,8 @@ nsContentSink::PrefetchHref(const nsAString &aHref,
     nsresult rv = docshell->GetAppType(&appType);
     if (NS_FAILED(rv) || appType == nsIDocShell::APP_TYPE_MAIL)
       return; // do not prefetch from mailnews
-    if (treeItem = do_QueryInterface(docshell)) {
+    treeItem = do_QueryInterface(docshell);
+    if (treeItem) {
       treeItem->GetParent(getter_AddRefs(parentItem));
       if (parentItem) {
         treeItem = parentItem;
@@ -1500,7 +1347,7 @@ nsContentSink::WillResumeImpl()
 nsresult
 nsContentSink::DidProcessATokenImpl()
 {
-  if (!mCanInterruptParser || !mParser || !mParser->CanInterrupt()) {
+  if (mRunsToCompletion || !mParser) {
     return NS_OK;
   }
 
@@ -1629,7 +1476,7 @@ nsContentSink::DropParserAndPerfHint(void)
   // actually broken.
   // Drop our reference to the parser to get rid of a circular
   // reference.
-  nsCOMPtr<nsIParser> kungFuDeathGrip(mParser.forget());
+  nsRefPtr<nsParserBase> kungFuDeathGrip(mParser.forget());
 
   if (mDynamicLowerValue) {
     // Reset the performance hint which was set to FALSE
@@ -1637,7 +1484,7 @@ nsContentSink::DropParserAndPerfHint(void)
     FavorPerformanceHint(true, 0);
   }
 
-  if (mCanInterruptParser) {
+  if (!mRunsToCompletion) {
     mDocument->UnblockOnload(true);
   }
 }
@@ -1651,7 +1498,7 @@ nsContentSink::IsScriptExecutingImpl()
 nsresult
 nsContentSink::WillParseImpl(void)
 {
-  if (!mCanInterruptParser) {
+  if (mRunsToCompletion) {
     return NS_OK;
   }
 
@@ -1690,7 +1537,7 @@ nsContentSink::WillParseImpl(void)
 void
 nsContentSink::WillBuildModelImpl()
 {
-  if (mCanInterruptParser) {
+  if (!mRunsToCompletion) {
     mDocument->BlockOnload();
 
     mBeginLoadTime = PR_IntervalToMicroseconds(PR_IntervalNow());
@@ -1703,25 +1550,6 @@ nsContentSink::WillBuildModelImpl()
 
     DoProcessLinkHeader();
   }
-}
-
-void
-nsContentSink::ContinueInterruptedParsingIfEnabled()
-{
-  // This shouldn't be called in the HTML5 case.
-  if (mParser && mParser->IsParserEnabled()) {
-    mParser->ContinueInterruptedParsing();
-  }
-}
-
-// Overridden in the HTML5 case
-void
-nsContentSink::ContinueInterruptedParsingAsync()
-{
-  nsCOMPtr<nsIRunnable> ev = NS_NewRunnableMethod(this,
-    &nsContentSink::ContinueInterruptedParsingIfEnabled);
-
-  NS_DispatchToCurrentThread(ev);
 }
 
 /* static */

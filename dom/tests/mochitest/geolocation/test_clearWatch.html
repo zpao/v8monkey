@@ -25,6 +25,7 @@ force_prompt(true)
 
 var hasBeenCleared = false;
 var successWasCalledAfterClear = false;
+var firstCallback = true;
 
 function failureCallback(error)
 {
@@ -32,26 +33,37 @@ function failureCallback(error)
 }
 
 function successCallback(position) {
+  ok(true, "successCallback was called, hasBeenCleared=" + hasBeenCleared +
+           ", successWasCalledAfterClear=" + successWasCalledAfterClear);
   if (hasBeenCleared == true) {
     successWasCalledAfterClear = true;
   }
-  SimpleTest.executeSoon(clearWatch);
+  if (firstCallback) {
+    SimpleTest.executeSoon(clearWatch);
+    firstCallback = false;
+  }
 }
 
 function clearWatch() {
+  ok(true, "clearWatch was called, hasBeenCleared=" + hasBeenCleared +
+           ", successWasCalledAfterClear=" + successWasCalledAfterClear);
   navigator.geolocation.clearWatch(watchID);
   hasBeenCleared = true;
   SimpleTest.executeSoon(testAccepted);
 }
 
 function testAccepted() {
+  ok(true, "testAccepted was called, hasBeenCleared=" + hasBeenCleared +
+           ", successWasCalledAfterClear=" + successWasCalledAfterClear);
   ok(!successWasCalledAfterClear, "The successCallback should not be called after clear");
   reset_prompt();
   SimpleTest.finish();
 }
 
 
+ok(true, "Getting the watchPosition");
 watchID = navigator.geolocation.watchPosition(successCallback, failureCallback, null);
+ok(true, "Waiting");
 
 </script>
 </pre>

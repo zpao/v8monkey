@@ -80,6 +80,17 @@ public:
     virtual nsresult ResumeSend() = 0;
     virtual nsresult ResumeRecv() = 0;
 
+    // After a connection has had ResumeSend() called by a transaction,
+    // and it is ready to write to the network it may need to know the
+    // transaction that has data to write. This is only an issue for
+    // multiplexed protocols like SPDY - plain HTTP or pipelined HTTP
+    // implicitly have this information in a 1:1 relationship with the
+    // transaction(s) they manage.
+    virtual void TransactionHasDataToWrite(nsAHttpTransaction *)
+    {
+        // by default do nothing - only multiplexed protocols need to overload
+        return;
+    }
     //
     // called by the connection manager to close a transaction being processed
     // by this connection.
@@ -124,6 +135,10 @@ public:
     // Transfer the base http connection object along with a
     // reference to it to the caller.
     virtual nsHttpConnection *TakeHttpConnection() = 0;
+
+    // Get the nsISocketTransport used by the connection without changing
+    //  references or ownership.
+    virtual nsISocketTransport *Transport() = 0;
 };
 
 #define NS_DECL_NSAHTTPCONNECTION \
@@ -141,6 +156,7 @@ public:
     nsresult PushBack(const char *, PRUint32); \
     bool LastTransactionExpectedNoContent(); \
     void   SetLastTransactionExpectedNoContent(bool); \
-    nsHttpConnection *TakeHttpConnection();
+    nsHttpConnection *TakeHttpConnection(); \
+    nsISocketTransport *Transport();
 
 #endif // nsAHttpConnection_h__

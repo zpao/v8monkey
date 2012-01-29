@@ -37,9 +37,16 @@
 #ifndef __NS_SVGENUM_H__
 #define __NS_SVGENUM_H__
 
+#include "nsAutoPtr.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsError.h"
 #include "nsIDOMSVGAnimatedEnum.h"
+#include "nsISMILAttr.h"
 #include "nsSVGElement.h"
-#include "nsDOMError.h"
+
+class nsIAtom;
+class nsISMILAnimationElement;
+class nsSMILValue;
 
 typedef PRUint8 nsSVGEnumValue;
 
@@ -76,10 +83,8 @@ public:
 
   nsresult ToDOMAnimatedEnum(nsIDOMSVGAnimatedEnumeration **aResult,
                              nsSVGElement* aSVGElement);
-#ifdef MOZ_SMIL
   // Returns a new nsISMILAttr object that the caller must delete
   nsISMILAttr* ToSMILAttr(nsSVGElement* aSVGElement);
-#endif // MOZ_SMIL
 
 private:
   nsSVGEnumValue mAnimVal;
@@ -111,15 +116,12 @@ public:
     // need to flush any resample requests to reflect these modifications.
     NS_IMETHOD GetAnimVal(PRUint16* aResult)
     {
-#ifdef MOZ_SMIL
       mSVGElement->FlushAnimations();
-#endif
       *aResult = mVal->GetAnimValue();
       return NS_OK;
     }
   };
 
-#ifdef MOZ_SMIL
   struct SMILEnum : public nsISMILAttr
   {
   public:
@@ -141,7 +143,6 @@ public:
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);
   };
-#endif // MOZ_SMIL
 };
 
 #endif //__NS_SVGENUM_H__

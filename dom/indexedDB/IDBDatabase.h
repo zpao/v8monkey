@@ -42,12 +42,11 @@
 
 #include "mozilla/dom/indexedDB/IndexedDatabase.h"
 
+#include "nsIDocument.h"
 #include "nsIIDBDatabase.h"
 
-#include "nsCycleCollectionParticipant.h"
-#include "nsDOMEventTargetHelper.h"
-#include "nsDOMLists.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/indexedDB/IDBWrapperCache.h"
+#include "mozilla/dom/indexedDB/FileManager.h"
 
 class nsIScriptContext;
 class nsPIDOMWindow;
@@ -61,7 +60,7 @@ class IDBObjectStore;
 class IDBTransaction;
 class IndexedDatabaseManager;
 
-class IDBDatabase : public nsDOMEventTargetHelper,
+class IDBDatabase : public IDBWrapperCache,
                     public nsIIDBDatabase
 {
   friend class AsyncConnectionHelper;
@@ -71,21 +70,25 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIIDBDATABASE
 
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(IDBDatabase,
-                                           nsDOMEventTargetHelper)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(IDBDatabase, IDBWrapperCache)
 
   static already_AddRefed<IDBDatabase>
-  Create(nsIScriptContext* aScriptContext,
-         nsPIDOMWindow* aOwner,
-         DatabaseInfo* aDatabaseInfo,
-         const nsACString& aASCIIOrigin);
+  Create(IDBWrapperCache* aOwnerCache,
+         already_AddRefed<DatabaseInfo> aDatabaseInfo,
+         const nsACString& aASCIIOrigin,
+         FileManager* aFileManager);
 
   // nsIDOMEventTarget
   virtual nsresult PostHandleEvent(nsEventChainPostVisitor& aVisitor);
 
-  PRUint32 Id()
+  nsIAtom* Id() const
   {
     return mDatabaseId;
+  }
+
+  DatabaseInfo* Info() const
+  {
+    return mDatabaseInfo;
   }
 
   const nsString& Name()
@@ -98,26 +101,15 @@ public:
     return mFilePath;
   }
 
-  nsIScriptContext* ScriptContext()
-  {
-    NS_ASSERTION(mScriptContext, "This should never be null!");
-    return mScriptContext;
-  }
-
-  nsPIDOMWindow* Owner()
-  {
-    NS_ASSERTION(mOwner, "This should never be null!");
-    return mOwner;
-  }
-
   already_AddRefed<nsIDocument> GetOwnerDocument()
   {
-    NS_ASSERTION(mOwner, "This should never be null!");
+    if (!mOwner) {
+      return nsnull;
+    }
+
     nsCOMPtr<nsIDocument> doc = do_QueryInterface(mOwner->GetExtantDocument());
     return doc.forget();
   }
-
-  bool IsQuotaDisabled();
 
   nsCString& Origin()
   {
@@ -130,10 +122,18 @@ public:
   // transactions for this database will be allowed to run.
   bool IsInvalidated();
 
-  void CloseInternal();
+  void CloseInternal(bool aIsDead);
 
   // Whether or not the database has had Close called on it.
   bool IsClosed();
+
+  void EnterSetVersionTransaction();
+  void ExitSetVersionTransaction();
+
+  FileManager* Manager() const
+  {
+    return mFileManager;
+  }
 
 private:
   IDBDatabase();
@@ -141,7 +141,8 @@ private:
 
   void OnUnlink();
 
-  PRUint32 mDatabaseId;
+  nsRefPtr<DatabaseInfo> mDatabaseInfo;
+  nsCOMPtr<nsIAtom> mDatabaseId;
   nsString mName;
   nsString mFilePath;
   nsCString mASCIIOrigin;
@@ -149,10 +150,14 @@ private:
   PRInt32 mInvalidated;
   bool mRegistered;
   bool mClosed;
+  bool mRunningVersionChange;
+
+  nsRefPtr<FileManager> mFileManager;
 
   // Only touched on the main thread.
-  nsRefPtr<nsDOMEventListenerWrapper> mOnErrorListener;
-  nsRefPtr<nsDOMEventListenerWrapper> mOnVersionChangeListener;
+  NS_DECL_EVENT_HANDLER(abort);
+  NS_DECL_EVENT_HANDLER(error);
+  NS_DECL_EVENT_HANDLER(versionchange);
 };
 
 END_INDEXEDDB_NAMESPACE

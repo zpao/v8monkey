@@ -95,7 +95,7 @@ public:
   virtual nsSize GetMinSize(nsBoxLayoutState& aBoxLayoutState);
   virtual nsSize GetMaxSize(nsBoxLayoutState& aBoxLayoutState);
   virtual nscoord GetBoxAscent(nsBoxLayoutState& aBoxLayoutState);
-  virtual bool IsCollapsed(nsBoxLayoutState& aBoxLayoutState);
+  virtual bool IsCollapsed();
 
   DECL_DO_GLOBAL_REFLOW_COUNT_DSP(nsTextControlFrame, nsStackFrame)
 
@@ -392,7 +392,8 @@ protected:
   // etc.  Just the size of our actual area for the text (and the scrollbars,
   // for <textarea>).
   nsresult CalcIntrinsicSize(nsRenderingContext* aRenderingContext,
-                             nsSize&              aIntrinsicSize);
+                             nsSize&             aIntrinsicSize,
+                             float               aFontSizeInflation);
 
   nsresult ScrollSelectionIntoView();
 

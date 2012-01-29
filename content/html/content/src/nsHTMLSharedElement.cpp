@@ -313,7 +313,7 @@ nsHTMLSharedElement::IsAttributeMapped(const nsIAtom* aAttribute) const
       sCommonAttributeMap,
     };
 
-    return FindAttributeDependence(aAttribute, map, ArrayLength(map));
+    return FindAttributeDependence(aAttribute, map);
   }
 
   return nsGenericHTMLElement::IsAttributeMapped(aAttribute);
@@ -382,8 +382,8 @@ nsHTMLSharedElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
                              nsIAtom* aPrefix, const nsAString& aValue,
                              bool aNotify)
 {
-  nsresult rv =  nsGenericHTMLElement::SetAttr(aNameSpaceID, aName, aPrefix,
-                                               aValue, aNotify);
+  nsresult rv = nsGenericHTMLElement::SetAttr(aNameSpaceID, aName, aPrefix,
+                                              aValue, aNotify);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // If the href attribute of a <base> tag is changing, we may need to update

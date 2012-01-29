@@ -135,7 +135,8 @@ static bool
 IsPermitted(const char *name, JSFlatString *prop, bool set)
 {
     size_t propLength;
-    const jschar *propChars = JS_GetInternedStringCharsAndLength(prop, &propLength);
+    const jschar *propChars =
+        JS_GetInternedStringCharsAndLength(JS_FORGET_STRING_FLATNESS(prop), &propLength);
     if (!propLength)
         return false;
     switch (name[0]) {
@@ -154,8 +155,6 @@ IsPermitted(const char *name, JSFlatString *prop, bool set)
         NAME('L', "Location",
              PROP('h', W("hash") W("href"))
              PROP('r', R("replace")))
-        NAME('N', "Navigator",
-             PROP('p', RW("preference")))
         NAME('W', "Window",
              PROP('b', R("blur"))
              PROP('c', R("close") R("closed"))
@@ -197,7 +196,7 @@ IsFrameId(JSContext *cx, JSObject *obj, jsid id)
 
     if (JSID_IS_INT(id)) {
         col->Item(JSID_TO_INT(id), getter_AddRefs(domwin));
-    } else if (JSID_IS_ATOM(id)) {
+    } else if (JSID_IS_STRING(id)) {
         nsAutoString str(JS_GetInternedStringChars(JSID_TO_STRING(id)));
         col->NamedItem(str, getter_AddRefs(domwin));
     } else {
@@ -304,7 +303,7 @@ AccessCheck::isCrossOriginAccessPermitted(JSContext *cx, JSObject *wrapper, jsid
     else
         name = clasp->name;
 
-    if (JSID_IS_ATOM(id)) {
+    if (JSID_IS_STRING(id)) {
         if (IsPermitted(name, JSID_TO_FLAT_STRING(id), act == Wrapper::SET))
             return true;
     }
@@ -488,7 +487,7 @@ ExposedPropertiesOnly::check(JSContext *cx, JSObject *wrapper, jsid id, Wrapper:
 
     jsid exposedPropsId = GetRTIdByIndex(cx, XPCJSRuntime::IDX_EXPOSEDPROPS);
 
-    JSBool found = JS_FALSE;
+    JSBool found = false;
     JSAutoEnterCompartment ac;
     if (!ac.enter(cx, wrappedObject) ||
         !JS_HasPropertyById(cx, wrappedObject, exposedPropsId, &found))
@@ -497,7 +496,7 @@ ExposedPropertiesOnly::check(JSContext *cx, JSObject *wrapper, jsid id, Wrapper:
     // Always permit access to "length" and indexed properties of arrays.
     if (JS_IsArrayObject(cx, wrappedObject) &&
         ((JSID_IS_INT(id) && JSID_TO_INT(id) >= 0) ||
-         (JSID_IS_ATOM(id) && JS_FlatStringEqualsAscii(JSID_TO_FLAT_STRING(id), "length")))) {
+         (JSID_IS_STRING(id) && JS_FlatStringEqualsAscii(JSID_TO_FLAT_STRING(id), "length")))) {
         perm = PermitPropertyAccess;
         return true; // Allow
     }

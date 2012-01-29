@@ -44,6 +44,7 @@
 #include "DOMSVGPathSegList.h"
 #include "nsCOMPtr.h"
 #include "nsIFrame.h"
+#include "nsContentUtils.h"
 #include "nsSVGPathDataParser.h"
 #include "nsSVGPathElement.h"
 #include "nsSVGUtils.h"
@@ -67,9 +68,9 @@ NS_IMPL_RELEASE_INHERITED(nsSVGPathElement,nsSVGPathElementBase)
 DOMCI_NODE_DATA(SVGPathElement, nsSVGPathElement)
 
 NS_INTERFACE_TABLE_HEAD(nsSVGPathElement)
-  NS_NODE_INTERFACE_TABLE5(nsSVGPathElement, nsIDOMNode, nsIDOMElement,
-                           nsIDOMSVGElement, nsIDOMSVGPathElement,
-                           nsIDOMSVGAnimatedPathData)
+  NS_NODE_INTERFACE_TABLE6(nsSVGPathElement, nsIDOMNode, nsIDOMElement,
+                           nsIDOMSVGElement, nsIDOMSVGTests,
+                           nsIDOMSVGPathElement, nsIDOMSVGAnimatedPathData)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(SVGPathElement)
 NS_INTERFACE_MAP_END_INHERITING(nsSVGPathElementBase)
 
@@ -388,7 +389,7 @@ nsSVGPathElement::IsAttributeMapped(const nsIAtom* name) const
     sMarkersMap
   };
 
-  return FindAttributeDependence(name, map, ArrayLength(map)) ||
+  return FindAttributeDependence(name, map) ||
     nsSVGPathElementBase::IsAttributeMapped(name);
 }
 
@@ -427,16 +428,24 @@ nsSVGPathElement::ConstructPath(gfxContext *aCtx)
 }
 
 gfxFloat
-nsSVGPathElement::GetScale()
+nsSVGPathElement::GetPathLengthScale(PathLengthScaleForType aFor)
 {
+  NS_ABORT_IF_FALSE(aFor == eForTextPath || aFor == eForStroking,
+                    "Unknown enum");
   if (mPathLength.IsExplicitlySet()) {
-
-    nsRefPtr<gfxFlattenedPath> flat =
-      GetFlattenedPath(PrependLocalTransformTo(gfxMatrix()));
-    float pathLength = mPathLength.GetAnimValue();
-
-    if (flat && pathLength != 0) {
-      return flat->GetLength() / pathLength;
+    float authorsPathLengthEstimate = mPathLength.GetAnimValue();
+    if (authorsPathLengthEstimate > 0) {
+      gfxMatrix matrix;
+      if (aFor == eForTextPath) {
+        // For textPath, a transform on the referenced path affects the
+        // textPath layout, so when calculating the actual path length
+        // we need to take that into account.
+        matrix = PrependLocalTransformTo(matrix);
+      }
+      nsRefPtr<gfxFlattenedPath> path = GetFlattenedPath(matrix);
+      if (path) {
+        return path->GetLength() / authorsPathLengthEstimate;
+      }
     }
   }
   return 1.0;

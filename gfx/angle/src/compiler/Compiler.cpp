@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2010 The ANGLE Project Authors. All rights reserved.
+// Copyright (c) 2002-2012 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -8,10 +8,10 @@
 #include "compiler/DetectRecursion.h"
 #include "compiler/ForLoopUnroll.h"
 #include "compiler/Initialize.h"
+#include "compiler/MapLongVariableNames.h"
 #include "compiler/ParseHelper.h"
 #include "compiler/ShHandle.h"
 #include "compiler/ValidateLimitations.h"
-#include "compiler/MapLongVariableNames.h"
 
 namespace {
 bool InitializeSymbolTable(
@@ -91,10 +91,13 @@ TCompiler::TCompiler(ShShaderType type, ShShaderSpec spec)
       shaderSpec(spec),
       builtInFunctionEmulator(type)
 {
+    longNameMap = LongNameMap::GetInstance();
 }
 
 TCompiler::~TCompiler()
 {
+    ASSERT(longNameMap);
+    longNameMap->Release();
 }
 
 bool TCompiler::Init(const ShBuiltInResources& resources)
@@ -246,13 +249,14 @@ void TCompiler::collectAttribsUniforms(TIntermNode* root)
 
 void TCompiler::mapLongVariableNames(TIntermNode* root)
 {
-    MapLongVariableNames map(varyingLongNameMap);
+    ASSERT(longNameMap);
+    MapLongVariableNames map(longNameMap);
     root->traverse(&map);
 }
 
 int TCompiler::getMappedNameMaxLength() const
 {
-    return MAX_IDENTIFIER_NAME_SIZE + 1;
+    return MAX_SHORTENED_IDENTIFIER_SIZE + 1;
 }
 
 const TExtensionBehavior& TCompiler::getExtensionBehavior() const

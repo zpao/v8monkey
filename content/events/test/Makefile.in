@@ -111,6 +111,9 @@ _TEST_FILES = \
 		test_bug667612.html \
 		empty.js \
 		test_bug689564.html \
+		test_bug698929.html \
+		test_eventctors.html \
+		test_bug635465.html \
 		$(NULL)
 
 #bug 585630
@@ -124,6 +127,12 @@ endif
 ifneq (Linux,$(OS_ARCH))
 _TEST_FILES += \
 		test_bug493251.html \
+		$(NULL)
+endif
+
+ifeq (android,$(MOZ_WIDGET_TOOLKIT))
+_TEST_FILES += \
+		test_bug603008.html \
 		$(NULL)
 endif
 
@@ -143,6 +152,7 @@ _CHROME_FILES = \
 		window_bug617528.xul \
 		test_bug679494.xul \
 		file_bug679494.html \
+		test_eventctors.xul \
 		$(NULL)
 
 libs:: $(_TEST_FILES)

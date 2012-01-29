@@ -41,6 +41,7 @@
 #include "nsSVGSVGElement.h"
 #include "nsSVGTextFrame.h"
 #include "nsSVGForeignObjectFrame.h"
+#include "DOMSVGTests.h"
 #include "nsDisplayList.h"
 #include "nsStubMutationObserver.h"
 #include "gfxContext.h"
@@ -165,7 +166,8 @@ nsSVGOuterSVGFrame::Init(nsIContent* aContent,
   // Check for conditional processing attributes here rather than in
   // nsCSSFrameConstructor::FindSVGData because we want to avoid
   // simply giving failing outer <svg> elements an nsSVGContainerFrame.
-  if (!nsSVGFeatures::PassesConditionalProcessingTests(aContent)) {
+  nsSVGSVGElement *svg = static_cast<nsSVGSVGElement*>(aContent);
+  if (!svg->PassesConditionalProcessingTests()) {
     AddStateBits(NS_STATE_SVG_NONDISPLAY_CHILD);
   }
 
@@ -337,8 +339,8 @@ nsSVGOuterSVGFrame::ComputeSize(nsRenderingContext *aRenderingContext,
 
       nsSVGLength2 &height =
         content->mLengthAttributes[nsSVGSVGElement::HEIGHT];
-      NS_ABORT_IF_FALSE(aCBSize.height != NS_AUTOHEIGHT,
-                        "root should not have auto-height containing block");
+      NS_ASSERTION(aCBSize.height != NS_AUTOHEIGHT,
+                   "root should not have auto-height containing block");
       if (height.IsPercentage()) {
         NS_ABORT_IF_FALSE(intrinsicSize.height.GetUnit() == eStyleUnit_None,
                           "GetIntrinsicSize should have reported no "
@@ -586,6 +588,9 @@ nsSVGOuterSVGFrame::Paint(const nsDisplayListBuilder* aBuilder,
                           nsRenderingContext& aRenderingContext,
                           const nsRect& aDirtyRect, nsPoint aPt)
 {
+  if (GetStateBits() & NS_STATE_SVG_NONDISPLAY_CHILD)
+    return;
+
   // initialize Mozilla rendering context
   aRenderingContext.PushState();
 

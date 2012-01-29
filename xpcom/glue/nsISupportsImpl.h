@@ -226,6 +226,18 @@ public:
     mTagged = NS_CCAR_REFCNT_TO_TAGGED(refcount);
   }
 
+  void RemovePurple()
+  {
+    NS_ASSERTION(IsPurple(), "must be purple");
+#ifdef DEBUG_CC
+    nsCycleCollector_logPurpleRemoval(
+      NS_CCAR_TAGGED_TO_PURPLE_ENTRY(mTagged)->mObject);
+#endif
+    // The entry will be added to the free list later. 
+    NS_CCAR_TAGGED_TO_PURPLE_ENTRY(mTagged)->mObject = nsnull;
+    unmarkPurple();
+  }
+
   bool IsPurple() const
   {
     NS_ASSERTION(mTagged != NS_CCAR_TAGGED_STABILIZED_REFCNT,
@@ -319,9 +331,6 @@ public:
  * Use this macro to declare and implement the AddRef & Release methods for a
  * given non-XPCOM <i>_class</i>.
  *
- * The implementations here should match NS_IMPL_ADDREF/NS_IMPL_RELEASE, minus
- * the nsrefcnt return-value and the NS_ASSERT_OWNINGTHREAD() call.
- *
  * @param _class The name of the class implementing the method
  */
 #define NS_INLINE_DECL_REFCOUNTING(_class)                                    \
@@ -349,6 +358,36 @@ public:                                                                       \
 protected:                                                                    \
   nsAutoRefCnt mRefCnt;                                                       \
   NS_DECL_OWNINGTHREAD                                                        \
+public:
+
+/**
+ * Use this macro to declare and implement the AddRef & Release methods for a
+ * given non-XPCOM <i>_class</i> in a threadsafe manner.
+ *
+ * DOES NOT DO REFCOUNT STABILIZATION!
+ *
+ * @param _class The name of the class implementing the method
+ */
+#define NS_INLINE_DECL_THREADSAFE_REFCOUNTING(_class)                         \
+public:                                                                       \
+  NS_METHOD_(nsrefcnt) AddRef(void) {                                         \
+    NS_PRECONDITION(PRInt32(mRefCnt) >= 0, "illegal refcnt");                 \
+    nsrefcnt count = NS_AtomicIncrementRefcnt(mRefCnt);                       \
+    NS_LOG_ADDREF(this, count, #_class, sizeof(*this));                       \
+    return (nsrefcnt) count;                                                  \
+  }                                                                           \
+  NS_METHOD_(nsrefcnt) Release(void) {                                        \
+    NS_PRECONDITION(0 != mRefCnt, "dup release");                             \
+    nsrefcnt count = NS_AtomicDecrementRefcnt(mRefCnt);                       \
+    NS_LOG_RELEASE(this, count, #_class);                                     \
+    if (count == 0) {                                                         \
+      delete (this);                                                          \
+      return 0;                                                               \
+    }                                                                         \
+    return count;                                                             \
+  }                                                                           \
+protected:                                                                    \
+  nsAutoRefCnt mRefCnt;                                                       \
 public:
 
 /**

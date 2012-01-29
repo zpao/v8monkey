@@ -131,6 +131,11 @@ typedef PRUint8 nsHttpVersion;
 // host. Used by a forced reload to reset the connection states.
 #define NS_HTTP_CLEAR_KEEPALIVES     (1<<6)
 
+// Disallow the use of the SPDY protocol. This is meant for the contexts
+// such as HTTP upgrade which are nonsensical for SPDY, it is not the
+// SPDY configuration variable.
+#define NS_HTTP_DISALLOW_SPDY        (1<<7)
+
 //-----------------------------------------------------------------------------
 // some default values
 //-----------------------------------------------------------------------------
@@ -228,10 +233,6 @@ PRTimeToSeconds(PRTime t_usec)
 }
 
 #define NowInSeconds() PRTimeToSeconds(PR_Now())
-
-// ripped from glib.h
-#undef  CLAMP
-#define CLAMP(x, low, high)  (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
 
 // round q-value to one decimal place; return most significant digit as uint.
 #define QVAL_TO_UINT(q) ((unsigned int) ((q + 0.05) * 10.0))

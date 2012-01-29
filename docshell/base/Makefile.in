@@ -69,6 +69,7 @@ XPIDLSRCS = \
   nsIMarkupDocumentViewer.idl \
   nsIScrollable.idl \
   nsITextScroll.idl \
+  nsIDocCharset.idl \
   nsIWebNavigation.idl \
   nsIWebNavigationInfo.idl \
   nsIContentViewer.idl \
@@ -119,6 +120,5 @@ LOCAL_INCLUDES += \
   -I$(srcdir)/../shistory/src \
   -I$(topsrcdir)/dom/base \
   -I$(topsrcdir)/layout/base \
-  -I$(topsrcdir)/js/xpconnect/src \
   -I$(topsrcdir)/xpcom/ds \
   $(NULL)

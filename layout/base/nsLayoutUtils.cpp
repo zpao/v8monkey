@@ -90,6 +90,7 @@
 #ifdef MOZ_MEDIA
 #include "nsHTMLVideoElement.h"
 #endif
+#include "nsGenericHTMLElement.h"
 #include "imgIRequest.h"
 #include "imgIContainer.h"
 #include "nsIImageLoadingContent.h"
@@ -116,9 +117,12 @@
 #include "nsXULPopupManager.h"
 #endif
 
+#include "sampler.h"
+
 using namespace mozilla;
 using namespace mozilla::layers;
 using namespace mozilla::dom;
+using namespace mozilla::layout;
 
 #ifdef DEBUG
 // TODO: remove, see bug 598468.
@@ -127,6 +131,9 @@ bool nsLayoutUtils::gPreventAssertInCompareTreePosition = false;
 
 typedef gfxPattern::GraphicsFilter GraphicsFilter;
 typedef FrameMetrics::ViewID ViewID;
+
+static PRUint32 sFontSizeInflationEmPerLine;
+static PRUint32 sFontSizeInflationMinTwips;
 
 static ViewID sScrollIdCounter = FrameMetrics::START_SCROLL_ID;
 
@@ -158,6 +165,29 @@ nsLayoutUtils::Are3DTransformsEnabled()
   }
 
   return s3DTransformsEnabled;
+}
+
+void
+nsLayoutUtils::UnionChildOverflow(nsIFrame* aFrame,
+                                  nsOverflowAreas& aOverflowAreas)
+{
+  // Iterate over all children except pop-ups.
+  const nsIFrame::ChildListIDs skip(nsIFrame::kPopupList |
+                                    nsIFrame::kSelectPopupList);
+  for (nsIFrame::ChildListIterator childLists(aFrame);
+       !childLists.IsDone(); childLists.Next()) {
+    if (skip.Contains(childLists.CurrentID())) {
+      continue;
+    }
+
+    nsFrameList children = childLists.CurrentList();
+    for (nsFrameList::Enumerator e(children); !e.AtEnd(); e.Next()) {
+      nsIFrame* child = e.get();
+      nsOverflowAreas childOverflow =
+        child->GetOverflowAreas() + child->GetPosition();
+      aOverflowAreas.UnionWith(childOverflow);
+    }
+  }
 }
 
 static void DestroyViewID(void* aObject, nsIAtom* aPropertyName,
@@ -510,9 +540,7 @@ nsLayoutUtils::GetCrossDocParentFrame(const nsIFrame* aFrame,
     *aExtraOffset += v->GetPosition();
   }
   v = v->GetParent(); // subdocumentframe's view
-  if (!v)
-    return nsnull;
-  return static_cast<nsIFrame*>(v->GetClientData());
+  return v ? v->GetFrame() : nsnull;
 }
 
 // static
@@ -753,16 +781,16 @@ nsIFrame* nsLayoutUtils::GetLastSibling(nsIFrame* aFrame) {
 // static
 nsIView*
 nsLayoutUtils::FindSiblingViewFor(nsIView* aParentView, nsIFrame* aFrame) {
-  nsIFrame* parentViewFrame = static_cast<nsIFrame*>(aParentView->GetClientData());
+  nsIFrame* parentViewFrame = aParentView->GetFrame();
   nsIContent* parentViewContent = parentViewFrame ? parentViewFrame->GetContent() : nsnull;
   for (nsIView* insertBefore = aParentView->GetFirstChild(); insertBefore;
        insertBefore = insertBefore->GetNextSibling()) {
-    nsIFrame* f = static_cast<nsIFrame*>(insertBefore->GetClientData());
+    nsIFrame* f = insertBefore->GetFrame();
     if (!f) {
       // this view could be some anonymous view attached to a meaningful parent
       for (nsIView* searchView = insertBefore->GetParent(); searchView;
            searchView = searchView->GetParent()) {
-        f = static_cast<nsIFrame*>(searchView->GetClientData());
+        f = searchView->GetFrame();
         if (f) {
           break;
         }
@@ -932,13 +960,20 @@ nsLayoutUtils::GetEventCoordinatesRelativeTo(const nsEvent* aEvent, nsIFrame* aF
                   aEvent->eventStructType != NS_SIMPLE_GESTURE_EVENT &&
                   aEvent->eventStructType != NS_GESTURENOTIFY_EVENT &&
                   aEvent->eventStructType != NS_MOZTOUCH_EVENT &&
+#ifdef MOZ_TOUCH
+                  aEvent->eventStructType != NS_TOUCH_EVENT &&
+#endif
                   aEvent->eventStructType != NS_QUERY_CONTENT_EVENT))
     return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
 
   const nsGUIEvent* GUIEvent = static_cast<const nsGUIEvent*>(aEvent);
+#ifdef MOZ_TOUCH
+  return GetEventCoordinatesRelativeTo(aEvent,
+                                       GUIEvent->refPoint,
+                                       aFrame);
+#else
   if (!GUIEvent->widget)
     return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
-
   /* If we walk up the frame tree and discover that any of the frames are
    * transformed, we need to do extra work to convert from the global
    * space to the local space.
@@ -949,7 +984,6 @@ nsLayoutUtils::GetEventCoordinatesRelativeTo(const nsEvent* aEvent, nsIFrame* aF
   for (nsIFrame* f = aFrame; f; f = GetCrossDocParentFrame(f)) {
     if (f->IsTransformed())
       transformFound = true;
-
     rootFrame = f;
   }
 
@@ -974,12 +1008,74 @@ nsLayoutUtils::GetEventCoordinatesRelativeTo(const nsEvent* aEvent, nsIFrame* aF
    * out how to convert back to aFrame's coordinates and must use the CTM.
    */
   if (transformFound)
-    return InvertTransformsToRoot(aFrame, widgetToView);
+    return TransformRootPointToFrame(aFrame, widgetToView);
 
   /* Otherwise, all coordinate systems are translations of one another,
    * so we can just subtract out the different.
    */
   return widgetToView - aFrame->GetOffsetToCrossDoc(rootFrame);
+#endif
+}
+
+nsPoint
+nsLayoutUtils::GetEventCoordinatesRelativeTo(const nsEvent* aEvent,
+                                             const nsIntPoint aPoint,
+                                             nsIFrame* aFrame)
+{
+  if (!aFrame) {
+    return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
+  }
+
+  const nsGUIEvent* GUIEvent = static_cast<const nsGUIEvent*>(aEvent);
+  nsIWidget* widget = GUIEvent->widget;
+  if (!widget) {
+    return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
+  }
+
+  /* If we walk up the frame tree and discover that any of the frames are
+   * transformed, we need to do extra work to convert from the global
+   * space to the local space.
+   */
+  nsIFrame* rootFrame = aFrame;
+  bool transformFound = false;
+  for (nsIFrame* f = aFrame; f; f = GetCrossDocParentFrame(f)) {
+    if (f->IsTransformed()) {
+      transformFound = true;
+    }
+
+    rootFrame = f;
+  }
+
+  nsIView* rootView = rootFrame->GetView();
+  if (!rootView) {
+    return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
+  }
+
+  nsPoint widgetToView = TranslateWidgetToView(rootFrame->PresContext(),
+                               widget, aPoint, rootView);
+
+  if (widgetToView == nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE)) {
+    return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
+  }
+
+  // Convert from root document app units to app units of the document aFrame
+  // is in.
+  PRInt32 rootAPD = rootFrame->PresContext()->AppUnitsPerDevPixel();
+  PRInt32 localAPD = aFrame->PresContext()->AppUnitsPerDevPixel();
+  widgetToView = widgetToView.ConvertAppUnits(rootAPD, localAPD);
+
+  /* If we encountered a transform, we can't do simple arithmetic to figure
+   * out how to convert back to aFrame's coordinates and must use the CTM.
+   */
+  if (transformFound) {
+    return TransformRootPointToFrame(aFrame, widgetToView);
+  }
+
+  /* Otherwise, all coordinate systems are translations of one another,
+   * so we can just subtract out the different.
+   */
+  nsPoint offset = aFrame->GetOffsetToCrossDoc(rootFrame);
+  return widgetToView - offset;
 }
 
 nsIFrame*
@@ -1116,68 +1212,62 @@ nsLayoutUtils::MatrixTransformPoint(const nsPoint &aPoint,
                  NSFloatPixelsToAppUnits(float(image.y), aFactor));
 }
 
-static gfxPoint 
-InvertTransformsToAncestor(nsIFrame *aFrame,
-                           const gfxPoint &aPoint,
-                           nsIFrame *aStopAtAncestor = nsnull)
+gfx3DMatrix
+nsLayoutUtils::GetTransformToAncestor(nsIFrame *aFrame, nsIFrame *aAncestor)
 {
-  NS_PRECONDITION(aFrame, "Why are you inverting transforms when there is no frame?");
-
-  /* To invert everything to the root, we'll get the CTM, invert it, and use it to transform
-   * the point.
-   */
-  nsIFrame *parent = nsnull;
-  gfx3DMatrix ctm = aFrame->GetTransformMatrix(&parent);
-  gfxPoint result = aPoint;
-  
-  if (parent && parent != aStopAtAncestor) {
-      result = InvertTransformsToAncestor(parent, aPoint, aStopAtAncestor);
+  nsIFrame* parent;
+  gfx3DMatrix ctm = aFrame->GetTransformMatrix(aAncestor, &parent);
+  while (parent && parent != aAncestor) {
+    ctm = ctm * parent->GetTransformMatrix(aAncestor, &parent);
   }
+  return ctm;
+}
 
-  result = ctm.Inverse().ProjectPoint(result);
-  return result;
+static gfxPoint
+TransformGfxPointFromAncestor(nsIFrame *aFrame,
+                              const gfxPoint &aPoint,
+                              nsIFrame *aAncestor)
+{
+  gfx3DMatrix ctm = nsLayoutUtils::GetTransformToAncestor(aFrame, aAncestor);
+  return ctm.Inverse().ProjectPoint(aPoint);
 }
 
 static gfxRect
-InvertGfxRectToAncestor(nsIFrame *aFrame,
-                     const gfxRect &aRect,
-                     nsIFrame *aStopAtAncestor = nsnull)
+TransformGfxRectFromAncestor(nsIFrame *aFrame,
+                             const gfxRect &aRect,
+                             nsIFrame *aAncestor)
 {
-  NS_PRECONDITION(aFrame, "Why are you inverting transforms when there is no frame?");
+  gfx3DMatrix ctm = nsLayoutUtils::GetTransformToAncestor(aFrame, aAncestor);
+  return ctm.Inverse().ProjectRectBounds(aRect);
+}
 
-  /* To invert everything to the root, we'll get the CTM, invert it, and use it to transform
-   * the point.
-   */
-  nsIFrame *parent = nsnull;
-  gfx3DMatrix ctm = aFrame->GetTransformMatrix(&parent);
-  gfxRect result = aRect;
-  
-  if (parent && parent != aStopAtAncestor) {
-      result = InvertGfxRectToAncestor(parent, aRect, aStopAtAncestor);
-  }
-
-  result = ctm.Inverse().ProjectRectBounds(result);
-  return result;
+static gfxRect
+TransformGfxRectToAncestor(nsIFrame *aFrame,
+                           const gfxRect &aRect,
+                           nsIFrame *aAncestor)
+{
+  gfx3DMatrix ctm = nsLayoutUtils::GetTransformToAncestor(aFrame, aAncestor);
+  return ctm.TransformBounds(aRect);
 }
 
 nsPoint
-nsLayoutUtils::InvertTransformsToRoot(nsIFrame *aFrame,
-                                      const nsPoint &aPoint)
+nsLayoutUtils::TransformRootPointToFrame(nsIFrame *aFrame,
+                                         const nsPoint &aPoint)
 {
     float factor = aFrame->PresContext()->AppUnitsPerDevPixel();
     gfxPoint result(NSAppUnitsToFloatPixels(aPoint.x, factor),
                     NSAppUnitsToFloatPixels(aPoint.y, factor));
     
-    result = InvertTransformsToAncestor(aFrame, result);
+    result = TransformGfxPointFromAncestor(aFrame, result, nsnull);
    
     return nsPoint(NSFloatPixelsToAppUnits(float(result.x), factor),
                    NSFloatPixelsToAppUnits(float(result.y), factor));
 }
 
 nsRect 
-nsLayoutUtils::TransformRectToBoundsInAncestor(nsIFrame* aFrame,
-                                               const nsRect &aRect,
-                                               nsIFrame* aStopAtAncestor)
+nsLayoutUtils::TransformAncestorRectToFrame(nsIFrame* aFrame,
+                                            const nsRect &aRect,
+                                            nsIFrame* aAncestor)
 {
     float factor = aFrame->PresContext()->AppUnitsPerDevPixel();
     gfxRect result(NSAppUnitsToFloatPixels(aRect.x, factor),
@@ -1185,12 +1275,31 @@ nsLayoutUtils::TransformRectToBoundsInAncestor(nsIFrame* aFrame,
                    NSAppUnitsToFloatPixels(aRect.width, factor),
                    NSAppUnitsToFloatPixels(aRect.height, factor));
 
-    result = InvertGfxRectToAncestor(aFrame, result, aStopAtAncestor);
+    result = TransformGfxRectFromAncestor(aFrame, result, aAncestor);
 
     return nsRect(NSFloatPixelsToAppUnits(float(result.x), factor),
                   NSFloatPixelsToAppUnits(float(result.y), factor),
                   NSFloatPixelsToAppUnits(float(result.width), factor),
                   NSFloatPixelsToAppUnits(float(result.height), factor));
+}
+
+nsRect
+nsLayoutUtils::TransformFrameRectToAncestor(nsIFrame* aFrame,
+                                            const nsRect& aRect,
+                                            nsIFrame* aAncestor)
+{
+  float factor = aFrame->PresContext()->AppUnitsPerDevPixel();
+  gfxRect result(NSAppUnitsToFloatPixels(aRect.x, factor),
+                 NSAppUnitsToFloatPixels(aRect.y, factor),
+                 NSAppUnitsToFloatPixels(aRect.width, factor),
+                 NSAppUnitsToFloatPixels(aRect.height, factor));
+
+  result = TransformGfxRectToAncestor(aFrame, result, aAncestor);
+
+  return nsRect(NSFloatPixelsToAppUnits(float(result.x), factor),
+                NSFloatPixelsToAppUnits(float(result.y), factor),
+                NSFloatPixelsToAppUnits(float(result.width), factor),
+                NSFloatPixelsToAppUnits(float(result.height), factor));
 }
 
 static nsIntPoint GetWidgetOffset(nsIWidget* aWidget, nsIWidget*& aRootWidget) {
@@ -1266,7 +1375,7 @@ nsLayoutUtils::CombineBreakType(PRUint8 aOrigBreakType,
   return breakType;
 }
 
-#ifdef DEBUG
+#ifdef MOZ_DUMP_PAINTING
 #include <stdio.h>
 
 static bool gDumpPaintList = getenv("MOZ_DUMP_PAINT_LIST") != 0;
@@ -1351,7 +1460,7 @@ nsLayoutUtils::GetFramesForArea(nsIFrame* aFrame, const nsRect& aRect,
   builder.LeavePresShell(aFrame, target);
   NS_ENSURE_SUCCESS(rv, rv);
 
-#ifdef DEBUG
+#ifdef MOZ_DUMP_PAINTING
   if (gDumpEventList) {
     fprintf(stdout, "Event handling --- (%d,%d):\n", aRect.x, aRect.y);
     nsFrame::PrintDisplayList(&builder, list);
@@ -1661,7 +1770,7 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
     willFlushRetainedLayers = true;
   }
 
-#ifdef DEBUG
+#ifdef MOZ_DUMP_PAINTING
   if (gDumpPaintList) {
     fprintf(stdout, "Painting --- before optimization (dirty %d,%d,%d,%d):\n",
             dirtyRect.x, dirtyRect.y, dirtyRect.width, dirtyRect.height);
@@ -1713,7 +1822,7 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
     }
   }
 
-#ifdef DEBUG
+#ifdef MOZ_DUMP_PAINTING
   if (gDumpPaintList) {
     fprintf(stdout, "Painting --- after optimization:\n");
     nsFrame::PrintDisplayList(&builder, list);
@@ -1833,27 +1942,35 @@ nsLayoutUtils::GetAllInFlowBoxes(nsIFrame* aFrame, BoxCallback* aCallback)
 }
 
 struct BoxToBorderRect : public nsLayoutUtils::BoxCallback {
-  nsIFrame*                    mRelativeTo;
+  nsIFrame* mRelativeTo;
   nsLayoutUtils::RectCallback* mCallback;
+  PRUint32 mFlags;
 
-  BoxToBorderRect(nsIFrame* aRelativeTo, nsLayoutUtils::RectCallback* aCallback)
-    : mRelativeTo(aRelativeTo), mCallback(aCallback) {}
+  BoxToBorderRect(nsIFrame* aRelativeTo, nsLayoutUtils::RectCallback* aCallback,
+                  PRUint32 aFlags)
+    : mRelativeTo(aRelativeTo), mCallback(aCallback), mFlags(aFlags) {}
 
   virtual void AddBox(nsIFrame* aFrame) {
     nsRect r;
     nsIFrame* outer = nsSVGUtils::GetOuterSVGFrameAndCoveredRegion(aFrame, &r);
-    if (outer) {
-      mCallback->AddRect(r + outer->GetOffsetTo(mRelativeTo));
-    } else
-      mCallback->AddRect(nsRect(aFrame->GetOffsetTo(mRelativeTo), aFrame->GetSize()));
+    if (!outer) {
+      outer = aFrame;
+      r = nsRect(nsPoint(0, 0), aFrame->GetSize());
+    }
+    if (mFlags & nsLayoutUtils::RECTS_ACCOUNT_FOR_TRANSFORMS) {
+      r = nsLayoutUtils::TransformFrameRectToAncestor(outer, r, mRelativeTo);
+    } else {
+      r += outer->GetOffsetTo(mRelativeTo);
+    }
+    mCallback->AddRect(r);
   }
 };
 
 void
 nsLayoutUtils::GetAllInFlowRects(nsIFrame* aFrame, nsIFrame* aRelativeTo,
-                                 RectCallback* aCallback)
+                                 RectCallback* aCallback, PRUint32 aFlags)
 {
-  BoxToBorderRect converter(aRelativeTo, aCallback);
+  BoxToBorderRect converter(aRelativeTo, aCallback, aFlags);
   GetAllInFlowBoxes(aFrame, &converter);
 }
 
@@ -1879,19 +1996,14 @@ void nsLayoutUtils::RectListBuilder::AddRect(const nsRect& aRect) {
 
 nsIFrame* nsLayoutUtils::GetContainingBlockForClientRect(nsIFrame* aFrame)
 {
-  // get the nearest enclosing SVG foreign object frame or the root frame
-  while (aFrame->GetParent() &&
-         !aFrame->IsFrameOfType(nsIFrame::eSVGForeignObject)) {
-    aFrame = aFrame->GetParent();
-  }
-
-  return aFrame;
+  return aFrame->PresContext()->PresShell()->GetRootFrame();
 }
 
 nsRect
-nsLayoutUtils::GetAllInFlowRectsUnion(nsIFrame* aFrame, nsIFrame* aRelativeTo) {
+nsLayoutUtils::GetAllInFlowRectsUnion(nsIFrame* aFrame, nsIFrame* aRelativeTo,
+                                      PRUint32 aFlags) {
   RectAccumulator accumulator;
-  GetAllInFlowRects(aFrame, aRelativeTo, &accumulator);
+  GetAllInFlowRects(aFrame, aRelativeTo, &accumulator, aFlags);
   return accumulator.mResultRect.IsEmpty() ? accumulator.mFirstRect
           : accumulator.mResultRect;
 }
@@ -1925,22 +2037,31 @@ nsLayoutUtils::GetTextShadowRectsUnion(const nsRect& aTextAndDecorationsRect,
 
 nsresult
 nsLayoutUtils::GetFontMetricsForFrame(const nsIFrame* aFrame,
-                                      nsFontMetrics** aFontMetrics)
+                                      nsFontMetrics** aFontMetrics,
+                                      float aInflation)
 {
   return nsLayoutUtils::GetFontMetricsForStyleContext(aFrame->GetStyleContext(),
-                                                      aFontMetrics);
+                                                      aFontMetrics,
+                                                      aInflation);
 }
 
 nsresult
 nsLayoutUtils::GetFontMetricsForStyleContext(nsStyleContext* aStyleContext,
-                                             nsFontMetrics** aFontMetrics)
+                                             nsFontMetrics** aFontMetrics,
+                                             float aInflation)
 {
   // pass the user font set object into the device context to pass along to CreateFontGroup
   gfxUserFontSet* fs = aStyleContext->PresContext()->GetUserFontSet();
 
+  nsFont font = aStyleContext->GetStyleFont()->mFont;
+  // We need to not run font.size through floats when it's large since
+  // doing so would be lossy.  Fortunately, in such cases, aInflation is
+  // guaranteed to be 1.0f.
+  if (aInflation != 1.0f) {
+    font.size = NSToCoordRound(font.size * aInflation);
+  }
   return aStyleContext->PresContext()->DeviceContext()->GetMetricsFor(
-                  aStyleContext->GetStyleFont()->mFont,
-                  aStyleContext->GetStyleVisibility()->mLanguage,
+                  font, aStyleContext->GetStyleFont()->mLanguage,
                   fs, *aFontMetrics);
 }
 
@@ -2209,6 +2330,11 @@ GetIntrinsicCoord(const nsStyleCoord& aStyle,
   NS_ASSERTION(val == NS_STYLE_WIDTH_MAX_CONTENT ||
                val == NS_STYLE_WIDTH_MIN_CONTENT,
                "should have reduced everything remaining to one of these");
+
+  // If aFrame is a container for font size inflation, then shrink
+  // wrapping inside of it should not apply font size inflation.
+  AutoMaybeNullInflationContainer an(aFrame);
+
   if (val == NS_STYLE_WIDTH_MAX_CONTENT)
     aResult = aFrame->GetPrefWidth(aRenderingContext);
   else
@@ -2236,6 +2362,10 @@ nsLayoutUtils::IntrinsicForContainer(nsRenderingContext *aRenderingContext,
   printf(" %s intrinsic width for container:\n",
          aType == MIN_WIDTH ? "min" : "pref");
 #endif
+
+  // If aFrame is a container for font size inflation, then shrink
+  // wrapping inside of it should not apply font size inflation.
+  AutoMaybeNullInflationContainer an(aFrame);
 
   nsIFrame::IntrinsicWidthOffsetData offsets =
     aFrame->IntrinsicWidthOffsets(aRenderingContext);
@@ -2492,6 +2622,10 @@ nsLayoutUtils::ComputeWidthValue(
     // are less than 0 have already been dropped by the parser.)
     result -= aContentEdgeToBoxSizing;
   } else if (eStyleUnit_Enumerated == aCoord.GetUnit()) {
+    // If aFrame is a container for font size inflation, then shrink
+    // wrapping inside of it should not apply font size inflation.
+    AutoMaybeNullInflationContainer an(aFrame);
+
     PRInt32 val = aCoord.GetIntValue();
     switch (val) {
       case NS_STYLE_WIDTH_MAX_CONTENT:
@@ -2838,6 +2972,9 @@ nsLayoutUtils::ComputeAutoSizeWithIntrinsicDimensions(nscoord minWidth, nscoord 
 nsLayoutUtils::MinWidthFromInline(nsIFrame* aFrame,
                                   nsRenderingContext* aRenderingContext)
 {
+  NS_ASSERTION(!nsLayoutUtils::IsContainerForFontSizeInflation(aFrame),
+               "should not be container for font size inflation");
+
   nsIFrame::InlineMinWidthData data;
   DISPLAY_MIN_WIDTH(aFrame, data.prevLines);
   aFrame->AddInlineMinWidth(aRenderingContext, &data);
@@ -2849,6 +2986,9 @@ nsLayoutUtils::MinWidthFromInline(nsIFrame* aFrame,
 nsLayoutUtils::PrefWidthFromInline(nsIFrame* aFrame,
                                    nsRenderingContext* aRenderingContext)
 {
+  NS_ASSERTION(!nsLayoutUtils::IsContainerForFontSizeInflation(aFrame),
+               "should not be container for font size inflation");
+
   nsIFrame::InlinePrefWidthData data;
   DISPLAY_PREF_WIDTH(aFrame, data.prevLines);
   aFrame->AddInlinePrefWidth(aRenderingContext, &data);
@@ -3604,6 +3744,7 @@ nsLayoutUtils::DrawBackgroundImage(nsRenderingContext* aRenderingContext,
                                    const nsRect&       aDirty,
                                    PRUint32            aImageFlags)
 {
+  SAMPLE_LABEL("layout", "nsLayoutUtils::DrawBackgroundImage");
   return DrawImageInternal(aRenderingContext, aImage, aGraphicsFilter,
                            aDest, aFill, aAnchor, aDirty,
                            aImageSize, aImageFlags);
@@ -3775,22 +3916,28 @@ nsLayoutUtils::GetFrameTransparency(nsIFrame* aBackgroundFrame,
   return eTransparencyOpaque;
 }
 
+static bool IsPopupFrame(nsIFrame* aFrame)
+{
+  // aFrame is a popup it's the list control frame dropdown for a combobox.
+  nsIAtom* frameType = aFrame->GetType();
+  if (frameType == nsGkAtoms::listControlFrame) {
+    nsListControlFrame* lcf = static_cast<nsListControlFrame*>(aFrame);
+    return lcf->IsInDropDownMode();
+  }
+
+  // ... or if it's a XUL menupopup frame.
+  return frameType == nsGkAtoms::menuPopupFrame;
+}
+
 /* static */ bool
 nsLayoutUtils::IsPopup(nsIFrame* aFrame)
 {
-  nsIAtom* frameType = aFrame->GetType();
-
-  // We're a popup if we're the list control frame dropdown for a combobox.
-  if (frameType == nsGkAtoms::listControlFrame) {
-    nsListControlFrame* listControlFrame = static_cast<nsListControlFrame*>(aFrame);
-
-    if (listControlFrame) {
-      return listControlFrame->IsInDropDownMode();
-    }
+  // Optimization: the frame can't possibly be a popup if it has no view.
+  if (!aFrame->HasView()) {
+    NS_ASSERTION(!IsPopupFrame(aFrame), "popup frame must have a view");
+    return false;
   }
-
-  // ... or if we're a XUL menupopup frame.
-  return (frameType == nsGkAtoms::menuPopupFrame);
+  return IsPopupFrame(aFrame);
 }
 
 /* static */ nsIFrame*
@@ -3907,13 +4054,11 @@ nsLayoutUtils::IsReallyFixedPos(nsIFrame* aFrame)
 }
 
 nsLayoutUtils::SurfaceFromElementResult
-nsLayoutUtils::SurfaceFromElement(nsIDOMElement *aElement,
+nsLayoutUtils::SurfaceFromElement(dom::Element* aElement,
                                   PRUint32 aSurfaceFlags)
 {
   SurfaceFromElementResult result;
   nsresult rv;
-
-  nsCOMPtr<nsINode> node = do_QueryInterface(aElement);
 
   bool forceCopy = (aSurfaceFlags & SFE_WANT_NEW_SURFACE) != 0;
   bool wantImageSurface = (aSurfaceFlags & SFE_WANT_IMAGE_SURFACE) != 0;
@@ -3924,11 +4069,8 @@ nsLayoutUtils::SurfaceFromElement(nsIDOMElement *aElement,
   }
 
   // If it's a <canvas>, we may be able to just grab its internal surface
-  nsCOMPtr<nsIDOMHTMLCanvasElement> domCanvas = do_QueryInterface(aElement);
-  if (node && domCanvas) {
-    nsHTMLCanvasElement *canvas = static_cast<nsHTMLCanvasElement*>(domCanvas.get());
-    nsIntSize nssize = canvas->GetSize();
-    gfxIntSize size(nssize.width, nssize.height);
+  if (nsHTMLCanvasElement* canvas = nsHTMLCanvasElement::FromContent(aElement)) {
+    gfxIntSize size = canvas->GetSize();
 
     nsRefPtr<gfxASurface> surf;
 
@@ -3952,7 +4094,7 @@ nsLayoutUtils::SurfaceFromElement(nsIDOMElement *aElement,
 
       nsRefPtr<gfxContext> ctx = new gfxContext(surf);
       // XXX shouldn't use the external interface, but maybe we can layerify this
-      rv = (static_cast<nsICanvasElementExternal*>(canvas))->RenderContextsExternal(ctx, gfxPattern::FILTER_NEAREST);
+      rv = canvas->RenderContextsExternal(ctx, gfxPattern::FILTER_NEAREST);
       if (NS_FAILED(rv))
         return result;
     }
@@ -3969,7 +4111,7 @@ nsLayoutUtils::SurfaceFromElement(nsIDOMElement *aElement,
 
     result.mSurface = surf;
     result.mSize = size;
-    result.mPrincipal = node->NodePrincipal();
+    result.mPrincipal = aElement->NodePrincipal();
     result.mIsWriteOnly = canvas->IsWriteOnly();
 
     return result;
@@ -3977,12 +4119,9 @@ nsLayoutUtils::SurfaceFromElement(nsIDOMElement *aElement,
 
 #ifdef MOZ_MEDIA
   // Maybe it's <video>?
-  nsCOMPtr<nsIDOMHTMLVideoElement> ve = do_QueryInterface(aElement);
-  if (node && ve) {
-    nsHTMLVideoElement *video = static_cast<nsHTMLVideoElement*>(ve.get());
-
-    unsigned short readyState;
-    if (NS_SUCCEEDED(ve->GetReadyState(&readyState)) &&
+  if (nsHTMLVideoElement* video = nsHTMLVideoElement::FromContent(aElement)) {
+    PRUint16 readyState;
+    if (NS_SUCCEEDED(video->GetReadyState(&readyState)) &&
         (readyState == nsIDOMHTMLMediaElement::HAVE_NOTHING ||
          readyState == nsIDOMHTMLMediaElement::HAVE_METADATA)) {
       result.mIsStillLoading = true;
@@ -4013,6 +4152,7 @@ nsLayoutUtils::SurfaceFromElement(nsIDOMElement *aElement,
       surf = imgSurf;
     }
 
+    result.mCORSUsed = video->GetCORSMode() != nsGenericHTMLElement::CORS_NONE;
     result.mSurface = surf;
     result.mSize = size;
     result.mPrincipal = principal.forget();
@@ -4109,11 +4249,8 @@ nsLayoutUtils::SurfaceFromElement(nsIDOMElement *aElement,
   result.mSurface = gfxsurf;
   result.mSize = gfxIntSize(imgWidth, imgHeight);
   result.mPrincipal = principal.forget();
-  // SVG images could have <foreignObject> and/or <image> elements that load
-  // content from another domain.  For safety, they make the canvas write-only.
-  // XXXdholbert We could probably be more permissive here if we check that our
-  // helper SVG document has no elements that could load remote content.
-  result.mIsWriteOnly = (imgContainer->GetType() == imgIContainer::TYPE_VECTOR);
+  // no images, including SVG images, can load content from another domain.
+  result.mIsWriteOnly = false;
   result.mImageRequest = imgRequest.forget();
 
   return result;
@@ -4228,7 +4365,7 @@ nsLayoutUtils::GetFontFacesForFrames(nsIFrame* aFrame,
   while (aFrame) {
     nsIFrame::ChildListID childLists[] = { nsIFrame::kPrincipalList,
                                            nsIFrame::kPopupList };
-    for (int i = 0; i < ArrayLength(childLists); ++i) {
+    for (size_t i = 0; i < ArrayLength(childLists); ++i) {
       nsFrameList children(aFrame->GetChildList(childLists[i]));
       for (nsFrameList::Enumerator e(children); !e.AtEnd(); e.Next()) {
         nsIFrame* child = e.get();
@@ -4261,23 +4398,22 @@ nsLayoutUtils::GetFontFacesForText(nsIFrame* aFrame,
 
   nsTextFrame* curr = static_cast<nsTextFrame*>(aFrame);
   do {
-    PRInt32 offset = curr->GetContentOffset();
-    PRInt32 fstart = NS_MAX(offset, aStartOffset);
+    PRInt32 fstart = NS_MAX(curr->GetContentOffset(), aStartOffset);
     PRInt32 fend = NS_MIN(curr->GetContentEnd(), aEndOffset);
     if (fstart >= fend) {
       continue;
     }
 
     // overlapping with the offset we want
-    curr->EnsureTextRun();
-    gfxTextRun* textRun = curr->GetTextRun();
+    gfxSkipCharsIterator iter = curr->EnsureTextRun(nsTextFrame::eInflated);
+    gfxTextRun* textRun = curr->GetTextRun(nsTextFrame::eInflated);
     NS_ENSURE_TRUE(textRun, NS_ERROR_OUT_OF_MEMORY);
 
-    gfxSkipCharsIterator iter(textRun->GetSkipChars());
-    PRUint32 skipStart = iter.ConvertOriginalToSkipped(fstart - offset);
-    PRUint32 skipEnd = iter.ConvertOriginalToSkipped(fend - offset);
+    PRUint32 skipStart = iter.ConvertOriginalToSkipped(fstart);
+    PRUint32 skipEnd = iter.ConvertOriginalToSkipped(fend);
     aFontFaceList->AddFontsFromTextRun(textRun,
-                                       skipStart, skipEnd - skipStart,
+                                       skipStart,
+                                       skipEnd - skipStart,
                                        curr);
   } while (aFollowContinuations &&
            (curr = static_cast<nsTextFrame*>(curr->GetNextContinuation())));
@@ -4286,22 +4422,29 @@ nsLayoutUtils::GetFontFacesForText(nsIFrame* aFrame,
 }
 
 /* static */
-nsresult
-nsLayoutUtils::GetTextRunMemoryForFrames(nsIFrame* aFrame, PRUint64* aTotal)
+size_t
+nsLayoutUtils::SizeOfTextRunsForFrames(nsIFrame* aFrame,
+                                       nsMallocSizeOfFun aMallocSizeOf,
+                                       bool clear)
 {
   NS_PRECONDITION(aFrame, "NULL frame pointer");
 
+  size_t total = 0;
+
   if (aFrame->GetType() == nsGkAtoms::textFrame) {
     nsTextFrame* textFrame = static_cast<nsTextFrame*>(aFrame);
-    gfxTextRun *run = textFrame->GetTextRun();
-    if (run) {
-      if (aTotal) {
-        run->AccountForSize(aTotal);
-      } else {
-        run->ClearSizeAccounted();
+    for (PRUint32 i = 0; i < 2; ++i) {
+      gfxTextRun *run = textFrame->GetTextRun(
+        (i != 0) ? nsTextFrame::eInflated : nsTextFrame::eNotInflated);
+      if (run) {
+        if (clear) {
+          run->ResetSizeOfAccountingFlags();
+        } else {
+          total += run->MaybeSizeOfIncludingThis(aMallocSizeOf);
+        }
       }
     }
-    return NS_OK;
+    return total;
   }
 
   nsAutoTArray<nsIFrame::ChildList,4> childListArray;
@@ -4311,11 +4454,20 @@ nsLayoutUtils::GetTextRunMemoryForFrames(nsIFrame* aFrame, PRUint64* aTotal)
        !childLists.IsDone(); childLists.Next()) {
     for (nsFrameList::Enumerator e(childLists.CurrentList());
          !e.AtEnd(); e.Next()) {
-      GetTextRunMemoryForFrames(e.get(), aTotal);
+      total += SizeOfTextRunsForFrames(e.get(), aMallocSizeOf, clear);
     }
   }
+  return total;
+}
 
-  return NS_OK;
+/* static */
+void
+nsLayoutUtils::Initialize()
+{
+  mozilla::Preferences::AddUintVarCache(&sFontSizeInflationEmPerLine,
+                                        "font.size.inflation.emPerLine");
+  mozilla::Preferences::AddUintVarCache(&sFontSizeInflationMinTwips,
+                                        "font.size.inflation.minTwips");
 }
 
 /* static */
@@ -4325,6 +4477,102 @@ nsLayoutUtils::Shutdown()
   if (sContentMap) {
     delete sContentMap;
     sContentMap = NULL;
+  }
+}
+
+/* static */
+void
+nsLayoutUtils::RegisterImageRequest(nsPresContext* aPresContext,
+                                    imgIRequest* aRequest,
+                                    bool* aRequestRegistered)
+{
+  if (!aPresContext) {
+    return;
+  }
+
+  if (aRequestRegistered && *aRequestRegistered) {
+    // Our request is already registered with the refresh driver, so
+    // no need to register it again.
+    return;
+  }
+
+  if (aRequest) {
+    if (!aPresContext->RefreshDriver()->AddImageRequest(aRequest)) {
+      NS_WARNING("Unable to add image request");
+      return;
+    }
+
+    if (aRequestRegistered) {
+      *aRequestRegistered = true;
+    }
+  }
+}
+
+/* static */
+void
+nsLayoutUtils::RegisterImageRequestIfAnimated(nsPresContext* aPresContext,
+                                              imgIRequest* aRequest,
+                                              bool* aRequestRegistered)
+{
+  if (!aPresContext) {
+    return;
+  }
+
+  if (aRequestRegistered && *aRequestRegistered) {
+    // Our request is already registered with the refresh driver, so
+    // no need to register it again.
+    return;
+  }
+
+  if (aRequest) {
+    nsCOMPtr<imgIContainer> image;
+    aRequest->GetImage(getter_AddRefs(image));
+    if (image) {
+
+      // Check to verify that the image is animated. If so, then add it to the
+      // list of images tracked by the refresh driver.
+      bool isAnimated = false;
+      nsresult rv = image->GetAnimated(&isAnimated);
+      if (NS_SUCCEEDED(rv) && isAnimated) {
+        if (!aPresContext->RefreshDriver()->AddImageRequest(aRequest)) {
+          NS_WARNING("Unable to add image request");
+          return;
+        }
+
+        if (aRequestRegistered) {
+          *aRequestRegistered = true;
+        }
+      }
+    }
+  }
+}
+
+/* static */
+void
+nsLayoutUtils::DeregisterImageRequest(nsPresContext* aPresContext,
+                                      imgIRequest* aRequest,
+                                      bool* aRequestRegistered)
+{
+  if (!aPresContext) {
+    return;
+  }
+
+  // Deregister our imgIRequest with the refresh driver to
+  // complete tear-down, but only if it has been registered
+  if (aRequestRegistered && !*aRequestRegistered) {
+    return;
+  }
+
+  if (aRequest) {
+    nsCOMPtr<imgIContainer> image;
+    aRequest->GetImage(getter_AddRefs(image));
+    if (image) {
+      aPresContext->RefreshDriver()->RemoveImageRequest(aRequest);
+
+      if (aRequestRegistered) {
+        *aRequestRegistered = false;
+      }
+    }
   }
 }
 
@@ -4383,4 +4631,180 @@ nsReflowFrameRunnable::Run()
       FrameNeedsReflow(mWeakFrame, mIntrinsicDirty, mBitToAdd);
   }
   return NS_OK;
+}
+
+/**
+ * Compute the minimum font size inside of a container with the given
+ * width, such that **when the user zooms the container to fill the full
+ * width of the device**, the fonts satisfy our minima.
+ */
+static nscoord
+MinimumFontSizeFor(nsPresContext* aPresContext, nscoord aContainerWidth)
+{
+  if (sFontSizeInflationEmPerLine == 0 && sFontSizeInflationMinTwips == 0) {
+    return 0;
+  }
+
+  // Clamp the container width to the device dimensions
+  nscoord iFrameWidth = aPresContext->GetVisibleArea().width;
+  nscoord effectiveContainerWidth = NS_MIN(iFrameWidth, aContainerWidth);
+
+  nscoord byLine = 0, byInch = 0;
+  if (sFontSizeInflationEmPerLine != 0) {
+    byLine = effectiveContainerWidth / sFontSizeInflationEmPerLine;
+  }
+  if (sFontSizeInflationMinTwips != 0) {
+    // REVIEW: Is this giving us app units and sizes *not* counting
+    // viewport scaling?
+    nsDeviceContext *dx = aPresContext->DeviceContext();
+    nsRect clientRect;
+    dx->GetClientRect(clientRect); // FIXME: GetClientRect looks expensive
+    float deviceWidthInches =
+      float(clientRect.width) / float(dx->AppUnitsPerPhysicalInch());
+    byInch = NSToCoordRound(effectiveContainerWidth /
+                            (deviceWidthInches * 1440 /
+                             sFontSizeInflationMinTwips ));
+  }
+  return NS_MAX(byLine, byInch);
+}
+
+/* static */ float
+nsLayoutUtils::FontSizeInflationInner(const nsIFrame *aFrame,
+                                      nscoord aMinFontSize)
+{
+  // Note that line heights should be inflated by the same ratio as the
+  // font size of the same text; thus we operate only on the font size
+  // even when we're scaling a line height.
+  nscoord styleFontSize = aFrame->GetStyleFont()->mFont.size;
+  if (styleFontSize <= 0) {
+    // Never scale zero font size.
+    return 1.0;
+  }
+
+  if (aMinFontSize <= 0) {
+    // No need to scale.
+    return 1.0;
+  }
+
+  // Scale everything from 0-1.5 times min to instead fit in the range
+  // 1-1.5 times min, so that we still show some distinction rather than
+  // just enforcing a minimum.
+  // FIXME: Fiddle with this algorithm; maybe have prefs to control it?
+  float ratio = float(styleFontSize) / float(aMinFontSize);
+  if (ratio >= 1.5f) {
+    // If we're already at 1.5 or more times the minimum, don't scale.
+    return 1.0;
+  }
+
+  // To scale 0-1.5 times min to instead be 1-1.5 times min, we want
+  // to the desired multiple of min to be 1 + (ratio/3) (where ratio
+  // is our input's multiple of min).  The scaling needed to produce
+  // that is that divided by |ratio|, or:
+  return (1.0f / ratio) + (1.0f / 3.0f);
+}
+
+static bool
+ShouldInflateFontsForContainer(const nsIFrame *aFrame)
+{
+  // We only want to inflate fonts for text that is in a place
+  // with room to expand.  The question is what the best heuristic for
+  // that is...
+  // For now, we're going to use NS_FRAME_IN_CONSTRAINED_HEIGHT, which
+  // indicates whether the frame is inside something with a constrained
+  // height (propagating down the tree), but the propagation stops when
+  // we hit overflow-y: scroll or auto.
+  return aFrame->GetStyleText()->mTextSizeAdjust !=
+           NS_STYLE_TEXT_SIZE_ADJUST_NONE &&
+         !(aFrame->GetStateBits() & NS_FRAME_IN_CONSTRAINED_HEIGHT);
+}
+
+nscoord
+nsLayoutUtils::InflationMinFontSizeFor(const nsIFrame *aFrame,
+                                       WidthDetermination aWidthDetermination)
+{
+#ifdef DEBUG
+  if (aWidthDetermination == eNotInReflow) {
+    // Check that neither this frame nor any of its ancestors are
+    // currently being reflowed.
+    // It's ok for box frames (but not arbitrary ancestors of box frames)
+    // since they set their size before reflow.
+    if (!(aFrame->IsBoxFrame() && IsContainerForFontSizeInflation(aFrame))) {
+      for (const nsIFrame *f = aFrame; f; f = f->GetParent()) {
+        NS_ABORT_IF_FALSE(!(f->GetStateBits() & NS_FRAME_IN_REFLOW),
+                          "must call nsHTMLReflowState& version during reflow");
+      }
+    }
+    // It's ok if frames are dirty, or even if they've never been
+    // reflowed, since they will be eventually and then we'll get the
+    // right size.
+  }
+#endif
+
+  if (!FontSizeInflationEnabled(aFrame->PresContext())) {
+    return 0;
+  }
+
+  if (aWidthDetermination == eInReflow) {
+    nsPresContext *presContext = aFrame->PresContext();
+    nsIFrame *container = presContext->mCurrentInflationContainer;
+    if (!container || !ShouldInflateFontsForContainer(container)) {
+      return 0;
+    }
+    return MinimumFontSizeFor(presContext,
+                              presContext->mCurrentInflationContainerWidth);
+  }
+
+  for (const nsIFrame *f = aFrame; f; f = f->GetParent()) {
+    if (IsContainerForFontSizeInflation(f)) {
+      if (!ShouldInflateFontsForContainer(f)) {
+        return 0;
+      }
+
+      return MinimumFontSizeFor(aFrame->PresContext(),
+                                f->GetContentRect().width);
+    }
+  }
+
+  NS_ABORT_IF_FALSE(false, "root should always be container");
+
+  return 0;
+}
+
+float
+nsLayoutUtils::FontSizeInflationFor(const nsIFrame *aFrame,
+                                    WidthDetermination aWidthDetermination)
+{
+#ifdef DEBUG
+  if (aWidthDetermination == eNotInReflow) {
+    // Check that neither this frame nor any of its ancestors are
+    // currently being reflowed.
+    // It's ok for box frames (but not arbitrary ancestors of box frames)
+    // since they set their size before reflow.
+    if (!(aFrame->IsBoxFrame() && IsContainerForFontSizeInflation(aFrame))) {
+      for (const nsIFrame *f = aFrame; f; f = f->GetParent()) {
+        NS_ABORT_IF_FALSE(!(f->GetStateBits() & NS_FRAME_IN_REFLOW),
+                          "must call nsHTMLReflowState& version during reflow");
+      }
+    }
+    // It's ok if frames are dirty, or even if they've never been
+    // reflowed, since they will be eventually and then we'll get the
+    // right size.
+  }
+#endif
+
+  if (!FontSizeInflationEnabled(aFrame->PresContext())) {
+    return 1.0;
+  }
+
+  return FontSizeInflationInner(aFrame,
+                                InflationMinFontSizeFor(aFrame,
+                                                        aWidthDetermination));
+}
+
+/* static */ bool
+nsLayoutUtils::FontSizeInflationEnabled(nsPresContext *aPresContext)
+{
+  return (sFontSizeInflationEmPerLine != 0 ||
+          sFontSizeInflationMinTwips != 0) &&
+         !aPresContext->IsChrome();
 }

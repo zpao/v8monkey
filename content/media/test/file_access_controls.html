@@ -76,7 +76,6 @@ var gTests = [
 var gTestNum = 0;
 var gVideo = null;
 var gTestedRemoved = false;
-var gOldPref;
 
 function eventHandler(event) {
   netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
@@ -93,6 +92,7 @@ function createVideo() {
   var v = document.createElement('video');
   v.addEventListener('loadeddata', eventHandler, false);
   v.addEventListener('error', eventHandler, false);
+  v.crossorigin = 'anonymous';
   return v;
 }
 
@@ -101,16 +101,7 @@ function load() {
   opener.is(window.location.href,
             "http://example.org/tests/content/media/test/file_access_controls.html",
             "We must be on a example.org:80");
- 
-  // Ensure access control check pref is on.
-  // media.enforce_same_site_origin
-  var prefService = Components.classes["@mozilla.org/preferences-service;1"]
-                               .getService(Components.interfaces.nsIPrefService);
-  opener.ok(prefService!=null, "Get pref service");
-  var branch = prefService.getBranch("media.");
-  opener.ok(branch!=null, "Get media pref branch");
-  gOldPref = branch.getBoolPref("enforce_same_site_origin");
-  branch.setBoolPref("enforce_same_site_origin", true);
+
   nextTest();
 }
 
@@ -140,7 +131,13 @@ function nextTest() {
   gVideo = createVideo();
   gVideo.expectedResult = gTests[gTestNum].result;
   gVideo.testDescription = gTests[gTestNum].description;
-  gVideo.src = gTests[gTestNum].url;
+  // Uniquify the resource URL to ensure that the resources loaded by earlier or subsequent tests
+  // don't overlap with the resources we load here, which are loaded with non-default preferences set.
+  // We also want to make sure that an HTTP fetch actually happens for each testcase.
+  var url = gTests[gTestNum].url;
+  var random = Math.floor(Math.random()*1000000000);
+  url += (url.search(/\?/) < 0 ? "?" : "&") + "rand=" + random;
+  gVideo.src = url;
   //dump("Starting test " + gTestNum + " at " + gVideo.src + " expecting:" + gVideo.expectedResult + "\n");
   if (!gTestedRemoved) {
     document.body.appendChild(gVideo); 
@@ -153,11 +150,6 @@ function nextTest() {
 
 function done() {
   netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-  // Undo change to access control check pref.
-  var prefService = Components.classes["@mozilla.org/preferences-service;1"]
-                               .getService(Components.interfaces.nsIPrefService);
-  var branch = prefService.getBranch("media.");
-  branch.setBoolPref("enforce_same_site_origin", gOldPref);
   mediaTestCleanup();
   opener.done();
 }

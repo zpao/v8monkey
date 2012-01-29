@@ -320,11 +320,11 @@ function run_extract_test() {
     var foundStart = false;
     var foundEnd = false;
     do {
-      if (walker.currentNode.isSameNode(startContainer)) {
+      if (walker.currentNode == startContainer) {
         foundStart = true;
       }
 
-      if (walker.currentNode.isSameNode(endContainer)) {
+      if (walker.currentNode == endContainer) {
         // An end container node should not come before the start container node.
         do_check_true(foundStart);
         foundEnd = true;
@@ -354,11 +354,11 @@ function run_extract_test() {
     foundStart = false;
     foundEnd = false;
     do {
-      if (walker.currentNode.isSameNode(startContainer)) {
+      if (walker.currentNode == startContainer) {
         foundStart = true;
       }
 
-      if (walker.currentNode.isSameNode(endContainer)) {
+      if (walker.currentNode == endContainer) {
         // An end container node should not come before the start container node.
         do_check_true(foundStart);
         foundEnd = true;
@@ -503,7 +503,6 @@ function run_miscellaneous_tests() {
 
   /*
   // XXX ajvincent if rv == WRONG_DOCUMENT_ERR, return false?
-  do_check_true(baseRange instanceof C_i.nsIDOMNSRange);
   do_check_false(baseRange.isPointInRange(startContainer, startOffset));
   do_check_false(baseRange.isPointInRange(startContainer, startOffset + 1));
   do_check_false(baseRange.isPointInRange(endContainer, endOffset));

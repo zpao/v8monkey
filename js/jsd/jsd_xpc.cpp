@@ -376,9 +376,9 @@ jsds_FilterHook (JSDContext *jsdc, JSDThreadState *state)
     if (!script)
         return true;
 
-    jsuword pc = JSD_GetPCForStackFrame (jsdc, state, frame);
+    uintptr_t pc = JSD_GetPCForStackFrame (jsdc, state, frame);
 
-    nsDependentCString url(JSD_GetScriptFilename (jsdc, script));
+    nsCString url(JSD_GetScriptFilename (jsdc, script));
     if (url.IsEmpty()) {
         NS_WARNING ("Script with no filename");
         return false;
@@ -471,7 +471,7 @@ jsds_NotifyPendingDeadScripts (JSContext *cx)
     if (jsds) {
         NS_ADDREF(jsds);
         jsds->GetScriptHook (getter_AddRefs(hook));
-        jsds->Pause(nsnull);
+        jsds->DoPause(nsnull, true);
     }
 
     DeadScript *deadScripts = gDeadScripts;
@@ -506,7 +506,7 @@ jsds_NotifyPendingDeadScripts (JSContext *cx)
     }
 
     if (jsds) {
-        jsds->UnPause(nsnull);
+        jsds->DoUnPause(nsnull, true);
         NS_RELEASE(jsds);
     }
 }
@@ -583,9 +583,9 @@ jsds_ErrorHookProc (JSDContext *jsdc, JSContext *cx, const char *message,
         errnum   = 0;
     }
     
-    gJsds->Pause(nsnull);
+    gJsds->DoPause(nsnull, true);
     hook->OnError (nsDependentCString(message), fileName, line, pos, flags, errnum, val, &rval);
-    gJsds->UnPause(nsnull);
+    gJsds->DoUnPause(nsnull, true);
     
     running = false;
     if (!rval)
@@ -626,9 +626,9 @@ jsds_CallHookProc (JSDContext* jsdc, JSDThreadState* jsdthreadstate,
     nsCOMPtr<jsdIStackFrame> frame =
         getter_AddRefs(jsdStackFrame::FromPtr(jsdc, jsdthreadstate,
                                               native_frame));
-    gJsds->Pause(nsnull);
+    gJsds->DoPause(nsnull, true);
     hook->OnCall(frame, type);    
-    gJsds->UnPause(nsnull);
+    gJsds->DoUnPause(nsnull, true);
     jsdStackFrame::InvalidateAll();
 
     return JS_TRUE;
@@ -688,13 +688,13 @@ jsds_ExecutionHookProc (JSDContext* jsdc, JSDThreadState* jsdthreadstate,
     nsCOMPtr<jsdIStackFrame> frame =
         getter_AddRefs(jsdStackFrame::FromPtr(jsdc, jsdthreadstate,
                                               native_frame));
-    gJsds->Pause(nsnull);
+    gJsds->DoPause(nsnull, true);
     jsdIValue *inout_rv = js_rv;
     NS_IF_ADDREF(inout_rv);
     hook->OnExecute (frame, type, &inout_rv, &hook_rv);
     js_rv = inout_rv;
     NS_IF_RELEASE(inout_rv);
-    gJsds->UnPause(nsnull);
+    gJsds->DoUnPause(nsnull, true);
     jsdStackFrame::InvalidateAll();
         
     if (hook_rv == JSD_HOOK_RETURN_RET_WITH_VAL ||
@@ -734,9 +734,9 @@ jsds_ScriptHookProc (JSDContext* jsdc, JSDScript* jsdscript, JSBool creating,
 #ifdef CAUTIOUS_SCRIPTHOOK
         JS_UNKEEP_ATOMS(rt);
 #endif
-        gJsds->Pause(nsnull);
+        gJsds->DoPause(nsnull, true);
         hook->OnScriptCreated (script);
-        gJsds->UnPause(nsnull);
+        gJsds->DoUnPause(nsnull, true);
 #ifdef CAUTIOUS_SCRIPTHOOK
         JS_KEEP_ATOMS(rt);
 #endif
@@ -763,9 +763,9 @@ jsds_ScriptHookProc (JSDContext* jsdc, JSDScript* jsdscript, JSBool creating,
             JS_UNKEEP_ATOMS(rt);
 #endif
                 
-            gJsds->Pause(nsnull);
+            gJsds->DoPause(nsnull, true);
             hook->OnScriptDestroyed (jsdis);
-            gJsds->UnPause(nsnull);
+            gJsds->DoUnPause(nsnull, true);
 #ifdef CAUTIOUS_SCRIPTHOOK
             JS_KEEP_ATOMS(rt);
 #endif
@@ -1306,7 +1306,7 @@ jsdScript::GetParameterNames(PRUint32* count, PRUnichar*** paramNames)
         return NS_ERROR_OUT_OF_MEMORY;
 
     void *mark;
-    jsuword *names = JS_GetFunctionLocalNameArray(cx, fun, &mark);
+    uintptr_t *names = JS_GetFunctionLocalNameArray(cx, fun, &mark);
     if (!names) {
         NS_Free(ret);
         return NS_ERROR_OUT_OF_MEMORY;
@@ -1507,7 +1507,7 @@ jsdScript::LineToPc(PRUint32 aLine, PRUint32 aPcmap, PRUint32 *_rval)
 {
     ASSERT_VALID_EPHEMERAL;
     if (aPcmap == PCMAP_SOURCETEXT) {
-        jsuword pc = JSD_GetClosestPC (mCx, mScript, aLine);
+        uintptr_t pc = JSD_GetClosestPC (mCx, mScript, aLine);
         *_rval = pc - mFirstPC;
     } else if (aPcmap == PCMAP_PRETTYPRINT) {
         *_rval = PPLineToPc(aLine);
@@ -1536,10 +1536,10 @@ jsdScript::GetExecutableLines(PRUint32 aPcmap, PRUint32 aStartLine, PRUint32 aMa
 {
     ASSERT_VALID_EPHEMERAL;
     if (aPcmap == PCMAP_SOURCETEXT) {
-        jsuword start = JSD_GetClosestPC(mCx, mScript, 0);
+        uintptr_t start = JSD_GetClosestPC(mCx, mScript, 0);
         uintN lastLine = JSD_GetScriptBaseLineNumber(mCx, mScript)
                        + JSD_GetScriptLineExtent(mCx, mScript) - 1;
-        jsuword end = JSD_GetClosestPC(mCx, mScript, lastLine + 1);
+        uintptr_t end = JSD_GetClosestPC(mCx, mScript, lastLine + 1);
 
         *aExecutableLines = static_cast<PRUint32*>(NS_Alloc((end - start + 1) * sizeof(PRUint32)));
         if (!JSD_GetLinePCs(mCx, mScript, aStartLine, aMaxLines, aCount, aExecutableLines, NULL))
@@ -1587,7 +1587,7 @@ jsdScript::IsLineExecutable(PRUint32 aLine, PRUint32 aPcmap, bool *_rval)
 {
     ASSERT_VALID_EPHEMERAL;
     if (aPcmap == PCMAP_SOURCETEXT) {    
-        jsuword pc = JSD_GetClosestPC (mCx, mScript, aLine);
+        uintptr_t pc = JSD_GetClosestPC (mCx, mScript, aLine);
         *_rval = (aLine == JSD_GetClosestLine (mCx, mScript, pc));
     } else if (aPcmap == PCMAP_PRETTYPRINT) {
         if (!mPPLineMap && !CreatePPLineMap())
@@ -1610,7 +1610,7 @@ NS_IMETHODIMP
 jsdScript::SetBreakpoint(PRUint32 aPC)
 {
     ASSERT_VALID_EPHEMERAL;
-    jsuword pc = mFirstPC + aPC;
+    uintptr_t pc = mFirstPC + aPC;
     JSD_SetExecutionHook (mCx, mScript, pc, jsds_ExecutionHookProc, NULL);
     return NS_OK;
 }
@@ -1619,7 +1619,7 @@ NS_IMETHODIMP
 jsdScript::ClearBreakpoint(PRUint32 aPC)
 {
     ASSERT_VALID_EPHEMERAL;    
-    jsuword pc = mFirstPC + aPC;
+    uintptr_t pc = mFirstPC + aPC;
     JSD_ClearExecutionHook (mCx, mScript, pc);
     return NS_OK;
 }
@@ -2009,9 +2009,9 @@ jsdStackFrame::GetPc(PRUint32 *_rval)
                                                     mStackFrameInfo);
     if (!script)
         return NS_ERROR_FAILURE;
-    jsuword pcbase = JSD_GetClosestPC(mCx, script, 0);
+    uintptr_t pcbase = JSD_GetClosestPC(mCx, script, 0);
     
-    jsuword pc = JSD_GetPCForStackFrame (mCx, mThreadState, mStackFrameInfo);
+    uintptr_t pc = JSD_GetPCForStackFrame (mCx, mThreadState, mStackFrameInfo);
     if (pc)
         *_rval = pc - pcbase;
     else
@@ -2026,7 +2026,7 @@ jsdStackFrame::GetLine(PRUint32 *_rval)
     JSDScript *script = JSD_GetScriptForStackFrame (mCx, mThreadState,
                                                     mStackFrameInfo);
     if (script) {
-        jsuword pc = JSD_GetPCForStackFrame (mCx, mThreadState, mStackFrameInfo);
+        uintptr_t pc = JSD_GetPCForStackFrame (mCx, mThreadState, mStackFrameInfo);
         *_rval = JSD_GetClosestLine (mCx, script, pc);
     } else {
         return NS_ERROR_FAILURE;
@@ -2437,34 +2437,13 @@ jsdValue::Refresh()
 }
 
 NS_IMETHODIMP
-jsdValue::GetWrappedValue()
+jsdValue::GetWrappedValue(JSContext* aCx, JS::Value* aRetval)
 {
     ASSERT_VALID_EPHEMERAL;
-    nsresult rv;
-    nsCOMPtr<nsIXPConnect> xpc = do_GetService(nsIXPConnect::GetCID(), &rv);
-    if (NS_FAILED(rv))
-        return rv;
 
-    nsAXPCNativeCallContext *cc = nsnull;
-    rv = xpc->GetCurrentNativeCallContext(&cc);
-    if (NS_FAILED(rv))
-        return rv;
-
-    jsval *result;
-    rv = cc->GetRetValPtr(&result);
-    if (NS_FAILED(rv))
-        return rv;
-
-    if (result)
-    {
-        JSContext *cx;
-        rv = cc->GetJSContext(&cx);
-        if (NS_FAILED(rv))
-            return rv;
-        *result = JSD_GetValueWrappedJSVal (mCx, mValue);
-        if (!JS_WrapValue(cx, result))
-            return NS_ERROR_FAILURE;
-        cc->SetReturnValueWasSet(true);
+    *aRetval = JSD_GetValueWrappedJSVal(mCx, mValue);
+    if (!JS_WrapValue(aCx, aRetval)) {
+        return NS_ERROR_FAILURE;
     }
 
     return NS_OK;
@@ -2546,21 +2525,12 @@ jsdService::AsyncOn (jsdIActivationCallback *activationCallback)
 {
     nsresult  rv;
 
-    /* get JS things from the CallContext */
     nsCOMPtr<nsIXPConnect> xpc = do_GetService(nsIXPConnect::GetCID(), &rv);
-    if (NS_FAILED(rv)) return rv;
-
-    nsAXPCNativeCallContext *cc = nsnull;
-    rv = xpc->GetCurrentNativeCallContext(&cc);
-    if (NS_FAILED(rv)) return rv;
-
-    JSContext *cx;
-    rv = cc->GetJSContext (&cx);
     if (NS_FAILED(rv)) return rv;
 
     mActivationCallback = activationCallback;
     
-    return xpc->SetDebugModeWhenPossible(true);
+    return xpc->SetDebugModeWhenPossible(true, true);
 }
 
 NS_IMETHODIMP
@@ -2706,7 +2676,7 @@ jsdService::Off (void)
     if (NS_FAILED(rv))
         return rv;
 
-    xpc->SetDebugModeWhenPossible(false);
+    xpc->SetDebugModeWhenPossible(false, true);
 
     return NS_OK;
 }
@@ -2722,6 +2692,12 @@ jsdService::GetPauseDepth(PRUint32 *_rval)
 NS_IMETHODIMP
 jsdService::Pause(PRUint32 *_rval)
 {
+    return DoPause(_rval, false);
+}
+
+nsresult
+jsdService::DoPause(PRUint32 *_rval, bool internalCall)
+{
     if (!mCx)
         return NS_ERROR_NOT_INITIALIZED;
 
@@ -2734,6 +2710,15 @@ jsdService::Pause(PRUint32 *_rval)
         JSD_ClearTopLevelHook (mCx);
         JSD_ClearFunctionHook (mCx);
         JSD_DebuggerPause (mCx);
+
+        nsresult rv;
+        nsCOMPtr<nsIXPConnect> xpc = do_GetService(nsIXPConnect::GetCID(), &rv);
+        if (NS_FAILED(rv)) return rv;
+
+        if (!internalCall) {
+            rv = xpc->SetDebugModeWhenPossible(false, false);
+            NS_ENSURE_SUCCESS(rv, rv);
+        }
     }
 
     if (_rval)
@@ -2744,6 +2729,12 @@ jsdService::Pause(PRUint32 *_rval)
 
 NS_IMETHODIMP
 jsdService::UnPause(PRUint32 *_rval)
+{
+    return DoUnPause(_rval, false);
+}
+
+nsresult
+jsdService::DoUnPause(PRUint32 *_rval, bool internalCall)
 {
     if (!mCx)
         return NS_ERROR_NOT_INITIALIZED;
@@ -2774,6 +2765,15 @@ jsdService::UnPause(PRUint32 *_rval)
             JSD_SetFunctionHook (mCx, jsds_CallHookProc, NULL);
         else
             JSD_ClearFunctionHook (mCx);
+
+        nsresult rv;
+        nsCOMPtr<nsIXPConnect> xpc = do_GetService(nsIXPConnect::GetCID(), &rv);
+        if (NS_FAILED(rv)) return rv;
+
+        if (!internalCall) {
+            rv = xpc->SetDebugModeWhenPossible(true, false);
+            NS_ENSURE_SUCCESS(rv, rv);
+        }
     }
     
     if (_rval)
@@ -3052,38 +3052,9 @@ jsdService::ClearAllBreakpoints (void)
 }
 
 NS_IMETHODIMP
-jsdService::WrapValue(jsdIValue **_rval)
+jsdService::WrapValue(const JS::Value &value, jsdIValue **_rval)
 {
     ASSERT_VALID_CONTEXT;
-
-    nsresult rv;
-    nsCOMPtr<nsIXPConnect> xpc = do_GetService (nsIXPConnect::GetCID(), &rv);
-    if (NS_FAILED(rv))
-        return rv;
-
-    nsAXPCNativeCallContext *cc = nsnull;
-    rv = xpc->GetCurrentNativeCallContext (&cc);
-    if (NS_FAILED(rv))
-        return rv;
-
-    PRUint32 argc;
-    rv = cc->GetArgc (&argc);
-    if (NS_FAILED(rv))
-        return rv;
-    if (argc < 1)
-        return NS_ERROR_INVALID_ARG;
-    
-    jsval    *argv;
-    rv = cc->GetArgvPtr (&argv);
-    if (NS_FAILED(rv))
-        return rv;
-
-    return WrapJSValue(argv[0], _rval);
-}
-
-NS_IMETHODIMP
-jsdService::WrapJSValue(const jsval &value, jsdIValue** _rval)
-{
     JSDValue *jsdv = JSD_NewValue(mCx, value);
     if (!jsdv)
         return NS_ERROR_FAILURE;
@@ -3110,9 +3081,9 @@ jsdService::EnterNestedEventLoop (jsdINestCallback *callback, PRUint32 *_rval)
 
     if (NS_SUCCEEDED(stack->Push(nsnull))) {
         if (callback) {
-            Pause(nsnull);
+            DoPause(nsnull, true);
             rv = callback->OnNest();
-            UnPause(nsnull);
+            DoUnPause(nsnull, true);
         }
         
         while (NS_SUCCEEDED(rv) && mNestedLoopLevel >= nestLevel) {

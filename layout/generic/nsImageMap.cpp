@@ -54,7 +54,7 @@
 #include "nsGkAtoms.h"
 #include "nsIDOMEventTarget.h"
 #include "nsIPresShell.h"
-#include "nsIFrame.h"
+#include "nsImageFrame.h"
 #include "nsCoord.h"
 #include "nsIConsoleService.h"
 #include "nsIScriptError.h"
@@ -121,6 +121,7 @@ static void logMessage(nsIContent*      aContent,
   nsIDocument* doc = aContent->OwnerDoc();
 
   nsContentUtils::ReportToConsole(
+     aFlags, "ImageMap", doc,
      nsContentUtils::eLAYOUT_PROPERTIES,
      aMessageName,
      nsnull,  /* params */
@@ -128,11 +129,7 @@ static void logMessage(nsIContent*      aContent,
      nsnull,
      PromiseFlatString(NS_LITERAL_STRING("coords=\"") +
                        aCoordsSpec +
-                       NS_LITERAL_STRING("\"")), /* source line */
-     0, /* line number */
-     0, /* column number */
-     aFlags,
-     "ImageMap", doc);
+                       NS_LITERAL_STRING("\""))); /* source line */
 }
 
 void Area::ParseCoords(const nsAString& aSpec)
@@ -710,7 +707,7 @@ nsresult
 nsImageMap::GetBoundsForAreaContent(nsIContent *aContent,
                                     nsRect& aBounds)
 {
-  NS_ENSURE_TRUE(aContent, NS_ERROR_INVALID_ARG);
+  NS_ENSURE_TRUE(aContent && mImageFrame, NS_ERROR_INVALID_ARG);
 
   // Find the Area struct associated with this content node, and return bounds
   PRUint32 i, n = mAreas.Length();
@@ -718,10 +715,7 @@ nsImageMap::GetBoundsForAreaContent(nsIContent *aContent,
     Area* area = mAreas.ElementAt(i);
     if (area->mArea == aContent) {
       aBounds = nsRect();
-      nsIFrame* frame = aContent->GetPrimaryFrame();
-      if (frame) {
-        area->GetRect(frame, aBounds);
-      }
+      area->GetRect(mImageFrame, aBounds);
       return NS_OK;
     }
   }
@@ -738,17 +732,17 @@ nsImageMap::FreeAreas()
                  "Unexpected primary frame");
     area->mArea->SetPrimaryFrame(nsnull);
 
-    area->mArea->RemoveEventListener(NS_LITERAL_STRING("focus"), this,
-                                     false);
-    area->mArea->RemoveEventListener(NS_LITERAL_STRING("blur"), this,
-                                     false);
+    area->mArea->RemoveSystemEventListener(NS_LITERAL_STRING("focus"), this,
+                                           false);
+    area->mArea->RemoveSystemEventListener(NS_LITERAL_STRING("blur"), this,
+                                           false);
     delete area;
   }
   mAreas.Clear();
 }
 
 nsresult
-nsImageMap::Init(nsIFrame* aImageFrame, nsIContent* aMap)
+nsImageMap::Init(nsImageFrame* aImageFrame, nsIContent* aMap)
 {
   NS_PRECONDITION(aMap, "null ptr");
   if (!aMap) {
@@ -859,10 +853,10 @@ nsImageMap::AddArea(nsIContent* aArea)
     return NS_ERROR_OUT_OF_MEMORY;
 
   //Add focus listener to track area focus changes
-  aArea->AddEventListener(NS_LITERAL_STRING("focus"), this, false,
-                          false);
-  aArea->AddEventListener(NS_LITERAL_STRING("blur"), this, false,
-                          false);
+  aArea->AddSystemEventListener(NS_LITERAL_STRING("focus"), this, false,
+                                false);
+  aArea->AddSystemEventListener(NS_LITERAL_STRING("blur"), this, false,
+                                false);
 
   // This is a nasty hack.  It needs to go away: see bug 135040.  Once this is
   // removed, the code added to nsCSSFrameConstructor::RestyleElement,
@@ -878,22 +872,19 @@ nsImageMap::AddArea(nsIContent* aArea)
   return NS_OK;
 }
 
-bool
-nsImageMap::IsInside(nscoord aX, nscoord aY,
-                     nsIContent** aContent) const
+nsIContent*
+nsImageMap::GetArea(nscoord aX, nscoord aY) const
 {
   NS_ASSERTION(mMap, "Not initialized");
   PRUint32 i, n = mAreas.Length();
   for (i = 0; i < n; i++) {
     Area* area = mAreas.ElementAt(i);
     if (area->IsInside(aX, aY)) {
-      NS_ADDREF(*aContent = area->mArea);
-
-      return true;
+      return area->mArea;
     }
   }
 
-  return false;
+  return nsnull;
 }
 
 void
@@ -932,6 +923,13 @@ nsImageMap::AttributeChanged(nsIDocument*  aDocument,
       (aAttribute == nsGkAtoms::shape ||
        aAttribute == nsGkAtoms::coords)) {
     MaybeUpdateAreas(aElement->GetParent());
+  } else if (aElement == mMap &&
+             aNameSpaceID == kNameSpaceID_None &&
+             (aAttribute == nsGkAtoms::name ||
+              aAttribute == nsGkAtoms::id) &&
+             mImageFrame) {
+    // ID or name has changed. Let ImageFrame recreate ImageMap.
+    mImageFrame->DisconnectMap();
   }
 }
 
@@ -963,6 +961,16 @@ nsImageMap::ContentRemoved(nsIDocument *aDocument,
   MaybeUpdateAreas(aContainer);
 }
 
+void
+nsImageMap::ParentChainChanged(nsIContent* aContent)
+{
+  NS_ASSERTION(aContent == mMap,
+               "Unexpected ParentChainChanged notification!");
+  if (mImageFrame) {
+    mImageFrame->DisconnectMap();
+  }
+}
+
 nsresult
 nsImageMap::HandleEvent(nsIDOMEvent* aEvent)
 {
@@ -984,11 +992,10 @@ nsImageMap::HandleEvent(nsIDOMEvent* aEvent)
           //Set or Remove internal focus
           area->HasFocus(focus);
           //Now invalidate the rect
-          nsIFrame* imgFrame = targetContent->GetPrimaryFrame();
-          if (imgFrame) {
+          if (mImageFrame) {
             nsRect dmgRect;
-            area->GetRect(imgFrame, dmgRect);
-            imgFrame->Invalidate(dmgRect);
+            area->GetRect(mImageFrame, dmgRect);
+            mImageFrame->Invalidate(dmgRect);
           }
           break;
         }
@@ -1002,5 +1009,6 @@ void
 nsImageMap::Destroy(void)
 {
   FreeAreas();
+  mImageFrame = nsnull;
   mMap->RemoveMutationObserver(this);
 }

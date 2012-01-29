@@ -110,19 +110,6 @@ class nsIDOMMediaQueryList;
 class nsRenderingContext;
 #endif
 
-enum nsWidgetType {
-  eWidgetType_Button  	= 1,
-  eWidgetType_Checkbox	= 2,
-  eWidgetType_Radio			= 3,
-  eWidgetType_Text			= 4
-};
-
-enum nsLanguageSpecificTransformType {
-  eLanguageSpecificTransformType_Unknown = -1,
-  eLanguageSpecificTransformType_None = 0,
-  eLanguageSpecificTransformType_Japanese
-};
-
 // supported values for cached bool types
 enum nsPresContext_CachedBoolPrefType {
   kPresContext_UseDocumentColors = 1,
@@ -976,12 +963,15 @@ public:
   bool MayHaveFixedBackgroundFrames() { return mMayHaveFixedBackgroundFrames; }
   void SetHasFixedBackgroundFrame() { mMayHaveFixedBackgroundFrames = true; }
 
-  PRUint32 EstimateMemoryUsed() {
-    PRUint32 result = 0;
-
-    result += sizeof(nsPresContext);
-
-    return result;
+  virtual NS_MUST_OVERRIDE size_t
+        SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const {
+    // XXX: lots of things hang off nsPresContext and should be included in
+    // this measurement.  Bug 671299 may add them.
+    return 0;
+  }
+  virtual NS_MUST_OVERRIDE size_t
+        SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const {
+    return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
   }
 
   bool IsRootContentDocument();
@@ -992,10 +982,8 @@ protected:
   NS_HIDDEN_(void) SysColorChangedInternal();
 
   NS_HIDDEN_(void) SetImgAnimations(nsIContent *aParent, PRUint16 aMode);
-#ifdef MOZ_SMIL
   NS_HIDDEN_(void) SetSMILAnimations(nsIDocument *aDoc, PRUint16 aNewMode,
                                      PRUint16 aOldMode);
-#endif // MOZ_SMIL
   NS_HIDDEN_(void) GetDocumentColorPreferences();
 
   NS_HIDDEN_(void) PreferenceChanged(const char* aPrefName);
@@ -1007,8 +995,12 @@ protected:
   NS_HIDDEN_(void) GetUserPreferences();
   NS_HIDDEN_(void) GetFontPreferences();
 
-  NS_HIDDEN_(void) UpdateCharSet(const nsAFlatCString& aCharSet);
+  NS_HIDDEN_(void) UpdateCharSet(const nsCString& aCharSet);
 
+public:
+  void DoChangeCharSet(const nsCString& aCharSet);
+
+protected:
   void InvalidateThebesLayers();
   void AppUnitsPerDevPixelChanged();
 
@@ -1053,6 +1045,22 @@ protected:
   // a specific language, however (e.g, if it is inferred from the
   // charset rather than explicitly specified as a lang attribute).
   nsIAtom*              mLanguage;      // [STRONG]
+
+public:
+  // The following are public member variables so that we can use them
+  // with mozilla::AutoToggle or mozilla::AutoRestore.
+
+  // The frame that is the container for font size inflation for the
+  // reflow or intrinsic width computation currently happening.  If this
+  // frame is null, then font inflation should not be performed.
+  nsIFrame*             mCurrentInflationContainer; // [WEAK]
+
+  // The content-rect width of mCurrentInflationContainer.  If
+  // mCurrentInflationContainer is currently in reflow, this is its new
+  // width, which is not yet set on its rect.
+  nscoord               mCurrentInflationContainerWidth;
+
+protected:
 
   nsRefPtrHashtable<nsVoidPtrHashKey, nsImageLoader>
                         mImageLoaders[IMAGE_LOAD_TYPE_COUNT];
@@ -1264,14 +1272,6 @@ public:
   virtual bool IsRoot() { return true; }
 
   /**
-   * This method is called off an event to force the plugin geometry to
-   * be updated. First we try to paint, since updating plugin geometry
-   * during paint is best for keeping plugins in sync with content.
-   * But we also force geometry updates in case painting doesn't work.
-   */
-  void SynchronousPluginGeometryUpdate();
-
-  /**
    * Call this after reflow and scrolling to ensure that the geometry
    * of any windowed plugins is updated. aFrame is the root of the
    * frame subtree whose geometry has changed.
@@ -1304,12 +1304,61 @@ public:
    */
   PRUint32 GetDOMGeneration() { return mDOMGeneration; }
 
-private:
+  /**
+   * Add a runnable that will get called before the next paint. They will get
+   * run eventually even if painting doesn't happen. They might run well before
+   * painting happens.
+   */
+  void AddWillPaintObserver(nsIRunnable* aRunnable);
+
+  /**
+   * Run all runnables that need to get called before the next paint.
+   */
+  void FlushWillPaintObservers();
+
+  virtual NS_MUST_OVERRIDE size_t
+        SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const MOZ_OVERRIDE {
+    // XXX: several things hang off an nsRootPresContext and should be included
+    // in this measurement.  Bug 671299 may do this.
+    return nsPresContext::SizeOfExcludingThis(aMallocSizeOf);
+  }
+  virtual NS_MUST_OVERRIDE size_t
+        SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const MOZ_OVERRIDE {
+    return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
+  }
+
+protected:
+  class RunWillPaintObservers : public nsRunnable {
+  public:
+    RunWillPaintObservers(nsRootPresContext* aPresContext) : mPresContext(aPresContext) {}
+    void Revoke() { mPresContext = nsnull; }
+    NS_IMETHOD Run()
+    {
+      if (mPresContext) {
+        mPresContext->FlushWillPaintObservers();
+      }
+      return NS_OK;
+    }
+    nsRootPresContext* mPresContext;
+  };
+
+  friend class nsPresContext;
+  void CancelUpdatePluginGeometryTimer()
+  {
+    if (mUpdatePluginGeometryTimer) {
+      mUpdatePluginGeometryTimer->Cancel();
+      mUpdatePluginGeometryTimer = nsnull;
+    }
+  }
+
   nsCOMPtr<nsITimer> mNotifyDidPaintTimer;
+  nsCOMPtr<nsITimer> mUpdatePluginGeometryTimer;
   nsTHashtable<nsPtrHashKey<nsObjectFrame> > mRegisteredPlugins;
   // if mNeedsToUpdatePluginGeometry is set, then this is the frame to
   // use as the root of the subtree to search for plugin updates, or
   // null to use the root frame of this prescontext
+  nsTArray<nsCOMPtr<nsIRunnable> > mWillPaintObservers;
+  nsRevocableEventPtr<RunWillPaintObservers> mWillPaintFallbackEvent;
   nsIFrame* mUpdatePluginGeometryForFrame;
   PRUint32 mDOMGeneration;
   bool mNeedsToUpdatePluginGeometry;

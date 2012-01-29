@@ -82,10 +82,9 @@
 #include "nsIContentSink.h"
 #include "nsHTMLTags.h"
 
-// d19e6730-5e2f-4131-89db-8a918515097d
 #define NS_IHTML_CONTENT_SINK_IID \
-{ 0xd19e6730, 0x5e2f, 0x4131, \
-  { 0x89, 0xdb, 0x8a, 0x91, 0x85, 0x15, 0x09, 0x7d } }
+{ 0xb6d6ae00, 0x0884, 0x4a30, \
+  { 0xa8, 0xb4, 0xce, 0xca, 0x57, 0x27, 0x1a, 0x3e } }
 
 #define MAX_REFLOW_DEPTH  200
 
@@ -185,52 +184,6 @@ public:
    * @param  nsIParserNode reference to parser node interface
    */     
   NS_IMETHOD AddLeaf(const nsIParserNode& aNode) = 0;
-
-  /**
-   * This gets called by the parser when you want to add
-   * a leaf node to the current container in the content
-   * model.
-   *
-   * @update 4/1/98 gess
-   * @param  nsIParserNode reference to parser node interface
-   */     
-  NS_IMETHOD AddComment(const nsIParserNode& aNode) = 0;
-
-  /**
-   * This gets called by the parser when you want to add
-   * a leaf node to the current container in the content
-   * model.
-   *
-   * @update 4/1/98 gess
-   * @param  nsIParserNode reference to parser node interface
-   */     
-  NS_IMETHOD AddProcessingInstruction(const nsIParserNode& aNode) = 0;
-
-  /**
-   * This method is called by the parser when it encounters
-   * a document type declaration.
-   *
-   * XXX Should the parser also parse the internal subset?
-   *
-   * @param  nsIParserNode reference to parser node interface
-   */
-  NS_IMETHOD AddDocTypeDecl(const nsIParserNode& aNode) = 0;
-
-  /**
-   * This gets called by the parser to notify observers of
-   * the tag
-   *
-   * @param aErrorResult the error code
-   */
-  NS_IMETHOD NotifyTagObservers(nsIParserNode* aNode) = 0;
-
-  /**
-   * Call this method to determnine if a FORM is on the sink's stack
-   *
-   * @return true if found else false
-   */
-  NS_IMETHOD_(bool) IsFormOnStack() = 0;
-
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIHTMLContentSink, NS_IHTML_CONTENT_SINK_IID)

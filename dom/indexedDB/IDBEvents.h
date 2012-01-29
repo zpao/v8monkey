@@ -53,20 +53,26 @@
 #define ERROR_EVT_STR "error"
 #define COMPLETE_EVT_STR "complete"
 #define ABORT_EVT_STR "abort"
-#define TIMEOUT_EVT_STR "timeout"
 #define VERSIONCHANGE_EVT_STR "versionchange"
 #define BLOCKED_EVT_STR "blocked"
 #define UPGRADENEEDED_EVT_STR "upgradeneeded"
 
 BEGIN_INDEXEDDB_NAMESPACE
 
+enum Bubbles {
+  eDoesNotBubble,
+  eDoesBubble
+};
+
+enum Cancelable {
+  eNotCancelable,
+  eCancelable
+};
+
 already_AddRefed<nsDOMEvent>
 CreateGenericEvent(const nsAString& aType,
-                   bool aBubblesAndCancelable = false);
-
-already_AddRefed<nsIRunnable>
-CreateGenericEventRunnable(const nsAString& aType,
-                           nsIDOMEventTarget* aTarget);
+                   Bubbles aBubbles,
+                   Cancelable aCancelable);
 
 class IDBVersionChangeEvent : public nsDOMEvent,
                               public nsIIDBVersionChangeEvent

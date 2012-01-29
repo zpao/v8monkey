@@ -165,6 +165,7 @@ public:
   void ClearCachedResources();
 
   void SetTransactionIncomplete() { mTransactionIncomplete = true; }
+  bool IsTransactionIncomplete() { return mTransactionIncomplete; }
 
   already_AddRefed<gfxContext> PushGroupForLayer(gfxContext* aContext, Layer* aLayer,
                                                  const nsIntRegion& aRegion,
@@ -289,7 +290,7 @@ private:
  */
 class nsMainThreadSurfaceRef;
 
-NS_SPECIALIZE_TEMPLATE
+template <>
 class nsAutoRefTraits<nsMainThreadSurfaceRef> {
 public:
   typedef gfxASurface* RawRef;

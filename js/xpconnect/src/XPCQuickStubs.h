@@ -40,42 +40,40 @@
 #ifndef xpcquickstubs_h___
 #define xpcquickstubs_h___
 
+#include "xpcpublic.h"
+#include "xpcprivate.h"
+
 #include "nsINode.h"
 
 /* XPCQuickStubs.h - Support functions used only by quick stubs. */
 
 class XPCCallContext;
 
-#define XPC_QS_NULL_INDEX  ((size_t) -1)
+#define XPC_QS_NULL_INDEX  ((uint16_t) -1)
 
 struct xpc_qsPropertySpec {
-    const char *name;
+    uint16_t name_index;
     JSPropertyOp getter;
     JSStrictPropertyOp setter;
 };
 
 struct xpc_qsFunctionSpec {
-    const char *name;
+    uint16_t name_index;
+    uint16_t arity;
     JSNative native;
-    uintN arity;
-};
-
-struct xpc_qsTraceableSpec {
-    const char *name;
-    JSNative native;
-    uintN arity;
 };
 
 /** A table mapping interfaces to quick stubs. */
 struct xpc_qsHashEntry {
     nsID iid;
-    const xpc_qsPropertySpec *properties;
-    const xpc_qsFunctionSpec *functions;
-    const xpc_qsTraceableSpec *traceables;
+    uint16_t prop_index;
+    uint16_t n_props;
+    uint16_t func_index;
+    uint16_t n_funcs;
     // These last two fields index to other entries in the same table.
     // XPC_QS_NULL_ENTRY indicates there are no more entries in the chain.
-    size_t parentInterface;
-    size_t chain;
+    uint16_t parentInterface;
+    uint16_t chain;
 };
 
 inline nsISupports*
@@ -162,9 +160,12 @@ public:
 JSBool
 xpc_qsDefineQuickStubs(JSContext *cx, JSObject *proto, uintN extraFlags,
                        PRUint32 ifacec, const nsIID **interfaces,
-                       PRUint32 tableSize, const xpc_qsHashEntry *table);
+                       PRUint32 tableSize, const xpc_qsHashEntry *table,
+                       const xpc_qsPropertySpec *propspecs,
+                       const xpc_qsFunctionSpec *funcspecs,
+                       const char *stringTable);
 
-/** Raise an exception on @a cx and return JS_FALSE. */
+/** Raise an exception on @a cx and return false. */
 JSBool
 xpc_qsThrow(JSContext *cx, nsresult rv);
 
@@ -232,55 +233,15 @@ xpc_qsGetterOnlyPropertyStub(JSContext *cx, JSObject *obj, jsid id, JSBool stric
 /* Functions for converting values between COM and JS. */
 
 inline JSBool
-xpc_qsInt32ToJsval(JSContext *cx, PRInt32 i, jsval *rv)
-{
-    *rv = INT_TO_JSVAL(i);
-    return JS_TRUE;
-}
-
-inline JSBool
-xpc_qsUint32ToJsval(JSContext *cx, PRUint32 u, jsval *rv)
-{
-    if (u <= JSVAL_INT_MAX)
-        *rv = INT_TO_JSVAL(u);
-    else
-        *rv = DOUBLE_TO_JSVAL(u);
-    return JS_TRUE;
-}
-
-#ifdef HAVE_LONG_LONG
-
-#define INT64_TO_DOUBLE(i)      ((jsdouble) (i))
-// Win32 can't handle uint64 to double conversion
-#define UINT64_TO_DOUBLE(u)     ((jsdouble) (int64) (u))
-
-#else
-
-inline jsdouble
-INT64_TO_DOUBLE(const int64 &v)
-{
-    jsdouble d;
-    LL_L2D(d, v);
-    return d;
-}
-
-// if !HAVE_LONG_LONG, then uint64 is a typedef of int64
-#define UINT64_TO_DOUBLE INT64_TO_DOUBLE
-
-#endif
-
-inline JSBool
 xpc_qsInt64ToJsval(JSContext *cx, PRInt64 i, jsval *rv)
 {
-    double d = INT64_TO_DOUBLE(i);
-    return JS_NewNumberValue(cx, d, rv);
+    return JS_NewNumberValue(cx, static_cast<jsdouble>(i), rv);
 }
 
 inline JSBool
 xpc_qsUint64ToJsval(JSContext *cx, PRUint64 u, jsval *rv)
 {
-    double d = UINT64_TO_DOUBLE(u);
-    return JS_NewNumberValue(cx, d, rv);
+    return JS_NewNumberValue(cx, static_cast<jsdouble>(u), rv);
 }
 
 
@@ -303,11 +264,13 @@ public:
 
     implementation_type *Ptr()
     {
+        MOZ_ASSERT(mValid);
         return reinterpret_cast<implementation_type *>(mBuf);
     }
 
     operator interface_type &()
     {
+        MOZ_ASSERT(mValid);
         return *Ptr();
     }
 
@@ -371,13 +334,13 @@ protected:
                 // eStringify should end up with void strings.
                 (new(mBuf) implementation_type(traits::sEmptyBuffer, PRUint32(0)))->
                     SetIsVoid(behavior != eEmpty);
-                mValid = JS_TRUE;
+                mValid = true;
                 return nsnull;
             }
 
             s = JS_ValueToString(cx, v);
             if (!s) {
-                mValid = JS_FALSE;
+                mValid = false;
                 return nsnull;
             }
             *pval = STRING_TO_JSVAL(s);  // Root the new string.
@@ -392,7 +355,7 @@ protected:
  *
  *     xpc_qsDOMString arg0(cx, &argv[0]);
  *     if (!arg0.IsValid())
- *         return JS_FALSE;
+ *         return false;
  *
  * The second argument to the constructor is an in-out parameter. It must
  * point to a rooted jsval, such as a JSNative argument or return value slot.
@@ -453,7 +416,7 @@ struct xpc_qsSelfRef
 };
 
 /**
- * Convert a jsval to char*, returning JS_TRUE on success.
+ * Convert a jsval to char*, returning true on success.
  *
  * @param cx
  *     A context.
@@ -467,17 +430,10 @@ JSBool
 xpc_qsJsvalToCharStr(JSContext *cx, jsval v, JSAutoByteString *bytes);
 
 JSBool
-xpc_qsJsvalToWcharStr(JSContext *cx, jsval v, jsval *pval, PRUnichar **pstr);
+xpc_qsJsvalToWcharStr(JSContext *cx, jsval v, jsval *pval, const PRUnichar **pstr);
 
 
-/** Convert an nsString to jsval, returning JS_TRUE on success.
- *  Note, the ownership of the string buffer may be moved from str to rval.
- *  If that happens, str will point to an empty string after this call.
- */
-JSBool
-xpc_qsStringToJsval(JSContext *cx, nsString &str, jsval *rval);
-
-/** Convert an nsString to JSString, returning JS_TRUE on success. This will sometimes modify |str| to be empty. */
+/** Convert an nsString to JSString, returning true on success. This will sometimes modify |str| to be empty. */
 JSBool
 xpc_qsStringToJsstring(JSContext *cx, nsString &str, JSString **rval);
 
@@ -506,7 +462,7 @@ castNative(JSContext *cx,
  *
  * If an object implementing T is found, store a reference to the wrapper
  * JSObject in @a *pThisVal, store a pointer to the T in @a *ppThis, and return
- * JS_TRUE. Otherwise, raise an exception on @a cx and return JS_FALSE.
+ * true. Otherwise, raise an exception on @a cx and return false.
  *
  * @a *pThisRef receives the same pointer as *ppThis if the T was AddRefed.
  * Otherwise it receives null (even on error).
@@ -540,7 +496,7 @@ xpc_qsUnwrapThis(JSContext *cx,
 
     if (NS_FAILED(rv))
         *ppThis = nsnull;
-    return JS_TRUE;
+    return true;
 }
 
 inline nsISupports*
@@ -681,7 +637,7 @@ xpc_qsGetWrapperCache(void *p)
     return nsnull;
 }
 
-/** Convert an XPCOM pointer to jsval. Return JS_TRUE on success.
+/** Convert an XPCOM pointer to jsval. Return true on success.
  * aIdentity is a performance optimization. Set it to true,
  * only if p is the identity pointer.
  */
@@ -693,7 +649,7 @@ xpc_qsXPCOMObjectToJsval(XPCLazyCallContext &lccx,
                          jsval *rval);
 
 /**
- * Convert a variant to jsval. Return JS_TRUE on success.
+ * Convert a variant to jsval. Return true on success.
  */
 JSBool
 xpc_qsVariantToJsval(XPCLazyCallContext &ccx,
@@ -701,7 +657,7 @@ xpc_qsVariantToJsval(XPCLazyCallContext &ccx,
                      jsval *rval);
 
 /**
- * Convert a jsval to PRInt64. Return JS_TRUE on success.
+ * Convert a jsval to PRInt64. Return true on success.
  */
 inline JSBool
 xpc_qsValueToInt64(JSContext *cx,
@@ -709,35 +665,21 @@ xpc_qsValueToInt64(JSContext *cx,
                    PRInt64 *result)
 {
     if (JSVAL_IS_INT(v)) {
-        int32 intval;
+        int32_t intval;
         if (!JS_ValueToECMAInt32(cx, v, &intval))
-            return JS_FALSE;
+            return false;
         *result = static_cast<PRInt64>(intval);
     } else {
         jsdouble doubleval;
         if (!JS_ValueToNumber(cx, v, &doubleval))
-            return JS_FALSE;
+            return false;
         *result = static_cast<PRInt64>(doubleval);
     }
-    return JS_TRUE;
+    return true;
 }
 
 /**
- * Convert a jsdouble to PRUint64. Needed for traceable quickstubs too.
- */
-inline PRUint64
-xpc_qsDoubleToUint64(jsdouble doubleval)
-{
-#ifdef XP_WIN
-    // Note: Win32 can't handle double to uint64 directly
-    return static_cast<PRUint64>(static_cast<PRInt64>(doubleval));
-#else
-    return static_cast<PRUint64>(doubleval);
-#endif
-}
-
-/**
- * Convert a jsval to PRUint64. Return JS_TRUE on success.
+ * Convert a jsval to PRUint64. Return true on success.
  */
 inline JSBool
 xpc_qsValueToUint64(JSContext *cx,
@@ -745,17 +687,17 @@ xpc_qsValueToUint64(JSContext *cx,
                     PRUint64 *result)
 {
     if (JSVAL_IS_INT(v)) {
-        uint32 intval;
+        uint32_t intval;
         if (!JS_ValueToECMAUint32(cx, v, &intval))
-            return JS_FALSE;
+            return false;
         *result = static_cast<PRUint64>(intval);
     } else {
         jsdouble doubleval;
         if (!JS_ValueToNumber(cx, v, &doubleval))
-            return JS_FALSE;
-        *result = xpc_qsDoubleToUint64(doubleval);
+            return false;
+        *result = static_cast<PRUint64>(doubleval);
     }
-    return JS_TRUE;
+    return true;
 }
 
 #ifdef DEBUG

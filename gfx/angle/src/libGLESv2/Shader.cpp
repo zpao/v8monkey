@@ -47,6 +47,7 @@ Shader::Shader(ResourceManager *manager, GLuint handle) : mHandle(handle), mReso
             resources.MaxFragmentUniformVectors = context->getMaximumFragmentUniformVectors();
             resources.MaxDrawBuffers = MAX_DRAW_BUFFERS;
             resources.OES_standard_derivatives = 1;
+            // resources.OES_EGL_image_external = getDisplay()->isD3d9ExDevice() ? 1 : 0; // TODO: commented out until the extension is actually supported.
 
             mFragmentCompiler = ShConstructCompiler(SH_FRAGMENT_SHADER, SH_GLES2_SPEC, SH_HLSL_OUTPUT, &resources);
             mVertexCompiler = ShConstructCompiler(SH_VERTEX_SHADER, SH_GLES2_SPEC, SH_HLSL_OUTPUT, &resources);
@@ -157,28 +158,50 @@ int Shader::getSourceLength() const
     }
 }
 
-void Shader::getSource(GLsizei bufSize, GLsizei *length, char *source)
+int Shader::getTranslatedSourceLength() const
+{
+    if (!mHlsl)
+    {
+        return 0;
+    }
+    else
+    {
+       return strlen(mHlsl) + 1;
+    }
+}
+
+void Shader::getSourceImpl(char *source, GLsizei bufSize, GLsizei *length, char *buffer)
 {
     int index = 0;
 
-    if (mSource)
+    if (source)
     {
-        while (index < bufSize - 1 && index < (int)strlen(mSource))
+        while (index < bufSize - 1 && index < (int)strlen(source))
         {
-            source[index] = mSource[index];
+            buffer[index] = source[index];
             index++;
         }
     }
 
     if (bufSize)
     {
-        source[index] = '\0';
+        buffer[index] = '\0';
     }
 
     if (length)
     {
         *length = index;
     }
+}
+
+void Shader::getSource(GLsizei bufSize, GLsizei *length, char *buffer)
+{
+    getSourceImpl(mSource, bufSize, length, buffer);
+}
+
+void Shader::getTranslatedSource(GLsizei bufSize, GLsizei *length, char *buffer)
+{
+    getSourceImpl(mHlsl, bufSize, length, buffer);
 }
 
 bool Shader::isCompiled()

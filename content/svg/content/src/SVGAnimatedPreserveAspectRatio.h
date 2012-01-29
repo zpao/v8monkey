@@ -39,10 +39,17 @@
 #ifndef MOZILLA_SVGANIMATEDPRESERVEASPECTRATIO_H__
 #define MOZILLA_SVGANIMATEDPRESERVEASPECTRATIO_H__
 
-#include "nsIDOMSVGPresAspectRatio.h"
-#include "nsIDOMSVGAnimPresAspRatio.h"
-#include "nsSVGElement.h"
+#include "nsAutoPtr.h"
+#include "nsCycleCollectionParticipant.h"
 #include "nsDOMError.h"
+#include "nsError.h"
+#include "nsIDOMSVGAnimPresAspRatio.h"
+#include "nsIDOMSVGPresAspectRatio.h"
+#include "nsISMILAttr.h"
+#include "nsSVGElement.h"
+
+class nsISMILAnimationElement;
+class nsSMILValue;
 
 namespace mozilla {
 
@@ -129,10 +136,8 @@ public:
   nsresult ToDOMAnimatedPreserveAspectRatio(
     nsIDOMSVGAnimatedPreserveAspectRatio **aResult,
     nsSVGElement* aSVGElement);
-#ifdef MOZ_SMIL
   // Returns a new nsISMILAttr object that the caller must delete
   nsISMILAttr* ToSMILAttr(nsSVGElement* aSVGElement);
-#endif // MOZ_SMIL
 
 private:
 
@@ -184,9 +189,7 @@ public:
     // need to flush any resample requests to reflect these modifications.
     NS_IMETHOD GetAlign(PRUint16* aAlign)
     {
-#ifdef MOZ_SMIL
       mSVGElement->FlushAnimations();
-#endif
       *aAlign = mVal->GetAnimValue().GetAlign();
       return NS_OK;
     }
@@ -195,9 +198,7 @@ public:
 
     NS_IMETHOD GetMeetOrSlice(PRUint16* aMeetOrSlice)
     {
-#ifdef MOZ_SMIL
       mSVGElement->FlushAnimations();
-#endif
       *aMeetOrSlice = mVal->GetAnimValue().GetMeetOrSlice();
       return NS_OK;
     }
@@ -226,7 +227,6 @@ public:
       { return mVal->ToDOMAnimVal(aAnimVal, mSVGElement); }
   };
 
-#ifdef MOZ_SMIL
   struct SMILPreserveAspectRatio : public nsISMILAttr
   {
   public:
@@ -249,7 +249,6 @@ public:
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);
   };
-#endif // MOZ_SMIL
 };
 
 } // namespace mozilla

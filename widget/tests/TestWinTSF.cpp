@@ -96,7 +96,7 @@ template<class T> class nsReadingIterator;
 #include "nsIDOMHTMLElement.h"
 #include "nsIDOMHTMLInputElement.h"
 #include "nsIDOMHTMLTextAreaElement.h"
-#include "nsIDOMNSElement.h"
+#include "nsIDOMElement.h"
 #include "nsISelectionController.h"
 #include "nsIViewManager.h"
 #include "nsTArray.h"
@@ -189,7 +189,8 @@ TestApp::OnProgressChange(nsIWebProgress *aWebProgress,
 NS_IMETHODIMP
 TestApp::OnLocationChange(nsIWebProgress *aWebProgress,
                            nsIRequest *aRequest,
-                           nsIURI *aLocation)
+                           nsIURI *aLocation,
+                           PRUint32 aFlags)
 {
   return NS_OK;
 }
@@ -2924,9 +2925,9 @@ TestApp::TestScrollMessages(void)
     return false;
   }
 
-  nsCOMPtr<nsIDOMNSElement> textAreaNS(do_QueryInterface(mTextArea));
-  if (!textAreaNS) {
-    fail("TestScrollMessages: get nsIDOMNSElement");
+  nsCOMPtr<nsIDOMElement> textArea = do_QueryInterface(mTextArea);
+  if (!textArea) {
+    fail("TestScrollMessages: get nsIDOMElement");
     mTextArea->SetAttribute(NS_LITERAL_STRING("style"), EmptyString());
     return false;
   }
@@ -2943,8 +2944,8 @@ TestApp::TestScrollMessages(void)
 
   HWND wnd = (HWND)widget->GetNativeData(NS_NATIVE_WINDOW);
 
-  textAreaNS->SetScrollTop(0);
-  textAreaNS->SetScrollLeft(0);
+  textArea->SetScrollTop(0);
+  textArea->SetScrollLeft(0);
 
   if (::SendMessage(wnd, WM_VSCROLL, SB_LINEDOWN, 0) != 0) {
     fail("TestScrollMessages: SendMessage WM_VSCROLL #1");
@@ -2953,8 +2954,8 @@ TestApp::TestScrollMessages(void)
   }
 
   PRInt32 x, y, prevX, prevY;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != 0, "TestScrollMessages: SendMessage WM_VSCROLL #1");
   DO_CHECK(y == 0, "TestScrollMessages: SendMessage WM_VSCROLL #1");
@@ -2967,8 +2968,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   const PRInt32 kLineWidth  = x;
   const PRInt32 kLineHeight = y;
@@ -2984,8 +2985,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != prevX, "TestScrollMessages: SendMessage WM_VSCROLL #2");
   DO_CHECK(y != 0,     "TestScrollMessages: SendMessage WM_VSCROLL #2");
@@ -2998,8 +2999,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != 0, "TestScrollMessages: SendMessage WM_HSCROLL #2");
   DO_CHECK(y != 0, "TestScrollMessages: SendMessage WM_HSCROLL #2");
@@ -3012,8 +3013,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != 0,           "TestScrollMessages: SendMessage WM_VSCROLL #3");
   DO_CHECK(y <= kLineHeight, "TestScrollMessages: SendMessage WM_VSCROLL #3");
@@ -3026,8 +3027,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x <= kLineWidth, "TestScrollMessages: SendMessage WM_HSCROLL #3");
   DO_CHECK(y != prevY,      "TestScrollMessages: SendMessage WM_HSCROLL #3");
@@ -3042,8 +3043,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != prevX, "TestScrollMessages: SB_LINELEFT scrolled wrong amount");
   DO_CHECK(y != prevY, "TestScrollMessages: SB_LINEUP scrolled wrong amount");
@@ -3056,8 +3057,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != prevX, "TestScrollMessages: SendMessage WM_VSCROLL #4");
   DO_CHECK(y != 0,     "TestScrollMessages: SendMessage WM_VSCROLL #4");
@@ -3070,8 +3071,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != 0, "TestScrollMessages: SendMessage WM_HSCROLL #4");
   DO_CHECK(y != 0, "TestScrollMessages: SendMessage WM_HSCROLL #4");
@@ -3084,8 +3085,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != 0,           "TestScrollMessages: SendMessage WM_VSCROLL #5");
   DO_CHECK(y <= kPageHeight, "TestScrollMessages: SendMessage WM_VSCROLL #5");
@@ -3098,8 +3099,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x <= kPageWidth, "TestScrollMessages: SendMessage WM_HSCROLL #5");
   DO_CHECK(y != prevY,      "TestScrollMessages: SendMessage WM_HSCROLL #5");
@@ -3109,8 +3110,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != prevX, "SB_RIGHT didn't scroll to right most");
   DO_CHECK(y != prevY, "SB_BOTTOM didn't scroll to bottom most");
@@ -3122,8 +3123,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != prevX, "TestScrollMessages: SB_PAGELEFT scrolled wrong amount");
   DO_CHECK(y != prevY, "TestScrollMessages: SB_PAGEUP scrolled wrong amount");
@@ -3136,8 +3137,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != prevX, "TestScrollMessages: SendMessage WM_VSCROLL #6");
   DO_CHECK(y != 0,     "TestScrollMessages: SendMessage WM_VSCROLL #6");
@@ -3150,8 +3151,8 @@ TestApp::TestScrollMessages(void)
 
   prevX = x;
   prevY = y;
-  textAreaNS->GetScrollTop(&y);
-  textAreaNS->GetScrollLeft(&x);
+  textArea->GetScrollTop(&y);
+  textArea->GetScrollLeft(&x);
 
   DO_CHECK(x != 0, "TestScrollMessages: SendMessage WM_HSCROLL #6");
   DO_CHECK(y != 0, "TestScrollMessages: SendMessage WM_HSCROLL #6");

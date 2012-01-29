@@ -59,17 +59,14 @@ nsTransformedTextRun::Create(const gfxTextRunFactory::Parameters* aParams,
   NS_ASSERTION(!(aFlags & gfxTextRunFactory::TEXT_IS_8BIT),
                "didn't expect text to be marked as 8-bit here");
 
-  // Note that AllocateStorage MAY modify the textPtr parameter,
-  // if the text is not persistent and therefore a private copy is created
-  const void *textPtr = aString;
-  CompressedGlyph *glyphStorage = AllocateStorage(textPtr, aLength, aFlags);
-  if (!glyphStorage) {
+  void *storage = AllocateStorageForTextRun(sizeof(nsTransformedTextRun), aLength);
+  if (!storage) {
     return nsnull;
   }
 
-  return new nsTransformedTextRun(aParams, aFactory, aFontGroup,
-                                  static_cast<const PRUnichar*>(textPtr), aLength,
-                                  aFlags, aStyles, aOwnsFactory, glyphStorage);
+  return new (storage) nsTransformedTextRun(aParams, aFactory, aFontGroup,
+                                            aString, aLength,
+                                            aFlags, aStyles, aOwnsFactory);
 }
 
 void
@@ -99,26 +96,22 @@ nsTransformedTextRun::SetPotentialLineBreaks(PRUint32 aStart, PRUint32 aLength,
   return changed;
 }
 
-PRUint64
-nsTransformedTextRun::ComputeSize()
+size_t
+nsTransformedTextRun::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf)
 {
-  PRUint32 total = gfxTextRun::ComputeSize();
-  if (moz_malloc_usable_size(this) == 0) {
-    total += sizeof(nsTransformedTextRun) - sizeof(gfxTextRun);
-  }
-  total += mStyles.SizeOf();
-  total += mCapitalize.SizeOf();
+  size_t total = gfxTextRun::SizeOfExcludingThis(aMallocSizeOf);
+  total += mStyles.SizeOfExcludingThis(aMallocSizeOf);
+  total += mCapitalize.SizeOfExcludingThis(aMallocSizeOf);
   if (mOwnsFactory) {
-    PRUint32 factorySize = moz_malloc_usable_size(mFactory);
-    if (factorySize == 0) {
-      // this may not quite account for everything
-      // (e.g. nsCaseTransformTextRunFactory adds a couple of members)
-      // but I'm not sure it's worth the effort to track more precisely
-      factorySize = sizeof(nsTransformingTextRunFactory);
-    }
-    total += factorySize;
+    total += aMallocSizeOf(mFactory);
   }
   return total;
+}
+
+size_t
+nsTransformedTextRun::SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf)
+{
+  return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
 }
 
 nsTransformedTextRun*
@@ -271,11 +264,10 @@ nsFontVariantTextRunFactory::RebuildTextRun(nsTransformedTextRun* aTextRun,
       GetParametersForInner(aTextRun, &flags, aRefContext);
 
   PRUint32 length = aTextRun->GetLength();
-  const PRUnichar* str = aTextRun->GetTextUnicode();
+  const PRUnichar* str = aTextRun->mString.BeginReading();
   nsRefPtr<nsStyleContext>* styles = aTextRun->mStyles.Elements();
   // Create a textrun so we can check cluster-start properties
-  gfxTextRunCache::AutoTextRun inner(
-      gfxTextRunCache::MakeTextRun(str, length, fontGroup, &innerParams, flags));
+  nsAutoPtr<gfxTextRun> inner(fontGroup->MakeTextRun(str, length, &innerParams, flags));
   if (!inner.get())
     return;
 
@@ -310,7 +302,7 @@ nsFontVariantTextRunFactory::RebuildTextRun(nsTransformedTextRun* aTextRun,
 
     if ((i == length || runIsLowercase != isLowercase) && runStart < i) {
       nsAutoPtr<nsTransformedTextRun> transformedChild;
-      gfxTextRunCache::AutoTextRun cachedChild;
+      nsAutoPtr<gfxTextRun> cachedChild;
       gfxTextRun* child;
 
       if (runIsLowercase) {
@@ -319,8 +311,8 @@ nsFontVariantTextRunFactory::RebuildTextRun(nsTransformedTextRun* aTextRun,
         child = transformedChild;
       } else {
         cachedChild =
-          gfxTextRunCache::MakeTextRun(str + runStart, i - runStart, fontGroup,
-              &innerParams, flags);
+          fontGroup->MakeTextRun(str + runStart, i - runStart,
+                                 &innerParams, flags);
         child = cachedChild.get();
       }
       if (!child)
@@ -354,7 +346,7 @@ nsCaseTransformTextRunFactory::RebuildTextRun(nsTransformedTextRun* aTextRun,
     gfxContext* aRefContext)
 {
   PRUint32 length = aTextRun->GetLength();
-  const PRUnichar* str = aTextRun->GetTextUnicode();
+  const PRUnichar* str = aTextRun->mString.BeginReading();
   nsRefPtr<nsStyleContext>* styles = aTextRun->mStyles.Elements();
 
   nsAutoString convertedString;
@@ -418,7 +410,7 @@ nsCaseTransformTextRunFactory::RebuildTextRun(nsTransformedTextRun* aTextRun,
   gfxFontGroup* fontGroup = aTextRun->GetFontGroup();
 
   nsAutoPtr<nsTransformedTextRun> transformedChild;
-  gfxTextRunCache::AutoTextRun cachedChild;
+  nsAutoPtr<gfxTextRun> cachedChild;
   gfxTextRun* child;
 
   if (mInnerTransformingTextRunFactory) {
@@ -427,8 +419,8 @@ nsCaseTransformTextRunFactory::RebuildTextRun(nsTransformedTextRun* aTextRun,
         &innerParams, fontGroup, flags, styleArray.Elements(), false);
     child = transformedChild.get();
   } else {
-    cachedChild = gfxTextRunCache::MakeTextRun(
-        convertedString.BeginReading(), convertedString.Length(), fontGroup,
+    cachedChild = fontGroup->MakeTextRun(
+        convertedString.BeginReading(), convertedString.Length(),
         &innerParams, flags);
     child = cachedChild.get();
   }

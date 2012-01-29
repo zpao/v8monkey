@@ -89,6 +89,7 @@ CPP_UNIT_TESTS = \
                  TestCOMArray.cpp \
                  TestCOMPtr.cpp \
                  TestCOMPtrEq.cpp \
+                 TestDeque.cpp \
                  TestFile.cpp \
                  TestHashtables.cpp \
                  TestID.cpp \
@@ -101,16 +102,18 @@ CPP_UNIT_TESTS = \
                  TestTArray.cpp \
                  $(NULL)
 
+ifdef MOZ_MEMORY
+CPP_UNIT_TESTS += TestJemalloc.cpp
+endif
+
 # XXX Make this tests work in libxul builds.
 #CPP_UNIT_TESTS += \
 #                  TestArray.cpp \
 #                  TestCRT.cpp \
-#                  TestDeque.cpp \
 #                  TestEncoding.cpp \
 #                  TestExpirationTracker.cpp \
 #                  TestPipes.cpp \
 #                  TestPriorityQueue.cpp \
-#                  TestProxies.cpp \
 #                  TestStorageStream.cpp \
 #                  TestStrings.cpp \
 #                  TestSynchronization.cpp \
@@ -160,7 +163,6 @@ include $(topsrcdir)/config/rules.mk
 
 LOCAL_INCLUDES	= \
                 -I$(srcdir)/../ds \
-		-I$(srcdir)/services \
 		$(NULL)
 
 libs::

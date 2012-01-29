@@ -78,9 +78,6 @@
 #include "nsThreadManager.h"
 #include "nsThreadPool.h"
 
-#include "nsIProxyObjectManager.h"
-#include "nsProxyEventPrivate.h"  // access to the impl of nsProxyObjectManager for the generic factory registration.
-
 #include "xptinfo.h"
 #include "nsIInterfaceInfoManager.h"
 #include "xptiprivate.h"
@@ -120,8 +117,6 @@ extern nsresult nsStringInputStreamConstructor(nsISupports *, REFNSIID, void **)
 
 #include "nsIOUtil.h"
 
-#include "nsRecyclingAllocator.h"
-
 #include "SpecialSystemDirectory.h"
 
 #if defined(XP_WIN)
@@ -139,6 +134,8 @@ extern nsresult nsStringInputStreamConstructor(nsISupports *, REFNSIID, void **)
 #include "mozilla/Services.h"
 #include "mozilla/FunctionTimer.h"
 #include "mozilla/Omnijar.h"
+#include "mozilla/HangMonitor.h"
+#include "mozilla/Telemetry.h"
 
 #include "nsChromeRegistry.h"
 #include "nsChromeProtocolHandler.h"
@@ -151,6 +148,8 @@ extern nsresult nsStringInputStreamConstructor(nsISupports *, REFNSIID, void **)
 
 #include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "mozilla/MapsMemoryReporter.h"
+#include "mozilla/AvailableMemoryTracker.h"
+#include "mozilla/ClearOnShutdown.h"
 
 using base::AtExitManager;
 using mozilla::ipc::BrowserProcessSubThread;
@@ -207,8 +206,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsVersionComparatorImpl)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsScriptableBase64Encoder)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsVariant)
-
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsRecyclingAllocatorImpl)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsHashPropertyBag, Init)
 
@@ -270,7 +267,6 @@ NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsChromeRegistry,
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsChromeProtocolHandler)
 
 #define NS_PERSISTENTPROPERTIES_CID NS_IPERSISTENTPROPERTIES_CID /* sigh */
-#define NS_XPCOMPROXY_CID NS_PROXYEVENT_MANAGER_CID
 
 static already_AddRefed<nsIFactory>
 CreateINIParserFactory(const mozilla::Module& module,
@@ -518,6 +514,8 @@ NS_InitXPCOM2(nsIServiceManager* *result,
     nsDirectoryService::gService->RegisterCategoryProviders();
 
     mozilla::scache::StartupCache::GetSingleton();
+    mozilla::AvailableMemoryTracker::Init();
+
     NS_TIME_FUNCTION_MARK("Next: create services from category");
 
     // Notify observers of xpcom autoregistration start
@@ -529,6 +527,10 @@ NS_InitXPCOM2(nsIServiceManager* *result,
 #endif
 
     mozilla::MapsMemoryReporter::Init();
+
+    mozilla::HangMonitor::Startup();
+
+    mozilla::Telemetry::Init();
 
     return NS_OK;
 }
@@ -566,6 +568,9 @@ namespace mozilla {
 nsresult
 ShutdownXPCOM(nsIServiceManager* servMgr)
 {
+    // Make sure the hang monitor is enabled for shutdown.
+    HangMonitor::NotifyActivity();
+
     NS_ENSURE_STATE(NS_IsMainThread());
 
     nsresult rv;
@@ -623,6 +628,8 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
 
         NS_ProcessPendingEvents(thread);
 
+        HangMonitor::NotifyActivity();
+
         // We save the "xpcom-shutdown-loaders" observers to notify after
         // the observerservice is gone.
         if (observerService) {
@@ -633,6 +640,11 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
             observerService->Shutdown();
         }
     }
+
+    // Free ClearOnShutdown()'ed smart pointers.  This needs to happen *after*
+    // we've finished notifying observers of XPCOM shutdown, because shutdown
+    // observers themselves might call ClearOnShutdown().
+    mozilla::KillClearOnShutdown();
 
     // XPCOM is officially in shutdown mode NOW
     // Set this only after the observers have been notified as this
@@ -650,8 +662,6 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
     if (nsComponentManagerImpl::gComponentManager) {
         nsComponentManagerImpl::gComponentManager->FreeServices();
     }
-
-    nsProxyObjectManager::Shutdown();
 
     // Release the directory service
     NS_IF_RELEASE(nsDirectoryService::gService);
@@ -709,8 +719,6 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
     nsComponentManagerImpl::gComponentManager = nsnull;
     nsCategoryManager::Destroy();
 
-    ShutdownSpecialSystemDirectory();
-
     NS_PurgeAtomTable();
 
     NS_IF_RELEASE(gDebug);
@@ -732,7 +740,9 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
         sExitManager = nsnull;
     }
 
-    mozilla::Omnijar::CleanUp();
+    Omnijar::CleanUp();
+
+    HangMonitor::Shutdown();
 
     NS_LogTerm();
 

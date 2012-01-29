@@ -74,14 +74,14 @@ class nsIContent;
 class nsIDocument;
 class nsIScriptTimeoutHandler;
 struct nsTimeout;
-class nsScriptObjectHolder;
+template <class> class nsScriptObjectHolder;
 class nsXBLPrototypeHandler;
 class nsIArray;
 class nsPIWindowRoot;
 
 #define NS_PIDOMWINDOW_IID \
-{ 0x8ce567b5, 0xcc8d, 0x410b, \
-  { 0xa2, 0x7b, 0x07, 0xaf, 0x31, 0xc0, 0x33, 0xb8 } }
+{ 0x1352de12, 0x7a07, 0x4610, \
+  { 0x93, 0xd5, 0xb8, 0x76, 0xfe, 0x93, 0x09, 0x50 } }
 
 class nsPIDOMWindow : public nsIDOMWindowInternal
 {
@@ -458,22 +458,10 @@ public:
   }
 
   /**
-   * Call this to check whether some node (this window, its document,
-   * or content in that document) has a MozAudioAvailable event listener.
-   */
-  bool HasAudioAvailableEventListeners()
-  {
-    return mMayHaveAudioAvailableEventListener;
-  }
-
-  /**
    * Call this to indicate that some node (this window, its document,
-   * or content in that document) has a MozAudioAvailable event listener.
+   * or content in that document) has a "MozAudioAvailable" event listener.
    */
-  void SetHasAudioAvailableEventListeners()
-  {
-    mMayHaveAudioAvailableEventListener = true;
-  }
+  virtual void SetHasAudioAvailableEventListeners() = 0;
 
   /**
    * Call this to check whether some node (this window, its document,
@@ -498,9 +486,9 @@ public:
    */
   virtual void InitJavaProperties() = 0;
 
-  virtual void* GetCachedXBLPrototypeHandler(nsXBLPrototypeHandler* aKey) = 0;
+  virtual JSObject* GetCachedXBLPrototypeHandler(nsXBLPrototypeHandler* aKey) = 0;
   virtual void CacheXBLPrototypeHandler(nsXBLPrototypeHandler* aKey,
-                                        nsScriptObjectHolder& aHandler) = 0;
+                                        nsScriptObjectHolder<JSObject>& aHandler) = 0;
 
   /*
    * Get and set the currently focused element within the document. If
@@ -657,7 +645,6 @@ protected:
   bool                   mIsInnerWindow;
   bool                   mMayHavePaintEventListener;
   bool                   mMayHaveTouchEventListener;
-  bool                   mMayHaveAudioAvailableEventListener;
   bool                   mMayHaveMouseEnterLeaveEventListener;
 
   // This variable is used on both inner and outer windows (and they

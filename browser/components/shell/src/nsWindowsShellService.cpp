@@ -189,7 +189,6 @@ typedef struct {
 #define APP_REG_NAME L"Firefox"
 #define CLS_HTML "FirefoxHTML"
 #define CLS_URL "FirefoxURL"
-#define CPL_DESKTOP L"Control Panel\\Desktop"
 #define VAL_OPEN "\"%APPPATH%\" -requestPending -osint -url \"%1\""
 #define VAL_FILE_ICON "%APPPATH%,1"
 #define DI "\\DefaultIcon"
@@ -261,6 +260,9 @@ NS_IMETHODIMP
 nsWindowsShellService::ShortcutMaintenance()
 {
   nsresult rv;
+
+  // XXX App ids were updated to a constant install path hash,
+  // XXX this code can be removed after a few upgrade cycles.
 
   // Launch helper.exe so it can update the application user model ids on
   // shortcuts in the user's taskbar and start menu. This keeps older pinned
@@ -614,44 +616,41 @@ nsWindowsShellService::SetDesktopBackground(nsIDOMElement* aElement,
 
   // if the file was written successfully, set it as the system wallpaper
   if (NS_SUCCEEDED(rv)) {
-     bool result = false;
-     DWORD  dwDisp = 0;
-     HKEY   key;
-     // Try to create/open a subkey under HKCU.
-     DWORD res = ::RegCreateKeyExW(HKEY_CURRENT_USER, CPL_DESKTOP,
-                                   0, NULL, REG_OPTION_NON_VOLATILE,
-                                   KEY_WRITE, NULL, &key, &dwDisp);
-    if (REG_SUCCEEDED(res)) {
-      PRUnichar tile[2], style[2];
-      switch (aPosition) {
-        case BACKGROUND_TILE:
-          tile[0] = '1';
-          style[0] = '1';
-          break;
-        case BACKGROUND_CENTER:
-          tile[0] = '0';
-          style[0] = '0';
-          break;
-        case BACKGROUND_STRETCH:
-          tile[0] = '0';
-          style[0] = '2';
-          break;
-      }
-      tile[1] = '\0';
-      style[1] = '\0';
+    nsCOMPtr<nsIWindowsRegKey> regKey =
+      do_CreateInstance("@mozilla.org/windows-registry-key;1", &rv);
+    NS_ENSURE_SUCCESS(rv, rv);
 
-      // The size is always 3 unicode characters.
-      PRInt32 size = 3 * sizeof(PRUnichar);
-      ::RegSetValueExW(key, L"TileWallpaper",
-                       0, REG_SZ, (const BYTE *)tile, size);
-      ::RegSetValueExW(key, L"WallpaperStyle",
-                       0, REG_SZ, (const BYTE *)style, size);
-      ::SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, (PVOID)path.get(),
-                              SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    rv = regKey->Create(nsIWindowsRegKey::ROOT_KEY_CURRENT_USER,
+                        NS_LITERAL_STRING("Control Panel\\Desktop"),
+                        nsIWindowsRegKey::ACCESS_SET_VALUE);
+    NS_ENSURE_SUCCESS(rv, rv);
 
-      // Close the key we opened.
-      ::RegCloseKey(key);
+    nsAutoString tile;
+    nsAutoString style;
+    switch (aPosition) {
+      case BACKGROUND_TILE:
+        style.AssignLiteral("0");
+        tile.AssignLiteral("1");
+        break;
+      case BACKGROUND_CENTER:
+        style.AssignLiteral("0");
+        tile.AssignLiteral("0");
+        break;
+      case BACKGROUND_STRETCH:
+        style.AssignLiteral("2");
+        tile.AssignLiteral("0");
+        break;
     }
+
+    rv = regKey->WriteStringValue(NS_LITERAL_STRING("TileWallpaper"), tile);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = regKey->WriteStringValue(NS_LITERAL_STRING("WallpaperStyle"), style);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = regKey->Close();
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    ::SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, (PVOID)path.get(),
+                            SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
   }
   return rv;
 }
@@ -776,88 +775,24 @@ nsWindowsShellService::SetDesktopBackgroundColor(PRUint32 aColor)
 
   ::SetSysColors(sizeof(aParameters) / sizeof(int), aParameters, colors);
 
-  bool result = false;
-  DWORD  dwDisp = 0;
-  HKEY   key;
-  // Try to create/open a subkey under HKCU.
-  DWORD rv = ::RegCreateKeyExW(HKEY_CURRENT_USER,
-                               L"Control Panel\\Colors", 0, NULL,
-                               REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL,
-                               &key, &dwDisp);
+  nsresult rv;
+  nsCOMPtr<nsIWindowsRegKey> regKey =
+    do_CreateInstance("@mozilla.org/windows-registry-key;1", &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-  if (REG_SUCCEEDED(rv)) {
-    char rgb[12];
-    sprintf((char*)rgb, "%u %u %u\0", r, g, b);
-    NS_ConvertUTF8toUTF16 backColor(rgb);
+  rv = regKey->Create(nsIWindowsRegKey::ROOT_KEY_CURRENT_USER,
+                      NS_LITERAL_STRING("Control Panel\\Colors"),
+                      nsIWindowsRegKey::ACCESS_SET_VALUE);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-    ::RegSetValueExW(key, L"Background",
-                     0, REG_SZ, (const BYTE *)backColor.get(),
-                     (backColor.Length() + 1) * sizeof(PRUnichar));
-  }
-  
-  // Close the key we opened.
-  ::RegCloseKey(key);
-  return NS_OK;
-}
+  PRUnichar rgb[12];
+  _snwprintf(rgb, 12, L"%u %u %u", r, g, b);
 
-NS_IMETHODIMP
-nsWindowsShellService::GetUnreadMailCount(PRUint32* aCount)
-{
-  *aCount = 0;
+  rv = regKey->WriteStringValue(NS_LITERAL_STRING("Background"),
+                                nsDependentString(rgb));
+  NS_ENSURE_SUCCESS(rv, rv);
 
-  HKEY accountKey;
-  if (GetMailAccountKey(&accountKey)) {
-    DWORD type, unreadCount;
-    DWORD len = sizeof unreadCount;
-    DWORD res = ::RegQueryValueExW(accountKey, L"MessageCount", 0,
-                                   &type, (LPBYTE)&unreadCount, &len);
-    if (REG_SUCCEEDED(res))
-      *aCount = unreadCount;
-
-    // Close the key we opened.
-    ::RegCloseKey(accountKey);
-  }
-
-  return NS_OK;
-}
-
-bool
-nsWindowsShellService::GetMailAccountKey(HKEY* aResult)
-{
-  NS_NAMED_LITERAL_STRING(unread,
-    "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\UnreadMail\\");
-
-  HKEY mailKey;
-  DWORD res = ::RegOpenKeyExW(HKEY_CURRENT_USER, unread.get(), 0,
-                              KEY_ENUMERATE_SUB_KEYS, &mailKey);
-
-  PRInt32 i = 0;
-  do {
-    PRUnichar subkeyName[MAX_BUF];
-    DWORD len = sizeof subkeyName;
-    res = ::RegEnumKeyExW(mailKey, i++, subkeyName, &len, NULL, NULL,
-                          NULL, NULL);
-    if (REG_SUCCEEDED(res)) {
-      HKEY accountKey;
-      res = ::RegOpenKeyExW(mailKey, PromiseFlatString(subkeyName).get(),
-                            0, KEY_READ, &accountKey);
-      if (REG_SUCCEEDED(res)) {
-        *aResult = accountKey;
-    
-        // Close the key we opened.
-        ::RegCloseKey(mailKey);
-	 
-        return true;
-      }
-    }
-    else
-      break;
-  }
-  while (1);
-
-  // Close the key we opened.
-  ::RegCloseKey(mailKey);
-  return false;
+  return regKey->Close();
 }
 
 NS_IMETHODIMP

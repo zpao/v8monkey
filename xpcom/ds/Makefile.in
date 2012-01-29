@@ -65,7 +65,6 @@ CPPSRCS		= \
 		nsObserverService.cpp \
 		nsProperties.cpp \
 		nsPersistentProperties.cpp \
-		nsRecyclingAllocator.cpp \
 		nsStaticNameTable.cpp \
 		nsStringEnumerator.cpp \
 		nsSupportsArray.cpp \
@@ -79,6 +78,8 @@ ifdef HAVE_CLOCK_MONOTONIC
 CPPSRCS += TimeStamp_posix.cpp
 else ifeq ($(OS_ARCH),Darwin)
 CPPSRCS += TimeStamp_darwin.cpp
+else ifeq ($(OS_ARCH),WINNT)
+CPPSRCS += TimeStamp_windows.cpp
 else
 CPPSRCS += TimeStamp.cpp
 endif
@@ -88,6 +89,7 @@ EXPORTS_NAMESPACES = mozilla
 EXPORTS_mozilla = \
   CharTokenizer.h \
   TimeStamp.h \
+  StringBuilder.h \
   $(NULL)
 
 EXPORTS		= \
@@ -104,7 +106,6 @@ EXPORTS		= \
 		nsIUnicharBuffer.h \
 		nsMathUtils.h \
 		nsObserverService.h \
-		nsRecyclingAllocator.h \
 		nsStaticNameTable.h \
 		nsStaticAtom.h \
 		nsSupportsArray.h \
@@ -129,7 +130,6 @@ XPIDLSRCS	= \
 		nsIPropertyBag2.idl \
 		nsIWritablePropertyBag.idl \
 		nsIWritablePropertyBag2.idl \
-		nsIRecyclingAllocator.idl \
 		nsIVariant.idl \
 		nsISerializable.idl \
 		nsIStringEnumerator.idl \
@@ -162,8 +162,6 @@ EXTRA_COMPONENTS = \
 # we don't want the shared lib, but we want to force the creation of a static lib.
 FORCE_STATIC_LIB = 1
 
-# Force use of PIC
-FORCE_USE_PIC	= 1
 
 include $(topsrcdir)/config/rules.mk
 

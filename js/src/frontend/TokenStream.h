@@ -63,106 +63,157 @@
 namespace js {
 
 enum TokenKind {
-    TOK_ERROR = -1,                     /* well-known as the only code < EOF */
-    TOK_EOF = 0,                        /* end of file */
-    TOK_EOL = 1,                        /* end of line; only returned by peekTokenSameLine() */
-    TOK_SEMI = 2,                       /* semicolon */
-    TOK_COMMA = 3,                      /* comma operator */
-    TOK_ASSIGN = 4,                     /* assignment ops (= += -= etc.) */
-    TOK_HOOK = 5, TOK_COLON = 6,        /* conditional (?:) */
-    TOK_OR = 7,                         /* logical or (||) */
-    TOK_AND = 8,                        /* logical and (&&) */
-    TOK_BITOR = 9,                      /* bitwise-or (|) */
-    TOK_BITXOR = 10,                    /* bitwise-xor (^) */
-    TOK_BITAND = 11,                    /* bitwise-and (&) */
-    TOK_EQOP = 12,                      /* equality ops (== !=) */
-    TOK_RELOP = 13,                     /* relational ops (< <= > >=) */
-    TOK_SHOP = 14,                      /* shift ops (<< >> >>>) */
-    TOK_PLUS = 15,                      /* plus */
-    TOK_MINUS = 16,                     /* minus */
-    TOK_STAR = 17, TOK_DIVOP = 18,      /* multiply/divide ops (* / %) */
-    TOK_UNARYOP = 19,                   /* unary prefix operator */
-    TOK_INC = 20, TOK_DEC = 21,         /* increment/decrement (++ --) */
-    TOK_DOT = 22,                       /* member operator (.) */
-    TOK_LB = 23, TOK_RB = 24,           /* left and right brackets */
-    TOK_LC = 25, TOK_RC = 26,           /* left and right curlies (braces) */
-    TOK_LP = 27, TOK_RP = 28,           /* left and right parentheses */
-    TOK_NAME = 29,                      /* identifier */
-    TOK_NUMBER = 30,                    /* numeric constant */
-    TOK_STRING = 31,                    /* string constant */
-    TOK_REGEXP = 32,                    /* RegExp constant */
-    TOK_PRIMARY = 33,                   /* true, false, null, this, super */
-    TOK_FUNCTION = 34,                  /* function keyword */
-    TOK_IF = 35,                        /* if keyword */
-    TOK_ELSE = 36,                      /* else keyword */
-    TOK_SWITCH = 37,                    /* switch keyword */
-    TOK_CASE = 38,                      /* case keyword */
-    TOK_DEFAULT = 39,                   /* default keyword */
-    TOK_WHILE = 40,                     /* while keyword */
-    TOK_DO = 41,                        /* do keyword */
-    TOK_FOR = 42,                       /* for keyword */
-    TOK_BREAK = 43,                     /* break keyword */
-    TOK_CONTINUE = 44,                  /* continue keyword */
-    TOK_IN = 45,                        /* in keyword */
-    TOK_VAR = 46,                       /* var keyword */
-    TOK_WITH = 47,                      /* with keyword */
-    TOK_RETURN = 48,                    /* return keyword */
-    TOK_NEW = 49,                       /* new keyword */
-    TOK_DELETE = 50,                    /* delete keyword */
-    TOK_DEFSHARP = 51,                  /* #n= for object/array initializers */
-    TOK_USESHARP = 52,                  /* #n# for object/array initializers */
-    TOK_TRY = 53,                       /* try keyword */
-    TOK_CATCH = 54,                     /* catch keyword */
-    TOK_FINALLY = 55,                   /* finally keyword */
-    TOK_THROW = 56,                     /* throw keyword */
-    TOK_INSTANCEOF = 57,                /* instanceof keyword */
-    TOK_DEBUGGER = 58,                  /* debugger keyword */
-    TOK_XMLSTAGO = 59,                  /* XML start tag open (<) */
-    TOK_XMLETAGO = 60,                  /* XML end tag open (</) */
-    TOK_XMLPTAGC = 61,                  /* XML point tag close (/>) */
-    TOK_XMLTAGC = 62,                   /* XML start or end tag close (>) */
-    TOK_XMLNAME = 63,                   /* XML start-tag non-final fragment */
-    TOK_XMLATTR = 64,                   /* XML quoted attribute value */
-    TOK_XMLSPACE = 65,                  /* XML whitespace */
-    TOK_XMLTEXT = 66,                   /* XML text */
-    TOK_XMLCOMMENT = 67,                /* XML comment */
-    TOK_XMLCDATA = 68,                  /* XML CDATA section */
-    TOK_XMLPI = 69,                     /* XML processing instruction */
-    TOK_AT = 70,                        /* XML attribute op (@) */
-    TOK_DBLCOLON = 71,                  /* namespace qualified name op (::) */
-    TOK_ANYNAME = 72,                   /* XML AnyName singleton (*) */
-    TOK_DBLDOT = 73,                    /* XML descendant op (..) */
-    TOK_FILTER = 74,                    /* XML filtering predicate op (.()) */
-    TOK_XMLELEM = 75,                   /* XML element node type (no token) */
-    TOK_XMLLIST = 76,                   /* XML list node type (no token) */
-    TOK_YIELD = 77,                     /* yield from generator function */
-    TOK_ARRAYCOMP = 78,                 /* array comprehension initialiser */
-    TOK_ARRAYPUSH = 79,                 /* array push within comprehension */
-    TOK_LEXICALSCOPE = 80,              /* block scope AST node label */
-    TOK_LET = 81,                       /* let keyword */
-    TOK_SEQ = 82,                       /* synthetic sequence of statements,
-                                           not a block */
-    TOK_FORHEAD = 83,                   /* head of for(;;)-style loop */
-    TOK_ARGSBODY = 84,                  /* formal args in list + body at end */
-    TOK_UPVARS = 85,                    /* lexical dependencies as JSAtomDefnMap
-                                           of definitions paired with a parse
-                                           tree full of uses of those names */
-    TOK_RESERVED,                       /* reserved keywords */
-    TOK_STRICT_RESERVED,                /* reserved keywords in strict mode */
-    TOK_LIMIT                           /* domain size */
+    TOK_ERROR = -1,                /* well-known as the only code < EOF */
+    TOK_EOF,                       /* end of file */
+    TOK_EOL,                       /* end of line; only returned by peekTokenSameLine() */
+    TOK_SEMI,                      /* semicolon */
+    TOK_COMMA,                     /* comma operator */
+    TOK_HOOK, TOK_COLON,           /* conditional (?:) */
+    TOK_OR,                        /* logical or (||) */
+    TOK_AND,                       /* logical and (&&) */
+    TOK_BITOR,                     /* bitwise-or (|) */
+    TOK_BITXOR,                    /* bitwise-xor (^) */
+    TOK_BITAND,                    /* bitwise-and (&) */
+    TOK_PLUS,                      /* plus */
+    TOK_MINUS,                     /* minus */
+    TOK_STAR,                      /* multiply */
+    TOK_DIV,                       /* divide */
+    TOK_MOD,                       /* modulus */
+    TOK_INC, TOK_DEC,              /* increment/decrement (++ --) */
+    TOK_DOT,                       /* member operator (.) */
+    TOK_LB, TOK_RB,                /* left and right brackets */
+    TOK_LC, TOK_RC,                /* left and right curlies (braces) */
+    TOK_LP, TOK_RP,                /* left and right parentheses */
+    TOK_NAME,                      /* identifier */
+    TOK_NUMBER,                    /* numeric constant */
+    TOK_STRING,                    /* string constant */
+    TOK_REGEXP,                    /* RegExp constant */
+    TOK_TRUE,                      /* true */
+    TOK_FALSE,                     /* false */
+    TOK_NULL,                      /* null */
+    TOK_THIS,                      /* this */
+    TOK_FUNCTION,                  /* function keyword */
+    TOK_IF,                        /* if keyword */
+    TOK_ELSE,                      /* else keyword */
+    TOK_SWITCH,                    /* switch keyword */
+    TOK_CASE,                      /* case keyword */
+    TOK_DEFAULT,                   /* default keyword */
+    TOK_WHILE,                     /* while keyword */
+    TOK_DO,                        /* do keyword */
+    TOK_FOR,                       /* for keyword */
+    TOK_BREAK,                     /* break keyword */
+    TOK_CONTINUE,                  /* continue keyword */
+    TOK_IN,                        /* in keyword */
+    TOK_VAR,                       /* var keyword */
+    TOK_CONST,                     /* const keyword */
+    TOK_WITH,                      /* with keyword */
+    TOK_RETURN,                    /* return keyword */
+    TOK_NEW,                       /* new keyword */
+    TOK_DELETE,                    /* delete keyword */
+    TOK_TRY,                       /* try keyword */
+    TOK_CATCH,                     /* catch keyword */
+    TOK_FINALLY,                   /* finally keyword */
+    TOK_THROW,                     /* throw keyword */
+    TOK_INSTANCEOF,                /* instanceof keyword */
+    TOK_DEBUGGER,                  /* debugger keyword */
+    TOK_XMLSTAGO,                  /* XML start tag open (<) */
+    TOK_XMLETAGO,                  /* XML end tag open (</) */
+    TOK_XMLPTAGC,                  /* XML point tag close (/>) */
+    TOK_XMLTAGC,                   /* XML start or end tag close (>) */
+    TOK_XMLNAME,                   /* XML start-tag non-final fragment */
+    TOK_XMLATTR,                   /* XML quoted attribute value */
+    TOK_XMLSPACE,                  /* XML whitespace */
+    TOK_XMLTEXT,                   /* XML text */
+    TOK_XMLCOMMENT,                /* XML comment */
+    TOK_XMLCDATA,                  /* XML CDATA section */
+    TOK_XMLPI,                     /* XML processing instruction */
+    TOK_AT,                        /* XML attribute op (@) */
+    TOK_DBLCOLON,                  /* namespace qualified name op (::) */
+    TOK_DBLDOT,                    /* XML descendant op (..) */
+    TOK_FILTER,                    /* XML filtering predicate op (.()) */
+    TOK_XMLELEM,                   /* XML element node type (no token) */
+    TOK_XMLLIST,                   /* XML list node type (no token) */
+    TOK_YIELD,                     /* yield from generator function */
+    TOK_LEXICALSCOPE,              /* block scope AST node label */
+    TOK_LET,                       /* let keyword */
+    TOK_RESERVED,                  /* reserved keywords */
+    TOK_STRICT_RESERVED,           /* reserved keywords in strict mode */
+
+    /*
+     * The following token types occupy contiguous ranges to enable easy
+     * range-testing.
+     */
+
+    /* Equality operation tokens, per TokenKindIsEquality */
+    TOK_STRICTEQ,
+    TOK_EQUALITY_START = TOK_STRICTEQ,
+    TOK_EQ,
+    TOK_STRICTNE,
+    TOK_NE,
+    TOK_EQUALITY_LAST = TOK_NE,
+
+    /* Unary operation tokens */
+    TOK_TYPEOF,
+    TOK_VOID,
+    TOK_NOT,
+    TOK_BITNOT,
+
+    /* Relational ops (< <= > >=), per TokenKindIsRelational */
+    TOK_LT,
+    TOK_RELOP_START = TOK_LT,
+    TOK_LE,
+    TOK_GT,
+    TOK_GE,
+    TOK_RELOP_LAST = TOK_GE,
+
+    /* Shift ops (<< >> >>>), per TokenKindIsShift */
+    TOK_LSH,
+    TOK_SHIFTOP_START = TOK_LSH,
+    TOK_RSH,
+    TOK_URSH,
+    TOK_SHIFTOP_LAST = TOK_URSH,
+
+    /* Assignment ops (= += -= etc.), per TokenKindIsAssignment */
+    TOK_ASSIGN,                    /* assignment ops (= += -= etc.) */
+    TOK_ASSIGNMENT_START = TOK_ASSIGN,
+    TOK_ADDASSIGN,
+    TOK_SUBASSIGN,
+    TOK_BITORASSIGN,
+    TOK_BITXORASSIGN,
+    TOK_BITANDASSIGN,
+    TOK_LSHASSIGN,
+    TOK_RSHASSIGN,
+    TOK_URSHASSIGN,
+    TOK_MULASSIGN,
+    TOK_DIVASSIGN,
+    TOK_MODASSIGN,
+    TOK_ASSIGNMENT_LAST = TOK_MODASSIGN,
+
+    TOK_LIMIT                      /* domain size */
 };
 
 inline bool
-TokenKindIsXML(TokenKind tt)
+TokenKindIsEquality(TokenKind tt)
 {
-    return tt == TOK_AT || tt == TOK_DBLCOLON || tt == TOK_ANYNAME;
+    return TOK_EQUALITY_START <= tt && tt <= TOK_EQUALITY_LAST;
 }
 
 inline bool
-TreeTypeIsXML(TokenKind tt)
+TokenKindIsRelational(TokenKind tt)
 {
-    return tt == TOK_XMLCOMMENT || tt == TOK_XMLCDATA || tt == TOK_XMLPI ||
-           tt == TOK_XMLELEM || tt == TOK_XMLLIST;
+    return TOK_RELOP_START <= tt && tt <= TOK_RELOP_LAST;
+}
+
+inline bool
+TokenKindIsShift(TokenKind tt)
+{
+    return TOK_SHIFTOP_START <= tt && tt <= TOK_SHIFTOP_LAST;
+}
+
+inline bool
+TokenKindIsAssignment(TokenKind tt)
+{
+    return TOK_ASSIGNMENT_START <= tt && tt <= TOK_ASSIGNMENT_LAST;
 }
 
 inline bool
@@ -176,8 +227,8 @@ TokenKindIsDecl(TokenKind tt)
 }
 
 struct TokenPtr {
-    uint32              index;          /* index of char in physical line */
-    uint32              lineno;         /* physical line number */
+    uint32_t            index;          /* index of char in physical line */
+    uint32_t            lineno;         /* physical line number */
 
     bool operator==(const TokenPtr& bptr) const {
         return index == bptr.index && lineno == bptr.lineno;
@@ -210,11 +261,11 @@ struct TokenPos {
     TokenPtr          begin;          /* first character and line of token */
     TokenPtr          end;            /* index 1 past last char, last line */
 
-    TokenPos() {}
-
-    TokenPos(const TokenPtr &begin, const TokenPtr &end) : begin(begin), end(end) {
-        // Assertion temporarily disabled by jorendorff. See bug 695922.
+    static TokenPos make(const TokenPtr &begin, const TokenPtr &end) {
+        // Assertions temporarily disabled by jorendorff. See bug 695922.
         //JS_ASSERT(begin <= end);
+        TokenPos pos = {begin, end};
+        return pos;
     }
 
     /* Return a TokenPos that covers left, right, and anything in between. */
@@ -223,7 +274,8 @@ struct TokenPos {
         //JS_ASSERT(left.begin <= left.end);
         //JS_ASSERT(left.end <= right.begin);
         //JS_ASSERT(right.begin <= right.end);
-        return TokenPos(left.begin, right.end);
+        TokenPos pos = {left.begin, right.end};
+        return pos;
     }
 
     bool operator==(const TokenPos& bpos) const {
@@ -265,17 +317,24 @@ struct Token {
                 JSAtom       *atom;     /* potentially-numeric atom */
             } n;
         } s;
-        uintN           reflags;        /* regexp flags, use tokenbuf to access
-                                           regexp chars */
-        class {                         /* pair for <?target data?> XML PI */
-            friend struct Token;
-            JSAtom       *data;         /* auxiliary atom table entry */
-            PropertyName *target;       /* main atom table entry */
+
+      private:
+        friend struct Token;
+        struct {                        /* pair for <?target data?> XML PI */
+            PropertyName *target;       /* non-empty */
+            JSAtom       *data;         /* maybe empty, never null */
         } xmlpi;
-        jsdouble        dval;           /* floating point number */
+        jsdouble        number;         /* floating point number */
+        RegExpFlag      reflags;        /* regexp flags, use tokenbuf to access
+                                           regexp chars */
     } u;
 
     /* Mutators */
+
+    /*
+     * FIXME: Init type early enough such that all mutators can assert
+     *        type-safety.  See bug 697000.
+     */
 
     void setName(JSOp op, PropertyName *name) {
         JS_ASSERT(op == JSOP_NAME);
@@ -290,8 +349,20 @@ struct Token {
     }
 
     void setProcessingInstruction(PropertyName *target, JSAtom *data) {
+        JS_ASSERT(target);
+        JS_ASSERT(data);
+        JS_ASSERT(!target->empty());
         u.xmlpi.target = target;
         u.xmlpi.data = data;
+    }
+
+    void setRegExpFlags(js::RegExpFlag flags) {
+        JS_ASSERT((flags & AllFlags) == flags);
+        u.reflags = flags;
+    }
+
+    void setNumber(jsdouble n) {
+        u.number = n;
     }
 
     /* Type-safe accessors */
@@ -320,11 +391,20 @@ struct Token {
         JS_ASSERT(type == TOK_XMLPI);
         return u.xmlpi.data;
     }
+
+    js::RegExpFlag regExpFlags() const {
+        JS_ASSERT(type == TOK_REGEXP);
+        JS_ASSERT((u.reflags & AllFlags) == u.reflags);
+        return u.reflags;
+    }
+
+    jsdouble number() const {
+        JS_ASSERT(type == TOK_NUMBER);
+        return u.number;
+    }
 };
 
 #define t_op            u.s.op
-#define t_reflags       u.reflags
-#define t_dval          u.dval
 
 enum TokenStreamFlags
 {
@@ -384,11 +464,11 @@ class TokenStream
      * first call |close| then call the destructor. If |init| fails, do not call
      * |close|.
      *
-     * This class uses JSContext.tempPool to allocate internal buffers. The
+     * This class uses JSContext.tempLifoAlloc to allocate internal buffers. The
      * caller should JS_ARENA_MARK before calling |init| and JS_ARENA_RELEASE
      * after calling |close|.
      */
-    TokenStream(JSContext *);
+    TokenStream(JSContext *, JSPrincipals *principals, JSPrincipals *originPrincipals);
 
     /*
      * Create a new token stream from an input buffer.
@@ -418,6 +498,22 @@ class TokenStream
     bool hasXML() const { return xml || VersionShouldParseXML(versionNumber()); }
     void setXML(bool enabled) { xml = enabled; }
 
+    bool isCurrentTokenEquality() const {
+        return TokenKindIsEquality(currentToken().type);
+    }
+
+    bool isCurrentTokenRelational() const {
+        return TokenKindIsRelational(currentToken().type);
+    }
+
+    bool isCurrentTokenShift() const {
+        return TokenKindIsShift(currentToken().type);
+    }
+
+    bool isCurrentTokenAssignment() const {
+        return TokenKindIsAssignment(currentToken().type);
+    }
+
     /* Flag methods. */
     void setStrictMode(bool enabled = true) { setFlag(enabled, TSF_STRICT_MODE_CODE); }
     void setXMLTagMode(bool enabled = true) { setFlag(enabled, TSF_XMLTAGMODE); }
@@ -432,14 +528,7 @@ class TokenStream
     bool isEOF() const { return !!(flags & TSF_EOF); }
     bool hasOctalCharacterEscape() const { return flags & TSF_OCTAL_CHAR; }
 
-    /* Mutators. */
     bool reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorNumber, va_list ap);
-    void mungeCurrentToken(TokenKind newKind) { tokens[cursor].type = newKind; }
-    void mungeCurrentToken(JSOp newOp) { tokens[cursor].t_op = newOp; }
-    void mungeCurrentToken(TokenKind newKind, JSOp newOp) {
-        mungeCurrentToken(newKind);
-        mungeCurrentToken(newOp);
-    }
 
   private:
     static JSAtom *atomize(JSContext *cx, CharBuffer &cb);
@@ -555,6 +644,10 @@ class TokenStream
         return matchToken(tt);
     }
 
+    void consumeKnownToken(TokenKind tt) {
+        JS_ALWAYS_TRUE(matchToken(tt));
+    }
+
     /*
      * Give up responsibility for managing the sourceMap filename's memory.
      */
@@ -563,6 +656,22 @@ class TokenStream
         sourceMap = NULL;
         return sm;
     }
+
+    /*
+     * If the name at s[0:length] is not a keyword in this version, return
+     * true with *ttp and *topp unchanged.
+     *
+     * If it is a reserved word in this version and strictness mode, and thus
+     * can't be present in correct code, report a SyntaxError and return false.
+     *
+     * If it is a keyword, like "if", the behavior depends on ttp/topp. If ttp
+     * and topp are null, report a SyntaxError ("if is a reserved identifier")
+     * and return false. If ttp and topp are non-null, return true with the
+     * keyword's TokenKind in *ttp and its JSOp in *topp.
+     *
+     * ttp and topp must be either both null or both non-null.
+     */
+    bool checkForKeyword(const jschar *s, size_t length, TokenKind *ttp, JSOp *topp);
 
   private:
     /*
@@ -642,7 +751,7 @@ class TokenStream
         }
 #endif
 
-        static bool isRawEOLChar(int32 c) {
+        static bool isRawEOLChar(int32_t c) {
             return (c == '\n' || c == '\r' || c == LINE_SEPARATOR || c == PARA_SEPARATOR);
         }
 
@@ -657,14 +766,14 @@ class TokenStream
 
     TokenKind getTokenInternal();     /* doesn't check for pushback or error flag. */
 
-    int32 getChar();
-    int32 getCharIgnoreEOL();
-    void ungetChar(int32 c);
-    void ungetCharIgnoreEOL(int32 c);
+    int32_t getChar();
+    int32_t getCharIgnoreEOL();
+    void ungetChar(int32_t c);
+    void ungetCharIgnoreEOL(int32_t c);
     Token *newToken(ptrdiff_t adjust);
-    bool peekUnicodeEscape(int32 *c);
-    bool matchUnicodeEscapeIdStart(int32 *c);
-    bool matchUnicodeEscapeIdent(int32 *c);
+    bool peekUnicodeEscape(int32_t *c);
+    bool matchUnicodeEscapeIdStart(int32_t *c);
+    bool matchUnicodeEscapeIdent(int32_t *c);
     bool peekChars(intN n, jschar *cp);
     bool getAtLine();
     bool getAtSourceMappingURL();
@@ -673,21 +782,21 @@ class TokenStream
     bool getXMLTextOrTag(TokenKind *ttp, Token **tpp);
     bool getXMLMarkup(TokenKind *ttp, Token **tpp);
 
-    bool matchChar(int32 expect) {
-        int32 c = getChar();
+    bool matchChar(int32_t expect) {
+        int32_t c = getChar();
         if (c == expect)
             return true;
         ungetChar(c);
         return false;
     }
 
-    void consumeKnownChar(int32 expect) {
-        mozilla::DebugOnly<int32> c = getChar();
+    void consumeKnownChar(int32_t expect) {
+        mozilla::DebugOnly<int32_t> c = getChar();
         JS_ASSERT(c == expect);
     }
 
-    int32 peekChar() {
-        int32 c = getChar();
+    int32_t peekChar() {
+        int32_t c = getChar();
         ungetChar(c);
         return c;
     }
@@ -700,7 +809,6 @@ class TokenStream
     void updateLineInfoForEOL();
     void updateFlagsForEOL();
 
-    JSContext           * const cx;
     Token               tokens[ntokens];/* circular token buffer */
     uintN               cursor;         /* index of last parsed token */
     uintN               lookahead;      /* count of lookahead tokens */
@@ -713,11 +821,13 @@ class TokenStream
     jschar              *sourceMap;     /* source map's filename or null */
     void                *listenerTSData;/* listener data for this TokenStream */
     CharBuffer          tokenbuf;       /* current token string buffer */
-    int8                oneCharTokens[128];  /* table of one-char tokens */
+    int8_t              oneCharTokens[128];  /* table of one-char tokens */
     JSPackedBool        maybeEOL[256];       /* probabilistic EOL lookup table */
     JSPackedBool        maybeStrSpecial[256];/* speeds up string scanning */
     JSVersion           version;        /* (i.e. to identify keywords) */
     bool                xml;            /* see JSOPTION_XML */
+    JSContext           *const cx;
+    JSPrincipals        *const originPrincipals;
 };
 
 struct KeywordInfo {
@@ -781,5 +891,10 @@ ReportStrictModeError(JSContext *cx, TokenStream *ts, TreeContext *tc, ParseNode
 
 extern JS_FRIEND_API(int)
 js_fgets(char *buf, int size, FILE *file);
+
+#ifdef DEBUG
+extern const char *
+TokenKindToString(js::TokenKind tt);
+#endif
 
 #endif /* TokenStream_h__ */

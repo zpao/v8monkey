@@ -100,7 +100,24 @@ public:
   NS_FORWARD_NSIDOMELEMENT(nsGenericHTMLFormElement::)
 
   // nsIDOMHTMLElement
-  NS_FORWARD_NSIDOMHTMLELEMENT(nsGenericHTMLFormElement::)
+  NS_FORWARD_NSIDOMHTMLELEMENT_BASIC(nsGenericHTMLFormElement::)
+  NS_SCRIPTABLE NS_IMETHOD Click() {
+    return nsGenericHTMLFormElement::Click();
+  }
+  NS_SCRIPTABLE NS_IMETHOD GetTabIndex(PRInt32* aTabIndex);
+  NS_SCRIPTABLE NS_IMETHOD SetTabIndex(PRInt32 aTabIndex);
+  NS_SCRIPTABLE NS_IMETHOD Focus() {
+    return nsGenericHTMLFormElement::Focus();
+  }
+  NS_SCRIPTABLE NS_IMETHOD GetDraggable(bool* aDraggable) {
+    return nsGenericHTMLFormElement::GetDraggable(aDraggable);
+  }
+  NS_SCRIPTABLE NS_IMETHOD GetInnerHTML(nsAString& aInnerHTML) {
+    return nsGenericHTMLFormElement::GetInnerHTML(aInnerHTML);
+  }
+  NS_SCRIPTABLE NS_IMETHOD SetInnerHTML(const nsAString& aInnerHTML) {
+    return nsGenericHTMLFormElement::SetInnerHTML(aInnerHTML);
+  }
 
   // nsIDOMHTMLButtonElement
   NS_DECL_NSIDOMHTMLBUTTONELEMENT
@@ -361,8 +378,8 @@ nsHTMLButtonElement::PostHandleEvent(nsEventChainPostVisitor& aVisitor)
           nsKeyEvent * keyEvent = (nsKeyEvent *)aVisitor.mEvent;
           if ((keyEvent->keyCode == NS_VK_RETURN &&
                NS_KEY_PRESS == aVisitor.mEvent->message) ||
-              keyEvent->keyCode == NS_VK_SPACE &&
-              NS_KEY_UP == aVisitor.mEvent->message) {
+              (keyEvent->keyCode == NS_VK_SPACE &&
+               NS_KEY_UP == aVisitor.mEvent->message)) {
             nsEventStatus status = nsEventStatus_eIgnore;
 
             nsMouseEvent event(NS_IS_TRUSTED_EVENT(aVisitor.mEvent),
@@ -534,8 +551,6 @@ nsHTMLButtonElement::Reset()
 NS_IMETHODIMP
 nsHTMLButtonElement::SubmitNamesValues(nsFormSubmission* aFormSubmission)
 {
-  nsresult rv = NS_OK;
-
   //
   // We only submit if we were the button pressed
   //
@@ -561,7 +576,7 @@ nsHTMLButtonElement::SubmitNamesValues(nsFormSubmission* aFormSubmission)
   // Get the value
   //
   nsAutoString value;
-  rv = GetValue(value);
+  nsresult rv = GetValue(value);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -569,9 +584,7 @@ nsHTMLButtonElement::SubmitNamesValues(nsFormSubmission* aFormSubmission)
   //
   // Submit
   //
-  rv = aFormSubmission->AddNameValuePair(name, value);
-
-  return rv;
+  return aFormSubmission->AddNameValuePair(name, value);
 }
 
 void
@@ -653,4 +666,3 @@ nsHTMLButtonElement::IntrinsicState() const
 
   return state;
 }
-

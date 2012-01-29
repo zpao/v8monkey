@@ -10,21 +10,27 @@
 
 do_load_httpd_js();
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/LightweightThemeManager.jsm");
 
 const PATH = "/submit/telemetry/test-ping";
 const SERVER = "http://localhost:4444";
 const IGNORE_HISTOGRAM = "test::ignore_me";
+const IGNORE_HISTOGRAM_TO_CLONE = "MEMORY_HEAP_ALLOCATED"
+const IGNORE_CLONED_HISTOGRAM = "test::ignore_me_also"
 
 const BinaryInputStream = Components.Constructor(
   "@mozilla.org/binaryinputstream;1",
   "nsIBinaryInputStream",
   "setInputStream");
+const Telemetry = Cc["@mozilla.org/base/telemetry;1"].getService(Ci.nsITelemetry);
 
 var httpserver = new nsHttpServer();
+var gFinished = false;
 
 function telemetry_ping () {
   const TelemetryPing = Cc["@mozilla.org/base/telemetry-ping;1"].getService(Ci.nsIObserver);
   TelemetryPing.observe(null, "test-ping", SERVER);
+  TelemetryPing.observe(null, "sessionstore-windows-restored", null);
 }
 
 function nonexistentServerObserver(aSubject, aTopic, aData) {
@@ -41,36 +47,22 @@ function nonexistentServerObserver(aSubject, aTopic, aData) {
 function telemetryObserver(aSubject, aTopic, aData) {
   Services.obs.removeObserver(telemetryObserver, aTopic);
   httpserver.registerPathHandler(PATH, checkHistograms);
-  const Telemetry = Cc["@mozilla.org/base/telemetry;1"].getService(Ci.nsITelemetry);
   Telemetry.newHistogram(IGNORE_HISTOGRAM, 1, 2, 3, Telemetry.HISTOGRAM_BOOLEAN);
+  Telemetry.histogramFrom(IGNORE_CLONED_HISTOGRAM, IGNORE_HISTOGRAM_TO_CLONE);
+  Services.startup.interrupted = true;
   telemetry_ping();
-}
-
-function run_test() {
-  createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
-  Services.obs.addObserver(nonexistentServerObserver, "telemetry-test-xhr-complete", false);
-  telemetry_ping();
-  // spin the event loop
-  do_test_pending();
-}
-
-function readBytesFromInputStream(inputStream, count) {
-  if (!count) {
-    count = inputStream.available();
-  }
-  return new BinaryInputStream(inputStream).readBytes(count);
 }
 
 function checkHistograms(request, response) {
   // do not need the http server anymore
   httpserver.stop(do_test_finished);
-  let s = request.bodyInputStream
+  let s = request.bodyInputStream;
   let payload = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON)
-                                             .decode(readBytesFromInputStream(s))
+                                             .decodeFromStream(s, s.available());
 
   do_check_eq(request.getHeader("content-type"), "application/json; charset=UTF-8");
   do_check_true(payload.simpleMeasurements.uptime >= 0)
-
+  do_check_true(payload.simpleMeasurements.startupInterrupted === 1);
   // get rid of the non-deterministic field
   const expected_info = {
     reason: "test-ping",
@@ -86,10 +78,25 @@ function checkHistograms(request, response) {
     do_check_eq(payload.info[f], expected_info[f]);
   }
 
+  var isWindows = ("@mozilla.org/windows-registry-key;1" in Components.classes);
+  var isOSX = ("nsILocalFileMac" in Components.interfaces);
+
+  if (isWindows || isOSX) {
+    do_check_true("adapterVendorID" in payload.info);
+    do_check_true("adapterDeviceID" in payload.info);
+  }
+
   const TELEMETRY_PING = "TELEMETRY_PING";
   const TELEMETRY_SUCCESS = "TELEMETRY_SUCCESS";
   do_check_true(TELEMETRY_PING in payload.histograms);
+  let rh = Telemetry.registeredHistograms;
+  for (let name in rh) {
+    if (/SQLITE/.test(name) && name in payload.histograms) {
+      do_check_true(("STARTUP_" + name) in payload.histograms); 
+    }
+  }
   do_check_false(IGNORE_HISTOGRAM in payload.histograms);
+  do_check_false(IGNORE_CLONED_HISTOGRAM in payload.histograms);
 
   // There should be one successful report from the previous telemetry ping.
   const expected_tc = {
@@ -102,6 +109,10 @@ function checkHistograms(request, response) {
   let tc = payload.histograms[TELEMETRY_SUCCESS]
   do_check_eq(uneval(tc), 
               uneval(expected_tc));
+
+  do_check_true(("mainThread" in payload.slowSQL) &&
+                ("otherThreads" in payload.slowSQL));
+  gFinished = true;
 }
 
 // copied from toolkit/mozapps/extensions/test/xpcshell/head_addons.js
@@ -152,3 +163,34 @@ function createAppInfo(id, name, version, platformVersion) {
   registrar.registerFactory(XULAPPINFO_CID, "XULAppInfo",
                             XULAPPINFO_CONTRACTID, XULAppInfoFactory);
 }
+
+function dummyTheme(id) {
+  return {
+    id: id,
+    name: Math.random().toString(),
+    headerURL: "http://lwttest.invalid/a.png",
+    footerURL: "http://lwttest.invalid/b.png",
+    textcolor: Math.random().toString(),
+    accentcolor: Math.random().toString()
+  };
+}
+
+function run_test() {
+  // Addon manager needs a profile directory
+  do_get_profile();
+  createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
+  // try to make LightweightThemeManager do stuff
+  let gInternalManager = Cc["@mozilla.org/addons/integration;1"]
+                         .getService(Ci.nsIObserver)
+                         .QueryInterface(Ci.nsITimerCallback);
+
+  gInternalManager.observe(null, "addons-startup", null);
+  LightweightThemeManager.currentTheme = dummyTheme("1234");
+
+  Services.obs.addObserver(nonexistentServerObserver, "telemetry-test-xhr-complete", false);
+  telemetry_ping();
+  // spin the event loop
+  do_test_pending();
+  // ensure that test runs to completion
+  do_register_cleanup(function () do_check_true(gFinished))
+ }

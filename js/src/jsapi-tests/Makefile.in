@@ -49,6 +49,7 @@ PROGRAM         = jsapi-tests$(BIN_SUFFIX)
 CPPSRCS = \
   tests.cpp \
   selfTest.cpp \
+  testAddPropertyPropcache.cpp \
   testArgumentsObject.cpp \
   testBug604087.cpp \
   testChromeBuffer.cpp \
@@ -69,11 +70,13 @@ CPPSRCS = \
   testGetPropertyDefault.cpp \
   testIndexToString.cpp \
   testIntString.cpp \
+  testIntTypesABI.cpp \
   testIntern.cpp \
   testLookup.cpp \
   testLooselyEqual.cpp \
   testNewObject.cpp \
   testOps.cpp \
+  testOriginPrincipals.cpp \
   testParseJSON.cpp \
   testPropCache.cpp \
   testRegExp.cpp \
@@ -83,8 +86,6 @@ CPPSRCS = \
   testScriptObject.cpp \
   testSetProperty.cpp \
   testStringBuffer.cpp \
-  testThreadGC.cpp \
-  testThreads.cpp \
   testTrap.cpp \
   testUTF8.cpp \
   testValueABI.cpp \

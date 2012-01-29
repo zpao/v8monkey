@@ -3,6 +3,9 @@
 # found in the LICENSE file.
 
 {
+  'variables': {
+    'chromium_code': 1,
+  },
   'target_defaults': {
     'defines': [
       'ANGLE_DISABLE_TRACE',
@@ -16,6 +19,9 @@
       'include_dirs': [
         '.',
         '../include',
+      ],
+      'defines': [
+        'COMPILER_IMPLEMENTATION',
       ],
       'sources': [
         'compiler/BaseTypes.h',
@@ -60,7 +66,6 @@
         'compiler/QualifierAlive.h',
         'compiler/RemoveTree.cpp',
         'compiler/RemoveTree.h',
-        'compiler/ShaderLang.cpp',
         'compiler/ShHandle.h',
         'compiler/SymbolTable.cpp',
         'compiler/SymbolTable.h',
@@ -77,6 +82,7 @@
         'compiler/preprocessor/cpp.c',
         'compiler/preprocessor/cpp.h',
         'compiler/preprocessor/cppstruct.c',
+        'compiler/preprocessor/length_limits.h',
         'compiler/preprocessor/memory.c',
         'compiler/preprocessor/memory.h',
         'compiler/preprocessor/parser.h',
@@ -99,11 +105,14 @@
     },
     {
       'target_name': 'translator_glsl',
-      'type': 'static_library',
+      'type': '<(component)',
       'dependencies': ['translator_common'],
       'include_dirs': [
         '.',
         '../include',
+      ],
+      'defines': [
+        'COMPILER_IMPLEMENTATION',
       ],
       'sources': [
         'compiler/CodeGenGLSL.cpp',
@@ -113,6 +122,7 @@
         'compiler/OutputGLSLBase.h',
         'compiler/OutputGLSL.cpp',
         'compiler/OutputGLSL.h',
+        'compiler/ShaderLang.cpp',
         'compiler/TranslatorESSL.cpp',
         'compiler/TranslatorESSL.h',
         'compiler/TranslatorGLSL.cpp',
@@ -123,13 +133,17 @@
     },
     {
       'target_name': 'translator_hlsl',
-      'type': 'static_library',
+      'type': '<(component)',
       'dependencies': ['translator_common'],
       'include_dirs': [
         '.',
         '../include',
       ],
+      'defines': [
+        'COMPILER_IMPLEMENTATION',
+      ],
       'sources': [
+        'compiler/ShaderLang.cpp',
         'compiler/CodeGenHLSL.cpp',
         'compiler/OutputHLSL.cpp',
         'compiler/OutputHLSL.h',
@@ -158,6 +172,8 @@
             'common/angleutils.h',
             'common/debug.cpp',
             'common/debug.h',
+            'common/RefCountObject.cpp',
+            'common/RefCountObject.h',
             'common/version.h',
             'libGLESv2/IndexDataManager.cpp',
             'libGLESv2/IndexDataManager.h',
@@ -184,8 +200,8 @@
             'libGLESv2/mathutil.h',
             'libGLESv2/Program.cpp',
             'libGLESv2/Program.h',
-            'libGLESv2/RefCountObject.cpp',
-            'libGLESv2/RefCountObject.h',
+            'libGLESv2/Query.h',
+            'libGLESv2/Query.cpp',
             'libGLESv2/Renderbuffer.cpp',
             'libGLESv2/Renderbuffer.h',
             'libGLESv2/ResourceManager.cpp',
@@ -220,6 +236,8 @@
             'common/angleutils.h',
             'common/debug.cpp',
             'common/debug.h',
+            'common/RefCountObject.cpp',
+            'common/RefCountObject.h',
             'common/version.h',
             'libEGL/Config.cpp',
             'libEGL/Config.h',

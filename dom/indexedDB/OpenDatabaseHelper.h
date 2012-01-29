@@ -56,16 +56,22 @@ public:
   OpenDatabaseHelper(IDBOpenDBRequest* aRequest,
                      const nsAString& aName,
                      const nsACString& aASCIIOrigin,
-                     PRUint64 aRequestedVersion)
+                     PRUint64 aRequestedVersion,
+                     bool aForDeletion)
     : HelperBase(aRequest), mOpenDBRequest(aRequest), mName(aName),
       mASCIIOrigin(aASCIIOrigin), mRequestedVersion(aRequestedVersion),
-      mCurrentVersion(0), mDataVersion(DB_SCHEMA_VERSION), mDatabaseId(0),
+      mForDeletion(aForDeletion), mDatabaseId(nsnull), mCurrentVersion(0),
       mLastObjectStoreId(0), mLastIndexId(0), mState(eCreated),
-      mResultCode(NS_OK)
-  { }
+      mResultCode(NS_OK), mLoadDBMetadata(false)
+  {
+    NS_ASSERTION(!aForDeletion || !aRequestedVersion,
+                 "Can't be for deletion and request a version!");
+  }
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIRUNNABLE
+
+  nsresult Init();
 
   nsresult Dispatch(nsIEventTarget* aDatabaseThread);
   nsresult RunImmediately();
@@ -82,15 +88,36 @@ public:
   }
 
   nsresult NotifySetVersionFinished();
+  nsresult NotifyDeleteFinished();
+  void BlockDatabase();
+
+  nsIAtom* Id() const
+  {
+    return mDatabaseId.get();
+  }
+
+  IDBDatabase* Database() const
+  {
+    NS_ASSERTION(mDatabase, "Calling at the wrong time!");
+    return mDatabase;
+  }
+
+  static
+  nsresult CreateDatabaseConnection(const nsAString& aName,
+                                    nsIFile* aDBFile,
+                                    nsIFile* aFileManagerDirectory,
+                                    mozIStorageConnection** aConnection);
 
 protected:
   // Methods only called on the main thread
   nsresult EnsureSuccessResult();
   nsresult StartSetVersion();
+  nsresult StartDelete();
   nsresult GetSuccessResult(JSContext* aCx,
                           jsval* aVal);
   void DispatchSuccessEvent();
   void DispatchErrorEvent();
+  void ReleaseMainThreadObjects();
 
   // Methods only called on the DB thread
   nsresult DoDatabaseWork();
@@ -101,13 +128,13 @@ private:
   nsString mName;
   nsCString mASCIIOrigin;
   PRUint64 mRequestedVersion;
+  bool mForDeletion;
+  nsCOMPtr<nsIAtom> mDatabaseId;
 
   // Out-params.
-  nsTArray<nsAutoPtr<ObjectStoreInfo> > mObjectStores;
+  nsTArray<nsRefPtr<ObjectStoreInfo> > mObjectStores;
   PRUint64 mCurrentVersion;
-  PRUint32 mDataVersion;
   nsString mDatabaseFilePath;
-  PRUint32 mDatabaseId;
   PRInt64 mLastObjectStoreId;
   PRInt64 mLastIndexId;
   nsRefPtr<IDBDatabase> mDatabase;
@@ -119,9 +146,16 @@ private:
     eFiringEvents, // Waiting to fire/firing events on the main thread
     eSetVersionPending, // Waiting on a SetVersionHelper
     eSetVersionCompleted, // SetVersionHelper is done
+    eDeletePending, // Waiting on a DeleteDatabaseHelper
+    eDeleteCompleted, // DeleteDatabaseHelper is done
   };
   OpenDatabaseState mState;
   nsresult mResultCode;
+
+  nsRefPtr<FileManager> mFileManager;
+
+  nsRefPtr<DatabaseInfo> mDBInfo;
+  bool mLoadDBMetadata;
 };
 
 END_INDEXEDDB_NAMESPACE

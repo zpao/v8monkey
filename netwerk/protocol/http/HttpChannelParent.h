@@ -64,7 +64,6 @@ class HttpChannelParent : public PHttpChannelParent
                         , public nsIParentRedirectingChannel
                         , public nsIProgressEventSink
                         , public nsIInterfaceRequestor
-                        , public nsIHttpHeaderVisitor
 {
 public:
   NS_DECL_ISUPPORTS
@@ -74,7 +73,6 @@ public:
   NS_DECL_NSIPARENTREDIRECTINGCHANNEL
   NS_DECL_NSIPROGRESSEVENTSINK
   NS_DECL_NSIINTERFACEREQUESTOR
-  NS_DECL_NSIHTTPHEADERVISITOR
 
   HttpChannelParent(PBrowserParent* iframeEmbedding);
   virtual ~HttpChannelParent();
@@ -97,7 +95,8 @@ protected:
                              const PRUint64&            startPos,
                              const nsCString&           entityID,
                              const bool&                chooseApplicationCache,
-                             const nsCString&           appCacheClientID);
+                             const nsCString&           appCacheClientID,
+                             const bool&                allowSpdy);
 
   virtual bool RecvConnectChannel(const PRUint32& channelId);
   virtual bool RecvSetPriority(const PRUint16& priority);
@@ -135,8 +134,9 @@ private:
   PRUint64 mStoredProgress;
   PRUint64 mStoredProgressMax;
 
-  // used while visiting headers, to send them to child: else null
-  RequestHeaderTuples *mHeadersToSyncToChild;
+  bool mSentRedirect1Begin : 1;
+  bool mSentRedirect1BeginFailed : 1;
+  bool mReceivedRedirect2Verify : 1;
 };
 
 } // namespace net

@@ -89,19 +89,23 @@ nsMathMLElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                                 aCompileEventHandlers);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (aDocument && !aDocument->GetMathMLEnabled()) {
-    // Enable MathML and setup the style sheet during binding, not element
-    // construction, because we could move a MathML element from the document
-    // that created it to another document.
-    aDocument->SetMathMLEnabled();
-    aDocument->EnsureCatalogStyleSheet(kMathMLStyleSheetURI);
+  if (aDocument) {
+    aDocument->RegisterPendingLinkUpdate(this);
+    
+    if (!aDocument->GetMathMLEnabled()) {
+      // Enable MathML and setup the style sheet during binding, not element
+      // construction, because we could move a MathML element from the document
+      // that created it to another document.
+      aDocument->SetMathMLEnabled();
+      aDocument->EnsureCatalogStyleSheet(kMathMLStyleSheetURI);
 
-    // Rebuild style data for the presshell, because style system
-    // optimizations may have taken place assuming MathML was disabled.
-    // (See nsRuleNode::CheckSpecifiedProperties.)
-    nsCOMPtr<nsIPresShell> shell = aDocument->GetShell();
-    if (shell) {
-      shell->GetPresContext()->PostRebuildAllStyleDataEvent(nsChangeHint(0));
+      // Rebuild style data for the presshell, because style system
+      // optimizations may have taken place assuming MathML was disabled.
+      // (See nsRuleNode::CheckSpecifiedProperties.)
+      nsCOMPtr<nsIPresShell> shell = aDocument->GetShell();
+      if (shell) {
+        shell->GetPresContext()->PostRebuildAllStyleDataEvent(nsChangeHint(0));
+      }
     }
   }
 
@@ -114,6 +118,11 @@ nsMathMLElement::UnbindFromTree(bool aDeep, bool aNullParent)
   // If this link is ever reinserted into a document, it might
   // be under a different xml:base, so forget the cached state now.
   Link::ResetLinkState(false);
+  
+  nsIDocument* doc = GetCurrentDoc();
+  if (doc) {
+    doc->UnregisterPendingLinkUpdate(this);
+  }
 
   nsMathMLElementBase::UnbindFromTree(aDeep, aNullParent);
 }
@@ -180,12 +189,10 @@ nsMathMLElement::IsAttributeMapped(const nsIAtom* aAttribute) const
   if (tag == nsGkAtoms::ms_ || tag == nsGkAtoms::mi_ ||
       tag == nsGkAtoms::mn_ || tag == nsGkAtoms::mo_ ||
       tag == nsGkAtoms::mtext_ || tag == nsGkAtoms::mspace_)
-    return FindAttributeDependence(aAttribute, tokenMap,
-                                   ArrayLength(tokenMap));
+    return FindAttributeDependence(aAttribute, tokenMap);
   if (tag == nsGkAtoms::mstyle_ ||
       tag == nsGkAtoms::math)
-    return FindAttributeDependence(aAttribute, mstyleMap,
-                                   ArrayLength(mstyleMap));
+    return FindAttributeDependence(aAttribute, mstyleMap);
 
   if (tag == nsGkAtoms::maction_ ||
       tag == nsGkAtoms::maligngroup_ ||
@@ -210,8 +217,7 @@ nsMathMLElement::IsAttributeMapped(const nsIAtom* aAttribute) const
       tag == nsGkAtoms::munder_ ||
       tag == nsGkAtoms::munderover_ ||
       tag == nsGkAtoms::none) {
-    return FindAttributeDependence(aAttribute, commonPresMap,
-                                   ArrayLength(commonPresMap));
+    return FindAttributeDependence(aAttribute, commonPresMap);
   }
 
   return false;
@@ -620,12 +626,6 @@ nsLinkState
 nsMathMLElement::GetLinkState() const
 {
   return Link::GetLinkState();
-}
-
-void
-nsMathMLElement::RequestLinkStateUpdate()
-{
-  UpdateLinkState(Link::LinkState());
 }
 
 already_AddRefed<nsIURI>

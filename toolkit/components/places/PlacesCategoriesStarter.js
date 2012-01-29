@@ -42,6 +42,7 @@
 
 const Cc = Components.classes;
 const Ci = Components.interfaces;
+const Cu = Components.utils;
 
 // Fired by TelemetryPing when async telemetry data should be collected.
 const TOPIC_GATHER_TELEMETRY = "gather-telemetry";
@@ -66,6 +67,23 @@ function PlacesCategoriesStarter()
 {
   Services.obs.addObserver(this, TOPIC_GATHER_TELEMETRY, false);
   Services.obs.addObserver(this, PlacesUtils.TOPIC_SHUTDOWN, false);
+
+  // nsINavBookmarkObserver implementation.
+  let notify = (function () {
+    if (!this._notifiedBookmarksSvcReady) {
+      // For perf reasons unregister from the category, since no further
+      // notifications are needed.
+      Cc["@mozilla.org/categorymanager;1"]
+        .getService(Ci.nsICategoryManager)
+        .deleteCategoryEntry("bookmarks-observer", this, false);
+      Services.obs.notifyObservers(null, "bookmarks-service-ready", null);
+    }
+  }).bind(this);
+  [ "onItemAdded", "onItemRemoved", "onItemChanged", "onBeginUpdateBatch",
+    "onEndUpdateBatch", "onBeforeItemRemoved", "onItemVisited",
+    "onItemMoved" ].forEach(function(aMethod) {
+      this[aMethod] = notify;
+    }, this);
 }
 
 PlacesCategoriesStarter.prototype = {
@@ -78,6 +96,13 @@ PlacesCategoriesStarter.prototype = {
       case PlacesUtils.TOPIC_SHUTDOWN:
         Services.obs.removeObserver(this, PlacesUtils.TOPIC_SHUTDOWN);
         Services.obs.removeObserver(this, TOPIC_GATHER_TELEMETRY);
+        let globalObj =
+          Cu.getGlobalForObject(PlacesCategoriesStarter.prototype);
+        let descriptor =
+          Object.getOwnPropertyDescriptor(globalObj, "PlacesDBUtils");
+        if (descriptor.value !== undefined) {
+          PlacesDBUtils.shutdown();
+        }
         break;
       case TOPIC_GATHER_TELEMETRY:
         PlacesDBUtils.telemetry();
@@ -106,6 +131,7 @@ PlacesCategoriesStarter.prototype = {
 
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIObserver
+  , Ci.nsINavBookmarkObserver
   ])
 };
 

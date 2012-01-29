@@ -37,10 +37,10 @@
 #ifndef __NS_SVGPATHGEOMETRYELEMENT_H__
 #define __NS_SVGPATHGEOMETRYELEMENT_H__
 
+#include "DOMSVGTests.h"
+#include "gfxMatrix.h"
 #include "nsSVGGraphicElement.h"
 #include "nsTArray.h"
-#include "gfxPath.h"
-#include "gfxMatrix.h"
 
 struct nsSVGMark {
   float x, y, angle;
@@ -52,10 +52,14 @@ class gfxContext;
 
 typedef nsSVGGraphicElement nsSVGPathGeometryElementBase;
 
-class nsSVGPathGeometryElement : public nsSVGPathGeometryElementBase
+class nsSVGPathGeometryElement : public nsSVGPathGeometryElementBase,
+                                 public DOMSVGTests
 {
 public:
   nsSVGPathGeometryElement(already_AddRefed<nsINodeInfo> aNodeInfo);
+
+  // interfaces:
+  NS_DECL_ISUPPORTS_INHERITED
 
   virtual bool AttributeDefinesGeometry(const nsIAtom *aName);
   virtual bool IsMarkable();

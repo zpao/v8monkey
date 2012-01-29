@@ -46,6 +46,7 @@
 #include "mozilla/CondVar.h"
 #include "mozilla/Mutex.h"
 #include "nsISupportsImpl.h"
+#include "nsIDNSListener.h"
 #include "nsString.h"
 #include "nsTArray.h"
 
@@ -71,19 +72,9 @@ class nsResolveHostCallback;
         return n;                                                            \
     }
 
-#ifdef ANDROID
-// See bug 687367 - pre gingerbread android has race conditions involving stdio.
-// stdio is used as part of the getaddrinfo() implementation. In order to reduce
-// that race window limit ourselves to 1 lookup at a time on android.
-
-#define MAX_RESOLVER_THREADS_FOR_ANY_PRIORITY  0
-#define MAX_RESOLVER_THREADS_FOR_HIGH_PRIORITY 1
-#define MAX_NON_PRIORITY_REQUESTS 0
-#else
 #define MAX_RESOLVER_THREADS_FOR_ANY_PRIORITY  3
 #define MAX_RESOLVER_THREADS_FOR_HIGH_PRIORITY 5
 #define MAX_NON_PRIORITY_REQUESTS 150
-#endif
 
 #define MAX_RESOLVER_THREADS (MAX_RESOLVER_THREADS_FOR_ANY_PRIORITY + \
                               MAX_RESOLVER_THREADS_FOR_HIGH_PRIORITY)
@@ -191,6 +182,20 @@ public:
     virtual void OnLookupComplete(nsHostResolver *resolver,
                                   nsHostRecord   *record,
                                   nsresult        status) = 0;
+    /**
+     * EqualsAsyncListener
+     *
+     * Determines if the listener argument matches the listener member var.
+     * For subclasses not implementing a member listener, should return false.
+     * For subclasses having a member listener, the function should check if
+     * they are the same.  Used for cases where a pointer to an object
+     * implementing nsResolveHostCallback is unknown, but a pointer to
+     * the original listener is known.
+     *
+     * @param aListener
+     *        nsIDNSListener object associated with the original request
+     */
+    virtual bool EqualsAsyncListener(nsIDNSListener *aListener) = 0;
 };
 
 /**
@@ -212,6 +217,7 @@ public:
      */
     static nsresult Create(PRUint32         maxCacheEntries,  // zero disables cache
                            PRUint32         maxCacheLifetime, // minutes
+                           PRUint32         lifetimeGracePeriod, // minutes
                            nsHostResolver **resolver);
     
     /**
@@ -245,6 +251,18 @@ public:
                         nsresult               status);
 
     /**
+     * Cancels an async request associated with the hostname, flags,
+     * address family and listener.  Cancels first callback found which matches
+     * these criteria.  These parameters should correspond to the parameters
+     * passed to ResolveHost.  If this is the last callback associated with the
+     * host record, it is removed from any request queues it might be on. 
+     */
+    void CancelAsyncRequest(const char            *host,
+                            PRUint16               flags,
+                            PRUint16               af,
+                            nsIDNSListener        *aListener,
+                            nsresult               status);
+    /**
      * values for the flags parameter passed to ResolveHost and DetachCallback
      * that may be bitwise OR'd together.
      *
@@ -260,7 +278,8 @@ public:
     };
 
 private:
-    nsHostResolver(PRUint32 maxCacheEntries=50, PRUint32 maxCacheLifetime=1);
+    nsHostResolver(PRUint32 maxCacheEntries = 50, PRUint32 maxCacheLifetime = 1,
+                   PRUint32 lifetimeGracePeriod = 0);
    ~nsHostResolver();
 
     nsresult Init();
@@ -275,8 +294,19 @@ private:
     
     static void ThreadFunc(void *);
 
+    enum {
+        METHOD_HIT = 1,
+        METHOD_RENEWAL = 2,
+        METHOD_NEGATIVE_HIT = 3,
+        METHOD_LITERAL = 4,
+        METHOD_OVERFLOW = 5,
+        METHOD_NETWORK_FIRST = 6,
+        METHOD_NETWORK_SHARED = 7
+    };
+
     PRUint32      mMaxCacheEntries;
     PRUint32      mMaxCacheLifetime;
+    PRUint32      mGracePeriod;
     Mutex         mLock;
     CondVar       mIdleThreadCV;
     PRUint32      mNumIdleThreads;

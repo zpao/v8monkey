@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *   Vladimir Vukicevic <vladimir@pobox.com> (original author)
+ *   Nicholas Nethercote <nnethercote@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -39,6 +40,13 @@
 #include "nsISupports.idl"
 
 interface nsISimpleEnumerator;
+
+/*
+ * Memory reporters measure Firefox's memory usage.  They are mainly used to
+ * generate the about:memory page.  You should read
+ * https://wiki.mozilla.org/Memory_Reporting before writing a memory
+ * reporter.
+ */
 
 /*
  * An nsIMemoryReporter reports a single memory measurement as an object.
@@ -71,21 +79,21 @@ interface nsIMemoryReporter : nsISupports
    *   mmap/VirtualAlloc/vm_allocate) or a heap-level allocation (eg.
    *   malloc/calloc/operator new).
    *
-   *   Each reporter can be viewed as representing a node in a tree rooted at
-   *   "explicit".  Not all nodes of the tree need have an associated reporter.
-   *   So, for example, the reporters "explicit/a/b", "explicit/a/c",
-   *   "explicit/d", "explicit/d/e", and "explicit/d/f" define this tree:
+   *   Each reporter can be viewed as representing a leaf node in a tree
+   *   rooted at "explicit".  Internal nodes of the tree don't have
+   *   reporters.  So, for example, the reporters "explicit/a/b",
+   *   "explicit/a/c", "explicit/d/e", and "explicit/d/f" define this tree:
    *
    *     explicit
    *     |--a
    *     |  |--b [*]
    *     |  \--c [*]
-   *     \--d [*]
+   *     \--d
    *        |--e [*]
    *        \--f [*]
    *
-   *   Nodes marked with a [*] have a reporter.  Notice that "explicit/a" is
-   *   implicitly defined.
+   *   Nodes marked with a [*] have a reporter.  Notice that the internal
+   *   nodes are implicitly defined by the paths.
    *
    *   A node's children divide their parent's memory into disjoint pieces.
    *   So in the example above, |a| may not count any allocations counted by
@@ -111,7 +119,7 @@ interface nsIMemoryReporter : nsISupports
    *    calloc, realloc, memalign, operator new, or operator new[].  Reporters
    *    in this category must have units UNITS_BYTES and must have a path
    *    starting with "explicit".
-
+   *
    *  - NONHEAP: memory which the program explicitly allocated, but does not
    *    live on the heap.  Such memory is commonly allocated by calling one of
    *    the OS's memory-mapping functions (e.g. mmap, VirtualAlloc, or
@@ -205,14 +213,26 @@ interface nsIMemoryMultiReporterCallback : nsISupports
  * (Compare and contrast this with nsIMemoryReporter, which allows all
  * fields except |amount| to be accessed without triggering computation.)
  */
-[scriptable, uuid(eae277ad-b67d-4389-95f4-03fa11c09d06)]
+[scriptable, uuid(61d498d5-b460-4398-a8ea-7f75208534b4)]
 interface nsIMemoryMultiReporter : nsISupports
 {
   void collectReports(in nsIMemoryMultiReporterCallback callback,
                       in nsISupports closure);
+
+  /*
+   * Return the sum of all this multi-reporter's measurements that have a
+   * path that starts with "explicit" and are KIND_NONHEAP.
+   *
+   * This is a hack that's required to implement
+   * nsIMemoryReporterManager::explicit efficiently, which is important --
+   * multi-reporters can special-case this operation so it's much faster
+   * than getting all the reports, filtering out the unneeded ones, and
+   * summing the remainder.
+   */
+  readonly attribute PRInt64 explicitNonHeap;
 };
 
-[scriptable, uuid(84ba9c85-3372-4423-b7ab-74708b9269a6)]
+[scriptable, uuid(4527b1d8-a81f-4af3-9623-80e4120392c7)]
 interface nsIMemoryReporterManager : nsISupports
 {
   /*
@@ -273,6 +293,11 @@ interface nsIMemoryReporterManager : nsISupports
    * to compute in JS.  -1 means unknown.
    */
   readonly attribute PRInt64 explicit;
+
+  /*
+   * This attribute indicates if moz_malloc_usable_size() works.
+   */
+  readonly attribute boolean hasMozMallocUsableSize;
 };
 
 %{C++
@@ -300,10 +325,72 @@ interface nsIMemoryReporterManager : nsISupports
 
 #define NS_MEMORY_REPORTER_NAME(_classname)  MemoryReporter_##_classname
 
-nsresult NS_RegisterMemoryReporter (nsIMemoryReporter *reporter);
-nsresult NS_RegisterMemoryMultiReporter (nsIMemoryMultiReporter *reporter);
+nsresult NS_RegisterMemoryReporter(nsIMemoryReporter *reporter);
+nsresult NS_RegisterMemoryMultiReporter(nsIMemoryMultiReporter *reporter);
 
-nsresult NS_UnregisterMemoryReporter (nsIMemoryReporter *reporter);
-nsresult NS_UnregisterMemoryMultiReporter (nsIMemoryMultiReporter *reporter);
+nsresult NS_UnregisterMemoryReporter(nsIMemoryReporter *reporter);
+nsresult NS_UnregisterMemoryMultiReporter(nsIMemoryMultiReporter *reporter);
+
+// Because DMD is not a tool that comes with the standard Valgrind
+// distribution, we have to #include our own local copy of dmd.h.  Ugly but
+// unavoidable.
+#ifdef MOZ_DMD
+#if MOZ_MEMORY
+#error "--disable-jemalloc should have been forced when --enable-dmd was specified"
+#endif
+#include "dmd.h"
+#endif
+
+namespace mozilla {
+
+/*
+ * Functions generated via this macro should be used by all traversal-based
+ * memory reporters.  Such functions return |moz_malloc_size_of(ptr)|;  this
+ * will always be zero on some obscure platforms.
+ *
+ * You might be wondering why we have a macro that creates multiple functions
+ * distinguished only by |name|, instead of a single MemoryReporterMallocSizeOf
+ * function.  It's mostly to help with DMD integration, though it sometimes
+ * also helps with debugging and temporary ad hoc profiling.  The |name| chosen
+ * doesn't matter greatly, but it's best to make it similar to the path used by
+ * the relevant memory reporter(s).
+ */
+#define NS_MEMORY_REPORTER_MALLOC_SIZEOF_FUN(fn, name)                        \
+  size_t fn(const void *ptr)                                                  \
+  {                                                                           \
+      size_t usable = moz_malloc_size_of(ptr);                                \
+      VALGRIND_DMD_REPORT(ptr, usable, name);                                 \
+      return usable;                                                          \
+  }
+
+/*
+ * Like NS_MEMORY_REPORTER_MALLOC_SIZEOF_FUN, but the created function sends an
+ * "unreport" message to DMD.
+ */
+#define NS_MEMORY_REPORTER_MALLOC_SIZEOF_FUN_UN(fn)                           \
+  size_t fn(const void *ptr)                                                  \
+  {                                                                           \
+      size_t usable = moz_malloc_size_of(ptr);                                \
+      VALGRIND_DMD_UNREPORT(ptr);                                             \
+      return usable;                                                          \
+  }
+
+#ifdef MOZ_DMD
+
+/*
+ * This runs all the memory reporters but does nothing with the results;  i.e.
+ * it does the minimal amount of work possible for DMD to do its thing.  Then
+ * it dumps the DMD output to stderr (or somewhere else, if one of
+ * DMD/Valgrind's logging options was used).
+ */
+void DMDCheckAndDump();
+
+#else
+
+#define VALGRIND_DMD_REPORT(ptr, usable, name)
+#define VALGRIND_DMD_UNREPORT(ptr)
+
+#endif  /* defined(MOZ_DMD) */
+}
 
 %}

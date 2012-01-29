@@ -176,10 +176,12 @@
       <menuseparator class="appmenu-menuseparator"/>
       <menu id="appmenu_webDeveloper"
             label="&appMenuWebDeveloper.label;">
-        <menupopup id="appmenu_webDeveloper_popup">
+        <menupopup id="appmenu_webDeveloper_popup"
+                   onpopupshowing="onWebDeveloperMenuShowing();">
           <menuitem id="appmenu_webConsole"
                     label="&webConsoleCmd.label;"
-                    oncommand="HUDConsoleUI.toggleHUD();"
+                    type="checkbox"
+                    command="Tools:WebConsole"
                     key="key_webConsole"/>
           <menuitem id="appmenu_pageInspect"
                     hidden="true"
@@ -192,6 +194,11 @@
                     label="&scratchpad.label;"
                     key="key_scratchpad"
                     command="Tools:Scratchpad"/>
+          <menuitem id="appmenu_styleeditor"
+                    hidden="true"
+                    label="&styleeditor.label;"
+                    key="key_styleeditor"
+                    command="Tools:StyleEditor"/>
           <menuitem id="appmenu_pageSource"
                     label="&viewPageSourceCmd.label;"
                     command="View:PageSource"
@@ -335,6 +342,13 @@
                       key="key_sanitize"
                       command="Tools:Sanitize"/>
             <menuseparator class="hide-if-empty-places-result"/>
+#ifdef MOZ_SERVICES_SYNC
+            <menuitem id="appmenu_sync-tabs"
+                      class="syncTabsMenuItem"
+                      label="&syncTabsMenu.label;"
+                      oncommand="BrowserOpenSyncTabs();"
+                      disabled="true"/>
+#endif
             <menuitem id="appmenu_restoreLastSession"
                       class="restoreLastSession"
                       label="&historyRestoreLastSession.label;"

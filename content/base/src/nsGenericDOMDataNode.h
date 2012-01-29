@@ -52,9 +52,7 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsDOMMemoryReporter.h"
 
-#ifdef MOZ_SMIL
 #include "nsISMILAttr.h"
-#endif // MOZ_SMIL
 
 // This bit is set to indicate that if the text node changes to
 // non-whitespace, we may need to create a frame for it. This bit must
@@ -65,11 +63,8 @@
 // whitespace, we may need to reframe it (or its ancestors).
 #define NS_REFRAME_IF_WHITESPACE (1 << (NODE_TYPE_SPECIFIC_BITS_OFFSET + 1))
 
-// This bit is set to indicate that the text may be part of a selection.
-#define NS_TEXT_IN_SELECTION (1 << (NODE_TYPE_SPECIFIC_BITS_OFFSET + 2))
-
 // Make sure we have enough space for those bits
-PR_STATIC_ASSERT(NODE_TYPE_SPECIFIC_BITS_OFFSET + 2 < 32);
+PR_STATIC_ASSERT(NODE_TYPE_SPECIFIC_BITS_OFFSET + 1 < 32);
 
 class nsIDOMAttr;
 class nsIDOMEventListener;
@@ -228,7 +223,6 @@ public:
   virtual void DestroyContent();
   virtual void SaveSubtreeState();
 
-#ifdef MOZ_SMIL
   virtual nsISMILAttr* GetAnimatedAttr(PRInt32 /*aNamespaceID*/, nsIAtom* /*aName*/)
   {
     return nsnull;
@@ -237,7 +231,6 @@ public:
   virtual mozilla::css::StyleRule* GetSMILOverrideStyleRule();
   virtual nsresult SetSMILOverrideStyleRule(mozilla::css::StyleRule* aStyleRule,
                                             bool aNotify);
-#endif // MOZ_SMIL
 
 #ifdef DEBUG
   virtual void List(FILE* out, PRInt32 aIndent) const;

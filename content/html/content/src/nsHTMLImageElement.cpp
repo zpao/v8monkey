@@ -76,7 +76,6 @@
 #include "nsEventDispatcher.h"
 
 #include "nsLayoutUtils.h"
-#include "mozilla/Preferences.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -102,16 +101,32 @@ public:
   NS_FORWARD_NSIDOMELEMENT(nsGenericHTMLElement::)
 
   // nsIDOMHTMLElement
-  NS_FORWARD_NSIDOMHTMLELEMENT(nsGenericHTMLElement::)
+  NS_FORWARD_NSIDOMHTMLELEMENT_BASIC(nsGenericHTMLElement::)
+  NS_SCRIPTABLE NS_IMETHOD Click() {
+    return nsGenericHTMLElement::Click();
+  }
+  NS_SCRIPTABLE NS_IMETHOD GetTabIndex(PRInt32* aTabIndex) {
+    return nsGenericHTMLElement::GetTabIndex(aTabIndex);
+  }
+  NS_SCRIPTABLE NS_IMETHOD SetTabIndex(PRInt32 aTabIndex) {
+    return nsGenericHTMLElement::SetTabIndex(aTabIndex);
+  }
+  NS_SCRIPTABLE NS_IMETHOD Focus() {
+    return nsGenericHTMLElement::Focus();
+  }
+  NS_SCRIPTABLE NS_IMETHOD GetDraggable(bool* aDraggable);
+  NS_SCRIPTABLE NS_IMETHOD GetInnerHTML(nsAString& aInnerHTML) {
+    return nsGenericHTMLElement::GetInnerHTML(aInnerHTML);
+  }
+  NS_SCRIPTABLE NS_IMETHOD SetInnerHTML(const nsAString& aInnerHTML) {
+    return nsGenericHTMLElement::SetInnerHTML(aInnerHTML);
+  }
 
   // nsIDOMHTMLImageElement
   NS_DECL_NSIDOMHTMLIMAGEELEMENT
 
-  // override from nsGenericHTMLElement
-  NS_IMETHOD GetDraggable(bool* aDraggable);
-
   // override from nsImageLoadingContent
-  nsImageLoadingContent::CORSMode GetCORSMode();
+  CORSMode GetCORSMode();
 
   // nsIJSNativeInitializer
   NS_IMETHOD Initialize(nsISupports* aOwner, JSContext* aContext,
@@ -229,13 +244,6 @@ NS_IMPL_STRING_ATTR(nsHTMLImageElement, Lowsrc, lowsrc)
 NS_IMPL_URI_ATTR(nsHTMLImageElement, Src, src)
 NS_IMPL_STRING_ATTR(nsHTMLImageElement, UseMap, usemap)
 NS_IMPL_INT_ATTR(nsHTMLImageElement, Vspace, vspace)
-
-static const nsAttrValue::EnumTable kCrossOriginTable[] = {
-  // Order matters here; see ParseAttribute
-  { "anonymous",       nsImageLoadingContent::CORS_ANONYMOUS },
-  { "use-credentials", nsImageLoadingContent::CORS_USE_CREDENTIALS },
-  { 0 }
-};
 
 // crossorigin is not "limited to only known values" per spec, so it's
 // just a string attr purposes of the DOM crossOrigin property.
@@ -355,10 +363,10 @@ nsHTMLImageElement::ParseAttribute(PRInt32 aNamespaceID,
       return ParseAlignValue(aValue, aResult);
     }
     if (aAttribute == nsGkAtoms::crossorigin) {
-      return aResult.ParseEnumValue(aValue, kCrossOriginTable, false,
+      return aResult.ParseEnumValue(aValue, nsGenericHTMLElement::kCORSAttributeTable, false,
                                     // default value is anonymous if aValue is
                                     // not a value we understand
-                                    &kCrossOriginTable[0]);
+                                    &nsGenericHTMLElement::kCORSAttributeTable[0]);
     }
     if (ParseImageAttribute(aAttribute, aValue, aResult)) {
       return true;
@@ -403,7 +411,7 @@ nsHTMLImageElement::IsAttributeMapped(const nsIAtom* aAttribute) const
     sImageAlignAttributeMap
   };
 
-  return FindAttributeDependence(aAttribute, map, ArrayLength(map));
+  return FindAttributeDependence(aAttribute, map);
 }
 
 
@@ -487,10 +495,8 @@ nsHTMLImageElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
   if (aNotify &&
       aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::src) {
 
-    // If caller is not chrome and dom.disable_image_src_set is true,
-    // prevent setting image.src by exiting early
-    if (Preferences::GetBool("dom.disable_image_src_set") &&
-        !nsContentUtils::IsCallerChrome()) {
+    // Prevent setting image.src by exiting early
+    if (nsContentUtils::IsImageSrcSetDisabled()) {
       return NS_OK;
     }
 
@@ -581,7 +587,7 @@ nsHTMLImageElement::Initialize(nsISupports* aOwner, JSContext* aContext,
   }
 
   // The first (optional) argument is the width of the image
-  uint32 width;
+  uint32_t width;
   JSBool ret = JS_ValueToECMAUint32(aContext, argv[0], &width);
   NS_ENSURE_TRUE(ret, NS_ERROR_INVALID_ARG);
 
@@ -589,7 +595,7 @@ nsHTMLImageElement::Initialize(nsISupports* aOwner, JSContext* aContext,
 
   if (NS_SUCCEEDED(rv) && (argc > 1)) {
     // The second (optional) argument is the height of the image
-    uint32 height;
+    uint32_t height;
     ret = JS_ValueToECMAUint32(aContext, argv[1], &height);
     NS_ENSURE_TRUE(ret, NS_ERROR_INVALID_ARG);
 
@@ -656,16 +662,16 @@ nsHTMLImageElement::CopyInnerTo(nsGenericElement* aDest) const
   return nsGenericHTMLElement::CopyInnerTo(aDest);
 }
 
-nsImageLoadingContent::CORSMode
+nsGenericHTMLElement::CORSMode
 nsHTMLImageElement::GetCORSMode()
 {
-  nsImageLoadingContent::CORSMode ret = nsImageLoadingContent::CORS_NONE;
+  nsGenericHTMLElement::CORSMode ret = nsGenericHTMLElement::CORS_NONE;
 
   const nsAttrValue* value = GetParsedAttr(nsGkAtoms::crossorigin);
   if (value) {
     NS_ASSERTION(value->Type() == nsAttrValue::eEnum,
                  "Why is this not an enum value?");
-    ret = (nsImageLoadingContent::CORSMode) value->GetEnumValue();
+    ret = nsGenericHTMLElement::CORSMode(value->GetEnumValue());
   }
 
   return ret;

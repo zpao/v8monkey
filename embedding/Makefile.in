@@ -53,8 +53,10 @@ XPCSHELL_TESTS = tests/unit
 DIRS += test
 endif
 
-ifeq ($(OS_TARGET),Android)
+ifeq ($(MOZ_WIDGET_TOOLKIT),android)
+ifneq (,$(filter mobile/xul b2g,$(MOZ_BUILD_APP)))
 DIRS += android
+endif
 endif
 
 include $(topsrcdir)/config/rules.mk

@@ -125,9 +125,9 @@ nsRenderingContext::IntersectClip(const nsRect& aRect)
     gfxRect clipRect(GFX_RECT_FROM_TWIPS_RECT(aRect));
     if (mThebes->UserToDevicePixelSnapped(clipRect, true)) {
         gfxMatrix mat(mThebes->CurrentMatrix());
-        mThebes->IdentityMatrix();
+        mat.Invert();
+        clipRect = mat.Transform(clipRect);
         mThebes->Rectangle(clipRect);
-        mThebes->SetMatrix(mat);
     } else {
         mThebes->Rectangle(clipRect);
     }
@@ -381,19 +381,6 @@ nsRenderingContext::InvertRect(const nsRect& aRect)
     mThebes->SetOperator(gfxContext::OPERATOR_XOR);
     FillRect(aRect);
     mThebes->SetOperator(lastOp);
-}
-
-void
-nsRenderingContext::InvertRect(nscoord aX, nscoord aY,
-                               nscoord aWidth, nscoord aHeight)
-{
-    InvertRect(nsRect(aX, aY, aWidth, aHeight));
-}
-
-void
-nsRenderingContext::DrawEllipse(const nsRect& aRect)
-{
-    DrawEllipse(aRect.x, aRect.y, aRect.width, aRect.height);
 }
 
 void

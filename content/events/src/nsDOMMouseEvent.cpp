@@ -41,6 +41,7 @@
 #include "nsGUIEvent.h"
 #include "nsIContent.h"
 #include "nsContentUtils.h"
+#include "DictionaryHelpers.h"
 
 nsDOMMouseEvent::nsDOMMouseEvent(nsPresContext* aPresContext,
                                  nsInputEvent* aEvent)
@@ -144,6 +145,20 @@ nsDOMMouseEvent::InitMouseEvent(const nsAString & aType, bool aCanBubble, bool a
   return NS_OK;
 }   
 
+nsresult
+nsDOMMouseEvent::InitFromCtor(const nsAString& aType,
+                              JSContext* aCx, jsval* aVal)
+{
+  mozilla::dom::MouseEventInit d;
+  nsresult rv = d.Init(aCx, aVal);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return InitMouseEvent(aType, d.bubbles, d.cancelable,
+                        d.view, d.detail, d.screenX, d.screenY,
+                        d.clientX, d.clientY, 
+                        d.ctrlKey, d.altKey, d.shiftKey, d.metaKey,
+                        d.button, d.relatedTarget);
+}
+
 NS_IMETHODIMP
 nsDOMMouseEvent::InitNSMouseEvent(const nsAString & aType, bool aCanBubble, bool aCancelable,
                                   nsIDOMWindow *aView, PRInt32 aDetail, PRInt32 aScreenX,
@@ -221,7 +236,13 @@ nsDOMMouseEvent::GetRelatedTarget(nsIDOMEventTarget** aRelatedTarget)
 NS_METHOD nsDOMMouseEvent::GetScreenX(PRInt32* aScreenX)
 {
   NS_ENSURE_ARG_POINTER(aScreenX);
+#ifdef MOZ_TOUCH
+  *aScreenX = nsDOMEvent::GetScreenCoords(mPresContext,
+                                          mEvent,
+                                          mEvent->refPoint).x;
+#else
   *aScreenX = GetScreenPoint().x;
+#endif
   return NS_OK;
 }
 
@@ -229,7 +250,13 @@ NS_IMETHODIMP
 nsDOMMouseEvent::GetScreenY(PRInt32* aScreenY)
 {
   NS_ENSURE_ARG_POINTER(aScreenY);
+#ifdef MOZ_TOUCH
+  *aScreenY = nsDOMEvent::GetScreenCoords(mPresContext,
+                                          mEvent,
+                                          mEvent->refPoint).y;
+#else
   *aScreenY = GetScreenPoint().y;
+#endif
   return NS_OK;
 }
 
@@ -237,7 +264,14 @@ nsDOMMouseEvent::GetScreenY(PRInt32* aScreenY)
 NS_METHOD nsDOMMouseEvent::GetClientX(PRInt32* aClientX)
 {
   NS_ENSURE_ARG_POINTER(aClientX);
+#ifdef MOZ_TOUCH
+  *aClientX = nsDOMEvent::GetClientCoords(mPresContext,
+                                          mEvent,
+                                          mEvent->refPoint,
+                                          mClientPoint).x;
+#else
   *aClientX = GetClientPoint().x;
+#endif
   return NS_OK;
 }
 
@@ -245,7 +279,14 @@ NS_IMETHODIMP
 nsDOMMouseEvent::GetClientY(PRInt32* aClientY)
 {
   NS_ENSURE_ARG_POINTER(aClientY);
+#ifdef MOZ_TOUCH
+  *aClientY = nsDOMEvent::GetClientCoords(mPresContext,
+                                          mEvent,
+                                          mEvent->refPoint,
+                                          mClientPoint).y;
+#else
   *aClientY = GetClientPoint().y;
+#endif
   return NS_OK;
 }
 

@@ -98,7 +98,6 @@
 #include "nsUnicharUtils.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
-#include "nsIPrefService.h"
 #include "nsToolkitCompsCID.h"
 #include "nsIHTMLContentSink.h"
 #include "nsIParser.h"
@@ -143,9 +142,6 @@ static NS_DEFINE_CID(kParserCID, NS_PARSER_CID);
 #define RESTORE_FAILED_NSIOBSERVER_TOPIC "bookmarks-restore-failed"
 #define RESTORE_NSIOBSERVER_DATA NS_LITERAL_STRING("html")
 #define RESTORE_INITIAL_NSIOBSERVER_DATA NS_LITERAL_STRING("html-initial")
-
-// Maximum number of backups to retain.
-#define BROWSER_BOOKMARKS_MAX_BACKUPS_PREF  "browser.bookmarks.max_backups"
 
 // define to get debugging messages on console about import/export
 //#define DEBUG_IMPORT
@@ -359,7 +355,7 @@ public:
   NS_IMETHOD WillParse() { return NS_OK; }
   NS_IMETHOD WillInterrupt() { return NS_OK; }
   NS_IMETHOD WillResume() { return NS_OK; }
-  NS_IMETHOD SetParser(nsIParser* aParser) { return NS_OK; }
+  NS_IMETHOD SetParser(nsParserBase* aParser) { return NS_OK; }
   virtual void FlushPendingNotifications(mozFlushType aType) { }
   NS_IMETHOD SetDocumentCharset(nsACString& aCharset) { return NS_OK; }
   virtual nsISupports *GetTarget() { return nsnull; }
@@ -376,11 +372,7 @@ public:
   NS_IMETHOD OpenContainer(const nsIParserNode& aNode);
   NS_IMETHOD CloseContainer(const nsHTMLTag aTag);
   NS_IMETHOD AddLeaf(const nsIParserNode& aNode);
-  NS_IMETHOD AddComment(const nsIParserNode& aNode) { return NS_OK; }
-  NS_IMETHOD AddProcessingInstruction(const nsIParserNode& aNode) { return NS_OK; }
-  NS_IMETHOD AddDocTypeDecl(const nsIParserNode& aNode) { return NS_OK; }
   NS_IMETHOD NotifyTagObservers(nsIParserNode* aNode) { return NS_OK; }
-  NS_IMETHOD_(bool) IsFormOnStack() { return false; }
 
 protected:
   nsCOMPtr<nsINavBookmarksService> mBookmarksService;
@@ -2063,8 +2055,7 @@ NotifyImportObservers(const char* aTopic,
                       PRInt64 aFolderId,
                       bool aIsInitialImport)
 {
-  nsCOMPtr<nsIObserverService> obs =
-    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
   if (!obs)
     return;
 
@@ -2475,9 +2466,6 @@ NS_IMETHODIMP
 nsPlacesImportExportService::BackupBookmarksFile()
 {
   nsresult rv = EnsureServiceState();
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // get bookmarks file

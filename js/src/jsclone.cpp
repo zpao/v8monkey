@@ -56,7 +56,7 @@ js_GetSCOffset(JSStructuredCloneWriter* writer)
 namespace js {
 
 bool
-WriteStructuredClone(JSContext *cx, const Value &v, uint64 **bufp, size_t *nbytesp,
+WriteStructuredClone(JSContext *cx, const Value &v, uint64_t **bufp, size_t *nbytesp,
                      const JSStructuredCloneCallbacks *cb, void *cbClosure)
 {
     SCOutput out(cx);
@@ -219,7 +219,7 @@ SCInput::readArray(T *p, size_t nelems)
         return eof();
 
     if (sizeof(T) == 1) {
-        memcpy(p, point, nelems);
+        js_memcpy(p, point, nelems);
     } else {
         const T *q = (const T *) point;
         const T *qend = q + nelems;
@@ -329,7 +329,7 @@ SCOutput::writeArray(const T *p, size_t nelems)
 
     T *q = (T *) &buf[start];
     if (sizeof(T) == 1) {
-        memcpy(q, p, nelems);
+        js_memcpy(q, p, nelems);
     } else {
         const T *pend = p + nelems;
         while (p != pend)
@@ -523,9 +523,9 @@ JSStructuredCloneWriter::startWrite(const js::Value &v)
     } else if (v.isObject()) {
         JSObject *obj = &v.toObject();
         if (obj->isRegExp()) {
-            RegExpObject *reobj = obj->asRegExp();
-            return out.writePair(SCTAG_REGEXP_OBJECT, reobj->getFlags()) &&
-                   writeString(SCTAG_STRING, reobj->getSource());
+            RegExpObject &reobj = obj->asRegExp();
+            return out.writePair(SCTAG_REGEXP_OBJECT, reobj.getFlags()) &&
+                   writeString(SCTAG_STRING, reobj.getSource());
         } else if (obj->isDate()) {
             jsdouble d = js_DateGetMsecSinceEpoch(context(), obj);
             return out.writePair(SCTAG_DATE_OBJECT, 0) && out.writeDouble(d);
@@ -616,14 +616,13 @@ class Chars {
     JSContext *cx;
     jschar *p;
   public:
-    Chars() : p(NULL) {}
+    Chars(JSContext *cx) : cx(cx), p(NULL) {}
     ~Chars() { if (p) cx->free_(p); }
 
-    bool allocate(JSContext *cx, size_t len) {
+    bool allocate(size_t len) {
         JS_ASSERT(!p);
         // We're going to null-terminate!
         p = (jschar *) cx->malloc_((len + 1) * sizeof(jschar));
-        this->cx = cx;
         if (p) {
             p[len] = jschar(0);
             return true;
@@ -642,8 +641,8 @@ JSStructuredCloneReader::readString(uint32_t nchars)
                              "string length");
         return NULL;
     }
-    Chars chars;
-    if (!chars.allocate(context(), nchars) || !in.readChars(chars.get(), nchars))
+    Chars chars(context());
+    if (!chars.allocate(nchars) || !in.readChars(chars.get(), nchars))
         return NULL;
     JSString *str = js_NewString(context(), chars.get(), nchars);
     if (str)

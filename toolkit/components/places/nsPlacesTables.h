@@ -22,6 +22,7 @@
  *
  * Contributor(s):
  *   Shawn Wilsher <me@shawnwilsher.com> (Original Author)
+ *   Richard Newman <rnewman@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -127,6 +128,7 @@
     ", data BLOB" \
     ", mime_type VARCHAR(32)" \
     ", expiration LONG" \
+    ", guid TEXT" \
   ")" \
 )
 
@@ -157,6 +159,14 @@
   "CREATE TABLE moz_keywords (" \
     "  id INTEGER PRIMARY KEY AUTOINCREMENT" \
     ", keyword TEXT UNIQUE" \
+  ")" \
+)
+
+#define CREATE_MOZ_HOSTS NS_LITERAL_CSTRING( \
+  "CREATE TABLE moz_hosts (" \
+    "  id INTEGER PRIMARY KEY" \
+    ", host TEXT NOT NULL UNIQUE" \
+    ", frecency INTEGER" \
   ")" \
 )
 

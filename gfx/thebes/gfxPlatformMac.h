@@ -45,10 +45,12 @@
 #define MAC_OS_X_VERSION_10_4_HEX 0x00001040
 #define MAC_OS_X_VERSION_10_5_HEX 0x00001050
 #define MAC_OS_X_VERSION_10_6_HEX 0x00001060
+#define MAC_OS_X_VERSION_10_7_HEX 0x00001070
 
 #define MAC_OS_X_MAJOR_VERSION_MASK 0xFFFFFFF0U
 
 class gfxTextRun;
+class mozilla::gfx::DrawTarget;
 
 class THEBES_API gfxPlatformMac : public gfxPlatform {
 public:
@@ -61,9 +63,14 @@ public:
 
     already_AddRefed<gfxASurface> CreateOffscreenSurface(const gfxIntSize& size,
                                                          gfxASurface::gfxContentType contentType);
-
+    
     already_AddRefed<gfxASurface> OptimizeImage(gfxImageSurface *aSurface,
                                                 gfxASurface::gfxImageFormat format);
+    
+    mozilla::RefPtr<mozilla::gfx::ScaledFont>
+      GetScaledFontForFont(gfxFont *aFont);
+
+    virtual bool SupportsAzure(mozilla::gfx::BackendType& aBackend);
 
     nsresult ResolveFontName(const nsAString& aFontName,
                              FontResolverCallback aCallback,
@@ -98,6 +105,8 @@ public:
     // lower threshold on font anti-aliasing
     PRUint32 GetAntiAliasingThreshold() { return mFontAntiAliasingThreshold; }
 
+    virtual already_AddRefed<gfxASurface>
+    GetThebesSurfaceForDrawTarget(mozilla::gfx::DrawTarget *aTarget);
 private:
     virtual qcms_profile* GetPlatformCMSOutputProfile();
     

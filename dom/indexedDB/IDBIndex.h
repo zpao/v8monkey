@@ -87,14 +87,24 @@ public:
     return mUnique;
   }
 
-  bool IsAutoIncrement() const
+  bool IsMultiEntry() const
   {
-    return mAutoIncrement;
+    return mMultiEntry;
   }
 
   const nsString& KeyPath() const
   {
     return mKeyPath;
+  }
+
+  bool UsesKeyPathArray() const
+  {
+    return !mKeyPathArray.IsEmpty();
+  }
+  
+  const nsTArray<nsString>& KeyPathArray() const
+  {
+    return mKeyPathArray;
   }
 
 private:
@@ -103,14 +113,12 @@ private:
 
   nsRefPtr<IDBObjectStore> mObjectStore;
 
-  nsCOMPtr<nsIScriptContext> mScriptContext;
-  nsCOMPtr<nsPIDOMWindow> mOwner;
-
   PRInt64 mId;
   nsString mName;
   nsString mKeyPath;
+  nsTArray<nsString> mKeyPathArray;
   bool mUnique;
-  bool mAutoIncrement;
+  bool mMultiEntry;
 };
 
 END_INDEXEDDB_NAMESPACE

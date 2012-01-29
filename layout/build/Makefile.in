@@ -92,6 +92,9 @@ SHARED_LIBRARY_LIBS = \
 	$(DEPTH)/content/xul/document/src/$(LIB_PREFIX)gkconxuldoc_s.$(LIB_SUFFIX) \
 	$(DEPTH)/view/src/$(LIB_PREFIX)gkview_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/base/$(LIB_PREFIX)jsdombase_s.$(LIB_SUFFIX) \
+	$(DEPTH)/dom/battery/$(LIB_PREFIX)dom_battery_s.$(LIB_SUFFIX) \
+	$(DEPTH)/dom/network/src/$(LIB_PREFIX)dom_network_s.$(LIB_SUFFIX) \
+	$(DEPTH)/dom/sms/src/$(LIB_PREFIX)dom_sms_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/src/events/$(LIB_PREFIX)jsdomevents_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/src/json/$(LIB_PREFIX)json_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/src/jsurl/$(LIB_PREFIX)jsurl_s.$(LIB_SUFFIX) \
@@ -100,6 +103,7 @@ SHARED_LIBRARY_LIBS = \
 	$(DEPTH)/dom/src/geolocation/$(LIB_PREFIX)jsdomgeolocation_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/src/notification/$(LIB_PREFIX)jsdomnotification_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/system/$(LIB_PREFIX)domsystem_s.$(LIB_SUFFIX) \
+	$(DEPTH)/dom/telephony/$(LIB_PREFIX)domtelephony_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/workers/$(LIB_PREFIX)domworkers_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/indexedDB/$(LIB_PREFIX)dom_indexeddb_s.$(LIB_SUFFIX) \
 	$(DEPTH)/editor/libeditor/text/$(LIB_PREFIX)texteditor_s.$(LIB_SUFFIX) \
@@ -139,22 +143,13 @@ SHARED_LIBRARY_LIBS += \
 	$(NULL)
 LOCAL_INCLUDES	+= \
 	-I$(topsrcdir)/dom/system/android \
+	-I$(topsrcdir)/dom/system \
 	$(NULL)
 endif
 
-ifdef MOZ_VORBIS
-SHARED_LIBRARY_LIBS 	+= \
-	$(DEPTH)/media/libvorbis/lib/$(LIB_PREFIX)vorbis.$(LIB_SUFFIX) \
-	$(DEPTH)/media/libogg/src/$(LIB_PREFIX)ogg.$(LIB_SUFFIX) \
-	$(NULL)
-endif
-
-ifdef MOZ_TREMOR
-SHARED_LIBRARY_LIBS	+= \
-	$(DEPTH)/media/libtremor/lib/$(LIB_PREFIX)tremor.$(LIB_SUFFIX) \
-	$(DEPTH)/media/libogg/src/$(LIB_PREFIX)ogg.$(LIB_SUFFIX) \
-	$(NULL)
-endif
+ifdef MOZ_B2G_RIL #{
+SHARED_LIBRARY_LIBS	+= $(DEPTH)/dom/system/b2g/$(LIB_PREFIX)domsystemb2g_s.$(LIB_SUFFIX)
+endif #}
 
 ifdef MOZ_MEDIA
 SHARED_LIBRARY_LIBS 	+= \
@@ -164,7 +159,6 @@ endif
 
 ifdef MOZ_OGG
 SHARED_LIBRARY_LIBS 	+= \
-	$(DEPTH)/media/libtheora/lib/$(LIB_PREFIX)theora.$(LIB_SUFFIX) \
 	$(DEPTH)/content/media/ogg/$(LIB_PREFIX)gkconogg_s.$(LIB_SUFFIX) \
 	$(NULL)
 endif
@@ -178,11 +172,7 @@ endif
 ifdef MOZ_WEBM
 SHARED_LIBRARY_LIBS 	+= \
 	$(DEPTH)/content/media/webm/$(LIB_PREFIX)gkconwebm_s.$(LIB_SUFFIX) \
-	$(DEPTH)/media/libnestegg/src/$(LIB_PREFIX)nestegg.$(LIB_SUFFIX) \
 	$(NULL)
-ifndef MOZ_NATIVE_LIBVPX
-SHARED_LIBRARY_LIBS 	+= $(DEPTH)/media/libvpx/$(LIB_PREFIX)vpx.$(LIB_SUFFIX)
-endif
 endif
 
 ifdef MOZ_WAVE
@@ -192,9 +182,6 @@ SHARED_LIBRARY_LIBS 	+= \
 endif
 
 ifdef MOZ_SYDNEYAUDIO
-SHARED_LIBRARY_LIBS 	+= \
-	$(DEPTH)/media/libsydneyaudio/src/$(LIB_PREFIX)sydneyaudio.$(LIB_SUFFIX) \
-	$(NULL)
 LOCAL_INCLUDES += -I$(DEPTH)/content/html/content/src
 endif
 
@@ -248,14 +235,12 @@ LOCAL_INCLUDES	+= -I$(srcdir)/../base \
 		   -I$(srcdir)/../forms \
 		   -I$(srcdir)/../tables \
 		   -I$(srcdir)/../style \
-		   -I$(srcdir)/../xul/content/src \
 		   -I$(srcdir)/../xul/base/src \
 		   -I$(srcdir)/../mathml \
 		   -I$(topsrcdir)/content/base/src \
  		   -I$(topsrcdir)/content/canvas/src \
 		   -I$(topsrcdir)/content/html/content/src \
 		   -I$(topsrcdir)/content/html/document/src \
-		   -I$(topsrcdir)/content/html/style/src \
 		   -I$(topsrcdir)/content/xslt/src/base \
 		   -I$(topsrcdir)/content/xslt/src/xml \
 		   -I$(topsrcdir)/content/xslt/src/xpath \
@@ -272,6 +257,7 @@ LOCAL_INCLUDES	+= -I$(srcdir)/../base \
 		   -I$(topsrcdir)/dom/src/storage \
 		   -I$(topsrcdir)/dom/src/offline \
 		   -I$(topsrcdir)/dom/src/geolocation \
+		   -I$(topsrcdir)/dom/telephony \
 		   -I. \
 		   -I$(topsrcdir)/editor/libeditor/base \
 		   -I$(topsrcdir)/editor/libeditor/text \
@@ -284,5 +270,10 @@ LOCAL_INCLUDES	+= -I$(srcdir)/../base \
 		   -I$(topsrcdir)/netwerk/base/src \
 		   -I$(topsrcdir)/content/svg/content/src \
 		   $(NULL)
+
+ifdef MOZ_B2G_RIL #{
+LOCAL_INCLUDES	+= -I$(topsrcdir)/dom/system/b2g
+endif #}
+
 
 DEFINES += -D_IMPL_NS_LAYOUT

@@ -44,13 +44,18 @@
 #include "jsapi.h"
 #include "jsbool.h"
 #include "jscompartment.h"
+#include "jsinfer.h"
 #include "jsinterp.h"
+#include "jslibmath.h"
 #include "jsnum.h"
 #include "jsprobes.h"
 #include "jsstr.h"
 #include "methodjit/MethodJIT.h"
 
 #include "jsfuninlines.h"
+#include "jsinferinlines.h"
+#include "jspropertycacheinlines.h"
+#include "jstypedarrayinlines.h"
 
 #include "vm/Stack-inl.h"
 
@@ -79,33 +84,27 @@ class AutoPreserveEnumerators {
  * We can avoid computing |this| eagerly and push the implicit callee-coerced
  * |this| value, undefined, if any of these conditions hold:
  *
- * 1. The callee funval is not an object.
+ * 1. The nominal |this|, obj, is a global object.
  *
- * 2. The nominal |this|, obj, is a global object.
- *
- * 3. The nominal |this|, obj, has one of Block, Call, or DeclEnv class (this
+ * 2. The nominal |this|, obj, has one of Block, Call, or DeclEnv class (this
  *    is what IsCacheableNonGlobalScope tests). Such objects-as-scopes must be
  *    censored with undefined.
  *
- * Only if funval is an object and obj is neither a declarative scope object to
- * be censored, nor a global object, do we bind |this| to obj->thisObject().
- * Only |with| statements and embedding-specific scope objects fall into this
- * last ditch.
+ * Otherwise, we bind |this| to obj->thisObject(). Only names inside |with|
+ * statements and embedding-specific scope objects fall into this category.
  *
- * If funval is a strict mode function, then code implementing JSOP_THIS in the
- * interpreter and JITs will leave undefined as |this|. If funval is a function
- * not in strict mode, JSOP_THIS code replaces undefined with funval's global.
+ * If the callee is a strict mode function, then code implementing JSOP_THIS
+ * in the interpreter and JITs will leave undefined as |this|. If funval is a
+ * function not in strict mode, JSOP_THIS code replaces undefined with funval's
+ * global.
  *
  * We set *vp to undefined early to reduce code size and bias this code for the
  * common and future-friendly cases.
  */
 inline bool
-ComputeImplicitThis(JSContext *cx, JSObject *obj, const Value &funval, Value *vp)
+ComputeImplicitThis(JSContext *cx, JSObject *obj, Value *vp)
 {
     vp->setUndefined();
-
-    if (!funval.isObject())
-        return true;
 
     if (obj->isGlobal())
         return true;
@@ -179,6 +178,272 @@ ValuePropertyBearer(JSContext *cx, const Value &v, int spindex)
 }
 
 inline bool
+NativeGet(JSContext *cx, JSObject *obj, JSObject *pobj, const Shape *shape, uintN getHow, Value *vp)
+{
+    if (shape->isDataDescriptor() && shape->hasDefaultGetter()) {
+        /* Fast path for Object instance properties. */
+        JS_ASSERT(shape->hasSlot());
+        *vp = pobj->nativeGetSlot(shape->slot());
+    } else {
+        if (!js_NativeGet(cx, obj, pobj, shape, getHow, vp))
+            return false;
+    }
+    return true;
+}
+
+#if defined(DEBUG) && !defined(JS_THREADSAFE)
+extern void
+AssertValidPropertyCacheHit(JSContext *cx, JSObject *start, JSObject *found,
+                            PropertyCacheEntry *entry);
+#else
+inline void
+AssertValidPropertyCacheHit(JSContext *cx, JSObject *start, JSObject *found,
+                            PropertyCacheEntry *entry)
+{}
+#endif
+
+inline bool
+GetPropertyGenericMaybeCallXML(JSContext *cx, JSOp op, JSObject *obj, jsid id, Value *vp)
+{
+    /*
+     * Various XML properties behave differently when accessed in a
+     * call vs. normal context, and getGeneric will not work right.
+     */
+#if JS_HAS_XML_SUPPORT
+    if (op == JSOP_CALLPROP && obj->isXML())
+        return js_GetXMLMethod(cx, obj, id, vp);
+#endif
+
+    return obj->getGeneric(cx, id, vp);
+}
+
+inline bool
+GetPropertyOperation(JSContext *cx, jsbytecode *pc, const Value &lval, Value *vp)
+{
+    JS_ASSERT(vp != &lval);
+
+    JSOp op = JSOp(*pc);
+
+    if (op == JSOP_LENGTH) {
+        /* Optimize length accesses on strings, arrays, and arguments. */
+        if (lval.isString()) {
+            *vp = Int32Value(lval.toString()->length());
+            return true;
+        }
+        if (lval.isMagic(JS_LAZY_ARGUMENTS)) {
+            *vp = Int32Value(cx->fp()->numActualArgs());
+            return true;
+        }
+        if (lval.isObject()) {
+            JSObject *obj = &lval.toObject();
+            if (obj->isArray()) {
+                jsuint length = obj->getArrayLength();
+                *vp = NumberValue(length);
+                return true;
+            }
+
+            if (obj->isArguments()) {
+                ArgumentsObject *argsobj = &obj->asArguments();
+                if (!argsobj->hasOverriddenLength()) {
+                    uint32_t length = argsobj->initialLength();
+                    JS_ASSERT(length < INT32_MAX);
+                    *vp = Int32Value(int32_t(length));
+                    return true;
+                }
+            }
+
+            if (js_IsTypedArray(obj)) {
+                JSObject *tarray = TypedArray::getTypedArray(obj);
+                *vp = Int32Value(TypedArray::getLength(tarray));
+                return true;
+            }
+        }
+    }
+
+    JSObject *obj = ValueToObjectOrPrototype(cx, lval);
+    if (!obj)
+        return false;
+
+    uintN flags = (op == JSOP_CALLPROP)
+                  ? JSGET_CACHE_RESULT | JSGET_NO_METHOD_BARRIER
+                  : JSGET_CACHE_RESULT | JSGET_METHOD_BARRIER;
+
+    PropertyCacheEntry *entry;
+    JSObject *obj2;
+    PropertyName *name;
+    JS_PROPERTY_CACHE(cx).test(cx, pc, obj, obj2, entry, name);
+    if (!name) {
+        AssertValidPropertyCacheHit(cx, obj, obj2, entry);
+        if (!NativeGet(cx, obj, obj2, entry->prop, flags, vp))
+            return false;
+        return true;
+    }
+
+    jsid id = ATOM_TO_JSID(name);
+
+    if (obj->getOps()->getProperty) {
+        if (!GetPropertyGenericMaybeCallXML(cx, op, obj, id, vp))
+            return false;
+    } else {
+        if (!GetPropertyHelper(cx, obj, id, flags, vp))
+            return false;
+    }
+
+#if JS_HAS_NO_SUCH_METHOD
+    if (op == JSOP_CALLPROP &&
+        JS_UNLIKELY(vp->isPrimitive()) &&
+        lval.isObject())
+    {
+        if (!OnUnknownMethod(cx, obj, IdToValue(id), vp))
+            return false;
+    }
+#endif
+
+    return true;
+}
+
+inline bool
+SetPropertyOperation(JSContext *cx, jsbytecode *pc, const Value &lval, const Value &rval)
+{
+    JSObject *obj = ValueToObject(cx, lval);
+    if (!obj)
+        return false;
+
+    JS_ASSERT_IF(*pc == JSOP_SETMETHOD, IsFunctionObject(rval));
+    JS_ASSERT_IF(*pc == JSOP_SETNAME || *pc == JSOP_SETGNAME, lval.isObject());
+    JS_ASSERT_IF(*pc == JSOP_SETGNAME, obj == &cx->fp()->scopeChain().global());
+
+    PropertyCacheEntry *entry;
+    JSObject *obj2;
+    PropertyName *name;
+    if (JS_PROPERTY_CACHE(cx).testForSet(cx, pc, obj, &entry, &obj2, &name)) {
+        /*
+         * Property cache hit, only partially confirmed by testForSet. We
+         * know that the entry applies to regs.pc and that obj's shape
+         * matches.
+         *
+         * The entry predicts a set either an existing "own" property, or
+         * on a prototype property that has a setter.
+         */
+        const Shape *shape = entry->prop;
+        JS_ASSERT_IF(shape->isDataDescriptor(), shape->writable());
+        JS_ASSERT_IF(shape->hasSlot(), entry->isOwnPropertyHit());
+
+        if (entry->isOwnPropertyHit() ||
+            ((obj2 = obj->getProto()) && obj2->lastProperty() == entry->pshape)) {
+#ifdef DEBUG
+            if (entry->isOwnPropertyHit()) {
+                JS_ASSERT(obj->nativeContains(cx, *shape));
+            } else {
+                JS_ASSERT(obj2->nativeContains(cx, *shape));
+                JS_ASSERT(entry->isPrototypePropertyHit());
+                JS_ASSERT(entry->kshape != entry->pshape);
+                JS_ASSERT(!shape->hasSlot());
+            }
+#endif
+
+            if (shape->hasDefaultSetter() && shape->hasSlot() && !shape->isMethod()) {
+                /* Fast path for, e.g., plain Object instance properties. */
+                obj->nativeSetSlotWithType(cx, shape, rval);
+            } else {
+                Value rref = rval;
+                bool strict = cx->stack.currentScript()->strictModeCode;
+                if (!js_NativeSet(cx, obj, shape, false, strict, &rref))
+                    return false;
+            }
+            return true;
+        }
+
+        GET_NAME_FROM_BYTECODE(cx->stack.currentScript(), pc, 0, name);
+    }
+
+    bool strict = cx->stack.currentScript()->strictModeCode;
+    Value rref = rval;
+
+    JSOp op = JSOp(*pc);
+
+    jsid id = ATOM_TO_JSID(name);
+    if (JS_LIKELY(!obj->getOps()->setProperty)) {
+        uintN defineHow;
+        if (op == JSOP_SETMETHOD)
+            defineHow = DNP_CACHE_RESULT | DNP_SET_METHOD;
+        else if (op == JSOP_SETNAME)
+            defineHow = DNP_CACHE_RESULT | DNP_UNQUALIFIED;
+        else
+            defineHow = DNP_CACHE_RESULT;
+        if (!js_SetPropertyHelper(cx, obj, id, defineHow, &rref, strict))
+            return false;
+    } else {
+        if (!obj->setGeneric(cx, id, &rref, strict))
+            return false;
+    }
+
+    return true;
+}
+
+inline bool
+NameOperation(JSContext *cx, jsbytecode *pc, Value *vp)
+{
+    JSObject *obj = cx->stack.currentScriptedScopeChain();
+
+    /*
+     * Skip along the scope chain to the enclosing global object. This is
+     * used for GNAME opcodes where the bytecode emitter has determined a
+     * name access must be on the global. It also insulates us from bugs
+     * in the emitter: type inference will assume that GNAME opcodes are
+     * accessing the global object, and the inferred behavior should match
+     * the actual behavior even if the id could be found on the scope chain
+     * before the global object.
+     */
+    if (js_CodeSpec[*pc].format & JOF_GNAME)
+        obj = &obj->global();
+
+    PropertyCacheEntry *entry;
+    JSObject *obj2;
+    PropertyName *name;
+    JS_PROPERTY_CACHE(cx).test(cx, pc, obj, obj2, entry, name);
+    if (!name) {
+        AssertValidPropertyCacheHit(cx, obj, obj2, entry);
+        if (!NativeGet(cx, obj, obj2, entry->prop, JSGET_METHOD_BARRIER, vp))
+            return false;
+        return true;
+    }
+
+    jsid id = ATOM_TO_JSID(name);
+
+    JSProperty *prop;
+    if (!FindPropertyHelper(cx, name, true, obj, &obj, &obj2, &prop))
+        return false;
+    if (!prop) {
+        /* Kludge to allow (typeof foo == "undefined") tests. */
+        JSOp op2 = JSOp(pc[JSOP_NAME_LENGTH]);
+        if (op2 == JSOP_TYPEOF) {
+            vp->setUndefined();
+            return true;
+        }
+        JSAutoByteString printable;
+        if (js_AtomToPrintableString(cx, name, &printable))
+            js_ReportIsNotDefined(cx, printable.ptr());
+        return false;
+    }
+
+    /* Take the slow path if prop was not found in a native object. */
+    if (!obj->isNative() || !obj2->isNative()) {
+        if (!obj->getGeneric(cx, id, vp))
+            return false;
+    } else {
+        Shape *shape = (Shape *)prop;
+        JSObject *normalized = obj;
+        if (normalized->getClass() == &WithClass && !shape->hasDefaultGetter())
+            normalized = &normalized->asWith().object();
+        if (!NativeGet(cx, normalized, obj2, shape, JSGET_METHOD_BARRIER, vp))
+            return false;
+    }
+
+    return true;
+}
+
+inline bool
 FunctionNeedsPrologue(JSContext *cx, JSFunction *fun)
 {
     /* Heavyweight functions need call objects created. */
@@ -205,8 +470,6 @@ ScriptPrologue(JSContext *cx, StackFrame *fp, bool newType)
     }
 
     Probes::enterJSFun(cx, fp->maybeFun(), fp->script());
-    if (cx->compartment->debugMode())
-        ScriptDebugPrologue(cx, fp);
 
     return true;
 }
@@ -215,8 +478,6 @@ inline bool
 ScriptEpilogue(JSContext *cx, StackFrame *fp, bool ok)
 {
     Probes::exitJSFun(cx, fp->maybeFun(), fp->script());
-    if (cx->compartment->debugMode())
-        ok = ScriptDebugEpilogue(cx, fp, ok);
 
     /*
      * If inline-constructing, replace primitive rval with the new object
@@ -235,8 +496,6 @@ ScriptPrologueOrGeneratorResume(JSContext *cx, StackFrame *fp, bool newType)
 {
     if (!fp->isGeneratorFrame())
         return ScriptPrologue(cx, fp, newType);
-    if (cx->compartment->debugMode())
-        ScriptDebugPrologue(cx, fp);
     return true;
 }
 
@@ -245,8 +504,6 @@ ScriptEpilogueOrGeneratorYield(JSContext *cx, StackFrame *fp, bool ok)
 {
     if (!fp->isYielding())
         return ScriptEpilogue(cx, fp, ok);
-    if (cx->compartment->debugMode())
-        return ScriptDebugEpilogue(cx, fp, ok);
     return ok;
 }
 
@@ -255,6 +512,264 @@ InterpreterFrames::enableInterruptsIfRunning(JSScript *script)
 {
     if (script == regs->fp()->script())
         enabler.enableInterrupts();
+}
+
+static JS_ALWAYS_INLINE bool
+AddOperation(JSContext *cx, const Value &lhs, const Value &rhs, Value *res)
+{
+    Value lval = lhs;
+    Value rval = rhs;
+
+    if (lval.isInt32() && rval.isInt32()) {
+        int32_t l = lval.toInt32(), r = rval.toInt32();
+        int32_t sum = l + r;
+        if (JS_UNLIKELY(bool((l ^ sum) & (r ^ sum) & 0x80000000))) {
+            res->setDouble(double(l) + double(r));
+            types::TypeScript::MonitorOverflow(cx);
+        } else {
+            res->setInt32(sum);
+        }
+    } else
+#if JS_HAS_XML_SUPPORT
+    if (IsXML(lval) && IsXML(rval)) {
+        if (!js_ConcatenateXML(cx, &lval.toObject(), &rval.toObject(), res))
+            return false;
+        types::TypeScript::MonitorUnknown(cx);
+    } else
+#endif
+    {
+        /*
+         * If either operand is an object, any non-integer result must be
+         * reported to inference.
+         */
+        bool lIsObject = lval.isObject(), rIsObject = rval.isObject();
+
+        if (!ToPrimitive(cx, &lval))
+            return false;
+        if (!ToPrimitive(cx, &rval))
+            return false;
+        bool lIsString, rIsString;
+        if ((lIsString = lval.isString()) | (rIsString = rval.isString())) {
+            js::AutoStringRooter lstr(cx), rstr(cx);
+            if (lIsString) {
+                lstr.setString(lval.toString());
+            } else {
+                lstr.setString(ToString(cx, lval));
+                if (!lstr.string())
+                    return false;
+            }
+            if (rIsString) {
+                rstr.setString(rval.toString());
+            } else {
+                rstr.setString(ToString(cx, rval));
+                if (!rstr.string())
+                    return false;
+            }
+            JSString *str = js_ConcatStrings(cx, lstr.string(), rstr.string());
+            if (!str)
+                return false;
+            if (lIsObject || rIsObject)
+                types::TypeScript::MonitorString(cx);
+            res->setString(str);
+        } else {
+            double l, r;
+            if (!ToNumber(cx, lval, &l) || !ToNumber(cx, rval, &r))
+                return false;
+            l += r;
+            if (!res->setNumber(l) &&
+                (lIsObject || rIsObject || (!lval.isDouble() && !rval.isDouble()))) {
+                types::TypeScript::MonitorOverflow(cx);
+            }
+        }
+    }
+    return true;
+}
+
+static JS_ALWAYS_INLINE bool
+SubOperation(JSContext *cx, const Value &lhs, const Value &rhs, Value *res)
+{
+    double d1, d2;
+    if (!ToNumber(cx, lhs, &d1) || !ToNumber(cx, rhs, &d2))
+        return false;
+    double d = d1 - d2;
+    if (!res->setNumber(d) && !(lhs.isDouble() || rhs.isDouble()))
+        types::TypeScript::MonitorOverflow(cx);
+    return true;
+}
+
+static JS_ALWAYS_INLINE bool
+MulOperation(JSContext *cx, const Value &lhs, const Value &rhs, Value *res)
+{
+    double d1, d2;
+    if (!ToNumber(cx, lhs, &d1) || !ToNumber(cx, rhs, &d2))
+        return false;
+    double d = d1 * d2;
+    if (!res->setNumber(d) && !(lhs.isDouble() || rhs.isDouble()))
+        types::TypeScript::MonitorOverflow(cx);
+    return true;
+}
+
+static JS_ALWAYS_INLINE bool
+DivOperation(JSContext *cx, const Value &lhs, const Value &rhs, Value *res)
+{
+    double d1, d2;
+    if (!ToNumber(cx, lhs, &d1) || !ToNumber(cx, rhs, &d2))
+        return false;
+    res->setNumber(NumberDiv(d1, d2));
+
+    if (d2 == 0 || (res->isDouble() && !(lhs.isDouble() || rhs.isDouble())))
+        types::TypeScript::MonitorOverflow(cx);
+    return true;
+}
+
+static JS_ALWAYS_INLINE bool
+ModOperation(JSContext *cx, const Value &lhs, const Value &rhs, Value *res)
+{
+    int32_t l, r;
+    if (lhs.isInt32() && rhs.isInt32() &&
+        (l = lhs.toInt32()) >= 0 && (r = rhs.toInt32()) > 0) {
+        int32_t mod = l % r;
+        res->setInt32(mod);
+        return true;
+    }
+
+    double d1, d2;
+    if (!ToNumber(cx, lhs, &d1) || !ToNumber(cx, rhs, &d2))
+        return false;
+
+    if (d2 == 0)
+        res->setDouble(js_NaN);
+    else
+        res->setDouble(js_fmod(d1, d2));
+    types::TypeScript::MonitorOverflow(cx);
+    return true;
+}
+
+static inline bool
+FetchElementId(JSContext *cx, JSObject *obj, const Value &idval, jsid &id, Value *vp)
+{
+    int32_t i_;
+    if (ValueFitsInInt32(idval, &i_) && INT_FITS_IN_JSID(i_)) {
+        id = INT_TO_JSID(i_);
+        return true;
+    }
+    return !!js_InternNonIntElementId(cx, obj, idval, &id, vp);
+}
+
+static JS_ALWAYS_INLINE bool
+GetObjectElementOperation(JSContext *cx, JSObject *obj, const Value &rref, Value *res)
+{
+    JSScript *script;
+    jsbytecode *pc;
+    types::TypeScript::GetPcScript(cx, &script, &pc);
+
+    uint32_t index;
+    if (IsDefinitelyIndex(rref, &index)) {
+        do {
+            if (obj->isDenseArray()) {
+                if (index < obj->getDenseArrayInitializedLength()) {
+                    *res = obj->getDenseArrayElement(index);
+                    if (!res->isMagic())
+                        break;
+                }
+            } else if (obj->isArguments()) {
+                if (obj->asArguments().getElement(index, res))
+                    break;
+            }
+            if (!obj->getElement(cx, index, res))
+                return false;
+        } while(0);
+    } else {
+        if (script->hasAnalysis())
+            script->analysis()->getCode(pc).getStringElement = true;
+
+        SpecialId special;
+        *res = rref;
+        if (ValueIsSpecial(obj, res, &special, cx)) {
+            if (!obj->getSpecial(cx, obj, special, res))
+                return false;
+        } else {
+            JSAtom *name;
+            if (!js_ValueToAtom(cx, *res, &name))
+                return false;
+
+            if (name->isIndex(&index)) {
+                if (!obj->getElement(cx, index, res))
+                    return false;
+            } else {
+                if (!obj->getProperty(cx, name->asPropertyName(), res))
+                    return false;
+            }
+        }
+    }
+
+    assertSameCompartment(cx, *res);
+    types::TypeScript::Monitor(cx, script, pc, *res);
+    return true;
+}
+
+static JS_ALWAYS_INLINE bool
+GetElementOperation(JSContext *cx, const Value &lref, const Value &rref, Value *res)
+{
+    if (lref.isString() && rref.isInt32()) {
+        JSString *str = lref.toString();
+        int32_t i = rref.toInt32();
+        if (size_t(i) < str->length()) {
+            str = cx->runtime->staticStrings.getUnitStringForElement(cx, str, size_t(i));
+            if (!str)
+                return false;
+            res->setString(str);
+            types::TypeScript::Monitor(cx, *res);
+            return true;
+        }
+    }
+
+    if (lref.isMagic(JS_LAZY_ARGUMENTS)) {
+        if (rref.isInt32() && size_t(rref.toInt32()) < cx->regs().fp()->numActualArgs()) {
+            *res = cx->regs().fp()->canonicalActualArg(rref.toInt32());
+            types::TypeScript::Monitor(cx, *res);
+            return true;
+        }
+        types::MarkArgumentsCreated(cx, cx->fp()->script());
+        JS_ASSERT(!lref.isMagic(JS_LAZY_ARGUMENTS));
+    }
+
+    JSObject *obj = ValueToObject(cx, lref);
+    if (!obj)
+        return false;
+    return GetObjectElementOperation(cx, obj, rref, res);
+}
+
+static JS_ALWAYS_INLINE bool
+SetObjectElementOperation(JSContext *cx, JSObject *obj, jsid id, const Value &value)
+{
+    JSScript *script;
+    jsbytecode *pc;
+    types::TypeScript::GetPcScript(cx, &script, &pc);
+    types::TypeScript::MonitorAssign(cx, script, pc, obj, id, value);
+
+    do {
+        if (obj->isDenseArray() && JSID_IS_INT(id)) {
+            jsuint length = obj->getDenseArrayInitializedLength();
+            jsint i = JSID_TO_INT(id);
+            if ((jsuint)i < length) {
+                if (obj->getDenseArrayElement(i).isMagic(JS_ARRAY_HOLE)) {
+                    if (js_PrototypeHasIndexedProperties(cx, obj))
+                        break;
+                    if ((jsuint)i >= obj->getArrayLength())
+                        obj->setArrayLength(cx, i + 1);
+                }
+                obj->setDenseArrayElementWithType(cx, i, value);
+                return true;
+            } else {
+                if (script->hasAnalysis())
+                    script->analysis()->getCode(pc).arrayWriteHole = true;
+            }
+        }
+    } while (0);
+
+    Value tmp = value;
+    return obj->setGeneric(cx, id, &tmp, script->strictModeCode);
 }
 
 }  /* namespace js */

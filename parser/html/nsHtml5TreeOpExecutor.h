@@ -112,6 +112,8 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
 
     nsCOMPtr<nsIURI> mSpeculationBaseURI;
 
+    nsCOMPtr<nsIURI> mViewSourceBaseURI;
+
     /**
      * Whether the parser has started
      */
@@ -137,7 +139,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
 
   public:
   
-    nsHtml5TreeOpExecutor();
+    nsHtml5TreeOpExecutor(bool aRunsToCompletion = false);
     virtual ~nsHtml5TreeOpExecutor();
   
     // nsIContentSink
@@ -151,7 +153,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
      * 
      */
     NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode) {
-      NS_ASSERTION(GetDocument()->GetScriptGlobalObject(), 
+      NS_ASSERTION(!mDocShell || GetDocument()->GetScriptGlobalObject(),
                    "Script global object not ready");
       mDocument->AddObserver(this);
       WillBuildModelImpl();
@@ -177,7 +179,7 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     /**
      * Sets the parser.
      */
-    NS_IMETHOD SetParser(nsIParser* aParser);
+    NS_IMETHOD SetParser(nsParserBase* aParser);
 
     /**
      * No-op for backwards compat.
@@ -200,7 +202,6 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     // nsContentSink methods
     virtual void UpdateChildCounts();
     virtual nsresult FlushTags();
-    virtual void PostEvaluateScript(nsIScriptElement *aElement);
     virtual void ContinueInterruptedParsingAsync();
  
     /**
@@ -247,12 +248,15 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
      * a document--only when parsing to an actual DOM fragment
      */
     void EnableFragmentMode(bool aPreventScriptExecution) {
-      mFragmentMode = true;
       mPreventScriptExecution = aPreventScriptExecution;
     }
     
-    bool IsFragmentMode() {
-      return mFragmentMode;
+    void PreventScriptExecution() {
+      mPreventScriptExecution = true;
+    }
+
+    bool BelongsToStringParser() {
+      return mRunsToCompletion;
     }
 
     /**
@@ -416,6 +420,8 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
     }
 #endif
 
+    nsIURI* GetViewSourceBaseURI();
+
     void PreloadScript(const nsAString& aURL,
                        const nsAString& aCharset,
                        const nsAString& aType);
@@ -428,8 +434,6 @@ class nsHtml5TreeOpExecutor : public nsContentSink,
 
   private:
     nsHtml5Parser* GetParser();
-
-    nsHtml5Tokenizer* GetTokenizer();
 
     /**
      * Get a nsIURI for an nsString if the URL hasn't been preloaded yet.

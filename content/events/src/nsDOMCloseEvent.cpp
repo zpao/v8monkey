@@ -38,6 +38,7 @@
 
 #include "nsDOMCloseEvent.h"
 #include "nsContentUtils.h"
+#include "DictionaryHelpers.h"
 
 NS_IMPL_ADDREF_INHERITED(nsDOMCloseEvent, nsDOMEvent)
 NS_IMPL_RELEASE_INHERITED(nsDOMCloseEvent, nsDOMEvent)
@@ -86,6 +87,17 @@ nsDOMCloseEvent::InitCloseEvent(const nsAString& aType,
   mReason = aReason;
 
   return NS_OK;
+}
+
+nsresult
+nsDOMCloseEvent::InitFromCtor(const nsAString& aType,
+                              JSContext* aCx, jsval* aVal)
+{
+  mozilla::dom::CloseEventInit d;
+  nsresult rv = d.Init(aCx, aVal);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return InitCloseEvent(aType, d.bubbles, d.cancelable, d.wasClean, d.code,
+                        d.reason);
 }
 
 nsresult

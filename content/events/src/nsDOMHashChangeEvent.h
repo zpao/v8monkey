@@ -58,13 +58,11 @@ public:
 
   NS_FORWARD_TO_NSDOMEVENT
 
+  virtual nsresult InitFromCtor(const nsAString& aType,
+                                JSContext* aCx, jsval* aVal);
 protected:
   nsString mOldURL;
   nsString mNewURL;
 };
-
-nsresult NS_NewDOMHashChangeEvent(nsIDOMEvent** aInstancePtrResult,
-                                  nsPresContext* aPresContext,
-                                  nsEvent* aEvent);
 
 #endif // nsDOMHashChangeEvent_h__

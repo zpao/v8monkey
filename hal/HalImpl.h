@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: sw=2 ts=8 et ft=cpp : */
+/* vim: set sw=2 ts=8 et ft=cpp : */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -37,12 +37,14 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#ifndef mozilla_Hal_h
-# error "This is an internal file, don't include it"
-#endif
+#ifndef mozilla_HalImpl_h
+#define mozilla_HalImpl_h
 
-#undef mozilla_Hal_h
 #define MOZ_HAL_NAMESPACE hal_impl
+#undef mozilla_Hal_h
+#undef mozilla_HalInternal_h
 #include "Hal.h"
+#include "HalInternal.h"
 #undef MOZ_HAL_NAMESPACE
 
+#endif // mozilla_HalImpl_h

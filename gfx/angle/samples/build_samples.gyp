@@ -25,10 +25,18 @@
       ],
       'include_dirs': [
         '../include',
+        '../src',
       ],
       'sources': [
         'translator/translator.cpp',
+        '../src/common/debug.cpp',
       ],
+      'msvs_settings': {
+        'VCLinkerTool': {
+          'AdditionalLibraryDirectories': ['$(DXSDK_DIR)/lib/x86'],
+          'AdditionalDependencies': ['d3d9.lib'],
+        }
+      }
     },
   ],
   'conditions': [
@@ -149,6 +157,14 @@
           'dependencies': ['es_util'],
           'sources': [
             'gles2_book/TextureWrap/TextureWrap.c',
+          ],
+        },
+        {
+          'target_name': 'post_sub_buffer',
+          'type': 'executable',
+          'dependencies': ['es_util'],
+          'sources': [
+            'gles2_book/PostSubBuffer/PostSubBuffer.c',
           ],
         },
       ],

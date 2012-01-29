@@ -75,6 +75,7 @@
 #include "nsGkAtoms.h"
 #include "nsDebug.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/Element.h"
 
 // Drag & Drop, Clipboard
 #include "nsIClipboard.h"
@@ -571,7 +572,8 @@ nsPlaintextEditor::GetTextSelectionOffsets(nsISelection *aSelection,
   aSelection->GetFocusNode(getter_AddRefs(endNode));
   aSelection->GetFocusOffset(&endNodeOffset);
 
-  nsIDOMElement* rootNode = GetRoot();
+  dom::Element *rootElement = GetRoot();
+  nsCOMPtr<nsIDOMNode> rootNode = do_QueryInterface(rootElement);
   NS_ENSURE_TRUE(rootNode, NS_ERROR_NULL_POINTER);
 
   PRInt32 startOffset = -1;
@@ -585,8 +587,7 @@ nsPlaintextEditor::GetTextSelectionOffsets(nsISelection *aSelection,
   PRInt32 nodeCount = 0; // only needed for the assertions below
 #endif
   PRUint32 totalLength = 0;
-  nsCOMPtr<nsIContent> rootContent = do_QueryInterface(rootNode);
-  iter->Init(rootContent);
+  iter->Init(rootElement);
   for (; !iter->IsDone() && (startOffset == -1 || endOffset == -1); iter->Next()) {
     nsCOMPtr<nsIDOMNode> currentNode = do_QueryInterface(iter->GetCurrentNode());
     nsCOMPtr<nsIDOMCharacterData> textNode = do_QueryInterface(currentNode);
@@ -968,6 +969,7 @@ nsPlaintextEditor::UpdateIMEComposition(const nsAString& aCompositionString,
   //   list are empty when listing the Chinese characters. In this case,
   //   we don't need to process composition string too. See bug 271815.
 
+  bool notifyEditorObservers = false;
   if (!aCompositionString.IsEmpty() || (mIMETextNode && aTextRangeList)) {
     mIMETextRangeList = aTextRangeList;
 
@@ -987,6 +989,16 @@ nsPlaintextEditor::UpdateIMEComposition(const nsAString& aCompositionString,
     if (aCompositionString.IsEmpty()) {
       mIMETextNode = nsnull;
     }
+
+    // If still composing, we should fire input event via observer.
+    // Note that if committed, we don't need to notify it since it will be
+    // notified at followed compositionend event.
+    // NOTE: We must notify after the auto batch will be gone.
+    notifyEditorObservers = mIsIMEComposing;
+  }
+
+  if (notifyEditorObservers) {
+    NotifyEditorObservers();
   }
 
   return rv;
@@ -1020,16 +1032,15 @@ nsPlaintextEditor::GetTextLength(PRInt32 *aCount)
   if (docEmpty)
     return NS_OK;
 
-  nsIDOMElement* rootNode = GetRoot();
-  NS_ENSURE_TRUE(rootNode, NS_ERROR_NULL_POINTER);
+  dom::Element *rootElement = GetRoot();
+  NS_ENSURE_TRUE(rootElement, NS_ERROR_NULL_POINTER);
 
   nsCOMPtr<nsIContentIterator> iter =
     do_CreateInstance("@mozilla.org/content/post-content-iterator;1", &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
   PRUint32 totalLength = 0;
-  nsCOMPtr<nsIContent> rootContent = do_QueryInterface(rootNode);
-  iter->Init(rootContent);
+  iter->Init(rootElement);
   for (; !iter->IsDone(); iter->Next()) {
     nsCOMPtr<nsIDOMNode> currentNode = do_QueryInterface(iter->GetCurrentNode());
     nsCOMPtr<nsIDOMCharacterData> textNode = do_QueryInterface(currentNode);
@@ -1104,13 +1115,12 @@ nsPlaintextEditor::SetWrapWidth(PRInt32 aWrapColumn)
 
   // Ought to set a style sheet here ...
   // Probably should keep around an mPlaintextStyleSheet for this purpose.
-  nsIDOMElement *rootElement = GetRoot();
+  dom::Element *rootElement = GetRoot();
   NS_ENSURE_TRUE(rootElement, NS_ERROR_NULL_POINTER);
 
   // Get the current style for this root element:
-  NS_NAMED_LITERAL_STRING(styleName, "style");
   nsAutoString styleValue;
-  nsresult res = rootElement->GetAttribute(styleName, styleValue);
+  nsresult res = rootElement->GetAttr(kNameSpaceID_None, nsGkAtoms::style, styleValue);
   NS_ENSURE_SUCCESS(res, res);
 
   // We'll replace styles for these values:
@@ -1154,7 +1164,7 @@ nsPlaintextEditor::SetWrapWidth(PRInt32 aWrapColumn)
   else
     styleValue.AppendLiteral("white-space: pre;");
 
-  return rootElement->SetAttribute(styleName, styleValue);
+  return rootElement->SetAttr(kNameSpaceID_None, nsGkAtoms::style, styleValue, true);
 }
 
 NS_IMETHODIMP 
@@ -1354,7 +1364,7 @@ nsPlaintextEditor::GetAndInitDocEncoder(const nsAString& aFormatType,
   // in which case we set the selection to encompass the root.
   else
   {
-    nsIDOMElement *rootElement = GetRoot();
+    nsCOMPtr<nsIDOMElement> rootElement = do_QueryInterface(GetRoot());
     NS_ENSURE_TRUE(rootElement, NS_ERROR_FAILURE);
     if (!nsTextEditUtils::IsBody(rootElement))
     {
@@ -1684,7 +1694,7 @@ nsPlaintextEditor::SelectEntireDocument(nsISelection *aSelection)
   if (NS_SUCCEEDED(mRules->DocumentIsEmpty(&bDocIsEmpty)) && bDocIsEmpty)
   {
     // get root node
-    nsIDOMElement *rootElement = GetRoot();
+    nsCOMPtr<nsIDOMElement> rootElement = do_QueryInterface(GetRoot());
     NS_ENSURE_TRUE(rootElement, NS_ERROR_FAILURE);
 
     // if it's empty don't select entire doc - that would select the bogus node

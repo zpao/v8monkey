@@ -72,10 +72,32 @@ PreparePatternForUntiledDrawing(gfxPattern* aPattern,
                                 gfxASurface *currentTarget,
                                 const gfxPattern::GraphicsFilter aDefaultFilter)
 {
+    if (!currentTarget) {
+        // This happens if we're dealing with an Azure target.
+        aPattern->SetExtend(gfxPattern::EXTEND_PAD);
+        aPattern->SetFilter(aDefaultFilter);
+        return;
+    }
+
     // In theory we can handle this using cairo's EXTEND_PAD,
     // but implementation limitations mean we have to consult
     // the surface type.
     switch (currentTarget->GetType()) {
+
+        // The printing surfaces don't natively support or need
+        // EXTEND_PAD for padding the edges. Using EXTEND_PAD this way
+        // is suboptimal as it will result in the printing surface
+        // creating a new image for each fill operation. The pattern
+        // will be painted to the image to pad out the pattern, then
+        // the new image will be used as the source. This increases
+        // printing time and memory use, and prevents the use of mime
+        // data from cairo_surface_set_mime_data(). Bug 691061.
+        case gfxASurface::SurfaceTypePDF:
+        case gfxASurface::SurfaceTypePS:
+        case gfxASurface::SurfaceTypeWin32Printing:
+            aPattern->SetExtend(gfxPattern::EXTEND_NONE);
+            aPattern->SetFilter(aDefaultFilter);
+            break;
 
 #ifdef MOZ_X11
         case gfxASurface::SurfaceTypeXlib:

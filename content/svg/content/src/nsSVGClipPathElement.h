@@ -37,15 +37,17 @@
 #ifndef __NS_SVGCLIPPATHELEMENT_H__
 #define __NS_SVGCLIPPATHELEMENT_H__
 
-#include "nsSVGGraphicElement.h"
+#include "DOMSVGTests.h"
 #include "nsIDOMSVGClipPathElement.h"
 #include "nsIDOMSVGUnitTypes.h"
 #include "nsSVGEnum.h"
+#include "nsSVGGraphicElement.h"
 
 typedef nsSVGGraphicElement nsSVGClipPathElementBase;
 
 class nsSVGClipPathElement : public nsSVGClipPathElementBase,
                              public nsIDOMSVGClipPathElement,
+                             public DOMSVGTests,
                              public nsIDOMSVGUnitTypes
 {
   friend class nsSVGClipPathFrame;

@@ -43,6 +43,7 @@
 #include "base/message_loop.h"
 
 #include "mozilla/ipc/RPCChannel.h"
+#include "gfxipc/ShadowLayerUtils.h"
 
 #include "npapi.h"
 #include "npruntime.h"
@@ -65,6 +66,8 @@ using mac_plugin_interposing::NSCursorInfo;
 
 namespace mozilla {
 namespace plugins {
+
+using layers::SurfaceDescriptorX11;
 
 enum ScriptableObjectType
 {
@@ -110,6 +113,7 @@ typedef nsCString Buffer;
 
 struct NPRemoteWindow
 {
+  NPRemoteWindow();
   uint64_t window;
   int32_t x;
   int32_t y;

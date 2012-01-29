@@ -125,6 +125,14 @@ interface nsIWebGLActiveInfo : nsISupports
     readonly attribute DOMString name;
 };
 
+[scriptable, builtinclass, uuid(76265e93-2e8f-40ca-b25b-eea5995e9641)]
+interface nsIWebGLShaderPrecisionFormat : nsISupports
+{
+    readonly attribute WebGLint rangeMin;
+    readonly attribute WebGLint rangeMax;
+    readonly attribute WebGLint precision;
+};
+
 [scriptable, builtinclass, uuid(d38b0467-623e-4c82-9140-5f14a3bd1bad)]
 interface nsIWebGLUniformLocation : nsISupports
 {
@@ -153,6 +161,12 @@ interface nsIWebGLExtensionStandardDerivatives : nsIWebGLExtension
   const WebGLenum FRAGMENT_SHADER_DERIVATIVE_HINT_OES   = 0x8B8B;
 };
 
+[scriptable, uuid(b0afc2eb-0895-4509-98de-5c383d160694)]
+interface nsIWebGLExtensionLoseContext : nsIWebGLExtension
+{
+  void loseContext();
+  void restoreContext();
+};
 
 [scriptable, builtinclass, uuid(ef15ae85-4670-4dc4-848d-51ca81e8397a)]
 interface nsIDOMWebGLRenderingContext : nsISupports
@@ -694,8 +708,7 @@ interface nsIDOMWebGLRenderingContext : nsISupports
   // Modified: void glGetShaderInfoLog(WebGLuint shader, WebGLsizei bufsize, WebGLsizei* length, char* infolog);
   DOMString getShaderInfoLog(in nsIWebGLShader shader);
 
-  // TBD
-  //void glGetShaderPrecisionFormat(WebGLenum shadertype, WebGLenum precisiontype, WebGLint* range, WebGLint* precision);
+  nsIWebGLShaderPrecisionFormat getShaderPrecisionFormat(in WebGLenum shadertype, in WebGLenum precisiontype);
 
   DOMString getShaderSource(in nsIWebGLShader shader);
 
@@ -729,8 +742,6 @@ interface nsIDOMWebGLRenderingContext : nsISupports
   void readPixels([optional] in long dummy);
   [noscript] void readPixels_array(in WebGLint x, in WebGLint y, in WebGLsizei width, in WebGLsizei height,
                                    in WebGLenum format, in WebGLenum type, in WebGLJSObjectPtr pixels);
-  [noscript] void readPixels_buf(in WebGLint x, in WebGLint y, in WebGLsizei width, in WebGLsizei height,
-                                 in WebGLenum format, in WebGLenum type, in WebGLJSObjectPtr pixels);
 
   //void glReleaseShaderCompiler();
 
@@ -749,9 +760,6 @@ interface nsIDOMWebGLRenderingContext : nsISupports
   void stencilOpSeparate(in WebGLenum face, in WebGLenum fail, in WebGLenum zfail, in WebGLenum zpass);
 
   void texImage2D([optional] in long dummy);
-  [noscript] void texImage2D_buf(in WebGLenum target, in WebGLint level, in WebGLenum internalformat,
-                                 in WebGLsizei width, in WebGLsizei height,
-                                 in WebGLint border, in WebGLenum format, in WebGLenum type, in WebGLJSObjectPtr pixels);
   [noscript] void texImage2D_array(in WebGLenum target, in WebGLint level, in WebGLenum internalformat,
                                    in WebGLsizei width, in WebGLsizei height,
                                    in WebGLint border, in WebGLenum format, in WebGLenum type, in WebGLJSObjectPtr pixels);
@@ -764,9 +772,6 @@ interface nsIDOMWebGLRenderingContext : nsISupports
                                  in WebGLenum format, in WebGLenum type, in nsIDOMElement element);
 
   void texSubImage2D([optional] in long dummy);
-  [noscript] void texSubImage2D_buf(in WebGLenum target, in WebGLint level,
-                                    in WebGLint xoffset, in WebGLint yoffset, in WebGLsizei width, in WebGLsizei height,
-                                    in WebGLenum format, in WebGLenum type, in WebGLJSObjectPtr pixels);
   [noscript] void texSubImage2D_array(in WebGLenum target, in WebGLint level,
                                       in WebGLint xoffset, in WebGLint yoffset, in WebGLsizei width, in WebGLsizei height,
                                       in WebGLenum format, in WebGLenum type, in WebGLJSObjectPtr pixels);

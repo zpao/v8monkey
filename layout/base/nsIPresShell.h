@@ -69,6 +69,8 @@
 #include "nsWeakReference.h"
 #include <stdio.h> // for FILE definition
 #include "nsChangeHint.h"
+#include "nsGUIEvent.h"
+#include "nsInterfaceHashtable.h"
 
 class nsIContent;
 class nsIDocument;
@@ -102,11 +104,13 @@ class nsPIDOMWindow;
 struct nsPoint;
 struct nsIntPoint;
 struct nsIntRect;
+class nsRegion;
 class nsRefreshDriver;
 class nsARefreshObserver;
 #ifdef ACCESSIBILITY
 class nsAccessibilityService;
 #endif
+class nsIWidget;
 
 typedef short SelectionType;
 typedef PRUint64 nsFrameState;
@@ -139,8 +143,8 @@ typedef struct CapturingContentInfo {
 } CapturingContentInfo;
 
 #define NS_IPRESSHELL_IID    \
-{ 0x67eab923, 0x5c15, 0x4c13,\
-  { 0xb5, 0xcc, 0xb2, 0x75, 0xb3, 0x5a, 0xa5, 0x38 } }
+{ 0x3ab5b116, 0x2d73, 0x431c, \
+ { 0x9a, 0x4b, 0x6c, 0x91, 0x9e, 0x42, 0x45, 0xc3 } }
 
 // Constants for ScrollContentIntoView() function
 #define NS_PRESSHELL_SCROLL_TOP      0
@@ -1045,6 +1049,9 @@ public:
 
   static CapturingContentInfo gCaptureInfo;
 
+  static nsInterfaceHashtable<nsUint32HashKey, nsIDOMTouch> gCaptureTouchList;
+  static bool gPreventMouseEvents;
+
   /**
    * When capturing content is set, it traps all mouse events and retargets
    * them at this content node. If capturing is not allowed
@@ -1136,6 +1143,21 @@ public:
    */
   virtual void SynthesizeMouseMove(bool aFromScroll) = 0;
 
+  virtual void Paint(nsIView* aViewToPaint, nsIWidget* aWidget,
+                     const nsRegion& aDirtyRegion, const nsIntRegion& aIntDirtyRegion,
+                     bool aPaintDefaultBackground, bool aWillSendDidPaint) = 0;
+  virtual nsresult HandleEvent(nsIFrame*       aFrame,
+                               nsGUIEvent*     aEvent,
+                               bool            aDontRetargetEvents,
+                               nsEventStatus*  aEventStatus) = 0;
+  virtual bool ShouldIgnoreInvalidation() = 0;
+  virtual void WillPaint(bool aWillSendDidPaint) = 0;
+  virtual void DidPaint() = 0;
+  virtual void ScheduleViewManagerFlush() = 0;
+  virtual void ClearMouseCaptureOnView(nsIView* aView) = 0;
+  virtual bool IsVisible() = 0;
+  virtual void DispatchSynthMouseMove(nsGUIEvent *aEvent, bool aFlushOnHoverChange) = 0;
+
   /**
    * Refresh observer management.
    */
@@ -1172,6 +1194,10 @@ public:
    */
   static void InitializeStatics();
   static void ReleaseStatics();
+
+  // If a frame in the subtree rooted at aFrame is capturing the mouse then
+  // clears that capture.
+  static void ClearMouseCapture(nsIFrame* aFrame);
 
 protected:
   friend class nsRefreshDriver;

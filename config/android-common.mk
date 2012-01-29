@@ -66,9 +66,9 @@ endif
 
 JAVAC_FLAGS = \
   -target $(JAVA_VERSION) \
+  -source $(JAVA_VERSION) \
   -classpath $(JAVA_CLASSPATH) \
   -bootclasspath $(JAVA_BOOTCLASSPATH) \
-  -encoding ascii \
+  -encoding UTF8 \
   -g \
   $(NULL)
-

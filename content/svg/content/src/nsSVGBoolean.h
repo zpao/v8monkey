@@ -37,9 +37,16 @@
 #ifndef __NS_SVGBOOLEAN_H__
 #define __NS_SVGBOOLEAN_H__
 
+#include "nsAutoPtr.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsError.h"
 #include "nsIDOMSVGAnimatedBoolean.h"
+#include "nsISMILAttr.h"
+#include "nsISupportsImpl.h"
 #include "nsSVGElement.h"
-#include "nsDOMError.h"
+
+class nsISMILAnimationElement;
+class nsSMILValue;
 
 class nsSVGBoolean
 {
@@ -65,10 +72,8 @@ public:
 
   nsresult ToDOMAnimatedBoolean(nsIDOMSVGAnimatedBoolean **aResult,
                                 nsSVGElement* aSVGElement);
-#ifdef MOZ_SMIL
   // Returns a new nsISMILAttr object that the caller must delete
   nsISMILAttr* ToSMILAttr(nsSVGElement* aSVGElement);
-#endif // MOZ_SMIL
 
 private:
 
@@ -98,15 +103,12 @@ public:
     // need to flush any resample requests to reflect these modifications.
     NS_IMETHOD GetAnimVal(bool* aResult)
     {
-#ifdef MOZ_SMIL
       mSVGElement->FlushAnimations();
-#endif
       *aResult = mVal->GetAnimValue();
       return NS_OK;
     }
   };
 
-#ifdef MOZ_SMIL
   struct SMILBool : public nsISMILAttr
   {
   public:
@@ -128,6 +130,5 @@ public:
     virtual void ClearAnimValue();
     virtual nsresult SetAnimValue(const nsSMILValue& aValue);
   };
-#endif // MOZ_SMIL
 };
 #endif //__NS_SVGBOOLEAN_H__

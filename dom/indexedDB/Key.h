@@ -42,167 +42,271 @@
 
 #include "mozilla/dom/indexedDB/IndexedDatabase.h"
 
+#include "mozIStorageStatement.h"
+
 BEGIN_INDEXEDDB_NAMESPACE
 
 class Key
 {
 public:
-  enum Type { UNSETKEY, STRINGKEY, INTKEY };
-
   Key()
-  : mType(UNSETKEY), mInt(0)
-  { }
-
-  Key(const Key& aOther)
   {
-    *this = aOther;
-  }
-
-  Key& operator=(const Key& aOther)
-  {
-    if (this != &aOther) {
-      mType = aOther.mType;
-      mString = aOther.mString;
-      mInt = aOther.mInt;
-    }
-    return *this;
-  }
-
-  Key& operator=(Type aType)
-  {
-    NS_ASSERTION(aType == UNSETKEY ,
-                 "Use one of the other operators to assign your value!");
-    mType = aType;
-    mString.Truncate();
-    mInt = 0;
-    return *this;
+    Unset();
   }
 
   Key& operator=(const nsAString& aString)
   {
-    mType = STRINGKEY;
-    mString = aString;
-    mInt = 0;
+    SetFromString(aString);
     return *this;
   }
 
   Key& operator=(PRInt64 aInt)
   {
-    mType = INTKEY;
-    mString.Truncate();
-    mInt = aInt;
+    SetFromInteger(aInt);
     return *this;
   }
 
   bool operator==(const Key& aOther) const
   {
-    if (mType == aOther.mType) {
-      switch (mType) {
-        case UNSETKEY:
-          return true;
+    NS_ASSERTION(!mBuffer.IsVoid() && !aOther.mBuffer.IsVoid(),
+                 "Don't compare unset keys!");
 
-        case STRINGKEY:
-          return mString == aOther.mString;
-
-        case INTKEY:
-          return mInt == aOther.mInt;
-
-        default:
-          NS_NOTREACHED("Unknown type!");
-      }
-    }
-    return false;
+    return mBuffer.Equals(aOther.mBuffer);
   }
 
   bool operator!=(const Key& aOther) const
   {
-    return !(*this == aOther);
+    NS_ASSERTION(!mBuffer.IsVoid() && !aOther.mBuffer.IsVoid(),
+                 "Don't compare unset keys!");
+
+    return !mBuffer.Equals(aOther.mBuffer);
   }
 
   bool operator<(const Key& aOther) const
   {
-    switch (mType) {
-      case UNSETKEY:
-        if (aOther.mType == UNSETKEY) {
-          return false;
-        }
-        return true;
+    NS_ASSERTION(!mBuffer.IsVoid() && !aOther.mBuffer.IsVoid(),
+                 "Don't compare unset keys!");
 
-      case STRINGKEY:
-        if (aOther.mType == UNSETKEY ||
-            aOther.mType == INTKEY) {
-          return false;
-        }
-        NS_ASSERTION(aOther.mType == STRINGKEY, "Unknown type!");
-        return mString < aOther.mString;
-
-      case INTKEY:
-        if (aOther.mType == UNSETKEY) {
-          return false;
-        }
-        if (aOther.mType == STRINGKEY) {
-          return true;
-        }
-        NS_ASSERTION(aOther.mType == INTKEY, "Unknown type!");
-        return mInt < aOther.mInt;
-
-      default:
-        NS_NOTREACHED("Unknown type!");
-    }
-    return false;
+    return Compare(mBuffer, aOther.mBuffer) < 0;
   }
 
   bool operator>(const Key& aOther) const
   {
-    return !(*this == aOther || *this < aOther);
+    NS_ASSERTION(!mBuffer.IsVoid() && !aOther.mBuffer.IsVoid(),
+                 "Don't compare unset keys!");
+
+    return Compare(mBuffer, aOther.mBuffer) > 0;
   }
 
   bool operator<=(const Key& aOther) const
   {
-    return (*this == aOther || *this < aOther);
+    NS_ASSERTION(!mBuffer.IsVoid() && !aOther.mBuffer.IsVoid(),
+                 "Don't compare unset keys!");
+
+    return Compare(mBuffer, aOther.mBuffer) <= 0;
   }
 
   bool operator>=(const Key& aOther) const
   {
-    return (*this == aOther || !(*this < aOther));
+    NS_ASSERTION(!mBuffer.IsVoid() && !aOther.mBuffer.IsVoid(),
+                 "Don't compare unset keys!");
+
+    return Compare(mBuffer, aOther.mBuffer) >= 0;
   }
 
-  bool IsUnset() const { return mType == UNSETKEY; }
-  bool IsString() const { return mType == STRINGKEY; }
-  bool IsInt() const { return mType == INTKEY; }
-
-  const nsString& StringValue() const {
-    NS_ASSERTION(IsString(), "Wrong type!");
-    return mString;
+  void
+  Unset()
+  {
+    mBuffer.SetIsVoid(true);
   }
 
-  PRInt64 IntValue() const {
-    NS_ASSERTION(IsInt(), "Wrong type!");
-    return mInt;
+  bool IsUnset() const
+  {
+    return mBuffer.IsVoid();
   }
 
-  nsAString& ToString() {
-    mType = STRINGKEY;
-    mInt = 0;
-    return mString;
+  bool IsFloat() const
+  {
+    return !mBuffer.IsVoid() && mBuffer.First() == eFloat;
   }
 
-  PRInt64* ToIntPtr() {
-    mType = INTKEY;
-    mString.Truncate();
-    return &mInt;
+  double ToFloat() const
+  {
+    NS_ASSERTION(IsFloat(), "Why'd you call this?");
+    const unsigned char* pos = BufferStart();
+    double res = DecodeNumber(pos, BufferEnd());
+    NS_ASSERTION(pos >= BufferEnd(), "Should consume whole buffer");
+    return res;
+  }
+
+  void SetFromString(const nsAString& aString)
+  {
+    mBuffer.Truncate();
+    EncodeString(aString, 0);
+    TrimBuffer();
+  }
+
+  void SetFromInteger(PRInt64 aInt)
+  {
+    mBuffer.Truncate();
+    EncodeNumber(double(aInt), eFloat);
+    TrimBuffer();
+  }
+
+  nsresult SetFromJSVal(JSContext* aCx,
+                        const jsval aVal)
+  {
+    mBuffer.Truncate();
+
+    if (JSVAL_IS_NULL(aVal) || JSVAL_IS_VOID(aVal)) {
+      Unset();
+      return NS_OK;
+    }
+
+    nsresult rv = EncodeJSVal(aCx, aVal, 0);
+    if (NS_FAILED(rv)) {
+      Unset();
+      return rv;
+    }
+    TrimBuffer();
+
+    return NS_OK;
+  }
+
+  nsresult ToJSVal(JSContext* aCx,
+                   jsval* aVal) const
+  {
+    if (IsUnset()) {
+      *aVal = JSVAL_VOID;
+      return NS_OK;
+    }
+
+    const unsigned char* pos = BufferStart();
+    nsresult rv = DecodeJSVal(pos, BufferEnd(), aCx, 0, aVal);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    NS_ASSERTION(pos >= BufferEnd(),
+                 "Didn't consume whole buffer");
+
+    return NS_OK;
+  }
+
+  nsresult AppendArrayItem(JSContext* aCx,
+                           bool aFirst,
+                           const jsval aVal)
+  {
+    if (aFirst) {
+      Unset();
+    }
+
+    nsresult rv = EncodeJSVal(aCx, aVal, aFirst ? eMaxType : 0);
+    if (NS_FAILED(rv)) {
+      Unset();
+      return rv;
+    }
+
+    return NS_OK;
+  }
+
+  void FinishArray()
+  {
+    TrimBuffer();
+  }
+
+  const nsCString& GetBuffer() const
+  {
+    return mBuffer;
+  }
+
+  nsresult BindToStatement(mozIStorageStatement* aStatement,
+                           const nsACString& aParamName) const
+  {
+    nsresult rv = aStatement->BindBlobByName(aParamName,
+      reinterpret_cast<const PRUint8*>(mBuffer.get()), mBuffer.Length());
+
+    return NS_SUCCEEDED(rv) ? NS_OK : NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
+  }
+
+  nsresult SetFromStatement(mozIStorageStatement* aStatement,
+                            PRUint32 aIndex)
+  {
+    PRUint8* data;
+    PRUint32 dataLength = 0;
+
+    nsresult rv = aStatement->GetBlob(aIndex, &dataLength, &data);
+    NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
+
+    mBuffer.Adopt(
+      reinterpret_cast<char*>(const_cast<PRUint8*>(data)), dataLength);
+
+    return NS_OK;
   }
 
   static
-  JSBool CanBeConstructedFromJSVal(jsval aVal) {
-    return JSVAL_IS_VOID(aVal) || JSVAL_IS_NULL(aVal) || JSVAL_IS_INT(aVal) ||
-           JSVAL_IS_DOUBLE(aVal) || JSVAL_IS_STRING(aVal);
+  PRInt16 CompareKeys(Key& aFirst, Key& aSecond)
+  {
+    PRInt32 result = Compare(aFirst.mBuffer, aSecond.mBuffer);
+
+    if (result < 0) {
+      return -1;
+    }
+
+    if (result > 0) {
+      return 1;
+    }
+
+    return 0;
   }
 
 private:
-  Type mType;
-  nsString mString;
-  PRInt64 mInt;
+  const unsigned char* BufferStart() const
+  {
+    return reinterpret_cast<const unsigned char*>(mBuffer.BeginReading());
+  }
+
+  const unsigned char* BufferEnd() const
+  {
+    return reinterpret_cast<const unsigned char*>(mBuffer.EndReading());
+  }
+
+  enum {
+    eTerminator = 0,
+    eFloat = 1,
+    eDate = 2,
+    eString = 3,
+    eArray = 4,
+    eMaxType = eArray
+  };
+
+  // Encoding helper. Trims trailing zeros off of mBuffer as a post-processing
+  // step.
+  void TrimBuffer()
+  {
+    const char* end = mBuffer.EndReading() - 1;
+    while (!*end) {
+      --end;
+    }
+
+    mBuffer.Truncate(end + 1 - mBuffer.BeginReading());
+  }
+
+  // Encoding functions. These append the encoded value to the end of mBuffer
+  nsresult EncodeJSVal(JSContext* aCx, const jsval aVal, PRUint8 aTypeOffset);
+  void EncodeString(const nsAString& aString, PRUint8 aTypeOffset);
+  void EncodeNumber(double aFloat, PRUint8 aType);
+
+  // Decoding functions. aPos points into mBuffer and is adjusted to point
+  // past the consumed value.
+  static nsresult DecodeJSVal(const unsigned char*& aPos,
+                              const unsigned char* aEnd, JSContext* aCx,
+                              PRUint8 aTypeOffset, jsval* aVal);
+  static void DecodeString(const unsigned char*& aPos,
+                           const unsigned char* aEnd,
+                           nsString& aString);
+  static double DecodeNumber(const unsigned char*& aPos,
+                             const unsigned char* aEnd);
+
+  nsCString mBuffer;
 };
 
 END_INDEXEDDB_NAMESPACE

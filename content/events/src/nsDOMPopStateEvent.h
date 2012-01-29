@@ -60,12 +60,10 @@ public:
 
   NS_FORWARD_TO_NSDOMEVENT
 
+  virtual nsresult InitFromCtor(const nsAString& aType,
+                                JSContext* aCx, jsval* aVal);
 protected:
   nsCOMPtr<nsIVariant> mState;
 };
-
-nsresult NS_NewDOMPopStateEvent(nsIDOMEvent** aInstancePtrResult,
-                                nsPresContext* aPresContext,
-                                nsEvent* aEvent);
 
 #endif // nsDOMPopStateEvent_h__

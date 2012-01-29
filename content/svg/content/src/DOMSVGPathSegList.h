@@ -37,13 +37,16 @@
 #ifndef MOZILLA_DOMSVGPATHSEGLIST_H__
 #define MOZILLA_DOMSVGPATHSEGLIST_H__
 
-#include "nsIDOMSVGPathSegList.h"
-#include "SVGPathData.h"
-#include "SVGPathSegUtils.h"
-#include "nsCOMArray.h"
 #include "nsAutoPtr.h"
+#include "nsCOMPtr.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsDebug.h"
+#include "nsIDOMSVGPathSegList.h"
+#include "nsSVGElement.h"
+#include "nsTArray.h"
+#include "SVGPathData.h" // IWYU pragma: keep
 
-class nsSVGElement;
+class nsIDOMSVGPathSeg;
 
 namespace mozilla {
 
@@ -120,8 +123,7 @@ public:
    */
   PRUint32 Length() const {
     NS_ABORT_IF_FALSE(mItems.Length() == 0 ||
-                      mItems.Length() ==
-                        const_cast<DOMSVGPathSegList*>(this)->InternalList().CountItems(),
+                      mItems.Length() == InternalList().CountItems(),
                       "DOM wrapper's list length is out of sync");
     return mItems.Length();
   }
@@ -184,9 +186,9 @@ private:
    * get const protection, but our setter methods guard against changing
    * anim val lists.
    */
-  SVGPathData& InternalList();
+  SVGPathData& InternalList() const;
 
-  SVGAnimatedPathSegList& InternalAList();
+  SVGAnimatedPathSegList& InternalAList() const;
 
   /// Creates an instance of the appropriate DOMSVGPathSeg sub-class for
   // aIndex, if it doesn't already exist.

@@ -244,15 +244,15 @@ AsyncResource.prototype = {
     channel.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;
     channel.loadFlags |= Ci.nsIRequest.INHIBIT_CACHING;
 
-    // Setup a callback to handle bad HTTPS certificates.
-    channel.notificationCallbacks = new BadCertListener();
+    // Setup a callback to handle channel notifications.
+    channel.notificationCallbacks = new ChannelNotificationListener();
 
     // Compose a UA string fragment from the various available identifiers.
     if (Svc.Prefs.get("sendVersionInfo", true)) {
       let ua = this._userAgent + Svc.Prefs.get("client.type", "desktop");
       channel.setRequestHeader("user-agent", ua, false);
     }
-    
+
     // Avoid calling the authorizer more than once.
     let headers = this.headers;
     for (let key in headers) {
@@ -270,7 +270,7 @@ AsyncResource.prototype = {
   _doRequest: function _doRequest(action, data, callback) {
     this._log.trace("In _doRequest.");
     this._callback = callback;
-    let channel = this._channel = this._createRequest();
+    let channel = this._createRequest();
 
     if ("undefined" != typeof(data))
       this._data = data;
@@ -303,7 +303,7 @@ AsyncResource.prototype = {
     channel.asyncOpen(listener, null);
   },
 
-  _onComplete: function _onComplete(error, data) {
+  _onComplete: function _onComplete(error, data, channel) {
     this._log.trace("In _onComplete. Error is " + error + ".");
 
     if (error) {
@@ -312,7 +312,6 @@ AsyncResource.prototype = {
     }
 
     this._data = data;
-    let channel = this._channel;
     let action = channel.requestMethod;
 
     this._log.trace("Channel: " + channel);
@@ -521,7 +520,14 @@ ChannelListener.prototype = {
 
   onStartRequest: function Channel_onStartRequest(channel) {
     this._log.trace("onStartRequest called for channel " + channel + ".");
-    channel.QueryInterface(Ci.nsIHttpChannel);
+
+    try {
+      channel.QueryInterface(Ci.nsIHttpChannel);
+    } catch (ex) {
+      this._log.error("Unexpected error: channel is not a nsIHttpChannel!");
+      channel.cancel(Cr.NS_BINDING_ABORTED);
+      return;
+    }
 
     // Save the latest server timestamp when possible.
     try {
@@ -539,69 +545,48 @@ ChannelListener.prototype = {
     // Clear the abort timer now that the channel is done.
     this.abortTimer.clear();
 
-    /**
-     * Shim to help investigate Bug 672878.
-     * We seem to be seeing a situation in which onStopRequest is being called
-     * with a success code, but no mResponseHead yet set (a failure condition).
-     * One possibility, according to bzbarsky, is that the channel status and
-     * the status argument don't match up. This block will log that situation.
-     *
-     * Fetching channel.status should not throw, but if it does requestStatus
-     * will be NS_ERROR_UNEXPECTED, which will cause this method to report
-     * failure.
-     */
-    let requestStatus = Cr.NS_ERROR_UNEXPECTED;
-    let statusSuccess = Components.isSuccessCode(status);
+    if (!this._onComplete) {
+      this._log.error("Unexpected error: _onComplete not defined in onStopRequest.");
+      this._onProgress = null;
+      return;
+    }
+
     try {
-      // From nsIRequest.
-      requestStatus = channel.status;
-      this._log.trace("Request status is " + requestStatus);
+      channel.QueryInterface(Ci.nsIHttpChannel);
     } catch (ex) {
-      this._log.warn("Got exception " + Utils.exceptionStr(ex) +
-                     " fetching channel.status.");
-    }
-    if (statusSuccess && (status != requestStatus)) {
-      this._log.error("Request status " + requestStatus +
-                      " does not match status arg " + status);
-      try {
-        channel.responseStatus;
-      } catch (ex) {
-        this._log.error("... and we got " + Utils.exceptionStr(ex) +
-                        " retrieving responseStatus.");
-      }
+      this._log.error("Unexpected error: channel is not a nsIHttpChannel!");
+
+      this._onComplete(ex, this._data, channel);
+      this._onComplete = this._onProgress = null;
+      return;
     }
 
-    let requestStatusSuccess = Components.isSuccessCode(requestStatus);
-
+    let statusSuccess = Components.isSuccessCode(status);
     let uri = channel && channel.URI && channel.URI.spec || "<unknown>";
     this._log.trace("Channel for " + channel.requestMethod + " " + uri + ": " +
-                    "isSuccessCode(" + status + ")? " + statusSuccess + ", " +
-                    "isSuccessCode(" + requestStatus + ")? " +
-                    requestStatusSuccess);
+                    "isSuccessCode(" + status + ")? " + statusSuccess);
 
     if (this._data == '') {
       this._data = null;
     }
 
-    // Check both the nsIRequest status and the status we were provided.
-    // If either is unsuccessful, don't take the success branch!
-    //
     // Pass back the failure code and stop execution. Use Components.Exception()
     // instead of Error() so the exception is QI-able and can be passed across
     // XPCOM borders while preserving the status code.
-    if (!statusSuccess || !requestStatusSuccess) {
-      // Pick the code that caused us to fail.
-      let code    = statusSuccess ? requestStatus : status;
-      let message = Components.Exception("", code).name;
-      let error   = Components.Exception(message, code);
-      this._onComplete(error);
+    if (!statusSuccess) {
+      let message = Components.Exception("", status).name;
+      let error   = Components.Exception(message, status);
+
+      this._onComplete(error, undefined, channel);
+      this._onComplete = this._onProgress = null;
       return;
     }
 
     this._log.trace("Channel: flags = " + channel.loadFlags +
                     ", URI = " + uri +
                     ", HTTP success? " + channel.requestSucceeded);
-    this._onComplete(null, this._data);
+    this._onComplete(null, this._data, channel);
+    this._onComplete = this._onProgress = null;
   },
 
   onDataAvailable: function Channel_onDataAvail(req, cb, stream, off, count) {
@@ -641,40 +626,49 @@ ChannelListener.prototype = {
     this.onStopRequest = function() {};
     let error = Components.Exception("Aborting due to channel inactivity.",
                                      Cr.NS_ERROR_NET_TIMEOUT);
+    if (!this._onComplete) {
+      this._log.error("Unexpected error: _onComplete not defined in " +
+                      "abortRequest.");
+      return;
+    }
     this._onComplete(error);
   }
 };
 
-// = BadCertListener =
-//
-// We use this listener to ignore bad HTTPS
-// certificates and continue a request on a network
-// channel. Probably not a very smart thing to do,
-// but greatly simplifies debugging and is just very
-// convenient.
-function BadCertListener() {
+/**
+ * This class handles channel notification events.
+ *
+ * An instance of this class is bound to each created channel.
+ */
+function ChannelNotificationListener() {
 }
-BadCertListener.prototype = {
+ChannelNotificationListener.prototype = {
   getInterface: function(aIID) {
     return this.QueryInterface(aIID);
   },
 
   QueryInterface: function(aIID) {
-    if (aIID.equals(Components.interfaces.nsIBadCertListener2) ||
-        aIID.equals(Components.interfaces.nsIInterfaceRequestor) ||
-        aIID.equals(Components.interfaces.nsISupports))
+    if (aIID.equals(Ci.nsIBadCertListener2) ||
+        aIID.equals(Ci.nsIInterfaceRequestor) ||
+        aIID.equals(Ci.nsISupports) ||
+        aIID.equals(Ci.nsIChannelEventSink))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   notifyCertProblem: function certProblem(socketInfo, sslStatus, targetHost) {
-    // Silently ignore?
     let log = Log4Moz.repository.getLogger("Sync.CertListener");
-    log.level =
-      Log4Moz.Level[Svc.Prefs.get("log.logger.network.resources")];
-    log.debug("Invalid HTTPS certificate encountered, ignoring!");
+    log.warn("Invalid HTTPS certificate encountered!");
 
+    // This suppresses the UI warning only. The request is still cancelled.
     return true;
+  },
+
+  asyncOnChannelRedirect:
+    function asyncOnChannelRedirect(oldChannel, newChannel, flags, callback) {
+
+    // We let all redirects proceed.
+    callback.onRedirectVerifyCallback(Cr.NS_OK);
   }
 };

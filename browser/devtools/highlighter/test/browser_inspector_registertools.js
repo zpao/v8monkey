@@ -96,13 +96,13 @@ function inspectorOpen()
   toolsLength = InspectorUI.tools.length;
   toolEvents = InspectorUI.toolEvents.length;
   info("tools registered");
-  Services.obs.addObserver(startToolTests, InspectorUI.INSPECTOR_NOTIFICATIONS.HIGHLIGHTING, false);
+  InspectorUI.highlighter.addListener("nodeselected", startToolTests);
   InspectorUI.inspectNode(h1);
 }
 
 function startToolTests(evt)
 {
-  Services.obs.removeObserver(startToolTests, InspectorUI.INSPECTOR_NOTIFICATIONS.HIGHLIGHTING);
+  InspectorUI.highlighter.removeListener("nodeselected", startToolTests);
   InspectorUI.stopInspecting();
   info("Getting InspectorUI.tools");
   let tools = InspectorUI.tools;
@@ -213,6 +213,7 @@ function finishUp() {
 function test()
 {
   waitForExplicitFinish();
+  ignoreAllUncaughtExceptions();
   gBrowser.selectedTab = gBrowser.addTab();
   gBrowser.selectedBrowser.addEventListener("load", function() {
     gBrowser.selectedBrowser.removeEventListener("load", arguments.callee, true);

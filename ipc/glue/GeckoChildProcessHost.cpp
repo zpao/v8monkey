@@ -70,14 +70,14 @@
 #define NS_TASKBAR_CONTRACTID "@mozilla.org/windows-taskbar;1"
 #endif
 
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
 #include "APKOpen.h"
 #endif
 
 using mozilla::MonitorAutoLock;
 using mozilla::ipc::GeckoChildProcessHost;
 
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
 // Like its predecessor in nsExceptionHandler.cpp, this is
 // the magic number of a file descriptor remapping we must
 // preserve for the child process.
@@ -446,15 +446,15 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
         nsCString path;
         greDir->GetNativePath(path);
 # ifdef OS_LINUX
-#  ifdef ANDROID
+#  ifdef MOZ_WIDGET_ANDROID
         path += "/lib";
-#  endif  // ANDROID
+#  endif  // MOZ_WIDGET_ANDROID
         const char *ld_library_path = PR_GetEnv("LD_LIBRARY_PATH");
         nsCString new_ld_lib_path;
         if (ld_library_path && *ld_library_path) {
-            new_ld_lib_path.Assign(ld_library_path);
+            new_ld_lib_path.Assign(path.get());
             new_ld_lib_path.AppendLiteral(":");
-            new_ld_lib_path.Append(path.get());
+            new_ld_lib_path.Append(ld_library_path);
             newEnvVars["LD_LIBRARY_PATH"] = new_ld_lib_path.get();
         } else {
             newEnvVars["LD_LIBRARY_PATH"] = path.get();
@@ -489,7 +489,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   FilePath exePath;
   GetPathToBinary(exePath);
 
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
   // The java wrapper unpacks this for us but can't make it executable
   chmod(exePath.value().c_str(), 0700);
   int cacheCount = 0;
@@ -521,7 +521,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
     snprintf(buf, sizeof(buf), "%d%s", kMagicAndroidSystemPropFd, szptr);
     newEnvVars["ANDROID_PROPERTY_WORKSPACE"] = buf;
   }
-#endif  // ANDROID
+#endif  // MOZ_WIDGET_ANDROID
 
   // remap the IPC socket fd to a well-known int, as the OS does for
   // STDOUT_FILENO, for example
@@ -589,7 +589,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
 
   childArgv.push_back(childProcessType);
 
-#ifdef ANDROID
+#ifdef MOZ_WIDGET_ANDROID
   childArgv.push_back(cacheStr.get());
 #endif
 

@@ -51,9 +51,15 @@
 #include "nsISHContainer.h"
 #include "nsIWindowWatcher.h"
 #include "mozilla/Services.h"
+#include "nsIXULWindow.h"
+#include "nsIAppShellService.h"
+#include "nsAppShellCID.h"
 
 static bool sInited = 0;
 PRUint32 nsCCUncollectableMarker::sGeneration = 0;
+#ifdef MOZ_XUL
+#include "nsXULPrototypeCache.h"
+#endif
 
 NS_IMPL_ISUPPORTS1(nsCCUncollectableMarker, nsIObserver)
 
@@ -94,9 +100,7 @@ MarkContentViewer(nsIContentViewer* aViewer)
     return;
   }
 
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  aViewer->GetDOMDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
+  nsIDocument *doc = aViewer->GetDocument();
   if (doc) {
     doc->MarkUncollectableForCCGeneration(nsCCUncollectableMarker::sGeneration);
   }
@@ -232,6 +236,26 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
 
     MarkWindowList(windowList);
   }
+
+  nsCOMPtr<nsIAppShellService> appShell = 
+    do_GetService(NS_APPSHELLSERVICE_CONTRACTID);
+  if (appShell) {
+    nsCOMPtr<nsIXULWindow> hw;
+    appShell->GetHiddenWindow(getter_AddRefs(hw));
+    if (hw) {
+      nsCOMPtr<nsIDocShell> shell;
+      hw->GetDocShell(getter_AddRefs(shell));
+      nsCOMPtr<nsIDocShellTreeNode> shellTreeNode = do_QueryInterface(shell);
+      MarkDocShell(shellTreeNode);
+    }
+  }
+
+#ifdef MOZ_XUL
+  nsXULPrototypeCache* xulCache = nsXULPrototypeCache::GetInstance();
+  if (xulCache) {
+    xulCache->MarkInCCGeneration(sGeneration);
+  }
+#endif
 
   return NS_OK;
 }

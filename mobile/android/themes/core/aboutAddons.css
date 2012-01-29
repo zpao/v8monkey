@@ -1,0 +1,188 @@
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
+ *
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
+ *
+ * The Original Code is Mozilla Mobile Browser.
+ *
+ * The Initial Developer of the Original Code is
+ * Mozilla Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 2011
+ * the Initial Developer. All Rights Reserved.
+ *
+ * Contributor(s):
+ *   Mark Finkle <mfinkle@mozilla.com>
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
+
+html {
+  font-family: "Droid Sans",helvetica,arial,clean,sans-serif;
+  font-size: 18px;
+  background-image: url("chrome://browser/skin/images/about-bg-lightblue.png");
+  -moz-text-size-adjust: none;
+}
+
+body {
+  margin: 0;
+}
+
+#addons-header {
+  color: black;
+  padding: 8px;
+  -moz-padding-start: 25px;
+  font-size: 20px;
+  font-weight: bold;
+  border-bottom: 2px solid;
+  -moz-border-bottom-colors: #ff9100 #f27900;
+}
+
+#addons-header > div {
+  width: 100%;
+  height: 44px;
+  display: -moz-box;
+  -moz-box-align: center;
+}
+
+#addons-header > div > div {
+  -moz-box-flex: 1;
+}
+
+.addon-item {
+  color: black;
+  background-image: url("chrome://browser/skin/images/row-bg-normal.png");
+  border-bottom: 2px solid;
+  -moz-border-bottom-colors: #ffffff #bac2ac;
+  position: relative;
+  height: 86px;
+}
+
+.addon-item[isDisabled="true"] {
+  color: #999999;
+}
+
+.addon-item:not([optionsURL]) .options-header,
+.addon-item[optionsURL=""] .options-header,
+.addon-item:not([optionsURL]) .options-box,
+.addon-item[optionsURL=""] .options-box {
+  display: none;
+}
+
+.inner {
+  background-image: url("chrome://browser/skin/images/row-bg-light.png");
+  height: 100%;
+  -moz-padding-start: 8px;
+  -moz-padding-end: 8px;
+
+  /* make room for the favicon */
+  -moz-margin-start: 82px;
+}
+
+.details {
+  display: -moz-box;
+  -moz-box-orient: horizontal;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.details > div {
+  display: -moz-box;
+  -moz-box-align: end;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.version {
+  /* title is not localized, so keep the margin on the left side */
+  margin-left: 12px;
+
+  /* push the tag to the end of the box */
+  -moz-box-flex: 1;
+
+  /* compensate for the title baseline */
+  padding-bottom: 1px;
+}
+
+.tag {
+  text-align: end;
+
+  /* compensate for the title baseline */
+  padding-bottom: 1px;
+}
+
+.description {
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.buttons {
+  display: -moz-box;
+  -moz-box-orient: horizontal;
+  width: 100%;
+}
+
+.buttons > button {
+  -moz-appearance: none;
+  color: black;
+  font-size: 18px !important;
+  border: 1px solid transparent;
+  border-top-color: #bac2ac;
+  -moz-border-start-color: #bac2ac;
+  background-image: none;
+  background-color: #edf0f5;
+  border-radius: 0px !important;
+  -moz-box-flex: 1;
+  padding: 20px 8px;
+}
+
+.buttons > button[disabled="true"] {
+  color: #b5b5b5;
+}
+
+.buttons:first-child {
+  -moz-border-start-color: transparent;
+}
+
+body[dir="ltr"] .favicon {
+  left: 25px;
+}
+
+body[dir="ltr"] .favicon {
+  right: 25px;
+}
+
+.favicon {
+  border: none;
+  top: 27px;
+  width: 32px;
+  height: 32px;
+  position: absolute;
+}
+
+.addon-item[isDisabled="true"] .favicon {
+  opacity: 0.3;
+}

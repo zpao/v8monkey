@@ -492,8 +492,8 @@ nsFrameManager::InsertFrames(nsIFrame*       aParentFrame,
                              nsFrameList&    aFrameList)
 {
   NS_PRECONDITION(!aPrevFrame || (!aPrevFrame->GetNextContinuation()
-                  || IS_TRUE_OVERFLOW_CONTAINER(aPrevFrame->GetNextContinuation()))
-                  && !IS_TRUE_OVERFLOW_CONTAINER(aPrevFrame),
+                  || (aPrevFrame->GetNextContinuation()->GetStateBits() & NS_FRAME_IS_OVERFLOW_CONTAINER))
+                  && !(aPrevFrame->GetStateBits() & NS_FRAME_IS_OVERFLOW_CONTAINER),
                   "aPrevFrame must be the last continuation in its chain!");
 
   if (aParentFrame->IsAbsoluteContainer() &&
@@ -1111,6 +1111,7 @@ nsFrameManager::ReResolveStyleContext(nsPresContext     *aPresContext,
     nsIContent* content = localContent ? localContent : aParentContent;
 
     if (content && content->IsElement()) {
+      content->OwnerDoc()->FlushPendingLinkUpdates();
       RestyleTracker::RestyleData restyleData;
       if (aRestyleTracker.GetRestyleData(content->AsElement(), &restyleData)) {
         if (NS_UpdateHint(aMinChange, restyleData.mChangeHint)) {

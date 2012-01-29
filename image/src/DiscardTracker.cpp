@@ -42,7 +42,7 @@
 #include "mozilla/Preferences.h"
 
 namespace mozilla {
-namespace imagelib {
+namespace image {
 
 static bool sInitialized = false;
 static bool sTimerOn = false;
@@ -146,6 +146,13 @@ DiscardTracker::DiscardAll()
   TimerOff();
 }
 
+static int
+DiscardTimeoutChangedCallback(const char* aPref, void *aClosure)
+{
+  DiscardTracker::ReloadTimeout();
+  return 0;
+}
+
 /**
  * Initialize the tracker.
  */
@@ -161,7 +168,10 @@ DiscardTracker::Initialize()
   sSentinel.prev = &sHead;
   sSentinel.next = &sTail;
 
-  // Load the timeout
+  // Watch the timeout pref for changes.
+  Preferences::RegisterCallback(DiscardTimeoutChangedCallback,
+                                DISCARD_TIMEOUT_PREF);
+
   ReloadTimeout();
 
   // Create and start the timer
@@ -191,7 +201,7 @@ DiscardTracker::Shutdown()
 }
 
 /**
- * Sets the minimum timeout.
+ * Read the discard timeout from about:config.
  */
 void
 DiscardTracker::ReloadTimeout()
@@ -279,5 +289,5 @@ DiscardTracker::TimerCallback(nsITimer *aTimer, void *aClosure)
     TimerOff();
 }
 
-} // namespace imagelib
+} // namespace image
 } // namespace mozilla

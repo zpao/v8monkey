@@ -41,7 +41,6 @@
 #include "nsIServiceManager.h"
 #include "nsICategoryManager.h"
 #include "nsIObserverService.h"
-#include "nsIDocCharset.h"
 #include "nsIWebProgress.h"
 #include "nsCURILoader.h"
 #include "nsICachingChannel.h"
@@ -898,7 +897,8 @@ nsPrefetchService::OnStateChange(nsIWebProgress* aWebProgress,
 NS_IMETHODIMP
 nsPrefetchService::OnLocationChange(nsIWebProgress* aWebProgress,
                                     nsIRequest* aRequest,
-                                    nsIURI *location)
+                                    nsIURI *location,
+                                    PRUint32 aFlags)
 {
     NS_NOTREACHED("notification excluded in AddProgressListener(...)");
     return NS_OK;

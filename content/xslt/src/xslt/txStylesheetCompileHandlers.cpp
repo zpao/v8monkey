@@ -303,7 +303,7 @@ getNumberAttr(txStylesheetAttr* aAttributes,
               txStylesheetCompilerState& aState,
               double& aNumber)
 {
-    aNumber = Double::NaN;
+    aNumber = txDouble::NaN;
     txStylesheetAttr* attr = nsnull;
     nsresult rv = getStyleAttr(aAttributes, aAttrCount, kNameSpaceID_None,
                                aName, aRequired, &attr);
@@ -311,8 +311,8 @@ getNumberAttr(txStylesheetAttr* aAttributes,
         return rv;
     }
 
-    aNumber = Double::toDouble(attr->mValue);
-    if (Double::isNaN(aNumber) && (aRequired || !aState.fcp())) {
+    aNumber = txDouble::toDouble(attr->mValue);
+    if (txDouble::isNaN(aNumber) && (aRequired || !aState.fcp())) {
         // XXX ErrorReport: number parse failure
         return NS_ERROR_XSLT_PARSE_FAILURE;
     }
@@ -552,7 +552,7 @@ txFnStartLREStylesheet(PRInt32 aNamespaceID,
     NS_ENSURE_SUCCESS(rv, rv);
 
     txExpandedName nullExpr;
-    double prio = Double::NaN;
+    double prio = txDouble::NaN;
 
     nsAutoPtr<txPattern> match(new txRootPattern());
     NS_ENSURE_TRUE(match, NS_ERROR_OUT_OF_MEMORY);
@@ -1145,7 +1145,7 @@ txFnStartTemplate(PRInt32 aNamespaceID,
                       aState, mode);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    double prio = Double::NaN;
+    double prio = txDouble::NaN;
     rv = getNumberAttr(aAttributes, aAttrCount, nsGkAtoms::priority,
                        false, aState, prio);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -1208,7 +1208,7 @@ txFnStartTopVariable(PRInt32 aNamespaceID,
     NS_ENSURE_TRUE(var, NS_ERROR_OUT_OF_MEMORY);
 
     aState.openInstructionContainer(var);
-    rv = aState.pushPtr(var);
+    rv = aState.pushPtr(var, aState.eVariableItem);
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (var->mValue) {
@@ -1234,7 +1234,8 @@ txFnEndTopVariable(txStylesheetCompilerState& aState)
 {
     txHandlerTable* prev = aState.mHandlerTable;
     aState.popHandlerTable();
-    txVariableItem* var = static_cast<txVariableItem*>(aState.popPtr());
+    txVariableItem* var =
+        static_cast<txVariableItem*>(aState.popPtr(aState.eVariableItem));
 
     if (prev == gTxTopVariableHandler) {
         // No children were found.
@@ -1367,7 +1368,7 @@ txFnText(const nsAString& aStr, txStylesheetCompilerState& aState)
 {
     TX_RETURN_IF_WHITESPACE(aStr, aState);
 
-    nsAutoPtr<txInstruction> instr(new txText(aStr, MB_FALSE));
+    nsAutoPtr<txInstruction> instr(new txText(aStr, false));
     NS_ENSURE_TRUE(instr, NS_ERROR_OUT_OF_MEMORY);
 
     nsresult rv = aState.addInstruction(instr);
@@ -1736,7 +1737,7 @@ txFnStartCopy(PRInt32 aNamespaceID,
     nsAutoPtr<txCopy> copy(new txCopy);
     NS_ENSURE_TRUE(copy, NS_ERROR_OUT_OF_MEMORY);
 
-    nsresult rv = aState.pushPtr(copy);
+    nsresult rv = aState.pushPtr(copy, aState.eCopy);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<txInstruction> instr(copy.forget());
@@ -1758,7 +1759,7 @@ txFnEndCopy(txStylesheetCompilerState& aState)
     nsresult rv = aState.addInstruction(instr);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    txCopy* copy = static_cast<txCopy*>(aState.popPtr());
+    txCopy* copy = static_cast<txCopy*>(aState.popPtr(aState.eCopy));
     rv = aState.addGotoTarget(&copy->mBailTarget);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1909,7 +1910,7 @@ txFnStartForEach(PRInt32 aNamespaceID,
     nsAutoPtr<txPushNewContext> pushcontext(new txPushNewContext(select));
     NS_ENSURE_TRUE(pushcontext, NS_ERROR_OUT_OF_MEMORY);
 
-    rv = aState.pushPtr(pushcontext);
+    rv = aState.pushPtr(pushcontext, aState.ePushNewContext);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = aState.pushSorter(pushcontext);
@@ -1922,7 +1923,7 @@ txFnStartForEach(PRInt32 aNamespaceID,
     instr = new txPushNullTemplateRule;
     NS_ENSURE_TRUE(instr, NS_ERROR_OUT_OF_MEMORY);
 
-    rv = aState.pushPtr(instr);
+    rv = aState.pushPtr(instr, aState.ePushNullTemplateRule);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = aState.addInstruction(instr);
@@ -1938,7 +1939,7 @@ txFnEndForEach(txStylesheetCompilerState& aState)
 
     // This is a txPushNullTemplateRule
     txInstruction* pnullrule =
-        static_cast<txInstruction*>(aState.popPtr());
+        static_cast<txInstruction*>(aState.popPtr(aState.ePushNullTemplateRule));
 
     nsAutoPtr<txInstruction> instr(new txLoopNodeSet(pnullrule));
     nsresult rv = aState.addInstruction(instr);
@@ -1946,7 +1947,7 @@ txFnEndForEach(txStylesheetCompilerState& aState)
 
     aState.popSorter();
     txPushNewContext* pushcontext =
-        static_cast<txPushNewContext*>(aState.popPtr());
+        static_cast<txPushNewContext*>(aState.popPtr(aState.ePushNewContext));
     aState.addGotoTarget(&pushcontext->mBailTarget);
 
     return NS_OK;
@@ -2001,7 +2002,7 @@ txFnStartIf(PRInt32 aNamespaceID,
     nsAutoPtr<txConditionalGoto> condGoto(new txConditionalGoto(test, nsnull));
     NS_ENSURE_TRUE(condGoto, NS_ERROR_OUT_OF_MEMORY);
 
-    rv = aState.pushPtr(condGoto);
+    rv = aState.pushPtr(condGoto, aState.eConditionalGoto);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<txInstruction> instr(condGoto.forget());
@@ -2015,7 +2016,7 @@ static nsresult
 txFnEndIf(txStylesheetCompilerState& aState)
 {
     txConditionalGoto* condGoto =
-        static_cast<txConditionalGoto*>(aState.popPtr());
+        static_cast<txConditionalGoto*>(aState.popPtr(aState.eConditionalGoto));
     return aState.addGotoTarget(&condGoto->mTarget);
 }
 
@@ -2208,7 +2209,7 @@ txFnStartParam(PRInt32 aNamespaceID,
     nsAutoPtr<txCheckParam> checkParam(new txCheckParam(name));
     NS_ENSURE_SUCCESS(rv, rv);
     
-    rv = aState.pushPtr(checkParam);
+    rv = aState.pushPtr(checkParam, aState.eCheckParam);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<txInstruction> instr(checkParam.forget());
@@ -2264,7 +2265,8 @@ txFnEndParam(txStylesheetCompilerState& aState)
     rv = aState.addInstruction(instr);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    txCheckParam* checkParam = static_cast<txCheckParam*>(aState.popPtr());
+    txCheckParam* checkParam =
+        static_cast<txCheckParam*>(aState.popPtr(aState.eCheckParam));
     aState.addGotoTarget(&checkParam->mBailTarget);
 
     return NS_OK;
@@ -2413,7 +2415,7 @@ txFnStartText(PRInt32 aNamespaceID,
 static nsresult
 txFnEndText(txStylesheetCompilerState& aState)
 {
-    aState.mDOE = MB_FALSE;
+    aState.mDOE = false;
     aState.popHandlerTable();
     return NS_OK;
 }
@@ -2605,7 +2607,7 @@ txFnStartWhen(PRInt32 aNamespaceID,
     nsAutoPtr<txConditionalGoto> condGoto(new txConditionalGoto(test, nsnull));
     NS_ENSURE_TRUE(condGoto, NS_ERROR_OUT_OF_MEMORY);
 
-    rv = aState.pushPtr(condGoto);
+    rv = aState.pushPtr(condGoto, aState.eConditionalGoto);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoPtr<txInstruction> instr(condGoto.forget());
@@ -2630,7 +2632,7 @@ txFnEndWhen(txStylesheetCompilerState& aState)
     NS_ENSURE_SUCCESS(rv, rv);
 
     txConditionalGoto* condGoto =
-        static_cast<txConditionalGoto*>(aState.popPtr());
+        static_cast<txConditionalGoto*>(aState.popPtr(aState.eConditionalGoto));
     rv = aState.addGotoTarget(&condGoto->mTarget);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -3044,7 +3046,7 @@ txHandlerTable::find(PRInt32 aNamespaceID, nsIAtom* aLocalName)
     gTx##_name##Handler = nsnull
 
 // static
-MBool
+bool
 txHandlerTable::init()
 {
     nsresult rv = NS_OK;
@@ -3066,7 +3068,7 @@ txHandlerTable::init()
     INIT_HANDLER_WITH_ELEMENT_HANDLERS(AttributeSet);
     INIT_HANDLER_WITH_ELEMENT_HANDLERS(Fallback);
 
-    return MB_TRUE;
+    return true;
 }
 
 // static

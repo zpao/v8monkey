@@ -35,7 +35,7 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-const CURRENT_SCHEMA_VERSION = 12;
+const CURRENT_SCHEMA_VERSION = 17;
 
 const NS_APP_USER_PROFILE_50_DIR = "ProfD";
 const NS_APP_PROFILE_DIR_STARTUP = "ProfDS";
@@ -54,6 +54,8 @@ const TRANSITION_DOWNLOAD = Ci.nsINavHistoryService.TRANSITION_DOWNLOAD;
 // This error icon must stay in sync with FAVICON_ERRORPAGE_URL in
 // nsIFaviconService.idl, aboutCertError.xhtml and netError.xhtml.
 const FAVICON_ERRORPAGE_URL = "chrome://global/skin/icons/warning-16.png";
+
+const TITLE_LENGTH_MAX = 4096;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
@@ -734,3 +736,24 @@ function do_compare_arrays(a1, a2, sorted)
            a2.filter(function (e) a1.indexOf(e) == -1).length == 0;
   }
 }
+
+/**
+ * Generic nsINavHistoryObserver that doesn't implement anything, but provides
+ * dummy methods to prevent errors about an object not having a certain method.
+ */
+function NavHistoryObserver() {}
+
+NavHistoryObserver.prototype = {
+  onBeginUpdateBatch: function () {},
+  onEndUpdateBatch: function () {},
+  onVisit: function () {},
+  onTitleChanged: function () {},
+  onBeforeDeleteURI: function () {},
+  onDeleteURI: function () {},
+  onClearHistory: function () {},
+  onPageChanged: function () {},
+  onDeleteVisits: function () {},
+  QueryInterface: XPCOMUtils.generateQI([
+    Ci.nsINavHistoryObserver,
+  ])
+};

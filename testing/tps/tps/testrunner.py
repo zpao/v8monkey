@@ -53,7 +53,7 @@ from mozprofile import Profile
 
 from tps.firefoxrunner import TPSFirefoxRunner
 from tps.phase import TPSTestPhase
-
+from tps.mozhttpd import MozHttpd
 
 class TempFile(object):
   """Class for temporary files that delete themselves when garbage-collected.
@@ -89,21 +89,27 @@ class TPSTestRunner(object):
                   'XPCOM_DEBUG_BREAK': 'warn',
                 }
   default_preferences = { 'app.update.enabled' : False,
+                          'extensions.getAddons.get.url': 'http://127.0.0.1:4567/en-US/firefox/api/%API_VERSION%/search/guid:%IDS%',
                           'extensions.update.enabled'    : False,
                           'extensions.update.notifyUser' : False,
                           'browser.shell.checkDefaultBrowser' : False,
                           'browser.tabs.warnOnClose' : False,
                           'browser.warnOnQuit': False,
                           'browser.sessionstore.resume_from_crash': False,
+                          'services.sync.addons.ignoreRepositoryChecking': True,
                           'services.sync.firstSync': 'notReady',
                           'services.sync.lastversion': '1.0',
                           'services.sync.log.rootLogger': 'Trace',
+                          'services.sync.log.logger.engine.addons': 'Trace',
                           'services.sync.log.logger.service.main': 'Trace',
                           'services.sync.log.logger.engine.bookmarks': 'Trace',
                           'services.sync.log.appender.console': 'Trace',
                           'services.sync.log.appender.debugLog.enabled': True,
                           'browser.dom.window.dump.enabled': True,
-                          'extensions.checkCompatibility.4.0': False,
+                          # Allow installing extensions dropped into the profile folder
+                          'extensions.autoDisableScopes': 10,
+                          # Don't open a dialog to show available add-on updates
+                          'extensions.update.notifyUser' : False,
                         }
   syncVerRe = re.compile(
       r"Sync version: (?P<syncversion>.*)\n")
@@ -114,12 +120,14 @@ class TPSTestRunner(object):
 
   def __init__(self, extensionDir, emailresults=False, testfile="sync.test",
                binary=None, config=None, rlock=None, mobile=False,
-               autolog=False, logfile="tps.log"):
+               autolog=False, logfile="tps.log",
+               ignore_unused_engines=False):
     self.extensions = []
     self.emailresults = emailresults
     self.testfile = testfile
     self.logfile = os.path.abspath(logfile)
     self.binary = binary
+    self.ignore_unused_engines = ignore_unused_engines
     self.config = config if config else {}
     self.repo = None
     self.changeset = None
@@ -208,14 +216,16 @@ class TPSTestRunner(object):
                                         addons = self.extensions)
 
       # create the test phase
-      phaselist.append(TPSTestPhase(phase,
-                                    profiles[profilename],
-                                    testname,
-                                    tmpfile.filename,
-                                    self.logfile,
-                                    self.env,
-                                    self.firefoxRunner,
-                                    self.log))
+      phaselist.append(TPSTestPhase(
+          phase,
+          profiles[profilename],
+          testname,
+          tmpfile.filename,
+          self.logfile,
+          self.env,
+          self.firefoxRunner,
+          self.log,
+          ignore_unused_engines=self.ignore_unused_engines))
 
     # sort the phase list by name
     phaselist = sorted(phaselist, key=lambda phase: phase.phase)
@@ -232,11 +242,17 @@ class TPSTestRunner(object):
             for f in files:
               weavelog = os.path.join(profiles[profile].profile, 'weave', 'logs', f)
               if os.access(weavelog, os.F_OK):
-                f = open(weavelog, 'r')
-                msg = f.read()
-                self.log(msg)
-                f.close()
-              self.log("\n")
+                with open(weavelog, 'r') as fh:
+                  for line in fh:
+                    possible_time = line[0:13]
+                    if len(possible_time) == 13 and possible_time.isdigit():
+                      time_ms = int(possible_time)
+                      formatted = time.strftime('%Y-%m-%d %H:%M:%S',
+                              time.localtime(time_ms / 1000))
+                      self.log('%s.%03d %s' % (
+                          formatted, time_ms % 1000, line[14:] ))
+                    else:
+                      self.log(line)
         break;
 
     # grep the log for FF and sync versions
@@ -394,6 +410,9 @@ class TPSTestRunner(object):
       testlist = [os.path.basename(self.testfile)]
     testdir = os.path.dirname(self.testfile)
 
+    self.mozhttpd = MozHttpd(port=4567, docroot=testdir)
+    self.mozhttpd.start()
+
     # run each test, and save the results
     for test in testlist:
       result = self.run_single_test(testdir, test)
@@ -411,6 +430,8 @@ class TPSTestRunner(object):
         self.numpassed += 1
       else:
         self.numfailed += 1
+
+    self.mozhttpd.stop()
 
     # generate the postdata we'll use to post the results to the db
     self.postdata = { 'tests': self.results, 
@@ -430,7 +451,14 @@ class TPSTestRunner(object):
       from tps.emailtemplate import GenerateEmailBody
 
       if body is None:
-        body = GenerateEmailBody(self.postdata, self.numpassed, self.numfailed, self.config['account']['serverURL'])
+        buildUrl = None
+        if self.firefoxRunner and self.firefoxRunner.url:
+          buildUrl = self.firefoxRunner.url
+        body = GenerateEmailBody(self.postdata,
+                                 self.numpassed,
+                                 self.numfailed,
+                                 self.config['account']['serverURL'],
+                                 buildUrl)
 
       subj = "TPS Report: "
       if self.numfailed == 0 and self.numpassed > 0:

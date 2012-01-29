@@ -87,7 +87,7 @@
 #include "nsDisplayList.h"
 #include "nsITheme.h"
 #include "nsThemeConstants.h"
-#include "nsPLDOMEvent.h"
+#include "nsAsyncDOMEvent.h"
 #include "nsRenderingContext.h"
 #include "mozilla/Preferences.h"
 
@@ -387,15 +387,6 @@ nsComboboxControlFrame::SetFocus(bool aOn, bool aRepaint)
   // rect to be drawn. This is much faster than ReResolvingStyle
   // Bug 32920
   Invalidate(nsRect(0,0,mRect.width,mRect.height));
-
-  // Make sure the content area gets updated for where the dropdown was
-  // This is only needed for embedding, the focus may go to 
-  // the chrome that is not part of the Gecko system (Bug 83493)
-  // XXX this is rather inefficient
-  nsIViewManager* vm = PresContext()->GetPresShell()->GetViewManager();
-  if (vm) {
-    vm->UpdateAllViews(NS_VMREFRESH_NO_SYNC);
-  }
 }
 
 void
@@ -473,7 +464,7 @@ nsComboboxControlFrame::ShowList(bool aShowList)
     if (view) {
       nsIWidget* widget = view->GetWidget();
       if (widget) {
-        widget->CaptureRollupEvents(this, nsnull, mDroppedDown, mDroppedDown);
+        widget->CaptureRollupEvents(this, mDroppedDown, mDroppedDown);
 
         if (!aShowList) {
           nsCOMPtr<nsIRunnable> widgetDestroyer =
@@ -550,8 +541,8 @@ nsComboboxControlFrame::GetCSSTransformTranslation()
   bool is3DTransform = false;
   gfxMatrix transform;
   while (frame) {
-    nsIFrame* parent = nsnull;
-    gfx3DMatrix ctm = frame->GetTransformMatrix(&parent);
+    nsIFrame* parent;
+    gfx3DMatrix ctm = frame->GetTransformMatrix(nsnull, &parent);
     gfxMatrix matrix;
     if (ctm.Is2D(&matrix)) {
       transform = transform * matrix;
@@ -1322,7 +1313,7 @@ nsComboboxControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
       if (view) {
         nsIWidget* widget = view->GetWidget();
         if (widget)
-          widget->CaptureRollupEvents(this, nsnull, false, true);
+          widget->CaptureRollupEvents(this, false, true);
       }
     }
   }
@@ -1375,24 +1366,21 @@ nsComboboxControlFrame::SetInitialChildList(ChildListID     aListID,
 //----------------------------------------------------------------------
   //nsIRollupListener
 //----------------------------------------------------------------------
-NS_IMETHODIMP 
-nsComboboxControlFrame::Rollup(PRUint32 aCount,
-                               nsIContent** aLastRolledUp)
+nsIContent*
+nsComboboxControlFrame::Rollup(PRUint32 aCount, bool aGetLastRolledUp)
 {
-  if (aLastRolledUp)
-    *aLastRolledUp = nsnull;
-
   if (mDroppedDown) {
     nsWeakFrame weakFrame(this);
     mListControlFrame->AboutToRollup(); // might destroy us
     if (!weakFrame.IsAlive())
-      return NS_OK;
+      return nsnull;
     ShowDropDown(false); // might destroy us
     if (!weakFrame.IsAlive())
-      return NS_OK;
+      return nsnull;
     mListControlFrame->CaptureMouseEvents(false);
   }
-  return NS_OK;
+
+  return nsnull;
 }
 
 void
@@ -1545,8 +1533,8 @@ void nsComboboxControlFrame::FireValueChangeEvent()
 {
   // Fire ValueChange event to indicate data value of combo box has changed
   nsContentUtils::AddScriptRunner(
-    new nsPLDOMEvent(mContent, NS_LITERAL_STRING("ValueChange"), true,
-                     false));
+    new nsAsyncDOMEvent(mContent, NS_LITERAL_STRING("ValueChange"), true,
+                        false));
 }
 
 void

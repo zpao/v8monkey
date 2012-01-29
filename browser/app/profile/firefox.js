@@ -54,13 +54,20 @@ pref("browser.hiddenWindowChromeURL", "chrome://browser/content/hiddenWindow.xul
 // Enables some extra Extension System Logging (can reduce performance)
 pref("extensions.logging.enabled", false);
 
+// Disables strict compatibility, making addons compatible-by-default.
+pref("extensions.strictCompatibility", false);
+
+// Specifies a minimum maxVersion an addon needs to say it's compatible with
+// for it to be compatible by default.
+pref("extensions.minCompatibleAppVersion", "4.0");
+
 // Preferences for AMO integration
 pref("extensions.getAddons.cache.enabled", true);
 pref("extensions.getAddons.maxResults", 15);
-pref("extensions.getAddons.get.url", "https://services.addons.mozilla.org/%LOCALE%/firefox/api/%API_VERSION%/search/guid:%IDS%?src=firefox&appOS=%OS%&appVersion=%VERSION%&tMain=%TIME_MAIN%&tFirstPaint=%TIME_FIRST_PAINT%&tSessionRestored=%TIME_SESSION_RESTORED%");
+pref("extensions.getAddons.get.url", "https://services.addons.mozilla.org/%LOCALE%/firefox/api/%API_VERSION%/search/guid:%IDS%?src=firefox&appOS=%OS%&appVersion=%VERSION%");
 pref("extensions.getAddons.search.browseURL", "https://addons.mozilla.org/%LOCALE%/firefox/search?q=%TERMS%");
-pref("extensions.getAddons.search.url", "https://services.addons.mozilla.org/%LOCALE%/firefox/api/%API_VERSION%/search/%TERMS%/all/%MAX_RESULTS%/%OS%/%VERSION%?src=firefox");
-pref("extensions.webservice.discoverURL", "https://services.addons.mozilla.org/%LOCALE%/firefox/discovery/pane/%VERSION%/%OS%");
+pref("extensions.getAddons.search.url", "https://services.addons.mozilla.org/%LOCALE%/firefox/api/%API_VERSION%/search/%TERMS%/all/%MAX_RESULTS%/%OS%/%VERSION%/%COMPATIBILITY_MODE%?src=firefox");
+pref("extensions.webservice.discoverURL", "https://services.addons.mozilla.org/%LOCALE%/firefox/discovery/pane/%VERSION%/%OS%/%COMPATIBILITY_MODE%");
 
 // Blocklist preferences
 pref("extensions.blocklist.enabled", true);
@@ -74,10 +81,14 @@ pref("extensions.blocklist.itemURL", "https://addons.mozilla.org/%LOCALE%/%APP%/
 
 pref("extensions.update.autoUpdateDefault", true);
 
+pref("extensions.hotfix.id", "firefox-hotfix@mozilla.org");
+pref("extensions.hotfix.cert.checkAttributes", true);
+pref("extensions.hotfix.certs.1.sha1Fingerprint", "F1:DB:F9:6A:7B:B8:04:FA:48:3C:16:95:C7:2F:17:C6:5B:C2:9F:45");
+
 // Disable add-ons installed into the shared user and shared system areas by
 // default. This does not include the application directory. See the SCOPE
 // constants in AddonManager.jsm for values to use here
-pref("extensions.autoDisableScopes", 10);
+pref("extensions.autoDisableScopes", 15);
 
 // Dictionary download preference
 pref("browser.dictionaries.download.url", "https://addons.mozilla.org/%LOCALE%/firefox/dictionaries/");
@@ -189,6 +200,11 @@ pref("app.update.showInstalledUI", false);
 //     versions.
 pref("app.update.incompatible.mode", 0);
 
+// Whether or not to attempt using the service for updates.
+#ifdef MOZ_MAINTENANCE_SERVICE
+pref("app.update.service.enabled", true);
+#endif
+
 // Symmetric (can be overridden by individual extensions) update preferences.
 // e.g.
 //  extensions.{GUID}.update.enabled
@@ -196,7 +212,7 @@ pref("app.update.incompatible.mode", 0);
 //  .. etc ..
 //
 pref("extensions.update.enabled", true);
-pref("extensions.update.url", "https://versioncheck.addons.mozilla.org/update/VersionCheck.php?reqVersion=%REQ_VERSION%&id=%ITEM_ID%&version=%ITEM_VERSION%&maxAppVersion=%ITEM_MAXAPPVERSION%&status=%ITEM_STATUS%&appID=%APP_ID%&appVersion=%APP_VERSION%&appOS=%APP_OS%&appABI=%APP_ABI%&locale=%APP_LOCALE%&currentAppVersion=%CURRENT_APP_VERSION%&updateType=%UPDATE_TYPE%");
+pref("extensions.update.url", "https://versioncheck.addons.mozilla.org/update/VersionCheck.php?reqVersion=%REQ_VERSION%&id=%ITEM_ID%&version=%ITEM_VERSION%&maxAppVersion=%ITEM_MAXAPPVERSION%&status=%ITEM_STATUS%&appID=%APP_ID%&appVersion=%APP_VERSION%&appOS=%APP_OS%&appABI=%APP_ABI%&locale=%APP_LOCALE%&currentAppVersion=%CURRENT_APP_VERSION%&updateType=%UPDATE_TYPE%&compatMode=%COMPATIBILITY_MODE%");
 pref("extensions.update.interval", 86400);  // Check for updates to Extensions and 
                                             // Themes every day
 // Non-symmetric (not shared by extensions) extension-specific [update] preferences
@@ -221,15 +237,14 @@ pref("keyword.URL", "");
 pref("general.useragent.locale", "@AB_CD@");
 pref("general.skins.selectedSkin", "classic/1.0");
 
-pref("general.smoothScroll", false);
+pref("general.smoothScroll", true);
 #ifdef UNIX_BUT_NOT_MAC
 pref("general.autoScroll", false);
 #else
 pref("general.autoScroll", true);
 #endif
 
-// Whether or not the application should check at startup each time if it 
-// is the default browser.
+// At startup, check if we're the default browser and prompt user if not.
 pref("browser.shell.checkDefaultBrowser", true);
 
 // 0 = blank, 1 = home (browser.startup.homepage), 2 = last visited page, 3 = resume previous browser session
@@ -265,7 +280,7 @@ pref("browser.urlbar.doubleClickSelectsAll", true);
 #else
 pref("browser.urlbar.doubleClickSelectsAll", false);
 #endif
-pref("browser.urlbar.autoFill", false);
+pref("browser.urlbar.autoFill", true);
 // 0: Match anywhere (e.g., middle of words)
 // 1: Match on word boundaries and then try matching anywhere
 // 2: Match only on word boundaries (e.g., after / or .)
@@ -278,7 +293,7 @@ pref("browser.urlbar.maxRichResults", 12);
 // The amount of time (ms) to wait after the user has stopped typing
 // before starting to perform autocomplete.  50 is the default set in
 // autocomplete.xml.
-pref("browser.urlbar.delay", 50);
+pref("browser.urlbar.delay", 0);
 
 // The special characters below can be typed into the urlbar to either restrict
 // the search to visited history, bookmarked, tagged pages; or force a match on
@@ -382,6 +397,7 @@ pref("browser.tabs.loadDivertedInBackground", false);
 pref("browser.tabs.loadBookmarksInBackground", false);
 pref("browser.tabs.tabClipWidth", 140);
 pref("browser.tabs.animate", true);
+pref("browser.tabs.onTop", true);
 pref("browser.tabs.drawInTitlebar", true);
 
 // Where to show tab close buttons:
@@ -787,6 +803,10 @@ pref("browser.sessionstore.max_resumed_crashes", 1);
 pref("browser.sessionstore.restore_on_demand", false);
 // Whether to automatically restore hidden tabs (i.e., tabs in other tab groups) or not
 pref("browser.sessionstore.restore_hidden_tabs", false);
+// If restore_on_demand is set, pinned tabs are restored on startup by default.
+// When set to true, this pref overrides that behavior, and pinned tabs will only
+// be restored when they are focused.
+pref("browser.sessionstore.restore_pinned_tabs_on_demand", false);
 
 // allow META refresh by default
 pref("accessibility.blockautorefresh", false);
@@ -855,7 +875,7 @@ pref("browser.zoom.updateBackgroundTabs", true);
 pref("breakpad.reportURL", "http://crash-stats.mozilla.com/report/index/");
 
 // base URL for web-based support pages
-pref("app.support.baseURL", "http://support.mozilla.com/1/firefox/%VERSION%/%OS%/%LOCALE%/");
+pref("app.support.baseURL", "http://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/");
 
 // Name of alternate about: page for certificate errors (when undefined, defaults to about:neterror)
 pref("security.alternate_certificate_error_page", "certerror");
@@ -920,12 +940,18 @@ pref("browser.taskbar.lists.refreshInSeconds", 120);
 
 #ifdef MOZ_SERVICES_SYNC
 // The sync engines to use.
-pref("services.sync.registerEngines", "Bookmarks,Form,History,Password,Prefs,Tab");
+pref("services.sync.registerEngines", "Bookmarks,Form,History,Password,Prefs,Tab,Addons");
 // Preferences to be synced by default
 pref("services.sync.prefs.sync.accessibility.blockautorefresh", true);
 pref("services.sync.prefs.sync.accessibility.browsewithcaret", true);
 pref("services.sync.prefs.sync.accessibility.typeaheadfind", true);
 pref("services.sync.prefs.sync.accessibility.typeaheadfind.linksonly", true);
+pref("services.sync.prefs.sync.addons.ignoreUserEnabledChanges", true);
+// The addons prefs related to repository verification are intentionally
+// not synced for security reasons. If a system is compromised, a user
+// could weaken the pref locally, install an add-on from an untrusted
+// source, and this would propagate automatically to other,
+// uncompromised Sync-connected devices.
 pref("services.sync.prefs.sync.app.update.mode", true);
 pref("services.sync.prefs.sync.browser.download.manager.closeWhenDone", true);
 pref("services.sync.prefs.sync.browser.download.manager.retention", true);
@@ -938,6 +964,7 @@ pref("services.sync.prefs.sync.browser.safebrowsing.enabled", true);
 pref("services.sync.prefs.sync.browser.safebrowsing.malware.enabled", true);
 pref("services.sync.prefs.sync.browser.search.selectedEngine", true);
 pref("services.sync.prefs.sync.browser.search.update", true);
+pref("services.sync.prefs.sync.browser.sessionstore.restore_on_demand", true);
 pref("services.sync.prefs.sync.browser.startup.homepage", true);
 pref("services.sync.prefs.sync.browser.startup.page", true);
 pref("services.sync.prefs.sync.browser.tabs.autoHide", true);
@@ -945,6 +972,7 @@ pref("services.sync.prefs.sync.browser.tabs.closeButtons", true);
 pref("services.sync.prefs.sync.browser.tabs.loadInBackground", true);
 pref("services.sync.prefs.sync.browser.tabs.warnOnClose", true);
 pref("services.sync.prefs.sync.browser.tabs.warnOnOpen", true);
+pref("services.sync.prefs.sync.browser.tabs.onTop", true);
 pref("services.sync.prefs.sync.browser.urlbar.autocomplete.enabled", true);
 pref("services.sync.prefs.sync.browser.urlbar.autoFill", true);
 pref("services.sync.prefs.sync.browser.urlbar.default.behavior", true);
@@ -1000,12 +1028,25 @@ pref("devtools.errorconsole.enabled", false);
 
 // Enable the Inspector
 pref("devtools.inspector.enabled", true);
+pref("devtools.inspector.htmlHeight", 112);
 
 // Enable the style inspector
 pref("devtools.styleinspector.enabled", true);
 
+// Enable the Tilt inspector
+pref("devtools.tilt.enabled", true);
+pref("devtools.tilt.intro_transition", true);
+pref("devtools.tilt.outro_transition", true);
+
+// Enable the rules view
+pref("devtools.ruleview.enabled", true);
+
 // Enable the Scratchpad tool.
 pref("devtools.scratchpad.enabled", true);
+
+// Enable the Style Editor.
+pref("devtools.styleeditor.enabled", true);
+pref("devtools.styleeditor.transitions", true);
 
 // Enable tools for Chrome development.
 pref("devtools.chrome.enabled", false);
@@ -1023,6 +1064,18 @@ pref("devtools.hud.height", 0);
 //   below - below the web page,
 //   window - in a separate window/popup panel.
 pref("devtools.webconsole.position", "above");
+
+// Remember the Web Console filters
+pref("devtools.webconsole.filter.network", true);
+pref("devtools.webconsole.filter.networkinfo", true);
+pref("devtools.webconsole.filter.csserror", true);
+pref("devtools.webconsole.filter.cssparser", true);
+pref("devtools.webconsole.filter.exception", true);
+pref("devtools.webconsole.filter.jswarn", true);
+pref("devtools.webconsole.filter.error", true);
+pref("devtools.webconsole.filter.warn", true);
+pref("devtools.webconsole.filter.info", true);
+pref("devtools.webconsole.filter.log", true);
 
 // The number of lines that are displayed in the web console for the Net,
 // CSS, JS and Web Developer categories.
@@ -1056,3 +1109,12 @@ pref("browser.menu.showCharacterEncoding", "chrome://browser/locale/browser.prop
 pref("prompts.tab_modal.enabled", true);
 // Whether the Panorama should animate going in/out of tabs
 pref("browser.panorama.animate_zoom", true);
+
+// Defines the url to be used for new tabs.
+pref("browser.newtab.url", "about:blank");
+
+// Toggles the content of 'about:newtab'. Shows the grid when enabled.
+pref("browser.newtabpage.enabled", false);
+
+// Enable the DOM full-screen API.
+pref("full-screen-api.enabled", true);

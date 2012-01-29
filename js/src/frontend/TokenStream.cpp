@@ -53,7 +53,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "jstypes.h"
-#include "jsstdint.h"
 #include "jsutil.h"
 #include "jsprf.h"
 #include "jsapi.h"
@@ -65,7 +64,7 @@
 #include "jsopcode.h"
 #include "jsscript.h"
 
-#include "frontend/BytecodeGenerator.h"
+#include "frontend/BytecodeEmitter.h"
 #include "frontend/Parser.h"
 #include "frontend/TokenStream.h"
 #include "vm/RegExpObject.h"
@@ -91,10 +90,8 @@ static const KeywordInfo keywords[] = {
 #undef JS_KEYWORD
 };
 
-namespace js {
-
 const KeywordInfo *
-FindKeyword(const jschar *s, size_t length)
+js::FindKeyword(const jschar *s, size_t length)
 {
     JS_ASSERT(length != 0);
 
@@ -131,7 +128,7 @@ FindKeyword(const jschar *s, size_t length)
 }
 
 JSBool
-IsIdentifier(JSLinearString *str)
+js::IsIdentifier(JSLinearString *str)
 {
     const jschar *chars = str->chars();
     size_t length = str->length();
@@ -156,9 +153,13 @@ IsIdentifier(JSLinearString *str)
 #endif
 
 /* Initialize members that aren't initialized in |init|. */
-TokenStream::TokenStream(JSContext *cx)
-  : cx(cx), tokens(), cursor(), lookahead(), flags(), listenerTSData(), tokenbuf(cx)
-{}
+TokenStream::TokenStream(JSContext *cx, JSPrincipals *prin, JSPrincipals *originPrin)
+  : tokens(), cursor(), lookahead(), flags(), listenerTSData(), tokenbuf(cx),
+    cx(cx), originPrincipals(originPrin ? originPrin : prin)
+{
+    if (originPrincipals)
+        JSPRINCIPALS_HOLD(cx, originPrincipals);
+}
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -246,6 +247,8 @@ TokenStream::~TokenStream()
         cx->free_((void *) filename);
     if (sourceMap)
         cx->free_(sourceMap);
+    if (originPrincipals)
+        JSPRINCIPALS_DROP(cx, originPrincipals);
 }
 
 /* Use the fastest available getc. */
@@ -273,10 +276,10 @@ TokenStream::updateFlagsForEOL()
 }
 
 /* This gets the next char, normalizing all EOL sequences to '\n' as it goes. */
-int32
+int32_t
 TokenStream::getChar()
 {
-    int32 c;
+    int32_t c;
     if (JS_LIKELY(userbuf.hasRawChars())) {
         c = userbuf.getRawChar();
 
@@ -325,7 +328,7 @@ TokenStream::getChar()
  * it's an EOL, and (b) the line-related state (lineno, linebase) is not used
  * before it's ungotten.
  */
-int32
+int32_t
 TokenStream::getCharIgnoreEOL()
 {
     if (JS_LIKELY(userbuf.hasRawChars()))
@@ -336,7 +339,7 @@ TokenStream::getCharIgnoreEOL()
 }
 
 void
-TokenStream::ungetChar(int32 c)
+TokenStream::ungetChar(int32_t c)
 {
     if (c == EOF)
         return;
@@ -344,7 +347,7 @@ TokenStream::ungetChar(int32 c)
     userbuf.ungetRawChar();
     if (c == '\n') {
 #ifdef DEBUG
-        int32 c2 = userbuf.peekRawChar();
+        int32_t c2 = userbuf.peekRawChar();
         JS_ASSERT(TokenBuf::isRawEOLChar(c2));
 #endif
 
@@ -362,7 +365,7 @@ TokenStream::ungetChar(int32 c)
 }
 
 void
-TokenStream::ungetCharIgnoreEOL(int32 c)
+TokenStream::ungetCharIgnoreEOL(int32_t c)
 {
     if (c == EOF)
         return;
@@ -380,7 +383,7 @@ bool
 TokenStream::peekChars(intN n, jschar *cp)
 {
     intN i, j;
-    int32 c;
+    int32_t c;
 
     for (i = 0; i < n; i++) {
         c = getCharIgnoreEOL();
@@ -458,6 +461,7 @@ TokenStream::reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorN
     }
 
     report.filename = filename;
+    report.originPrincipals = originPrincipals;
 
     tp = pn ? &pn->pn_pos : &currentToken().pos;
     report.lineno = tp->begin.lineno;
@@ -480,7 +484,7 @@ TokenStream::reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorN
             warning = false;
             goto out;
         }
-        memcpy(linechars, linebase, linelength * sizeof(jschar));
+        PodCopy(linechars, linebase, linelength);
         linechars[linelength] = 0;
         linebytes = DeflateString(cx, linechars, linelength);
         if (!linebytes) {
@@ -548,8 +552,8 @@ TokenStream::reportCompileErrorNumberVA(ParseNode *pn, uintN flags, uintN errorN
 }
 
 bool
-ReportStrictModeError(JSContext *cx, TokenStream *ts, TreeContext *tc, ParseNode *pn,
-                      uintN errorNumber, ...)
+js::ReportStrictModeError(JSContext *cx, TokenStream *ts, TreeContext *tc, ParseNode *pn,
+                          uintN errorNumber, ...)
 {
     JS_ASSERT(ts || tc);
     JS_ASSERT(cx == ts->getContext());
@@ -573,8 +577,8 @@ ReportStrictModeError(JSContext *cx, TokenStream *ts, TreeContext *tc, ParseNode
 }
 
 bool
-ReportCompileErrorNumber(JSContext *cx, TokenStream *ts, ParseNode *pn, uintN flags,
-                         uintN errorNumber, ...)
+js::ReportCompileErrorNumber(JSContext *cx, TokenStream *ts, ParseNode *pn, uintN flags,
+                             uintN errorNumber, ...)
 {
     va_list ap;
 
@@ -922,7 +926,7 @@ TokenStream::getXMLTextOrTag(TokenKind *ttp, Token **tpp)
  *
  * https://bugzilla.mozilla.org/show_bug.cgi?id=336551
  *
- * The check for this is in BytecodeCompiler::compileScript.
+ * The check for this is in js::frontend::CompileScript.
  */
 bool
 TokenStream::getXMLMarkup(TokenKind *ttp, Token **tpp)
@@ -1088,7 +1092,7 @@ TokenStream::peekUnicodeEscape(int *result)
 }
 
 bool
-TokenStream::matchUnicodeEscapeIdStart(int32 *cp)
+TokenStream::matchUnicodeEscapeIdStart(int32_t *cp)
 {
     if (peekUnicodeEscape(cp) && IsIdentifierStart(*cp)) {
         skipChars(5);
@@ -1098,7 +1102,7 @@ TokenStream::matchUnicodeEscapeIdStart(int32 *cp)
 }
 
 bool
-TokenStream::matchUnicodeEscapeIdent(int32 *cp)
+TokenStream::matchUnicodeEscapeIdent(int32_t *cp)
 {
     if (peekUnicodeEscape(cp) && IsIdentifierPart(*cp)) {
         skipChars(5);
@@ -1271,7 +1275,7 @@ IsTokenSane(Token *tp)
 bool
 TokenStream::putIdentInTokenbuf(const jschar *identStart)
 {
-    int32 c, qc;
+    int32_t c, qc;
     const jschar *tmp = userbuf.addressOfNextRawChar();
     userbuf.setAddressOfNextRawChar(identStart);
 
@@ -1290,6 +1294,48 @@ TokenStream::putIdentInTokenbuf(const jschar *identStart)
     }
     userbuf.setAddressOfNextRawChar(tmp);
     return true;
+}
+
+bool
+TokenStream::checkForKeyword(const jschar *s, size_t length, TokenKind *ttp, JSOp *topp)
+{
+    JS_ASSERT(!ttp == !topp);
+
+    const KeywordInfo *kw = FindKeyword(s, length);
+    if (!kw)
+        return true;
+
+    if (kw->tokentype == TOK_RESERVED) {
+        return ReportCompileErrorNumber(cx, this, NULL, JSREPORT_ERROR,
+                                        JSMSG_RESERVED_ID, kw->chars);
+    }
+
+    if (kw->tokentype != TOK_STRICT_RESERVED) {
+        if (kw->version <= versionNumber()) {
+            /* Working keyword. */
+            if (ttp) {
+                *ttp = kw->tokentype;
+                *topp = (JSOp) kw->op;
+                return true;
+            }
+            return ReportCompileErrorNumber(cx, this, NULL, JSREPORT_ERROR,
+                                            JSMSG_RESERVED_ID, kw->chars);
+        }
+
+        /*
+         * The keyword is not in this version. Treat it as an identifier,
+         * unless it is let or yield which we treat as TOK_STRICT_RESERVED by
+         * falling through to the code below (ES5 forbids them in strict mode).
+         */
+        if (kw->tokentype != TOK_LET && kw->tokentype != TOK_YIELD)
+            return true;
+    }
+
+    /* Strict reserved word. */
+    if (isStrictMode())
+        return ReportStrictModeError(cx, this, NULL, NULL, JSMSG_RESERVED_ID, kw->chars);
+    return ReportCompileErrorNumber(cx, this, NULL, JSREPORT_STRICT | JSREPORT_WARNING,
+                                    JSMSG_RESERVED_ID, kw->chars);
 }
 
 enum FirstCharKind {
@@ -1324,7 +1370,7 @@ enum FirstCharKind {
  * Space:   9, 11, 12: '\t', '\v', '\f'
  * EOL:     10, 13: '\n', '\r'
  */
-static const uint8 firstCharKinds[] = {
+static const uint8_t firstCharKinds[] = {
 /*         0        1        2        3        4        5        6        7        8        9    */
 /*   0+ */ _______, _______, _______, _______, _______, _______, _______, _______, _______,   Space,
 /*  10+ */     EOL,   Space,   Space,     EOL, _______, _______, _______, _______, _______, _______,
@@ -1466,45 +1512,20 @@ TokenStream::getTokenInternal()
 
         /* Check for keywords unless parser asks us to ignore keywords. */
         if (!(flags & TSF_KEYWORD_IS_NAME)) {
-            const KeywordInfo *kw;
-            if (hadUnicodeEscape)
-                kw = FindKeyword(tokenbuf.begin(), tokenbuf.length());
-            else
-                kw = FindKeyword(identStart, userbuf.addressOfNextRawChar() - identStart);
-
-            if (kw) {
-                if (kw->tokentype == TOK_RESERVED) {
-                    if (!ReportCompileErrorNumber(cx, this, NULL, JSREPORT_ERROR,
-                                                  JSMSG_RESERVED_ID, kw->chars)) {
-                        goto error;
-                    }
-                } else if (kw->tokentype == TOK_STRICT_RESERVED) {
-                    if (isStrictMode()
-                        ? !ReportStrictModeError(cx, this, NULL, NULL, JSMSG_RESERVED_ID, kw->chars)
-                        : !ReportCompileErrorNumber(cx, this, NULL,
-                                                    JSREPORT_STRICT | JSREPORT_WARNING,
-                                                    JSMSG_RESERVED_ID, kw->chars)) {
-                        goto error;
-                    }
-                } else {
-                    if (kw->version <= versionNumber()) {
-                        tt = kw->tokentype;
-                        tp->t_op = (JSOp) kw->op;
-                        goto out;
-                    }
-
-                    /*
-                     * let/yield are a Mozilla extension starting in JS1.7. If we
-                     * aren't parsing for a version supporting these extensions,
-                     * conform to ES5 and forbid these names in strict mode.
-                     */
-                    if ((kw->tokentype == TOK_LET || kw->tokentype == TOK_YIELD) &&
-                        !ReportStrictModeError(cx, this, NULL, NULL, JSMSG_RESERVED_ID, kw->chars))
-                    {
-                        goto error;
-                    }
-                }
+            const jschar *chars;
+            size_t length;
+            if (hadUnicodeEscape) {
+                chars = tokenbuf.begin();
+                length = tokenbuf.length();
+            } else {
+                chars = identStart;
+                length = userbuf.addressOfNextRawChar() - identStart;
             }
+            tt = TOK_NAME;
+            if (!checkForKeyword(chars, length, &tt, &tp->t_op))
+                goto error;
+            if (tt != TOK_NAME)
+                goto out;
         }
 
         /*
@@ -1543,8 +1564,13 @@ TokenStream::getTokenInternal()
 
     if (c1kind == Equals) {
         if (matchChar('=')) {
-            tp->t_op = matchChar('=') ? JSOP_STRICTEQ : JSOP_EQ;
-            tt = TOK_EQOP;
+            if (matchChar('=')) {
+                tp->t_op = JSOP_STRICTEQ;
+                tt = TOK_STRICTEQ;
+            } else {
+                tp->t_op = JSOP_EQ;
+                tt = TOK_EQ;
+            }
         } else {
             tp->t_op = JSOP_NOP;
             tt = TOK_ASSIGN;
@@ -1581,7 +1607,7 @@ TokenStream::getTokenInternal()
 
                       default:
                         if ('0' <= c && c < '8') {
-                            int32 val = JS7_UNDEC(c);
+                            int32_t val = JS7_UNDEC(c);
 
                             c = peekChar();
                             /* Strict mode code allows only \0, then a non-digit. */
@@ -1597,7 +1623,7 @@ TokenStream::getTokenInternal()
                                 getChar();
                                 c = peekChar();
                                 if ('0' <= c && c < '8') {
-                                    int32 save = val;
+                                    int32_t save = val;
                                     val = 8 * val + JS7_UNDEC(c);
                                     if (val <= 0377)
                                         getChar();
@@ -1715,7 +1741,7 @@ TokenStream::getTokenInternal()
             if (!js_strtod(cx, numStart, userbuf.addressOfNextRawChar(), &dummy, &dval))
                 goto error;
         }
-        tp->t_dval = dval;
+        tp->setNumber(dval);
         tt = TOK_NUMBER;
         goto out;
     }
@@ -1735,7 +1761,7 @@ TokenStream::getTokenInternal()
     if (c1kind == Plus) {
         if (matchChar('=')) {
             tp->t_op = JSOP_ADD;
-            tt = TOK_ASSIGN;
+            tt = TOK_ADDASSIGN;
         } else if (matchChar('+')) {
             tt = TOK_INC;
         } else {
@@ -1801,7 +1827,7 @@ TokenStream::getTokenInternal()
         const jschar *dummy;
         if (!GetPrefixInteger(cx, numStart, userbuf.addressOfNextRawChar(), radix, &dummy, &dval))
             goto error;
-        tp->t_dval = dval;
+        tp->setNumber(dval);
         tt = TOK_NUMBER;
         goto out;
     }
@@ -1814,7 +1840,6 @@ TokenStream::getTokenInternal()
       case '\\':
         hadUnicodeEscape = matchUnicodeEscapeIdStart(&qc);
         if (hadUnicodeEscape) {
-            c = qc;
             identStart = userbuf.addressOfNextRawChar() - 6;
             goto identifier;
         }
@@ -1825,7 +1850,7 @@ TokenStream::getTokenInternal()
             tt = TOK_OR;
         } else if (matchChar('=')) {
             tp->t_op = JSOP_BITOR;
-            tt = TOK_ASSIGN;
+            tt = TOK_BITORASSIGN;
         } else {
             tt = TOK_BITOR;
         }
@@ -1834,18 +1859,18 @@ TokenStream::getTokenInternal()
       case '^':
         if (matchChar('=')) {
             tp->t_op = JSOP_BITXOR;
-            tt = TOK_ASSIGN;
+            tt = TOK_BITXORASSIGN;
         } else {
             tt = TOK_BITXOR;
         }
         break;
 
       case '&':
-        if (matchChar(c)) {
+        if (matchChar('&')) {
             tt = TOK_AND;
         } else if (matchChar('=')) {
             tp->t_op = JSOP_BITAND;
-            tt = TOK_ASSIGN;
+            tt = TOK_BITANDASSIGN;
         } else {
             tt = TOK_BITAND;
         }
@@ -1853,11 +1878,16 @@ TokenStream::getTokenInternal()
 
       case '!':
         if (matchChar('=')) {
-            tp->t_op = matchChar('=') ? JSOP_STRICTNE : JSOP_NE;
-            tt = TOK_EQOP;
+            if (matchChar('=')) {
+                tp->t_op = JSOP_STRICTNE;
+                tt = TOK_STRICTNE;
+            } else {
+                tp->t_op = JSOP_NE;
+                tt = TOK_NE;
+            }
         } else {
             tp->t_op = JSOP_NOT;
-            tt = TOK_UNARYOP;
+            tt = TOK_NOT;
         }
         break;
 
@@ -1869,7 +1899,7 @@ TokenStream::getTokenInternal()
 
       case '<':
 #if JS_HAS_XML_SUPPORT
-        if ((flags & TSF_OPERAND) && (hasXML() || peekChar() != '!')) {
+        if ((flags & TSF_OPERAND) && !isStrictMode() && (hasXML() || peekChar() != '!')) {
             if (!getXMLMarkup(&tt, &tp))
                 goto error;
             goto out;
@@ -1887,28 +1917,43 @@ TokenStream::getTokenInternal()
             }
             ungetChar('!');
         }
-        if (matchChar(c)) {
+        if (matchChar('<')) {
             tp->t_op = JSOP_LSH;
-            tt = matchChar('=') ? TOK_ASSIGN : TOK_SHOP;
+            tt = matchChar('=') ? TOK_LSHASSIGN : TOK_LSH;
         } else {
-            tp->t_op = matchChar('=') ? JSOP_LE : JSOP_LT;
-            tt = TOK_RELOP;
+            if (matchChar('=')) {
+                tp->t_op = JSOP_LE;
+                tt = TOK_LE;
+            } else {
+                tp->t_op = JSOP_LT;
+                tt = TOK_LT;
+            }
         }
         break;
 
       case '>':
-        if (matchChar(c)) {
-            tp->t_op = matchChar(c) ? JSOP_URSH : JSOP_RSH;
-            tt = matchChar('=') ? TOK_ASSIGN : TOK_SHOP;
+        if (matchChar('>')) {
+            if (matchChar('>')) {
+                tp->t_op = JSOP_URSH;
+                tt = matchChar('=') ? TOK_URSHASSIGN : TOK_URSH;
+            } else {
+                tp->t_op = JSOP_RSH;
+                tt = matchChar('=') ? TOK_RSHASSIGN : TOK_RSH;
+            }
         } else {
-            tp->t_op = matchChar('=') ? JSOP_GE : JSOP_GT;
-            tt = TOK_RELOP;
+            if (matchChar('=')) {
+                tp->t_op = JSOP_GE;
+                tt = TOK_GE;
+            } else {
+                tp->t_op = JSOP_GT;
+                tt = TOK_GT;
+            }
         }
         break;
 
       case '*':
         tp->t_op = JSOP_MUL;
-        tt = matchChar('=') ? TOK_ASSIGN : TOK_STAR;
+        tt = matchChar('=') ? TOK_MULASSIGN : TOK_STAR;
         break;
 
       case '/':
@@ -1962,10 +2007,9 @@ TokenStream::getTokenInternal()
          * Look for a regexp.
          */
         if (flags & TSF_OPERAND) {
-            uintN reflags, length;
-            JSBool inCharClass = JS_FALSE;
-
             tokenbuf.clear();
+
+            bool inCharClass = false;
             for (;;) {
                 c = getChar();
                 if (c == '\\') {
@@ -1973,9 +2017,9 @@ TokenStream::getTokenInternal()
                         goto error;
                     c = getChar();
                 } else if (c == '[') {
-                    inCharClass = JS_TRUE;
+                    inCharClass = true;
                 } else if (c == ']') {
-                    inCharClass = JS_FALSE;
+                    inCharClass = false;
                 } else if (c == '/' && !inCharClass) {
                     /* For compat with IE, allow unescaped / in char classes. */
                     break;
@@ -1989,53 +2033,58 @@ TokenStream::getTokenInternal()
                 if (!tokenbuf.append(c))
                     goto error;
             }
-            for (reflags = 0, length = tokenbuf.length() + 1; ; length++) {
+
+            RegExpFlag reflags = NoFlags;
+            uintN length = tokenbuf.length() + 1;
+            while (true) {
                 c = peekChar();
-                if (c == 'g' && !(reflags & JSREG_GLOB))
-                    reflags |= JSREG_GLOB;
+                if (c == 'g' && !(reflags & GlobalFlag))
+                    reflags = RegExpFlag(reflags | GlobalFlag);
                 else if (c == 'i' && !(reflags & IgnoreCaseFlag))
-                    reflags |= IgnoreCaseFlag;
+                    reflags = RegExpFlag(reflags | IgnoreCaseFlag);
                 else if (c == 'm' && !(reflags & MultilineFlag))
-                    reflags |= MultilineFlag;
+                    reflags = RegExpFlag(reflags | MultilineFlag);
                 else if (c == 'y' && !(reflags & StickyFlag))
-                    reflags |= StickyFlag;
+                    reflags = RegExpFlag(reflags | StickyFlag);
                 else
                     break;
                 getChar();
+                length++;
             }
+
             c = peekChar();
             if (JS7_ISLET(c)) {
-                char buf[2] = { '\0' };
+                char buf[2] = { '\0', '\0' };
                 tp->pos.begin.index += length + 1;
-                buf[0] = (char)c;
+                buf[0] = char(c);
                 ReportCompileErrorNumber(cx, this, NULL, JSREPORT_ERROR, JSMSG_BAD_REGEXP_FLAG,
                                          buf);
                 (void) getChar();
                 goto error;
             }
-            tp->t_reflags = reflags;
+            tp->setRegExpFlags(reflags);
             tt = TOK_REGEXP;
             break;
         }
 
         tp->t_op = JSOP_DIV;
-        tt = matchChar('=') ? TOK_ASSIGN : TOK_DIVOP;
+        tt = matchChar('=') ? TOK_DIVASSIGN : TOK_DIV;
         break;
 
       case '%':
         tp->t_op = JSOP_MOD;
-        tt = matchChar('=') ? TOK_ASSIGN : TOK_DIVOP;
+        tt = matchChar('=') ? TOK_MODASSIGN : TOK_MOD;
         break;
 
       case '~':
         tp->t_op = JSOP_BITNOT;
-        tt = TOK_UNARYOP;
+        tt = TOK_BITNOT;
         break;
 
       case '-':
         if (matchChar('=')) {
             tp->t_op = JSOP_SUB;
-            tt = TOK_ASSIGN;
+            tt = TOK_SUBASSIGN;
         } else if (matchChar(c)) {
             if (peekChar() == '>' && !(flags & TSF_DIRTYLINE)) {
                 flags &= ~TSF_IN_HTML_COMMENT;
@@ -2047,47 +2096,6 @@ TokenStream::getTokenInternal()
             tt = TOK_MINUS;
         }
         break;
-
-#if JS_HAS_SHARP_VARS
-      case '#':
-      {
-        uint32 n;
-
-        c = getCharIgnoreEOL();
-        if (!JS7_ISDEC(c)) {
-            ungetCharIgnoreEOL(c);
-            goto badchar;
-        }
-        n = (uint32)JS7_UNDEC(c);
-        for (;;) {
-            c = getChar();
-            if (!JS7_ISDEC(c))
-                break;
-            n = 10 * n + JS7_UNDEC(c);
-            if (n >= UINT16_LIMIT) {
-                ReportCompileErrorNumber(cx, this, NULL, JSREPORT_ERROR, JSMSG_SHARPVAR_TOO_BIG);
-                goto error;
-            }
-        }
-        tp->t_dval = (jsdouble) n;
-        if (cx->hasStrictOption() &&
-            (c == '=' || c == '#')) {
-            char buf[20];
-            JS_snprintf(buf, sizeof buf, "#%u%c", n, c);
-            if (!ReportCompileErrorNumber(cx, this, NULL, JSREPORT_WARNING | JSREPORT_STRICT,
-                                          JSMSG_DEPRECATED_USAGE, buf)) {
-                goto error;
-            }
-        }
-        if (c == '=')
-            tt = TOK_DEFSHARP;
-        else if (c == '#')
-            tt = TOK_USESHARP;
-        else
-            goto badchar;
-        break;
-      }
-#endif /* JS_HAS_SHARP_VARS */
 
       badchar:
       default:
@@ -2128,8 +2136,6 @@ TokenStream::getTokenInternal()
     return TOK_ERROR;
 }
 
-} /* namespace js */
-
 JS_FRIEND_API(int)
 js_fgets(char *buf, int size, FILE *file)
 {
@@ -2157,3 +2163,122 @@ js_fgets(char *buf, int size, FILE *file)
     buf[i] = '\0';
     return i;
 }
+
+#ifdef DEBUG
+const char *
+TokenKindToString(TokenKind tt)
+{
+    switch (tt) {
+      case TOK_ERROR:           return "TOK_ERROR";
+      case TOK_EOF:             return "TOK_EOF";
+      case TOK_EOL:             return "TOK_EOL";
+      case TOK_SEMI:            return "TOK_SEMI";
+      case TOK_COMMA:           return "TOK_COMMA";
+      case TOK_HOOK:            return "TOK_HOOK";
+      case TOK_COLON:           return "TOK_COLON";
+      case TOK_OR:              return "TOK_OR";
+      case TOK_AND:             return "TOK_AND";
+      case TOK_BITOR:           return "TOK_BITOR";
+      case TOK_BITXOR:          return "TOK_BITXOR";
+      case TOK_BITAND:          return "TOK_BITAND";
+      case TOK_PLUS:            return "TOK_PLUS";
+      case TOK_MINUS:           return "TOK_MINUS";
+      case TOK_STAR:            return "TOK_STAR";
+      case TOK_DIV:             return "TOK_DIV";
+      case TOK_MOD:             return "TOK_MOD";
+      case TOK_INC:             return "TOK_INC";
+      case TOK_DEC:             return "TOK_DEC";
+      case TOK_DOT:             return "TOK_DOT";
+      case TOK_LB:              return "TOK_LB";
+      case TOK_RB:              return "TOK_RB";
+      case TOK_LC:              return "TOK_LC";
+      case TOK_RC:              return "TOK_RC";
+      case TOK_LP:              return "TOK_LP";
+      case TOK_RP:              return "TOK_RP";
+      case TOK_NAME:            return "TOK_NAME";
+      case TOK_NUMBER:          return "TOK_NUMBER";
+      case TOK_STRING:          return "TOK_STRING";
+      case TOK_REGEXP:          return "TOK_REGEXP";
+      case TOK_TRUE:            return "TOK_TRUE";
+      case TOK_FALSE:           return "TOK_FALSE";
+      case TOK_NULL:            return "TOK_NULL";
+      case TOK_THIS:            return "TOK_THIS";
+      case TOK_FUNCTION:        return "TOK_FUNCTION";
+      case TOK_IF:              return "TOK_IF";
+      case TOK_ELSE:            return "TOK_ELSE";
+      case TOK_SWITCH:          return "TOK_SWITCH";
+      case TOK_CASE:            return "TOK_CASE";
+      case TOK_DEFAULT:         return "TOK_DEFAULT";
+      case TOK_WHILE:           return "TOK_WHILE";
+      case TOK_DO:              return "TOK_DO";
+      case TOK_FOR:             return "TOK_FOR";
+      case TOK_BREAK:           return "TOK_BREAK";
+      case TOK_CONTINUE:        return "TOK_CONTINUE";
+      case TOK_IN:              return "TOK_IN";
+      case TOK_VAR:             return "TOK_VAR";
+      case TOK_CONST:           return "TOK_CONST";
+      case TOK_WITH:            return "TOK_WITH";
+      case TOK_RETURN:          return "TOK_RETURN";
+      case TOK_NEW:             return "TOK_NEW";
+      case TOK_DELETE:          return "TOK_DELETE";
+      case TOK_TRY:             return "TOK_TRY";
+      case TOK_CATCH:           return "TOK_CATCH";
+      case TOK_FINALLY:         return "TOK_FINALLY";
+      case TOK_THROW:           return "TOK_THROW";
+      case TOK_INSTANCEOF:      return "TOK_INSTANCEOF";
+      case TOK_DEBUGGER:        return "TOK_DEBUGGER";
+      case TOK_XMLSTAGO:        return "TOK_XMLSTAGO";
+      case TOK_XMLETAGO:        return "TOK_XMLETAGO";
+      case TOK_XMLPTAGC:        return "TOK_XMLPTAGC";
+      case TOK_XMLTAGC:         return "TOK_XMLTAGC";
+      case TOK_XMLNAME:         return "TOK_XMLNAME";
+      case TOK_XMLATTR:         return "TOK_XMLATTR";
+      case TOK_XMLSPACE:        return "TOK_XMLSPACE";
+      case TOK_XMLTEXT:         return "TOK_XMLTEXT";
+      case TOK_XMLCOMMENT:      return "TOK_XMLCOMMENT";
+      case TOK_XMLCDATA:        return "TOK_XMLCDATA";
+      case TOK_XMLPI:           return "TOK_XMLPI";
+      case TOK_AT:              return "TOK_AT";
+      case TOK_DBLCOLON:        return "TOK_DBLCOLON";
+      case TOK_DBLDOT:          return "TOK_DBLDOT";
+      case TOK_FILTER:          return "TOK_FILTER";
+      case TOK_XMLELEM:         return "TOK_XMLELEM";
+      case TOK_XMLLIST:         return "TOK_XMLLIST";
+      case TOK_YIELD:           return "TOK_YIELD";
+      case TOK_LEXICALSCOPE:    return "TOK_LEXICALSCOPE";
+      case TOK_LET:             return "TOK_LET";
+      case TOK_RESERVED:        return "TOK_RESERVED";
+      case TOK_STRICT_RESERVED: return "TOK_STRICT_RESERVED";
+      case TOK_STRICTEQ:        return "TOK_STRICTEQ";
+      case TOK_EQ:              return "TOK_EQ";
+      case TOK_STRICTNE:        return "TOK_STRICTNE";
+      case TOK_NE:              return "TOK_NE";
+      case TOK_TYPEOF:          return "TOK_TYPEOF";
+      case TOK_VOID:            return "TOK_VOID";
+      case TOK_NOT:             return "TOK_NOT";
+      case TOK_BITNOT:          return "TOK_BITNOT";
+      case TOK_LT:              return "TOK_LT";
+      case TOK_LE:              return "TOK_LE";
+      case TOK_GT:              return "TOK_GT";
+      case TOK_GE:              return "TOK_GE";
+      case TOK_LSH:             return "TOK_LSH";
+      case TOK_RSH:             return "TOK_RSH";
+      case TOK_URSH:            return "TOK_URSH";
+      case TOK_ASSIGN:          return "TOK_ASSIGN";
+      case TOK_ADDASSIGN:       return "TOK_ADDASSIGN";
+      case TOK_SUBASSIGN:       return "TOK_SUBASSIGN";
+      case TOK_BITORASSIGN:     return "TOK_BITORASSIGN";
+      case TOK_BITXORASSIGN:    return "TOK_BITXORASSIGN";
+      case TOK_BITANDASSIGN:    return "TOK_BITANDASSIGN";
+      case TOK_LSHASSIGN:       return "TOK_LSHASSIGN";
+      case TOK_RSHASSIGN:       return "TOK_RSHASSIGN";
+      case TOK_URSHASSIGN:      return "TOK_URSHASSIGN";
+      case TOK_MULASSIGN:       return "TOK_MULASSIGN";
+      case TOK_DIVASSIGN:       return "TOK_DIVASSIGN";
+      case TOK_MODASSIGN:       return "TOK_MODASSIGN";
+      case TOK_LIMIT:           break;
+    }
+
+    return "<bad TokenKind>";
+}
+#endif

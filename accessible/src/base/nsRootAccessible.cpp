@@ -45,6 +45,7 @@
 #include "nsAccUtils.h"
 #include "nsCoreUtils.h"
 #include "Relation.h"
+#include "Role.h"
 #include "States.h"
 
 #include "mozilla/dom/Element.h"
@@ -142,10 +143,10 @@ nsRootAccessible::GetName(nsAString& aName)
   return document->GetTitle(aName);
 }
 
-PRUint32
+role
 nsRootAccessible::NativeRole()
 {
-  // If it's a <dialog> or <wizard>, use nsIAccessibleRole::ROLE_DIALOG instead
+  // If it's a <dialog> or <wizard>, use roles::DIALOG instead
   dom::Element *root = mDocument->GetRootElement();
   if (root) {
     nsCOMPtr<nsIDOMElement> rootElement(do_QueryInterface(root));
@@ -153,7 +154,7 @@ nsRootAccessible::NativeRole()
       nsAutoString name;
       rootElement->GetLocalName(name);
       if (name.EqualsLiteral("dialog") || name.EqualsLiteral("wizard")) {
-        return nsIAccessibleRole::ROLE_DIALOG; // Always at the root
+        return roles::DIALOG; // Always at the root
       }
     }
   }
@@ -391,14 +392,11 @@ nsRootAccessible::ProcessDOMEvent(nsIDOMEvent* aDOMEvent)
   nsINode* targetNode = accessible->GetNode();
 
 #ifdef MOZ_XUL
-  bool isTree = targetNode->IsElement() &&
-    targetNode->AsElement()->NodeInfo()->Equals(nsGkAtoms::tree, kNameSpaceID_XUL);
-
-  if (isTree) {
-    nsRefPtr<nsXULTreeAccessible> treeAcc = do_QueryObject(accessible);
-    NS_ASSERTION(treeAcc,
-                 "Accessible for xul:tree isn't nsXULTreeAccessible.");
-
+  nsRefPtr<nsXULTreeAccessible> treeAcc;
+  if (targetNode->IsElement() &&
+      targetNode->AsElement()->NodeInfo()->Equals(nsGkAtoms::tree,
+                                                  kNameSpaceID_XUL)) {
+    treeAcc = do_QueryObject(accessible);
     if (treeAcc) {
       if (eventType.EqualsLiteral("TreeViewChanged")) {
         treeAcc->TreeViewChanged();
@@ -409,7 +407,7 @@ nsRootAccessible::ProcessDOMEvent(nsIDOMEvent* aDOMEvent)
         HandleTreeRowCountChangedEvent(aDOMEvent, treeAcc);
         return;
       }
-      
+
       if (eventType.EqualsLiteral("TreeInvalidated")) {
         HandleTreeInvalidatedEvent(aDOMEvent, treeAcc);
         return;
@@ -451,18 +449,16 @@ nsRootAccessible::ProcessDOMEvent(nsIDOMEvent* aDOMEvent)
     return;
   }
 
-  nsAccessible *treeItemAccessible = nsnull;
+  nsAccessible* treeItemAcc = nsnull;
 #ifdef MOZ_XUL
-  // If it's a tree element, need the currently selected item
-  if (isTree) {
-    treeItemAccessible = accessible->CurrentItem();
-    if (treeItemAccessible)
-      accessible = treeItemAccessible;
+  // If it's a tree element, need the currently selected item.
+  if (treeAcc) {
+    treeItemAcc = accessible->CurrentItem();
+    if (treeItemAcc)
+      accessible = treeItemAcc;
   }
-#endif
 
-#ifdef MOZ_XUL
-  if (treeItemAccessible && eventType.EqualsLiteral("OpenStateChange")) {
+  if (treeItemAcc && eventType.EqualsLiteral("OpenStateChange")) {
     PRUint64 state = accessible->State();
     bool isEnabled = (state & states::EXPANDED) != 0;
 
@@ -472,7 +468,9 @@ nsRootAccessible::ProcessDOMEvent(nsIDOMEvent* aDOMEvent)
     return;
   }
 
-  if (treeItemAccessible && eventType.EqualsLiteral("select")) {
+  if (treeItemAcc && eventType.EqualsLiteral("select")) {
+    // XXX: We shouldn't be based on DOM select event which doesn't provide us
+    // any context info. We should integrate into nsTreeSelection instead.
     // If multiselect tree, we should fire selectionadd or selection removed
     if (FocusMgr()->HasDOMFocus(targetNode)) {
       nsCOMPtr<nsIDOMXULMultiSelectControlElement> multiSel =
@@ -489,8 +487,10 @@ nsRootAccessible::ProcessDOMEvent(nsIDOMEvent* aDOMEvent)
         return;
       }
 
-      nsEventShell::FireEvent(nsIAccessibleEvent::EVENT_SELECTION,
-                              treeItemAccessible);
+      nsRefPtr<AccSelChangeEvent> selChangeEvent =
+        new AccSelChangeEvent(treeAcc, treeItemAcc,
+                              AccSelChangeEvent::eSelectionAdd);
+      nsEventShell::FireEvent(selChangeEvent);
       return;
     }
   }
@@ -503,7 +503,7 @@ nsRootAccessible::ProcessDOMEvent(nsIDOMEvent* aDOMEvent)
     HandlePopupShownEvent(accessible);
   }
   else if (eventType.EqualsLiteral("DOMMenuInactive")) {
-    if (accessible->Role() == nsIAccessibleRole::ROLE_MENUPOPUP) {
+    if (accessible->Role() == roles::MENUPOPUP) {
       nsEventShell::FireEvent(nsIAccessibleEvent::EVENT_MENUPOPUP_END,
                               accessible);
     }
@@ -650,16 +650,16 @@ nsRootAccessible::RelationByType(PRUint32 aType)
 void
 nsRootAccessible::HandlePopupShownEvent(nsAccessible* aAccessible)
 {
-  PRUint32 role = aAccessible->Role();
+  roles::Role role = aAccessible->Role();
 
-  if (role == nsIAccessibleRole::ROLE_MENUPOPUP) {
+  if (role == roles::MENUPOPUP) {
     // Don't fire menupopup events for combobox and autocomplete lists.
     nsEventShell::FireEvent(nsIAccessibleEvent::EVENT_MENUPOPUP_START,
                             aAccessible);
     return;
   }
 
-  if (role == nsIAccessibleRole::ROLE_TOOLTIP) {
+  if (role == roles::TOOLTIP) {
     // There is a single <xul:tooltip> node which Mozilla moves around.
     // The accessible for it stays the same no matter where it moves. 
     // AT's expect to get an EVENT_SHOW for the tooltip. 
@@ -668,15 +668,15 @@ nsRootAccessible::HandlePopupShownEvent(nsAccessible* aAccessible)
     return;
   }
 
-  if (role == nsIAccessibleRole::ROLE_COMBOBOX_LIST) {
+  if (role == roles::COMBOBOX_LIST) {
     // Fire expanded state change event for comboboxes and autocompeletes.
     nsAccessible* combobox = aAccessible->Parent();
     if (!combobox)
       return;
 
-    PRUint32 comboboxRole = combobox->Role();
-    if (comboboxRole == nsIAccessibleRole::ROLE_COMBOBOX ||
-        comboboxRole == nsIAccessibleRole::ROLE_AUTOCOMPLETE) {
+    roles::Role comboboxRole = combobox->Role();
+    if (comboboxRole == roles::COMBOBOX || 
+	comboboxRole == roles::AUTOCOMPLETE) {
       nsRefPtr<AccEvent> event =
         new AccStateChangeEvent(combobox, states::EXPANDED, true);
       if (event)

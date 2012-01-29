@@ -199,17 +199,6 @@ function sendHeapMinNotifications()
   sendHeapMinNotificationsInner();
 }
 
-function toggleTreeVisibility(aEvent)
-{
-  var headerElem = aEvent.target;
-
-  // Replace "header-" with "pre-" in the header element's id to get the id of
-  // the corresponding pre element.
-  var treeElem = $(headerElem.id.replace(/^header-/, 'pre-'));
-
-  treeElem.classList.toggle('collapsed');
-}
-
 function Reporter(aPath, aKind, aUnits, aAmount, aDescription)
 {
   this._path        = aPath;
@@ -236,15 +225,15 @@ Reporter.prototype = {
   },
 
   treeNameMatches: function(aTreeName) {
+    // Nb: the '/' must be present, because we have a KIND_OTHER reporter
+    // called "explicit" which is not part of the "explicit" tree.
+    aTreeName += "/";
     return this._path.slice(0, aTreeName.length) === aTreeName;
   }
 };
 
-function getReportersByProcess()
+function getReportersByProcess(aMgr)
 {
-  var mgr = Cc["@mozilla.org/memory-reporter-manager;1"].
-      getService(Ci.nsIMemoryReporterManager);
-
   // Process each memory reporter:
   // - Make a copy of it into a sub-table indexed by its process.  Each copy
   //   is a Reporter object.  After this point we never use the original memory
@@ -276,7 +265,7 @@ function getReportersByProcess()
   }
 
   // Process vanilla reporters first, then multi-reporters.
-  var e = mgr.enumerateReporters();
+  var e = aMgr.enumerateReporters();
   while (e.hasMoreElements()) {
     var rOrig = e.getNext().QueryInterface(Ci.nsIMemoryReporter);
     try {
@@ -288,7 +277,7 @@ function getReportersByProcess()
             rOrig.path + ": " + e);
     }
   }
-  var e = mgr.enumerateMultiReporters();
+  var e = aMgr.enumerateMultiReporters();
   while (e.hasMoreElements()) {
     var mrOrig = e.getNext().QueryInterface(Ci.nsIMemoryMultiReporter);
     try {
@@ -318,17 +307,26 @@ function update()
   else
     content.parentNode.classList.add('non-verbose');
 
+  var mgr = Cc["@mozilla.org/memory-reporter-manager;1"].
+      getService(Ci.nsIMemoryReporterManager);
+
+  var text = "";
+
   // Generate output for one process at a time.  Always start with the
   // Main process.
-  var reportersByProcess = getReportersByProcess();
-  var text = genProcessText("Main", reportersByProcess["Main"]);
+  var reportersByProcess = getReportersByProcess(mgr);
+  var hasMozMallocUsableSize = mgr.hasMozMallocUsableSize;
+  text += genProcessText("Main", reportersByProcess["Main"],
+                         hasMozMallocUsableSize);
   for (var process in reportersByProcess) {
     if (process !== "Main") {
-      text += genProcessText(process, reportersByProcess[process]);
+      text += genProcessText(process, reportersByProcess[process],
+                             hasMozMallocUsableSize);
     }
   }
 
   // Memory-related actions.
+  const UpDesc = "Re-measure.";
   const GCDesc = "Do a global garbage collection.";
   const CCDesc = "Do a cycle collection.";
   const MPDesc = "Send three \"heap-minimize\" notifications in a " +
@@ -337,7 +335,9 @@ function update()
                  "process to reduce memory usage in other ways, e.g. by " +
                  "flushing various caches.";
 
+  // The "Update" button has an id so it can be clicked in a test.
   text += "<div>" +
+    "<button title='" + UpDesc + "' onclick='update()' id='updateButton'>Update</button>" +
     "<button title='" + GCDesc + "' onclick='doGlobalGC()'>GC</button>" +
     "<button title='" + CCDesc + "' onclick='doCC()'>CC</button>" +
     "<button title='" + MPDesc + "' onclick='sendHeapMinNotifications()'>" + "Minimize memory usage</button>" +
@@ -355,19 +355,22 @@ function update()
           "</div>";
 
   text += "<div>" +
-          "<span class='legend'>Hover the pointer over the name of a memory " +
-          "reporter to see a detailed description of what it measures. Click a " +
-          "heading to expand or collapse its tree.</span>" +
+          "<span class='legend'>Click on a non-leaf node in a tree to expand ('++') " +
+          "or collapse ('--') its children.</span>" +
           "</div>";
+  text += "<div>" +
+          "<span class='legend'>Hover the pointer over the name of a memory " +
+          "reporter to see a description of what it measures.</span>";
 
   var div = document.createElement("div");
   div.innerHTML = text;
   content.appendChild(div);
 }
 
-// There are two kinds of TreeNode.  Those that correspond to Reporters
-// have more properties.  The remainder are just scaffolding nodes for the
-// tree, whose values are derived from their children.
+// There are two kinds of TreeNode.
+// - Leaf TreeNodes correspond to Reporters and have more properties.
+// - Non-leaf TreeNodes are just scaffolding nodes for the tree;  their values
+//   are derived from their children.
 function TreeNode(aName)
 {
   // Nb: _units is not needed, it's always UNITS_BYTES.
@@ -377,10 +380,13 @@ function TreeNode(aName)
   // - _amount (which is never |kUnknown|)
   // - _description
   //
-  // TreeNodes corresponding to Reporters have these properties added later:
+  // Leaf TreeNodes have these properties added later:
   // - _kind
   // - _nMerged (if > 1)
   // - _hasProblem (only defined if true)
+  //
+  // Non-leaf TreeNodes have these properties added later:
+  // - _hideKids (only defined if true)
 }
 
 TreeNode.prototype = {
@@ -418,8 +424,9 @@ function buildTree(aReporters, aTreeName)
   // build the tree but only fill the properties that we can with a top-down
   // traversal.
 
-  // Is there any reporter which matches aTreeName?  If not, we'll create a
-  // dummy one.
+  // There should always be at least one matching reporter when |aTreeName| is
+  // "explicit".  But there may be zero for "map" trees;  if that happens,
+  // bail.
   var foundReporter = false;
   for (var path in aReporters) {
     if (aReporters[path].treeNameMatches(aTreeName)) {
@@ -427,9 +434,8 @@ function buildTree(aReporters, aTreeName)
       break;
     }
   }
-
   if (!foundReporter) {
-    // We didn't find any reporters for this tree, so bail.
+    assert(aTreeName !== 'explicit');
     return null;
   }
 
@@ -473,7 +479,7 @@ function buildTree(aReporters, aTreeName)
     var path = aPrepath ? aPrepath + '/' + aT._name : aT._name;
     if (aT._kids.length === 0) {
       // Leaf node.  Must have a reporter.
-      assert(aT._kind !== undefined, "aT._kind !== undefined");
+      assert(aT._kind !== undefined, "aT._kind is undefined for leaf node");
       aT._description = getDescription(aReporters, path);
       var amount = getBytes(aReporters, path);
       if (amount !== kUnknown) {
@@ -483,35 +489,15 @@ function buildTree(aReporters, aTreeName)
         aT._hasProblem = true;
       }
     } else {
-      // Non-leaf node.  Get the size of the children.
+      // Non-leaf node.  Derive its size and description entirely from its
+      // children.
+      assert(aT._kind === undefined, "aT._kind is defined for non-leaf node");
       var childrenBytes = 0;
       for (var i = 0; i < aT._kids.length; i++) {
-        // Allow for kUnknown, treat it like 0.
         childrenBytes += fillInTree(aT._kids[i], path);
       }
-      if (aT._kind !== undefined) {
-        aT._description = getDescription(aReporters, path);
-        var amount = getBytes(aReporters, path);
-        if (amount !== kUnknown) {
-          // Non-leaf node with its own reporter.  Use the reporter and add
-          // an "other" child node.
-          aT._amount = amount;
-          var other = new TreeNode("other");
-          other._description = "All unclassified " + aT._name + " memory.",
-          other._amount = aT._amount - childrenBytes,
-          aT._kids.push(other);
-        } else {
-          // Non-leaf node with a reporter that returns kUnknown.
-          // Use the sum of the children and mark it as problematic.
-          aT._amount = childrenBytes;
-          aT._hasProblem = true;
-        }
-      } else {
-        // Non-leaf node without its own reporter.  Derive its size and
-        // description entirely from its children.
-        aT._amount = childrenBytes;
-        aT._description = "The sum of all entries below '" + aT._name + "'.";
-      }
+      aT._amount = childrenBytes;
+      aT._description = "The sum of all entries below '" + aT._name + "'.";
     }
     assert(aT._amount !== kUnknown, "aT._amount !== kUnknown");
     return aT._amount;
@@ -536,104 +522,183 @@ function buildTree(aReporters, aTreeName)
 }
 
 /**
- * Do some work which only makes sense for the 'explicit' tree.
+ * Ignore all the memory reporters that belong to a tree;  this involves
+ * explicitly marking them as done.
+ *
+ * @param aReporters
+ *        The table of Reporters, indexed by path.
+ * @param aTreeName
+ *        The name of the tree being built.
  */
-function fixUpExplicitTree(aT, aReporters) {
-  // Determine how many bytes are reported by heap reporters.  Be careful
-  // with non-leaf reporters;  if we count a non-leaf reporter we don't want
-  // to count any of its child reporters.
+function ignoreTree(aReporters, aTreeName)
+{
+  for (var path in aReporters) {
+    var r = aReporters[path];
+    if (r.treeNameMatches(aTreeName)) {
+      var dummy = getBytes(aReporters, path);
+    }
+  }
+}
+
+/**
+ * Do some work which only makes sense for the 'explicit' tree.
+ *
+ * @param aT
+ *        The tree.
+ * @param aReporters
+ *        Table of Reporters for this process, indexed by _path.
+ * @return A boolean indicating if "heap-allocated" is known for the process.
+ */
+function fixUpExplicitTree(aT, aReporters)
+{
+  // Determine how many bytes are reported by heap reporters.
   var s = "";
   function getKnownHeapUsedBytes(aT)
   {
-    if (aT._kind === KIND_HEAP) {
-      return aT._amount;
+    var n = 0;
+    if (aT._kids.length === 0) {
+      // Leaf node.
+      assert(aT._kind !== undefined, "aT._kind is undefined for leaf node");
+      n = aT._kind === KIND_HEAP ? aT._amount : 0;
     } else {
-      var n = 0;
       for (var i = 0; i < aT._kids.length; i++) {
         n += getKnownHeapUsedBytes(aT._kids[i]);
       }
-      return n;
     }
+    return n;
   }
 
   // A special case:  compute the derived "heap-unclassified" value.  Don't
   // mark "heap-allocated" when we get its size because we want it to appear
   // in the "Other Measurements" list.
-  var heapUsedBytes = getBytes(aReporters, "heap-allocated", true);
-  var unknownHeapUsedBytes = 0;
-  var hasProblem = true;
-  if (heapUsedBytes !== kUnknown) {
-    unknownHeapUsedBytes = heapUsedBytes - getKnownHeapUsedBytes(aT);
-    hasProblem = false;
+  var heapAllocatedBytes = getBytes(aReporters, "heap-allocated", true);
+  var heapUnclassifiedT = new TreeNode("heap-unclassified");
+  var hasKnownHeapAllocated = heapAllocatedBytes !== kUnknown;
+  if (hasKnownHeapAllocated) {
+    heapUnclassifiedT._amount =
+      heapAllocatedBytes - getKnownHeapUsedBytes(aT);
+  } else {
+    heapUnclassifiedT._amount = 0;
+    heapUnclassifiedT._hasProblem = true;
   }
-  var heapUnclassified = new TreeNode("heap-unclassified");
   // This kindToString() ensures the "(Heap)" prefix is set without having to
   // set the _kind property, which would mean that there is a corresponding
   // Reporter for this TreeNode (which isn't true).
-  heapUnclassified._description =
+  heapUnclassifiedT._description =
       kindToString(KIND_HEAP) +
       "Memory not classified by a more specific reporter. This includes " +
-      "waste due to internal fragmentation in the heap allocator (caused " +
-      "when the allocator rounds up request sizes).";
-  heapUnclassified._amount = unknownHeapUsedBytes;
-  if (hasProblem) {
-    heapUnclassified._hasProblem = true;
-  }
+      "slop bytes due to internal fragmentation in the heap allocator "
+      "(caused when the allocator rounds up request sizes).";
 
-  aT._kids.push(heapUnclassified);
-  aT._amount += unknownHeapUsedBytes;
+  aT._kids.push(heapUnclassifiedT);
+  aT._amount += heapUnclassifiedT._amount;
+
+  return hasKnownHeapAllocated;
 }
 
 /**
- * Sort all kid nodes from largest to smallest and aggregate insignificant
- * nodes.
+ * Sort all kid nodes from largest to smallest, and insert aggregate nodes
+ * where appropriate.
  *
  * @param aTotalBytes
  *        The size of the tree's root node.
  * @param aT
  *        The tree.
  */
-function filterTree(aTotalBytes, aT)
+function sortTreeAndInsertAggregateNodes(aTotalBytes, aT)
 {
-  const omitThresholdPerc = 0.5; /* percent */
+  const kSignificanceThresholdPerc = 1;
 
-  function shouldOmit(aBytes)
+  function isInsignificant(aT)
   {
     return !gVerbose &&
            aTotalBytes !== kUnknown &&
-           (100 * aBytes / aTotalBytes) < omitThresholdPerc;
+           (100 * aT._amount / aTotalBytes) < kSignificanceThresholdPerc;
+  }
+
+  if (aT._kids.length === 0) {
+    return;
   }
 
   aT._kids.sort(TreeNode.compare);
 
-  for (var i = 0; i < aT._kids.length; i++) {
-    if (shouldOmit(aT._kids[i]._amount)) {
-      // This sub-tree is below the significance threshold
-      // Remove it and all remaining (smaller) sub-trees, and
-      // replace them with a single aggregate node.
+  // If the first child is insignificant, they all are, and there's no point
+  // creating an aggregate node that lacks siblings.  Just set the parent's
+  // _hideKids property and process all children.
+  if (isInsignificant(aT._kids[0])) {
+    aT._hideKids = true;
+    for (var i = 0; i < aT._kids.length; i++) {
+      sortTreeAndInsertAggregateNodes(aTotalBytes, aT._kids[i]);
+    }
+    return;
+  }
+
+  // Look at all children except the last one.
+  for (var i = 0; i < aT._kids.length - 1; i++) {
+    if (isInsignificant(aT._kids[i])) {
+      // This child is below the significance threshold.  If there are other
+      // (smaller) children remaining, move them under an aggregate node.
       var i0 = i;
+      var nAgg = aT._kids.length - i0;
+      // Create an aggregate node.
+      var aggT = new TreeNode("(" + nAgg + " tiny)");
       var aggBytes = 0;
       for ( ; i < aT._kids.length; i++) {
         aggBytes += aT._kids[i]._amount;
+        aggT._kids.push(aT._kids[i]);
       }
-      aT._kids.splice(i0, aT._kids.length);
-      var n = i - i0;
-      var rSub = new TreeNode("(" + n + " omitted)");
-      rSub._amount = aggBytes;
-      rSub._description =
-        n + " sub-trees that were below the " + omitThresholdPerc +
-        "% significance threshold.  Click 'More verbose' at the bottom of " +
-        "this page to see them.";
-
-      // Add the "omitted" sub-tree at the end and then re-sort, because the
-      // sum of the omitted sub-trees may be larger than some of the shown
-      // sub-trees.
-      aT._kids[i0] = rSub;
+      aggT._hideKids = true;
+      aggT._amount = aggBytes;
+      aggT._description =
+        nAgg + " sub-trees that are below the " + kSignificanceThresholdPerc +
+        "% significance threshold.";
+      aT._kids.splice(i0, nAgg, aggT);
       aT._kids.sort(TreeNode.compare);
-      break;
+
+      // Process the moved children.
+      for (i = 0; i < aggT._kids.length; i++) {
+        sortTreeAndInsertAggregateNodes(aTotalBytes, aggT._kids[i]);
+      }
+      return;
     }
-    filterTree(aTotalBytes, aT._kids[i]);
+
+    sortTreeAndInsertAggregateNodes(aTotalBytes, aT._kids[i]);
   }
+
+  // The first n-1 children were significant.  Don't consider if the last child
+  // is significant;  there's no point creating an aggregate node that only has
+  // one child.  Just process it.
+  sortTreeAndInsertAggregateNodes(aTotalBytes, aT._kids[i]);
+}
+
+function genWarningText(aHasKnownHeapAllocated, aHasMozMallocUsableSize)
+{
+  var warningText = "";
+
+  if (!aHasKnownHeapAllocated && !aHasMozMallocUsableSize) {
+    warningText =
+      "<p class='accuracyWarning'>WARNING: the 'heap-allocated' memory " +
+      "reporter and the moz_malloc_usable_size() function do not work for " +
+      "this platform and/or configuration.  This means that " +
+      "'heap-unclassified' is zero and the 'explicit' tree shows " +
+      "much less memory than it should.</p>\n\n";
+
+  } else if (!aHasKnownHeapAllocated) {
+    warningText =
+      "<p class='accuracyWarning'>WARNING: the 'heap-allocated' memory " +
+      "reporter does not work for this platform and/or configuration. " +
+      "This means that 'heap-unclassified' is zero and the 'explicit' tree " +
+      "shows less memory than it should.</p>\n\n";
+
+  } else if (!aHasMozMallocUsableSize) {
+    warningText =
+      "<p class='accuracyWarning'>WARNING: the moz_malloc_usable_size() " +
+      "function does not work for this platform and/or configuration. " +
+      "This means that much of the heap-allocated memory is not measured " +
+      "by individual memory reporters and so will fall under " +
+      "'heap-unclassified'.</p>\n\n";
+  }
+  return warningText;
 }
 
 /**
@@ -643,23 +708,38 @@ function filterTree(aTotalBytes, aT)
  *        The name of the process.
  * @param aReporters
  *        Table of Reporters for this process, indexed by _path.
+ * @param aHasMozMallocUsableSize
+ *        Boolean indicating if moz_malloc_usable_size works.
  * @return The generated text.
  */
-function genProcessText(aProcess, aReporters)
+function genProcessText(aProcess, aReporters, aHasMozMallocUsableSize)
 {
   var explicitTree = buildTree(aReporters, 'explicit');
-  fixUpExplicitTree(explicitTree, aReporters);
-  filterTree(explicitTree._amount, explicitTree);
+  var hasKnownHeapAllocated = fixUpExplicitTree(explicitTree, aReporters);
+  sortTreeAndInsertAggregateNodes(explicitTree._amount, explicitTree);
   var explicitText = genTreeText(explicitTree, aProcess);
 
-  var mapTreeText = '';
-  kMapTreePaths.forEach(function(t) {
-    var tree = buildTree(aReporters, t);
+  // Generate any warnings about inaccuracies due to platform limitations.
+  // The newlines give nice spacing if we cut+paste into a text buffer.
+  var warningText = "";
+  var accuracyTagText = "<p class='accuracyWarning'>";
+  var warningText =
+        genWarningText(hasKnownHeapAllocated, aHasMozMallocUsableSize);
 
-    // |tree| will be null if we don't have any reporters for the given path.
-    if (tree) {
-      filterTree(tree._amount, tree);
-      mapTreeText += genTreeText(tree, aProcess);
+  // We only show these breakdown trees in verbose mode.
+  var mapTreeText = "";
+  kMapTreePaths.forEach(function(t) {
+    if (gVerbose) {
+      var tree = buildTree(aReporters, t);
+
+      // |tree| will be null if we don't have any reporters for the given path.
+      if (tree) {
+        sortTreeAndInsertAggregateNodes(tree._amount, tree);
+        tree._hideKids = true;   // map trees are always initially collapsed
+        mapTreeText += genTreeText(tree, aProcess);
+      }
+    } else {
+      ignoreTree(aReporters, t);
     }
   });
 
@@ -669,7 +749,7 @@ function genProcessText(aProcess, aReporters)
 
   // The newlines give nice spacing if we cut+paste into a text buffer.
   return "<h1>" + aProcess + " Process</h1>\n\n" +
-         explicitText + mapTreeText + otherText +
+         warningText + explicitText + mapTreeText + otherText +
          "<hr></hr>";
 }
 
@@ -800,9 +880,18 @@ function getDescription(aReporters, aPath)
   return r._description;
 }
 
+// There's a subset of the Unicode "light" box-drawing chars that are widely
+// implemented in terminals, and this code sticks to that subset to maximize
+// the chance that cutting and pasting about:memory output to a terminal will
+// work correctly:
+const kHorizontal       = "\u2500",
+      kVertical         = "\u2502",
+      kUpAndRight       = "\u2514",
+      kVerticalAndRight = "\u251c";
+
 function genMrValueText(aValue)
 {
-  return "<span class='mrValue'>" + aValue + "</span>";
+  return "<span class='mrValue'>" + aValue + " </span>";
 }
 
 function kindToString(aKind)
@@ -826,7 +915,7 @@ function escapeAll(aStr)
 
 // Compartment reporter names are URLs and so can include forward slashes.  But
 // forward slash is the memory reporter path separator.  So the memory
-// reporters change them to backslashes.  Undo that here.  
+// reporters change them to backslashes.  Undo that here.
 function flipBackslashes(aStr)
 {
   return aStr.replace(/\\/g, '/');
@@ -842,25 +931,84 @@ function prepDesc(aStr)
   return escapeAll(flipBackslashes(aStr));
 }
 
-function genMrNameText(aKind, aDesc, aName, aHasProblem, aNMerged)
+function genMrNameText(aKind, aShowSubtrees, aHasKids, aDesc, aName,
+                       aHasProblem, aNMerged)
 {
-  var text = "-- <span class='mrName hasDesc' title='" +
-             kindToString(aKind) + prepDesc(aDesc) +
-             "'>" + prepName(aName) + "</span>";
+  var text = "";
+  if (aHasKids) {
+    if (aShowSubtrees) {
+      text += "<span class='mrSep hidden'>++ </span>";
+      text += "<span class='mrSep'>-- </span>";
+    } else {
+      text += "<span class='mrSep'>++ </span>";
+      text += "<span class='mrSep hidden'>-- </span>";
+    }
+  } else {
+    text += "<span class='mrSep'>" + kHorizontal + kHorizontal + " </span>";
+  }
+  text += "<span class='mrName' title='" +
+          kindToString(aKind) + prepDesc(aDesc) + "'>" +
+          prepName(aName) + "</span>";
   if (aHasProblem) {
     const problemDesc =
-      "Warning: this memory reporter was unable to compute a useful value. " +
-      "The reported value is the sum of all entries below '" + aName + "', " +
-      "which is probably less than the true value.";
-    text += " <span class='mrStar' title=\"" + problemDesc + "\">[*]</span>";
+      "Warning: this memory reporter was unable to compute a useful value. ";
+    text += "<span class='mrStar' title=\"" + problemDesc + "\"> [*]</span>";
   }
   if (aNMerged) {
     const dupDesc = "This value is the sum of " + aNMerged +
                     " memory reporters that all have the same path.";
-    text += " <span class='mrStar' title=\"" + dupDesc + "\">[" + 
+    text += "<span class='mrStar' title=\"" + dupDesc + "\"> [" +
             aNMerged + "]</span>";
   }
   return text + '\n';
+}
+
+// This is used to record which sub-trees have been toggled, so the
+// collapsed/expanded state can be replicated when the page is regenerated.
+// It can end up holding IDs of nodes that no longer exist, e.g. for
+// compartments that have been closed.  This doesn't seem like a big deal,
+// because the number is limited by the number of entries the user has changed
+// from their original state.
+var gToggles = {};
+
+function toggle(aEvent)
+{
+  // This relies on each line being a span that contains at least five spans:
+  // mrValue, mrPerc, mrSep ('++'), mrSep ('--'), mrName, and then zero or more
+  // mrStars.  All whitespace must be within one of these spans for this
+  // function to find the right nodes.  And the span containing the children of
+  // this line must immediately follow.  Assertions check this.
+
+  function assertClassName(span, className) {
+    assert(span, "undefined " + className);
+    assert(span.nodeName === "span", "non-span " + className);
+    assert(span.classList.contains(className), "bad " + className);
+  }
+
+  // |aEvent.target| will be one of the five spans.  Get the outer span.
+  var outerSpan = aEvent.target.parentNode;
+  assertClassName(outerSpan, "hasKids");
+
+  // Toggle visibility of the '++' and '--' separators.
+  var plusSpan  = outerSpan.childNodes[2];
+  var minusSpan = outerSpan.childNodes[3];
+  assertClassName(plusSpan,  "mrSep");
+  assertClassName(minusSpan, "mrSep");
+  plusSpan .classList.toggle("hidden");
+  minusSpan.classList.toggle("hidden");
+
+  // Toggle visibility of the span containing this node's children.
+  var subTreeSpan = outerSpan.nextSibling;
+  assertClassName(subTreeSpan, "kids");
+  subTreeSpan.classList.toggle("hidden");
+
+  // Record/unrecord that this sub-tree was toggled.
+  var treeId = outerSpan.id;
+  if (gToggles[treeId]) {
+    delete gToggles[treeId];
+  } else {
+    gToggles[treeId] = true;
+  }
 }
 
 /**
@@ -881,6 +1029,8 @@ function genTreeText(aT, aProcess)
   /**
    * Generates the text for a particular tree, without a heading.
    *
+   * @param aPrePath
+   *        The partial path leading up to this node.
    * @param aT
    *        The tree.
    * @param aIndentGuide
@@ -892,7 +1042,7 @@ function genTreeText(aT, aProcess)
    *        The length of the formatted byte count of the top node in the tree.
    * @return The generated text.
    */
-  function genTreeText2(aT, aIndentGuide, aParentStringLength)
+  function genTreeText2(aPrePath, aT, aIndentGuide, aParentStringLength)
   {
     function repeatStr(aC, aN)
     {
@@ -903,15 +1053,7 @@ function genTreeText(aT, aProcess)
       return s;
     }
 
-    // Generate the indent.  There's a subset of the Unicode "light"
-    // box-drawing chars that are widely implemented in terminals, and
-    // this code sticks to that subset to maximize the chance that
-    // cutting and pasting about:memory output to a terminal will work
-    // correctly:
-    const kHorizontal       = "\u2500",
-          kVertical         = "\u2502",
-          kUpAndRight       = "\u2514",
-          kVerticalAndRight = "\u251c";
+    // Generate the indent.
     var indent = "<span class='treeLine'>";
     if (aIndentGuide.length > 0) {
       for (var i = 0; i < aIndentGuide.length - 1; i++) {
@@ -921,7 +1063,6 @@ function genTreeText(aT, aProcess)
       indent += aIndentGuide[i]._isLastKid ? kUpAndRight : kVerticalAndRight;
       indent += repeatStr(kHorizontal, aIndentGuide[i]._depth - 1);
     }
-
     // Indent more if this entry is narrower than its parent, and update
     // aIndentGuide accordingly.
     var tString = aT.toString();
@@ -934,40 +1075,66 @@ function genTreeText(aT, aProcess)
     }
     indent += "</span>";
 
-    // Generate the percentage.
-    var perc = "";
+    // Generate the percentage, and determine if we should show subtrees.
+    var percText = "";
+    var showSubtrees = !aT._hideKids;
     if (aT._amount === treeBytes) {
-      perc = "100.0";
+      percText = "100.0";
     } else {
-      perc = (100 * aT._amount / treeBytes).toFixed(2);
-      perc = pad(perc, 5, '0');
+      var perc = (100 * aT._amount / treeBytes);
+      percText = (100 * aT._amount / treeBytes).toFixed(2);
+      percText = pad(percText, 5, '0');
     }
-    perc = "<span class='mrPerc'>(" + perc + "%)</span> ";
+    percText = "<span class='mrPerc'>(" + percText + "%) </span>";
+
+    // Reinstate any previous toggling of this sub-tree.
+    var path = aPrePath + aT._name;
+    var treeId = escapeAll(aProcess + ":" + path);
+    if (gToggles[treeId]) {
+      showSubtrees = !showSubtrees;
+    }
 
     // We don't want to show '(nonheap)' on a tree like 'map/vsize', since the
     // whole tree is non-heap.
     var kind = isExplicitTree ? aT._kind : undefined;
-    var text = indent + genMrValueText(tString) + " " + perc +
-               genMrNameText(kind, aT._description, aT._name,
-                             aT._hasProblem, aT._nMerged);
+
+    // For non-leaf nodes, the entire sub-tree is put within a span so it can
+    // be collapsed if the node is clicked on.
+    var hasKids = aT._kids.length > 0;
+    if (!hasKids) {
+      assert(!aT._hideKids, "leaf node with _hideKids set")
+    }
+    var text = indent;
+    if (hasKids) {
+      text +=
+        "<span onclick='toggle(event)' class='hasKids' id='" + treeId + "'>";
+    }
+    text += genMrValueText(tString) + percText;
+    text += genMrNameText(kind, showSubtrees, hasKids, aT._description,
+                          aT._name, aT._hasProblem, aT._nMerged);
+    if (hasKids) {
+      var hiddenText = showSubtrees ? "" : " hidden";
+      // The 'kids' class is just used for sanity checking in toggle().
+      text += "</span><span class='kids" + hiddenText + "'>";
+    }
 
     for (var i = 0; i < aT._kids.length; i++) {
       // 3 is the standard depth, the callee adjusts it if necessary.
       aIndentGuide.push({ _isLastKid: (i === aT._kids.length - 1), _depth: 3 });
-      text += genTreeText2(aT._kids[i], aIndentGuide, tString.length);
+      text += genTreeText2(path + "/", aT._kids[i], aIndentGuide,
+                           tString.length);
       aIndentGuide.pop();
     }
+    text += hasKids ? "</span>" : "";
     return text;
   }
 
-  var text = genTreeText2(aT, [], rootStringLength);
+  var text = genTreeText2(/* prePath = */"", aT, [], rootStringLength);
 
-  // The explicit tree is not collapsed, but all other trees are, so pass
-  // !isExplicitTree for genSectionMarkup's aCollapsed parameter.
-  return genSectionMarkup(aProcess, aT._name, text, !isExplicitTree);
+  return genSectionMarkup(aT._name, text);
 }
 
-function OtherReporter(aPath, aUnits, aAmount, aDescription, 
+function OtherReporter(aPath, aUnits, aAmount, aDescription,
                        aNMerged)
 {
   // Nb: _kind is not needed, it's always KIND_OTHER.
@@ -1022,7 +1189,7 @@ function genOtherText(aReportersByProcess, aProcess)
     var r = aReportersByProcess[path];
     if (!r._done) {
       assert(r._kind === KIND_OTHER, "_kind !== KIND_OTHER for " + r._path);
-      assert(r.nMerged === undefined);  // we don't allow dup'd OTHER reporters 
+      assert(r.nMerged === undefined);  // we don't allow dup'd OTHER reporters
       var hasProblem = false;
       if (r._amount === kUnknown) {
         hasProblem = true;
@@ -1040,29 +1207,19 @@ function genOtherText(aReportersByProcess, aProcess)
   var text = "";
   for (var i = 0; i < otherReporters.length; i++) {
     var o = otherReporters[i];
-    text += genMrValueText(pad(o.asString, maxStringLength, ' ')) + " ";
-    text += genMrNameText(KIND_OTHER, o._description, o._path, o._hasProblem);
+    text += genMrValueText(pad(o.asString, maxStringLength, ' '));
+    text += genMrNameText(KIND_OTHER, /* showSubtrees = */true,
+                          /* hasKids = */false, o._description, o._path,
+                          o._hasProblem);
   }
 
-  // Nb: the newlines give nice spacing if we cut+paste into a text buffer.
-  const desc = "This list contains other memory measurements that cross-cut " +
-               "the requested memory measurements above."
-
-  return genSectionMarkup(aProcess, 'other', text, false);
+  return genSectionMarkup('other', text);
 }
 
-function genSectionMarkup(aProcess, aName, aText, aCollapsed)
+function genSectionMarkup(aName, aText)
 {
-  var headerId = 'header-' + aProcess + '-' + aName;
-  var preId = 'pre-' + aProcess + '-' + aName;
-  var elemClass = (aCollapsed ? 'collapsed' : '') + ' tree';
-
-  // Ugh.
-  return '<h2 id="' + headerId + '" class="' + elemClass + '" ' +
-         'onclick="toggleTreeVisibility(event)">' +
-           kTreeNames[aName] +
-         '</h2>\n' +
-         '<pre id="' + preId + '" class="' + elemClass + '">' + aText + '</pre>\n';
+  return "<h2 class='sectionHeader'>" + kTreeNames[aName] + "</h2>\n" +
+         "<pre class='tree'>" + aText + "</pre>\n";
 }
 
 function assert(aCond, aMsg)

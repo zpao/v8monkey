@@ -60,12 +60,11 @@
 #include "nsISelectionPrivate.h"
 #include "nsISelectionController.h"
 #include "nsIDOMRange.h"
-#include "nsIDOMNSRange.h"
 #include "nsIRangeUtils.h"
 #include "nsIDOMCharacterData.h"
 #include "nsIEnumerator.h"
 #include "nsIDOMNamedNodeMap.h"
-#include "nsIRange.h"
+#include "nsRange.h"
 
 #include "nsEditorUtils.h"
 #include "nsWSRunObject.h"
@@ -81,6 +80,7 @@
 #include "nsIHTMLDocument.h"
 
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/Element.h"
 
 using namespace mozilla;
 
@@ -252,19 +252,17 @@ nsHTMLEditRules::Init(nsPlaintextEditor *aEditor)
   mReturnInEmptyLIKillsList = !returnInEmptyLIKillsList.EqualsLiteral("false");
 
   // make a utility range for use by the listenter
-  mUtilRange = do_CreateInstance("@mozilla.org/content/range;1");
-  NS_ENSURE_TRUE(mUtilRange, NS_ERROR_NULL_POINTER);
+  mUtilRange = new nsRange();
    
   // set up mDocChangeRange to be whole doc
-  nsIDOMElement *rootElem = mHTMLEditor->GetRoot();
+  nsCOMPtr<nsIDOMElement> rootElem = do_QueryInterface(mHTMLEditor->GetRoot());
   if (rootElem)
   {
     // temporarily turn off rules sniffing
     nsAutoLockRulesSniffing lockIt((nsTextEditRules*)this);
     if (!mDocChangeRange)
     {
-      mDocChangeRange = do_CreateInstance("@mozilla.org/content/range;1");
-      NS_ENSURE_TRUE(mDocChangeRange, NS_ERROR_NULL_POINTER);
+      mDocChangeRange = new nsRange();
     }
     mDocChangeRange->SelectNode(rootElem);
     res = AdjustSpecialBreaks();
@@ -300,7 +298,7 @@ nsHTMLEditRules::BeforeEdit(PRInt32 action, nsIEditor::EDirection aDirection)
     // remember where our selection was before edit action took place:
     
     // get selection
-    nsCOMPtr<nsISelection>selection;
+    nsCOMPtr<nsISelection> selection;
     nsresult res = mHTMLEditor->GetSelection(getter_AddRefs(selection));
     NS_ENSURE_SUCCESS(res, res);
   
@@ -328,14 +326,12 @@ nsHTMLEditRules::BeforeEdit(PRInt32 action, nsIEditor::EDirection aDirection)
     if(mDocChangeRange)
     {
       // clear out our accounting of what changed
-      nsCOMPtr<nsIRange> range = do_QueryInterface(mDocChangeRange);
-      range->Reset(); 
+      mDocChangeRange->Reset(); 
     }
     if(mUtilRange)
     {
       // ditto for mUtilRange.
-      nsCOMPtr<nsIRange> range = do_QueryInterface(mUtilRange);
-      range->Reset(); 
+      mUtilRange->Reset(); 
     }
 
     // remember current inline styles for deletion and normal insertion operations
@@ -594,7 +590,7 @@ nsHTMLEditRules::WillDoAction(nsISelection *aSelection,
       return NS_OK;
     }
 
-    nsCOMPtr<nsIRange> range = do_QueryInterface(domRange);
+    nsRange* range = static_cast<nsRange*>(domRange.get());
     nsCOMPtr<nsIDOMNode> ancestor =
       do_QueryInterface(range->GetCommonAncestor());
     if (!mHTMLEditor->IsModifiableNode(ancestor))
@@ -805,7 +801,7 @@ nsHTMLEditRules::GetAlignment(bool *aMixed, nsIHTMLEditor::EAlignment *aAlign)
 
   // get selection location
   nsCOMPtr<nsIDOMNode> parent;
-  nsIDOMElement *rootElem = mHTMLEditor->GetRoot();
+  nsCOMPtr<nsIDOMElement> rootElem = do_QueryInterface(mHTMLEditor->GetRoot());
   NS_ENSURE_TRUE(rootElem, NS_ERROR_FAILURE);
 
   PRInt32 offset, rootOffset;
@@ -1012,13 +1008,10 @@ nsHTMLEditRules::GetIndentState(bool *aCanIndent, bool *aCanOutdent)
     // in the parent hierarchy.
     
     // gather up info we need for test
-    nsCOMPtr<nsIDOMNode> parent, tmp, root;
-    nsIDOMElement *rootElem = mHTMLEditor->GetRoot();
-    NS_ENSURE_TRUE(rootElem, NS_ERROR_NULL_POINTER);
+    nsCOMPtr<nsIDOMNode> parent, tmp, root = do_QueryInterface(mHTMLEditor->GetRoot());
+    NS_ENSURE_TRUE(root, NS_ERROR_NULL_POINTER);
     nsCOMPtr<nsISelection> selection;
     PRInt32 selOffset;
-    root = do_QueryInterface(rootElem);
-    NS_ENSURE_TRUE(root, NS_ERROR_NO_INTERFACE);
     res = mHTMLEditor->GetSelection(getter_AddRefs(selection));
     NS_ENSURE_SUCCESS(res, res);
     NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
@@ -1108,7 +1101,7 @@ nsHTMLEditRules::GetParagraphState(bool *aMixed, nsAString &outFormat)
   }
 
   // remember root node
-  nsIDOMElement *rootElem = mHTMLEditor->GetRoot();
+  nsCOMPtr<nsIDOMElement> rootElem = do_QueryInterface(mHTMLEditor->GetRoot());
   NS_ENSURE_TRUE(rootElem, NS_ERROR_NULL_POINTER);
 
   // loop through the nodes in selection and examine their paragraph format
@@ -1491,8 +1484,7 @@ nsHTMLEditRules::WillInsertText(PRInt32          aAction,
     // the correct portion of the document.
     if (!mDocChangeRange)
     {
-      mDocChangeRange = do_CreateInstance("@mozilla.org/content/range;1");
-      NS_ENSURE_TRUE(mDocChangeRange, NS_ERROR_NULL_POINTER);
+      mDocChangeRange = new nsRange();
     }
     res = mDocChangeRange->SetStart(selNode, selOffset);
     NS_ENSURE_SUCCESS(res, res);
@@ -2445,21 +2437,20 @@ nsHTMLEditRules::WillDeleteSelection(nsISelection *aSelection,
       
           // now that we have the list, delete non table elements
           PRInt32 listCount = arrayOfNodes.Count();
-          PRInt32 j;
-
-          for (j = 0; j < listCount; j++)
-          {
+          for (PRInt32 j = 0; j < listCount; j++) {
             nsIDOMNode* somenode = arrayOfNodes[0];
             res = DeleteNonTableElements(somenode);
             arrayOfNodes.RemoveObjectAt(0);
             // If something visible is deleted, no need to join.
             // Visible means all nodes except non-visible textnodes and breaks.
             if (join && origCollapsed) {
-              if (mHTMLEditor->IsTextNode(somenode)) {
-                mHTMLEditor->IsVisTextNode(somenode, &join, true);
-              }
-              else {
-                join = nsTextEditUtils::IsBreak(somenode) && 
+              nsCOMPtr<nsIContent> content = do_QueryInterface(somenode);
+              if (!content) {
+                join = false;
+              } else if (content->NodeType() == nsIDOMNode::TEXT_NODE) {
+                mHTMLEditor->IsVisTextNode(content, &join, true);
+              } else {
+                join = content->IsHTML(nsGkAtoms::br) &&
                        !mHTMLEditor->IsVisBreak(somenode);
               }
             }
@@ -2950,10 +2941,10 @@ nsHTMLEditRules::DidDeleteSelection(nsISelection *aSelection,
   res = GetTopEnclosingMailCite(startNode, address_of(citeNode), 
                                 IsPlaintextEditor());
   NS_ENSURE_SUCCESS(res, res);
-  if (citeNode)
-  {
+  if (citeNode) {
+    nsCOMPtr<nsINode> cite = do_QueryInterface(citeNode);
     bool isEmpty = true, seenBR = false;
-    mHTMLEditor->IsEmptyNodeImpl(citeNode, &isEmpty, true, true, false, &seenBR);
+    mHTMLEditor->IsEmptyNodeImpl(cite, &isEmpty, true, true, false, &seenBR);
     if (isEmpty)
     {
       nsCOMPtr<nsIDOMNode> parent, brNode;
@@ -5258,8 +5249,7 @@ nsHTMLEditRules::ExpandSelectionForDeletion(nsISelection *aSelection)
     bool nodeBefore=false, nodeAfter=false;
     
     // create a range that represents expanded selection
-    nsCOMPtr<nsIDOMRange> range = do_CreateInstance("@mozilla.org/content/range;1");
-    NS_ENSURE_TRUE(range, NS_ERROR_NULL_POINTER);
+    nsRefPtr<nsRange> range = new nsRange();
     res = range->SetStart(selStartNode, selStartOffset);
     NS_ENSURE_SUCCESS(res, res);
     res = range->SetEnd(selEndNode, selEndOffset);
@@ -5899,7 +5889,9 @@ nsHTMLEditRules::GetNodesForOperation(nsCOMArray<nsIDOMRange>& inArrayOfRanges,
     {
       nsRangeStore *item = rangeItemArray.Elements() + i;
       mHTMLEditor->mRangeUpdater.DropRangeItem(item);
-      nsresult res2 = item->GetRange(address_of(opRange));
+      nsRefPtr<nsRange> range;
+      nsresult res2 = item->GetRange(getter_AddRefs(range));
+      opRange = range;
       if (NS_FAILED(res2) && NS_SUCCEEDED(res)) {
         // Remember the failure, but keep going so we make sure to unregister
         // all our range items.
@@ -6417,7 +6409,7 @@ nsHTMLEditRules::GetNodesFromPoint(DOMPoint point,
   point.GetPoint(node, offset);
   
   // use it to make a range
-  nsCOMPtr<nsIDOMRange> range = do_CreateInstance("@mozilla.org/content/range;1");
+  nsRefPtr<nsRange> range = new nsRange();
   res = range->SetStart(node, offset);
   NS_ENSURE_SUCCESS(res, res);
   /* SetStart() will also set the end for this new range
@@ -7637,7 +7629,7 @@ nsHTMLEditRules::PinSelectionToNewBlock(nsISelection *aSelection)
   temp = selNode;
   
   // use ranges and sRangeHelper to compare sel point to new block
-  nsCOMPtr<nsIDOMRange> range = do_CreateInstance("@mozilla.org/content/range;1");
+  nsRefPtr<nsRange> range = new nsRange();
   res = range->SetStart(selNode, selOffset);
   NS_ENSURE_SUCCESS(res, res);
   res = range->SetEnd(selNode, selOffset);
@@ -7778,9 +7770,8 @@ nsHTMLEditRules::AdjustSelection(nsISelection *aSelection, nsIEditor::EDirection
     // check if br can go into the destination node
     if (bIsEmptyNode && mHTMLEditor->CanContainTag(selNode, NS_LITERAL_STRING("br")))
     {
-      nsIDOMElement *rootElement = mHTMLEditor->GetRoot();
-      NS_ENSURE_TRUE(rootElement, NS_ERROR_FAILURE);
-      nsCOMPtr<nsIDOMNode> rootNode(do_QueryInterface(rootElement));
+      nsCOMPtr<nsIDOMNode> rootNode = do_QueryInterface(mHTMLEditor->GetRoot());
+      NS_ENSURE_TRUE(rootNode, NS_ERROR_FAILURE);
       if (selNode == rootNode)
       {
         // Our root node is completely empty. Don't add a <br> here.
@@ -8359,7 +8350,7 @@ nsHTMLEditRules::ConfirmSelectionInBody()
   nsresult res = NS_OK;
 
   // get the body  
-  nsIDOMElement *rootElement = mHTMLEditor->GetRoot();
+  nsCOMPtr<nsIDOMElement> rootElement = do_QueryInterface(mHTMLEditor->GetRoot());
   NS_ENSURE_TRUE(rootElement, NS_ERROR_UNEXPECTED);
 
   // get the selection
@@ -8433,9 +8424,10 @@ nsHTMLEditRules::UpdateDocChangeRange(nsIDOMRange *aRange)
   
   if (!mDocChangeRange)
   {
-    // clone aRange.  
-    res = aRange->CloneRange(getter_AddRefs(mDocChangeRange));
-    return res;
+    // clone aRange.
+    nsCOMPtr<nsIDOMRange> range;
+    res = aRange->CloneRange(getter_AddRefs(range));
+    mDocChangeRange = static_cast<nsRange*>(range.get());
   }
   else
   {
@@ -8669,22 +8661,6 @@ nsHTMLEditRules::DidDeleteText(nsIDOMCharacterData *aTextNode,
   NS_ENSURE_SUCCESS(res, res);
   res = UpdateDocChangeRange(mUtilRange);
   return res;  
-}
-
-NS_IMETHODIMP
-nsHTMLEditRules::WillDeleteRange(nsIDOMRange *aRange)
-{
-  if (!mListenerEnabled) {
-    return NS_OK;
-  }
-  // get the (collapsed) selection location
-  return UpdateDocChangeRange(aRange);
-}
-
-NS_IMETHODIMP
-nsHTMLEditRules::DidDeleteRange(nsIDOMRange *aRange)
-{
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -9300,8 +9276,10 @@ nsHTMLEditRules::DocumentModifiedWorker()
 
   nsCOMPtr<nsIHTMLEditor> kungFuDeathGrip(mHTMLEditor);
   nsCOMPtr<nsISelection> selection;
-  nsresult res = mHTMLEditor->GetSelection(getter_AddRefs(selection));
-  NS_ENSURE_SUCCESS(res, );
+  nsresult rv = mHTMLEditor->GetSelection(getter_AddRefs(selection));
+  if (NS_FAILED(rv)) {
+    return;
+  }
 
   // Delete our bogus node, if we have one, since the document might not be
   // empty any more.

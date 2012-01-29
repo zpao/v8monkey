@@ -53,6 +53,7 @@
 #include "nsContentUtils.h" // NS_CONTENT_DELETE_LIST_MEMBER
 #include "nsString.h"
 #include "nsEventStates.h"
+#include "nsGenericHTMLElement.h"
 
 class nsIURI;
 class nsIDocument;
@@ -69,25 +70,6 @@ public:
   NS_DECL_IMGICONTAINEROBSERVER
   NS_DECL_IMGIDECODEROBSERVER
   NS_DECL_NSIIMAGELOADINGCONTENT
-
-  enum CORSMode {
-    /**
-     * The default of not using CORS to validate cross-origin loads.
-     */
-    CORS_NONE,
-
-    /**
-     * Validate cross-site loads using CORS, but do not send any credentials
-     * (cookies, HTTP auth logins, etc) along with the request.
-     */
-    CORS_ANONYMOUS,
-
-    /**
-     * Validate cross-site loads using CORS, and send credentials such as cookies
-     * and HTTP auth logins along with the request.
-     */
-    CORS_USE_CREDENTIALS
-  };
 
 protected:
   /**
@@ -147,6 +129,24 @@ protected:
   nsIDocument* GetOurDocument();
 
   /**
+   * Helper function to get the frame associated with this content. Not named
+   * GetPrimaryFrame to prevent ambiguous method names in subclasses.
+   *
+   * @return The frame which we belong to, or nsnull if it doesn't exist.
+   */
+  nsIFrame* GetOurPrimaryFrame();
+
+  /**
+   * Helper function to get the PresContext associated with this content's
+   * frame. Not named GetPresContext to prevent ambiguous method names in
+   * subclasses.
+   *
+   * @return The nsPresContext associated with our frame, or nsnull if either
+   *         the frame doesn't exist, or the frame's prescontext doesn't exist.
+   */
+  nsPresContext* GetFramePresContext();
+
+  /**
    * CancelImageRequests is called by subclasses when they want to
    * cancel all image requests (for example when the subclass is
    * somehow not an image anymore).
@@ -183,7 +183,7 @@ protected:
    * Returns the CORS mode that will be used for all future image loads. The
    * default implementation returns CORS_NONE unconditionally.
    */
-  virtual CORSMode GetCORSMode();
+  virtual nsGenericHTMLElement::CORSMode GetCORSMode();
 
 private:
   /**
@@ -303,6 +303,16 @@ protected:
   void ClearPendingRequest(nsresult aReason);
 
   /**
+   * Retrieve a pointer to the 'registered with the refresh driver' flag for
+   * which a particular image request corresponds.
+   *
+   * @returns A pointer to the boolean flag for a given image request, or
+   *          |nsnull| if the request is not either |mPendingRequest| or
+   *          |mCurrentRequest|.
+   */
+  bool* GetRegisteredFlagForRequest(imgIRequest* aRequest);
+
+  /**
    * Static helper method to tell us if we have the size of a request. The
    * image may be null.
    */
@@ -382,6 +392,11 @@ private:
 
   /* The number of nested AutoStateChangers currently tracking our state. */
   PRUint8 mStateChangerDepth;
+
+  // Flags to indicate whether each of the current and pending requests are
+  // registered with the refresh driver.
+  bool mCurrentRequestRegistered;
+  bool mPendingRequestRegistered;
 };
 
 #endif // nsImageLoadingContent_h__

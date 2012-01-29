@@ -48,7 +48,6 @@
 #include "nsReadableUtils.h"
 #include "nsUnicharUtils.h"
 #include "nsHTMLDocument.h"
-#include "nsIParserFilter.h"
 #include "nsIHTMLContentSink.h"
 #include "nsIXMLContentSink.h"
 #include "nsHTMLParts.h"
@@ -103,15 +102,10 @@
 #include "nsFrameSelection.h"
 #include "nsISelectionPrivate.h"//for toStringwithformat code
 
-#include "nsICharsetDetector.h"
-#include "nsICharsetDetectionAdaptor.h"
-#include "nsCharsetDetectionAdaptorCID.h"
 #include "nsICharsetAlias.h"
 #include "nsContentUtils.h"
 #include "nsJSUtils.h"
-#include "nsIDocumentCharsetInfo.h"
 #include "nsIDocumentEncoder.h" //for outputting selection
-#include "nsICharsetResolver.h"
 #include "nsICachingChannel.h"
 #include "nsIJSContextStack.h"
 #include "nsIContentViewer.h"
@@ -141,16 +135,12 @@
 #include "prprf.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/Preferences.h"
+#include "nsMimeTypes.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
 
 #define NS_MAX_DOCUMENT_WRITE_DEPTH 20
-
-#define DETECTOR_CONTRACTID_MAX 127
-static char g_detector_contractid[DETECTOR_CONTRACTID_MAX + 1];
-static bool gInitDetector = false;
-static bool gPlugDetector = false;
 
 #include "prmem.h"
 #include "prtime.h"
@@ -160,6 +150,8 @@ const PRInt32 kForward  = 0;
 const PRInt32 kBackward = 1;
 
 //#define DEBUG_charset
+
+#define NS_USE_NEW_PLAIN_TEXT 1
 
 static NS_DEFINE_CID(kCParserCID, NS_PARSER_CID);
 
@@ -180,25 +172,6 @@ static bool ConvertToMidasInternalCommand(const nsAString & inCommandID,
 
 static bool ConvertToMidasInternalCommand(const nsAString & inCommandID,
                                             nsACString& outCommandID);
-static int
-MyPrefChangedCallback(const char*aPrefName, void* instance_data)
-{
-  const nsAdoptingCString& detector_name =
-    Preferences::GetLocalizedCString("intl.charset.detector");
-
-  if (!detector_name.IsEmpty()) {
-    PL_strncpy(g_detector_contractid, NS_CHARSET_DETECTOR_CONTRACTID_BASE,
-               DETECTOR_CONTRACTID_MAX);
-    PL_strncat(g_detector_contractid, detector_name,
-               DETECTOR_CONTRACTID_MAX);
-    gPlugDetector = true;
-  } else {
-    g_detector_contractid[0]=0;
-    gPlugDetector = false;
-  }
-
-  return 0;
-}
 
 // ==================================================================
 // =
@@ -206,13 +179,10 @@ MyPrefChangedCallback(const char*aPrefName, void* instance_data)
 static void
 ReportUseOfDeprecatedMethod(nsHTMLDocument* aDoc, const char* aWarning)
 {
-  nsContentUtils::ReportToConsole(nsContentUtils::eDOM_PROPERTIES,
-                                  aWarning,
-                                  nsnull, 0,
-                                  nsnull,
-                                  EmptyString(), 0, 0,
-                                  nsIScriptError::warningFlag,
-                                  "DOM Events", aDoc);
+  nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                  "DOM Events", aDoc,
+                                  nsContentUtils::eDOM_PROPERTIES,
+                                  aWarning);
 }
 
 static nsresult
@@ -412,7 +382,7 @@ nsHTMLDocument::TryHintCharset(nsIMarkupDocumentViewer* aMarkupDV,
 
 bool
 nsHTMLDocument::TryUserForcedCharset(nsIMarkupDocumentViewer* aMarkupDV,
-                                     nsIDocumentCharsetInfo*  aDocInfo,
+                                     nsIDocShell*  aDocShell,
                                      PRInt32& aCharsetSource,
                                      nsACString& aCharset)
 {
@@ -430,13 +400,13 @@ nsHTMLDocument::TryUserForcedCharset(nsIMarkupDocumentViewer* aMarkupDV,
     aCharset = forceCharsetFromDocShell;
     //TODO: we should define appropriate constant for force charset
     aCharsetSource = kCharsetFromUserForced;
-  } else if (aDocInfo) {
+  } else if (aDocShell) {
     nsCOMPtr<nsIAtom> csAtom;
-    aDocInfo->GetForcedCharset(getter_AddRefs(csAtom));
+    aDocShell->GetForcedCharset(getter_AddRefs(csAtom));
     if (csAtom) {
       csAtom->ToUTF8String(aCharset);
       aCharsetSource = kCharsetFromUserForced;
-      aDocInfo->SetForcedCharset(nsnull);
+      aDocShell->SetForcedCharset(nsnull);
       return true;
     }
   }
@@ -482,16 +452,16 @@ CheckSameOrigin(nsINode* aNode1, nsINode* aNode2)
 }
 
 bool
-nsHTMLDocument::TryParentCharset(nsIDocumentCharsetInfo*  aDocInfo,
+nsHTMLDocument::TryParentCharset(nsIDocShell*  aDocShell,
                                  nsIDocument* aParentDocument,
                                  PRInt32& aCharsetSource,
                                  nsACString& aCharset)
 {
-  if (aDocInfo) {
+  if (aDocShell) {
     PRInt32 source;
     nsCOMPtr<nsIAtom> csAtom;
     PRInt32 parentSource;
-    aDocInfo->GetParentCharsetSource(&parentSource);
+    aDocShell->GetParentCharsetSource(&parentSource);
     if (kCharsetFromParentForced <= parentSource)
       source = kCharsetFromParentForced;
     else if (kCharsetFromHintPrevDoc == parentSource) {
@@ -518,7 +488,7 @@ nsHTMLDocument::TryParentCharset(nsIDocumentCharsetInfo*  aDocInfo,
     if (source < aCharsetSource)
       return true;
 
-    aDocInfo->GetParentCharset(getter_AddRefs(csAtom));
+    aDocShell->GetParentCharset(getter_AddRefs(csAtom));
     if (csAtom) {
       csAtom->ToUTF8String(aCharset);
       aCharsetSource = source;
@@ -570,64 +540,6 @@ nsHTMLDocument::TryDefaultCharset( nsIMarkupDocumentViewer* aMarkupDV,
 }
 
 void
-nsHTMLDocument::StartAutodetection(nsIDocShell *aDocShell, nsACString& aCharset,
-                                   const char* aCommand)
-{
-  if (mIsRegularHTML && 
-      nsHtml5Module::sEnabled && 
-      aCommand && 
-      !nsCRT::strcmp(aCommand, "view")) {
-    return; // the HTML5 parser uses chardet directly
-  }
-  nsCOMPtr <nsIParserFilter> cdetflt;
-
-  nsresult rv_detect;
-  if(!gInitDetector) {
-    const nsAdoptingCString& detector_name =
-      Preferences::GetLocalizedCString("intl.charset.detector");
-
-    if(!detector_name.IsEmpty()) {
-      PL_strncpy(g_detector_contractid, NS_CHARSET_DETECTOR_CONTRACTID_BASE,
-                 DETECTOR_CONTRACTID_MAX);
-      PL_strncat(g_detector_contractid, detector_name,
-                 DETECTOR_CONTRACTID_MAX);
-      gPlugDetector = true;
-    }
-
-    Preferences::RegisterCallback(MyPrefChangedCallback,
-                                  "intl.charset.detector");
-
-    gInitDetector = true;
-  }
-
-  if (gPlugDetector) {
-    nsCOMPtr <nsICharsetDetector> cdet =
-      do_CreateInstance(g_detector_contractid, &rv_detect);
-    if (NS_SUCCEEDED(rv_detect)) {
-      cdetflt = do_CreateInstance(NS_CHARSET_DETECTION_ADAPTOR_CONTRACTID,
-                                  &rv_detect);
-
-      nsCOMPtr<nsICharsetDetectionAdaptor> adp = do_QueryInterface(cdetflt);
-      if (adp) {
-        nsCOMPtr<nsIWebShellServices> wss = do_QueryInterface(aDocShell);
-        if (wss) {
-          rv_detect = adp->Init(wss, cdet, this, mParser,
-                                PromiseFlatCString(aCharset).get(), aCommand);
-
-          if (mParser)
-            mParser->SetParserFilter(cdetflt);
-        }
-      }
-    }
-    else {
-      // IF we cannot create the detector, don't bother to
-      // create one next time.
-      gPlugDetector = false;
-    }
-  }
-}
-
-void
 nsHTMLDocument::SetDocumentCharacterSet(const nsACString& aCharSetID)
 {
   nsDocument::SetDocumentCharacterSet(aCharSetID);
@@ -649,16 +561,30 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
                                   bool aReset,
                                   nsIContentSink* aSink)
 {
-  bool loadAsHtml5 = nsHtml5Module::sEnabled;
+  nsCAutoString contentType;
+  aChannel->GetContentType(contentType);
+
+  bool viewSource = aCommand && !nsCRT::strcmp(aCommand, "view-source");
+  bool plainText = (contentType.EqualsLiteral(TEXT_PLAIN) ||
+    contentType.EqualsLiteral(TEXT_CSS) ||
+    contentType.EqualsLiteral(APPLICATION_JAVASCRIPT) ||
+    contentType.EqualsLiteral(APPLICATION_XJAVASCRIPT) ||
+    contentType.EqualsLiteral(TEXT_ECMASCRIPT) ||
+    contentType.EqualsLiteral(APPLICATION_ECMASCRIPT) ||
+    contentType.EqualsLiteral(TEXT_JAVASCRIPT));
+  bool loadAsHtml5 = nsHtml5Module::sEnabled || viewSource || plainText;
+  if (!NS_USE_NEW_PLAIN_TEXT && !viewSource) {
+    plainText = false;
+  }
+
+  NS_ASSERTION(!(plainText && aSink),
+               "Someone tries to load plain text into a custom sink.");
+
   if (aSink) {
     loadAsHtml5 = false;
   }
 
-  nsCAutoString contentType;
-  aChannel->GetContentType(contentType);
-
-  if (contentType.Equals("application/xhtml+xml") &&
-      (!aCommand || nsCRT::strcmp(aCommand, "view-source") != 0)) {
+  if (contentType.Equals("application/xhtml+xml") && !viewSource) {
     // We're parsing XHTML as XML, remember that.
 
     mIsRegularHTML = false;
@@ -672,15 +598,14 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
   }
 #endif
   
-  if (loadAsHtml5 && 
-      !(contentType.EqualsLiteral("text/html") && 
-        aCommand && 
-        !nsCRT::strcmp(aCommand, "view"))) {
+  if (loadAsHtml5 && !viewSource &&
+      (!(contentType.EqualsLiteral("text/html") || plainText) &&
+      aCommand && !nsCRT::strcmp(aCommand, "view"))) {
     loadAsHtml5 = false;
   }
   
   // TODO: Proper about:blank treatment is bug 543435
-  if (loadAsHtml5) {
+  if (loadAsHtml5 && aCommand && !nsCRT::strcmp(aCommand, "view")) {
     // mDocumentURI hasn't been set, yet, so get the URI from the channel
     nsCOMPtr<nsIURI> uri;
     aChannel->GetOriginalURI(getter_AddRefs(uri));
@@ -728,7 +653,17 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
   if (needsParser) {
     if (loadAsHtml5) {
       mParser = nsHtml5Module::NewHtml5Parser();
-      mParser->MarkAsNotScriptCreated();
+      if (plainText) {
+        if (viewSource) {
+          mParser->MarkAsNotScriptCreated("view-source-plain");
+        } else {
+          mParser->MarkAsNotScriptCreated("plain-text");
+        }
+      } else if (viewSource && !contentType.EqualsLiteral("text/html")) {
+        mParser->MarkAsNotScriptCreated("view-source-xml");
+      } else {
+        mParser->MarkAsNotScriptCreated(aCommand);
+      }
     } else {
       mParser = do_CreateInstance(kCParserCID, &rv);
       NS_ENSURE_SUCCESS(rv, rv);
@@ -745,9 +680,6 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
   // but if we get a null pointer, that's perfectly legal for parent
   // and parentContentViewer
   nsCOMPtr<nsIDocShell> docShell(do_QueryInterface(aContainer));
-
-  // No support yet for docshell-less HTML
-  NS_ENSURE_TRUE(docShell || !IsHTML(), NS_ERROR_FAILURE);
 
   nsCOMPtr<nsIDocShellTreeItem> docShellAsItem(do_QueryInterface(docShell));
 
@@ -785,9 +717,6 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
     }
   }
 
-  nsCAutoString scheme;
-  uri->GetScheme(scheme);
-
   nsCAutoString urlSpec;
   uri->GetSpec(urlSpec);
 #ifdef DEBUG_charset
@@ -805,17 +734,15 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
 
   nsCOMPtr<nsIWyciwygChannel> wyciwygChannel;
   
-  if (!IsHTML()) {
-    charsetSource = kCharsetFromDocTypeDefault;
+  if (!IsHTML() || !docShell) { // no docshell for text/html XHR
+    charsetSource = IsHTML() ? kCharsetFromWeakDocTypeDefault
+                             : kCharsetFromDocTypeDefault;
     charset.AssignLiteral("UTF-8");
     TryChannelCharset(aChannel, charsetSource, charset);
     parserCharsetSource = charsetSource;
     parserCharset = charset;
   } else {
     NS_ASSERTION(docShell && docShellAsItem, "Unexpected null value");
-    
-    nsCOMPtr<nsIDocumentCharsetInfo> dcInfo;
-    docShell->GetDocumentCharsetInfo(getter_AddRefs(dcInfo));
 
     charsetSource = kCharsetUninitialized;
     wyciwygChannel = do_QueryInterface(aChannel);
@@ -826,9 +753,9 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
     // describes. Some try call might change charset source to
     // multiple values, like TryHintCharset and TryParentCharset. It
     // should be always safe to try more sources.
-    if (!TryUserForcedCharset(muCV, dcInfo, charsetSource, charset)) {
+    if (!TryUserForcedCharset(muCV, docShell, charsetSource, charset)) {
       TryHintCharset(muCV, charsetSource, charset);
-      TryParentCharset(dcInfo, parentDocument, charsetSource, charset);
+      TryParentCharset(docShell, parentDocument, charsetSource, charset);
 
       // Don't actually get the charset from the channel if this is a
       // wyciwyg channel; it'll always be UTF-16
@@ -894,13 +821,8 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
       parserCharsetSource = charsetSource;
     }
 
-    if(kCharsetFromAutoDetection > charsetSource && !isPostPage) {
-      StartAutodetection(docShell, charset, aCommand);
-    }
-
     // ahmed
     // Check if 864 but in Implicit mode !
-    // XXXbz why is this happening after StartAutodetection ?
     if ((textType == IBMBIDI_TEXTTYPE_LOGICAL) &&
         (charset.LowerCaseEqualsLiteral("ibm864"))) {
       charset.AssignLiteral("IBM864i");
@@ -921,14 +843,14 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
                  "not nsICachingChannel");
     rv = cachingChan->SetCacheTokenCachedCharset(charset);
     NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "cannot SetMetaDataElement");
+    rv = NS_OK; // don't propagate error
   }
 
   // Set the parser as the stream listener for the document loader...
   if (mParser) {
-    rv = mParser->GetStreamListener(aDocListener);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
+    rv = NS_OK;
+    nsCOMPtr<nsIStreamListener> listener = mParser->GetStreamListener();
+    listener.forget(aDocListener);
 
 #ifdef DEBUG_charset
     printf(" charset = %s source %d\n",
@@ -980,78 +902,17 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
 void
 nsHTMLDocument::StopDocumentLoad()
 {
-  if (nsHtml5Module::sEnabled) {
-    BlockOnload();
-    if (mWriteState == eDocumentOpened) {
-      NS_ASSERTION(IsHTML(), "document.open()ed doc is not HTML?");
+  BlockOnload();
 
-      // Marking the document as closed, since pending scripts will be
-      // stopped by nsDocument::StopDocumentLoad() below
-      mWriteState = eDocumentClosed;
+  // Remove the wyciwyg channel request from the document load group
+  // that we added in Open() if Open() was called on this doc.
+  RemoveWyciwygChannel();
+  NS_ASSERTION(!mWyciwygChannel, "nsHTMLDocument::StopDocumentLoad(): "
+               "nsIWyciwygChannel could not be removed!");
 
-      // Remove the wyciwyg channel request from the document load group
-      // that we added in Open().
-      NS_ASSERTION(mWyciwygChannel, "nsHTMLDocument::StopDocumentLoad(): "
-                   "Trying to remove nonexistent wyciwyg channel!");
-      RemoveWyciwygChannel();
-      NS_ASSERTION(!mWyciwygChannel, "nsHTMLDocument::StopDocumentLoad(): "
-                   "nsIWyciwygChannel could not be removed!");
-    }
-    nsDocument::StopDocumentLoad();
-    UnblockOnload(false);
-    return;
-  }
-  // Code for the old parser:
-
-  // If we're writing (i.e., there's been a document.open call), then
-  // nsDocument::StopDocumentLoad will do the wrong thing and simply terminate
-  // our parser.
-  if (mWriteState != eNotWriting) {
-    Close();
-  } else {
-    nsDocument::StopDocumentLoad();
-  }
-}
-
-// static
-void
-nsHTMLDocument::DocumentWriteTerminationFunc(nsISupports *aRef)
-{
-  nsCOMPtr<nsIArray> arr = do_QueryInterface(aRef);
-  NS_ASSERTION(arr, "Must have array!");
-
-  nsCOMPtr<nsIDocument> doc = do_QueryElementAt(arr, 0);
-  NS_ASSERTION(doc, "Must have document!");
-  
-  nsCOMPtr<nsIParser> parser = do_QueryElementAt(arr, 1);
-  NS_ASSERTION(parser, "Must have parser!");
-
-  nsHTMLDocument *htmldoc = static_cast<nsHTMLDocument*>(doc.get());
-
-  // Check whether htmldoc still has the same parser.  If not, it's
-  // not for us to mess with it.
-  if (htmldoc->mParser != parser) {
-    return;
-  }
-
-  // If the document is in the middle of a document.write() call, this
-  // most likely means that script on a page document.write()'d out a
-  // script tag that did location="..." and we're right now finishing
-  // up executing the script that was written with
-  // document.write(). Since there's still script on the stack (the
-  // script that called document.write()) we don't want to release the
-  // parser now, that would cause the next document.write() call to
-  // cancel the load that was initiated by the location="..." in the
-  // script that was written out by document.write().
-
-  if (!htmldoc->mWriteLevel && htmldoc->mWriteState != eDocumentOpened) {
-    // Release the document's parser so that the call to EndLoad()
-    // doesn't just return early and set the termination function again.
-
-    htmldoc->mParser = nsnull;
-  }
-
-  htmldoc->EndLoad();
+  nsDocument::StopDocumentLoad();
+  UnblockOnload(false);
+  return;
 }
 
 void
@@ -1072,65 +933,6 @@ nsHTMLDocument::BeginLoad()
 void
 nsHTMLDocument::EndLoad()
 {
-  if (mParser && mWriteState != eDocumentClosed) {
-    nsCOMPtr<nsIJSContextStack> stack =
-      do_GetService("@mozilla.org/js/xpc/ContextStack;1");
-
-    if (stack) {
-      JSContext *cx = nsnull;
-      stack->Peek(&cx);
-
-      if (cx) {
-        nsIScriptContext *scx = nsJSUtils::GetDynamicScriptContext(cx);
-
-        if (scx) {
-          // The load of the document was terminated while we're
-          // called from within JS and we have a parser (i.e. we're in
-          // the middle of doing document.write()). In stead of
-          // releasing the parser and ending the document load
-          // directly, we'll make that happen once the script is done
-          // executing. This way subsequent document.write() calls
-          // won't end up creating a new parser and interrupting other
-          // loads that were started while the script was
-          // running. I.e. this makes the following case work as
-          // expected:
-          //
-          //   document.write("foo");
-          //   location.href = "http://www.mozilla.org";
-          //   document.write("bar");
-
-          nsresult rv;
-
-          nsCOMPtr<nsIMutableArray> arr =
-            do_CreateInstance(NS_ARRAY_CONTRACTID, &rv);
-          if (NS_SUCCEEDED(rv)) {
-            rv = arr->AppendElement(static_cast<nsIDocument*>(this),
-                                    false);
-            if (NS_SUCCEEDED(rv)) {
-              rv = arr->AppendElement(mParser, false);
-              if (NS_SUCCEEDED(rv)) {
-                rv = scx->SetTerminationFunction(DocumentWriteTerminationFunc,
-                                                 arr);
-                // If we fail to set the termination function, just go ahead
-                // and EndLoad now.  The slight bugginess involved is better
-                // than leaking.
-                if (NS_SUCCEEDED(rv)) {
-                  return;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Reset this now, since we're really done "loading" this document.written
-  // document.
-  NS_ASSERTION(mWriteState == eNotWriting || mWriteState == ePendingClose ||
-               mWriteState == eDocumentClosed, "EndLoad called early");
-  mWriteState = eNotWriting;
-
   bool turnOnEditing =
     mParser && (HasFlag(NODE_IS_EDITABLE) || mContentEditableCount > 0);
   // Note: nsDocument::EndLoad nulls out mParser.
@@ -1273,11 +1075,9 @@ nsHTMLDocument::GetURL(nsAString& aURL)
 }
 
 nsIContent*
-nsHTMLDocument::GetBody(nsresult *aResult)
+nsHTMLDocument::GetBody()
 {
   Element* body = GetBodyElement();
-
-  *aResult = NS_OK;
 
   if (body) {
     // There is a body element, return that as the body.
@@ -1297,10 +1097,9 @@ nsHTMLDocument::GetBody(nsIDOMHTMLElement** aBody)
 {
   *aBody = nsnull;
 
-  nsresult rv;
-  nsIContent *body = GetBody(&rv);
+  nsIContent *body = GetBody();
 
-  return body ? CallQueryInterface(body, aBody) : rv;
+  return body ? CallQueryInterface(body, aBody) : NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1575,6 +1374,16 @@ nsHTMLDocument::Open(const nsAString& aContentTypeOrUrl,
     return NS_OK;
   }
 
+  // No calling document.open() without a script global object
+  if (!mScriptGlobalObject) {
+    return NS_OK;
+  }
+
+  nsPIDOMWindow* outer = GetWindow();
+  if (!outer || (GetInnerWindow() != outer->GetCurrentInnerWindow())) {
+    return NS_OK;
+  }
+
   // check whether we're in the middle of unload.  If so, ignore this call.
   nsCOMPtr<nsIDocShell> shell = do_QueryReferent(mDocumentContainer);
   if (!shell) {
@@ -1714,7 +1523,8 @@ nsHTMLDocument::Open(const nsAString& aContentTypeOrUrl,
 
     nsCOMPtr<nsIScriptGlobalObject> newScope(do_QueryReferent(mScopeObject));
     if (oldScope && newScope != oldScope) {
-      nsContentUtils::ReparentContentWrappersInScope(cx, oldScope, newScope);
+      rv = nsContentUtils::ReparentContentWrappersInScope(cx, oldScope, newScope);
+      NS_ENSURE_SUCCESS(rv, rv);
     }
   }
 
@@ -1739,8 +1549,6 @@ nsHTMLDocument::Open(const nsAString& aContentTypeOrUrl,
   // This will be propagated to the parser when someone actually calls write()
   SetContentTypeInternal(contentType);
 
-  mWriteState = eDocumentOpened;
-
   if (NS_SUCCEEDED(rv)) {
     if (loadAsHtml5) {
       nsHtml5Module::Initialize(mParser, this, uri, shell, channel);
@@ -1752,7 +1560,6 @@ nsHTMLDocument::Open(const nsAString& aContentTypeOrUrl,
       if (NS_FAILED(rv)) {
         // Don't use a parser without a content sink.
         mParser = nsnull;
-        mWriteState = eNotWriting;
         return rv;
       }
 
@@ -1812,55 +1619,51 @@ nsHTMLDocument::Close()
     return NS_ERROR_DOM_INVALID_STATE_ERR;
   }
 
-  nsresult rv = NS_OK;
-
-  if (mParser && mWriteState == eDocumentOpened) {
-    mPendingScripts.RemoveElement(GenerateParserKey());
-
-    mWriteState = mPendingScripts.IsEmpty() ? eDocumentClosed : ePendingClose;
-
-    ++mWriteLevel;
-    rv = mParser->Parse(EmptyString(), mParser->GetRootContextKey(),
-                        GetContentTypeInternal(), true);
-    --mWriteLevel;
-
-    // XXX Make sure that all the document.written content is
-    // reflowed.  We should remove this call once we change
-    // nsHTMLDocument::OpenCommon() so that it completely destroys the
-    // earlier document's content and frame hierarchy.  Right now, it
-    // re-uses the earlier document's root content object and
-    // corresponding frame objects.  These re-used frame objects think
-    // that they have already been reflowed, so they drop initial
-    // reflows.  For certain cases of document.written content, like a
-    // frameset document, the dropping of the initial reflow means
-    // that we end up in document.close() without appended any reflow
-    // commands to the reflow queue and, consequently, without adding
-    // the dummy layout request to the load group.  Since the dummy
-    // layout request is not added to the load group, the onload
-    // handler of the frameset fires before the frames get reflowed
-    // and loaded.  That is the long explanation for why we need this
-    // one line of code here!
-    // XXXbz as far as I can tell this may not be needed anymore; all
-    // the testcases in bug 57636 pass without this line...  Leaving
-    // it be for now, though.  In any case, there's no reason to do
-    // this if we have no presshell, since in that case none of the
-    // above about reusing frames applies.
-    if (GetShell()) {
-      FlushPendingNotifications(Flush_Layout);
-    }
-
-    // Remove the wyciwyg channel request from the document load group
-    // that we added in OpenCommon().  If all other requests between
-    // document.open() and document.close() have completed, then this
-    // method should cause the firing of an onload event.
-    NS_ASSERTION(mWyciwygChannel, "nsHTMLDocument::Close(): Trying to remove "
-                 "nonexistent wyciwyg channel!");
-    RemoveWyciwygChannel();
-    NS_ASSERTION(!mWyciwygChannel, "nsHTMLDocument::Close(): "
-                 "nsIWyciwygChannel could not be removed!");
+  if (!mParser || !mParser->IsScriptCreated()) {
+    return NS_OK;
   }
 
-  return NS_OK;
+  ++mWriteLevel;
+  nsresult rv = mParser->Parse(EmptyString(), nsnull,
+                               GetContentTypeInternal(), true);
+  --mWriteLevel;
+
+  // XXX Make sure that all the document.written content is
+  // reflowed.  We should remove this call once we change
+  // nsHTMLDocument::OpenCommon() so that it completely destroys the
+  // earlier document's content and frame hierarchy.  Right now, it
+  // re-uses the earlier document's root content object and
+  // corresponding frame objects.  These re-used frame objects think
+  // that they have already been reflowed, so they drop initial
+  // reflows.  For certain cases of document.written content, like a
+  // frameset document, the dropping of the initial reflow means
+  // that we end up in document.close() without appended any reflow
+  // commands to the reflow queue and, consequently, without adding
+  // the dummy layout request to the load group.  Since the dummy
+  // layout request is not added to the load group, the onload
+  // handler of the frameset fires before the frames get reflowed
+  // and loaded.  That is the long explanation for why we need this
+  // one line of code here!
+  // XXXbz as far as I can tell this may not be needed anymore; all
+  // the testcases in bug 57636 pass without this line...  Leaving
+  // it be for now, though.  In any case, there's no reason to do
+  // this if we have no presshell, since in that case none of the
+  // above about reusing frames applies.
+  //
+  // XXXhsivonen keeping this around for bug 577508 / 253951 still :-(
+  if (GetShell()) {
+    FlushPendingNotifications(Flush_Layout);
+  }
+
+  // Removing the wyciwygChannel here is wrong when document.close() is
+  // called from within the document itself. However, legacy requires the
+  // channel to be removed here. Otherwise, the load event never fires.
+  NS_ASSERTION(mWyciwygChannel, "nsHTMLDocument::Close(): Trying to remove "
+               "nonexistent wyciwyg channel!");
+  RemoveWyciwygChannel();
+  NS_ASSERTION(!mWyciwygChannel, "nsHTMLDocument::Close(): "
+               "nsIWyciwygChannel could not be removed!");
+  return rv;
 }
 
 nsresult
@@ -1881,22 +1684,17 @@ nsHTMLDocument::WriteCommon(JSContext *cx,
   nsresult rv = NS_OK;
 
   void *key = GenerateParserKey();
-  if (mWriteState == eDocumentClosed ||
-      (mWriteState == ePendingClose &&
-       !mPendingScripts.Contains(key)) ||
-      (mParser && !mParser->IsInsertionPointDefined())) {
+  if (mParser && !mParser->IsInsertionPointDefined()) {
     if (mExternalScriptsBeingEvaluated) {
       // Instead of implying a call to document.open(), ignore the call.
-      nsContentUtils::ReportToConsole(nsContentUtils::eDOM_PROPERTIES,
+      nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                      "DOM Events", this,
+                                      nsContentUtils::eDOM_PROPERTIES,
                                       "DocumentWriteIgnored",
                                       nsnull, 0,
-                                      mDocumentURI,
-                                      EmptyString(), 0, 0,
-                                      nsIScriptError::warningFlag,
-                                      "DOM Events", this);
+                                      mDocumentURI);
       return NS_OK;
     }
-    mWriteState = eDocumentClosed;
     mParser->Terminate();
     NS_ASSERTION(!mParser, "mParser should have been null'd out");
   }
@@ -1904,13 +1702,12 @@ nsHTMLDocument::WriteCommon(JSContext *cx,
   if (!mParser) {
     if (mExternalScriptsBeingEvaluated) {
       // Instead of implying a call to document.open(), ignore the call.
-      nsContentUtils::ReportToConsole(nsContentUtils::eDOM_PROPERTIES,
+      nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                      "DOM Events", this,
+                                      nsContentUtils::eDOM_PROPERTIES,
                                       "DocumentWriteIgnored",
                                       nsnull, 0,
-                                      mDocumentURI,
-                                      EmptyString(), 0, 0,
-                                      nsIScriptError::warningFlag,
-                                      "DOM Events", this);
+                                      mDocumentURI);
       return NS_OK;
     }
     nsCOMPtr<nsISupports> ignored;
@@ -1923,12 +1720,14 @@ nsHTMLDocument::WriteCommon(JSContext *cx,
     if (NS_FAILED(rv) || !mParser) {
       return rv;
     }
+    NS_ABORT_IF_FALSE(!JS_IsExceptionPending(cx),
+                      "Open() succeeded but JS exception is pending");
   }
 
   static NS_NAMED_LITERAL_STRING(new_line, "\n");
 
-  // Save the data in cache
-  if (mWyciwygChannel) {
+  // Save the data in cache if the write isn't from within the doc
+  if (mWyciwygChannel && !key) {
     if (!aText.IsEmpty()) {
       mWyciwygChannel->WriteToCacheEntry(aText);
     }
@@ -1947,11 +1746,11 @@ nsHTMLDocument::WriteCommon(JSContext *cx,
   if (aNewlineTerminate) {
     rv = mParser->Parse(aText + new_line,
                         key, GetContentTypeInternal(),
-                        (mWriteState == eNotWriting || (mWriteLevel > 1)));
+                        false);
   } else {
     rv = mParser->Parse(aText,
                         key, GetContentTypeInternal(),
-                        (mWriteState == eNotWriting || (mWriteLevel > 1)));
+                        false);
   }
 
   --mWriteLevel;
@@ -2003,30 +1802,6 @@ nsHTMLDocument::GetElementsByName(const nsAString& aElementName,
   list.forget(aReturn);
 
   return NS_OK;
-}
-
-void
-nsHTMLDocument::ScriptLoading(nsIScriptElement *aScript)
-{
-  if (mWriteState == eNotWriting) {
-    return;
-  }
-
-  mPendingScripts.AppendElement(aScript);
-}
-
-void
-nsHTMLDocument::ScriptExecuted(nsIScriptElement *aScript)
-{
-  if (mWriteState == eNotWriting) {
-    return;
-  }
-
-  mPendingScripts.RemoveElement(aScript);
-  if (mPendingScripts.IsEmpty() && mWriteState == ePendingClose) {
-    // The last pending script just finished, terminate our parser now.
-    mWriteState = eDocumentClosed;
-  }
 }
 
 void
@@ -2477,7 +2252,7 @@ nsHTMLDocument::GenerateParserKey(void)
         // Make scripts that aren't inserted by the active parser of this document
         // participate in the context of the script that document.open()ed 
         // this document.
-        return mParser->GetRootContextKey();
+        return nsnull;
       }
     }
     return script;
@@ -2592,10 +2367,7 @@ nsHTMLDocument::DeferredContentEditableCountChange(nsIContent *aElement)
       nsCOMPtr<nsIEditor> editor;
       editorDocShell->GetEditor(getter_AddRefs(editor));
       if (editor) {
-        nsCOMPtr<nsIDOMRange> range;
-        rv = NS_NewRange(getter_AddRefs(range));
-        NS_ENSURE_SUCCESS(rv, );
-
+        nsRefPtr<nsRange> range = new nsRange();
         rv = range->SelectNode(node);
         if (NS_FAILED(rv)) {
           // The node might be detached from the document at this point,
@@ -2699,17 +2471,15 @@ nsHTMLDocument::GetDocumentAllResult(const nsAString& aID,
 }
 
 static void
-NotifyEditableStateChange(nsINode *aNode, nsIDocument *aDocument,
-                          bool aEditable)
+NotifyEditableStateChange(nsINode *aNode, nsIDocument *aDocument)
 {
   for (nsIContent* child = aNode->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
-    if (child->HasFlag(NODE_IS_EDITABLE) != aEditable &&
-        child->IsElement()) {
+    if (child->IsElement()) {
       child->AsElement()->UpdateState(true);
     }
-    NotifyEditableStateChange(child, aDocument, aEditable);
+    NotifyEditableStateChange(child, aDocument);
   }
 }
 
@@ -2802,6 +2572,8 @@ nsHTMLDocument::EditingStateChanged()
 
   if (newState == eOff) {
     // Editing is being turned off.
+    nsAutoScriptBlocker scriptBlocker;
+    NotifyEditableStateChange(this, this);
     return TurnEditingOff();
   }
 
@@ -2958,7 +2730,7 @@ nsHTMLDocument::EditingStateChanged()
 
   if (updateState) {
     nsAutoScriptBlocker scriptBlocker;
-    NotifyEditableStateChange(this, this, designMode);
+    NotifyEditableStateChange(this, this);
   }
 
   // Resync the editor's spellcheck state.

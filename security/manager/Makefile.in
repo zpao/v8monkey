@@ -260,8 +260,9 @@ DEFAULT_GMAKE_FLAGS += \
 	OS_RELEASE="2.6" \
 	OS_PTHREAD= \
 	STANDARDS_CFLAGS="-std=gnu89" \
-	ARCHFLAG="$(CFLAGS) -DCHECK_FORK_GETPID -DRTLD_NOLOAD=0 -DANDROID_VERSION=$(ANDROID_VERSION) -include $(ABS_topsrcdir)/security/manager/android_stub.h" \
 	$(NULL)
+
+DEFAULT_GMAKE_FLAGS += ARCHFLAG="$(CFLAGS) -DCHECK_FORK_GETPID -DRTLD_NOLOAD=0 -include $(ABS_topsrcdir)/security/manager/android_stub.h"
 endif
 endif
 
@@ -270,6 +271,11 @@ DEFAULT_GMAKE_FLAGS += \
 	LDFLAGS="$(LDFLAGS) $(WRAP_LDFLAGS)" \
 	DSO_LDOPTS="-shared $(LDFLAGS) $(WRAP_LDFLAGS)" \
 	$(NULL)
+endif
+
+DEFAULT_GMAKE_FLAGS += FREEBL_NO_DEPEND=0
+ifeq ($(OS_TARGET),Linux)
+DEFAULT_GMAKE_FLAGS += FREEBL_LOWHASH=1
 endif
 
 SUBMAKEFILES = boot/Makefile ssl/Makefile pki/Makefile locales/Makefile

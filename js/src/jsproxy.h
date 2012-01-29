@@ -43,7 +43,6 @@
 #define jsproxy_h___
 
 #include "jsapi.h"
-#include "jscntxt.h"
 #include "jsfriendapi.h"
 
 namespace js {
@@ -88,6 +87,8 @@ class JS_FRIEND_API(ProxyHandler) {
     virtual bool defaultValue(JSContext *cx, JSObject *obj, JSType hint, Value *vp);
     virtual void finalize(JSContext *cx, JSObject *proxy);
     virtual void trace(JSTracer *trc, JSObject *proxy);
+    virtual bool getElementIfPresent(JSContext *cx, JSObject *obj, JSObject *receiver,
+                                     uint32_t index, Value *vp, bool *present);
 
     virtual bool isOuterWindow() {
         return false;
@@ -120,6 +121,8 @@ class Proxy {
     static bool has(JSContext *cx, JSObject *proxy, jsid id, bool *bp);
     static bool hasOwn(JSContext *cx, JSObject *proxy, jsid id, bool *bp);
     static bool get(JSContext *cx, JSObject *proxy, JSObject *receiver, jsid id, Value *vp);
+    static bool getElementIfPresent(JSContext *cx, JSObject *proxy, JSObject *receiver,
+                                    uint32_t index, Value *vp, bool *present);
     static bool set(JSContext *cx, JSObject *proxy, JSObject *receiver, jsid id, bool strict,
                     Value *vp);
     static bool keys(JSContext *cx, JSObject *proxy, AutoIdVector &props);
@@ -155,12 +158,12 @@ inline bool IsProxy(const JSObject *obj)
 }
 
 /* Shared between object and function proxies. */
-const uint32 JSSLOT_PROXY_HANDLER = 0;
-const uint32 JSSLOT_PROXY_PRIVATE = 1;
-const uint32 JSSLOT_PROXY_EXTRA   = 2;
+const uint32_t JSSLOT_PROXY_HANDLER = 0;
+const uint32_t JSSLOT_PROXY_PRIVATE = 1;
+const uint32_t JSSLOT_PROXY_EXTRA   = 2;
 /* Function proxies only. */
-const uint32 JSSLOT_PROXY_CALL = 4;
-const uint32 JSSLOT_PROXY_CONSTRUCT = 5;
+const uint32_t JSSLOT_PROXY_CALL = 4;
+const uint32_t JSSLOT_PROXY_CONSTRUCT = 5;
 
 inline ProxyHandler *
 GetProxyHandler(const JSObject *obj)

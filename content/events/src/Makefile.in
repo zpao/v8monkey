@@ -49,6 +49,7 @@ LIBXUL_LIBRARY  = 1
 EXPORTS		= \
 		nsEventStateManager.h \
 		nsEventListenerManager.h \
+		nsDOMEventTargetHelper.h \
 		$(NULL)
 		
 CPPSRCS		= \
@@ -75,7 +76,7 @@ CPPSRCS		= \
 		nsPrivateTextRange.cpp \
 		nsXMLEventsManager.cpp \
 		nsXMLEventsElement.cpp \
-		nsPLDOMEvent.cpp \
+		nsAsyncDOMEvent.cpp \
 		nsEventDispatcher.cpp \
 		nsIMEStateManager.cpp \
 		nsContentEventHandler.cpp \

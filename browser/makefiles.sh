@@ -35,12 +35,16 @@
 #
 # ***** END LICENSE BLOCK *****
 
+# Deliberately excluded, since the braces cause some versions of sed to choke, 
+# causing the build to fail (see bug 696498 comment 13):
+# browser/app/profile/extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}/Makefile
 add_makefiles "
 browser/Makefile
 browser/app/Makefile
 browser/app/profile/extensions/Makefile
 browser/base/Makefile
 browser/components/Makefile
+browser/components/about/Makefile
 browser/components/build/Makefile
 browser/components/certerror/Makefile
 browser/components/dirprovider/Makefile
@@ -55,40 +59,73 @@ browser/components/places/src/Makefile
 browser/components/preferences/Makefile
 browser/components/privatebrowsing/Makefile
 browser/components/privatebrowsing/src/Makefile
-browser/components/safebrowsing/Makefile
 browser/components/search/Makefile
 browser/components/sessionstore/Makefile
 browser/components/sessionstore/src/Makefile
-browser/components/sidebar/src/Makefile
+browser/components/sidebar/Makefile
 browser/components/shell/Makefile
 browser/components/shell/public/Makefile
 browser/components/shell/src/Makefile
-browser/components/wintaskbar/Makefile
+browser/components/tabview/Makefile
+browser/devtools/Makefile
+browser/devtools/highlighter/Makefile
+browser/devtools/scratchpad/Makefile
+browser/devtools/shared/Makefile
+browser/devtools/sourceeditor/Makefile
+browser/devtools/styleeditor/Makefile
+browser/devtools/styleinspector/Makefile
+browser/devtools/webconsole/Makefile
 browser/fuel/Makefile
 browser/fuel/public/Makefile
 browser/fuel/src/Makefile
 browser/installer/Makefile
-browser/installer/windows/Makefile
 browser/locales/Makefile
+browser/modules/Makefile
 browser/themes/Makefile
-browser/themes/pinstripe/browser/Makefile
-browser/themes/pinstripe/communicator/Makefile
-browser/themes/pinstripe/Makefile
-browser/themes/winstripe/browser/Makefile
-browser/themes/winstripe/communicator/Makefile
-browser/themes/winstripe/Makefile
 $MOZ_BRANDING_DIRECTORY/Makefile
 $MOZ_BRANDING_DIRECTORY/content/Makefile
 $MOZ_BRANDING_DIRECTORY/locales/Makefile
 "
 
+if [ "$MOZ_SAFE_BROWSING" ]; then
+  add_makefiles "
+    browser/components/safebrowsing/Makefile
+  "
+fi
+
+if [ "$MOZ_WIDGET_TOOLKIT" = "windows" ]; then
+  if [ "$MOZ_INSTALLER" ]; then
+    add_makefiles "
+      browser/installer/windows/Makefile
+    "
+  fi
+fi
+
+if [ "$MOZ_WIDGET_TOOLKIT" = "gtk2" -o "$MOZ_WIDGET_TOOLKIT" = "qt" ]; then
+  add_makefiles "
+    browser/themes/gnomestripe/Makefile
+    browser/themes/gnomestripe/communicator/Makefile
+  "
+elif [ "$MOZ_WIDGET_TOOLKIT" = "cocoa" ]; then
+  add_makefiles "
+    browser/themes/pinstripe/Makefile
+    browser/themes/pinstripe/communicator/Makefile
+  "
+else
+  add_makefiles "
+    browser/themes/winstripe/Makefile
+    browser/themes/winstripe/communicator/Makefile
+  "
+fi
+
 if [ "$ENABLE_TESTS" ]; then
   add_makefiles "
     browser/base/content/test/Makefile
     browser/components/certerror/test/Makefile
+    browser/components/dirprovider/tests/Makefile
     browser/components/preferences/tests/Makefile
     browser/components/search/test/Makefile
-    browser/components/sessionstore/test/browser/Makefile
+    browser/components/sessionstore/test/Makefile
     browser/components/shell/test/Makefile
     browser/components/feeds/test/Makefile
     browser/components/feeds/test/chrome/Makefile
@@ -97,8 +134,21 @@ if [ "$ENABLE_TESTS" ]; then
     browser/components/places/tests/browser/Makefile
     browser/components/privatebrowsing/test/Makefile
     browser/components/privatebrowsing/test/browser/Makefile
-    browser/components/safebrowsing/content/test/Makefile
-    browser/components/wintaskbar/test/Makefile
+    browser/components/tabview/test/Makefile
+    browser/components/test/Makefile
+    browser/devtools/highlighter/test/Makefile
+    browser/devtools/scratchpad/test/Makefile
+    browser/devtools/shared/test/Makefile
+    browser/devtools/sourceeditor/test/Makefile
+    browser/devtools/styleeditor/test/Makefile
+    browser/devtools/styleinspector/test/Makefile
+    browser/devtools/webconsole/test/Makefile
     browser/fuel/test/Makefile
+    browser/modules/test/Makefile
   "
+  if [ "$MOZ_SAFE_BROWSING" ]; then
+    add_makefiles "
+      browser/components/safebrowsing/content/test/Makefile
+    "
+  fi
 fi

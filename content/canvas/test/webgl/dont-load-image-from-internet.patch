@@ -1,6 +1,5 @@
 # HG changeset patch
-# Parent 95e5d92098ad52788348e609e261305d4b05b551
-
+# Parent 07fbbfde4173da7d8e513bb2d52ae07e333dbf43
 diff --git a/content/canvas/test/webgl/conformance/more/functions/readPixelsBadArgs.html b/content/canvas/test/webgl/conformance/more/functions/readPixelsBadArgs.html
 --- a/content/canvas/test/webgl/conformance/more/functions/readPixelsBadArgs.html
 +++ b/content/canvas/test/webgl/conformance/more/functions/readPixelsBadArgs.html

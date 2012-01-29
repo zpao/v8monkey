@@ -317,7 +317,10 @@ nsDOMDataTransfer::GetData(const nsAString& aFormat, nsAString& aData)
 
     // for the URL type, parse out the first URI from the list. The URIs are
     // separated by newlines
-    if (aFormat.EqualsLiteral("URL")) {
+    nsAutoString lowercaseFormat;
+    nsContentUtils::ASCIIToLower(aFormat, lowercaseFormat);
+    
+    if (lowercaseFormat.EqualsLiteral("url")) {
       PRInt32 lastidx = 0, idx;
       PRInt32 length = stringdata.Length();
       while (lastidx < length) {
@@ -449,11 +452,11 @@ nsDOMDataTransfer::MozGetDataAt(const nsAString& aFormat,
   nsTArray<TransferItem>& item = mItems[aIndex];
 
   // allow access to any data in the drop and dragdrop events, or if the
-  // UniversalBrowserRead privilege is set, otherwise only allow access to
+  // UniversalXPConnect privilege is set, otherwise only allow access to
   // data from the same principal.
   nsIPrincipal* principal = nsnull;
   if (mEventType != NS_DRAGDROP_DROP && mEventType != NS_DRAGDROP_DRAGDROP &&
-      !nsContentUtils::IsCallerTrustedForCapability("UniversalBrowserRead")) {
+      !nsContentUtils::CallerHasUniversalXPConnect()) {
     nsresult rv = NS_OK;
     principal = GetCurrentPrincipal(&rv);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -522,7 +525,7 @@ nsDOMDataTransfer::MozSetDataAt(const nsAString& aFormat,
   // XXX perhaps this should also limit any non-string type as well
   if ((aFormat.EqualsLiteral("application/x-moz-file-promise") ||
        aFormat.EqualsLiteral("application/x-moz-file")) &&
-       !nsContentUtils::IsCallerTrustedForCapability("UniversalXPConnect")) {
+       !nsContentUtils::CallerHasUniversalXPConnect()) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
@@ -830,12 +833,14 @@ void
 nsDOMDataTransfer::GetRealFormat(const nsAString& aInFormat, nsAString& aOutFormat)
 {
   // treat text/unicode as equivalent to text/plain
-  if (aInFormat.EqualsLiteral("Text") || aInFormat.EqualsLiteral("text/unicode"))
+  nsAutoString lowercaseFormat;
+  nsContentUtils::ASCIIToLower(aInFormat, lowercaseFormat);
+  if (lowercaseFormat.EqualsLiteral("text") || lowercaseFormat.EqualsLiteral("text/unicode"))
     aOutFormat.AssignLiteral("text/plain");
-  else if (aInFormat.EqualsLiteral("URL"))
+  else if (lowercaseFormat.EqualsLiteral("url"))
     aOutFormat.AssignLiteral("text/uri-list");
   else
-    aOutFormat.Assign(aInFormat);
+    aOutFormat.Assign(lowercaseFormat);
 }
 
 void

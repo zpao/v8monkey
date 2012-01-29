@@ -84,16 +84,10 @@ static nsStaticCaseInsensitiveNameTable* gFontDescTable;
   nsCSSProps::gShorthandsContainingTable[eCSSProperty_COUNT_no_shorthands];
 /* static */ nsCSSProperty* nsCSSProps::gShorthandsContainingPool = nsnull;
 
-// Keep in sync with enum nsCSSFontDesc in nsCSSProperty.h.
 static const char* const kCSSRawFontDescs[] = {
-  "font-family",
-  "font-style",
-  "font-weight",
-  "font-stretch",
-  "src",
-  "unicode-range",
-  "-moz-font-feature-settings",
-  "-moz-font-language-override"
+#define CSS_FONT_DESC(name_, method_) #name_,
+#include "nsCSSFontDescList.h"
+#undef CSS_FONT_DESC
 };
 
 struct PropertyAndCount {
@@ -657,10 +651,15 @@ const PRInt32 nsCSSProps::kBorderColorKTable[] = {
   eCSSKeyword_UNKNOWN,-1
 };
 
-const PRInt32 nsCSSProps::kBorderImageKTable[] = {
-  eCSSKeyword_stretch, NS_STYLE_BORDER_IMAGE_STRETCH,
-  eCSSKeyword_repeat, NS_STYLE_BORDER_IMAGE_REPEAT,
-  eCSSKeyword_round, NS_STYLE_BORDER_IMAGE_ROUND,
+const PRInt32 nsCSSProps::kBorderImageRepeatKTable[] = {
+  eCSSKeyword_stretch, NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH,
+  eCSSKeyword_repeat, NS_STYLE_BORDER_IMAGE_REPEAT_REPEAT,
+  eCSSKeyword_round, NS_STYLE_BORDER_IMAGE_REPEAT_ROUND,
+  eCSSKeyword_UNKNOWN,-1
+};
+
+const PRInt32 nsCSSProps::kBorderImageSliceKTable[] = {
+  eCSSKeyword_fill, NS_STYLE_BORDER_IMAGE_SLICE_FILL,
   eCSSKeyword_UNKNOWN,-1
 };
 
@@ -1074,11 +1073,7 @@ const PRInt32 nsCSSProps::kOutlineStyleKTable[] = {
 };
 
 const PRInt32 nsCSSProps::kOutlineColorKTable[] = {
-#ifdef GFX_HAS_INVERT
-  eCSSKeyword_invert, NS_STYLE_COLOR_INVERT,
-#else
   eCSSKeyword__moz_use_text_color, NS_STYLE_COLOR_MOZ_USE_TEXT_COLOR,
-#endif
   eCSSKeyword_UNKNOWN,-1
 };
 
@@ -1200,6 +1195,17 @@ const PRInt32 nsCSSProps::kTextAlignKTable[] = {
   eCSSKeyword__moz_center, NS_STYLE_TEXT_ALIGN_MOZ_CENTER,
   eCSSKeyword__moz_right, NS_STYLE_TEXT_ALIGN_MOZ_RIGHT,
   eCSSKeyword__moz_left, NS_STYLE_TEXT_ALIGN_MOZ_LEFT,
+  eCSSKeyword_start, NS_STYLE_TEXT_ALIGN_DEFAULT,
+  eCSSKeyword_end, NS_STYLE_TEXT_ALIGN_END,
+  eCSSKeyword_UNKNOWN,-1
+};
+
+const PRInt32 nsCSSProps::kTextAlignLastKTable[] = {
+  eCSSKeyword_auto, NS_STYLE_TEXT_ALIGN_AUTO,
+  eCSSKeyword_left, NS_STYLE_TEXT_ALIGN_LEFT,
+  eCSSKeyword_right, NS_STYLE_TEXT_ALIGN_RIGHT,
+  eCSSKeyword_center, NS_STYLE_TEXT_ALIGN_CENTER,
+  eCSSKeyword_justify, NS_STYLE_TEXT_ALIGN_JUSTIFY,
   eCSSKeyword_start, NS_STYLE_TEXT_ALIGN_DEFAULT,
   eCSSKeyword_end, NS_STYLE_TEXT_ALIGN_END,
   eCSSKeyword_UNKNOWN,-1
@@ -1472,6 +1478,12 @@ const PRInt32 nsCSSProps::kColorInterpolationKTable[] = {
   eCSSKeyword_UNKNOWN, -1
 };
 
+const PRInt32 nsCSSProps::kColumnFillKTable[] = {
+  eCSSKeyword_auto, NS_STYLE_COLUMN_FILL_AUTO,
+  eCSSKeyword_balance, NS_STYLE_COLUMN_FILL_BALANCE,
+  eCSSKeyword_UNKNOWN, -1
+};
+
 bool
 nsCSSProps::FindKeyword(nsCSSKeyword aKeyword, const PRInt32 aTable[], PRInt32& aResult)
 {
@@ -1674,7 +1686,11 @@ static const nsCSSProperty gBorderSubpropTable[] = {
   eCSSProperty_border_right_colors,
   eCSSProperty_border_bottom_colors,
   eCSSProperty_border_left_colors,
-  eCSSProperty_border_image,
+  eCSSProperty_border_image_source,
+  eCSSProperty_border_image_slice,
+  eCSSProperty_border_image_width,
+  eCSSProperty_border_image_outset,
+  eCSSProperty_border_image_repeat,
   eCSSProperty_UNKNOWN
 };
 
@@ -2061,6 +2077,15 @@ static const nsCSSProperty gTransitionSubpropTable[] = {
   eCSSProperty_transition_duration,
   eCSSProperty_transition_timing_function,
   eCSSProperty_transition_delay,
+  eCSSProperty_UNKNOWN
+};
+
+static const nsCSSProperty gBorderImageSubpropTable[] = {
+  eCSSProperty_border_image_source,
+  eCSSProperty_border_image_slice,
+  eCSSProperty_border_image_width,
+  eCSSProperty_border_image_outset,
+  eCSSProperty_border_image_repeat,
   eCSSProperty_UNKNOWN
 };
 

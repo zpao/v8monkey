@@ -6,9 +6,11 @@ Cu.import("resource://services-sync/util.js");
 
 let logger;
 
+let fetched = false;
 function server_open(metadata, response) {
   let body;
   if (metadata.method == "GET") {
+    fetched = true;
     body = "This path exists";
     response.setStatusLine(metadata.httpVersion, 200, "OK");
   } else {
@@ -40,6 +42,15 @@ function server_404(metadata, response) {
   response.bodyOutputStream.write(body, body.length);
 }
 
+let pacFetched = false;
+function server_pac(metadata, response) {
+  _("Invoked PAC handler.");
+  pacFetched = true;
+  let body = 'function FindProxyForURL(url, host) { return "DIRECT"; }';
+  response.setStatusLine(metadata.httpVersion, 200, "OK");
+  response.setHeader("Content-Type", "application/x-ns-proxy-autoconfig", false);
+  response.bodyOutputStream.write(body, body.length);
+}
 
 let sample_data = {
   some: "sample_data",
@@ -134,6 +145,13 @@ function server_headers(metadata, response) {
   response.bodyOutputStream.write(body, body.length);
 }
 
+function server_redirect(metadata, response) {
+  let body = "Redirecting";
+  response.setStatusLine(metadata.httpVersion, 307, "TEMPORARY REDIRECT");
+  response.setHeader("Location", "http://localhost:8081/resource");
+  response.bodyOutputStream.write(body, body.length);
+}
+
 let quotaValue;
 Observers.add("weave:service:quota:remaining",
               function (subject) { quotaValue = subject; });
@@ -154,17 +172,37 @@ function run_test() {
     "/timestamp": server_timestamp,
     "/headers": server_headers,
     "/backoff": server_backoff,
+    "/pac2": server_pac,
     "/quota-notice": server_quota_notice,
-    "/quota-error": server_quota_error
+    "/quota-error": server_quota_error,
+    "/redirect": server_redirect
   });
 
   Svc.Prefs.set("network.numRetries", 1); // speed up test
   run_next_test();
 }
 
+// This apparently has to come first in order for our PAC URL to be hit.
+// Don't put any other HTTP requests earlier in the file!
+add_test(function test_proxy_auth_redirect() {
+  _("Ensure that a proxy auth redirect (which switches out our channel) " +
+    "doesn't break AsyncResource.");
+  PACSystemSettings.PACURI = "http://localhost:8080/pac2";
+  installFakePAC();
+  let res = new AsyncResource("http://localhost:8080/open");
+  res.get(function (error, result) {
+    do_check_true(!error);
+    do_check_true(pacFetched);
+    do_check_true(fetched);
+    do_check_eq("This path exists", result);
+    pacFetched = fetched = false;
+    uninstallFakePAC();
+    run_next_test();
+  });
+});
 
 add_test(function test_members() {
-  _("Resource object memebers");
+  _("Resource object members");
   let res = new AsyncResource("http://localhost:8080/open");
   do_check_true(res.uri instanceof Ci.nsIURI);
   do_check_eq(res.uri.spec, "http://localhost:8080/open");
@@ -626,6 +664,31 @@ add_test(function test_uri_construction() {
   do_check_eq(uri1.query, uri2.query);
 
   run_next_test();
+});
+
+add_test(function test_new_channel() {
+  _("Ensure a redirect to a new channel is handled properly.");
+
+  let resourceRequested = false;
+  function resourceHandler(metadata, response) {
+    resourceRequested = true;
+
+    let body = "Test";
+    response.setHeader("Content-Type", "text/plain");
+    response.bodyOutputStream.write(body, body.length);
+  }
+  let server2 = httpd_setup({"/resource": resourceHandler}, 8081);
+
+  let request = new AsyncResource("http://localhost:8080/redirect");
+  request.get(function onRequest(error, content) {
+    do_check_null(error);
+    do_check_true(resourceRequested);
+    do_check_eq(200, content.status);
+    do_check_true("content-type" in content.headers);
+    do_check_eq("text/plain", content.headers["content-type"]);
+
+    server2.stop(run_next_test);
+  });
 });
 
 add_test(function tear_down() {

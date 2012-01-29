@@ -39,13 +39,18 @@
 #if !defined(nsWebMReader_h_)
 #define nsWebMReader_h_
 
+#include "mozilla/StdInt.h"
+
 #include "nsDeque.h"
 #include "nsBuiltinDecoderReader.h"
 #include "nsWebMBufferedParser.h"
 #include "nsAutoRef.h"
 #include "nestegg/nestegg.h"
+
+#define VPX_DONT_DEFINE_STDINT_TYPES
 #include "vpx/vpx_decoder.h"
 #include "vpx/vp8dx.h"
+
 #ifdef MOZ_TREMOR
 #include "tremor/ivorbiscodec.h"
 #else
@@ -235,6 +240,10 @@ private:
   // Booleans to indicate if we have audio and/or video data
   bool mHasVideo;
   bool mHasAudio;
+
+  // Value of the "media.webm.force_stereo_mode" pref, which we need off the
+  // main thread.
+  PRInt32 mForceStereoMode;
 };
 
 #endif

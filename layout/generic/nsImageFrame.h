@@ -85,7 +85,8 @@ public:
   NS_IMETHOD OnStopDecode(imgIRequest *aRequest, nsresult status,
                           const PRUnichar *statusArg);
   // imgIContainerObserver (override nsStubImageDecoderObserver)
-  NS_IMETHOD FrameChanged(imgIContainer *aContainer,
+  NS_IMETHOD FrameChanged(imgIRequest *aRequest,
+                          imgIContainer *aContainer,
                           const nsIntRect *dirtyRect);
 
   void SetFrame(nsImageFrame *frame) { mFrame = frame; }
@@ -187,9 +188,7 @@ public:
   virtual void AddInlineMinWidth(nsRenderingContext *aRenderingContext,
                                  InlineMinWidthData *aData);
 
-  nsRefPtr<ImageContainer> GetContainer(LayerManager* aManager,
-                                        imgIContainer* aImage);
-
+  void DisconnectMap();
 protected:
   virtual ~nsImageFrame();
 
@@ -239,7 +238,8 @@ protected:
   nsresult OnStopDecode(imgIRequest *aRequest,
                         nsresult aStatus,
                         const PRUnichar *aStatusArg);
-  nsresult FrameChanged(imgIContainer *aContainer,
+  nsresult FrameChanged(imgIRequest *aRequest,
+                        imgIContainer *aContainer,
                         const nsIntRect *aDirtyRect);
 
 private:
@@ -306,8 +306,6 @@ private:
 
   static nsIIOService* sIOService;
   
-  nsRefPtr<ImageContainer> mImageContainer; 
-
   /* loading / broken image icon support */
 
   // XXXbz this should be handled by the prescontext, I think; that

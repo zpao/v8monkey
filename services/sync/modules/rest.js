@@ -126,7 +126,8 @@ RESTRequest.prototype = {
 
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIBadCertListener2,
-    Ci.nsIInterfaceRequestor
+    Ci.nsIInterfaceRequestor,
+    Ci.nsIChannelEventSink
   ]),
 
   /*** Public API: ***/
@@ -364,6 +365,11 @@ RESTRequest.prototype = {
     this.abort();
     let error = Components.Exception("Aborting due to channel inactivity.",
                                      Cr.NS_ERROR_NET_TIMEOUT);
+    if (!this.onComplete) {
+      this._log.error("Unexpected error: onComplete not defined in " +
+                      "abortTimeout.")
+      return;
+    }
     this.onComplete(error);
   },
 
@@ -374,9 +380,18 @@ RESTRequest.prototype = {
       this._log.trace("Not proceeding with onStartRequest, request was aborted.");
       return;
     }
+
+    try {
+      channel.QueryInterface(Ci.nsIHttpChannel);
+    } catch (ex) {
+      this._log.error("Unexpected error: channel is not a nsIHttpChannel!");
+      this.status = this.ABORTED;
+      channel.cancel(Cr.NS_BINDING_ABORTED);
+      return;
+    }
+
     this.status = this.IN_PROGRESS;
 
-    channel.QueryInterface(Ci.nsIHttpChannel);
     this._log.trace("onStartRequest: " + channel.requestMethod + " " +
                     channel.URI.spec);
 
@@ -404,52 +419,32 @@ RESTRequest.prototype = {
       this._log.trace("Not proceeding with onStopRequest, request was aborted.");
       return;
     }
+
+    try {
+      channel.QueryInterface(Ci.nsIHttpChannel);
+    } catch (ex) {
+      this._log.error("Unexpected error: channel not nsIHttpChannel!");
+      this.status = this.ABORTED;
+      return;
+    }
     this.status = this.COMPLETED;
 
-    /**
-     * Shim to help investigate Bug 672878.
-     * We seem to be seeing a situation in which onStopRequest is being called
-     * with a success code, but no mResponseHead yet set (a failure condition).
-     * One possibility, according to bzbarsky, is that the channel status and
-     * the status argument don't match up. This block will log that situation.
-     *
-     * Fetching channel.status should not throw, but if it does requestStatus
-     * will be NS_ERROR_UNEXPECTED, which will cause this method to report
-     * failure.
-     *
-     * This code parallels nearly identical shimming in resource.js.
-     */
-    let requestStatus = Cr.NS_ERROR_UNEXPECTED;
     let statusSuccess = Components.isSuccessCode(statusCode);
-    try {
-      // From nsIRequest.
-      requestStatus = channel.status;
-      this._log.trace("Request status is " + requestStatus);
-    } catch (ex) {
-      this._log.warn("Got exception " + Utils.exceptionStr(ex) +
-                     " fetching channel.status.");
-    }
-    if (statusSuccess && (statusCode != requestStatus)) {
-      this._log.error("Request status " + requestStatus +
-                      " does not match status arg " + statusCode);
-      try {
-        channel.responseStatus;
-      } catch (ex) {
-        this._log.error("... and we got " + Utils.exceptionStr(ex) +
-                        " retrieving responseStatus.");
-      }
-    }
-
-    let requestStatusSuccess = Components.isSuccessCode(requestStatus);
-
     let uri = channel && channel.URI && channel.URI.spec || "<unknown>";
     this._log.trace("Channel for " + channel.requestMethod + " " + uri +
                     " returned status code " + statusCode);
 
+    if (!this.onComplete) {
+      this._log.error("Unexpected error: onComplete not defined in " +
+                      "abortRequest.");
+      this.onProgress = null;
+      return;
+    }
+
     // Throw the failure code and stop execution.  Use Components.Exception()
     // instead of Error() so the exception is QI-able and can be passed across
     // XPCOM borders while preserving the status code.
-    if (!statusSuccess || !requestStatusSuccess) {
+    if (!statusSuccess) {
       let message = Components.Exception("", statusCode).name;
       let error = Components.Exception(message, statusCode);
       this.onComplete(error);
@@ -488,6 +483,14 @@ RESTRequest.prototype = {
                      this.method + " " + req.URI.spec);
       this._log.debug("Exception: " + Utils.exceptionStr(ex));
       this.abort();
+
+      if (!this.onComplete) {
+        this._log.error("Unexpected error: onComplete not defined in " +
+                        "onDataAvailable.");
+        this.onProgress = null;
+        return;
+      }
+
       this.onComplete(ex);
       this.onComplete = this.onProgress = null;
       return;
@@ -509,6 +512,24 @@ RESTRequest.prototype = {
     // Suppress invalid HTTPS certificate warnings in the UI.
     // (The request will still fail.)
     return true;
+  },
+
+  /*** nsIChannelEventSink ***/
+  asyncOnChannelRedirect:
+    function asyncOnChannelRedirect(oldChannel, newChannel, flags, callback) {
+
+    try {
+      newChannel.QueryInterface(Ci.nsIHttpChannel);
+    } catch (ex) {
+      this._log.error("Unexpected error: channel not nsIHttpChannel!");
+      callback.onRedirectVerifyCallback(Cr.NS_ERROR_NO_INTERFACE);
+      return;
+    }
+
+    this.channel = newChannel;
+
+    // We let all redirects proceed.
+    callback.onRedirectVerifyCallback(Cr.NS_OK);
   }
 };
 

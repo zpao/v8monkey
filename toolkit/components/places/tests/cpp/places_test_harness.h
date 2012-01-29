@@ -134,28 +134,23 @@ public:
   NS_DECL_ISUPPORTS
 
   WaitForTopicSpinner(const char* const aTopic)
-  : mTopic(aTopic)
-  , mTopicReceived(false)
+  : mTopicReceived(false)
   , mStartTime(PR_IntervalNow())
   {
+    nsCOMPtr<nsIObserverService> observerService =
+      do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+    do_check_true(observerService);
+    (void)observerService->AddObserver(this, aTopic, false);
   }
 
   void Spin() {
-    nsCOMPtr<nsIObserverService> observerService =
-      do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
-    if (observerService) {
-      (void)observerService->AddObserver(this, mTopic, false);
-
-      while (!mTopicReceived) {
-        if (PR_IntervalNow() - mStartTime > WAITFORTOPIC_TIMEOUT_SECONDS * PR_USEC_PER_SEC) {
-          // Timed out waiting for the topic.
-          do_check_true(false);
-          break;
-        }
-        (void)NS_ProcessNextEvent();
+    while (!mTopicReceived) {
+      if ((PR_IntervalNow() - mStartTime) > (WAITFORTOPIC_TIMEOUT_SECONDS * PR_USEC_PER_SEC)) {
+        // Timed out waiting for the topic.
+        do_check_true(false);
+        break;
       }
-
-      (void)observerService->RemoveObserver(this, mTopic);
+      (void)NS_ProcessNextEvent();
     }
   }
 
@@ -163,13 +158,15 @@ public:
                      const char* aTopic,
                      const PRUnichar* aData)
   {
-    do_check_false(strcmp(aTopic, mTopic));
     mTopicReceived = true;
+    nsCOMPtr<nsIObserverService> observerService =
+      do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+    do_check_true(observerService);
+    (void)observerService->RemoveObserver(this, aTopic);
     return NS_OK;
   }
 
 private:
-  const char* const mTopic;
   bool mTopicReceived;
   PRIntervalTime mStartTime;
 };
@@ -187,9 +184,11 @@ NS_IMPL_ISUPPORTS1(
 void
 addURI(nsIURI* aURI)
 {
+  nsRefPtr<WaitForTopicSpinner> spinner =
+    new WaitForTopicSpinner(TOPIC_FRECENCY_UPDATED);
+
   nsCOMPtr<nsINavHistoryService> hist =
     do_GetService(NS_NAVHISTORYSERVICE_CONTRACTID);
-
   PRInt64 id;
   nsresult rv = hist->AddVisit(aURI, PR_Now(), nsnull,
                                nsINavHistoryService::TRANSITION_LINK, false,
@@ -197,8 +196,6 @@ addURI(nsIURI* aURI)
   do_check_success(rv);
 
   // Wait for frecency update.
-  nsRefPtr<WaitForTopicSpinner> spinner =
-    new WaitForTopicSpinner(TOPIC_FRECENCY_UPDATED);
   spinner->Spin();
 }
 
@@ -332,38 +329,41 @@ do_get_lastVisit(PRInt64 placeId, VisitRecord& result)
   do_check_success(rv);
 }
 
-static const char TOPIC_PROFILE_TEARDOWN[] = "profile-change-teardown";
 static const char TOPIC_PROFILE_CHANGE[] = "profile-before-change";
+static const char TOPIC_PLACES_CONNECTION_CLOSED[] = "places-connection-closed";
 
-class ShutdownObserver : public nsIObserver
+class WaitForConnectionClosed : public nsIObserver
 {
 public:
   NS_DECL_ISUPPORTS
 
-  ShutdownObserver()
+  WaitForConnectionClosed()
   {
-    nsCOMPtr<nsIObserverService> observerService =
+    nsCOMPtr<nsIObserverService> os =
       do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
-    do_check_true(observerService);
-    observerService->AddObserver(this,
-                                 NS_XPCOM_WILL_SHUTDOWN_OBSERVER_ID,
-                                 false);
+    MOZ_ASSERT(os);
+    if (os) {
+      MOZ_ALWAYS_TRUE(NS_SUCCEEDED(os->AddObserver(this, TOPIC_PROFILE_CHANGE, false)));
+    }
   }
 
   NS_IMETHOD Observe(nsISupports* aSubject,
                      const char* aTopic,
                      const PRUnichar* aData)
   {
-    if (strcmp(aTopic, NS_XPCOM_WILL_SHUTDOWN_OBSERVER_ID) == 0) {
-      nsCOMPtr<nsIObserverService> os =
-        do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
-      (void)os->NotifyObservers(nsnull, TOPIC_PROFILE_TEARDOWN, nsnull);
-      (void)os->NotifyObservers(nsnull, TOPIC_PROFILE_CHANGE, nsnull);
+    nsCOMPtr<nsIObserverService> os =
+      do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+    MOZ_ASSERT(os);
+    if (os) {
+      MOZ_ALWAYS_TRUE(NS_SUCCEEDED(os->RemoveObserver(this, aTopic)));
     }
-      return NS_OK;
+
+    nsRefPtr<WaitForTopicSpinner> spinner =
+      new WaitForTopicSpinner(TOPIC_PLACES_CONNECTION_CLOSED);
+    spinner->Spin();
+
+    return NS_OK;
   }
 };
-NS_IMPL_ISUPPORTS1(
-  ShutdownObserver,
-  nsIObserver
-)
+
+NS_IMPL_ISUPPORTS1(WaitForConnectionClosed, nsIObserver)

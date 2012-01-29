@@ -105,7 +105,7 @@ class nsDisplayItem;
  */
 
 // All types are defined in nsDisplayItemTypes.h
-#ifdef NS_DEBUG
+#ifdef MOZ_DUMP_PAINTING
 #define NS_DISPLAY_DECL_NAME(n, e) \
   virtual const char* Name() { return n; } \
   virtual Type GetType() { return e; }
@@ -217,8 +217,8 @@ public:
   void SetIncludeAllOutOfFlows() { mIncludeAllOutOfFlows = true; }
   bool GetIncludeAllOutOfFlows() const { return mIncludeAllOutOfFlows; }
   /**
-   * Calling this setter makes us exclude all leaf frames that does
-   * not have the NS_FRAME_SELECTED_CONTENT bit.
+   * Calling this setter makes us exclude all leaf frames that aren't
+   * selected.
    */
   void SetSelectedFramesOnly() { mSelectedFramesOnly = true; }
   bool GetSelectedFramesOnly() { return mSelectedFramesOnly; }
@@ -794,7 +794,7 @@ public:
    */
   const nsRect& GetVisibleRect() { return mVisibleRect; }
   
-#ifdef NS_DEBUG
+#ifdef MOZ_DUMP_PAINTING
   /**
    * For debugging and stuff
    */
@@ -1292,7 +1292,7 @@ public:
   nsDisplayGeneric(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
                    PaintCallback aPaint, const char* aName, Type aType)
     : nsDisplayItem(aBuilder, aFrame), mPaint(aPaint)
-#ifdef DEBUG
+#ifdef MOZ_DUMP_PAINTING
       , mName(aName)
 #endif
       , mType(aType)
@@ -1318,7 +1318,7 @@ public:
 
 protected:
   PaintCallback mPaint;
-#ifdef DEBUG
+#ifdef MOZ_DUMP_PAINTING
   const char*   mName;
 #endif
   Type mType;
@@ -2052,6 +2052,10 @@ public:
 
   nsIFrame* GetEffectsFrame() { return mEffectsFrame; }
 
+#ifdef MOZ_DUMP_PAINTING
+  void PrintEffects(FILE* aOutput);
+#endif
+
 private:
   nsIFrame* mEffectsFrame;
   // relative to mEffectsFrame
@@ -2206,6 +2210,12 @@ public:
                                                  float aFactor,
                                                  const nsRect* aBoundsOverride = nsnull,
                                                  nsIFrame** aOutAncestor = nsnull);
+  /**
+   * Return true when we should try to prerender the entire contents of the
+   * transformed frame even when it's not completely visible (yet).
+   */
+  static bool ShouldPrerenderTransformedContent(nsDisplayListBuilder* aBuilder,
+                                                nsIFrame* aFrame);
 
 private:
   nsDisplayWrapList mStoredList;
@@ -2259,24 +2269,6 @@ public:
 
   nscoord mLeftEdge;  // length from the left side
   nscoord mRightEdge; // length from the right side
-};
-
-
-/**
- * This is a dummy item that reports true for IsVaryingRelativeToMovingFrame.
- * It forces the bounds of its frame to be repainted every time it is scrolled.
- * It is transparent to events and does not paint anything.
- */
-class nsDisplayForcePaintOnScroll : public nsDisplayItem
-{
-public:
-  nsDisplayForcePaintOnScroll(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame);
-#ifdef NS_BUILD_REFCNT_LOGGING
-  virtual ~nsDisplayForcePaintOnScroll();
-#endif
-  NS_DISPLAY_DECL_NAME("ForcePaintOnScroll", TYPE_FORCEPAINTONSCROLL)
-  virtual bool IsVaryingRelativeToMovingFrame(nsDisplayListBuilder* aBuilder,
-                                                nsIFrame* aFrame);
 };
 
 #endif /*NSDISPLAYLIST_H_*/

@@ -42,6 +42,7 @@
 #define mozilla_layout_RenderFrameParent_h
 
 #include "mozilla/layout/PRenderFrameParent.h"
+#include "mozilla/layers/ShadowLayersManager.h"
 
 #include <map>
 #include "nsDisplayList.h"
@@ -59,7 +60,8 @@ class ShadowLayersParent;
 
 namespace layout {
 
-class RenderFrameParent : public PRenderFrameParent
+class RenderFrameParent : public PRenderFrameParent,
+                          public mozilla::layers::ShadowLayersManager
 {
   typedef mozilla::layers::FrameMetrics FrameMetrics;
   typedef mozilla::layers::ContainerLayer ContainerLayer;
@@ -84,7 +86,7 @@ public:
 
   void ContentViewScaleChanged(nsContentView* aView);
 
-  void ShadowLayersUpdated();
+  virtual void ShadowLayersUpdated() MOZ_OVERRIDE;
 
   NS_IMETHOD BuildDisplayList(nsDisplayListBuilder* aBuilder,
                               nsSubDocumentFrame* aFrame,
@@ -97,6 +99,8 @@ public:
                                      const nsIntRect& aVisibleRect);
 
   void OwnerContentChanged(nsIContent* aContent);
+
+  void SetBackgroundColor(nscolor aColor) { mBackgroundColor = gfxRGBA(aColor); };
 
 protected:
   NS_OVERRIDE void ActorDestroy(ActorDestroyReason why);
@@ -133,6 +137,8 @@ private:
   // It's possible for mFrameLoader==null and
   // mFrameLoaderDestroyed==false.
   bool mFrameLoaderDestroyed;
+  // this is gfxRGBA because that's what ColorLayer wants.
+  gfxRGBA mBackgroundColor;
 };
 
 } // namespace layout

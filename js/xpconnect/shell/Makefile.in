@@ -65,6 +65,10 @@ endif
 
 LIBS +=	$(NSPR_LIBS)
 
+DEFINES += \
+  -DNO_NSPR_10_SUPPORT \
+  $(NULL)
+
 NSDISTMODE = copy
 
 ifdef _MSC_VER
@@ -74,6 +78,9 @@ WIN32_EXE_LDFLAGS += -STACK:2097152
 endif
 endif
 
+ifeq ($(OS_TEST),ia64)
+LIBS += $(JEMALLOC_LIBS)
+endif
 include $(topsrcdir)/config/config.mk
 include $(topsrcdir)/ipc/chromium/chromium-config.mk
 include $(topsrcdir)/config/rules.mk

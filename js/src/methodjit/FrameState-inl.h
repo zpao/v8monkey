@@ -54,7 +54,7 @@ FrameState::addToTracker(FrameEntry *fe)
 }
 
 inline FrameEntry *
-FrameState::peek(int32 depth)
+FrameState::peek(int32_t depth)
 {
     JS_ASSERT(depth < 0);
     JS_ASSERT(a->sp + depth >= a->spBase);
@@ -67,9 +67,9 @@ FrameState::peek(int32 depth)
 }
 
 inline void
-FrameState::popn(uint32 n)
+FrameState::popn(uint32_t n)
 {
-    for (uint32 i = 0; i < n; i++)
+    for (uint32_t i = 0; i < n; i++)
         pop();
 }
 
@@ -84,18 +84,18 @@ FrameState::haveSameBacking(FrameEntry *lhs, FrameEntry *rhs)
 }
 
 inline FrameEntry *
-FrameState::getTemporary(uint32 which)
+FrameState::getTemporary(uint32_t which)
 {
     JS_ASSERT(which < TEMPORARY_LIMIT);
 
     FrameEntry *fe = temporaries + which;
     JS_ASSERT(fe < temporariesTop);
 
-    return getOrTrack(uint32(fe - entries));
+    return getOrTrack(uint32_t(fe - entries));
 }
 
 inline AnyRegisterID
-FrameState::allocReg(uint32 mask)
+FrameState::allocReg(uint32_t mask)
 {
     if (freeRegs.hasRegInMask(mask)) {
         AnyRegisterID reg = freeRegs.takeAnyReg(mask);
@@ -124,7 +124,7 @@ inline AnyRegisterID
 FrameState::allocAndLoadReg(FrameEntry *fe, bool fp, RematInfo::RematType type)
 {
     AnyRegisterID reg;
-    uint32 mask = fp ? (uint32) Registers::AvailFPRegs : (uint32) Registers::AvailRegs;
+    uint32_t mask = fp ? (uint32_t) Registers::AvailFPRegs : (uint32_t) Registers::AvailRegs;
 
     /*
      * Decide whether to retroactively mark a register as holding the entry
@@ -362,7 +362,7 @@ FrameState::pushWord(Address address, JSValueType knownType, bool reuseBase)
 }
 
 inline JSC::MacroAssembler::FPRegisterID
-FrameState::storeRegs(int32 depth, RegisterID type, RegisterID data, JSValueType knownType)
+FrameState::storeRegs(int32_t depth, RegisterID type, RegisterID data, JSValueType knownType)
 {
     FrameEntry *fe = peek(depth);
     forgetEntry(fe);
@@ -542,6 +542,42 @@ FrameState::tempRegForType(FrameEntry *fe)
     return reg;
 }
 
+inline void
+FrameState::loadTypeIntoReg(const FrameEntry *fe, RegisterID reg)
+{
+    if (fe->isCopy())
+        fe = fe->copyOf();
+
+    JS_ASSERT(!fe->type.isConstant());
+
+    if (fe->type.inRegister()) {
+        if (fe->type.reg() == reg)
+            return;
+        masm.move(fe->type.reg(), reg);
+        return;
+    }
+
+    masm.loadTypeTag(addressOf(fe), reg);
+}
+
+inline void
+FrameState::loadDataIntoReg(const FrameEntry *fe, RegisterID reg)
+{
+    if (fe->isCopy())
+        fe = fe->copyOf();
+
+    JS_ASSERT(!fe->data.isConstant());
+
+    if (fe->data.inRegister()) {
+        if (fe->data.reg() == reg)
+            return;
+        masm.move(fe->data.reg(), reg);
+        return;
+    }
+
+    masm.loadPayload(addressOf(fe), reg);
+}
+
 inline JSC::MacroAssembler::RegisterID
 FrameState::tempRegForData(FrameEntry *fe)
 {
@@ -602,7 +638,7 @@ FrameState::tempFPRegForData(FrameEntry *fe)
 }
 
 inline AnyRegisterID
-FrameState::tempRegInMaskForData(FrameEntry *fe, uint32 mask)
+FrameState::tempRegInMaskForData(FrameEntry *fe, uint32_t mask)
 {
     JS_ASSERT(!fe->isConstant());
     JS_ASSERT_IF(fe->isType(JSVAL_TYPE_DOUBLE), !(mask & ~Registers::AvailFPRegs));
@@ -879,16 +915,22 @@ FrameState::syncAndForgetFe(FrameEntry *fe, bool markSynced)
 }
 
 inline JSC::MacroAssembler::Address
-FrameState::loadNameAddress(const analyze::ScriptAnalysis::NameAccess &access)
+FrameState::loadNameAddress(const analyze::ScriptAnalysis::NameAccess &access, RegisterID reg)
 {
     JS_ASSERT(access.script && access.nesting);
 
-    RegisterID reg = allocReg();
-    Value **pbase = access.arg ? &access.nesting->argArray : &access.nesting->varArray;
+    const Value **pbase = access.arg ? &access.nesting->argArray : &access.nesting->varArray;
     masm.move(ImmPtr(pbase), reg);
     masm.loadPtr(Address(reg), reg);
 
     return Address(reg, access.index * sizeof(Value));
+}
+
+inline JSC::MacroAssembler::Address
+FrameState::loadNameAddress(const analyze::ScriptAnalysis::NameAccess &access)
+{
+    RegisterID reg = allocReg();
+    return loadNameAddress(access, reg);
 }
 
 inline void
@@ -1017,7 +1059,7 @@ FrameState::learnType(FrameEntry *fe, JSValueType type, RegisterID data)
     fe->type.unsync();
 }
 
-inline int32
+inline int32_t
 FrameState::frameOffset(const FrameEntry *fe, ActiveFrame *a) const
 {
     /*
@@ -1032,11 +1074,11 @@ FrameState::frameOffset(const FrameEntry *fe, ActiveFrame *a) const
     JS_ASSERT(fe >= a->callee_ && fe <= a->sp);
 
     if (fe >= a->locals)
-        return StackFrame::offsetOfFixed(uint32(fe - a->locals));
+        return StackFrame::offsetOfFixed(uint32_t(fe - a->locals));
     if (fe >= a->args)
-        return StackFrame::offsetOfFormalArg(a->script->function(), uint32(fe - a->args));
+        return StackFrame::offsetOfFormalArg(a->script->function(), uint32_t(fe - a->args));
     if (fe == a->this_)
-        return StackFrame::offsetOfThis(a->script->hasFunction ? a->script->function() : NULL);
+        return StackFrame::offsetOfThis(a->script->function());
     if (fe == a->callee_)
         return StackFrame::offsetOfCallee(a->script->function());
     JS_NOT_REACHED("Bad fe");
@@ -1058,11 +1100,11 @@ FrameState::addressOf(const FrameEntry *fe) const
     while (fe < na->callee_)
         na = na->parent;
 
-    int32 offset = frameOffset(fe, na);
+    int32_t offset = frameOffset(fe, na);
     return Address(JSFrameReg, offset + (na->depth * sizeof(Value)));
 }
 
-inline uint32
+inline uint32_t
 FrameState::frameSlot(ActiveFrame *a, const FrameEntry *fe) const
 {
     if (isTemporary(fe))
@@ -1083,8 +1125,10 @@ FrameState::frameSlot(ActiveFrame *a, const FrameEntry *fe) const
 }
 
 inline JSC::MacroAssembler::Address
-FrameState::addressForInlineReturn() const
+FrameState::addressForInlineReturn()
 {
+    if (a->callee_->isTracked())
+        discardFe(a->callee_);
     return addressOf(a->callee_);
 }
 
@@ -1143,6 +1187,14 @@ FrameState::testObject(Assembler::Condition cond, FrameEntry *fe)
 }
 
 inline JSC::MacroAssembler::Jump
+FrameState::testGCThing(FrameEntry *fe)
+{
+    if (shouldAvoidTypeRemat(fe))
+        return masm.testGCThing(addressOf(fe));
+    return masm.testGCThing(tempRegForType(fe));
+}
+
+inline JSC::MacroAssembler::Jump
 FrameState::testDouble(Assembler::Condition cond, FrameEntry *fe)
 {
     JS_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
@@ -1170,7 +1222,7 @@ FrameState::testString(Assembler::Condition cond, FrameEntry *fe)
 }
 
 inline FrameEntry *
-FrameState::getOrTrack(uint32 index)
+FrameState::getOrTrack(uint32_t index)
 {
     FrameEntry *fe = &entries[index];
     if (!fe->isTracked()) {
@@ -1181,45 +1233,45 @@ FrameState::getOrTrack(uint32 index)
 }
 
 inline FrameEntry *
-FrameState::getStack(uint32 slot)
+FrameState::getStack(uint32_t slot)
 {
-    if (slot >= uint32(a->sp - a->spBase))
+    if (slot >= uint32_t(a->sp - a->spBase))
         return NULL;
-    return getOrTrack(uint32(a->spBase + slot - entries));
+    return getOrTrack(uint32_t(a->spBase + slot - entries));
 }
 
 inline FrameEntry *
-FrameState::getLocal(uint32 slot)
+FrameState::getLocal(uint32_t slot)
 {
     JS_ASSERT(slot < a->script->nslots);
-    return getOrTrack(uint32(a->locals + slot - entries));
+    return getOrTrack(uint32_t(a->locals + slot - entries));
 }
 
 inline FrameEntry *
-FrameState::getArg(uint32 slot)
+FrameState::getArg(uint32_t slot)
 {
     JS_ASSERT(slot < a->script->function()->nargs);
-    return getOrTrack(uint32(a->args + slot - entries));
+    return getOrTrack(uint32_t(a->args + slot - entries));
 }
 
 inline FrameEntry *
 FrameState::getThis()
 {
-    return getOrTrack(uint32(a->this_ - entries));
+    return getOrTrack(uint32_t(a->this_ - entries));
 }
 
 inline FrameEntry *
-FrameState::getSlotEntry(uint32 slot)
+FrameState::getSlotEntry(uint32_t slot)
 {
     JS_ASSERT(slot < analyze::TotalSlots(a->script));
-    return getOrTrack(uint32(a->callee_ + slot - entries));
+    return getOrTrack(uint32_t(a->callee_ + slot - entries));
 }
 
 inline FrameEntry *
 FrameState::getCallee()
 {
     // Callee can only be used in function code, and it's always an object.
-    JS_ASSERT(a->script->hasFunction);
+    JS_ASSERT(a->script->function());
     FrameEntry *fe = a->callee_;
     if (!fe->isTracked()) {
         addToTracker(fe);
@@ -1230,7 +1282,7 @@ FrameState::getCallee()
 }
 
 inline void
-FrameState::unpinKilledReg(RegisterID reg)
+FrameState::unpinKilledReg(AnyRegisterID reg)
 {
     regstate(reg).unpinUnsafe();
     freeRegs.putReg(reg);
@@ -1252,8 +1304,8 @@ FrameState::forgetAllRegs(FrameEntry *fe)
 inline void
 FrameState::swapInTracker(FrameEntry *lhs, FrameEntry *rhs)
 {
-    uint32 li = lhs->trackerIndex();
-    uint32 ri = rhs->trackerIndex();
+    uint32_t li = lhs->trackerIndex();
+    uint32_t ri = rhs->trackerIndex();
     JS_ASSERT(tracker[li] == lhs);
     JS_ASSERT(tracker[ri] == rhs);
     tracker.entries[ri] = lhs;
@@ -1278,7 +1330,7 @@ FrameState::dup2()
 }
 
 inline void
-FrameState::dupAt(int32 n)
+FrameState::dupAt(int32_t n)
 {
     JS_ASSERT(n < 0);
     FrameEntry *fe = peek(n);
@@ -1286,7 +1338,7 @@ FrameState::dupAt(int32 n)
 }
 
 inline void
-FrameState::syncAt(int32 n)
+FrameState::syncAt(int32_t n)
 {
     JS_ASSERT(n < 0);
     FrameEntry *fe = peek(n);
@@ -1294,7 +1346,7 @@ FrameState::syncAt(int32 n)
 }
 
 inline void
-FrameState::pushLocal(uint32 n)
+FrameState::pushLocal(uint32_t n)
 {
     FrameEntry *fe = getLocal(n);
     if (!a->analysis->slotEscapes(analyze::LocalSlot(a->script, n))) {
@@ -1309,13 +1361,15 @@ FrameState::pushLocal(uint32 n)
         if (fe->isTracked() && n < a->script->nfixed)
             JS_ASSERT(fe->data.inMemory());
 #endif
+        if (n >= a->script->nfixed)
+            syncFe(fe);
         JSValueType type = fe->isTypeKnown() ? fe->getKnownType() : JSVAL_TYPE_UNKNOWN;
         push(addressOf(fe), type);
     }
 }
 
 inline void
-FrameState::pushArg(uint32 n)
+FrameState::pushArg(uint32_t n)
 {
     FrameEntry *fe = getArg(n);
     if (!a->analysis->slotEscapes(analyze::ArgSlot(n))) {
@@ -1378,17 +1432,17 @@ FrameState::isConstructorThis(const FrameEntry *fe) const
 }
 
 inline void
-FrameState::leaveBlock(uint32 n)
+FrameState::leaveBlock(uint32_t n)
 {
     popn(n);
 }
 
 inline void
-FrameState::enterBlock(uint32 n)
+FrameState::enterBlock(uint32_t n)
 {
     /* expect that tracker has 0 entries, for now. */
     JS_ASSERT(!tracker.nentries);
-    JS_ASSERT(uint32(a->sp + n - a->locals) <= a->script->nslots);
+    JS_ASSERT(uint32_t(a->sp + n - a->locals) <= a->script->nslots);
 
     a->sp += n;
 }

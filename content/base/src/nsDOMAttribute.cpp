@@ -59,7 +59,7 @@
 #include "nsTextNode.h"
 #include "mozAutoDocUpdate.h"
 #include "nsMutationEvent.h"
-#include "nsPLDOMEvent.h"
+#include "nsAsyncDOMEvent.h"
 #include "nsWrapperCacheInlines.h"
 
 using namespace mozilla::dom;
@@ -581,15 +581,6 @@ nsDOMAttribute::SetTextContent(const nsAString& aTextContent)
 }
 
 NS_IMETHODIMP
-nsDOMAttribute::IsSameNode(nsIDOMNode *other, bool *aResult)
-{
-  OwnerDoc()->WarnOnceAbout(nsIDocument::eIsSameNode);
-
-  *aResult = other == this;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsDOMAttribute::Contains(nsIDOMNode* aOther, bool* aReturn)
 {
   return nsINode::Contains(aOther, aReturn);
@@ -709,13 +700,7 @@ nsDOMAttribute::RemoveChildAt(PRUint32 aIndex, bool aNotify)
     return NS_OK;
   }
 
-  {
-    nsCOMPtr<nsIContent> child = mChild;
-    nsMutationGuard::DidMutate();
-    mozAutoDocUpdate updateBatch(OwnerDoc(), UPDATE_CONTENT_MODEL, aNotify);
-
-    doRemoveChild(aNotify);
-  }
+  doRemoveChild(aNotify);
 
   nsString nullString;
   SetDOMStringToNull(nullString);
@@ -793,12 +778,20 @@ nsDOMAttribute::Shutdown()
 void
 nsDOMAttribute::doRemoveChild(bool aNotify)
 {
-  if (aNotify) {
-    nsNodeUtils::AttributeChildRemoved(this, mChild);
-  }
+  NS_ASSERTION(mChild && mFirstChild, "Why are we here?");
+  NS_ASSERTION(mChild == mFirstChild, "Something got out of sync!");
 
-  static_cast<nsTextNode*>(mChild)->UnbindFromAttribute();
+  nsRefPtr<nsTextNode> child = static_cast<nsTextNode*>(mChild);
+  nsMutationGuard::DidMutate();
+  mozAutoDocUpdate updateBatch(OwnerDoc(), UPDATE_CONTENT_MODEL, aNotify);
+
   NS_RELEASE(mChild);
   mFirstChild = nsnull;
+
+  if (aNotify) {
+    nsNodeUtils::AttributeChildRemoved(this, child);
+  }
+
+  child->UnbindFromAttribute();
 }
 

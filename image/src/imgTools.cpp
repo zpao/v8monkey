@@ -53,7 +53,7 @@
 #include "nsNetUtil.h"
 #include "RasterImage.h"
 
-using namespace mozilla::imagelib;
+using namespace mozilla::image;
 
 /* ========== imgITools implementation ========== */
 
@@ -131,16 +131,22 @@ NS_IMETHODIMP imgTools::DecodeImageData(nsIInputStream* aInStr,
 
 NS_IMETHODIMP imgTools::EncodeImage(imgIContainer *aContainer,
                                     const nsACString& aMimeType,
+                                    const nsAString& aOutputOptions,
                                     nsIInputStream **aStream)
 {
-    return EncodeScaledImage(aContainer, aMimeType, 0, 0, aStream);
+    return EncodeScaledImage(aContainer,
+                             aMimeType,
+                             0,
+                             0,
+                             aOutputOptions,
+                             aStream);
 }
-
 
 NS_IMETHODIMP imgTools::EncodeScaledImage(imgIContainer *aContainer,
                                           const nsACString& aMimeType,
                                           PRInt32 aScaledWidth,
                                           PRInt32 aScaledHeight,
+                                          const nsAString& aOutputOptions,
                                           nsIInputStream **aStream)
 {
   nsresult rv;
@@ -197,9 +203,6 @@ NS_IMETHODIMP imgTools::EncodeScaledImage(imgIContainer *aContainer,
     // Create a temporary image surface
     dest = new gfxImageSurface(gfxIntSize(aScaledWidth, aScaledHeight),
                                gfxASurface::ImageFormatARGB32);
-    if (!dest)
-      return NS_ERROR_OUT_OF_MEMORY;
-
     gfxContext ctx(dest);
 
     // Set scaling
@@ -218,9 +221,13 @@ NS_IMETHODIMP imgTools::EncodeScaledImage(imgIContainer *aContainer,
   }
 
   // Encode the bitmap
-  rv = encoder->InitFromData(bitmapData, bitmapDataLength,
-                             aScaledWidth, aScaledHeight, strideSize,
-                             imgIEncoder::INPUT_FORMAT_HOSTARGB, EmptyString());
+  rv = encoder->InitFromData(bitmapData,
+                             bitmapDataLength,
+                             aScaledWidth,
+                             aScaledHeight,
+                             strideSize,
+                             imgIEncoder::INPUT_FORMAT_HOSTARGB,
+                             aOutputOptions);
 
   NS_ENSURE_SUCCESS(rv, rv);
 

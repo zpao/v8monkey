@@ -41,6 +41,8 @@
 #ifndef jsvector_h_
 #define jsvector_h_
 
+#include "mozilla/Attributes.h"
+
 #include "TemplateLib.h"
 #include "Utility.h"
 
@@ -52,7 +54,11 @@
 
 namespace js {
 
-template <class T, size_t N, class AllocPolicy>
+class TempAllocPolicy;
+
+template <class T,
+          size_t MinInlineCapacity = 0,
+          class AllocPolicy = TempAllocPolicy>
 class Vector;
 
 /*
@@ -274,8 +280,8 @@ class Vector : private AllocPolicy
     bool entered;
 #endif
 
-    Vector(const Vector &);
-    Vector &operator=(const Vector &);
+    Vector(const Vector &) MOZ_DELETE;
+    Vector &operator=(const Vector &) MOZ_DELETE;
 
     /* private accessors */
 
@@ -343,7 +349,12 @@ class Vector : private AllocPolicy
         return mCapacity;
     }
 
-    T *begin() const {
+    T *begin() {
+        JS_ASSERT(!entered);
+        return mBegin;
+    }
+
+    const T *begin() const {
         JS_ASSERT(!entered);
         return mBegin;
     }
@@ -376,6 +387,23 @@ class Vector : private AllocPolicy
     const T &back() const {
         JS_ASSERT(!entered && !empty());
         return *(end() - 1);
+    }
+
+    class Range {
+        friend class Vector;
+        T *cur, *end;
+        Range(T *cur, T *end) : cur(cur), end(end) {}
+      public:
+        Range() {}
+        bool empty() const { return cur == end; }
+        size_t remain() const { return end - cur; }
+        T &front() const { return *cur; }
+        void popFront() { JS_ASSERT(!empty()); ++cur; }
+        T popCopyFront() { JS_ASSERT(!empty()); return *cur++; }
+    };
+
+    Range all() {
+        return Range(begin(), end());
     }
 
     /* mutators */
@@ -560,7 +588,6 @@ Vector<T,N,AP>::calculateNewCapacity(size_t curLength, size_t lengthInc,
                                      size_t &newCap)
 {
     size_t newMinCap = curLength + lengthInc;
-    size_t newMinSize = newMinCap * sizeof(T);
 
     /*
      * Check for overflow in the above addition, below CEILING_LOG2, and later
@@ -572,14 +599,8 @@ Vector<T,N,AP>::calculateNewCapacity(size_t curLength, size_t lengthInc,
         return false;
     }
 
-    /*
-     * It's best to request 2^N sized chunks because they are unlikely to be
-     * rounded up by the allocator.  (Asking for a 2^N number of elements isn't
-     * as good, because if sizeof(T) is not a power-of-two that would result in
-     * a non-2^N request size, which can cause waste.)
-     */
-    size_t newSize = RoundUpPow2(newMinSize);
-    newCap = newSize / sizeof(T);
+    /* Round up to next power of 2. */
+    newCap = RoundUpPow2(newMinCap);
 
     /*
      * Do not allow a buffer large enough that the expression ((char *)end() -

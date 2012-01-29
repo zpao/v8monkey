@@ -63,6 +63,8 @@ XPCOMUtils.defineLazyGetter(Services, "dirsvc", function () {
 });
 
 let initTable = [
+  ["appShell", "@mozilla.org/appshell/appShellService;1", "nsIAppShellService"],
+  ["cache", "@mozilla.org/network/cache-service;1", "nsICacheService"],
   ["console", "@mozilla.org/consoleservice;1", "nsIConsoleService"],
   ["contentPrefs", "@mozilla.org/content-pref/service;1", "nsIContentPrefService"],
   ["cookies", "@mozilla.org/cookiemanager;1", "nsICookieManager2"],
@@ -75,10 +77,12 @@ let initTable = [
   ["perms", "@mozilla.org/permissionmanager;1", "nsIPermissionManager"],
   ["prompt", "@mozilla.org/embedcomp/prompt-service;1", "nsIPromptService"],
   ["scriptloader", "@mozilla.org/moz/jssubscript-loader;1", "mozIJSSubScriptLoader"],
+  ["scriptSecurityManager", "@mozilla.org/scriptsecuritymanager;1", "nsIScriptSecurityManager"],
 #ifdef MOZ_TOOLKIT_SEARCH
   ["search", "@mozilla.org/browser/search-service;1", "nsIBrowserSearchService"],
 #endif
   ["storage", "@mozilla.org/storage/service;1", "mozIStorageService"],
+  ["domStorageManager", "@mozilla.org/dom/storagemanager;1", "nsIDOMStorageManager"],
   ["strings", "@mozilla.org/intl/stringbundle;1", "nsIStringBundleService"],
   ["telemetry", "@mozilla.org/base/telemetry;1", "nsITelemetry"],
   ["tm", "@mozilla.org/thread-manager;1", "nsIThreadManager"],
@@ -88,6 +92,7 @@ let initTable = [
   ["ww", "@mozilla.org/embedcomp/window-watcher;1", "nsIWindowWatcher"],
   ["startup", "@mozilla.org/toolkit/app-startup;1", "nsIAppStartup"],
   ["sysinfo", "@mozilla.org/system-info;1", "nsIPropertyBag2"],
+  ["clipboard", "@mozilla.org/widget/clipboard;1", "nsIClipboard"]
 ];
 
 initTable.forEach(function ([name, contract, intf])

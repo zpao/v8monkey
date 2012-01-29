@@ -1089,19 +1089,6 @@ nsScriptSecurityManager::CheckSameOriginDOMProp(nsIPrincipal* aSubject,
         return NS_ERROR_DOM_PROP_ACCESS_DENIED;
 
     /*
-    * If we failed the origin tests it still might be the case that we
-    * are a signed script and have permissions to do this operation.
-    * Check for that here.
-    */
-    bool capabilityEnabled = false;
-    const char* cap = aAction == nsIXPCSecurityManager::ACCESS_SET_PROPERTY ?
-                      "UniversalBrowserWrite" : "UniversalBrowserRead";
-    rv = IsCapabilityEnabled(cap, &capabilityEnabled);
-    NS_ENSURE_SUCCESS(rv, rv);
-    if (capabilityEnabled)
-        return NS_OK;
-
-    /*
     ** Access tests failed, so now report error.
     */
     return NS_ERROR_DOM_PROP_ACCESS_DENIED;
@@ -1321,7 +1308,7 @@ nsScriptSecurityManager::CheckLoadURIFromScript(JSContext *cx, nsIURI *aURI)
     }
 
     // See if we're attempting to load a file: URI. If so, let a
-    // UniversalFileRead capability trump the above check.
+    // UniversalXPConnect capability trump the above check.
     bool isFile = false;
     bool isRes = false;
     if (NS_FAILED(aURI->SchemeIs("file", &isFile)) ||
@@ -1330,7 +1317,7 @@ nsScriptSecurityManager::CheckLoadURIFromScript(JSContext *cx, nsIURI *aURI)
     if (isFile || isRes)
     {
         bool enabled;
-        if (NS_FAILED(IsCapabilityEnabled("UniversalFileRead", &enabled)))
+        if (NS_FAILED(IsCapabilityEnabled("UniversalXPConnect", &enabled)))
             return NS_ERROR_FAILURE;
         if (enabled)
             return NS_OK;
@@ -1738,7 +1725,7 @@ nsScriptSecurityManager::CheckFunctionAccess(JSContext *aCx, void *aFunObj,
 #ifdef DEBUG
         {
             JS_ASSERT(JS_ObjectIsFunction(aCx, (JSObject *)aFunObj));
-            JSFunction *fun = (JSFunction *)JS_GetPrivate(aCx, (JSObject *)aFunObj);
+            JSFunction *fun = JS_GetObjectFunction((JSObject *)aFunObj);
             JSScript *script = JS_GetFunctionScript(aCx, fun);
 
             NS_ASSERTION(!script, "Null principal for non-native function!");
@@ -2219,7 +2206,7 @@ nsScriptSecurityManager::GetFunctionObjectPrincipal(JSContext *cx,
         return result;
     }
 
-    JSFunction *fun = (JSFunction *)JS_GetPrivate(cx, obj);
+    JSFunction *fun = JS_GetObjectFunction(obj);
     JSScript *script = JS_GetFunctionScript(cx, fun);
 
     if (!script)
@@ -2243,7 +2230,7 @@ nsScriptSecurityManager::GetFunctionObjectPrincipal(JSContext *cx,
 
         script = frameScript;
     }
-    else if (JS_GetFunctionObject(fun) != obj)
+    else if (!js::IsOriginalScriptFunction(fun))
     {
         // Here, obj is a cloned function object.  In this case, the
         // clone's prototype may have been precompiled from brutally
@@ -2285,7 +2272,7 @@ nsScriptSecurityManager::GetFramePrincipal(JSContext *cx,
 #ifdef DEBUG
     if (NS_SUCCEEDED(*rv) && !result)
     {
-        JSFunction *fun = (JSFunction *)JS_GetPrivate(cx, obj);
+        JSFunction *fun = JS_GetObjectFunction(obj);
         JSScript *script = JS_GetFunctionScript(cx, fun);
 
         NS_ASSERTION(!script, "Null principal for non-native function!");
@@ -2432,7 +2419,7 @@ nsScriptSecurityManager::doGetObjectPrincipal(JSObject *aObj
         jsClass = js::GetObjectClass(aObj);
 
         if (jsClass == &js::CallClass) {
-            aObj = js::GetObjectParent(aObj);
+            aObj = js::GetObjectParentMaybeScope(aObj);
 
             if (!aObj)
                 return nsnull;
@@ -2484,7 +2471,7 @@ nsScriptSecurityManager::doGetObjectPrincipal(JSObject *aObj
             }
         }
 
-        aObj = js::GetObjectParent(aObj);
+        aObj = js::GetObjectParentMaybeScope(aObj);
 
         if (!aObj)
             break;

@@ -81,6 +81,8 @@
  * it took for the event to be serviced.
  */
 
+#include "sampler.h"
+
 #include "EventTracer.h"
 
 #include <stdio.h>
@@ -121,6 +123,7 @@ void TracerThread(void *arg)
   // This is the sampling interval.
   PRIntervalTime interval = PR_MillisecondsToInterval(10);
 
+  sExit = false;
   FILE* log = NULL;
   char* envfile = PR_GetEnv("MOZ_INSTRUMENT_EVENT_LOOP_OUTPUT");
   if (envfile) {
@@ -149,6 +152,7 @@ void TracerThread(void *arg)
 
   while (!sExit) {
     TimeStamp start(TimeStamp::Now());
+    SAMPLER_RESPONSIVENESS(start);
     PRIntervalTime next_sleep = interval;
 
     //TODO: only wait up to a maximum of interval; return
@@ -190,6 +194,9 @@ namespace mozilla {
 
 bool InitEventTracing()
 {
+  if (sTracerThread)
+    return true;
+
   // Initialize the widget backend.
   if (!InitWidgetTracing())
     return false;
@@ -209,6 +216,9 @@ bool InitEventTracing()
 
 void ShutdownEventTracing()
 {
+  if (!sTracerThread)
+    return;
+
   sExit = true;
   // Ensure that the tracer thread doesn't hang.
   SignalTracerThread();

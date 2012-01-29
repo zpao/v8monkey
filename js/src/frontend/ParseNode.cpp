@@ -56,8 +56,6 @@ JS_STATIC_ASSERT(pn_offsetof(pn_link) == pn_offsetof(dn_uses));
 
 #undef pn_offsetof
 
-namespace js {
-
 void
 ParseNode::become(ParseNode *pn2)
 {
@@ -86,7 +84,7 @@ ParseNode::become(ParseNode *pn2)
      * If any pointers are pointing to pn2, change them to point to this
      * instead, since pn2 will be cleared and probably recycled.
      */
-    if (this->isKind(TOK_FUNCTION) && isArity(PN_FUNC)) {
+    if (this->isKind(PNK_FUNCTION) && isArity(PN_FUNC)) {
         /* Function node: fix up the pn_funbox->node back-pointer. */
         JS_ASSERT(pn_funbox->node == pn2);
         pn_funbox->node = this;
@@ -103,7 +101,7 @@ ParseNode::become(ParseNode *pn2)
 void
 ParseNode::clear()
 {
-    pn_type = TOK_EOF;
+    pn_type = PNK_LIMIT;
     setOp(JSOP_NOP);
     pn_used = pn_defn = false;
     pn_arity = PN_NULLARY;
@@ -133,20 +131,6 @@ bool
 FunctionBox::scopeIsExtensible() const
 {
     return tcflags & TCF_FUN_EXTENSIBLE_SCOPE;
-}
-
-bool
-FunctionBox::shouldUnbrand(uintN methods, uintN slowMethods) const
-{
-    if (slowMethods != 0) {
-        for (const FunctionBox *funbox = this; funbox; funbox = funbox->parent) {
-            if (!(funbox->tcflags & TCF_FUN_MODULE_PATTERN))
-                return true;
-            if (funbox->inLoop)
-                return true;
-        }
-    }
-    return false;
 }
 
 /* Add |node| to |parser|'s free node list. */
@@ -214,8 +198,8 @@ class NodeStack {
 /*
  * Push the children of |pn| on |stack|. Return true if |pn| itself could be
  * safely recycled, or false if it must be cleaned later (pn_used and pn_defn
- * nodes, and all function nodes; see comments for
- * js::Parser::cleanFunctionList). Some callers want to free |pn|; others
+ * nodes, and all function nodes; see comments for CleanFunctionList in
+ * SemanticAnalysis.cpp). Some callers want to free |pn|; others
  * (js::ParseNodeAllocator::prepareNodeForMutation) don't care about |pn|, and
  * just need to take care of its children.
  */
@@ -230,12 +214,12 @@ PushNodeChildren(ParseNode *pn, NodeStack *stack)
          * update them now could result in quadratic behavior when recycling
          * trees containing many functions; and the lists can be very long. So
          * we put off cleaning the lists up until just before function
-         * analysis, when we call js::Parser::cleanFunctionList.
+         * analysis, when we call CleanFunctionList.
          *
          * In fact, we can't recycle the parse node yet, either: it may appear
          * on a method list, and reusing the node would corrupt that. Instead,
          * we clear its pn_funbox pointer to mark it as deleted;
-         * js::Parser::cleanFunctionList recycles it as well.
+         * CleanFunctionList recycles it as well.
          *
          * We do recycle the nodes around it, though, so we must clear pointers
          * to them to avoid leaving dangling references where someone can find
@@ -386,15 +370,52 @@ ParseNodeAllocator::allocNode()
 /* used only by static create methods of subclasses */
 
 ParseNode *
-ParseNode::create(ParseNodeArity arity, TreeContext *tc)
+ParseNode::create(ParseNodeKind kind, ParseNodeArity arity, TreeContext *tc)
 {
     Parser *parser = tc->parser;
     const Token &tok = parser->tokenStream.currentToken();
-    return parser->new_<ParseNode>(tok.type, JSOP_NOP, arity, tok.pos);
+    return parser->new_<ParseNode>(kind, JSOP_NOP, arity, tok.pos);
 }
 
 ParseNode *
-ParseNode::newBinaryOrAppend(TokenKind tt, JSOp op, ParseNode *left, ParseNode *right,
+ParseNode::append(ParseNodeKind kind, JSOp op, ParseNode *left, ParseNode *right)
+{
+    if (!left || !right)
+        return NULL;
+
+    JS_ASSERT(left->isKind(kind) && left->isOp(op) && (js_CodeSpec[op].format & JOF_LEFTASSOC));
+
+    if (left->pn_arity != PN_LIST) {
+        ParseNode *pn1 = left->pn_left, *pn2 = left->pn_right;
+        left->setArity(PN_LIST);
+        left->pn_parens = false;
+        left->initList(pn1);
+        left->append(pn2);
+        if (kind == PNK_ADD) {
+            if (pn1->isKind(PNK_STRING))
+                left->pn_xflags |= PNX_STRCAT;
+            else if (!pn1->isKind(PNK_NUMBER))
+                left->pn_xflags |= PNX_CANTFOLD;
+            if (pn2->isKind(PNK_STRING))
+                left->pn_xflags |= PNX_STRCAT;
+            else if (!pn2->isKind(PNK_NUMBER))
+                left->pn_xflags |= PNX_CANTFOLD;
+        }
+    }
+    left->append(right);
+    left->pn_pos.end = right->pn_pos.end;
+    if (kind == PNK_ADD) {
+        if (right->isKind(PNK_STRING))
+            left->pn_xflags |= PNX_STRCAT;
+        else if (!right->isKind(PNK_NUMBER))
+            left->pn_xflags |= PNX_CANTFOLD;
+    }
+
+    return left;
+}
+
+ParseNode *
+ParseNode::newBinaryOrAppend(ParseNodeKind kind, JSOp op, ParseNode *left, ParseNode *right,
                              TreeContext *tc)
 {
     if (!left || !right)
@@ -402,47 +423,21 @@ ParseNode::newBinaryOrAppend(TokenKind tt, JSOp op, ParseNode *left, ParseNode *
 
     /*
      * Flatten a left-associative (left-heavy) tree of a given operator into
-     * a list, to reduce js_FoldConstants and js_EmitTree recursion.
+     * a list to reduce js::FoldConstants and js::frontend::EmitTree recursion.
      */
-    if (left->isKind(tt) && left->isOp(op) && (js_CodeSpec[op].format & JOF_LEFTASSOC)) {
-        if (left->pn_arity != PN_LIST) {
-            ParseNode *pn1 = left->pn_left, *pn2 = left->pn_right;
-            left->setArity(PN_LIST);
-            left->pn_parens = false;
-            left->initList(pn1);
-            left->append(pn2);
-            if (tt == TOK_PLUS) {
-                if (pn1->isKind(TOK_STRING))
-                    left->pn_xflags |= PNX_STRCAT;
-                else if (!pn1->isKind(TOK_NUMBER))
-                    left->pn_xflags |= PNX_CANTFOLD;
-                if (pn2->isKind(TOK_STRING))
-                    left->pn_xflags |= PNX_STRCAT;
-                else if (!pn2->isKind(TOK_NUMBER))
-                    left->pn_xflags |= PNX_CANTFOLD;
-            }
-        }
-        left->append(right);
-        left->pn_pos.end = right->pn_pos.end;
-        if (tt == TOK_PLUS) {
-            if (right->isKind(TOK_STRING))
-                left->pn_xflags |= PNX_STRCAT;
-            else if (!right->isKind(TOK_NUMBER))
-                left->pn_xflags |= PNX_CANTFOLD;
-        }
-        return left;
-    }
+    if (left->isKind(kind) && left->isOp(op) && (js_CodeSpec[op].format & JOF_LEFTASSOC))
+        return append(kind, op, left, right);
 
     /*
      * Fold constant addition immediately, to conserve node space and, what's
-     * more, so js_FoldConstants never sees mixed addition and concatenation
+     * more, so js::FoldConstants never sees mixed addition and concatenation
      * operations with more than one leading non-string operand in a PN_LIST
      * generated for expressions such as 1 + 2 + "pt" (which should evaluate
      * to "3pt", not "12pt").
      */
-    if (tt == TOK_PLUS &&
-        left->isKind(TOK_NUMBER) &&
-        right->isKind(TOK_NUMBER) &&
+    if (kind == PNK_ADD &&
+        left->isKind(PNK_NUMBER) &&
+        right->isKind(PNK_NUMBER) &&
         tc->parser->foldConstants)
     {
         left->pn_dval += right->pn_dval;
@@ -451,13 +446,13 @@ ParseNode::newBinaryOrAppend(TokenKind tt, JSOp op, ParseNode *left, ParseNode *
         return left;
     }
 
-    return tc->parser->new_<BinaryNode>(tt, op, left, right);
+    return tc->parser->new_<BinaryNode>(kind, op, left, right);
 }
 
 NameNode *
-NameNode::create(JSAtom *atom, TreeContext *tc)
+NameNode::create(ParseNodeKind kind, JSAtom *atom, TreeContext *tc)
 {
-    ParseNode *pn = ParseNode::create(PN_NAME, tc);
+    ParseNode *pn = ParseNode::create(kind, PN_NAME, tc);
     if (pn) {
         pn->pn_atom = atom;
         ((NameNode *)pn)->initCommon(tc);
@@ -465,13 +460,9 @@ NameNode::create(JSAtom *atom, TreeContext *tc)
     return (NameNode *)pn;
 }
 
-} /* namespace js */
-
 const char js_argument_str[] = "argument";
 const char js_variable_str[] = "variable";
 const char js_unknown_str[]  = "unknown";
-
-namespace js {
 
 const char *
 Definition::kindString(Kind kind)
@@ -544,7 +535,6 @@ CloneParseTree(ParseNode *opn, TreeContext *tc)
 
       case PN_UNARY:
         NULLCHECK(pn->pn_kid = CloneParseTree(opn->pn_kid, tc));
-        pn->pn_num = opn->pn_num;
         pn->pn_hidden = opn->pn_hidden;
         break;
 
@@ -602,7 +592,7 @@ CloneParseTree(ParseNode *opn, TreeContext *tc)
  * the original tree.
  */
 ParseNode *
-CloneLeftHandSide(ParseNode *opn, TreeContext *tc)
+js::CloneLeftHandSide(ParseNode *opn, TreeContext *tc)
 {
     ParseNode *pn = tc->parser->new_<ParseNode>(opn->getKind(), opn->getOp(), opn->getArity(),
                                                 opn->pn_pos);
@@ -614,13 +604,13 @@ CloneLeftHandSide(ParseNode *opn, TreeContext *tc)
 
 #if JS_HAS_DESTRUCTURING
     if (opn->isArity(PN_LIST)) {
-        JS_ASSERT(opn->isKind(TOK_RB) || opn->isKind(TOK_RC));
+        JS_ASSERT(opn->isKind(PNK_RB) || opn->isKind(PNK_RC));
         pn->makeEmpty();
         for (ParseNode *opn2 = opn->pn_head; opn2; opn2 = opn2->pn_next) {
             ParseNode *pn2;
-            if (opn->isKind(TOK_RC)) {
+            if (opn->isKind(PNK_RC)) {
                 JS_ASSERT(opn2->isArity(PN_BINARY));
-                JS_ASSERT(opn2->isKind(TOK_COLON));
+                JS_ASSERT(opn2->isKind(PNK_COLON));
 
                 ParseNode *tag = CloneParseTree(opn2->pn_left, tc);
                 if (!tag)
@@ -629,9 +619,9 @@ CloneLeftHandSide(ParseNode *opn, TreeContext *tc)
                 if (!target)
                     return NULL;
 
-                pn2 = tc->parser->new_<BinaryNode>(TOK_COLON, JSOP_INITPROP, opn2->pn_pos, tag, target);
+                pn2 = tc->parser->new_<BinaryNode>(PNK_COLON, JSOP_INITPROP, opn2->pn_pos, tag, target);
             } else if (opn2->isArity(PN_NULLARY)) {
-                JS_ASSERT(opn2->isKind(TOK_COMMA));
+                JS_ASSERT(opn2->isKind(PNK_COMMA));
                 pn2 = CloneParseTree(opn2, tc);
             } else {
                 pn2 = CloneLeftHandSide(opn2, tc);
@@ -647,7 +637,7 @@ CloneLeftHandSide(ParseNode *opn, TreeContext *tc)
 #endif
 
     JS_ASSERT(opn->isArity(PN_NAME));
-    JS_ASSERT(opn->isKind(TOK_NAME));
+    JS_ASSERT(opn->isKind(PNK_NAME));
 
     /* If opn is a definition or use, make pn a use. */
     pn->pn_u.name = opn->pn_u.name;
@@ -670,5 +660,3 @@ CloneLeftHandSide(ParseNode *opn, TreeContext *tc)
     }
     return pn;
 }
-
-} /* namespace js */

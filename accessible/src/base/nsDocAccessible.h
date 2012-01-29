@@ -114,7 +114,7 @@ public:
   // nsAccessible
   virtual void Description(nsString& aDescription);
   virtual nsAccessible* FocusedChild();
-  virtual PRUint32 NativeRole();
+  virtual mozilla::a11y::role NativeRole();
   virtual PRUint64 NativeState();
   virtual void ApplyARIAState(PRUint64* aState);
 
@@ -203,6 +203,21 @@ public:
    * @param aEvent  [in] the event to fire
    */
   nsresult FireDelayedAccessibleEvent(AccEvent* aEvent);
+
+  /**
+   * Fire value change event on the given accessible if applicable.
+   */
+  inline void MaybeNotifyOfValueChange(nsAccessible* aAccessible)
+  {
+    mozilla::a11y::role role = aAccessible->Role();
+    if (role == mozilla::a11y::roles::ENTRY ||
+        role == mozilla::a11y::roles::COMBOBOX) {
+      nsRefPtr<AccEvent> valueChangeEvent =
+        new AccEvent(nsIAccessibleEvent::EVENT_VALUE_CHANGE, aAccessible,
+                     eAutoDetect, AccEvent::eRemoveDupes);
+      FireDelayedAccessibleEvent(valueChangeEvent);
+    }
+  }
 
   /**
    * Get/set the anchor jump.

@@ -37,6 +37,7 @@
 #include "nsDOMClassInfoID.h"
 #include "nsIClassInfo.h"
 #include "nsIXPCScriptable.h"
+#include "DictionaryHelpers.h"
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsDOMPopStateEvent)
 
@@ -81,6 +82,16 @@ nsDOMPopStateEvent::InitPopStateEvent(const nsAString &aTypeArg,
 
   mState = aStateArg;
   return NS_OK;
+}
+
+nsresult
+nsDOMPopStateEvent::InitFromCtor(const nsAString& aType,
+                                 JSContext* aCx, jsval* aVal)
+{
+  mozilla::dom::PopStateEventInit d;
+  nsresult rv = d.Init(aCx, aVal);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return InitPopStateEvent(aType, d.bubbles, d.cancelable, d.state);
 }
 
 nsresult NS_NewDOMPopStateEvent(nsIDOMEvent** aInstancePtrResult,

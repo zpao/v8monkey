@@ -38,11 +38,13 @@
 
 #include "mozilla/dom/TabChild.h"
 
+#include "Compatibility.h"
 #include "nsDocAccessibleWrap.h"
 #include "ISimpleDOMDocument_i.c"
 #include "nsIAccessibilityService.h"
 #include "nsRootAccessible.h"
 #include "nsWinUtils.h"
+#include "Role.h"
 #include "Statistics.h"
 
 #include "nsIDocShell.h"
@@ -227,11 +229,9 @@ STDMETHODIMP nsDocAccessibleWrap::get_accValue(
   if (FAILED(hr) || *pszValue || varChild.lVal != CHILDID_SELF)
     return hr;
   // If document is being used to create a widget, don't use the URL hack
-  PRUint32 role = Role();
-  if (role != nsIAccessibleRole::ROLE_DOCUMENT &&
-      role != nsIAccessibleRole::ROLE_APPLICATION &&
-      role != nsIAccessibleRole::ROLE_DIALOG &&
-      role != nsIAccessibleRole::ROLE_ALERT)
+  roles::Role role = Role();
+  if (role != roles::DOCUMENT && role != roles::APPLICATION && 
+      role != roles::DIALOG && role != roles::ALERT) 
     return hr;
 
   return get_URL(pszValue);
@@ -291,7 +291,7 @@ nsDocAccessibleWrap::DoInitialUpdate()
 
       bool isActive = true;
       PRInt32 x = CW_USEDEFAULT, y = CW_USEDEFAULT, width = 0, height = 0;
-      if (nsWinUtils::IsWindowEmulationFor(kDolphinModuleHandle)) {
+      if (Compatibility::IsDolphin()) {
         GetBounds(&x, &y, &width, &height);
         PRInt32 rootX = 0, rootY = 0, rootWidth = 0, rootHeight = 0;
         rootDocument->GetBounds(&rootX, &rootY, &rootWidth, &rootHeight);

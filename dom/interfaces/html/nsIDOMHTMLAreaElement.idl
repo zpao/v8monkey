@@ -50,7 +50,7 @@
  * http://www.whatwg.org/specs/web-apps/current-work/
  */
 
-[scriptable, uuid(71390a1b-dc96-4855-b0af-1e52200f73b6)]
+[scriptable, uuid(293d9f21-df16-4706-91d5-f6381f9db554)]
 interface nsIDOMHTMLAreaElement : nsIDOMHTMLElement
 {
            attribute DOMString        alt;
@@ -70,8 +70,6 @@ interface nsIDOMHTMLAreaElement : nsIDOMHTMLElement
            attribute DOMString        search;
            attribute DOMString        hash;
            
-
-           attribute long             tabIndex;
            attribute boolean          noHref;
            DOMString                 toString();
 

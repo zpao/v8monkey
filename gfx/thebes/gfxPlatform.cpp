@@ -61,11 +61,12 @@
 #include "gfxPlatformFontList.h"
 #include "gfxContext.h"
 #include "gfxImageSurface.h"
-#include "gfxTextRunCache.h"
-#include "gfxTextRunWordCache.h"
 #include "gfxUserFontSet.h"
 #include "gfxUnicodeProperties.h"
 #include "harfbuzz/hb-unicode.h"
+#ifdef MOZ_GRAPHITE
+#include "gfxGraphiteShaper.h"
+#endif
 
 #include "nsUnicodeRange.h"
 #include "nsServiceManagerUtils.h"
@@ -150,9 +151,16 @@ SRGBOverrideObserver::Observe(nsISupports *aSubject,
 #define GFX_PREF_HARFBUZZ_SCRIPTS "gfx.font_rendering.harfbuzz.scripts"
 #define HARFBUZZ_SCRIPTS_DEFAULT  gfxUnicodeProperties::SHAPING_DEFAULT
 
+#ifdef MOZ_GRAPHITE
+#define GFX_PREF_GRAPHITE_SHAPING "gfx.font_rendering.graphite.enabled"
+#endif
+
+#define BIDI_NUMERAL_PREF "bidi.numeral"
+
 static const char* kObservedPrefs[] = {
     "gfx.downloadable_fonts.",
     "gfx.font_rendering.",
+    "bidi.numeral",
     nsnull
 };
 
@@ -220,10 +228,15 @@ static const char *gPrefLangNames[] = {
 };
 
 gfxPlatform::gfxPlatform()
+  : mAzureBackendCollector(this, &gfxPlatform::GetAzureBackendInfo)
 {
     mUseHarfBuzzScripts = UNINITIALIZED_VALUE;
     mAllowDownloadableFonts = UNINITIALIZED_VALUE;
     mDownloadableFontsSanitize = UNINITIALIZED_VALUE;
+#ifdef MOZ_GRAPHITE
+    mGraphiteShapingEnabled = UNINITIALIZED_VALUE;
+#endif
+    mBidiNumeralOption = UNINITIALIZED_VALUE;
 }
 
 gfxPlatform*
@@ -301,16 +314,6 @@ gfxPlatform::Init()
         NS_RUNTIMEABORT("Could not initialize gfxFontCache");
     }
 
-    rv = gfxTextRunWordCache::Init();
-    if (NS_FAILED(rv)) {
-        NS_RUNTIMEABORT("Could not initialize gfxTextRunWordCache");
-    }
-
-    rv = gfxTextRunCache::Init();
-    if (NS_FAILED(rv)) {
-        NS_RUNTIMEABORT("Could not initialize gfxTextRunCache");
-    }
-
     /* Pref migration hook. */
     MigratePrefs();
 
@@ -332,10 +335,11 @@ gfxPlatform::Shutdown()
 {
     // These may be called before the corresponding subsystems have actually
     // started up. That's OK, they can handle it.
-    gfxTextRunCache::Shutdown();
-    gfxTextRunWordCache::Shutdown();
     gfxFontCache::Shutdown();
     gfxFontGroup::Shutdown();
+#ifdef MOZ_GRAPHITE
+    gfxGraphiteShaper::Shutdown();
+#endif
 #if defined(XP_MACOSX) || defined(XP_WIN) // temporary, until this is implemented on others
     gfxPlatformFontList::Shutdown();
 #endif
@@ -479,6 +483,24 @@ gfxPlatform::GetSourceSurfaceForSurface(DrawTarget *aTarget, gfxASurface *aSurfa
       ctx->Paint();
     }
 
+    gfxImageFormat cairoFormat = imgSurface->Format();
+    switch(cairoFormat) {
+      case gfxASurface::ImageFormatARGB32:
+        format = FORMAT_B8G8R8A8;
+        break;
+      case gfxASurface::ImageFormatRGB24:
+        format = FORMAT_B8G8R8X8;
+        break;
+      case gfxASurface::ImageFormatA8:
+        format = FORMAT_A8;
+        break;
+      case gfxASurface::ImageFormatRGB16_565:
+        format = FORMAT_R5G6B5;
+        break;
+      default:
+        NS_RUNTIMEABORT("Invalid surface format!");
+    }
+
     srcBuffer = aTarget->CreateSourceSurfaceFromData(imgSurface->Data(),
                                                      IntSize(imgSurface->GetSize().width, imgSurface->GetSize().height),
                                                      imgSurface->Stride(),
@@ -494,14 +516,74 @@ gfxPlatform::GetSourceSurfaceForSurface(DrawTarget *aTarget, gfxASurface *aSurfa
 RefPtr<ScaledFont>
 gfxPlatform::GetScaledFontForFont(gfxFont *aFont)
 {
-  return NULL;
+  NativeFont nativeFont;
+  nativeFont.mType = NATIVE_FONT_CAIRO_FONT_FACE;
+  nativeFont.mFont = aFont;
+  RefPtr<ScaledFont> scaledFont =
+    Factory::CreateScaledFontForNativeFont(nativeFont,
+                                           aFont->GetAdjustedSize());
+  return scaledFont;
 }
 
+cairo_user_data_key_t kDrawSourceSurface;
+static void
+DataSourceSurfaceDestroy(void *dataSourceSurface)
+{
+      static_cast<DataSourceSurface*>(dataSourceSurface)->Release();
+}
+
+void DestroyThebesSurface(void *data)
+{
+  gfxASurface *surface = static_cast<gfxASurface*>(data);
+  surface->Release();
+}
+
+UserDataKey ThebesSurfaceKey;
+
+// The semantics of this function are sort of weird. We snapshot the first
+// time and then return the snapshotted surface for the lifetime of the
+// draw target
 already_AddRefed<gfxASurface>
 gfxPlatform::GetThebesSurfaceForDrawTarget(DrawTarget *aTarget)
 {
-  // Don't know how to do this outside of Windows with D2D yet.
-  return NULL;
+  void *surface = aTarget->GetUserData(&ThebesSurfaceKey);
+  if (surface) {
+    nsRefPtr<gfxASurface> surf = static_cast<gfxASurface*>(surface);
+    return surf.forget();
+  }
+
+  RefPtr<SourceSurface> source = aTarget->Snapshot();
+  RefPtr<DataSourceSurface> data = source->GetDataSurface();
+
+  if (!data) {
+    return NULL;
+  }
+
+  IntSize size = data->GetSize();
+  gfxASurface::gfxImageFormat format = gfxASurface::FormatFromContent(ContentForFormat(data->GetFormat()));
+  
+  nsRefPtr<gfxImageSurface> surf =
+    new gfxImageSurface(data->GetData(), gfxIntSize(size.width, size.height),
+                        data->Stride(), format);
+
+  surf->SetData(&kDrawSourceSurface, data.forget().drop(), DataSourceSurfaceDestroy);
+
+  // add a reference to be held by the drawTarget
+  // careful, the reference graph is getting complicated here
+  surf->AddRef();
+  aTarget->AddUserData(&ThebesSurfaceKey, surf.get(), DestroyThebesSurface);
+
+  return surf.forget();
+}
+
+RefPtr<DrawTarget>
+gfxPlatform::CreateOffscreenDrawTarget(const IntSize& aSize, SurfaceFormat aFormat)
+{
+  BackendType backend;
+  if (!SupportsAzure(backend)) {
+    return NULL;
+  }
+  return Factory::CreateDrawTarget(backend, aSize, aFormat); 
 }
 
 nsresult
@@ -539,6 +621,19 @@ gfxPlatform::SanitizeDownloadedFonts()
 
     return mDownloadableFontsSanitize;
 }
+
+#ifdef MOZ_GRAPHITE
+bool
+gfxPlatform::UseGraphiteShaping()
+{
+    if (mGraphiteShapingEnabled == UNINITIALIZED_VALUE) {
+        mGraphiteShapingEnabled =
+            Preferences::GetBool(GFX_PREF_GRAPHITE_SHAPING, false);
+    }
+
+    return mGraphiteShapingEnabled;
+}
+#endif
 
 bool
 gfxPlatform::UseHarfBuzzForScript(PRInt32 aScriptCode)
@@ -900,6 +995,21 @@ gfxPlatform::AppendPrefLang(eFontPrefLang aPrefLangs[], PRUint32& aLen, eFontPre
     }
 }
 
+bool
+gfxPlatform::UseAzureContentDrawing()
+{
+  static bool sAzureContentDrawingEnabled;
+  static bool sAzureContentDrawingPrefCached = false;
+
+  if (!sAzureContentDrawingPrefCached) {
+    sAzureContentDrawingPrefCached = true;
+    mozilla::Preferences::AddBoolVarCache(&sAzureContentDrawingEnabled, 
+                                          "gfx.content.azure.enabled");
+  }
+
+  return sAzureContentDrawingEnabled;
+}
+
 eCMSMode
 gfxPlatform::GetCMSMode()
 {
@@ -1169,106 +1279,17 @@ gfxPlatform::SetupClusterBoundaries(gfxTextRun *aTextRun, const PRUnichar *aStri
         return;
     }
 
-    gfxTextRun::CompressedGlyph extendCluster;
-    extendCluster.SetComplex(false, true, 0);
+    gfxShapedWord::SetupClusterBoundaries(aTextRun->GetCharacterGlyphs(),
+                                          aString, aTextRun->GetLength());
+}
 
-    PRUint32 i, length = aTextRun->GetLength();
-    gfxUnicodeProperties::HSType hangulState = gfxUnicodeProperties::HST_NONE;
-
-    for (i = 0; i < length; ++i) {
-        bool surrogatePair = false;
-        PRUint32 ch = aString[i];
-        if (NS_IS_HIGH_SURROGATE(ch) &&
-            i < length - 1 && NS_IS_LOW_SURROGATE(aString[i+1]))
-        {
-            ch = SURROGATE_TO_UCS4(ch, aString[i+1]);
-            surrogatePair = true;
-        }
-
-        PRUint8 category = gfxUnicodeProperties::GetGeneralCategory(ch);
-        gfxUnicodeProperties::HSType hangulType = gfxUnicodeProperties::HST_NONE;
-
-        // combining marks extend the cluster
-        if ((category >= HB_CATEGORY_COMBINING_MARK &&
-             category <= HB_CATEGORY_NON_SPACING_MARK) ||
-            (ch >= 0x200c && ch <= 0x200d) || // ZWJ, ZWNJ
-            (ch >= 0xff9e && ch <= 0xff9f))   // katakana sound marks
-        {
-            if (i > 0) {
-                aTextRun->SetGlyphs(i, extendCluster, nsnull);
-            }
-        } else if (category == HB_CATEGORY_OTHER_LETTER) {
-            // handle special cases in Letter_Other category
-#if 0
-            // Currently disabled. This would follow the UAX#29 specification
-            // for extended grapheme clusters, but this is not favored by
-            // Thai users, at least for editing behavior.
-            // See discussion of equivalent Pango issue in bug 474068 and
-            // upstream at https://bugzilla.gnome.org/show_bug.cgi?id=576156.
-
-            if ((ch & ~0xff) == 0x0e00) {
-                // specific Thai & Lao (U+0Exx) chars that extend the cluster
-                if ( ch == 0x0e30 ||
-                    (ch >= 0x0e32 && ch <= 0x0e33) ||
-                     ch == 0x0e45 ||
-                     ch == 0x0eb0 ||
-                    (ch >= 0x0eb2 && ch <= 0x0eb3))
-                {
-                    if (i > 0) {
-                        aTextRun->SetGlyphs(i, extendCluster, nsnull);
-                    }
-                }
-                else if ((ch >= 0x0e40 && ch <= 0x0e44) ||
-                         (ch >= 0x0ec0 && ch <= 0x0ec4))
-                {
-                    // characters that are prepended to the following cluster
-                    if (i < length - 1) {
-                        aTextRun->SetGlyphs(i+1, extendCluster, nsnull);
-                    }
-                }
-            } else
-#endif
-            if ((ch & ~0xff) == 0x1100 ||
-                (ch >= 0xa960 && ch <= 0xa97f) ||
-                (ch >= 0xac00 && ch <= 0xd7ff))
-            {
-                // no break within Hangul syllables
-                hangulType = gfxUnicodeProperties::GetHangulSyllableType(ch);
-                switch (hangulType) {
-                case gfxUnicodeProperties::HST_L:
-                case gfxUnicodeProperties::HST_LV:
-                case gfxUnicodeProperties::HST_LVT:
-                    if (hangulState == gfxUnicodeProperties::HST_L) {
-                        aTextRun->SetGlyphs(i, extendCluster, nsnull);
-                    }
-                    break;
-                case gfxUnicodeProperties::HST_V:
-                    if ( (hangulState != gfxUnicodeProperties::HST_NONE) &&
-                        !(hangulState & gfxUnicodeProperties::HST_T))
-                    {
-                        aTextRun->SetGlyphs(i, extendCluster, nsnull);
-                    }
-                    break;
-                case gfxUnicodeProperties::HST_T:
-                    if (hangulState & (gfxUnicodeProperties::HST_V |
-                                       gfxUnicodeProperties::HST_T))
-                    {
-                        aTextRun->SetGlyphs(i, extendCluster, nsnull);
-                    }
-                    break;
-                default:
-                    break;
-                }
-            }
-        }
-
-        if (surrogatePair) {
-            ++i;
-            aTextRun->SetGlyphs(i, extendCluster, nsnull);
-        }
-
-        hangulState = hangulType;
+PRInt32
+gfxPlatform::GetBidiNumeralOption()
+{
+    if (mBidiNumeralOption == UNINITIALIZED_VALUE) {
+        mBidiNumeralOption = Preferences::GetInt(BIDI_NUMERAL_PREF, 0);
     }
+    return mBidiNumeralOption;
 }
 
 void
@@ -1279,10 +1300,16 @@ gfxPlatform::FontsPrefsChanged(const char *aPref)
         mAllowDownloadableFonts = UNINITIALIZED_VALUE;
     } else if (!strcmp(GFX_DOWNLOADABLE_FONTS_SANITIZE, aPref)) {
         mDownloadableFontsSanitize = UNINITIALIZED_VALUE;
+#ifdef MOZ_GRAPHITE
+    } else if (!strcmp(GFX_PREF_GRAPHITE_SHAPING, aPref)) {
+        mGraphiteShapingEnabled = UNINITIALIZED_VALUE;
+        gfxFontCache::GetCache()->AgeAllGenerations();
+#endif
     } else if (!strcmp(GFX_PREF_HARFBUZZ_SCRIPTS, aPref)) {
         mUseHarfBuzzScripts = UNINITIALIZED_VALUE;
-        gfxTextRunWordCache::Flush();
         gfxFontCache::GetCache()->AgeAllGenerations();
+    } else if (!strcmp(BIDI_NUMERAL_PREF, aPref)) {
+        mBidiNumeralOption = UNINITIALIZED_VALUE;
     }
 }
 

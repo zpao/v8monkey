@@ -111,7 +111,11 @@ x_error_handler(Display *, XErrorEvent *ev)
 static void glxtest()
 {
   ///// Open libGL and load needed symbols /////
+#ifdef __OpenBSD__
+  void *libgl = dlopen("libGL.so", RTLD_LAZY);
+#else
   void *libgl = dlopen("libGL.so.1", RTLD_LAZY);
+#endif
   if (!libgl)
     fatal_error("Unable to load libGL.so.1");
   
@@ -198,7 +202,7 @@ static void glxtest()
     fatal_error("No visual found for first FBConfig");
 
   ///// Get a Pixmap and a GLXPixmap /////
-  Pixmap pixmap = XCreatePixmap(dpy, RootWindow(dpy, vInfo->screen), 4, 4, 32);
+  Pixmap pixmap = XCreatePixmap(dpy, RootWindow(dpy, vInfo->screen), 4, 4, vInfo->depth);
   GLXPixmap glxpixmap = glXCreatePixmap(dpy, fbConfigs[0], pixmap, NULL);
 
   ///// Get a GL context and make it current //////

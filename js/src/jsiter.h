@@ -48,6 +48,7 @@
 #include "jspubtd.h"
 #include "jsversion.h"
 
+#include "gc/Barrier.h"
 #include "vm/Stack.h"
 
 /*
@@ -60,23 +61,23 @@
 namespace js {
 
 struct NativeIterator {
-    JSObject  *obj;
-    jsid      *props_array;
-    jsid      *props_cursor;
-    jsid      *props_end;
-    uint32    *shapes_array;
-    uint32    shapes_length;
-    uint32    shapes_key;
-    uint32    flags;
+    HeapPtrObject obj;
+    HeapPtr<JSFlatString> *props_array;
+    HeapPtr<JSFlatString> *props_cursor;
+    HeapPtr<JSFlatString> *props_end;
+    const Shape **shapes_array;
+    uint32_t  shapes_length;
+    uint32_t  shapes_key;
+    uint32_t  flags;
     JSObject  *next;  /* Forms cx->enumerators list, garbage otherwise. */
 
     bool isKeyIter() const { return (flags & JSITER_FOREACH) == 0; }
 
-    inline jsid *begin() const {
+    inline HeapPtr<JSFlatString> *begin() const {
         return props_array;
     }
 
-    inline jsid *end() const {
+    inline HeapPtr<JSFlatString> *end() const {
         return props_end;
     }
 
@@ -84,7 +85,7 @@ struct NativeIterator {
         return end() - begin();
     }
 
-    jsid *current() const {
+    HeapPtr<JSFlatString> *current() const {
         JS_ASSERT(props_cursor < props_end);
         return props_cursor;
     }
@@ -93,9 +94,9 @@ struct NativeIterator {
         props_cursor = props_cursor + 1;
     }
 
-    static NativeIterator *allocateIterator(JSContext *cx, uint32 slength,
+    static NativeIterator *allocateIterator(JSContext *cx, uint32_t slength,
                                             const js::AutoIdVector &props);
-    void init(JSObject *obj, uintN flags, uint32 slength, uint32 key);
+    void init(JSObject *obj, uintN flags, uint32_t slength, uint32_t key);
 
     void mark(JSTracer *trc);
 };
@@ -133,14 +134,14 @@ js_ValueToIterator(JSContext *cx, uintN flags, js::Value *vp);
 extern JS_FRIEND_API(JSBool)
 js_CloseIterator(JSContext *cx, JSObject *iterObj);
 
-bool
+extern bool
 js_SuppressDeletedProperty(JSContext *cx, JSObject *obj, jsid id);
 
-bool
-js_SuppressDeletedElement(JSContext *cx, JSObject *obj, uint32 index);
+extern bool
+js_SuppressDeletedElement(JSContext *cx, JSObject *obj, uint32_t index);
 
-bool
-js_SuppressDeletedElements(JSContext *cx, JSObject *obj, uint32 begin, uint32 end);
+extern bool
+js_SuppressDeletedElements(JSContext *cx, JSObject *obj, uint32_t begin, uint32_t end);
 
 /*
  * IteratorMore() indicates whether another value is available. It might
@@ -170,7 +171,7 @@ typedef enum JSGeneratorState {
 } JSGeneratorState;
 
 struct JSGenerator {
-    JSObject            *obj;
+    js::HeapPtrObject   obj;
     JSGeneratorState    state;
     js::FrameRegs       regs;
     JSObject            *enumerators;
@@ -221,16 +222,6 @@ js_LiveFrameIfGenerator(js::StackFrame *fp)
 }
 
 #endif
-
-namespace js {
-
-static inline bool
-IsStopIteration(const js::Value &v)
-{
-    return v.isObject() && v.toObject().isStopIteration();
-}
-
-}  /* namespace js */
 
 extern JSObject *
 js_InitIteratorClasses(JSContext *cx, JSObject *obj);

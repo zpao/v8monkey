@@ -446,16 +446,6 @@ BookmarksEngine.prototype = {
     if (item.hasDupe)
       return;
     return this._mapDupe(item);
-  },
-
-  _handleDupe: function _handleDupe(item, dupeId) {
-    // Always change the local GUID to the incoming one.
-    this._store.changeItemID(dupeId, item.id);
-    this._deleteId(dupeId);
-    this._tracker.addChangedID(item.id, 0);
-    if (item.parentid) {
-      this._tracker.addChangedID(item.parentid, 0);
-    }
   }
 };
 
@@ -1048,11 +1038,6 @@ BookmarksStore.prototype = {
         record.parentName = PlacesUtils.bookmarks.getItemTitle(parent);
       // Create a positioning identifier for the separator, used by _mapDupe
       record.pos = PlacesUtils.bookmarks.getItemIndex(placeId);
-      break;
-
-    case PlacesUtils.bookmarks.TYPE_DYNAMIC_CONTAINER:
-      record = new PlacesItem(collection, id);
-      this._log.warn("Don't know how to serialize dynamic containers yet");
       break;
 
     default:

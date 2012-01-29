@@ -62,7 +62,11 @@ CanvasLayerD3D9::Initialize(const Data& aData)
 {
   NS_ASSERTION(mSurface == nsnull, "BasicCanvasLayer::Initialize called twice!");
 
-  if (aData.mSurface) {
+  if (aData.mDrawTarget) {
+    mDrawTarget = aData.mDrawTarget;
+    mNeedsYFlip = false;
+    mDataIsPremultiplied = true;
+  } else if (aData.mSurface) {
     mSurface = aData.mSurface;
     NS_ASSERTION(aData.mGLContext == nsnull,
                  "CanvasLayer can't have both surface and GLContext");
@@ -75,7 +79,7 @@ CanvasLayerD3D9::Initialize(const Data& aData)
     mDataIsPremultiplied = aData.mGLBufferIsPremultiplied;
     mNeedsYFlip = true;
   } else {
-    NS_ERROR("CanvasLayer created without mSurface or mGLContext?");
+    NS_ERROR("CanvasLayer created without mSurface, mGLContext or mDrawTarget?");
   }
 
   mBounds.SetRect(0, 0, aData.mSize.width, aData.mSize.height);
@@ -86,14 +90,17 @@ CanvasLayerD3D9::Initialize(const Data& aData)
 void
 CanvasLayerD3D9::UpdateSurface()
 {
-  if (!mDirty)
+  if (!mDirty && mTexture)
     return;
   mDirty = false;
 
   if (!mTexture) {
     CreateTexture();
-    NS_WARNING("CanvasLayerD3D9::Updated called but no texture present!");
-    return;
+
+    if (!mTexture) {
+      NS_WARNING("CanvasLayerD3D9::Updated called but no texture present and creation failed!");
+      return;
+    }
   }
 
   if (mGLContext) {
@@ -114,10 +121,6 @@ CanvasLayerD3D9::UpdateSurface()
     }
 
     mGLContext->MakeCurrent();
-
-    // We have to flush to ensure that any buffered GL operations are
-    // in the framebuffer before we read.
-    mGLContext->fFlush();
 
     PRUint32 currentFramebuffer = 0;
 
@@ -150,7 +153,7 @@ CanvasLayerD3D9::UpdateSurface()
       }
       delete [] destination;
     }
-  } else if (mSurface) {
+  } else {
     RECT r;
     r.left = mBounds.x;
     r.top = mBounds.y;
@@ -166,11 +169,18 @@ CanvasLayerD3D9::UpdateSurface()
     D3DLOCKED_RECT lockedRect = textureLock.GetLockRect();
 
     nsRefPtr<gfxImageSurface> sourceSurface;
+    nsRefPtr<gfxASurface> tempSurface;
+    if (mDrawTarget) {
+      tempSurface = gfxPlatform::GetPlatform()->GetThebesSurfaceForDrawTarget(mDrawTarget);
+    }
+    else {
+      tempSurface = mSurface;
+    }
 
-    if (mSurface->GetType() == gfxASurface::SurfaceTypeWin32) {
-      sourceSurface = mSurface->GetAsImageSurface();
-    } else if (mSurface->GetType() == gfxASurface::SurfaceTypeImage) {
-      sourceSurface = static_cast<gfxImageSurface*>(mSurface.get());
+    if (tempSurface->GetType() == gfxASurface::SurfaceTypeWin32) {
+      sourceSurface = tempSurface->GetAsImageSurface();
+    } else if (tempSurface->GetType() == gfxASurface::SurfaceTypeImage) {
+      sourceSurface = static_cast<gfxImageSurface*>(tempSurface.get());
       if (sourceSurface->Format() != gfxASurface::ImageFormatARGB32 &&
           sourceSurface->Format() != gfxASurface::ImageFormatRGB24)
       {
@@ -278,16 +288,22 @@ CanvasLayerD3D9::LayerManagerDestroyed()
 void
 CanvasLayerD3D9::CreateTexture()
 {
+  HRESULT hr;
   if (mD3DManager->deviceManager()->HasDynamicTextures()) {
-    device()->CreateTexture(mBounds.width, mBounds.height, 1, D3DUSAGE_DYNAMIC,
-                            D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT,
-                            getter_AddRefs(mTexture), NULL);    
+    hr = device()->CreateTexture(mBounds.width, mBounds.height, 1, D3DUSAGE_DYNAMIC,
+                                 D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT,
+                                 getter_AddRefs(mTexture), NULL);
   } else {
     // D3DPOOL_MANAGED is fine here since we require Dynamic Textures for D3D9Ex
     // devices.
-    device()->CreateTexture(mBounds.width, mBounds.height, 1, 0,
-                            D3DFMT_A8R8G8B8, D3DPOOL_MANAGED,
-                            getter_AddRefs(mTexture), NULL);
+    hr = device()->CreateTexture(mBounds.width, mBounds.height, 1, 0,
+                                 D3DFMT_A8R8G8B8, D3DPOOL_MANAGED,
+                                 getter_AddRefs(mTexture), NULL);
+  }
+  if (FAILED(hr)) {
+    mD3DManager->ReportFailure(NS_LITERAL_CSTRING("CanvasLayerD3D9::CreateTexture() failed"),
+                                 hr);
+    return;
   }
 }
 

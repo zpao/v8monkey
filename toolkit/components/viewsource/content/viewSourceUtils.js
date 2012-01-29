@@ -84,6 +84,25 @@ var gViewSourceUtils = {
                aURL, charset, aPageDescriptor, aLineNumber, isForcedCharset);
   },
 
+  buildEditorArgs: function(aPath, aLineNumber) {
+    // Determine the command line arguments to pass to the editor.
+    // We currently support a %LINE% placeholder which is set to the passed
+    // line number (or to 0 if there's none)
+    var editorArgs = [];
+    var prefs = Components.classes["@mozilla.org/preferences-service;1"]
+                          .getService(Components.interfaces.nsIPrefBranch);
+    var args = prefs.getCharPref("view_source.editor.args");
+    if (args) {
+      args = args.replace("%LINE%", aLineNumber || "0");
+      // add the arguments to the array (keeping quoted strings intact)
+      const argumentRE = /"([^"]+)"|(\S+)/g;
+      while (argumentRE.test(args))
+        editorArgs.push(RegExp.$1 || RegExp.$2);
+    }
+    editorArgs.push(aPath);
+    return editorArgs;
+  },
+
   // aCallBack is a function accepting two arguments - result (true=success) and a data object
   // It defaults to openInInternalViewer if undefined.
   openInExternalEditor: function(aURL, aPageDescriptor, aDocument, aLineNumber, aCallBack)
@@ -110,7 +129,9 @@ var gViewSourceUtils = {
       if (uri.scheme == "file") {    
         // it's a local file; we can open it directly
         path = uri.QueryInterface(Components.interfaces.nsIFileURL).file.path;
-        editor.runw(false, [path], 1);
+
+        var editorArgs = this.buildEditorArgs(path, data.lineNumber);
+        editor.runw(false, editorArgs, editorArgs.length);
         this.handleCallBack(aCallBack, true, data);
       } else {
         // set up the progress listener with what we know so far
@@ -215,7 +236,9 @@ var gViewSourceUtils = {
     },
 
     destroy: function() {
-      this.webShell.QueryInterface(Components.interfaces.nsIBaseWindow).destroy();
+      if (this.webShell) {
+        this.webShell.QueryInterface(Components.interfaces.nsIBaseWindow).destroy();
+      }
       this.webShell = null;
       this.editor = null;
       this.callBack = null;
@@ -223,67 +246,74 @@ var gViewSourceUtils = {
       this.file = null;
     },
 
+    // This listener is used both for tracking the progress of an HTML parse
+    // in one case and for tracking the progress of nsIWebBrowserPersist in
+    // another case.
     onStateChange: function(aProgress, aRequest, aFlag, aStatus) {
       // once it's done loading...
       if ((aFlag & this.mnsIWebProgressListener.STATE_STOP) && aStatus == 0) {
-        try {
-          if (!this.file) {
-            // it's not saved to file yet, it's in the webshell
-
-            // get a temporary filename using the attributes from the data object that
-            // openInExternalEditor gave us
-            this.file = gViewSourceUtils.getTemporaryFile(this.data.uri, this.data.doc, 
-                                                          this.data.doc.contentType);
-
-            // we have to convert from the source charset.
-            var webNavigation = this.webShell.QueryInterface(Components.interfaces.nsIWebNavigation);
-            var foStream = Components.classes["@mozilla.org/network/file-output-stream;1"]
-                                     .createInstance(Components.interfaces.nsIFileOutputStream);
-            foStream.init(this.file, 0x02 | 0x08 | 0x20, 0664, 0); // write | create | truncate
-            var coStream = Components.classes["@mozilla.org/intl/converter-output-stream;1"]
-                                     .createInstance(Components.interfaces.nsIConverterOutputStream);
-            coStream.init(foStream, this.data.doc.characterSet, 0, null);
-
-            // write the source to the file
-            coStream.writeString(webNavigation.document.body.textContent);
-          
-            // clean up
-            coStream.close();
-            foStream.close();
-
-            // register the file to be deleted on app exit
-            Components.classes["@mozilla.org/uriloader/external-helper-app-service;1"]
-                      .getService(Components.interfaces.nsPIExternalAppLauncher)
-                      .deleteTemporaryFileOnExit(this.file);
-          }
-
-          // Determine the command line arguments to pass to the editor.
-          // We currently support a %LINE% placeholder which is set to the passed
-          // line number (or to 0 if there's none)
-          var editorArgs = [];
-          var prefs = Components.classes["@mozilla.org/preferences-service;1"]
-                                .getService(Components.interfaces.nsIPrefBranch);
-          var args = prefs.getCharPref("view_source.editor.args");
-          if (args) {
-            args = args.replace("%LINE%", this.data.lineNumber || "0");
-            // add the arguments to the array (keeping quoted strings intact)
-            const argumentRE = /"([^"]+)"|(\S+)/g;
-            while (argumentRE.test(args))
-              editorArgs.push(RegExp.$1 || RegExp.$2);
-          }
-          editorArgs.push(this.file.path);
-          this.editor.runw(false, editorArgs, editorArgs.length);
-
-          gViewSourceUtils.handleCallBack(this.callBack, true, this.data);
-        } catch (ex) {
-          // we failed loading it with the external editor.
-          Components.utils.reportError(ex);
-          gViewSourceUtils.handleCallBack(this.callBack, false, this.data);
-        } finally {
-          this.destroy();
+        if (!this.webShell) {
+          // We aren't waiting for the parser. Instead, we are waiting for
+          // an nsIWebBrowserPersist.
+          this.onContentLoaded();
+          return 0;
+        }
+        var webNavigation = this.webShell.QueryInterface(Components.interfaces.nsIWebNavigation);
+        if (webNavigation.document.readyState == "complete") {
+          // This branch is probably never taken. Including it for completeness.
+          this.onContentLoaded();
+        } else {
+          webNavigation.document.addEventListener("DOMContentLoaded",
+                                                  this.onContentLoaded.bind(this));
         }
       }
       return 0;
+    },
+
+    onContentLoaded: function() {
+      try {
+        if (!this.file) {
+          // it's not saved to file yet, it's in the webshell
+
+          // get a temporary filename using the attributes from the data object that
+          // openInExternalEditor gave us
+          this.file = gViewSourceUtils.getTemporaryFile(this.data.uri, this.data.doc, 
+                                                        this.data.doc.contentType);
+
+          // we have to convert from the source charset.
+          var webNavigation = this.webShell.QueryInterface(Components.interfaces.nsIWebNavigation);
+          var foStream = Components.classes["@mozilla.org/network/file-output-stream;1"]
+                                   .createInstance(Components.interfaces.nsIFileOutputStream);
+          foStream.init(this.file, 0x02 | 0x08 | 0x20, 0664, 0); // write | create | truncate
+          var coStream = Components.classes["@mozilla.org/intl/converter-output-stream;1"]
+                                   .createInstance(Components.interfaces.nsIConverterOutputStream);
+          coStream.init(foStream, this.data.doc.characterSet, 0, null);
+
+          // write the source to the file
+          coStream.writeString(webNavigation.document.body.textContent);
+          
+          // clean up
+          coStream.close();
+          foStream.close();
+
+          // register the file to be deleted on app exit
+          Components.classes["@mozilla.org/uriloader/external-helper-app-service;1"]
+                    .getService(Components.interfaces.nsPIExternalAppLauncher)
+                    .deleteTemporaryFileOnExit(this.file);
+        }
+
+        var editorArgs = gViewSourceUtils.buildEditorArgs(this.file.path,
+                                                          this.data.lineNumber);
+        this.editor.runw(false, editorArgs, editorArgs.length);
+
+        gViewSourceUtils.handleCallBack(this.callBack, true, this.data);
+      } catch (ex) {
+        // we failed loading it with the external editor.
+        Components.utils.reportError(ex);
+        gViewSourceUtils.handleCallBack(this.callBack, false, this.data);
+      } finally {
+        this.destroy();
+      }
     },
 
     onLocationChange: function() {return 0;},

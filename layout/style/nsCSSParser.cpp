@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=2 et sw=2 tw=78: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -55,6 +56,7 @@
 #include "mozilla/css/ImportRule.h"
 #include "nsCSSRules.h"
 #include "mozilla/css/NameSpaceRule.h"
+#include "nsTArray.h"
 #include "nsCSSStyleSheet.h"
 #include "mozilla/css/Declaration.h"
 #include "nsStyleConsts.h"
@@ -83,7 +85,6 @@
 #include "nsContentUtils.h"
 #include "nsDOMError.h"
 #include "nsAutoPtr.h"
-#include "nsTArray.h"
 #include "prlog.h"
 #include "CSSCalc.h"
 #include "nsMediaFeatures.h"
@@ -128,6 +129,7 @@ using namespace mozilla;
 // Common combinations of variants
 #define VARIANT_AL   (VARIANT_AUTO | VARIANT_LENGTH)
 #define VARIANT_LP   (VARIANT_LENGTH | VARIANT_PERCENT)
+#define VARIANT_LN   (VARIANT_LENGTH | VARIANT_NUMBER)
 #define VARIANT_AH   (VARIANT_AUTO | VARIANT_INHERIT)
 #define VARIANT_AHLP (VARIANT_AH | VARIANT_LP)
 #define VARIANT_AHI  (VARIANT_AH | VARIANT_INTEGER)
@@ -154,6 +156,8 @@ using namespace mozilla;
 #define VARIANT_HUO  (VARIANT_INHERIT | VARIANT_URL | VARIANT_NONE)
 #define VARIANT_AHUO (VARIANT_AUTO | VARIANT_HUO)
 #define VARIANT_HPN  (VARIANT_INHERIT | VARIANT_PERCENT | VARIANT_NUMBER)
+#define VARIANT_PN   (VARIANT_PERCENT | VARIANT_NUMBER)
+#define VARIANT_ALPN (VARIANT_AL | VARIANT_PN)
 #define VARIANT_HN   (VARIANT_INHERIT | VARIANT_NUMBER)
 #define VARIANT_HON  (VARIANT_HN | VARIANT_NONE)
 #define VARIANT_HOS  (VARIANT_INHERIT | VARIANT_NONE | VARIANT_STRING)
@@ -335,22 +339,23 @@ protected:
   void PopGroup();
 
   bool ParseRuleSet(RuleAppendFunc aAppendFunc, void* aProcessData,
-                      bool aInsideBraces = false);
-  bool ParseAtRule(RuleAppendFunc aAppendFunc, void* aProcessData);
+                    bool aInsideBraces = false);
+  bool ParseAtRule(RuleAppendFunc aAppendFunc, void* aProcessData,
+                   bool aInAtRule);
   bool ParseCharsetRule(RuleAppendFunc aAppendFunc, void* aProcessData);
   bool ParseImportRule(RuleAppendFunc aAppendFunc, void* aProcessData);
   bool ParseURLOrString(nsString& aURL);
   bool GatherMedia(nsMediaList* aMedia,
-                     bool aInAtRule);
+                   bool aInAtRule);
   bool ParseMediaQuery(bool aInAtRule, nsMediaQuery **aQuery,
-                         bool *aHitStop);
+                       bool *aHitStop);
   bool ParseMediaQueryExpression(nsMediaQuery* aQuery);
   void ProcessImport(const nsString& aURLSpec,
                      nsMediaList* aMedia,
                      RuleAppendFunc aAppendFunc,
                      void* aProcessData);
   bool ParseGroupRule(css::GroupRule* aRule, RuleAppendFunc aAppendFunc,
-                        void* aProcessData);
+                      void* aProcessData);
   bool ParseMediaRule(RuleAppendFunc aAppendFunc, void* aProcessData);
   bool ParseMozDocumentRule(RuleAppendFunc aAppendFunc, void* aProcessData);
   bool ParseNameSpaceRule(RuleAppendFunc aAppendFunc, void* aProcessData);
@@ -361,7 +366,7 @@ protected:
   bool ParseFontFaceRule(RuleAppendFunc aAppendFunc, void* aProcessData);
   bool ParseFontDescriptor(nsCSSFontFaceRule* aRule);
   bool ParseFontDescriptorValue(nsCSSFontDesc aDescID,
-                                  nsCSSValue& aValue);
+                                nsCSSValue& aValue);
 
   bool ParsePageRule(RuleAppendFunc aAppendFunc, void* aProcessData);
   bool ParseKeyframesRule(RuleAppendFunc aAppendFunc, void* aProcessData);
@@ -471,11 +476,21 @@ protected:
 
   bool ParseValueList(nsCSSProperty aPropID); // a single value prop-id
   bool ParseBackgroundPosition();
-  bool ParseBoxPositionValues(nsCSSValuePair& aOut, bool aAcceptsInherit);
+  bool ParseBoxPositionValues(nsCSSValuePair& aOut, bool aAcceptsInherit,
+                              bool aAllowExplicitCenter = true);
   bool ParseBackgroundSize();
   bool ParseBackgroundSizeValues(nsCSSValuePair& aOut);
   bool ParseBorderColor();
   bool ParseBorderColors(nsCSSProperty aProperty);
+  void SetBorderImageInitialValues();
+  bool ParseBorderImageRepeat(bool aAcceptsInherit);
+  // If ParseBorderImageSlice returns false, aConsumedTokens indicates
+  // whether or not any tokens were consumed (in other words, was the property
+  // in error or just not present).  If ParseBorderImageSlice returns true
+  // aConsumedTokens is always true.
+  bool ParseBorderImageSlice(bool aAcceptsInherit, bool* aConsumedTokens);
+  bool ParseBorderImageWidth(bool aAcceptsInherit);
+  bool ParseBorderImageOutset(bool aAcceptsInherit);
   bool ParseBorderImage();
   bool ParseBorderSpacing();
   bool ParseBorderSide(const nsCSSProperty aPropIDs[],
@@ -549,6 +564,8 @@ protected:
   // Reused utility parsing routines
   void AppendValue(nsCSSProperty aPropID, const nsCSSValue& aValue);
   bool ParseBoxProperties(const nsCSSProperty aPropIDs[]);
+  bool ParseGroupedBoxProperty(PRInt32 aVariantMask,
+                               nsCSSValue& aValue);
   bool ParseDirectionalBoxProperty(nsCSSProperty aProperty,
                                      PRInt32 aSourceType);
   bool ParseBoxCornerRadius(const nsCSSProperty aPropID);
@@ -586,7 +603,6 @@ protected:
                        bool aIsRepeating);
 
   void SetParsingCompoundProperty(bool aBool) {
-    NS_ASSERTION(aBool == true || aBool == false, "bad bool value");
     mParsingCompoundProperty = aBool;
   }
   bool IsParsingCompoundProperty(void) const {
@@ -791,7 +807,6 @@ CSSParserImpl::SetStyleSheet(nsCSSStyleSheet* aSheet)
 nsresult
 CSSParserImpl::SetQuirkMode(bool aQuirkMode)
 {
-  NS_ASSERTION(aQuirkMode == true || aQuirkMode == false, "bad bool value");
   mNavQuirkMode = aQuirkMode;
   return NS_OK;
 }
@@ -799,8 +814,6 @@ CSSParserImpl::SetQuirkMode(bool aQuirkMode)
 nsresult
 CSSParserImpl::SetSVGMode(bool aSVGMode)
 {
-  NS_ASSERTION(aSVGMode == true || aSVGMode == false,
-               "bad bool value");
   mScanner.SetSVGMode(aSVGMode);
   return NS_OK;
 }
@@ -922,7 +935,7 @@ CSSParserImpl::ParseSheet(const nsAString& aInput,
       continue; // legal here only
     }
     if (eCSSToken_AtKeyword == tk->mType) {
-      ParseAtRule(AppendRuleToSheet, this);
+      ParseAtRule(AppendRuleToSheet, this, false);
       continue;
     }
     UngetToken();
@@ -1053,7 +1066,7 @@ CSSParserImpl::ParseRule(const nsAString&        aRule,
     REPORT_UNEXPECTED(PEParseRuleWSOnly);
     OUTPUT_ERROR();
   } else if (eCSSToken_AtKeyword == tk->mType) {
-    ParseAtRule(AppendRuleToArray, &aResult);
+    ParseAtRule(AppendRuleToArray, &aResult, false);
   }
   else {
     UngetToken();
@@ -1156,8 +1169,6 @@ CSSParserImpl::ParseMediaList(const nsSubstring& aBuffer,
   InitScanner(aBuffer, aURI, aLineNumber, aURI, nsnull);
 
   AssertInitialState();
-  NS_ASSERTION(aHTMLMode == true || aHTMLMode == false,
-               "invalid bool");
   mHTMLMediaMode = aHTMLMode;
 
     // XXXldb We need to make the scanner not skip CSS comments!  (Or
@@ -1513,14 +1524,10 @@ CSSParserImpl::SkipAtRule(bool aInsideBlock)
 
 bool
 CSSParserImpl::ParseAtRule(RuleAppendFunc aAppendFunc,
-                           void* aData)
+                           void* aData,
+                           bool aInAtRule)
 {
-  // If we ever allow nested at-rules, we need to be very careful about
-  // the error handling rules in the CSS spec.  In particular, we need
-  // to pass in to ParseAtRule whether we're inside a block, we need to
-  // ensure that all the individual at-rule parsing functions terminate
-  // immediately when they hit a '}', and then we need to pass whether
-  // we're inside a block to SkipAtRule below.
+
   nsCSSSection newSection;
   bool (CSSParserImpl::*parseFunc)(RuleAppendFunc, void*);
 
@@ -1565,16 +1572,27 @@ CSSParserImpl::ParseAtRule(RuleAppendFunc aAppendFunc,
       OUTPUT_ERROR();
     }
     // Skip over unsupported at rule, don't advance section
-    return SkipAtRule(false);
+    return SkipAtRule(aInAtRule);
   }
 
-  if (!(this->*parseFunc)(aAppendFunc, aData)) {
+  // Inside of @-rules, only the rules that can occur anywhere
+  // are allowed.
+  bool unnestable = aInAtRule && newSection != eCSSSection_General;
+  if (unnestable) {
+    REPORT_UNEXPECTED_TOKEN(PEGroupRuleNestedAtRule);
+  }
+  
+  if (unnestable || !(this->*parseFunc)(aAppendFunc, aData)) {
     // Skip over invalid at rule, don't advance section
     OUTPUT_ERROR();
-    return SkipAtRule(false);
+    return SkipAtRule(aInAtRule);
   }
 
-  mSection = newSection;
+  // Nested @-rules don't affect the top-level rule chain requirement
+  if (!aInAtRule) {
+    mSection = newSection;
+  }
+  
   return true;
 }
 
@@ -1642,7 +1660,7 @@ CSSParserImpl::ParseMediaQuery(bool aInAtRule,
   }
 
   if (eCSSToken_Symbol == mToken.mType && aInAtRule &&
-      (mToken.mSymbol == ';' || mToken.mSymbol == '{')) {
+      (mToken.mSymbol == ';' || mToken.mSymbol == '{' || mToken.mSymbol == '}' )) {
     *aHitStop = true;
     UngetToken();
     return true;
@@ -1706,7 +1724,7 @@ CSSParserImpl::ParseMediaQuery(bool aInAtRule,
     }
 
     if (eCSSToken_Symbol == mToken.mType && aInAtRule &&
-        (mToken.mSymbol == ';' || mToken.mSymbol == '{')) {
+        (mToken.mSymbol == ';' || mToken.mSymbol == '{' || mToken.mSymbol == '}')) {
       *aHitStop = true;
       UngetToken();
       break;
@@ -1747,14 +1765,14 @@ CSSParserImpl::GatherMedia(nsMediaList* aMedia,
       }
       if (aInAtRule) {
         const PRUnichar stopChars[] =
-          { PRUnichar(','), PRUnichar('{'), PRUnichar(';'), PRUnichar(0) };
+          { PRUnichar(','), PRUnichar('{'), PRUnichar(';'), PRUnichar('}'), PRUnichar(0) };
         SkipUntilOneOf(stopChars);
       } else {
         SkipUntil(',');
       }
       // Rely on SkipUntilOneOf leaving mToken around as the last token read.
       if (mToken.mType == eCSSToken_Symbol && aInAtRule &&
-          (mToken.mSymbol == '{' || mToken.mSymbol == ';')) {
+          (mToken.mSymbol == '{' || mToken.mSymbol == ';'  || mToken.mSymbol == '}')) {
         UngetToken();
         hitStop = true;
       }
@@ -1998,9 +2016,8 @@ CSSParserImpl::ParseGroupRule(css::GroupRule* aRule,
       break;
     }
     if (eCSSToken_AtKeyword == mToken.mType) {
-      REPORT_UNEXPECTED_TOKEN(PEGroupRuleNestedAtRule);
-      OUTPUT_ERROR();
-      SkipAtRule(true); // group rules cannot contain @rules
+      // Parse for nested rules
+      ParseAtRule(aAppendFunc, aData, true);
       continue;
     }
     UngetToken();
@@ -2045,13 +2062,19 @@ CSSParserImpl::ParseMozDocumentRule(RuleAppendFunc aAppendFunc, void* aData)
   css::DocumentRule::URL *urls = nsnull;
   css::DocumentRule::URL **next = &urls;
   do {
-    if (!GetToken(true) ||
-        !(eCSSToken_URL == mToken.mType ||
+    if (!GetToken(true)) {
+      REPORT_UNEXPECTED_EOF(PEMozDocRuleEOF);
+      delete urls;
+      return false;
+    }
+        
+    if (!(eCSSToken_URL == mToken.mType ||
           (eCSSToken_Function == mToken.mType &&
            (mToken.mIdent.LowerCaseEqualsLiteral("url-prefix") ||
             mToken.mIdent.LowerCaseEqualsLiteral("domain") ||
             mToken.mIdent.LowerCaseEqualsLiteral("regexp"))))) {
       REPORT_UNEXPECTED_TOKEN(PEMozDocRuleBadFunc);
+      UngetToken();
       delete urls;
       return false;
     }
@@ -4152,7 +4175,7 @@ CSSParserImpl::ParseDeclaration(css::Declaration* aDeclaration,
     if (aCheckForBraces) {
       REPORT_UNEXPECTED_TOKEN(PEBadDeclOrRuleEnd2);
     } else {
-      REPORT_UNEXPECTED(PEBadDeclEnd);
+      REPORT_UNEXPECTED_TOKEN(PEBadDeclEnd);
     }
     REPORT_UNEXPECTED(PEDeclDropped);
     OUTPUT_ERROR();
@@ -4904,7 +4927,9 @@ CSSParserImpl::ParseColorStop(nsCSSValueGradient* aGradient)
 //    : radial-gradient( <gradient-line>? <gradient-shape-size>?
 //                       <color-stops> ')'
 //
-// <gradient-line> : [<bg-position> || <angle>] ,
+// <gradient-line> : [ to [left | right] || [top | bottom] ] ,
+//                 | <legacy-gradient-line>
+// <legacy-gradient-line> : [ <bg-position> || <angle>] ,
 //
 // <gradient-shape-size> : [<gradient-shape> || <gradient-size>] ,
 // <gradient-shape> : circle | ellipse
@@ -4933,8 +4958,19 @@ CSSParserImpl::ParseGradient(nsCSSValue& aValue, bool aIsRadial,
   if (!GetToken(true)) {
     return false;
   }
+
+  bool toCorner = false;
+  if (mToken.mType == eCSSToken_Ident &&
+      mToken.mIdent.LowerCaseEqualsLiteral("to")) {
+    toCorner = true;
+    if (!GetToken(true)) {
+      return false;
+    }
+  }
+
   nsCSSTokenType ty = mToken.mType;
   nsString id = mToken.mIdent;
+  cssGradient->mIsToCorner = toCorner;
   UngetToken();
 
   bool haveGradientLine = false;
@@ -4975,25 +5011,58 @@ CSSParserImpl::ParseGradient(nsCSSValue& aValue, bool aIsRadial,
   }
 
   if (haveGradientLine) {
-    bool haveAngle =
-      ParseVariant(cssGradient->mAngle, VARIANT_ANGLE, nsnull);
-
-    // if we got an angle, we might now have a comma, ending the gradient-line
-    if (!haveAngle || !ExpectSymbol(',', true)) {
-      if (!ParseBoxPositionValues(cssGradient->mBgPos, false)) {
+    if (toCorner) {
+      // "to" syntax only allows box position keywords
+      if (ty != eCSSToken_Ident) {
         SkipUntil(')');
         return false;
       }
 
-      if (!ExpectSymbol(',', true) &&
-          // if we didn't already get an angle, we might have one now,
-          // otherwise it's an error
-          (haveAngle ||
-           !ParseVariant(cssGradient->mAngle, VARIANT_ANGLE, nsnull) ||
-           // now we better have a comma
-           !ExpectSymbol(',', true))) {
+      // "to" syntax doesn't allow explicit "center"
+      if (!ParseBoxPositionValues(cssGradient->mBgPos, false, false)) {
         SkipUntil(')');
         return false;
+      }
+
+      const nsCSSValue& xValue = cssGradient->mBgPos.mXValue;
+      const nsCSSValue& yValue = cssGradient->mBgPos.mYValue;
+      if (xValue.GetUnit() != eCSSUnit_Enumerated ||
+          !(xValue.GetIntValue() & (NS_STYLE_BG_POSITION_LEFT |
+                                    NS_STYLE_BG_POSITION_CENTER |
+                                    NS_STYLE_BG_POSITION_RIGHT)) ||
+          yValue.GetUnit() != eCSSUnit_Enumerated ||
+          !(yValue.GetIntValue() & (NS_STYLE_BG_POSITION_TOP |
+                                    NS_STYLE_BG_POSITION_CENTER |
+                                    NS_STYLE_BG_POSITION_BOTTOM))) {
+        SkipUntil(')');
+        return false;
+      }
+
+      if (!ExpectSymbol(',', true)) {
+        SkipUntil(')');
+        return false;
+      }
+    } else {
+      bool haveAngle =
+        ParseVariant(cssGradient->mAngle, VARIANT_ANGLE, nsnull);
+
+      // if we got an angle, we might now have a comma, ending the gradient-line
+      if (!haveAngle || !ExpectSymbol(',', true)) {
+        if (!ParseBoxPositionValues(cssGradient->mBgPos, false)) {
+          SkipUntil(')');
+          return false;
+        }
+
+        if (!ExpectSymbol(',', true) &&
+            // if we didn't already get an angle, we might have one now,
+            // otherwise it's an error
+            (haveAngle ||
+             !ParseVariant(cssGradient->mAngle, VARIANT_ANGLE, nsnull) ||
+             // now we better have a comma
+             !ExpectSymbol(',', true))) {
+          SkipUntil(')');
+          return false;
+        }
       }
     }
   }
@@ -5153,6 +5222,40 @@ CSSParserImpl::ParseBoxProperties(const nsCSSProperty aPropIDs[])
   NS_FOR_CSS_SIDES (index) {
     AppendValue(aPropIDs[index], result.*(nsCSSRect::sides[index]));
   }
+  return true;
+}
+
+// Similar to ParseBoxProperties, except there is only one property
+// with the result as its value, not four. Requires values be nonnegative.
+bool
+CSSParserImpl::ParseGroupedBoxProperty(PRInt32 aVariantMask,
+                                       /** outparam */ nsCSSValue& aValue)
+{
+  nsCSSRect& result = aValue.SetRectValue();
+
+  PRInt32 count = 0;
+  NS_FOR_CSS_SIDES (index) {
+    if (!ParseNonNegativeVariant(result.*(nsCSSRect::sides[index]),
+                                 aVariantMask, nsnull)) {
+      break;
+    }
+    count++;
+  }
+
+  if (count == 0) {
+    return false;
+  }
+
+  // Provide missing values by replicating some of the values found
+  switch (count) {
+    case 1: // Make right == top
+      result.mRight = result.mTop;
+    case 2: // Make bottom == top
+      result.mBottom = result.mTop;
+    case 3: // Make left == right
+      result.mLeft = result.mRight;
+  }
+
   return true;
 }
 
@@ -5379,6 +5482,14 @@ CSSParserImpl::ParsePropertyByFunction(nsCSSProperty aPropID)
   case eCSSProperty_border_right_colors:
   case eCSSProperty_border_top_colors:
     return ParseBorderColors(aPropID);
+  case eCSSProperty_border_image_slice:
+    return ParseBorderImageSlice(true, nsnull);
+  case eCSSProperty_border_image_width:
+    return ParseBorderImageWidth(true);
+  case eCSSProperty_border_image_outset:
+    return ParseBorderImageOutset(true);
+  case eCSSProperty_border_image_repeat:
+    return ParseBorderImageRepeat(true);
   case eCSSProperty_border_image:
     return ParseBorderImage();
   case eCSSProperty_border_width:
@@ -6022,10 +6133,12 @@ CSSParserImpl::ParseBackgroundPosition()
  *
  * @param aOut The nsCSSValuePair in which to place the result.
  * @param aAcceptsInherit If true, 'inherit' and 'initial' are legal values
+ * @param aAllowExplicitCenter If true, 'center' is a legal value
  * @return Whether or not the operation succeeded.
  */
 bool CSSParserImpl::ParseBoxPositionValues(nsCSSValuePair &aOut,
-                                             bool aAcceptsInherit)
+                                           bool aAcceptsInherit,
+                                           bool aAllowExplicitCenter)
 {
   // First try a percentage or a length value
   nsCSSValue &xValue = aOut.mXValue,
@@ -6096,7 +6209,8 @@ bool CSSParserImpl::ParseBoxPositionValues(nsCSSValuePair &aOut,
   // Check for bad input. Bad input consists of no matching keywords,
   // or pairs of x keywords or pairs of y keywords.
   if ((mask == 0) || (mask == (BG_TOP | BG_BOTTOM)) ||
-      (mask == (BG_LEFT | BG_RIGHT))) {
+      (mask == (BG_LEFT | BG_RIGHT)) ||
+      (!aAllowExplicitCenter && (mask & BG_CENTER))) {
     return false;
   }
 
@@ -6197,83 +6311,250 @@ CSSParserImpl::ParseBorderColor()
   return ParseBoxProperties(kBorderColorIDs);
 }
 
-bool
-CSSParserImpl::ParseBorderImage()
+void
+CSSParserImpl::SetBorderImageInitialValues()
 {
-  nsCSSValue val;
-  if (ParseVariant(val, VARIANT_INHERIT | VARIANT_NONE, nsnull)) {
-    AppendValue(eCSSProperty_border_image, val);
+  // border-image-source: none
+  nsCSSValue source;
+  source.SetNoneValue();
+  AppendValue(eCSSProperty_border_image_source, source);
+
+  // border-image-slice: 100%
+  nsCSSValue sliceBoxValue;
+  nsCSSRect& sliceBox = sliceBoxValue.SetRectValue();
+  sliceBox.SetAllSidesTo(nsCSSValue(1.0f, eCSSUnit_Percent));
+  nsCSSValue slice;
+  nsCSSValueList* sliceList = slice.SetListValue();
+  sliceList->mValue = sliceBoxValue;
+  AppendValue(eCSSProperty_border_image_slice, slice);
+
+  // border-image-width: 1
+  nsCSSValue width;
+  nsCSSRect& widthBox = width.SetRectValue();
+  widthBox.SetAllSidesTo(nsCSSValue(1.0f, eCSSUnit_Number));
+  AppendValue(eCSSProperty_border_image_width, width);
+
+  // border-image-outset: 0
+  nsCSSValue outset;
+  nsCSSRect& outsetBox = outset.SetRectValue();
+  outsetBox.SetAllSidesTo(nsCSSValue(0.0f, eCSSUnit_Number));
+  AppendValue(eCSSProperty_border_image_outset, outset);
+
+  // border-image-repeat: repeat
+  nsCSSValue repeat;
+  nsCSSValuePair repeatPair;
+  repeatPair.SetBothValuesTo(nsCSSValue(NS_STYLE_BORDER_IMAGE_REPEAT_STRETCH,
+                                        eCSSUnit_Enumerated));
+  repeat.SetPairValue(&repeatPair);
+  AppendValue(eCSSProperty_border_image_repeat, repeat);
+}
+
+bool
+CSSParserImpl::ParseBorderImageSlice(bool aAcceptsInherit,
+                                     bool* aConsumedTokens)
+{
+  // border-image-slice: initial | [<number>|<percentage>]{1,4} && fill?
+  nsCSSValue value;
+
+  if (aConsumedTokens) {
+    *aConsumedTokens = true;
+  }
+
+  if (aAcceptsInherit && ParseVariant(value, VARIANT_INHERIT, nsnull)) {
+    // Keyword "inherit" can not be mixed, so we are done.
+    AppendValue(eCSSProperty_border_image_slice, value);
     return true;
   }
 
-  // <uri> [<number> | <percentage>]{1,4}
-  //       [ / <border-width>{1,4} ]? [stretch | repeat | round]{0,2}
-  nsRefPtr<nsCSSValue::Array> arr = nsCSSValue::Array::Create(11);
+  // Try parsing "fill" value.
+  nsCSSValue imageSliceFillValue;
+  bool hasFill = ParseEnum(imageSliceFillValue,
+                           nsCSSProps::kBorderImageSliceKTable);
 
-  nsCSSValue& url = arr->Item(0);
-  nsCSSValue& splitTop = arr->Item(1);
-  nsCSSValue& splitRight = arr->Item(2);
-  nsCSSValue& splitBottom = arr->Item(3);
-  nsCSSValue& splitLeft = arr->Item(4);
-  nsCSSValue& borderWidthTop = arr->Item(5);
-  nsCSSValue& borderWidthRight = arr->Item(6);
-  nsCSSValue& borderWidthBottom = arr->Item(7);
-  nsCSSValue& borderWidthLeft = arr->Item(8);
-  nsCSSValue& horizontalKeyword = arr->Item(9);
-  nsCSSValue& verticalKeyword = arr->Item(10);
+  // Parse the box dimensions.
+  nsCSSValue imageSliceBoxValue;
+  if (!ParseGroupedBoxProperty(VARIANT_PN, imageSliceBoxValue)) {
+    if (!hasFill && aConsumedTokens) {
+      *aConsumedTokens = false;
+    }
 
-  // <uri>
-  if (!ParseVariant(url, VARIANT_URL, nsnull)) {
     return false;
   }
 
-  // [<number> | <percentage>]{1,4}
-  if (!ParseNonNegativeVariant(splitTop,
-                               VARIANT_NUMBER | VARIANT_PERCENT, nsnull)) {
-    return false;
-  }
-  if (!ParseNonNegativeVariant(splitRight,
-                               VARIANT_NUMBER | VARIANT_PERCENT, nsnull)) {
-    splitRight = splitTop;
-  }
-  if (!ParseNonNegativeVariant(splitBottom,
-                               VARIANT_NUMBER | VARIANT_PERCENT, nsnull)) {
-    splitBottom = splitTop;
-  }
-  if (!ParseNonNegativeVariant(splitLeft,
-                               VARIANT_NUMBER | VARIANT_PERCENT, nsnull)) {
-    splitLeft = splitRight;
+  // Try parsing "fill" keyword again if the first time failed because keyword
+  // and slice dimensions can be in any order.
+  if (!hasFill) {
+    hasFill = ParseEnum(imageSliceFillValue,
+                        nsCSSProps::kBorderImageSliceKTable);
   }
 
-  // [ / <border-width>{1,4} ]?
-  if (ExpectSymbol('/', true)) {
-    // if have '/', at least one value is required
-    if (!ParseNonNegativeVariant(borderWidthTop, VARIANT_LENGTH, nsnull)) {
-      return false;
-    }
-    if (!ParseNonNegativeVariant(borderWidthRight, VARIANT_LENGTH, nsnull)) {
-      borderWidthRight = borderWidthTop;
-    }
-    if (!ParseNonNegativeVariant(borderWidthBottom, VARIANT_LENGTH, nsnull)) {
-      borderWidthBottom = borderWidthTop;
-    }
-    if (!ParseNonNegativeVariant(borderWidthLeft, VARIANT_LENGTH, nsnull)) {
-      borderWidthLeft = borderWidthRight;
-    }
+  nsCSSValueList* borderImageSlice = value.SetListValue();
+  // Put the box value into the list.
+  borderImageSlice->mValue = imageSliceBoxValue;
+
+  if (hasFill) {
+    // Put the "fill" value into the list.
+    borderImageSlice->mNext = new nsCSSValueList;
+    borderImageSlice->mNext->mValue = imageSliceFillValue;
   }
 
-  // [stretch | repeat | round]{0,2}
-  // missing keywords are handled in nsRuleNode::ComputeBorderData()
-  if (ParseEnum(horizontalKeyword, nsCSSProps::kBorderImageKTable)) {
-    (void)ParseEnum(verticalKeyword, nsCSSProps::kBorderImageKTable);
+  AppendValue(eCSSProperty_border_image_slice, value);
+  return true;
+}
+
+bool
+CSSParserImpl::ParseBorderImageWidth(bool aAcceptsInherit)
+{
+  // border-image-width: initial | [<length>|<number>|<percentage>|auto]{1,4}
+  nsCSSValue value;
+
+  if (aAcceptsInherit && ParseVariant(value, VARIANT_INHERIT, nsnull)) {
+    // Keyword "inherit" can no be mixed, so we are done.
+    AppendValue(eCSSProperty_border_image_width, value);
+    return true;
   }
 
-  if (!ExpectEndProperty()) {
+  // Parse the box dimensions.
+  if (!ParseGroupedBoxProperty(VARIANT_ALPN, value)) {
     return false;
   }
 
-  val.SetArrayValue(arr, eCSSUnit_Array);
-  AppendValue(eCSSProperty_border_image, val);
+  AppendValue(eCSSProperty_border_image_width, value);
+  return true;
+}
+
+bool
+CSSParserImpl::ParseBorderImageOutset(bool aAcceptsInherit)
+{
+  // border-image-outset: initial | [<length>|<number>]{1,4}
+  nsCSSValue value;
+
+  if (aAcceptsInherit && ParseVariant(value, VARIANT_INHERIT, nsnull)) {
+    // Keyword "inherit" can not be mixed, so we are done.
+    AppendValue(eCSSProperty_border_image_outset, value);
+    return true;
+  }
+
+  // Parse the box dimensions.
+  if (!ParseGroupedBoxProperty(VARIANT_LN, value)) {
+    return false;
+  }
+
+  AppendValue(eCSSProperty_border_image_outset, value);
+  return true;
+}
+
+bool
+CSSParserImpl::ParseBorderImageRepeat(bool aAcceptsInherit)
+{
+  nsCSSValue value;
+  if (aAcceptsInherit && ParseVariant(value, VARIANT_INHERIT, nsnull)) {
+    // Keyword "inherit" can not be mixed, so we are done.
+    AppendValue(eCSSProperty_border_image_repeat, value);
+    return true;
+  }
+
+  nsCSSValuePair result;
+  if (!ParseEnum(result.mXValue, nsCSSProps::kBorderImageRepeatKTable)) {
+    return false;
+  }
+
+  // optional second keyword, defaults to first
+  if (!ParseEnum(result.mYValue, nsCSSProps::kBorderImageRepeatKTable)) {
+    result.mYValue = result.mXValue;
+  }
+
+  value.SetPairValue(&result);
+  AppendValue(eCSSProperty_border_image_repeat, value);
+  return true;
+}
+
+bool
+CSSParserImpl::ParseBorderImage()
+{
+  nsAutoParseCompoundProperty compound(this);
+
+  // border-image: inherit |
+  // <border-image-source> ||
+  // <border-image-slice>
+  //   [ / <border-image-width>?
+  //     [ / <border-image-outset>]?]? ||
+  // <border-image-repeat>
+
+  nsCSSValue value;
+  if (ParseVariant(value, VARIANT_INHERIT, nsnull)) {
+    AppendValue(eCSSProperty_border_image_source, value);
+    AppendValue(eCSSProperty_border_image_slice, value);
+    AppendValue(eCSSProperty_border_image_width, value);
+    AppendValue(eCSSProperty_border_image_outset, value);
+    AppendValue(eCSSProperty_border_image_repeat, value);
+    // Keyword "inherit" can't be mixed, so we are done.
+    return true;
+  }
+
+  // No empty property.
+  if (CheckEndProperty()) {
+    return false;
+  }
+
+  // Shorthand properties are required to set everything they can.
+  SetBorderImageInitialValues();
+
+  bool foundSource = false;
+  bool foundSliceWidthOutset = false;
+  bool foundRepeat = false;
+
+  // This loop is used to handle the parsing of border-image properties which
+  // can appear in any order.
+  nsCSSValue imageSourceValue;
+  while (!CheckEndProperty()) {
+    // <border-image-source>
+    if (!foundSource && ParseVariant(imageSourceValue, VARIANT_UO, nsnull)) {
+      AppendValue(eCSSProperty_border_image_source, imageSourceValue);
+      foundSource = true;
+      continue;
+    }
+
+    // <border-image-slice>
+    // ParseBorderImageSlice is weird.  It may consume tokens and then return
+    // false, because it parses a property with two required components that
+    // can appear in either order.  Since the tokens that were consumed cannot
+    // parse as anything else we care about, this isn't a problem.
+    if (!foundSliceWidthOutset) {
+      bool sliceConsumedTokens = false;
+      if (ParseBorderImageSlice(false, &sliceConsumedTokens)) {
+        foundSliceWidthOutset = true;
+
+        // [ / <border-image-width>?
+        if (ExpectSymbol('/', true)) {
+          ParseBorderImageWidth(false);
+
+          // [ / <border-image-outset>
+          if (ExpectSymbol('/', true)) {
+            if (!ParseBorderImageOutset(false)) {
+              return false;
+            }
+          }
+        }
+
+        continue;
+      } else {
+        // If we consumed some tokens for <border-image-slice> but did not
+        // successfully parse it, we have an error.
+        if (sliceConsumedTokens) {
+          return false;
+        }
+      }
+    }
+
+    // <border-image-repeat>
+    if (!foundRepeat && ParseBorderImageRepeat(false)) {
+      foundRepeat = true;
+      continue;
+    }
+
+    return false;
+  }
 
   return true;
 }
@@ -6366,14 +6647,24 @@ CSSParserImpl::ParseBorderSide(const nsCSSProperty aPropIDs[],
     // initial values.
     nsCSSValue extraValue;
     switch (values[0].GetUnit()) {
-      case eCSSUnit_Inherit:    extraValue.SetInheritValue();    break;
-      case eCSSUnit_Initial:    extraValue.SetInitialValue();    break;
-      default:                  extraValue.SetNoneValue();       break;
+    case eCSSUnit_Inherit:
+    case eCSSUnit_Initial:
+      extraValue = values[0];
+      // Set value of border-image properties to initial/inherit
+      AppendValue(eCSSProperty_border_image_source, extraValue);
+      AppendValue(eCSSProperty_border_image_slice, extraValue);
+      AppendValue(eCSSProperty_border_image_width, extraValue);
+      AppendValue(eCSSProperty_border_image_outset, extraValue);
+      AppendValue(eCSSProperty_border_image_repeat, extraValue);
+      break;
+    default:
+      extraValue.SetNoneValue();
+      SetBorderImageInitialValues();
+      break;
     }
     NS_FOR_CSS_SIDES(side) {
       AppendValue(kBorderColorsProps[side], extraValue);
     }
-    AppendValue(eCSSProperty_border_image, extraValue);
   }
   else {
     // Just set our one side
@@ -7858,11 +8149,7 @@ CSSParserImpl::ParseOutline()
 
   // Provide default values
   if ((found & 1) == 0) { // Provide default outline-color
-#ifdef GFX_HAS_INVERT
-    values[0].SetIntValue(NS_STYLE_COLOR_INVERT, eCSSUnit_Enumerated);
-#else
     values[0].SetIntValue(NS_STYLE_COLOR_MOZ_USE_TEXT_COLOR, eCSSUnit_Enumerated);
-#endif
   }
   if ((found & 2) == 0) { // Provide default outline-style
     values[1].SetIntValue(NS_STYLE_BORDER_STYLE_NONE, eCSSUnit_Enumerated);

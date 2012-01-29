@@ -42,7 +42,6 @@
 #include "nsIIDBDatabaseException.h"
 #include "nsIPrivateDOMEvent.h"
 
-#include "jscntxt.h"
 #include "nsContentUtils.h"
 #include "nsDOMClassInfoID.h"
 #include "nsDOMException.h"
@@ -78,28 +77,19 @@ private:
 
 already_AddRefed<nsDOMEvent>
 mozilla::dom::indexedDB::CreateGenericEvent(const nsAString& aType,
-                                            bool aBubblesAndCancelable)
+                                            Bubbles aBubbles,
+                                            Cancelable aCancelable)
 {
   nsRefPtr<nsDOMEvent> event(new nsDOMEvent(nsnull, nsnull));
-  nsresult rv = event->InitEvent(aType, aBubblesAndCancelable,
-                                 aBubblesAndCancelable);
+  nsresult rv = event->InitEvent(aType,
+                                 aBubbles == eDoesBubble ? true : false,
+                                 aCancelable == eCancelable ? true : false);
   NS_ENSURE_SUCCESS(rv, nsnull);
 
   rv = event->SetTrusted(true);
   NS_ENSURE_SUCCESS(rv, nsnull);
 
   return event.forget();
-}
-
-already_AddRefed<nsIRunnable>
-mozilla::dom::indexedDB::CreateGenericEventRunnable(const nsAString& aType,
-                                                    nsIDOMEventTarget* aTarget)
-{
-  nsCOMPtr<nsIDOMEvent> event(CreateGenericEvent(aType));
-  NS_ENSURE_TRUE(event, nsnull);
-
-  nsCOMPtr<nsIRunnable> runnable(new EventFiringRunnable(aTarget, event));
-  return runnable.forget();
 }
 
 // static

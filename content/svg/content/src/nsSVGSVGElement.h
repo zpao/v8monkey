@@ -40,22 +40,21 @@
 #ifndef __NS_SVGSVGELEMENT_H__
 #define __NS_SVGSVGELEMENT_H__
 
-#include "nsSVGStylableElement.h"
-#include "nsIDOMSVGSVGElement.h"
+#include "DOMSVGTests.h"
+#include "mozilla/dom/FromParser.h"
 #include "nsIDOMSVGFitToViewBox.h"
 #include "nsIDOMSVGLocatable.h"
-#include "nsIDOMSVGZoomAndPan.h"
-#include "nsIDOMSVGMatrix.h"
 #include "nsIDOMSVGPoint.h"
-#include "nsSVGLength2.h"
+#include "nsIDOMSVGSVGElement.h"
+#include "nsIDOMSVGZoomAndPan.h"
 #include "nsSVGEnum.h"
+#include "nsSVGLength2.h"
+#include "nsSVGStylableElement.h"
 #include "nsSVGViewBox.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
-#include "mozilla/dom/FromParser.h"
 
-#ifdef MOZ_SMIL
+class nsIDOMSVGMatrix;
 class nsSMILTimeContainer;
-#endif // MOZ_SMIL
 
 typedef nsSVGStylableElement nsSVGSVGElementBase;
 
@@ -120,6 +119,7 @@ public:
 
 class nsSVGSVGElement : public nsSVGSVGElementBase,
                         public nsIDOMSVGSVGElement,
+                        public DOMSVGTests,
                         public nsIDOMSVGFitToViewBox,
                         public nsIDOMSVGLocatable,
                         public nsIDOMSVGZoomAndPan
@@ -141,9 +141,7 @@ public:
 
   // interfaces:
   NS_DECL_ISUPPORTS_INHERITED
-#ifdef MOZ_SMIL
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsSVGSVGElement, nsSVGSVGElementBase)
-#endif // MOZ_SMIL
   NS_DECL_NSIDOMSVGSVGELEMENT
   NS_DECL_NSIDOMSVGFITTOVIEWBOX
   NS_DECL_NSIDOMSVGLOCATABLE
@@ -181,15 +179,11 @@ public:
   const nsSVGTranslatePoint& GetPreviousTranslate() { return mPreviousTranslate; }
   float GetPreviousScale() { return mPreviousScale; }
 
-#ifdef MOZ_SMIL
   nsSMILTimeContainer* GetTimedDocumentRoot();
-#endif // MOZ_SMIL
 
   // nsIContent interface
   NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const;
-#ifdef MOZ_SMIL
   virtual nsresult PreHandleEvent(nsEventChainPreVisitor& aVisitor);
-#endif // MOZ_SMIL
 
   // nsSVGElement specializations:
   virtual gfxMatrix PrependLocalTransformTo(const gfxMatrix &aMatrix) const;
@@ -237,12 +231,10 @@ protected:
   // nsSVGElement overrides
   bool IsEventName(nsIAtom* aName);
 
-#ifdef MOZ_SMIL
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
                               bool aCompileEventHandlers);
   virtual void UnbindFromTree(bool aDeep, bool aNullParent);
-#endif // MOZ_SMIL
 
   // implementation helpers:
 
@@ -259,11 +251,10 @@ protected:
    */
   bool IsInner() const {
     const nsIContent *parent = GetFlattenedTreeParent();
-    return parent && parent->GetNameSpaceID() == kNameSpaceID_SVG &&
+    return parent && parent->IsSVG() &&
            parent->Tag() != nsGkAtoms::foreignObject;
   }
 
-#ifdef MOZ_SMIL
   /* 
    * While binding to the tree we need to determine if we will be the outermost
    * <svg> element _before_ the children are bound (as they want to know what
@@ -275,7 +266,6 @@ protected:
    */
   bool WillBeOutermostSVG(nsIContent* aParent,
                             nsIContent* aBindingParent) const;
-#endif // MOZ_SMIL
 
   // invalidate viewbox -> viewport xform & inform frames
   void InvalidateTransformNotifyFrame();
@@ -316,11 +306,9 @@ protected:
   // XXXjwatt our frame should probably reset these when it's destroyed.
   float mViewportWidth, mViewportHeight;
 
-#ifdef MOZ_SMIL
   // The time container for animations within this SVG document fragment. Set
   // for all outermost <svg> elements (not nested <svg> elements).
   nsAutoPtr<nsSMILTimeContainer> mTimedDocumentRoot;
-#endif // MOZ_SMIL
 
   // zoom and pan
   // IMPORTANT: see the comment in RecordCurrentScaleTranslate before writing
@@ -331,13 +319,11 @@ protected:
   float                             mPreviousScale;
   PRInt32                           mRedrawSuspendCount;
 
-#ifdef MOZ_SMIL
   // For outermost <svg> elements created from parsing, animation is started by
   // the onload event in accordance with the SVG spec, but for <svg> elements
   // created by script or promoted from inner <svg> to outermost <svg> we need
   // to manually kick off animation when they are bound to the tree.
   bool                              mStartAnimationOnBindToTree;
-#endif // MOZ_SMIL
   bool                              mImageNeedsTransformInvalidation;
   bool                              mIsPaintingSVGImageElement;
 };

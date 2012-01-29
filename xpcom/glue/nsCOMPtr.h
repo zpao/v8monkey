@@ -53,11 +53,12 @@
                        -- scc
 */
 
+#include "mozilla/Attributes.h"
 
   // Wrapping includes can speed up compiles (see "Large Scale C++ Software Design")
 #ifndef nsDebug_h___
 #include "nsDebug.h"
-  // for |NS_PRECONDITION|
+  // for |NS_ABORT_IF_FALSE|, |NS_ASSERTION|
 #endif
 
 #ifndef nsISupportsUtils_h__
@@ -277,8 +278,7 @@ class nsCOMPtr_helper
 class
   NS_COM_GLUE
   NS_STACK_CLASS
-  NS_FINAL_CLASS
-nsQueryInterface
+nsQueryInterface MOZ_FINAL
   {
     public:
       explicit
@@ -429,46 +429,6 @@ nsCOMPtr_base
   {
     public:
 
-      template <class T>
-      class
-        NS_FINAL_CLASS
-        NS_STACK_CLASS
-      nsDerivedSafe : public T
-          /*
-            No client should ever see or have to type the name of this class.  It is the
-            artifact that makes it a compile-time error to call |AddRef| and |Release|
-            on a |nsCOMPtr|.  DO NOT USE THIS TYPE DIRECTLY IN YOUR CODE.
-
-            See |nsCOMPtr::operator->| and |nsRefPtr::operator->|.
-          */
-        {
-          private:
-            NS_METHOD_(nsrefcnt) AddRef();
-            NS_METHOD_(nsrefcnt) Release();
-            //using T::AddRef;
-            //using T::Release;
-            /*
-             We could use |using| above, except that gcc 4.2 on Mac has a bug
-             which causes |using| be unable to make the function private in
-             templated derived classes (see bug 689397).
-            */
-
-            ~nsDerivedSafe(); // NOT TO BE IMPLEMENTED
-            /* 
-              This dtor is added to make this class compatible with GCC 4.6.
-              If the destructor for T is private, nsDerivedSafe's unimplemented destructor 
-              will be implicitly-declared by the compiler as deleted.
-              Therefore this explicit dtor exists to avoid that deletion. See bug 689301.
-            */
-
-          protected:
-            nsDerivedSafe(); // NOT TO BE IMPLEMENTED
-              /*
-                This ctor exists to avoid compile errors and warnings about nsDerivedSafe using the
-                default ctor but inheriting classes without an empty ctor.  See bug 209667.
-              */
-        };
-
       nsCOMPtr_base( nsISupports* rawPtr = 0 )
           : mRawPtr(rawPtr)
         {
@@ -513,9 +473,7 @@ nsCOMPtr_base
 // template <class T> class nsGetterAddRefs;
 
 template <class T>
-class
-  NS_FINAL_CLASS
-nsCOMPtr
+class nsCOMPtr MOZ_FINAL
 #ifdef NSCAP_FEATURE_USE_BASE
     : private nsCOMPtr_base
 #endif
@@ -809,15 +767,17 @@ nsCOMPtr
           return temp;
         }
 
+      template <typename I>
       void
-      forget( T** rhs NS_OUTPARAM )
+      forget( I** rhs NS_OUTPARAM )
           // Set the target of rhs to the value of mRawPtr and null out mRawPtr.
           // Useful to avoid unnecessary AddRef/Release pairs with "out"
-          // parameters.
+          // parameters where rhs bay be a T** or an I** where I is a base class
+          // of T.
         {
           NS_ASSERTION(rhs, "Null pointer passed to forget!");
-          *rhs = 0;
-          swap(*rhs);
+          *rhs = get();
+          mRawPtr = 0;
         }
 
       T*
@@ -843,11 +803,11 @@ nsCOMPtr
           return get();
         }
 
-      nsCOMPtr_base::nsDerivedSafe<T>*
+      T*
       operator->() const
         {
-          NS_PRECONDITION(mRawPtr != 0, "You can't dereference a NULL nsCOMPtr with operator->().");
-          return reinterpret_cast<nsCOMPtr_base::nsDerivedSafe<T>*> (get());
+          NS_ABORT_IF_FALSE(mRawPtr != 0, "You can't dereference a NULL nsCOMPtr with operator->().");
+          return get();
         }
 
       nsCOMPtr<T>*
@@ -870,7 +830,7 @@ nsCOMPtr
       T&
       operator*() const
         {
-          NS_PRECONDITION(mRawPtr != 0, "You can't dereference a NULL nsCOMPtr with operator*().");
+          NS_ABORT_IF_FALSE(mRawPtr != 0, "You can't dereference a NULL nsCOMPtr with operator*().");
           return *get();
         }
 
@@ -897,7 +857,7 @@ nsCOMPtr
     without hassles, through intermediary code that doesn't know the exact type.
   */
 
-NS_SPECIALIZE_TEMPLATE
+template <>
 class nsCOMPtr<nsISupports>
     : private nsCOMPtr_base
   {
@@ -1150,11 +1110,11 @@ class nsCOMPtr<nsISupports>
           return get();
         }
 
-      nsDerivedSafe<nsISupports>*
+      nsISupports*
       operator->() const
         {
-          NS_PRECONDITION(mRawPtr != 0, "You can't dereference a NULL nsCOMPtr with operator->().");
-          return reinterpret_cast<nsCOMPtr_base::nsDerivedSafe<nsISupports>*> (get());
+          NS_ABORT_IF_FALSE(mRawPtr != 0, "You can't dereference a NULL nsCOMPtr with operator->().");
+          return get();
         }
 
       nsCOMPtr<nsISupports>*
@@ -1178,7 +1138,7 @@ class nsCOMPtr<nsISupports>
       nsISupports&
       operator*() const
         {
-          NS_PRECONDITION(mRawPtr != 0, "You can't dereference a NULL nsCOMPtr with operator*().");
+          NS_ABORT_IF_FALSE(mRawPtr != 0, "You can't dereference a NULL nsCOMPtr with operator*().");
           return *get();
         }
 
@@ -1368,7 +1328,7 @@ class nsGetterAddRefs
   };
 
 
-NS_SPECIALIZE_TEMPLATE
+template <>
 class nsGetterAddRefs<nsISupports>
   {
     public:

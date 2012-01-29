@@ -84,7 +84,7 @@ public:
     virtual void OnFinalize(JSObject* aObject);
     virtual void SetScriptsEnabled(bool aEnabled, bool aFireTimeouts);
 
-    virtual void *GetScriptGlobal(PRUint32 lang);
+    virtual JSObject* GetGlobalJSObject();
     virtual nsresult EnsureScriptEnvironment(PRUint32 aLangID);
 
     virtual nsIScriptContext *GetScriptContext(PRUint32 lang);
@@ -159,7 +159,8 @@ JSClass nsXULPDGlobalObject::gSharedGlobalClass = {
 
 nsXULPrototypeDocument::nsXULPrototypeDocument()
     : mRoot(nsnull),
-      mLoaded(false)
+      mLoaded(false),
+      mCCGeneration(0)
 {
     ++gRefCnt;
 }
@@ -195,6 +196,9 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsXULPrototypeDocument)
     tmp->mPrototypeWaiters.Clear();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsXULPrototypeDocument)
+    if (nsCCUncollectableMarker::InGeneration(cb, tmp->mCCGeneration)) {
+        return NS_SUCCESS_INTERRUPTED_TRAVERSE;
+    }
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NATIVE_MEMBER(mRoot,
                                                     nsXULPrototypeElement)
     NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mGlobalObject");
@@ -695,16 +699,16 @@ nsXULPDGlobalObject::SetScriptContext(PRUint32 lang_id, nsIScriptContext *aScrip
 
   NS_ASSERTION(!aScriptContext || !mContext, "Bad call to SetContext()!");
 
-  void* script_glob = NULL;
+  JSObject* global = NULL;
 
   if (aScriptContext) {
     aScriptContext->SetGCOnDestruction(false);
     aScriptContext->DidInitializeContext();
-    script_glob = aScriptContext->GetNativeGlobal();
-    NS_ASSERTION(script_glob, "GetNativeGlobal returned NULL!");
+    global = aScriptContext->GetNativeGlobal();
+    NS_ASSERTION(global, "GetNativeGlobal returned NULL!");
   }
   mContext = aScriptContext;
-  mJSObject = static_cast<JSObject*>(script_glob);
+  mJSObject = global;
   return NS_OK;
 }
 
@@ -723,8 +727,7 @@ nsXULPDGlobalObject::EnsureScriptEnvironment(PRUint32 lang_id)
                                         getter_AddRefs(languageRuntime));
   NS_ENSURE_SUCCESS(rv, NS_OK);
 
-  nsCOMPtr<nsIScriptContext> ctxNew;
-  rv = languageRuntime->CreateContext(getter_AddRefs(ctxNew));
+  nsCOMPtr<nsIScriptContext> ctxNew = languageRuntime->CreateContext();
   // We have to setup a special global object.  We do this then
   // attach it as the global for this context.  Then, ::SetScriptContext
   // will re-fetch the global and set it up in our language globals array.
@@ -769,11 +772,9 @@ nsXULPDGlobalObject::GetScriptContext(PRUint32 lang_id)
   return mContext;
 }
 
-void*
-nsXULPDGlobalObject::GetScriptGlobal(PRUint32 lang_id)
+JSObject*
+nsXULPDGlobalObject::GetGlobalJSObject()
 {
-  NS_ABORT_IF_FALSE(lang_id == nsIProgrammingLanguage::JAVASCRIPT,
-                    "We don't support this language ID");
   return mJSObject;
 }
 

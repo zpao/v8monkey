@@ -44,6 +44,7 @@
 #include "nsIView.h"
 #include "nsIWidget.h"
 
+#include "mozilla/Attributes.h"
 #include "mozilla/Services.h"
 #include "mozilla/Preferences.h"
 #include "nsIServiceManager.h"
@@ -76,7 +77,11 @@ static nsSystemFontsMac *gSystemFonts = nsnull;
 #include "nsSystemFontsQt.h"
 #include "gfxPDFSurface.h"
 static nsSystemFontsQt *gSystemFonts = nsnull;
-#elif defined(ANDROID)
+#elif defined(MOZ_WIDGET_ANDROID)
+#include "nsSystemFontsAndroid.h"
+#include "gfxPDFSurface.h"
+static nsSystemFontsAndroid *gSystemFonts = nsnull;
+#elif defined(MOZ_WIDGET_GONK)
 #include "nsSystemFontsAndroid.h"
 #include "gfxPDFSurface.h"
 static nsSystemFontsAndroid *gSystemFonts = nsnull;
@@ -87,7 +92,7 @@ static nsSystemFontsAndroid *gSystemFonts = nsnull;
 using namespace mozilla;
 using mozilla::services::GetObserverService;
 
-class nsFontCache : public nsIObserver
+class nsFontCache MOZ_FINAL : public nsIObserver
 {
 public:
     nsFontCache()   { MOZ_COUNT_CTOR(nsFontCache); }

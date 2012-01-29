@@ -1,6 +1,5 @@
-/* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- *
- * ***** BEGIN LICENSE BLOCK *****
+/* -*- Mode: IDL; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Mozilla Public License Version
@@ -153,7 +152,7 @@ interface ScheduledGCCallback : nsISupports
 /**
 * interface of Components.utils
 */
-[scriptable, uuid(11785c1f-346f-475c-950e-fe1bacce70f1)]
+[scriptable, uuid(9e9ba9d6-a0fa-4767-9f49-9b74bb2368cd)]
 interface nsIXPCComponents_Utils : nsISupports
 {
 
@@ -167,7 +166,7 @@ interface nsIXPCComponents_Utils : nsISupports
      * an exception handler.  If it is not a JS error object, the parameter
      * is converted to a string and reported as a new error.
      */
-    void reportError();
+    [implicit_jscontext] void reportError(in jsval error);
 
     /* lookupMethod is designed to be called from JavaScript only.
      *
@@ -182,7 +181,8 @@ interface nsIXPCComponents_Utils : nsISupports
      * replaced in the content JS code. This method is not recommended for
      * any other use.
      */
-    void lookupMethod();
+    [implicit_jscontext]
+    jsval lookupMethod(in jsval obj, in jsval name);
 
     readonly attribute nsIXPCComponents_utils_Sandbox Sandbox;
 
@@ -198,7 +198,11 @@ interface nsIXPCComponents_Utils : nsISupports
      * s.seven = res;
      * var thirtyFive = C.u.evalInSandbox("five * seven", s);
      */
-    void evalInSandbox(in AString source/*, obj */);
+    [implicit_jscontext,optional_argc]
+    jsval evalInSandbox(in AString source, in jsval sandbox,
+                        [optional] in jsval version,
+                        [optional] in jsval filename,
+                        [optional] in long lineNo);
 
 
     /*
@@ -231,8 +235,8 @@ interface nsIXPCComponents_Utils : nsISupports
      *
      * (This comment is duplicated from xpcIJSModuleLoader.)
      */
-    void /* JSObject */ import(in AUTF8String registryLocation
-                               /*, [optional] in JSObject targetObj */);
+    [implicit_jscontext,optional_argc]
+    jsval import(in AUTF8String aResourceURI, [optional] in jsval targetObj);
 
     /*
      * Unloads the JS module at 'registryLocation'. Existing references to the
@@ -249,14 +253,24 @@ interface nsIXPCComponents_Utils : nsISupports
      *
      * Return a weak reference for the given JS object.
      */
-    xpcIJSWeakReference getWeakReference(/* in JSObject obj */);
+    [implicit_jscontext]
+    xpcIJSWeakReference getWeakReference(in jsval obj);
 
     /*
      * To be called from JS only.
      *
      * Force an immediate garbage collection cycle.
      */
+    [implicit_jscontext]
     void forceGC();
+    
+    /*
+     * To be called from JS only.
+     *
+     * Force an immediate shrinking garbage collection cycle.
+     */
+    [implicit_jscontext]
+    void forceShrinkingGC();
 
     /*
      * Schedule a garbage collection cycle for a point in the future when no JS
@@ -264,6 +278,13 @@ interface nsIXPCComponents_Utils : nsISupports
      */
     [implicit_jscontext]
     void schedulePreciseGC(in ScheduledGCCallback callback);
+    
+    /*
+     * Schedule a shrinking garbage collection cycle for a point in the future
+     * when no JS is running. Call the provided function once this has occured.
+     */
+    [implicit_jscontext]
+    void schedulePreciseShrinkingGC(in ScheduledGCCallback callback);
 
     /**
      * Return the keys in a weak map.  This operation is
@@ -288,7 +309,8 @@ interface nsIXPCComponents_Utils : nsISupports
      * @param obj The JavaScript object whose global is to be gotten.
      * @return the corresponding global.
      */
-    void /* JSObject */ getGlobalForObject(/* in JSObject obj */);
+    [implicit_jscontext]
+    jsval getGlobalForObject(in jsval obj);
 
     /*
      * To be called from JS only.
@@ -306,12 +328,47 @@ interface nsIXPCComponents_Utils : nsISupports
      */
     [implicit_jscontext]
     void makeObjectPropsNormal(in jsval vobj);
+
+    /*
+     * To be called from JS only.
+     *
+     * These are the set of JSContext options that privileged script
+     * is allowed to control for the purposes of testing.  These
+     * options should be kept in sync with what's controllable in the
+     * jsshell and by setting prefs in nsJSEnvironment.
+     *
+     * NB: Assume that getting any of these attributes is relatively
+     * cheap, but setting any of them is relatively expensive.
+     */
+    [implicit_jscontext]
+    attribute boolean strict;
+
+    [implicit_jscontext]
+    attribute boolean werror;
+
+    [implicit_jscontext]
+    attribute boolean atline;
+
+    [implicit_jscontext]
+    attribute boolean xml;
+
+    [implicit_jscontext]
+    attribute boolean relimit;
+
+    [implicit_jscontext]
+    attribute boolean methodjit;
+
+    [implicit_jscontext]
+    attribute boolean methodjit_always;
+
+    [implicit_jscontext]
+    void setGCZeal(in long zeal);
 };
 
 /**
 * interface of JavaScript's 'Components' object
 */
-[scriptable, uuid(155809f1-71f1-47c5-be97-d812ba560405)]
+[scriptable, uuid(4676e9cf-2c07-423b-b161-26bb9d8067d3)]
 interface nsIXPCComponents : nsISupports
 {
     readonly attribute nsIXPCComponents_Interfaces      interfaces;
@@ -333,10 +390,11 @@ interface nsIXPCComponents : nsISupports
      * (But are you sure you really want this method any more?
      *  See http://developer-test.mozilla.org/en/docs/XPCNativeWrapper )
      */
-    [deprecated] void lookupMethod();
+    [deprecated,implicit_jscontext]
+    jsval lookupMethod(in jsval obj, in jsval name);
 
     /* @deprecated Use Components.utils.reportError instead. */
-    [deprecated] void reportError();
+    [deprecated, implicit_jscontext] void reportError(in jsval error);
 
     /* 'lastResult' is accessible via JavaScript only */
     /* 'returnCode' is accessible via JavaScript only */

@@ -50,6 +50,14 @@
 #include "nsDOMString.h"
 #include "jspubtd.h"
 #include "nsDOMMemoryReporter.h"
+#include "nsIVariant.h"
+
+// Including 'windows.h' will #define GetClassInfo to something else.
+#ifdef XP_WIN
+#ifdef GetClassInfo
+#undef GetClassInfo
+#endif
+#endif
 
 class nsIContent;
 class nsIDocument;
@@ -69,7 +77,6 @@ class nsChildContentList;
 class nsNodeWeakReference;
 class nsNodeSupportsWeakRefTearoff;
 class nsIEditor;
-class nsIVariant;
 class nsIDOMUserDataHandler;
 class nsAttrAndChildArray;
 class nsXPCClassInfo;
@@ -277,14 +284,12 @@ private:
 // 0 is global.
 #define DOM_USER_DATA         1
 #define DOM_USER_DATA_HANDLER 2
-#ifdef MOZ_SMIL
 #define SMIL_MAPPED_ATTR_ANIMVAL 3
-#endif // MOZ_SMIL
 
 // IID for the nsINode interface
 #define NS_INODE_IID \
-{ 0x20d16be2, 0x3c58, 0x4099, \
-  { 0xbf, 0xa6, 0xd0, 0xe7, 0x6b, 0xb1, 0x3d, 0xc5 } }
+{ 0xd026d280, 0x5b25, 0x41c0, \
+  { 0x92, 0xcf, 0x6, 0xf6, 0xf, 0xb, 0x9a, 0xfe } }
 
 /**
  * An internal interface that abstracts some DOMNode-related parts that both
@@ -339,17 +344,15 @@ public:
     eCOMMENT             = 1 << 5,
     /** form control elements */
     eHTML_FORM_CONTROL   = 1 << 6,
-    /** svg elements */
-    eSVG                 = 1 << 7,
     /** document fragments */
-    eDOCUMENT_FRAGMENT   = 1 << 8,
+    eDOCUMENT_FRAGMENT   = 1 << 7,
     /** data nodes (comments, PIs, text). Nodes of this type always
      returns a non-null value for nsIContent::GetText() */
-    eDATA_NODE           = 1 << 19,
+    eDATA_NODE           = 1 << 8,
     /** nsHTMLMediaElement */
-    eMEDIA               = 1 << 10,
+    eMEDIA               = 1 << 9,
     /** animation elements */
-    eANIMATION           = 1 << 11
+    eANIMATION           = 1 << 10
   };
 
   /**
@@ -374,6 +377,11 @@ public:
    * for which IsElement() is true.
    */
   mozilla::dom::Element* AsElement();
+
+  /**
+   * Return if this node has any children.
+   */
+  bool HasChildren() const { return !!mFirstChild; }
 
   /**
    * Get the number of children
@@ -723,6 +731,7 @@ public:
    */
   NS_DECL_NSIDOMEVENTTARGET
   using nsIDOMEventTarget::AddEventListener;
+  using nsIDOMEventTarget::AddSystemEventListener;
 
   /**
    * Adds a mutation observer to be notified when this node, or any of its
@@ -913,6 +922,18 @@ public:
   }
 
   /**
+   * Returns true if |this| node is the common ancestor of the start/end
+   * nodes of a Range in a Selection or a descendant of such a common ancestor.
+   * This node is definitely not selected when |false| is returned, but it may
+   * or may not be selected when |true| is returned.
+   */
+  bool IsSelectionDescendant() const
+  {
+    return IsDescendantOfCommonAncestorForRangeInSelection() ||
+           IsCommonAncestorForRangeInSelection();
+  }
+
+  /**
    * Get the root content of an editor. So, this node must be a descendant of
    * an editor. Note that this should be only used for getting input or textarea
    * editor's root content. This method doesn't support HTML editors.
@@ -1050,9 +1071,6 @@ public:
   }
   nsresult CompareDocumentPosition(nsIDOMNode* aOther,
                                    PRUint16* aReturn);
-
-  nsresult IsSameNode(nsIDOMNode* aOther,
-                      bool* aReturn);
 
   nsresult LookupPrefix(const nsAString& aNamespaceURI, nsAString& aPrefix);
   nsresult IsDefaultNamespace(const nsAString& aNamespaceURI, bool* aResult)
@@ -1200,6 +1218,11 @@ private:
     ElementHasName,
     // Set if the element might have a contenteditable attribute set.
     ElementMayHaveContentEditableAttr,
+    // Set if the node is the common ancestor of the start/end nodes of a Range
+    // that is in a Selection.
+    NodeIsCommonAncestorForRangeInSelection,
+    // Set if the node is a descendant of a node with the above bit set.
+    NodeIsDescendantOfCommonAncestorForRangeInSelection,
     // Guard value
     BooleanFlagCount
   };
@@ -1234,6 +1257,18 @@ public:
   bool HasName() const { return GetBoolFlag(ElementHasName); }
   bool MayHaveContentEditableAttr() const
     { return GetBoolFlag(ElementMayHaveContentEditableAttr); }
+  bool IsCommonAncestorForRangeInSelection() const
+    { return GetBoolFlag(NodeIsCommonAncestorForRangeInSelection); }
+  void SetCommonAncestorForRangeInSelection()
+    { SetBoolFlag(NodeIsCommonAncestorForRangeInSelection); }
+  void ClearCommonAncestorForRangeInSelection()
+    { ClearBoolFlag(NodeIsCommonAncestorForRangeInSelection); }
+  bool IsDescendantOfCommonAncestorForRangeInSelection() const
+    { return GetBoolFlag(NodeIsDescendantOfCommonAncestorForRangeInSelection); }
+  void SetDescendantOfCommonAncestorForRangeInSelection()
+    { SetBoolFlag(NodeIsDescendantOfCommonAncestorForRangeInSelection); }
+  void ClearDescendantOfCommonAncestorForRangeInSelection()
+    { ClearBoolFlag(NodeIsDescendantOfCommonAncestorForRangeInSelection); }
 
 protected:
   void SetParentIsContent(bool aValue) { SetBoolFlag(ParentIsContent, aValue); }

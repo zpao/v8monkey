@@ -46,17 +46,33 @@
 
 @interface mozAccessible : NSObject <mozAccessible>
 {
-  nsAccessibleWrap *mGeckoAccessible;  // weak reference; it owns us.
-  NSMutableArray   *mChildren;         // strong ref to array of children
+  /**
+   * Weak reference; it owns us.
+   */
+  nsAccessibleWrap* mGeckoAccessible;
   
-  // we can be marked as 'expired' if Shutdown() is called on our geckoAccessible.
-  // since we might still be retained by some third-party, we need to do cleanup
-  // in |expire|, and prevent any potential harm that could come from someone using us
-  // after this point.
+  /**
+   * Strong ref to array of children
+   */
+  NSMutableArray* mChildren;
+  
+  /** 
+   * Weak reference to the parent
+   */
+  mozAccessible* mParent;
+  
+  /**
+   * We can be marked as 'expired' if Shutdown() is called on our geckoAccessible.
+   * since we might still be retained by some third-party, we need to do cleanup
+   * in |expire|, and prevent any potential harm that could come from someone using us
+   * after this point.
+   */
   BOOL mIsExpired;
   
-  // the nsIAccessible role of our gecko accessible.
-  PRUint32        mRole;
+  /**
+   * The nsIAccessible role of our gecko accessible.
+   */
+  mozilla::a11y::role        mRole;
 }
 
 // inits with the gecko owner.
@@ -114,6 +130,14 @@
 // invalidates and removes all our children from our cached array.
 - (void)invalidateChildren;
 
+/** 
+ * Append a child if they are already cached.
+ */
+- (void)appendChild:(nsAccessible*)aAccessible;
+
+// invalidates the cached parent, used by invalidateChildren.
+- (void)invalidateParent;
+
 // makes ourselves "expired". after this point, we might be around if someone
 // has retained us (e.g., a third-party), but we really contain no information.
 - (void)expire;
@@ -124,7 +148,7 @@
 - (void)printHierarchyWithLevel:(unsigned)numSpaces;
 
 - (void)sanityCheckChildren;
-- (void)sanityCheckChildren:(NSArray *)theChildren;
+- (void)sanityCheckChildren:(NSArray*)theChildren;
 #endif
 
 // ---- NSAccessibility methods ---- //

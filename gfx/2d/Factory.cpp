@@ -39,6 +39,25 @@
 
 #ifdef USE_CAIRO
 #include "DrawTargetCairo.h"
+#include "ScaledFontCairo.h"
+#endif
+
+#ifdef USE_SKIA
+#include "DrawTargetSkia.h"
+#include "ScaledFontBase.h"
+#endif
+
+#ifdef WIN32
+#include "ScaledFontWin.h"
+#endif
+
+#ifdef XP_MACOSX
+#include "ScaledFontMac.h"
+#endif
+
+
+#ifdef XP_MACOSX
+#include "DrawTargetCG.h"
 #endif
 
 #ifdef WIN32
@@ -46,6 +65,7 @@
 #include "ScaledFontDWrite.h"
 #include <d3d10_1.h>
 #endif
+
 
 #include "Logging.h"
 
@@ -77,6 +97,29 @@ Factory::CreateDrawTarget(BackendType aBackend, const IntSize &aSize, SurfaceFor
       }
       break;
     }
+#elif defined XP_MACOSX || defined ANDROID
+#ifdef USE_SKIA
+  case BACKEND_SKIA:
+    {
+      RefPtr<DrawTargetSkia> newTarget;
+      newTarget = new DrawTargetSkia();
+      if (newTarget->Init(aSize, aFormat)) {
+        return newTarget;
+      }
+      break;
+    }
+#endif
+#ifdef XP_MACOSX
+  case BACKEND_COREGRAPHICS:
+    {
+      RefPtr<DrawTargetCG> newTarget;
+      newTarget = new DrawTargetCG();
+      if (newTarget->Init(aSize, aFormat)) {
+        return newTarget;
+      }
+      break;
+    }
+#endif
 #endif
   default:
     gfxDebug() << "Invalid draw target type specified.";
@@ -98,6 +141,28 @@ Factory::CreateScaledFontForNativeFont(const NativeFont &aNativeFont, Float aSiz
       return new ScaledFontDWrite(static_cast<IDWriteFontFace*>(aNativeFont.mFont), aSize);
     }
 #endif
+#ifdef XP_MACOSX
+  case NATIVE_FONT_MAC_FONT_FACE:
+    {
+      return new ScaledFontMac(static_cast<CGFontRef>(aNativeFont.mFont), aSize);
+    }
+#endif
+#ifdef USE_SKIA
+#ifdef WIN32
+  case NATIVE_FONT_GDI_FONT_FACE:
+    {
+      return new ScaledFontWin(static_cast<gfxGDIFont*>(aNativeFont.mFont), aSize);
+    }
+#endif
+  case NATIVE_FONT_SKIA_FONT_FACE:
+    {
+      return new ScaledFontBase(static_cast<gfxFont*>(aNativeFont.mFont), aSize);
+    }
+#endif
+  case NATIVE_FONT_CAIRO_FONT_FACE:
+    {
+      return new ScaledFontCairo(static_cast<gfxFont*>(aNativeFont.mFont));
+    }
   default:
     gfxWarning() << "Invalid native font type specified.";
     return NULL;

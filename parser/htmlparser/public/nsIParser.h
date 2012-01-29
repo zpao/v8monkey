@@ -53,10 +53,11 @@
 #include "nsStringGlue.h"
 #include "nsTArray.h"
 #include "nsIAtom.h"
+#include "nsParserBase.h"
 
 #define NS_IPARSER_IID \
-{ 0xcbc0cbd8, 0xbbb7, 0x46d6, \
-  { 0xa5, 0x51, 0x37, 0x8a, 0x69, 0x53, 0xa7, 0x14 } }
+{ 0xd064f0d6, 0x44e3, 0x4366, \
+  { 0xa7, 0x05, 0xcf, 0x7a, 0x91, 0x26, 0x14, 0xb6 } }
 
 // {41421C60-310A-11d4-816F-000064657374}
 #define NS_IDEBUG_DUMP_CONTENT_IID \
@@ -65,7 +66,6 @@
 
 class nsIContentSink;
 class nsIRequestObserver;
-class nsIParserFilter;
 class nsString;
 class nsIURI;
 class nsIChannel;
@@ -91,7 +91,7 @@ enum eParserDocType {
 #define kCharsetUninitialized           0
 #define kCharsetFromWeakDocTypeDefault  1
 #define kCharsetFromUserDefault         2
-#define kCharsetFromDocTypeDefault      3
+#define kCharsetFromDocTypeDefault      3 // This and up confident for XHR
 #define kCharsetFromCache               4
 #define kCharsetFromParentFrame         5
 #define kCharsetFromAutoDetection       6
@@ -130,7 +130,7 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsIDebugDumpContent, NS_IDEBUG_DUMP_CONTENT_IID)
  *  This class defines the iparser interface. This XPCOM
  *  inteface is all that parser clients ever need to see.
  */
-class nsIParser : public nsISupports {
+class nsIParser : public nsParserBase {
   public:
 
     NS_DECLARE_STATIC_IID_ACCESSOR(NS_IPARSER_IID)
@@ -176,8 +176,6 @@ class nsIParser : public nsISupports {
     NS_IMETHOD_(void) SetDocumentCharset(const nsACString& aCharset, PRInt32 aSource)=0;
     NS_IMETHOD_(void) GetDocumentCharset(nsACString& oCharset, PRInt32& oSource)=0;
 
-    NS_IMETHOD_(void) SetParserFilter(nsIParserFilter* aFilter) = 0;
-
     /** 
      * Get the channel associated with this parser
      * @update harishd,gagan 07/17/01
@@ -196,10 +194,8 @@ class nsIParser : public nsISupports {
     
     /**
      * Get the nsIStreamListener for this parser
-     * @param aDTD out param that will contain the result
-     * @return NS_OK if successful
      */
-    NS_IMETHOD GetStreamListener(nsIStreamListener** aListener) = 0;
+    virtual nsIStreamListener* GetStreamListener() = 0;
 
     /**************************************************************************
      *  Parse methods always begin with an input source, and perform
@@ -224,6 +220,11 @@ class nsIParser : public nsISupports {
     // the parsing engine.
     NS_IMETHOD_(void) UnblockParser() = 0;
 
+    /**
+     * Asynchronously continues parsing.
+     */
+    NS_IMETHOD_(void) ContinueInterruptedParsingAsync() = 0;
+
     NS_IMETHOD_(bool) IsParserEnabled() = 0;
     NS_IMETHOD_(bool) IsComplete() = 0;
     
@@ -237,10 +238,6 @@ class nsIParser : public nsISupports {
                      bool aLastCall,
                      nsDTDMode aMode = eDTDMode_autodetect) = 0;
 
-    // Return a key, suitable for passing into one of the Parse methods above,
-    // that will cause this parser to use the root context.
-    NS_IMETHOD_(void *) GetRootContextKey() = 0;
-    
     NS_IMETHOD Terminate(void) = 0;
 
     /**
@@ -278,12 +275,6 @@ class nsIParser : public nsISupports {
     virtual void Reset() = 0;
 
     /**
-     * True if the parser can currently be interrupted. Returns false when
-     * parsing for example document.write or innerHTML.
-     */
-    virtual bool CanInterrupt() = 0;
-
-    /**
      * True if the insertion point (per HTML5) is defined.
      */
     virtual bool IsInsertionPointDefined() = 0;
@@ -301,7 +292,7 @@ class nsIParser : public nsISupports {
     /**
      * Marks the HTML5 parser as not a script-created parser.
      */
-    virtual void MarkAsNotScriptCreated() = 0;
+    virtual void MarkAsNotScriptCreated(const char* aCommand) = 0;
 
     /**
      * True if this is a script-created HTML5 parser.

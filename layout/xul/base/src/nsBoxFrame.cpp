@@ -84,7 +84,7 @@
 #include "nsIScrollableFrame.h"
 #include "nsWidgetsCID.h"
 #include "nsCSSAnonBoxes.h"
-#include "nsHTMLContainerFrame.h"
+#include "nsContainerFrame.h"
 #include "nsIDOMDocument.h"
 #include "nsIDOMElement.h"
 #include "nsITheme.h"
@@ -676,7 +676,7 @@ nsBoxFrame::Reflow(nsPresContext*          aPresContext,
 
   // create the layout state
   nsBoxLayoutState state(aPresContext, aReflowState.rendContext,
-                         aReflowState.mReflowDepth);
+                         &aReflowState, aReflowState.mReflowDepth);
 
   nsSize computedSize(aReflowState.ComputedWidth(),aReflowState.ComputedHeight());
 
@@ -779,7 +779,7 @@ nsBoxFrame::GetPrefSize(nsBoxLayoutState& aBoxLayoutState)
   PropagateDebug(aBoxLayoutState);
 #endif
 
-  if (IsCollapsed(aBoxLayoutState))
+  if (IsCollapsed())
     return size;
 
   // if the size was not completely redefined in CSS then ask our children
@@ -815,7 +815,7 @@ nsBoxFrame::GetBoxAscent(nsBoxLayoutState& aBoxLayoutState)
   PropagateDebug(aBoxLayoutState);
 #endif
 
-  if (IsCollapsed(aBoxLayoutState))
+  if (IsCollapsed())
     return 0;
 
   if (mLayoutManager)
@@ -842,7 +842,7 @@ nsBoxFrame::GetMinSize(nsBoxLayoutState& aBoxLayoutState)
   PropagateDebug(aBoxLayoutState);
 #endif
 
-  if (IsCollapsed(aBoxLayoutState))
+  if (IsCollapsed())
     return size;
 
   // if the size was not completely redefined in CSS then ask our children
@@ -882,7 +882,7 @@ nsBoxFrame::GetMaxSize(nsBoxLayoutState& aBoxLayoutState)
   PropagateDebug(aBoxLayoutState);
 #endif
 
-  if (IsCollapsed(aBoxLayoutState))
+  if (IsCollapsed())
     return size;
 
   // if the size was not completely redefined in CSS then ask our children
@@ -1502,7 +1502,7 @@ nsBoxFrame::PaintXULDebugOverlay(nsRenderingContext& aRenderingContext,
     nsBoxLayoutState state(GetPresContext());
     nscoord flex = kid->GetFlex(state);
 
-    if (!kid->IsCollapsed(state)) {
+    if (!kid->IsCollapsed()) {
       aRenderingContext.SetColor(NS_RGB(255,255,255));
 
       if (isHorizontal) 

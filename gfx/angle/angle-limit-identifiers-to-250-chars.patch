@@ -1,15 +1,15 @@
 # HG changeset patch
-# Parent f9415c10c3ebd27856500cca7a0ee0f28a16f53c
-diff --git a/gfx/angle/src/compiler/preprocessor/scanner.h b/gfx/angle/src/compiler/preprocessor/scanner.h
---- a/gfx/angle/src/compiler/preprocessor/scanner.h
-+++ b/gfx/angle/src/compiler/preprocessor/scanner.h
-@@ -44,17 +44,19 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILI
- //
- // scanner.h
- //
+# Parent 761ca19e4ce1afe03e58beaea20149ba1ef243c4
+diff --git a/gfx/angle/src/compiler/preprocessor/length_limits.h b/gfx/angle/src/compiler/preprocessor/length_limits.h
+--- a/gfx/angle/src/compiler/preprocessor/length_limits.h
++++ b/gfx/angle/src/compiler/preprocessor/length_limits.h
+@@ -10,12 +10,14 @@
  
- #if !defined(__SCANNER_H)
- #define __SCANNER_H 1
+ #if !defined(__LENGTH_LIMITS_H)
+ #define __LENGTH_LIMITS_H 1
+ 
+ // These constants are factored out from the rest of the headers to
+ // make it easier to reference them from the compiler sources.
  
  // These lengths do not include the NULL terminator.
 -#define MAX_SYMBOL_NAME_LEN 256
@@ -18,9 +18,4 @@ diff --git a/gfx/angle/src/compiler/preprocessor/scanner.h b/gfx/angle/src/compi
 +#define MAX_SYMBOL_NAME_LEN 250
  #define MAX_STRING_LEN 511
  
- #include "compiler/preprocessor/parser.h"
- 
- // Not really atom table stuff but needed first...
- 
- typedef struct SourceLoc_Rec {
-     unsigned short file, line;
+ #endif // !(defined(__LENGTH_LIMITS_H)

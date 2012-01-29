@@ -68,6 +68,10 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Telemetry.h"
 #include "nsDOMError.h"
+#include "nsAlgorithm.h"
+#include "sampler.h"
+
+using namespace mozilla;
 
 // Device IDs for various cache types
 const char kDiskDeviceID[] = "disk";
@@ -206,6 +210,18 @@ nsHttpChannel::Connect(bool firstTime)
             LOG(("nsHttpChannel::Connect() STS permissions found\n"));
             return AsyncCall(&nsHttpChannel::HandleAsyncRedirectChannelToHttps);
         }
+
+        // Check for a previous SPDY Alternate-Protocol directive
+        if (gHttpHandler->IsSpdyEnabled() && mAllowSpdy) {
+            nsCAutoString hostPort;
+
+            if (NS_SUCCEEDED(mURI->GetHostPort(hostPort)) &&
+                gHttpHandler->ConnMgr()->GetSpdyAlternateProtocol(hostPort)) {
+                LOG(("nsHttpChannel::Connect() Alternate-Protocol found\n"));
+                return AsyncCall(
+                    &nsHttpChannel::HandleAsyncRedirectChannelToHttps);
+            }
+        }
     }
 
     // ensure that we are using a valid hostname
@@ -312,9 +328,6 @@ nsHttpChannel::Connect(bool firstTime)
         }
         return NS_ERROR_DOCUMENT_NOT_CACHED;
     }
-
-    // check to see if authorization headers should be included
-    mAuthProvider->AddAuthorizationHeaders();
 
     if (mLoadFlags & LOAD_NO_NETWORK_IO) {
         return NS_ERROR_DOCUMENT_NOT_CACHED;
@@ -504,6 +517,9 @@ nsHttpChannel::SetupTransaction()
         }
     }
 
+    if (!mAllowSpdy)
+        mCaps |= NS_HTTP_DISALLOW_SPDY;
+
     // use the URI path if not proxying (transparent proxying such as SSL proxy
     // does not count here). also, figure out what version we should be speaking.
     nsCAutoString buf, path;
@@ -631,6 +647,7 @@ nsHttpChannel::SetupTransaction()
         mCaps |=  NS_HTTP_STICKY_CONNECTION;
         mCaps &= ~NS_HTTP_ALLOW_PIPELINING;
         mCaps &= ~NS_HTTP_ALLOW_KEEPALIVE;
+        mCaps |=  NS_HTTP_DISALLOW_SPDY;
     }
 
     nsCOMPtr<nsIAsyncInputStream> responseStream;
@@ -860,18 +877,8 @@ bool
 nsHttpChannel::ShouldSSLProxyResponseContinue(PRUint32 httpStatus)
 {
     // When SSL connect has failed, allow proxy reply to continue only if it's
-    // an auth request, or a redirect of a non-POST top-level document load.
-    switch (httpStatus) {
-    case 407:
-        return true;
-    case 300: case 301: case 302: case 303: case 307:
-      {
-        return ( (mLoadFlags & nsIChannel::LOAD_DOCUMENT_URI) &&
-                 mURI == mDocumentURI &&
-                 mRequestHead.Method() != nsHttp::Post);
-      }
-    }
-    return false;
+    // a 407 (proxy authentication required) response
+    return (httpStatus == 407);
 }
 
 /**
@@ -1858,6 +1865,9 @@ nsHttpChannel::ProcessNotModified()
     mResponseHead = mCachedResponseHead;
 
     rv = UpdateExpirationTime();
+    if (NS_FAILED(rv)) return rv;
+
+    rv = AddCacheEntryHeaders(mCacheEntry);
     if (NS_FAILED(rv)) return rv;
 
     // notify observers interested in looking at a reponse that has been
@@ -3191,6 +3201,32 @@ nsHttpChannel::InstallCacheListener(PRUint32 offset)
     NS_ASSERTION(mCacheEntry, "no cache entry");
     NS_ASSERTION(mListener, "no listener");
 
+    nsCacheStoragePolicy policy;
+    rv = mCacheEntry->GetStoragePolicy(&policy);
+    if (NS_FAILED(rv)) {
+        policy = nsICache::STORE_ON_DISK_AS_FILE;
+    }
+
+    // If the content is compressible and the server has not compressed it,
+    // mark the cache entry for compression.
+    if ((mResponseHead->PeekHeader(nsHttp::Content_Encoding) == nsnull) && (
+         policy != nsICache::STORE_ON_DISK_AS_FILE) && (
+         mResponseHead->ContentType().EqualsLiteral(TEXT_HTML) ||
+         mResponseHead->ContentType().EqualsLiteral(TEXT_PLAIN) ||
+         mResponseHead->ContentType().EqualsLiteral(TEXT_CSS) ||
+         mResponseHead->ContentType().EqualsLiteral(TEXT_JAVASCRIPT) ||
+         mResponseHead->ContentType().EqualsLiteral(TEXT_ECMASCRIPT) ||
+         mResponseHead->ContentType().EqualsLiteral(TEXT_XML) ||
+         mResponseHead->ContentType().EqualsLiteral(APPLICATION_JAVASCRIPT) ||
+         mResponseHead->ContentType().EqualsLiteral(APPLICATION_ECMASCRIPT) ||
+         mResponseHead->ContentType().EqualsLiteral(APPLICATION_XJAVASCRIPT) ||
+         mResponseHead->ContentType().EqualsLiteral(APPLICATION_XHTML_XML))) {
+        rv = mCacheEntry->SetMetaDataElement("uncompressed-len", "0"); 
+        if (NS_FAILED(rv)) {
+            LOG(("unable to mark cache entry for compression"));
+        }
+    } 
+      
     nsCOMPtr<nsIOutputStream> out;
     rv = mCacheEntry->OpenOutputStream(offset, getter_AddRefs(out));
     if (NS_FAILED(rv)) return rv;
@@ -3213,10 +3249,7 @@ nsHttpChannel::InstallCacheListener(PRUint32 offset)
     nsCOMPtr<nsIEventTarget> cacheIOTarget;
     serv->GetCacheIOTarget(getter_AddRefs(cacheIOTarget));
 
-    nsCacheStoragePolicy policy;
-    rv = mCacheEntry->GetStoragePolicy(&policy);
-
-    if (NS_FAILED(rv) || policy == nsICache::STORE_ON_DISK_AS_FILE ||
+    if (policy == nsICache::STORE_ON_DISK_AS_FILE ||
         !cacheIOTarget) {
         LOG(("nsHttpChannel::InstallCacheListener sync tee %p rv=%x policy=%d "
              "cacheIOTarget=%p", tee.get(), rv, policy, cacheIOTarget.get()));
@@ -3707,6 +3740,9 @@ nsHttpChannel::AsyncOpen(nsIStreamListener *listener, nsISupports *context)
     }
 
     AddCookiesToRequest();
+ 
+    // check to see if authorization headers should be included
+    mAuthProvider->AddAuthorizationHeaders();
 
     // notify "http-on-modify-request" observers
     gHttpHandler->OnModifyRequest(this);
@@ -3791,7 +3827,7 @@ nsHttpChannel::SetupFallbackChannel(const char *aFallbackKey)
 NS_IMETHODIMP
 nsHttpChannel::SetPriority(PRInt32 value)
 {
-    PRInt16 newValue = NS_CLAMP(value, PR_INT16_MIN, PR_INT16_MAX);
+    PRInt16 newValue = clamped(value, PR_INT16_MIN, PR_INT16_MAX);
     if (mPriority == newValue)
         return NS_OK;
     mPriority = newValue;
@@ -4073,6 +4109,7 @@ nsHttpChannel::GetRequestMethod(nsACString& aMethod)
 NS_IMETHODIMP
 nsHttpChannel::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 {
+    SAMPLE_LABEL("nsHttpChannel", "OnStartRequest");
     if (!(mCanceled || NS_FAILED(mStatus))) {
         // capture the request's status, so our consumers will know ASAP of any
         // connection failures, etc - bug 93581
@@ -4092,6 +4129,16 @@ nsHttpChannel::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
         // grab the security info from the connection object; the transaction
         // is guaranteed to own a reference to the connection.
         mSecurityInfo = mTransaction->SecurityInfo();
+    }
+
+    if (!mCachePump && NS_FAILED(mStatus) &&
+        (mLoadFlags & LOAD_REPLACE) && mOriginalURI && mAllowSpdy) {
+        // For sanity's sake we may want to cancel an alternate protocol
+        // redirection involving the original host name
+
+        nsCAutoString hostPort;
+        if (NS_SUCCEEDED(mOriginalURI->GetHostPort(hostPort)))
+            gHttpHandler->ConnMgr()->RemoveSpdyAlternateProtocol(hostPort);
     }
 
     // don't enter this block if we're reading from the cache...
@@ -4168,6 +4215,7 @@ nsHttpChannel::ContinueOnStartRequest3(nsresult result)
 NS_IMETHODIMP
 nsHttpChannel::OnStopRequest(nsIRequest *request, nsISupports *ctxt, nsresult status)
 {
+    SAMPLE_LABEL("network", "nsHttpChannel::OnStopRequest");
     LOG(("nsHttpChannel::OnStopRequest [this=%p request=%p status=%x]\n",
         this, request, status));
 
@@ -4298,8 +4346,26 @@ nsHttpChannel::OnStopRequest(nsIRequest *request, nsISupports *ctxt, nsresult st
         mListenerContext = 0;
     }
 
-    if (mCacheEntry)
+    if (mCacheEntry) {
+        bool asFile = false;
+        if (mInitedCacheEntry && !mCachedContentIsPartial &&
+            (NS_SUCCEEDED(mStatus) || contentComplete) &&
+            (mCacheAccess & nsICache::ACCESS_WRITE) &&
+            NS_SUCCEEDED(GetCacheAsFile(&asFile)) && asFile) {
+            // We can allow others access to the cache entry
+            // because we don't write to the cache anymore.
+            // CloseCacheEntry may not actually close the cache
+            // entry immediately because someone (such as XHR2
+            // blob response) may hold the token to the cache
+            // entry. So we mark the cache valid here.
+            // We also need to check the entry is stored as file
+            // because we write to the cache asynchronously when
+            // it isn't stored in the file and it isn't completely
+            // written to the disk yet.
+            mCacheEntry->MarkValid();
+        }
         CloseCacheEntry(!contentComplete);
+    }
 
     if (mOfflineCacheEntry)
         CloseOfflineCacheEntry();
@@ -4325,6 +4391,7 @@ nsHttpChannel::OnDataAvailable(nsIRequest *request, nsISupports *ctxt,
                                nsIInputStream *input,
                                PRUint32 offset, PRUint32 count)
 {
+    SAMPLE_LABEL("network", "nsHttpChannel::OnDataAvailable");
     LOG(("nsHttpChannel::OnDataAvailable [this=%p request=%p offset=%u count=%u]\n",
         this, request, offset, count));
 

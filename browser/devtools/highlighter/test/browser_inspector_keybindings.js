@@ -32,19 +32,15 @@ function test()
       InspectorUI.INSPECTOR_NOTIFICATIONS.OPENED);
 
     executeSoon(function() {
-      Services.obs.addObserver(lockNode,
-        InspectorUI.INSPECTOR_NOTIFICATIONS.HIGHLIGHTING, false);
-
+      InspectorUI.highlighter.addListener("nodeselected", lockNode);
       InspectorUI.inspectNode(node);
     });
   }
 
   function lockNode()
   {
-    Services.obs.removeObserver(lockNode,
-      InspectorUI.INSPECTOR_NOTIFICATIONS.HIGHLIGHTING);
-
-    EventUtils.synthesizeKey("VK_ESCAPE", { });
+    InspectorUI.highlighter.removeListener("nodeselected", lockNode);
+    EventUtils.synthesizeKey("VK_RETURN", { });
 
     executeSoon(isTheNodeLocked);
   }
@@ -57,7 +53,7 @@ function test()
   }
 
   function unlockNode() {
-    EventUtils.synthesizeKey("VK_ESCAPE", { });
+    EventUtils.synthesizeKey("VK_RETURN", { });
 
     executeSoon(isTheNodeUnlocked);
   }
@@ -66,9 +62,12 @@ function test()
   {
     ok(InspectorUI.inspecting, "the node is unlocked");
 
+    // Let's close the inspector
     Services.obs.addObserver(finishUp,
       InspectorUI.INSPECTOR_NOTIFICATIONS.CLOSED, false);
-    InspectorUI.closeInspectorUI();
+
+    EventUtils.synthesizeKey("VK_ESCAPE", {});
+    ok(true, "Inspector is closing successfuly");
   }
 
   function finishUp() {

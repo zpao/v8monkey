@@ -46,8 +46,8 @@ test_IntegerConversion()
 
   // Convert huge number to Integer.
   result = CompileRun("0x7fffffffffffffff");
-  do_check_eq(result->IntegerValue(), (JSInt64)0x7fffffffffffffff);
-  do_check_eq(result->ToInteger()->Value(), (JSInt64)0x7fffffffffffffff);
+  do_check_eq(result->IntegerValue(), (int64_t)0x7fffffffffffffff);
+  do_check_eq(result->ToInteger()->Value(), (int64_t)0x7fffffffffffffff);
 */
 
   // Convert NaN to Integer.

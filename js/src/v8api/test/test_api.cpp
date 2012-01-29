@@ -34,11 +34,6 @@
 #include "v8api_test_harness.h"
 #include "v8api_test_checks.h"
 
-typedef JSUint16 uint16_t;
-typedef JSInt32 int32_t;
-typedef JSUint32 uint32_t;
-typedef JSInt64 int64_t;
-
 ////////////////////////////////////////////////////////////////////////////////
 //// Fake Internal Namespace
 namespace v8 {

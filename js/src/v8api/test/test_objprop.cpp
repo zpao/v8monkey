@@ -46,7 +46,7 @@ test_obj_getprop()
   context.Dispose();
 }
 
-static JSInt32 test_val = 1;
+static int32_t test_val = 1;
 
 static Handle<Value> ReadTestVal(Local<String> propname, const AccessorInfo &info) {
   do_check_true(!propname.IsEmpty());
@@ -86,7 +86,7 @@ test_obj_defprop() {
 
   do_check_true(!result.IsEmpty());
   do_check_true(result->IsInt32());
-  JSInt32 i = result->Int32Value();
+  int32_t i = result->Int32Value();
   do_check_eq(12, i);
   context.Dispose();
 }
@@ -125,7 +125,7 @@ test_obj_propexn() {
   do_check_false(result.IsEmpty());
   do_check_true(result->IsInt32());
   do_check_false(trycatch.HasCaught());
-  JSInt32 i = result->Int32Value();
+  int32_t i = result->Int32Value();
   do_check_eq(13, i);
   context.Dispose();
 }
@@ -141,14 +141,14 @@ Handle<Boolean> NamedDeleterThrows(Local<String> property, const AccessorInfo &i
   return True();
 }
 
-Handle<Value> IndexedGetterThrows(JSUint32 index, const AccessorInfo &info) {
+Handle<Value> IndexedGetterThrows(uint32_t index, const AccessorInfo &info) {
   return ThrowException(Integer::New(4));
 }
-Handle<Value> IndexedSetterThrows(JSUint32 index, Local<Value> value, const AccessorInfo &info) {
+Handle<Value> IndexedSetterThrows(uint32_t index, Local<Value> value, const AccessorInfo &info) {
   return ThrowException(Integer::New(5));
 }
 
-Handle<Boolean> IndexedDeleterThrows(JSUint32 index, const AccessorInfo &info) {
+Handle<Boolean> IndexedDeleterThrows(uint32_t index, const AccessorInfo &info) {
   ThrowException(Integer::New(6));
   return True();
 }
@@ -185,7 +185,7 @@ test_obj_tmplexn() {
   do_check_false(result.IsEmpty());
   do_check_true(result->IsInt32());
   do_check_false(trycatch.HasCaught());
-  JSInt32 i = result->Int32Value();
+  int32_t i = result->Int32Value();
   do_check_eq(i, 21);
   context.Dispose();
 }

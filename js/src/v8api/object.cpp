@@ -144,10 +144,10 @@ Object::Set(Handle<Value> key,
 }
 
 bool
-Object::Set(JSUint32 index,
+Object::Set(uint32_t index,
             Handle<Value> value)
 {
-  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+  if (index > uint32_t(std::numeric_limits<jsint>::max())) {
     return false;
   }
 
@@ -182,9 +182,9 @@ Object::Get(Handle<Value> key) {
 }
 
 Local<Value>
-Object::Get(JSUint32 index)
+Object::Get(uint32_t index)
 {
-  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+  if (index > uint32_t(std::numeric_limits<jsint>::max())) {
     return Local<Value>();
   }
 
@@ -211,9 +211,9 @@ Object::Has(Handle<String> key)
 }
 
 bool
-Object::Has(JSUint32 index)
+Object::Has(uint32_t index)
 {
-  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+  if (index > uint32_t(std::numeric_limits<jsint>::max())) {
     return false;
   }
 
@@ -240,9 +240,9 @@ Object::Delete(Handle<String> key)
 }
 
 bool
-Object::Delete(JSUint32 index)
+Object::Delete(uint32_t index)
 {
-  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+  if (index > uint32_t(std::numeric_limits<jsint>::max())) {
     return false;
   }
 
@@ -426,9 +426,9 @@ Object::HasRealNamedProperty(Handle<String> key)
 }
 
 bool
-Object::HasRealIndexedProperty(JSUint32 index)
+Object::HasRealIndexedProperty(uint32_t index)
 {
-  if (index > JSUint32(std::numeric_limits<jsint>::max())) {
+  if (index > uint32_t(std::numeric_limits<jsint>::max())) {
     return false;
   }
 
@@ -551,7 +551,7 @@ Object::Clone()
 }
 
 void
-Object::SetIndexedPropertiesToPixelData(JSUint8* data,
+Object::SetIndexedPropertiesToPixelData(uint8_t* data,
                                         int length)
 {
   UNIMPLEMENTEDAPI();
@@ -563,7 +563,7 @@ Object::HasIndexedPropertiesInPixelData()
   UNIMPLEMENTEDAPI(false);
 }
 
-JSUint8*
+uint8_t*
 Object::GetIndexedPropertiesPixelData()
 {
   UNIMPLEMENTEDAPI(NULL);

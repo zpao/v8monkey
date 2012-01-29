@@ -31,10 +31,10 @@ static inline void check_ne_helper(const char* aFile, int aLine,
   }
 }
 
-// JSInt64s
+// int64_ts
 static inline void check_eq_helper(const char* aFile, int aLine,
-                                   JSInt64 aExpected,
-                                   JSInt64 aActual)
+                                   int64_t aExpected,
+                                   int64_t aActual)
 {
   if (aExpected == aActual) {
     gPassedTests++;
@@ -47,8 +47,8 @@ static inline void check_eq_helper(const char* aFile, int aLine,
   }
 }
 static inline void check_ne_helper(const char* aFile, int aLine,
-                                   JSInt64 aExpected,
-                                   JSInt64 aActual)
+                                   int64_t aExpected,
+                                   int64_t aActual)
 {
   if (aExpected != aActual) {
     gPassedTests++;
@@ -205,8 +205,8 @@ void check_ne_helper(const char* aFile, int aLine,
                      JSIntPtr aExpected,
                      v8::Value* aActual)
 {
-  JSInt64 actual = reinterpret_cast<JSIntPtr>(aActual);
-  JSInt64 expected = aExpected;
+  int64_t actual = reinterpret_cast<JSIntPtr>(aActual);
+  int64_t expected = aExpected;
   check_ne_helper(aFile, aLine, expected, actual);
 }
 

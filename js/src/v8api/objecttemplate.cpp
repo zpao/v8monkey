@@ -209,7 +209,7 @@ o_SetProperty(JSContext* cx,
     Value val(*vp);
     const AccessorInfo info =
       AccessorInfo::MakeAccessorInfo(pd->indexedData.get(), obj);
-    JSUint32 idx = JSID_TO_INT(id);
+    uint32_t idx = JSID_TO_INT(id);
     Handle<Value> ret = pd->indexedSetter(idx, Local<Value>(&val), info);
     if (!ret.IsEmpty()) {
       *vp = ret->native();

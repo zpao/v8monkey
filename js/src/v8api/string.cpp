@@ -26,7 +26,7 @@ String::New(const char* data,
 
 // static
 Local<String>
-String::New(const JSUint16* data,
+String::New(const uint16_t* data,
             int length)
 {
   JSString* str;
@@ -113,7 +113,7 @@ String::Utf8Length() const
 }
 
 int
-String::Write(JSUint16* buffer,
+String::Write(uint16_t* buffer,
               int start,
               int length,
               WriteHints hints) const
@@ -124,9 +124,9 @@ String::Write(JSUint16* buffer,
   if (!chars || internalLen < static_cast<size_t>(start)) {
     return 0;
   }
-  size_t bytes = std::min<size_t>(length, internalLen - start) * sizeof(JSUint16);
+  size_t bytes = std::min<size_t>(length, internalLen - start) * sizeof(uint16_t);
   if (length == -1) {
-    bytes = (internalLen - start) * sizeof(JSUint16);
+    bytes = (internalLen - start) * sizeof(uint16_t);
   }
   (void)memcpy(buffer, &chars[start], bytes);
 

@@ -299,7 +299,7 @@ Local<String> Value::ToString() const {
 }
 
 Local<Uint32> Value::ToUint32() const {
-  JSUint32 i;
+  uint32_t i;
   if (!JS_ValueToECMAUint32(cx(), mVal, &i)) {
     TryCatch::CheckForException();
     return Local<Uint32>();
@@ -309,7 +309,7 @@ Local<Uint32> Value::ToUint32() const {
 }
 
 Local<Int32> Value::ToInt32() const {
-  JSInt32 i;
+  int32_t i;
   if (!JS_ValueToECMAInt32(cx(), mVal, &i)) {
     TryCatch::CheckForException();
     return Local<Int32>();
@@ -326,7 +326,7 @@ Value::ToInteger() const
   }
 
   // TODO should be supporting 64bit wide ints here
-  JSInt32 i;
+  int32_t i;
   if (!JS_ValueToECMAInt32(cx(), mVal, &i)) {
     TryCatch::CheckForException();
     return Local<Integer>();
@@ -388,7 +388,7 @@ bool Value::IsUint32() const {
 
   double d = this->NumberValue();
   return d >= 0 &&
-         (this->IsInt32() || (d <= std::numeric_limits<JSUint32>::max() && ceil(d) == floor(d)));
+         (this->IsInt32() || (d <= std::numeric_limits<uint32_t>::max() && ceil(d) == floor(d)));
 }
 
 bool
@@ -409,7 +409,7 @@ Value::NumberValue() const
   return n->Value();
 }
 
-JSInt64
+int64_t
 Value::IntegerValue() const
 {
   // There are no 64 bit integers, so just return the 32bit one
@@ -424,7 +424,7 @@ Value::IntegerValue() const
   return n->Value();
 }
 
-JSUint32
+uint32_t
 Value::Uint32Value() const
 {
   Local<Uint32> n = ToUint32();
@@ -433,7 +433,7 @@ Value::Uint32Value() const
   return n->Value();
 }
 
-JSInt32
+int32_t
 Value::Int32Value() const
 {
   Local<Int32> n = ToInt32();
@@ -496,23 +496,23 @@ double Number::Value() const {
 
 JS_STATIC_ASSERT(sizeof(Integer) == sizeof(GCReference));
 
-Local<Integer> Integer::New(JSInt32 value) {
+Local<Integer> Integer::New(int32_t value) {
   jsval val = INT_TO_JSVAL(value);
   Integer i(val);
   return Local<Integer>::New(&i);
 }
-Local<Integer> Integer::NewFromUnsigned(JSUint32 value) {
+Local<Integer> Integer::NewFromUnsigned(uint32_t value) {
   jsval val = UINT_TO_JSVAL(value);
   Integer i(val);
   return Local<Integer>::New(&i);
 }
-JSInt64 Integer::Value() const {
+int64_t Integer::Value() const {
   // XXX We should keep track of mIsDouble or something, but that wasn't working...
   if (JSVAL_IS_INT(mVal)) {
-    return static_cast<JSInt64>(JSVAL_TO_INT(mVal));
+    return static_cast<int64_t>(JSVAL_TO_INT(mVal));
   }
   else {
-    return static_cast<JSInt64>(JSVAL_TO_DOUBLE(mVal));
+    return static_cast<int64_t>(JSVAL_TO_DOUBLE(mVal));
   }
 }
 
@@ -521,7 +521,7 @@ JSInt64 Integer::Value() const {
 
 JS_STATIC_ASSERT(sizeof(Int32) == sizeof(GCReference));
 
-JSInt32 Int32::Value() {
+int32_t Int32::Value() {
   return JSVAL_TO_INT(mVal);
 }
 
@@ -530,11 +530,11 @@ JSInt32 Int32::Value() {
 
 JS_STATIC_ASSERT(sizeof(Uint32) == sizeof(GCReference));
 
-JSUint32 Uint32::Value() {
+uint32_t Uint32::Value() {
   if (JSVAL_IS_INT(mVal)) {
-    return static_cast<JSUint32>(JSVAL_TO_INT(mVal));
+    return static_cast<uint32_t>(JSVAL_TO_INT(mVal));
   }
-  return static_cast<JSUint32>(JSVAL_TO_DOUBLE(mVal));
+  return static_cast<uint32_t>(JSVAL_TO_DOUBLE(mVal));
 }
 
 
@@ -617,7 +617,7 @@ void ScriptData::SerializeScriptObject(JSObject *scriptObj) {
     return;
   }
 
-  uint32 length;
+  uint32_t length;
   void *buf = JS_XDRMemGetData(mXdr, &length);
   if (!buf) {
     JS_XDRDestroy(mXdr);

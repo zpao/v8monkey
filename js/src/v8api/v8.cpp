@@ -22,7 +22,7 @@ namespace internal {
 
 ApiExceptionBoundary::ApiExceptionBoundary()
 {
-  ExceptionHandlerChain *link = cx()->new_<ExceptionHandlerChain>();
+  ExceptionHandlerChain *link = new_<ExceptionHandlerChain>();
   link->catcher = NULL;
   link->boundary = this;
   link->next = gExnChain;
@@ -33,7 +33,7 @@ ApiExceptionBoundary::~ApiExceptionBoundary() {
   ExceptionHandlerChain *link = gExnChain;
   JS_ASSERT(link->boundary == this);
   gExnChain = gExnChain->next;
-  cx()->delete_(link);
+  delete_(link);
 }
 
 bool ApiExceptionBoundary::noExceptionOccured() {
@@ -82,11 +82,11 @@ void TryCatch::CheckForException() {
     Handle<String> fileName = exnObject->Get(String::NewSymbol("fileName")).As<String>();
     Handle<Integer> lineNumber = exnObject->Get(String::NewSymbol("lineNumber")).As<Integer>();
     if (!message.IsEmpty()) {
-      current->mMessage = cx()->array_new<char>(message->Length() + 1);
+      current->mMessage = array_new<char>(message->Length() + 1);
       message->WriteAscii(current->mMessage);
     }
     if (!fileName.IsEmpty()) {
-      current->mFilename = cx()->array_new<char>(fileName->Length() + 1);
+      current->mFilename = array_new<char>(fileName->Length() + 1);
       fileName->WriteAscii(current->mFilename);
     }
     if (!lineNumber.IsEmpty()) {
@@ -104,7 +104,7 @@ TryCatch::TryCatch() :
   mLineNo(0),
   mMessage(NULL)
 {
-  ExceptionHandlerChain *link = cx()->new_<ExceptionHandlerChain>();
+  ExceptionHandlerChain *link = new_<ExceptionHandlerChain>();
   link->catcher = this;
   link->boundary = NULL;
   link->next = gExnChain;
@@ -115,7 +115,7 @@ TryCatch::~TryCatch() {
   ExceptionHandlerChain *link = gExnChain;
   JS_ASSERT(link->catcher == this);
   gExnChain = gExnChain->next;
-  cx()->delete_(link);
+  delete_(link);
 
   if (mRethrown) {
     JS_SetPendingException(cx(), mException->native());
@@ -151,8 +151,8 @@ void TryCatch::Reset() {
     mException.Dispose();
     mException.Clear();
   }
-  cx()->array_delete(mFilename);
-  cx()->array_delete(mMessage);
+  array_delete(mFilename);
+  array_delete(mMessage);
   if (mLineBuffer) {
     free(mLineBuffer);
   }
@@ -202,7 +202,7 @@ Local<Context> Context::GetCurrent() {
 }
 
 void Context::Enter() {
-  ContextChain *link = cx()->new_<ContextChain>();
+  ContextChain *link = new_<ContextChain>();
   link->next = gContextChain;
   link->ctx = this;
   JS_SetGlobalObject(cx(), InternalObject());
@@ -215,7 +215,7 @@ void Context::Exit() {
     return;
   ContextChain *link = gContextChain;
   gContextChain = gContextChain->next;
-  cx()->delete_(link);
+  delete_(link);
   JSObject *global = gContextChain ? gContextChain->ctx->InternalObject() : NULL;
   JS_SetGlobalObject(cx(), global);
 }
@@ -601,17 +601,17 @@ Handle<Integer> ScriptOrigin::ResourceColumnOffset() const {
 //// ScriptData class
 ScriptData::~ScriptData() {
   if (mScript)
-    JS_RemoveObjectRoot(cx(), &mScript);
+    JS_RemoveScriptRoot(cx(), &mScript);
   if (mXdr)
     JS_XDRDestroy(mXdr);
 }
 
-void ScriptData::SerializeScriptObject(JSObject *scriptObj) {
+void ScriptData::SerializeScript(JSScript *script) {
   mXdr = JS_XDRNewMem(cx(), JSXDR_ENCODE);
   if (!mXdr)
     return;
 
-  if (!JS_XDRScriptObject(mXdr, &scriptObj)) {
+  if (!JS_XDRScript(mXdr, &script)) {
     JS_XDRDestroy(mXdr);
     mXdr = NULL;
     return;
@@ -632,17 +632,17 @@ void ScriptData::SerializeScriptObject(JSObject *scriptObj) {
 
 ScriptData* ScriptData::PreCompile(const char* input, int length) {
   JSObject *global = JS_GetGlobalObject(cx());
-  ScriptData *sd = cx()->new_<ScriptData>();
+  ScriptData *sd = new_<ScriptData>();
   if (!sd)
     return NULL;
 
-  JSObject *scriptObj = JS_CompileScript(cx(), global,
+  JSScript *script = JS_CompileScript(cx(), global,
                                          input, length, NULL, 0);
-  if (!scriptObj)
+  if (!script)
     return sd;
 
   if (sd)
-    sd->SerializeScriptObject(scriptObj);
+    sd->SerializeScript(script);
   return sd;
 }
 
@@ -653,44 +653,44 @@ ScriptData* ScriptData::PreCompile(Handle<String> source) {
   chars = JS_GetStringCharsAndLength(cx(),
                                      anchor.get(), &len);
   JSObject *global = JS_GetGlobalObject(cx());
-  ScriptData *sd = cx()->new_<ScriptData>();
+  ScriptData *sd = new_<ScriptData>();
   if (!sd)
     return NULL;
 
-  JSObject *scriptObj = JS_CompileUCScript(cx(), global,
+  JSScript *script = JS_CompileUCScript(cx(), global,
                                            chars, len, NULL, 0);
-  if (!scriptObj)
+  if (!script)
     return sd;
 
   if (sd)
-    sd->SerializeScriptObject(scriptObj);
+    sd->SerializeScript(script);
   return sd;
 }
 
 ScriptData* ScriptData::New(const char* aData, int aLength) {
-  ScriptData *sd = cx()->new_<ScriptData>();
+  ScriptData *sd = new_<ScriptData>();
   if (!sd)
     return NULL;
 
-  sd->mScript = sd->GenerateScriptObject((void *)aData, aLength);
+  sd->mScript = sd->GenerateScript((void *)aData, aLength);
   sd->mError = !sd->mScript;
 
   if (!sd->mScript)
     return sd;
 
-  JS_AddObjectRoot(cx(), &sd->mScript);
+  JS_AddNamedScriptRoot(cx(), &sd->mScript, "v8::ScriptData::New");
   return sd;
 }
 
 int ScriptData::Length() {
   if (!mData && mScript)
-    SerializeScriptObject(mScript);
+    SerializeScript(mScript);
   return mLen;
 }
 
 const char* ScriptData::Data() {
   if (!mData && mScript)
-    SerializeScriptObject(mScript);
+    SerializeScript(mScript);
   return mData;
 }
 
@@ -698,11 +698,11 @@ bool ScriptData::HasError() {
   return mError;
 }
 
-JSObject* ScriptData::ScriptObject() {
+JSScript* ScriptData::Script() {
   return mScript;
 }
 
-JSObject* ScriptData::GenerateScriptObject(void *aData, int aLen) {
+JSScript* ScriptData::GenerateScript(void *aData, int aLen) {
   mXdr = JS_XDRNewMem(cx(), JSXDR_DECODE);
   if (!mXdr)
     return NULL;
@@ -711,41 +711,38 @@ JSObject* ScriptData::GenerateScriptObject(void *aData, int aLen) {
   JSErrorReporter older = JS_SetErrorReporter(cx(), NULL);
   JS_XDRMemSetData(mXdr, aData, aLen);
 
-  JSObject *scriptObj;
-  JS_XDRScriptObject(mXdr, &scriptObj);
+  JSScript *script;
+  JS_XDRScript(mXdr, &script);
 
   JS_XDRMemSetData(mXdr, NULL, 0);
   JS_SetErrorReporter(cx(), older);
   JS_XDRDestroy(mXdr);
   mXdr = NULL;
 
-  return scriptObj;
+  return script;
 }
 
 //////////////////////////////////////////////////////////////////////////////
 //// Script class
 
 JS_STATIC_ASSERT(sizeof(Script) == sizeof(GCReference));
-
-Script::Script(JSObject *s)
-{
-  mVal = OBJECT_TO_JSVAL(s);
-}
-
-Script::operator JSObject *() {
-  return JSVAL_TO_OBJECT(mVal);
-}
-
+  
 Handle<Object> Script::InternalObject() {
+    if (JSVAL_IS_NULL(mVal))
+    {
+        JSObject* obj = JS_NewObject(cx(), NULL, NULL, NULL);
+        mVal = OBJECT_TO_JSVAL(obj);
+    }
   Object o(JSVAL_TO_OBJECT(mVal));
   return Local<Object>::New(&o);
 }
 
-Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, Handle<String> scriptData, bool bindToCurrentContext) {
-  JSObject* s = NULL;
+Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, 
+                             Handle<String> scriptData, bool bindToCurrentContext) {
+  JSScript* s = NULL;
 
   if (preData)
-    s = preData->ScriptObject();
+    s = preData->Script();
 
   if (!s) {
     JS::Anchor<JSString*> anchor(JSVAL_TO_STRING(source->native()));

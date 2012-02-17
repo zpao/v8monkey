@@ -50,7 +50,7 @@ bool V8::Initialize() {
     return true;
   gHasAttemptedInitialization = true;
   JS_SetCStringsAreUTF8();
-  JS_ASSERT(!gRuntime && !gRootContext && !gCompartment && !gCompartment && !gCompartmentCall);
+  JS_ASSERT(!gRuntime && !gRootContext && !gCompartment && !gCompartmentCall);
   gRuntime = JS_NewRuntime(64 * MB);
   if(!gRuntime)
     return false;
@@ -59,7 +59,7 @@ bool V8::Initialize() {
   if (!ctx)
     return false;
   // TODO: look into JSOPTION_NO_SCRIPT_RVAL
-  JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT | JSOPTION_DONT_REPORT_UNCAUGHT);
+  JS_SetOptions(ctx, JSOPTION_VAROBJFIX | JSOPTION_METHODJIT | JSOPTION_DONT_REPORT_UNCAUGHT);
   JS_SetVersion(ctx, JSVERSION_LATEST);
   JS_SetErrorReporter(ctx, TryCatch::ReportError);
 

@@ -24,6 +24,9 @@ traceValue(JSTracer* tracer,
   }
 }
 
+void* malloc_(size_t nbytes) { return JS_malloc(cx(), nbytes); }
+void free_(void* p) { return JS_free(cx(), p); }
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Accessor Storage
 
@@ -132,7 +135,7 @@ AttributeStorage::trace(JSTracer* tracer)
 void
 Dump(Handle<Object> obj)
 {
-  js_DumpObject(**obj);
+  js_DumpObject(JSVAL_TO_OBJECT(obj->native()));
 }
 
 void

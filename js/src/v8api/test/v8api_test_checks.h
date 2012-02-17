@@ -202,10 +202,10 @@ void check_ne_helper(const char* aFile, int aLine,
 
 // Some tests use raw pointers...
 void check_ne_helper(const char* aFile, int aLine,
-                     JSIntPtr aExpected,
+                     intptr_t aExpected,
                      v8::Value* aActual)
 {
-  int64_t actual = reinterpret_cast<JSIntPtr>(aActual);
+  int64_t actual = reinterpret_cast<intptr_t>(aActual);
   int64_t expected = aExpected;
   check_ne_helper(aFile, aLine, expected, actual);
 }

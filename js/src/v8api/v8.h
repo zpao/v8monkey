@@ -2,9 +2,8 @@
 #define v8_v8_h__
 
 #include "jsapi.h"
+#include "jscell.h"
 #include "jsxdrapi.h"
-// #include "jstl.h"
-// #include "jshashtable.h"
 #include "jsutil.h"
 
 namespace v8 {
@@ -58,7 +57,7 @@ void notImplemented(const char* functionName);
 class GCReference {
   friend struct GCOps;
   friend struct PersistentGCReference;
-
+  
   void root(JSContext *ctx) {
     JS_AddValueRoot(ctx, &mVal);
   }
@@ -68,13 +67,11 @@ class GCReference {
 
 protected:
   jsval mVal;
+  js::gc::Cell *mGCCell;
 public:
-  GCReference(jsval val) :
-    mVal(val)
-  {}
-  GCReference() :
-    mVal(JSVAL_VOID)
-  {}
+  GCReference(jsval val) : mVal(val), mGCCell(NULL) {}
+  GCReference(js::gc::Cell *cell) : mVal(JSVAL_NULL), mGCCell(cell) {}
+  GCReference() : mVal(JSVAL_NULL), mGCCell(NULL) {}
   jsval &native() {
     return mVal;
   }
@@ -547,7 +544,8 @@ public:
   int64_t IntegerValue() const;
   uint32_t Uint32Value() const;
   int32_t Int32Value() const;
-
+  
+  jsval &native() { return mVal; }
   bool Equals(Handle<Value> other) const;
   bool StrictEquals(Handle<Value> other) const;
 };
@@ -931,17 +929,18 @@ public:
 };
 
 class ScriptData {
-  JS_DECLARE_ALLOCATION_FRIENDS_FOR_PRIVATE_CONSTRUCTOR;
+public:
   ScriptData() : mXdr(NULL), mData(NULL), mLen(0), mError(true) {}
 
-  void SerializeScriptObject(JSObject *scriptObj);
-  JSObject* GenerateScriptObject(void *data, int len);
+protected:
+  void SerializeScript(JSScript *script);
+  JSScript* GenerateScript(void *data, int len);
 
   JSXDRState *mXdr;
   const char *mData;
   uint32_t      mLen;
   bool        mError;
-  JSObject   *mScript;
+  JSScript   *mScript;
 public:
   ~ScriptData();
   static ScriptData* PreCompile(const char* input, int length);
@@ -951,17 +950,21 @@ public:
   const char* Data();
   bool HasError();
 protected:
-  JSObject* ScriptObject();
+  JSScript* Script();
 
   friend class Script;
 };
 
 class Script : public internal::GCReference {
-  Script(JSObject *s);
+  Script(JSScript *s) : GCReference((js::gc::Cell *)s) {};
+  
 
-  operator JSObject *();
+  operator JSScript *() {
+    return (JSScript*)mGCCell;
+  }
+  
   Handle<Object> InternalObject();
-
+  
   static Local<Script> Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, Handle<String> scriptData, bool bindToCurrentContext);
 public:
   static Local<Script> New(Handle<String> source, ScriptOrigin *origin = NULL,

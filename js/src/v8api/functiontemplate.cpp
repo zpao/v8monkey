@@ -68,7 +68,7 @@ ft_finalize(JSContext* cx,
             JSObject* obj)
 {
   PrivateData* data = PrivateData::Get(cx, obj);
-  cx->delete_(data);
+  delete_(data);
 }
 
 JSClass gFunctionTemplateClass = {
@@ -109,7 +109,7 @@ bool IsFunctionTemplate(Handle<Value> v) {
 FunctionTemplate::FunctionTemplate() :
   Template(&gFunctionTemplateClass)
 {
-  PrivateData* data = cx()->new_<PrivateData>();
+  PrivateData* data = new_<PrivateData>();
   JS_SetPrivate(cx(), JSVAL_TO_OBJECT(mVal), data);
 
   Handle<ObjectTemplate> protoTemplate = ObjectTemplate::New();

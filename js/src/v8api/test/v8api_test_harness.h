@@ -77,7 +77,8 @@ std::ostream&
 operator<<(std::ostream& o,
            const jsval& val)
 {
-  o << val.asBits;
+  o << val;
+  // o << val.asBits; TODO: find replacement for asBits
   return o;
 }
 #endif

@@ -34,7 +34,7 @@ typedef js::HashMap<JSObject*,Object::PrivateData*, js::DefaultHasher<JSObject*>
 static ObjectPrivateDataMap *gPrivateDataMap = 0;
 static ObjectPrivateDataMap& privateDataMap() {
   if (!gPrivateDataMap) {
-    gPrivateDataMap = cx()->new_<ObjectPrivateDataMap>();
+    gPrivateDataMap = new_<ObjectPrivateDataMap>();
     gPrivateDataMap->init(11);
   }
   return *gPrivateDataMap;
@@ -67,7 +67,7 @@ internal::DestroyObjectInternals()
     r.popFront();
   }
 
-  cx()->delete_(gPrivateDataMap);
+  delete_(gPrivateDataMap);
 }
 
 JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
@@ -119,7 +119,7 @@ Object::Set(Handle<Value> key,
   // TODO: use String::Value
   String::AsciiValue k(key);
   jsval v = value->native();
-
+  
   if (!JS_SetProperty(cx(), *this, *k, &v)) {
     TryCatch::CheckForException();
     return false;
@@ -481,7 +481,7 @@ int
 Object::GetIdentityHash()
 {
   JSObject *obj = *this;
-  return reinterpret_cast<JSIntPtr>(obj);
+  return reinterpret_cast<intptr_t>(obj);
 }
 
 Object::PrivateData&
@@ -492,7 +492,7 @@ Object::GetHiddenStore()
   if (p.found()) {
     pd = p->value;
   } else {
-    pd = cx()->new_<PrivateData>();
+    pd = new_<PrivateData>();
     ObjectPrivateDataMap::AddPtr slot = privateDataMap().lookupForAdd(*this);
     privateDataMap().add(slot, *this, pd);
   }
@@ -578,11 +578,11 @@ Object::GetIndexedPropertiesPixelDataLength()
 static JSObject* grabTypedArray(JSObject* obj) {
   if (js_IsTypedArray(obj))
     return obj;
-  if (!obj->isObjectProxy())
+  if (!js::IsObjectProxy(obj))
     return NULL;
-  jsid name = INTERNED_STRING_TO_JSID(JS_InternString(cx(), "rawArray"));
+  jsid name = INTERNED_STRING_TO_JSID(cx(), JS_InternString(cx(), "rawArray"));
   js::Value v;
-  js::JSProxy::get(cx(), obj, obj, name, &v);
+  js::Proxy::get(cx(), obj, obj, name, &v);
   if (v.isObjectOrNull())
     return v.toObjectOrNull();
   return NULL;
@@ -597,15 +597,32 @@ Object::SetIndexedPropertiesToExternalArrayData(void* data,
   JS_ASSERT (array_type == GetIndexedPropertiesExternalArrayDataType());
   if (number_of_elements < 0)
     return;
-  js::TypedArray* arr = js::TypedArray::fromJSObject(grabTypedArray(*this));
-  // Hardcoded for bytes now
-  size_t elemSize = arr->slotWidth();
+  // At this point I'm going to cheat. If it's a typed array already, then I'll create 
+  // a new one from this one.
+
+  // We're going to create a new buffer because that's how we do.
+  // Previously we added the ability to manipulate a buffer directly. That's not
+  // cool, so what we'll do is create a new buffer. If this is already a TypedArray,
+  // then we'll just create a new TypedArray and replace this*. If we're working
+  // with a Proxy, then we need to re-set
+//  JSObject* arr = grabTypedArray(*this);
+  size_t elemSize = js::TypedArray::slotWidth(array_type);
   size_t bufferSize = elemSize * number_of_elements;
-  js::ArrayBuffer* buffer = arr->buffer;
-  buffer->freeStorage(cx());
-  buffer->data = data;
-  buffer->byteLength = bufferSize;
-  buffer->isExternal = true;
+  // create the typed array buffer
+  JSObject* newBuf = js::ArrayBuffer::create(cx(), bufferSize, reinterpret_cast<uint8_t*>(data));
+    
+  // create the new typed array
+  JSObject* newArr = js_CreateTypedArrayWithBuffer(cx(), array_type, newBuf, 0, number_of_elements);
+
+  if (js_IsTypedArray(*this)) {
+    *this = newArr;
+  }
+  else if (js::IsProxy(*this)) {
+//    js::Value* vp;
+//    vp->setObject(*newArr);
+//    js::Proxy::set(cx(), *this, *this, proxyProperty(), JS_TRUE, vp);
+    UNIMPLEMENTEDAPI();
+  }
 }
 
 bool
@@ -618,10 +635,7 @@ void*
 Object::GetIndexedPropertiesExternalArrayData()
 {
   JS_ASSERT(HasIndexedPropertiesInExternalArrayData());
-  js::TypedArray* arr = js::TypedArray::fromJSObject(grabTypedArray(*this));
-  // XXX: take arr->byteOffset into account?
-  return arr->data;
-
+  return JS_GetTypedArrayData(grabTypedArray(*this));
 }
 
 ExternalArrayType
@@ -635,8 +649,7 @@ int
 Object::GetIndexedPropertiesExternalArrayDataLength()
 {
   JS_ASSERT(HasIndexedPropertiesInExternalArrayData());
-  js::TypedArray* arr = js::TypedArray::fromJSObject(grabTypedArray(*this));
-  return arr->byteLength;
+  return JS_GetTypedArrayByteLength(grabTypedArray(*this));
 }
 
 Object::Object(JSObject *obj) :

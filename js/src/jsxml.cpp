@@ -861,18 +861,23 @@ attr_identity(const JSXML *xmla, const JSXML *xmlb)
     return qname_identity(xmla->name, xmlb->name);
 }
 
-template<class T>
 void
-js_XMLArrayCursorTrace(JSTracer *trc, JSXMLArrayCursor<T> *cursor)
+js_XMLArrayCursorTrace(JSTracer *trc, JSXMLArrayCursor<JSXML> *cursor)
 {
     for (; cursor; cursor = cursor->next) {
         if (cursor->root)
-            Mark(trc, (const MarkablePtr<T> &)cursor->root, "cursor_root");
+            MarkXML(trc, (const HeapPtr<JSXML> &)cursor->root, "cursor_root");
     }
 }
 
-template void js_XMLArrayCursorTrace<JSXML>(JSTracer *trc, JSXMLArrayCursor<JSXML> *cursor);
-template void js_XMLArrayCursorTrace<JSObject>(JSTracer *trc, JSXMLArrayCursor<JSObject> *cursor);
+void
+js_XMLArrayCursorTrace(JSTracer *trc, JSXMLArrayCursor<JSObject> *cursor)
+{
+    for (; cursor; cursor = cursor->next) {
+        if (cursor->root)
+            MarkObject(trc, (const HeapPtr<JSObject> &)cursor->root, "cursor_root");
+    }
+}
 
 template<class T>
 static HeapPtr<T> *
@@ -1332,7 +1337,7 @@ ParseNodeToXML(Parser *parser, ParseNode *pn,
     JSXMLClass xml_class;
     int stackDummy;
 
-    if (!JS_CHECK_STACK_SIZE(cx->stackLimit, &stackDummy)) {
+    if (!JS_CHECK_STACK_SIZE(cx->runtime->nativeStackLimit, &stackDummy)) {
         ReportCompileErrorNumber(cx, &parser->tokenStream, pn, JSREPORT_ERROR,
                                  JSMSG_OVER_RECURSED);
         return NULL;
@@ -7718,8 +7723,7 @@ js_GetAnyName(JSContext *cx, jsid *idp)
             return false;
 
         v.setObject(*obj);
-        if (!js_SetReservedSlot(cx, global, JSProto_AnyName, v))
-            return false;
+        SetReservedSlot(global, JSProto_AnyName, v);
     }
     *idp = OBJECT_TO_JSID(&v.toObject());
     return true;

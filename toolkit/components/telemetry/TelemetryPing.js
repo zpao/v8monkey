@@ -42,7 +42,6 @@ const Cu = Components.utils;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/LightweightThemeManager.jsm");
-Cu.import("resource://gre/modules/ctypes.jsm");
 
 // When modifying the payload in incompatible ways, please bump this version number
 const PAYLOAD_VERSION = 1;
@@ -108,19 +107,6 @@ function getSimpleMeasurements() {
     uptime: Math.round((new Date() - si.process) / 60000)
   }
 
-  if (si.process) {
-    for each (let field in ["main", "firstPaint", "sessionRestored"]) {
-      if (!(field in si))
-        continue;
-      ret[field] = si[field] - si.process
-    }
-  }
-  ret.startupInterrupted = new Number(Services.startup.interrupted);
-
-  ret.js = Cc["@mozilla.org/js/xpc/XPConnect;1"]
-           .getService(Ci.nsIJSEngineTelemetryStats)
-           .telemetryValue;
-
   // Look for app-specific timestamps
   var appTimestamps = {};
   try {
@@ -129,10 +115,24 @@ function getSimpleMeasurements() {
     appTimestamps = o.TelemetryTimestamps.get();
   } catch (ex) {}
 
-  for (let p in appTimestamps) {
-    if (!(p in ret) && appTimestamps[p])
-      ret[p] = appTimestamps[p];
+  if (si.process) {
+    for each (let field in ["main", "firstPaint", "sessionRestored"]) {
+      if (!(field in si))
+        continue;
+      ret[field] = si[field] - si.process
+    }
+
+    for (let p in appTimestamps) {
+      if (!(p in ret) && appTimestamps[p])
+        ret[p] = appTimestamps[p] - si.process;
+    }
   }
+
+  ret.startupInterrupted = new Number(Services.startup.interrupted);
+
+  ret.js = Cc["@mozilla.org/js/xpc/XPConnect;1"]
+           .getService(Ci.nsIJSEngineTelemetryStats)
+           .telemetryValue;
 
   return ret;
 }
@@ -182,7 +182,9 @@ TelemetryPing.prototype = {
   // Generate a unique id once per session so the server can cope with
   // duplicate submissions.
   _uuid: generateUUID(),
-  _prevSession: null,
+  // Regex that matches histograms we carea bout during startup.
+  _startupHistogramRegex: /SQLITE|HTTP|SPDY|CACHE|DNS/,
+  _slowSQLStartup: {},
 
   /**
    * Returns a set of histograms that can be converted into JSON
@@ -191,7 +193,8 @@ TelemetryPing.prototype = {
    *    histogram_type: <0 for exponential, 1 for linear>, bucketX:countX, ....} ...}
    * where bucket[XY], count[XY] are positive integers.
    */
-  getHistograms: function getHistograms(hls) {
+  getHistograms: function getHistograms() {
+    let hls = Telemetry.histogramSnapshots;
     let info = Telemetry.registeredHistograms;
     let ret = {};
 
@@ -381,17 +384,46 @@ TelemetryPing.prototype = {
       this.addValue(mr.path, id, val);
     }
   },
+
+  /**
+   * Return true if we're interested in having a STARTUP_* histogram for
+   * the given histogram name.
+   */
+  isInterestingStartupHistogram: function isInterestingStartupHistogram(name) {
+    return this._startupHistogramRegex.test(name);
+  },
   
   /** 
-   * Make a copy of sqlite histograms on startup
+   * Make a copy of interesting histograms at startup.
    */
-  gatherStartupSqlite: function gatherStartupSqlite() {
+  gatherStartupInformation: function gatherStartupInformation() {
     let info = Telemetry.registeredHistograms;
-    let sqlite_re = /SQLITE/;
+    let snapshots = Telemetry.histogramSnapshots;
     for (let name in info) {
-      if (sqlite_re.test(name))
+      // Only duplicate histograms with actual data.
+      if (this.isInterestingStartupHistogram(name) && name in snapshots) {
         Telemetry.histogramFrom("STARTUP_" + name, name);
+      }
     }
+    this._slowSQLStartup = Telemetry.slowSQL;
+  },
+
+  getSessionPayloadAndSlug: function getSessionPayloadAndSlug(reason) {
+    let isTestPing = (reason == "test-ping");
+    let slug = (isTestPing ? reason : this._uuid);
+    let payloadObj = {
+      ver: PAYLOAD_VERSION,
+      info: this.getMetadata(reason),
+      simpleMeasurements: getSimpleMeasurements(),
+      histograms: this.getHistograms(),
+      slowSQL: Telemetry.slowSQL
+    };
+    if (Object.keys(this._slowSQLStartup.mainThread).length
+	|| Object.keys(this._slowSQLStartup.otherThreads).length) {
+      payloadObj.slowSQLStartup = this._slowSQLStartup;
+    }
+
+    return { slug: slug, payload: JSON.stringify(payloadObj) };
   },
 
   /**
@@ -400,47 +432,14 @@ TelemetryPing.prototype = {
   send: function send(reason, server) {
     // populate histograms one last time
     this.gatherMemory();
+
     let data = this.getSessionPayloadAndSlug(reason);
-
-    // Don't record a successful ping for previous session data.
-    this.doPing(server, data.slug, data.payload, !data.previous);
-    this._prevSession = null;
-
-    // We were sending off data from before; now send the actual data
-    // we've collected this session.
-    if (data.previous) {
-      data = this.getSessionPayloadAndSlug(reason);
-      this.doPing(server, data.slug, data.payload, true);
-    }
-  },
-
-  getSessionPayloadAndSlug: function getSessionPayloadAndSlug(reason) {
-    // Use a deterministic url for testing.
     let isTestPing = (reason == "test-ping");
-    let havePreviousSession = !!this._prevSession;
-    let slug = (isTestPing
-                ? reason
-                : (havePreviousSession
-                   ? this._prevSession.uuid
-                   : this._uuid));
-    let payloadObj = {
-      ver: PAYLOAD_VERSION,
-      // Send a different reason string for previous session data.
-      info: this.getMetadata(havePreviousSession ? "saved-session" : reason),
-    };
-    if (havePreviousSession) {
-      payloadObj.histograms = this.getHistograms(this._prevSession.snapshots);
-    }
-    else {
-      payloadObj.simpleMeasurements = getSimpleMeasurements();
-      payloadObj.histograms = this.getHistograms(Telemetry.histogramSnapshots);
-      payloadObj.slowSQL = Telemetry.slowSQL;
-    }
-    return { previous: !!havePreviousSession, slug: slug, payload: JSON.stringify(payloadObj) };
-  },
+    let submitPath = "/submit/telemetry/" + data.slug;
+    
+    let hping = Telemetry.getHistogramById("TELEMETRY_PING");
+    let hsuccess = Telemetry.getHistogramById("TELEMETRY_SUCCESS");
 
-  doPing: function doPing(server, slug, payload, recordSuccess) {
-    let submitPath = "/submit/telemetry/" + slug;
     let url = server + submitPath;
     let request = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
                   .createInstance(Ci.nsIXMLHttpRequest);
@@ -450,7 +449,6 @@ TelemetryPing.prototype = {
     request.setRequestHeader("Content-Type", "application/json");
 
     let startTime = new Date();
-    let file = this.savedHistogramsFile();
 
     function finishRequest(channel) {
       let success = false;
@@ -458,23 +456,15 @@ TelemetryPing.prototype = {
         success = channel.QueryInterface(Ci.nsIHttpChannel).requestSucceeded;
       } catch(e) {
       }
-      if (recordSuccess) {
-        let hping = Telemetry.getHistogramById("TELEMETRY_PING");
-        let hsuccess = Telemetry.getHistogramById("TELEMETRY_SUCCESS");
-
-        hsuccess.add(success);
-        hping.add(new Date() - startTime);
-      }
-      if (success && file.exists()) {
-        file.remove(true);
-      }
-      if (slug == "test-ping")
+      hsuccess.add(success);
+      hping.add(new Date() - startTime);
+      if (isTestPing)
         Services.obs.notifyObservers(null, "telemetry-test-xhr-complete", null);
     }
     request.addEventListener("error", function(aEvent) finishRequest(request.channel), false);
     request.addEventListener("load", function(aEvent) finishRequest(request.channel), false);
 
-    request.send(payload);
+    request.send(data.payload);
   },
   
   attachObservers: function attachObservers() {
@@ -493,25 +483,6 @@ TelemetryPing.prototype = {
       idleService.removeIdleObserver(this, IDLE_TIMEOUT_SECONDS);
       this._isIdleObserver = false;
     }
-  },
-
-  savedHistogramsFile: function savedHistogramsFile() {
-    let profileDirectory = Services.dirsvc.get("ProfD", Ci.nsILocalFile);
-    let profileFile = profileDirectory.clone();
-
-    // There's a bunch of binary data in the file, so we need to be
-    // sensitive to multiple machine types.  Use ctypes to get some
-    // discriminating information.
-    let size = ctypes.voidptr_t.size;
-    // Hack to figure out endianness.
-    let uint32_array_t = ctypes.uint32_t.array(1);
-    let array = uint32_array_t([0xdeadbeef]);
-    let uint8_array_t = ctypes.uint8_t.array(4);
-    let array_as_bytes = ctypes.cast(array, uint8_array_t);
-    let endian = (array_as_bytes[0] === 0xde) ? "big" : "little"
-    let name = "sessionHistograms.dat." + size + endian;
-    profileFile.append(name);
-    return profileFile;
   },
 
   /**
@@ -534,7 +505,6 @@ TelemetryPing.prototype = {
     Services.obs.addObserver(this, "private-browsing", false);
     Services.obs.addObserver(this, "profile-before-change", false);
     Services.obs.addObserver(this, "sessionstore-windows-restored", false);
-    Services.obs.addObserver(this, "quit-application-granted", false);
 
     // Delay full telemetry initialization to give the browser time to
     // run various late initializers. Otherwise our gathered memory
@@ -548,12 +518,6 @@ TelemetryPing.prototype = {
       delete self._timer
     }
     this._timer.initWithCallback(timerCallback, TELEMETRY_DELAY, Ci.nsITimer.TYPE_ONE_SHOT);
-
-    // Load data from the previous session.
-    let loadCallback = function(data) {
-      self._prevSession = data;
-    }
-    Telemetry.loadHistograms(this.savedHistogramsFile(), loadCallback);
   },
 
   /** 
@@ -564,7 +528,6 @@ TelemetryPing.prototype = {
     Services.obs.removeObserver(this, "sessionstore-windows-restored");
     Services.obs.removeObserver(this, "profile-before-change");
     Services.obs.removeObserver(this, "private-browsing");
-    Services.obs.removeObserver(this, "quit-application-granted");
   },
 
   /**
@@ -601,7 +564,7 @@ TelemetryPing.prototype = {
       }
       break;
     case "sessionstore-windows-restored":
-      this.gatherStartupSqlite();
+      this.gatherStartupInformation();
       break;
     case "idle-daily":
       // Enqueue to main-thread, otherwise components may be inited by the
@@ -616,6 +579,7 @@ TelemetryPing.prototype = {
       break;
     case "get-payload":
       this.gatherMemory();
+      this.gatherStartupInformation();
       let data = this.getSessionPayloadAndSlug("gather-payload");
 
       aSubject.QueryInterface(Ci.nsISupportsString).data = data.payload;
@@ -628,12 +592,10 @@ TelemetryPing.prototype = {
         idleService.removeIdleObserver(this, IDLE_TIMEOUT_SECONDS);
         this._isIdleObserver = false;
       }
-      this.send(aTopic == "idle" ? "idle-daily" : aTopic, server);
-      break;
-    case "quit-application-granted":
-      Telemetry.saveHistograms(this.savedHistogramsFile(),
-                               this._uuid, function (success) success,
-                               /*isSynchronous=*/true);
+      reason = (Telemetry.canSend && aTopic == "idle"
+		? "idle-daily"
+		: "test-ping");
+      this.send(reason, server);
       break;
     }
   },

@@ -51,8 +51,8 @@
 using namespace mozilla::a11y;
 
 nsAccessibleWrap::
-  nsAccessibleWrap(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsAccessible(aContent, aShell), mNativeObject(nil),
+  nsAccessibleWrap(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsAccessible(aContent, aDoc), mNativeObject(nil),  
   mNativeInited(false)
 {
 }
@@ -127,7 +127,10 @@ nsAccessibleWrap::GetNativeType ()
     case roles::TEXT_LEAF:
       // normal textfield (static or editable)
       return [mozTextAccessible class]; 
-      
+
+    case roles::LINK:
+      return [mozLinkAccessible class];
+
     case roles::COMBOBOX:
       return [mozPopupButtonAccessible class];
       

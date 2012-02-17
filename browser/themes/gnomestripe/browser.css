@@ -2019,21 +2019,18 @@ panel[dimmed="true"] {
 
 /* Highlighter - Node Infobar - text */
 
-#highlighter-nodeinfobar-tagname {
+html|*#highlighter-nodeinfobar-tagname {
   color: white;
 }
 
-#highlighter-nodeinfobar-id {
+html|*#highlighter-nodeinfobar-id {
   color: hsl(90, 79%, 52%);
-}
-
-.highlighter-nodeinfobar-class {
-  color: hsl(200, 100%, 65%);
 }
 
 /* Highlighter - Node Infobar - box & arrow */
 
 #highlighter-nodeinfobar {
+  color: hsl(200, 100%, 65%);
   border: 1px solid hsla(210, 19%, 63%, .5);
   border-radius: 3px;
   padding: 8px 16px;
@@ -2104,6 +2101,11 @@ panel[dimmed="true"] {
      This negative margin compensate the extra row of pixels created
      by the shadow.*/
   margin-bottom: -1px;
+}
+
+#inspector-breadcrumbs > .scrollbutton-up,
+#inspector-breadcrumbs > .scrollbutton-down {
+  -moz-appearance: none;
 }
 
 .inspector-breadcrumbs-button {

@@ -154,6 +154,7 @@ const char *const js_common_atom_names[] = {
     js_noSuchMethod_str,        /* noSuchMethodAtom             */
     "[object Null]",            /* objectNullAtom               */
     "[object Undefined]",       /* objectUndefinedAtom          */
+    "of",                       /* ofAtom                       */
     js_proto_str,               /* protoAtom                    */
     js_set_str,                 /* setAtom                      */
     js_source_str,              /* sourceAtom                   */
@@ -385,35 +386,34 @@ js_TraceAtomState(JSTracer *trc)
     JSAtomState *state = &rt->atomState;
 
     if (rt->gcKeepAtoms) {
-        for (AtomSet::Range r = state->atoms.all(); !r.empty(); r.popFront()) {
-            MarkRoot(trc, r.front().asPtr(), "locked_atom");
-        }
+        for (AtomSet::Range r = state->atoms.all(); !r.empty(); r.popFront())
+            MarkStringRoot(trc, r.front().asPtr(), "locked_atom");
     } else {
         for (AtomSet::Range r = state->atoms.all(); !r.empty(); r.popFront()) {
             AtomStateEntry entry = r.front();
             if (!entry.isTagged())
                 continue;
 
-            MarkRoot(trc, entry.asPtr(), "interned_atom");
+            MarkStringRoot(trc, entry.asPtr(), "interned_atom");
         }
     }
 }
 
 void
-js_SweepAtomState(JSContext *cx)
+js_SweepAtomState(JSRuntime *rt)
 {
-    JSAtomState *state = &cx->runtime->atomState;
+    JSAtomState *state = &rt->atomState;
 
     for (AtomSet::Enum e(state->atoms); !e.empty(); e.popFront()) {
         AtomStateEntry entry = e.front();
 
         if (entry.isTagged()) {
             /* Pinned or interned key cannot be finalized. */
-            JS_ASSERT(!IsAboutToBeFinalized(cx, entry.asPtr()));
+            JS_ASSERT(!IsAboutToBeFinalized(entry.asPtr()));
             continue;
         }
 
-        if (IsAboutToBeFinalized(cx, entry.asPtr()))
+        if (IsAboutToBeFinalized(entry.asPtr()))
             e.removeFront();
     }
 }

@@ -484,6 +484,7 @@ class BreakStatement;
 class ContinueStatement;
 class XMLProcessingInstruction;
 class ConditionalExpression;
+class PropertyAccess;
 
 struct ParseNode {
   private:
@@ -927,12 +928,21 @@ struct ParseNode {
     inline XMLProcessingInstruction &asXMLProcessingInstruction();
 #endif
     inline ConditionalExpression &asConditionalExpression();
+    inline PropertyAccess &asPropertyAccess();
+
+#ifdef DEBUG
+    inline void dump(int indent);
+#endif
 };
 
 struct NullaryNode : public ParseNode {
     static inline NullaryNode *create(ParseNodeKind kind, TreeContext *tc) {
         return (NullaryNode *)ParseNode::create(kind, PN_NULLARY, tc);
     }
+
+#ifdef DEBUG
+    inline void dump();
+#endif
 };
 
 struct UnaryNode : public ParseNode {
@@ -945,6 +955,10 @@ struct UnaryNode : public ParseNode {
     static inline UnaryNode *create(ParseNodeKind kind, TreeContext *tc) {
         return (UnaryNode *)ParseNode::create(kind, PN_UNARY, tc);
     }
+
+#ifdef DEBUG
+    inline void dump(int indent);
+#endif
 };
 
 struct BinaryNode : public ParseNode {
@@ -965,6 +979,10 @@ struct BinaryNode : public ParseNode {
     static inline BinaryNode *create(ParseNodeKind kind, TreeContext *tc) {
         return (BinaryNode *)ParseNode::create(kind, PN_BINARY, tc);
     }
+
+#ifdef DEBUG
+    inline void dump(int indent);
+#endif
 };
 
 struct TernaryNode : public ParseNode {
@@ -981,24 +999,40 @@ struct TernaryNode : public ParseNode {
     static inline TernaryNode *create(ParseNodeKind kind, TreeContext *tc) {
         return (TernaryNode *)ParseNode::create(kind, PN_TERNARY, tc);
     }
+
+#ifdef DEBUG
+    inline void dump(int indent);
+#endif
 };
 
 struct ListNode : public ParseNode {
     static inline ListNode *create(ParseNodeKind kind, TreeContext *tc) {
         return (ListNode *)ParseNode::create(kind, PN_LIST, tc);
     }
+
+#ifdef DEBUG
+    inline void dump(int indent);
+#endif
 };
 
 struct FunctionNode : public ParseNode {
     static inline FunctionNode *create(ParseNodeKind kind, TreeContext *tc) {
         return (FunctionNode *)ParseNode::create(kind, PN_FUNC, tc);
     }
+
+#ifdef DEBUG
+    inline void dump(int indent);
+#endif
 };
 
 struct NameNode : public ParseNode {
     static NameNode *create(ParseNodeKind kind, JSAtom *atom, TreeContext *tc);
 
     inline void initCommon(TreeContext *tc);
+
+#ifdef DEBUG
+    inline void dump(int indent);
+#endif
 };
 
 struct NameSetNode : public ParseNode {
@@ -1230,6 +1264,14 @@ class PropertyAccess : public ParseNode {
     }
 };
 
+inline PropertyAccess &
+ParseNode::asPropertyAccess()
+{
+    JS_ASSERT(isKind(PNK_DOT));
+    JS_ASSERT(pn_arity == PN_NAME);
+    return *static_cast<PropertyAccess *>(this);
+}
+
 class PropertyByValue : public ParseNode {
   public:
     PropertyByValue(ParseNode *lhs, ParseNode *propExpr,
@@ -1243,6 +1285,10 @@ class PropertyByValue : public ParseNode {
 
 ParseNode *
 CloneLeftHandSide(ParseNode *opn, TreeContext *tc);
+
+#ifdef DEBUG
+void DumpParseTree(ParseNode *pn, int indent = 0);
+#endif
 
 /*
  * js::Definition is a degenerate subtype of the PN_FUNC and PN_NAME variants

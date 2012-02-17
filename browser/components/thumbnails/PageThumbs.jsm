@@ -72,11 +72,14 @@ let PageThumbs = {
   },
 
   /**
-   * Creates a canvas containing a thumbnail depicting the given window.
+   * Captures a thumbnail for the given window.
    * @param aWindow The DOM window to capture a thumbnail from.
-   * @return The newly created canvas containing the image data.
+   * @param aCallback The function to be called when the thumbnail has been
+   *                  captured. The first argument will be the data stream
+   *                  containing the image data.
    */
-  capture: function PageThumbs_capture(aWindow) {
+  capture: function PageThumbs_capture(aWindow, aCallback) {
+    let telemetryCaptureTime = new Date();
     let [sw, sh, scale] = this._determineCropSize(aWindow);
 
     let canvas = this._createCanvas();
@@ -93,38 +96,43 @@ let PageThumbs = {
       // We couldn't draw to the canvas for some reason.
     }
 
-    return canvas;
+    let telemetry = Services.telemetry;
+    telemetry.getHistogramById("FX_THUMBNAILS_CAPTURE_TIME_MS")
+      .add(new Date() - telemetryCaptureTime);
+
+    canvas.mozFetchAsStream(aCallback, this.contentType);
   },
 
   /**
-   * Stores the image data contained in the given canvas to the underlying
-   * storage.
-   * @param aKey The key to use for the storage.
-   * @param aCanvas The canvas containing the thumbnail's image data.
-   * @param aCallback The function to be called when the canvas data has been
-   *                  stored (optional).
+   * Captures a thumbnail for the given browser and stores it to the cache.
+   * @param aBrowser The browser to capture a thumbnail for.
+   * @param aCallback The function to be called when finished (optional).
    */
-  store: function PageThumbs_store(aKey, aCanvas, aCallback) {
-    let self = this;
+  captureAndStore: function PageThumbs_captureAndStore(aBrowser, aCallback) {
+    this.capture(aBrowser.contentWindow, function (aInputStream) {
+      let telemetryStoreTime = new Date();
 
-    function finish(aSuccessful) {
-      if (aCallback)
-        aCallback(aSuccessful);
-    }
+      function finish(aSuccessful) {
+        if (aSuccessful) {
+          Services.telemetry.getHistogramById("FX_THUMBNAILS_STORE_TIME_MS")
+            .add(new Date() - telemetryStoreTime);
+        }
 
-    // Get a writeable cache entry.
-    PageThumbsCache.getWriteEntry(aKey, function (aEntry) {
-      if (!aEntry) {
-        finish(false);
-        return;
+        if (aCallback)
+          aCallback(aSuccessful);
       }
 
-      // Extract image data from the canvas.
-      self._readImageData(aCanvas, function (aData) {
+      // Get a writeable cache entry.
+      PageThumbsCache.getWriteEntry(aBrowser.currentURI.spec, function (aEntry) {
+        if (!aEntry) {
+          finish(false);
+          return;
+        }
+
         let outputStream = aEntry.openOutputStream(0);
 
         // Write the image data to the cache entry.
-        NetUtil.asyncCopy(aData, outputStream, function (aResult) {
+        NetUtil.asyncCopy(aInputStream, outputStream, function (aResult) {
           let success = Components.isSuccessCode(aResult);
           if (success)
             aEntry.markValid();
@@ -133,21 +141,6 @@ let PageThumbs = {
           finish(success);
         });
       });
-    });
-  },
-
-  /**
-   * Reads the image data from a given canvas and passes it to the callback.
-   * @param aCanvas The canvas to read the image data from.
-   * @param aCallback The function that the image data is passed to.
-   */
-  _readImageData: function PageThumbs_readImageData(aCanvas, aCallback) {
-    let dataUri = aCanvas.toDataURL(PageThumbs.contentType, "");
-    let uri = Services.io.newURI(dataUri, "UTF8", null);
-
-    NetUtil.asyncFetch(uri, function (aData, aResult) {
-      if (Components.isSuccessCode(aResult) && aData && aData.available())
-        aCallback(aData);
     });
   },
 

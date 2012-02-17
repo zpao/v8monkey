@@ -139,6 +139,10 @@ static PRLogModuleInfo* gJSDiagnostics;
 // and doing the actual CC.
 #define NS_CC_DELAY                 5000 // ms
 
+#define NS_CC_SKIPPABLE_DELAY       250 // ms
+
+#define NS_CC_FORCED                (5 * 60 * PR_USEC_PER_SEC) // 5 min
+
 #define JAVASCRIPT nsIProgrammingLanguage::JAVASCRIPT
 
 // if you add statics here, add them to the list in nsJSRuntime::Startup
@@ -162,6 +166,15 @@ static bool sLoadingInProgress;
 
 static PRUint32 sCCollectedWaitingForGC;
 static bool sPostGCEventsToConsole;
+static PRUint32 sCCTimerFireCount = 0;
+static PRUint32 sMinForgetSkippableTime = PR_UINT32_MAX;
+static PRUint32 sMaxForgetSkippableTime = 0;
+static PRUint32 sTotalForgetSkippableTime = 0;
+static PRUint32 sRemovedPurples = 0;
+static PRUint32 sForgetSkippableBeforeCC = 0;
+static PRUint32 sPreviousSuspectedCount = 0;
+
+static bool sCleanupSinceLastGC = true;
 
 nsScriptNameSpaceManager *gNameSpaceManager;
 
@@ -983,11 +996,6 @@ nsJSContext::JSOptionChangedCallback(const char *pref, void *data)
   else
     newDefaultJSOptions &= ~JSOPTION_METHODJIT_ALWAYS;
 
-  if (useHardening)
-    newDefaultJSOptions &= ~JSOPTION_SOFTEN;
-  else
-    newDefaultJSOptions |= JSOPTION_SOFTEN;
-
   if (useTypeInference)
     newDefaultJSOptions |= JSOPTION_TYPE_INFERENCE;
   else
@@ -1021,6 +1029,9 @@ nsJSContext::JSOptionChangedCallback(const char *pref, void *data)
 
   // Save the new defaults for the next page load (InitContext).
   context->mDefaultJSOptions = newDefaultJSOptions;
+
+  JSRuntime *rt = JS_GetRuntime(context->mContext);
+  JS_SetJitHardening(rt, useHardening);
 
 #ifdef JS_GC_ZEAL
   PRInt32 zeal = Preferences::GetInt(js_zeal_option_str, -1);
@@ -1888,7 +1899,7 @@ nsJSContext::CallEventHandler(nsISupports* aTarget, JSObject* aScope,
     JSObject *obj = aHandler;
     if (js::IsFunctionProxy(obj))
       obj = js::UnwrapObject(obj);
-    JSString *id = JS_GetFunctionId(static_cast<JSFunction *>(JS_GetPrivate(mContext, obj)));
+    JSString *id = JS_GetFunctionId(static_cast<JSFunction *>(JS_GetPrivate(obj)));
     JSAutoByteString bytes;
     const char *name = !id ? "anonymous" : bytes.encode(mContext, id) ? bytes.ptr() : "<error>";
     NS_TIME_FUNCTION_FMT(1.0, "%s (line %d) (function: %s)", MOZ_FUNCTION_NAME, __LINE__, name);
@@ -2182,7 +2193,7 @@ nsJSContext::GetGlobalObject()
   }
 #endif
 
-  JSClass *c = JS_GET_CLASS(mContext, global);
+  JSClass *c = JS_GetClass(global);
 
   if (!c || ((~c->flags) & (JSCLASS_HAS_PRIVATE |
                             JSCLASS_PRIVATE_IS_NSISUPPORTS))) {
@@ -2259,8 +2270,8 @@ nsJSContext::ConnectToInner(nsIScriptGlobalObject *aNewInner, JSObject *aOuterGl
   // the global object's compartment as its default compartment,
   // so update that now since it might have changed.
   JS_SetGlobalObject(mContext, aOuterGlobal);
-  NS_ASSERTION(JS_GetPrototype(mContext, aOuterGlobal) ==
-               JS_GetPrototype(mContext, newInnerJSObject),
+  NS_ASSERTION(JS_GetPrototype(aOuterGlobal) ==
+               JS_GetPrototype(newInnerJSObject),
                "outer and inner globals should have the same prototype");
 
   return NS_OK;
@@ -2321,7 +2332,7 @@ nsJSContext::SetOuterObject(JSObject* aOuterObject)
   JS_SetGlobalObject(mContext, aOuterObject);
 
   // NB: JS_SetGlobalObject sets mContext->compartment.
-  JSObject *inner = JS_GetParent(mContext, aOuterObject);
+  JSObject *inner = JS_GetParent(aOuterObject);
 
   nsIXPConnect *xpc = nsContentUtils::XPConnect();
   nsCOMPtr<nsIXPConnectWrappedNative> wrapper;
@@ -2331,7 +2342,7 @@ nsJSContext::SetOuterObject(JSObject* aOuterObject)
   NS_ABORT_IF_FALSE(wrapper, "bad wrapper");
 
   wrapper->RefreshPrototype();
-  JS_SetPrototype(mContext, aOuterObject, JS_GetPrototype(mContext, inner));
+  JS_SetPrototype(mContext, aOuterObject, JS_GetPrototype(inner));
 
   return NS_OK;
 }
@@ -3086,8 +3097,8 @@ nsJSContext::ClearScope(void *aGlobalObj, bool aClearFromProtoChain)
       nsWindowSH::InvalidateGlobalScopePolluter(mContext, obj);
 
       // Clear up obj's prototype chain, but not Object.prototype.
-      for (JSObject *o = ::JS_GetPrototype(mContext, obj), *next;
-           o && (next = ::JS_GetPrototype(mContext, o)); o = next)
+      for (JSObject *o = ::JS_GetPrototype(obj), *next;
+           o && (next = ::JS_GetPrototype(o)); o = next)
         ::JS_ClearScope(mContext, o);
     }
   }
@@ -3256,7 +3267,8 @@ nsJSContext::ShrinkGCBuffersNow()
 
 //Static
 void
-nsJSContext::CycleCollectNow(nsICycleCollectorListener *aListener)
+nsJSContext::CycleCollectNow(nsICycleCollectorListener *aListener,
+                             PRInt32 aExtraForgetSkippableCalls)
 {
   if (!NS_IsMainThread()) {
     return;
@@ -3270,6 +3282,15 @@ nsJSContext::CycleCollectNow(nsICycleCollectorListener *aListener)
   PRTime start = PR_Now();
 
   PRUint32 suspected = nsCycleCollector_suspectedCount();
+
+  for (PRInt32 i = 0; i < aExtraForgetSkippableCalls; ++i) {
+    nsCycleCollector_forgetSkippable();
+  }
+
+  // nsCycleCollector_forgetSkippable may mark some gray js to black.
+  if (!sCleanupSinceLastGC && aExtraForgetSkippableCalls >= 0) {
+    nsCycleCollector_forgetSkippable();
+  }
   PRUint32 collected = nsCycleCollector_collect(aListener);
   sCCollectedWaitingForGC += collected;
 
@@ -3287,6 +3308,9 @@ nsJSContext::CycleCollectNow(nsICycleCollectorListener *aListener)
   }
   sLastCCEndTime = now;
 
+  Telemetry::Accumulate(Telemetry::FORGET_SKIPPABLE_MAX,
+                        sMaxForgetSkippableTime / PR_USEC_PER_MSEC);
+
   if (sPostGCEventsToConsole) {
     PRTime delta = 0;
     if (sFirstCollectionTime) {
@@ -3295,18 +3319,35 @@ nsJSContext::CycleCollectNow(nsICycleCollectorListener *aListener)
       sFirstCollectionTime = now;
     }
 
-    NS_NAMED_LITERAL_STRING(kFmt,
-                            "CC(T+%.1f) collected: %lu (%lu waiting for GC), suspected: %lu, duration: %llu ms.");
+    NS_NAMED_MULTILINE_LITERAL_STRING(kFmt,
+      NS_LL("CC(T+%.1f) collected: %lu (%lu waiting for GC), suspected: %lu, duration: %llu ms.\n")
+      NS_LL("ForgetSkippable %lu times before CC, min: %lu ms, max: %lu ms, avg: %lu ms, total: %lu ms, removed: %lu"));
     nsString msg;
+    PRUint32 cleanups = sForgetSkippableBeforeCC ? sForgetSkippableBeforeCC : 1;
+    sMinForgetSkippableTime = (sMinForgetSkippableTime == PR_UINT32_MAX)
+      ? 0 : sMinForgetSkippableTime;
     msg.Adopt(nsTextFormatter::smprintf(kFmt.get(), double(delta) / PR_USEC_PER_SEC,
                                         collected, sCCollectedWaitingForGC, suspected,
-                                        (now - start) / PR_USEC_PER_MSEC));
+                                        (now - start) / PR_USEC_PER_MSEC,
+                                        sForgetSkippableBeforeCC,
+                                        sMinForgetSkippableTime / PR_USEC_PER_MSEC,
+                                        sMaxForgetSkippableTime / PR_USEC_PER_MSEC,
+                                        (sTotalForgetSkippableTime / cleanups) /
+                                          PR_USEC_PER_MSEC,
+                                        sTotalForgetSkippableTime / PR_USEC_PER_MSEC,
+                                        sRemovedPurples));
     nsCOMPtr<nsIConsoleService> cs =
       do_GetService(NS_CONSOLESERVICE_CONTRACTID);
     if (cs) {
       cs->LogStringMessage(msg.get());
     }
   }
+  sMinForgetSkippableTime = PR_UINT32_MAX;
+  sMaxForgetSkippableTime = 0;
+  sTotalForgetSkippableTime = 0;
+  sRemovedPurples = 0;
+  sForgetSkippableBeforeCC = 0;
+  sCleanupSinceLastGC = true;
 }
 
 // static
@@ -3331,9 +3372,46 @@ ShrinkGCBuffersTimerFired(nsITimer *aTimer, void *aClosure)
 void
 CCTimerFired(nsITimer *aTimer, void *aClosure)
 {
-  NS_RELEASE(sCCTimer);
+  if (sDidShutdown) {
+    return;
+  }
+  ++sCCTimerFireCount;
+  if (sCCTimerFireCount < (NS_CC_DELAY / NS_CC_SKIPPABLE_DELAY)) {
+    PRUint32 suspected = nsCycleCollector_suspectedCount();
+    if ((sPreviousSuspectedCount + 100) > suspected) {
+      // Just few new suspected objects, return early.
+      return;
+    }
+    
+    PRTime startTime = PR_Now();
+    nsCycleCollector_forgetSkippable();
+    sPreviousSuspectedCount = nsCycleCollector_suspectedCount();
+    sCleanupSinceLastGC = true;
+    PRTime delta = PR_Now() - startTime;
+    if (sMinForgetSkippableTime > delta) {
+      sMinForgetSkippableTime = delta;
+    }
+    if (sMaxForgetSkippableTime < delta) {
+      sMaxForgetSkippableTime = delta;
+    }
+    sTotalForgetSkippableTime += delta;
+    sRemovedPurples += (suspected - sPreviousSuspectedCount);
+    ++sForgetSkippableBeforeCC;
+  } else {
+    sPreviousSuspectedCount = 0;
+    nsJSContext::KillCCTimer();
+    if (nsCycleCollector_suspectedCount() > 500 ||
+        sLastCCEndTime + NS_CC_FORCED < PR_Now()) {
+      nsJSContext::CycleCollectNow();
+    }
+  }
+}
 
-  nsJSContext::CycleCollectNow();
+// static
+bool
+nsJSContext::CleanupSinceLastGC()
+{
+  return sCleanupSinceLastGC;
 }
 
 // static
@@ -3414,30 +3492,21 @@ nsJSContext::PokeShrinkGCBuffers()
 void
 nsJSContext::MaybePokeCC()
 {
-  if (nsCycleCollector_suspectedCount() > 1000) {
-    PokeCC();
-  }
-}
-
-// static
-void
-nsJSContext::PokeCC()
-{
-  if (sCCTimer || !sGCHasRun) {
-    // There's already a timer for GC'ing, or GC hasn't run yet, just return.
+  if (sCCTimer || sDidShutdown) {
     return;
   }
 
-  CallCreateInstance("@mozilla.org/timer;1", &sCCTimer);
-
-  if (!sCCTimer) {
-    // Failed to create timer (probably because we're in XPCOM shutdown)
-    return;
+  if (nsCycleCollector_suspectedCount() > 100 ||
+      sLastCCEndTime + NS_CC_FORCED < PR_Now()) {
+    sCCTimerFireCount = 0;
+    CallCreateInstance("@mozilla.org/timer;1", &sCCTimer);
+    if (!sCCTimer) {
+      return;
+    }
+    sCCTimer->InitWithFuncCallback(CCTimerFired, nsnull,
+                                   NS_CC_SKIPPABLE_DELAY,
+                                   nsITimer::TYPE_REPEATING_SLACK);
   }
-
-  sCCTimer->InitWithFuncCallback(CCTimerFired, nsnull,
-                                 NS_CC_DELAY,
-                                 nsITimer::TYPE_ONE_SHOT);
 }
 
 //static
@@ -3504,6 +3573,8 @@ DOMGCFinishedCallback(JSRuntime *rt, JSCompartment *comp, const char *status)
   }
 
   sCCollectedWaitingForGC = 0;
+  sCleanupSinceLastGC = false;
+
   if (sGCTimer) {
     // If we were waiting for a GC to happen, kill the timer.
     nsJSContext::KillGCTimer();
@@ -3523,7 +3594,7 @@ DOMGCFinishedCallback(JSRuntime *rt, JSCompartment *comp, const char *status)
     // If this was a full GC, poke the CC to run soon.
     if (!comp) {
       sGCHasRun = true;
-      nsJSContext::PokeCC();
+      nsJSContext::MaybePokeCC();
     }
   }
 
@@ -4042,10 +4113,6 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsJSArgArray)
 nsresult
 nsJSArgArray::GetArgs(PRUint32 *argc, void **argv)
 {
-  if (!mArgv) {
-    NS_WARNING("nsJSArgArray has no argv!");
-    return NS_ERROR_UNEXPECTED;
-  }
   *argv = (void *)mArgv;
   *argc = mArgc;
   return NS_OK;

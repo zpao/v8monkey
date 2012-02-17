@@ -388,7 +388,6 @@ ShellOperationCallback(JSContext *cx)
 static void
 SetContextOptions(JSContext *cx)
 {
-    JS_SetNativeStackQuota(cx, gMaxStackSize);
     JS_SetOperationCallback(cx, ShellOperationCallback);
 }
 
@@ -475,7 +474,10 @@ Process(JSContext *cx, JSObject *obj, const char *filename, bool forceTTY)
         script = JS_CompileUTF8FileHandle(cx, obj, filename, file);
         JS_SetOptions(cx, oldopts);
         if (script && !compileOnly) {
-            (void) JS_ExecuteScript(cx, obj, script, NULL);
+            if (!JS_ExecuteScript(cx, obj, script, NULL)) {
+                if (!gQuitting && !gCanceled)
+                    gExitCode = EXITCODE_RUNTIME_ERROR;
+            }
             int64_t t2 = PRMJ_Now() - t1;
             if (printTiming)
                 printf("runtime = %.3f ms\n", double(t2) / PRMJ_USEC_PER_MSEC);
@@ -816,7 +818,7 @@ EvaluateWithLocation(JSContext *cx, uintN argc, jsval *vp)
     if (!thisobj)
         return false;
 
-    if ((JS_GET_CLASS(cx, thisobj)->flags & JSCLASS_IS_GLOBAL) != JSCLASS_IS_GLOBAL) {
+    if ((JS_GetClass(thisobj)->flags & JSCLASS_IS_GLOBAL) != JSCLASS_IS_GLOBAL) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_UNEXPECTED_TYPE,
                              "this-value passed to evalWithLocation()", "not a global object");
         return false;
@@ -858,7 +860,7 @@ Evaluate(JSContext *cx, uintN argc, jsval *vp)
     if (!thisobj)
         return false;
 
-    if ((JS_GET_CLASS(cx, thisobj)->flags & JSCLASS_IS_GLOBAL) != JSCLASS_IS_GLOBAL) {
+    if ((JS_GetClass(thisobj)->flags & JSCLASS_IS_GLOBAL) != JSCLASS_IS_GLOBAL) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_UNEXPECTED_TYPE,
                              "this-value passed to evaluate()", "not a global object");
         return false;
@@ -1444,11 +1446,12 @@ typedef struct JSCountHeapTracer {
 } JSCountHeapTracer;
 
 static void
-CountHeapNotify(JSTracer *trc, void *thing, JSGCTraceKind kind)
+CountHeapNotify(JSTracer *trc, void **thingp, JSGCTraceKind kind)
 {
     JSCountHeapTracer *countTracer;
     JSDHashEntryStub *entry;
     JSCountHeapNode *node;
+    void *thing = *thingp;
 
     JS_ASSERT(trc->callback == CountHeapNotify);
     countTracer = (JSCountHeapTracer *)trc;
@@ -1625,10 +1628,10 @@ ValueToScript(JSContext *cx, jsval v, JSFunction **funp = NULL)
 
     if (!JSVAL_IS_PRIMITIVE(v)) {
         JSObject *obj = JSVAL_TO_OBJECT(v);
-        JSClass *clasp = JS_GET_CLASS(cx, obj);
+        JSClass *clasp = JS_GetClass(obj);
 
         if (clasp == Jsvalify(&GeneratorClass)) {
-            if (JSGenerator *gen = (JSGenerator *) JS_GetPrivate(cx, obj)) {
+            if (JSGenerator *gen = (JSGenerator *) JS_GetPrivate(obj)) {
                 fun = gen->floatingFrame()->fun();
                 script = fun->script();
             }
@@ -1684,7 +1687,7 @@ GetScriptAndPCArgs(JSContext *cx, uintN argc, jsval *argv, JSScript **scriptp,
         jsval v = argv[0];
         uintN intarg = 0;
         if (!JSVAL_IS_PRIMITIVE(v) &&
-            JS_GET_CLASS(cx, JSVAL_TO_OBJECT(v)) == Jsvalify(&FunctionClass)) {
+            JS_GetClass(JSVAL_TO_OBJECT(v)) == Jsvalify(&FunctionClass)) {
             script = ValueToScript(cx, v);
             if (!script)
                 return JS_FALSE;
@@ -1829,7 +1832,7 @@ LineToPC(JSContext *cx, uintN argc, jsval *vp)
     script = JS_GetFrameScript(cx, JS_GetScriptedCaller(cx, NULL));
     jsval v = JS_ARGV(cx, vp)[0];
     if (!JSVAL_IS_PRIMITIVE(v) &&
-        JS_GET_CLASS(cx, JSVAL_TO_OBJECT(v)) == Jsvalify(&FunctionClass))
+        JS_GetClass(JSVAL_TO_OBJECT(v)) == Jsvalify(&FunctionClass))
     {
         script = ValueToScript(cx, v);
         if (!script)
@@ -2785,7 +2788,7 @@ Clone(JSContext *cx, uintN argc, jsval *vp)
         if (!JS_ValueToObject(cx, argv[1], &parent))
             return JS_FALSE;
     } else {
-        parent = JS_GetParent(cx, JSVAL_TO_OBJECT(JS_CALLEE(cx, vp)));
+        parent = JS_GetParent(JSVAL_TO_OBJECT(JS_CALLEE(cx, vp)));
     }
 
     clone = JS_CloneFunctionObject(cx, funobj, parent);
@@ -3044,7 +3047,7 @@ EvalInContext(JSContext *cx, uintN argc, jsval *vp)
     {
         JSAutoEnterCompartment ac;
         uintN flags;
-        JSObject *unwrapped = UnwrapObject(sobj, &flags);
+        JSObject *unwrapped = UnwrapObject(sobj, true, &flags);
         if (flags & Wrapper::CROSS_COMPARTMENT) {
             sobj = unwrapped;
             if (!ac.enter(cx, sobj))
@@ -3212,16 +3215,14 @@ CopyProperty(JSContext *cx, JSObject *obj, JSObject *referent, jsid id,
 static JSBool
 resolver_resolve(JSContext *cx, JSObject *obj, jsid id, uintN flags, JSObject **objp)
 {
-    jsval v;
-    JS_ALWAYS_TRUE(JS_GetReservedSlot(cx, obj, 0, &v));
+    jsval v = JS_GetReservedSlot(obj, 0);
     return CopyProperty(cx, obj, JSVAL_TO_OBJECT(v), id, flags, objp);
 }
 
 static JSBool
 resolver_enumerate(JSContext *cx, JSObject *obj)
 {
-    jsval v;
-    JS_ALWAYS_TRUE(JS_GetReservedSlot(cx, obj, 0, &v));
+    jsval v = JS_GetReservedSlot(obj, 0);
     JSObject *referent = JSVAL_TO_OBJECT(v);
 
     AutoIdArray ida(cx, JS_Enumerate(cx, referent));
@@ -3252,11 +3253,11 @@ Resolver(JSContext *cx, uintN argc, jsval *vp)
 
     JSObject *result = (argc > 1
                         ? JS_NewObjectWithGivenProto
-                        : JS_NewObject)(cx, &resolver_class, proto, JS_GetParent(cx, referent));
+                        : JS_NewObject)(cx, &resolver_class, proto, JS_GetParent(referent));
     if (!result)
         return false;
 
-    JS_ALWAYS_TRUE(JS_SetReservedSlot(cx, result, 0, OBJECT_TO_JSVAL(referent)));
+    JS_SetReservedSlot(result, 0, OBJECT_TO_JSVAL(referent));
     JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(result));
     return true;
 }
@@ -3579,7 +3580,7 @@ Parent(JSContext *cx, uintN argc, jsval *vp)
         return JS_FALSE;
     }
 
-    JSObject *parent = JS_GetParent(cx, JSVAL_TO_OBJECT(v));
+    JSObject *parent = JS_GetParent(JSVAL_TO_OBJECT(v));
     *vp = OBJECT_TO_JSVAL(parent);
 
     /* Outerize if necessary.  Embrace the ugliness! */
@@ -3702,8 +3703,12 @@ Parse(JSContext *cx, uintN argc, jsval *vp)
     js::Parser parser(cx);
     parser.init(JS_GetStringCharsZ(cx, scriptContents), JS_GetStringLength(scriptContents),
                 "<string>", 0, cx->findVersion());
-    if (!parser.parse(NULL))
+    ParseNode *pn = parser.parse(NULL);
+    if (!pn)
         return JS_FALSE;
+#ifdef DEBUG
+    DumpParseTree(pn);
+#endif
     JS_SET_RVAL(cx, vp, JSVAL_VOID);
     return JS_TRUE;
 }
@@ -3868,7 +3873,7 @@ MJitCodeStats(JSContext *cx, uintN argc, jsval *vp)
 JSBool
 MJitChunkLimit(JSContext *cx, uintN argc, jsval *vp)
 {
-    if (argc > 1) {
+    if (argc > 1 || argc == 0) {
         JS_ReportError(cx, "Wrong number of arguments");
         return JS_FALSE;
     }
@@ -3881,16 +3886,11 @@ MJitChunkLimit(JSContext *cx, uintN argc, jsval *vp)
     mjit::SetChunkLimit((uint32_t) t);
 #endif
 
-    vp->setUndefined();
-    return true;
-}
+    // Clear out analysis information which might refer to code compiled with
+    // the previous chunk limit.
+    JS_GC(cx);
 
-JSBool
-StringStats(JSContext *cx, uintN argc, jsval *vp)
-{
-    // XXX: should report something meaningful;  bug 625305 will probably fix
-    // this.
-    JS_SET_RVAL(cx, vp, INT_TO_JSVAL(0));
+    vp->setUndefined();
     return true;
 }
 
@@ -4059,7 +4059,6 @@ static JSFunctionSpec shell_functions[] = {
     JS_FN("mjitcodestats",  MJitCodeStats,  0,0),
 #endif
     JS_FN("mjitChunkLimit", MJitChunkLimit, 1,0),
-    JS_FN("stringstats",    StringStats,    0,0),
     JS_FN("newGlobal",      NewGlobal,      1,0),
     JS_FN("parseLegacyJSON",ParseLegacyJSON,1,0),
     JS_FN("enableStackWalkingAssertion",EnableStackWalkingAssertion,1,0),
@@ -4208,7 +4207,6 @@ static const char *const shell_help_messages[] = {
 "mjitcodestats()          Return stats on mjit code memory usage.",
 #endif
 "mjitChunkLimit(N)        Specify limit on compiled chunk size during mjit compilation.",
-"stringstats()            Return stats on string memory usage.",
 "newGlobal(kind)          Return a new global object, in the current\n"
 "                         compartment if kind === 'same-compartment' or in a\n"
 "                         new compartment if kind === 'new-compartment'",
@@ -4531,10 +4529,10 @@ its_finalize(JSContext *cx, JSObject *obj)
     jsval *rootedVal;
     if (its_noisy)
         fprintf(gOutFile, "finalizing it\n");
-    rootedVal = (jsval *) JS_GetPrivate(cx, obj);
+    rootedVal = (jsval *) JS_GetPrivate(obj);
     if (rootedVal) {
       JS_RemoveValueRoot(cx, rootedVal);
-      JS_SetPrivate(cx, obj, NULL);
+      JS_SetPrivate(obj, NULL);
       delete rootedVal;
     }
 }
@@ -4550,8 +4548,8 @@ static JSClass its_class = {
 static JSBool
 its_getter(JSContext *cx, JSObject *obj, jsid id, jsval *vp)
 {
-    if (JS_GET_CLASS(cx, obj) == &its_class) {
-        jsval *val = (jsval *) JS_GetPrivate(cx, obj);
+    if (JS_GetClass(obj) == &its_class) {
+        jsval *val = (jsval *) JS_GetPrivate(obj);
         *vp = val ? *val : JSVAL_VOID;
     } else {
         *vp = JSVAL_VOID;
@@ -4563,10 +4561,10 @@ its_getter(JSContext *cx, JSObject *obj, jsid id, jsval *vp)
 static JSBool
 its_setter(JSContext *cx, JSObject *obj, jsid id, JSBool strict, jsval *vp)
 {
-    if (JS_GET_CLASS(cx, obj) != &its_class)
+    if (JS_GetClass(obj) != &its_class)
         return JS_TRUE;
 
-    jsval *val = (jsval *) JS_GetPrivate(cx, obj);
+    jsval *val = (jsval *) JS_GetPrivate(obj);
     if (val) {
         *val = *vp;
         return JS_TRUE;
@@ -4583,11 +4581,7 @@ its_setter(JSContext *cx, JSObject *obj, jsid id, JSBool strict, jsval *vp)
         return JS_FALSE;
     }
 
-    if (!JS_SetPrivate(cx, obj, (void*)val)) {
-        JS_RemoveValueRoot(cx, val);
-        delete val;
-        return JS_FALSE;
-    }
+    JS_SetPrivate(obj, (void*)val);
 
     *val = *vp;
     return JS_TRUE;
@@ -4900,7 +4894,7 @@ env_enumerate(JSContext *cx, JSObject *obj)
     if (reflected)
         return JS_TRUE;
 
-    for (evp = (char **)JS_GetPrivate(cx, obj); (name = *evp) != NULL; evp++) {
+    for (evp = (char **)JS_GetPrivate(obj); (name = *evp) != NULL; evp++) {
         value = strchr(name, '=');
         if (!value)
             continue;
@@ -5203,8 +5197,9 @@ Shell(JSContext *cx, OptionParser *op, char **envp)
     JS_SetGlobalObject(cx, glob);
 
     JSObject *envobj = JS_DefineObject(cx, glob, "environment", &env_class, NULL, 0);
-    if (!envobj || !JS_SetPrivate(cx, envobj, envp))
+    if (!envobj)
         return 1;
+    JS_SetPrivate(envobj, envp);
 
 #ifdef JSDEBUGGER
     /*
@@ -5452,6 +5447,8 @@ main(int argc, char **argv, char **envp)
 
     JS_SetTrustedPrincipals(rt, &shellTrustedPrincipals);
     JS_SetRuntimeSecurityCallbacks(rt, &securityCallbacks);
+
+    JS_SetNativeStackQuota(rt, gMaxStackSize);
 
     if (!InitWatchdog(rt))
         return 1;

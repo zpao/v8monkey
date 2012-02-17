@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<merge xmlns:android="http://schemas.android.com/apk/res/android"
-       android:isScrollContainer="false"
-       android:background="@drawable/abouthome_bg_repeat">
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
 
     <LinearLayout android:layout_width="fill_parent"
                   android:orientation="vertical"
-                  android:layout_height="fill_parent"
-                  android:background="@drawable/abouthome_bg_repeat">
+                  android:layout_height="fill_parent">
 
         <RelativeLayout android:id="@+id/top_sites"
                         android:layout_width="fill_parent"
@@ -162,12 +159,14 @@
                   android:textColor="#000000"
                   android:textStyle="bold"
                   android:gravity="left|center_vertical"
+                  android:visibility="gone"
                   android:text="@string/abouthome_addons_title"/>
 
         <LinearLayout android:id="@+id/recommended_addons"
                       android:orientation="vertical"
                       android:layout_width="fill_parent"
                       android:layout_height="wrap_content"
+                      android:visibility="gone"
                       android:isScrollContainer="false"/>
 
         <view class="org.mozilla.gecko.AboutHomeContent$LinkTextView"
@@ -178,6 +177,7 @@
               android:textColor="#22629e"
               android:textSize="12sp"
               android:gravity="center"
+              android:visibility="gone"
               android:text="@string/abouthome_addons_browse"/>
 
     </LinearLayout>

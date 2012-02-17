@@ -1218,6 +1218,9 @@ nsLayoutUtils::GetTransformToAncestor(nsIFrame *aFrame, nsIFrame *aAncestor)
   nsIFrame* parent;
   gfx3DMatrix ctm = aFrame->GetTransformMatrix(aAncestor, &parent);
   while (parent && parent != aAncestor) {
+    if (!parent->Preserves3DChildren()) {
+      ctm.ProjectTo2D();
+    }
     ctm = ctm * parent->GetTransformMatrix(aAncestor, &parent);
   }
   return ctm;
@@ -4804,7 +4807,18 @@ nsLayoutUtils::FontSizeInflationFor(const nsIFrame *aFrame,
 /* static */ bool
 nsLayoutUtils::FontSizeInflationEnabled(nsPresContext *aPresContext)
 {
-  return (sFontSizeInflationEmPerLine != 0 ||
-          sFontSizeInflationMinTwips != 0) &&
-         !aPresContext->IsChrome();
+  if ((sFontSizeInflationEmPerLine == 0 &&
+       sFontSizeInflationMinTwips == 0) ||
+       aPresContext->IsChrome()) {
+    return false;
+  }
+
+  ViewportInfo vInf =
+    nsContentUtils::GetViewportInfo(aPresContext->PresShell()->GetDocument());
+
+  if (vInf.defaultZoom >= 1.0 || vInf.autoSize) {
+    return false;
+  }
+
+  return true;
 }

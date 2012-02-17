@@ -84,11 +84,12 @@ public:
                                 const nsAString& aValue,
                                 nsAttrValue& aResult);
   virtual nsresult AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                const nsAString* aValue, bool aNotify);
+                                const nsAttrValue* aValue, bool aNotify);
 
   // nsISMILAnimationElement interface
   virtual const Element& AsElement() const;
   virtual Element& AsElement();
+  virtual bool PassesConditionalProcessingTests();
   virtual const nsAttrValue* GetAnimAttr(nsIAtom* aName) const;
   virtual bool GetAnimAttr(nsIAtom* aAttName, nsAString& aResult) const;
   virtual bool HasAnimAttr(nsIAtom* aAttName) const;

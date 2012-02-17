@@ -343,31 +343,11 @@ js::BoxNonStrictThis(JSContext *cx, const CallReceiver &call)
 const uint32_t JSSLOT_FOUND_FUNCTION  = 0;
 const uint32_t JSSLOT_SAVED_ID        = 1;
 
-static void
-no_such_method_trace(JSTracer *trc, JSObject *obj)
-{
-    gc::MarkValue(trc, obj->getSlotRef(JSSLOT_FOUND_FUNCTION), "found function");
-    gc::MarkValue(trc, obj->getSlotRef(JSSLOT_SAVED_ID), "saved id");
-}
-
 Class js_NoSuchMethodClass = {
     "NoSuchMethod",
     JSCLASS_HAS_RESERVED_SLOTS(2) | JSCLASS_IS_ANONYMOUS,
-    JS_PropertyStub,         /* addProperty */
-    JS_PropertyStub,         /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
-    NULL,                    /* finalize */
-    NULL,                    /* reserved0 */
-    NULL,                    /* checkAccess */
-    NULL,                    /* call */
-    NULL,                    /* construct */
-    NULL,                    /* XDR */
-    NULL,                    /* hasInstance */
-    no_such_method_trace     /* trace */
+    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
 };
 
 /*
@@ -718,77 +698,6 @@ js::Execute(JSContext *cx, JSScript *script, JSObject &scopeChainArg, Value *rva
                          NULL /* evalInFrame */, rval);
 }
 
-bool
-js::CheckRedeclaration(JSContext *cx, JSObject *obj, jsid id, uintN attrs)
-{
-    JSObject *obj2;
-    JSProperty *prop;
-    uintN oldAttrs;
-    bool isFunction;
-    const char *type, *name;
-
-    if (!obj->lookupGeneric(cx, id, &obj2, &prop))
-        return false;
-    if (!prop)
-        return true;
-    if (obj2->isNative()) {
-        oldAttrs = ((Shape *) prop)->attributes();
-    } else {
-        if (!obj2->getGenericAttributes(cx, id, &oldAttrs))
-            return false;
-    }
-
-    /* We allow redeclaring some non-readonly properties. */
-    if (((oldAttrs | attrs) & JSPROP_READONLY) == 0) {
-        /* Allow redeclaration of variables and functions. */
-        if (!(attrs & (JSPROP_GETTER | JSPROP_SETTER)))
-            return true;
-
-        /*
-         * Allow adding a getter only if a property already has a setter
-         * but no getter and similarly for adding a setter. That is, we
-         * allow only the following transitions:
-         *
-         *   no-property --> getter --> getter + setter
-         *   no-property --> setter --> getter + setter
-         */
-        if ((~(oldAttrs ^ attrs) & (JSPROP_GETTER | JSPROP_SETTER)) == 0)
-            return true;
-
-        /*
-         * Allow redeclaration of an impermanent property (in which case
-         * anyone could delete it and redefine it, willy-nilly).
-         */
-        if (!(oldAttrs & JSPROP_PERMANENT))
-            return true;
-    }
-
-    isFunction = (oldAttrs & (JSPROP_GETTER | JSPROP_SETTER)) != 0;
-    if (!isFunction) {
-        Value value;
-        if (!obj->getGeneric(cx, id, &value))
-            return JS_FALSE;
-        isFunction = IsFunctionObject(value);
-    }
-
-    type = (oldAttrs & attrs & JSPROP_GETTER)
-           ? js_getter_str
-           : (oldAttrs & attrs & JSPROP_SETTER)
-           ? js_setter_str
-           : (oldAttrs & JSPROP_READONLY)
-           ? js_const_str
-           : isFunction
-           ? js_function_str
-           : js_var_str;
-    JSAutoByteString bytes;
-    name = js_ValueToPrintable(cx, IdToValue(id), &bytes);
-    if (!name)
-        return false;
-    JS_ALWAYS_FALSE(JS_ReportErrorFlagsAndNumber(cx, JSREPORT_ERROR, js_GetErrorMessage, NULL,
-                                                 JSMSG_REDECLARED_VAR, type, name));
-    return false;
-}
-
 JSBool
 js::HasInstance(JSContext *cx, JSObject *obj, const Value *v, JSBool *bp)
 {
@@ -1012,10 +921,6 @@ EnterWith(JSContext *cx, jsint stackIndex)
 
     JSObject *parent = GetScopeChain(cx, fp);
     if (!parent)
-        return JS_FALSE;
-
-    OBJ_TO_INNER_OBJECT(cx, obj);
-    if (!obj)
         return JS_FALSE;
 
     JSObject *withobj = WithObject::create(cx, fp, *obj, *parent,
@@ -1430,6 +1335,7 @@ js::Interpret(JSContext *cx, StackFrame *entryFrame, InterpMode interpMode)
 # define END_CASE_LEN3      len = 3; goto advance_pc;
 # define END_CASE_LEN4      len = 4; goto advance_pc;
 # define END_CASE_LEN5      len = 5; goto advance_pc;
+# define END_CASE_LEN7      len = 7; goto advance_pc;
 # define END_VARLEN_CASE    goto advance_pc;
 # define ADD_EMPTY_CASE(OP) BEGIN_CASE(OP)
 # define END_EMPTY_CASES    goto advance_pc_by_one;
@@ -1454,12 +1360,6 @@ js::Interpret(JSContext *cx, StackFrame *entryFrame, InterpMode interpMode)
 
 #define GET_FULL_INDEX(PCOFF)                                                 \
     (atoms - script->atoms + GET_INDEX(regs.pc + (PCOFF)))
-
-#define LOAD_OBJECT(PCOFF, obj)                                               \
-    (obj = script->getObject(GET_FULL_INDEX(PCOFF)))
-
-#define LOAD_FUNCTION(PCOFF)                                                  \
-    (fun = script->getFunction(GET_FULL_INDEX(PCOFF)))
 
 #define LOAD_DOUBLE(PCOFF, dbl)                                               \
     (dbl = script->getConst(GET_FULL_INDEX(PCOFF)).toDouble())
@@ -1773,6 +1673,7 @@ ADD_EMPTY_CASE(JSOP_UNUSED13)
 ADD_EMPTY_CASE(JSOP_UNUSED14)
 ADD_EMPTY_CASE(JSOP_UNUSED15)
 ADD_EMPTY_CASE(JSOP_UNUSED16)
+ADD_EMPTY_CASE(JSOP_UNUSED17)
 ADD_EMPTY_CASE(JSOP_CONDSWITCH)
 ADD_EMPTY_CASE(JSOP_TRY)
 #if JS_HAS_XML_SUPPORT
@@ -2301,54 +2202,57 @@ END_CASE(JSOP_CASE)
 
 #undef STRICT_EQUALITY_OP
 
-#define RELATIONAL_OP(OP)                                                     \
-    JS_BEGIN_MACRO                                                            \
-        Value &rval = regs.sp[-1];                                            \
-        Value &lval = regs.sp[-2];                                            \
-        bool cond;                                                            \
-        /* Optimize for two int-tagged operands (typical loop control). */    \
-        if (lval.isInt32() && rval.isInt32()) {                               \
-            cond = lval.toInt32() OP rval.toInt32();                          \
-        } else {                                                              \
-            if (!ToPrimitive(cx, JSTYPE_NUMBER, &lval))                       \
-                goto error;                                                   \
-            if (!ToPrimitive(cx, JSTYPE_NUMBER, &rval))                       \
-                goto error;                                                   \
-            if (lval.isString() && rval.isString()) {                         \
-                JSString *l = lval.toString(), *r = rval.toString();          \
-                int32_t result;                                               \
-                if (!CompareStrings(cx, l, r, &result))                       \
-                    goto error;                                               \
-                cond = result OP 0;                                           \
-            } else {                                                          \
-                double l, r;                                                  \
-                if (!ToNumber(cx, lval, &l) || !ToNumber(cx, rval, &r))       \
-                    goto error;                                               \
-                cond = (l OP r);                                              \
-            }                                                                 \
-        }                                                                     \
-        TRY_BRANCH_AFTER_COND(cond, 2);                                       \
-        regs.sp[-2].setBoolean(cond);                                         \
-        regs.sp--;                                                            \
-    JS_END_MACRO
-
 BEGIN_CASE(JSOP_LT)
-    RELATIONAL_OP(<);
+{
+    bool cond;
+    const Value &lref = regs.sp[-2];
+    const Value &rref = regs.sp[-1];
+    if (!LessThanOperation(cx, lref, rref, &cond))
+        goto error;
+    TRY_BRANCH_AFTER_COND(cond, 2);
+    regs.sp[-2].setBoolean(cond);
+    regs.sp--;
+}
 END_CASE(JSOP_LT)
 
 BEGIN_CASE(JSOP_LE)
-    RELATIONAL_OP(<=);
+{
+    bool cond;
+    const Value &lref = regs.sp[-2];
+    const Value &rref = regs.sp[-1];
+    if (!LessThanOrEqualOperation(cx, lref, rref, &cond))
+        goto error;
+    TRY_BRANCH_AFTER_COND(cond, 2);
+    regs.sp[-2].setBoolean(cond);
+    regs.sp--;
+}
 END_CASE(JSOP_LE)
 
 BEGIN_CASE(JSOP_GT)
-    RELATIONAL_OP(>);
+{
+    bool cond;
+    const Value &lref = regs.sp[-2];
+    const Value &rref = regs.sp[-1];
+    if (!GreaterThanOperation(cx, lref, rref, &cond))
+        goto error;
+    TRY_BRANCH_AFTER_COND(cond, 2);
+    regs.sp[-2].setBoolean(cond);
+    regs.sp--;
+}
 END_CASE(JSOP_GT)
 
 BEGIN_CASE(JSOP_GE)
-    RELATIONAL_OP(>=);
+{
+    bool cond;
+    const Value &lref = regs.sp[-2];
+    const Value &rref = regs.sp[-1];
+    if (!GreaterThanOrEqualOperation(cx, lref, rref, &cond))
+        goto error;
+    TRY_BRANCH_AFTER_COND(cond, 2);
+    regs.sp[-2].setBoolean(cond);
+    regs.sp--;
+}
 END_CASE(JSOP_GE)
-
-#undef RELATIONAL_OP
 
 #define SIGNED_SHIFT_OP(OP)                                                   \
     JS_BEGIN_MACRO                                                            \
@@ -2549,18 +2453,10 @@ BEGIN_CASE(JSOP_TOID)
      * There must be an object value below the id, which will not be popped
      * but is necessary in interning the id for XML.
      */
- 
-    Value &idval = regs.sp[-1];
-    if (!idval.isInt32()) {
-        JSObject *obj;
-        FETCH_OBJECT(cx, -2, obj);
- 
-        jsid dummy;
-        if (!js_InternNonIntElementId(cx, obj, idval, &dummy, &idval))
-            goto error;
- 
-        TypeScript::MonitorUnknown(cx, script, regs.pc);
-    } 
+    Value objval = regs.sp[-2];
+    Value idval = regs.sp[-1];
+    if (!ToIdOperation(cx, objval, idval, &regs.sp[-1]))
+        goto error;
 }
 END_CASE(JSOP_TOID)
 
@@ -2708,7 +2604,7 @@ BEGIN_CASE(JSOP_CALLELEM)
 {
     /* Find the object on which to look for |this|'s properties. */
     Value thisv = regs.sp[-2];
-    JSObject *thisObj = ValuePropertyBearer(cx, thisv, -2);
+    JSObject *thisObj = ValuePropertyBearer(cx, regs.fp(), thisv, -2);
     if (!thisObj)
         goto error;
 
@@ -2810,6 +2706,12 @@ BEGIN_CASE(JSOP_FUNAPPLY)
     InitialFrameFlags initial = construct ? INITIAL_CONSTRUCT : INITIAL_NONE;
 
     JSScript *newScript = fun->script();
+
+    if (newScript->compileAndGo && newScript->hasClearedGlobal()) {
+        JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_CLEARED_SCOPE);
+        goto error;
+    }
+
     if (!cx->stack.pushInlineFrame(cx, regs, args, *fun, newScript, initial))
         goto error;
 
@@ -2958,9 +2860,7 @@ END_CASE(JSOP_STRING)
 
 BEGIN_CASE(JSOP_OBJECT)
 {
-    JSObject *obj;
-    LOAD_OBJECT(0, obj);
-    PUSH_OBJECT(*obj);
+    PUSH_OBJECT(*script->getObject(GET_UINT32_INDEX(regs.pc)));
 }
 END_CASE(JSOP_OBJECT)
 
@@ -2974,7 +2874,7 @@ BEGIN_CASE(JSOP_REGEXP)
     JSObject *proto = regs.fp()->scopeChain().global().getOrCreateRegExpPrototype(cx);
     if (!proto)
         goto error;
-    JSObject *obj = js_CloneRegExpObject(cx, script->getRegExp(index), proto);
+    JSObject *obj = CloneRegExpObject(cx, script->getRegExp(index), proto);
     if (!obj)
         goto error;
     PUSH_OBJECT(*obj);
@@ -3129,47 +3029,29 @@ END_CASE(JSOP_ARGUMENTS)
 
 BEGIN_CASE(JSOP_GETARG)
 BEGIN_CASE(JSOP_CALLARG)
-{
-    uint32_t slot = GET_ARGNO(regs.pc);
-    JS_ASSERT(slot < regs.fp()->numFormalArgs());
-    PUSH_COPY(argv[slot]);
-}
+    PUSH_COPY(regs.fp()->formalArg(GET_ARGNO(regs.pc)));
 END_CASE(JSOP_GETARG)
 
 BEGIN_CASE(JSOP_SETARG)
-{
-    uint32_t slot = GET_ARGNO(regs.pc);
-    JS_ASSERT(slot < regs.fp()->numFormalArgs());
-    argv[slot] = regs.sp[-1];
-}
+    regs.fp()->formalArg(GET_ARGNO(regs.pc)) = regs.sp[-1];
 END_CASE(JSOP_SETARG)
 
 BEGIN_CASE(JSOP_GETLOCAL)
 BEGIN_CASE(JSOP_CALLLOCAL)
-{
+    PUSH_COPY_SKIP_CHECK(regs.fp()->localSlot(GET_SLOTNO(regs.pc)));
+
     /*
      * Skip the same-compartment assertion if the local will be immediately
      * popped. We do not guarantee sync for dead locals when coming in from the
      * method JIT, and a GETLOCAL followed by POP is not considered to be
      * a use of the variable.
      */
-     uint32_t slot = GET_SLOTNO(regs.pc);
-     JS_ASSERT(slot < script->nslots);
-     PUSH_COPY_SKIP_CHECK(regs.fp()->slots()[slot]);
-
-#ifdef DEBUG
     if (regs.pc[JSOP_GETLOCAL_LENGTH] != JSOP_POP)
         assertSameCompartment(cx, regs.sp[-1]);
-#endif
-}
 END_CASE(JSOP_GETLOCAL)
 
 BEGIN_CASE(JSOP_SETLOCAL)
-{
-    uint32_t slot = GET_SLOTNO(regs.pc);
-    JS_ASSERT(slot < script->nslots);
-    regs.fp()->slots()[slot] = regs.sp[-1];
-}
+    regs.fp()->localSlot(GET_SLOTNO(regs.pc)) = regs.sp[-1];
 END_CASE(JSOP_SETLOCAL)
 
 BEGIN_CASE(JSOP_GETFCSLOT)
@@ -3187,47 +3069,20 @@ END_CASE(JSOP_GETFCSLOT)
 BEGIN_CASE(JSOP_DEFCONST)
 BEGIN_CASE(JSOP_DEFVAR)
 {
-    uint32_t index = GET_INDEX(regs.pc);
-    PropertyName *name = atoms[index]->asPropertyName();
+    PropertyName *dn = atoms[GET_INDEX(regs.pc)]->asPropertyName();
 
-    JSObject *obj = &regs.fp()->varObj();
-    JS_ASSERT(!obj->getOps()->defineProperty);
+    /* ES5 10.5 step 8 (with subsequent errata). */
     uintN attrs = JSPROP_ENUMERATE;
     if (!regs.fp()->isEvalFrame())
         attrs |= JSPROP_PERMANENT;
-
-    /* Lookup id in order to check for redeclaration problems. */
-    bool shouldDefine;
-    if (op == JSOP_DEFVAR) {
-        /*
-         * Redundant declaration of a |var|, even one for a non-writable
-         * property like |undefined| in ES5, does nothing.
-         */
-        JSProperty *prop;
-        JSObject *obj2;
-        if (!obj->lookupProperty(cx, name, &obj2, &prop))
-            goto error;
-        shouldDefine = (!prop || obj2 != obj);
-    } else {
-        JS_ASSERT(op == JSOP_DEFCONST);
+    if (op == JSOP_DEFCONST)
         attrs |= JSPROP_READONLY;
-        if (!CheckRedeclaration(cx, obj, name, attrs))
-            goto error;
 
-        /*
-         * As attrs includes readonly, CheckRedeclaration can succeed only
-         * if prop does not exist.
-         */
-        shouldDefine = true;
-    }
+    /* Step 8b. */
+    JSObject &obj = regs.fp()->varObj();
 
-    /* Bind a variable only if it's not yet defined. */
-    if (shouldDefine &&
-        !DefineNativeProperty(cx, obj, name, UndefinedValue(),
-                              JS_PropertyStub, JS_StrictPropertyStub, attrs, 0, 0))
-    {
+    if (!DefVarOrConstOperation(cx, obj, dn, attrs))
         goto error;
-    }
 }
 END_CASE(JSOP_DEFVAR)
 
@@ -3239,8 +3094,7 @@ BEGIN_CASE(JSOP_DEFFUN)
      * a compound statement (not at the top statement level of global code, or
      * at the top level of a function body).
      */
-    JSFunction *fun;
-    LOAD_FUNCTION(0);
+    JSFunction *fun = script->getFunction(GET_UINT32_INDEX(regs.pc));
     JSObject *obj = fun;
 
     JSObject *obj2;
@@ -3347,36 +3201,6 @@ BEGIN_CASE(JSOP_DEFFUN)
 }
 END_CASE(JSOP_DEFFUN)
 
-BEGIN_CASE(JSOP_DEFFUN_FC)
-{
-    JSFunction *fun;
-    LOAD_FUNCTION(0);
-
-    JSObject *obj = js_NewFlatClosure(cx, fun);
-    if (!obj)
-        goto error;
-
-    Value rval = ObjectValue(*obj);
-
-    uintN attrs = regs.fp()->isEvalFrame()
-                  ? JSPROP_ENUMERATE
-                  : JSPROP_ENUMERATE | JSPROP_PERMANENT;
-
-    JSObject &parent = regs.fp()->varObj();
-
-    PropertyName *name = fun->atom->asPropertyName();
-    if (!CheckRedeclaration(cx, &parent, name, attrs))
-        goto error;
-
-    if ((attrs == JSPROP_ENUMERATE)
-        ? !parent.setProperty(cx, name, &rval, script->strictModeCode)
-        : !parent.defineProperty(cx, name, rval, JS_PropertyStub, JS_StrictPropertyStub, attrs))
-    {
-        goto error;
-    }
-}
-END_CASE(JSOP_DEFFUN_FC)
-
 BEGIN_CASE(JSOP_DEFLOCALFUN)
 {
     /*
@@ -3386,8 +3210,7 @@ BEGIN_CASE(JSOP_DEFLOCALFUN)
      * JSOP_DEFFUN that avoids requiring a call object for the outer function's
      * activation.
      */
-    JSFunction *fun;
-    LOAD_FUNCTION(SLOTNO_LEN);
+    JSFunction *fun = script->getFunction(GET_UINT32_INDEX(regs.pc + SLOTNO_LEN));
     JS_ASSERT(fun->isInterpreted());
     JS_ASSERT(!fun->isFlatClosure());
 
@@ -3405,30 +3228,26 @@ BEGIN_CASE(JSOP_DEFLOCALFUN)
 
     JS_ASSERT_IF(script->hasGlobal(), obj->getProto() == fun->getProto());
 
-    uint32_t slot = GET_SLOTNO(regs.pc);
-    regs.fp()->slots()[slot].setObject(*obj);
+    regs.fp()->varSlot(GET_SLOTNO(regs.pc)) = ObjectValue(*obj);
 }
 END_CASE(JSOP_DEFLOCALFUN)
 
 BEGIN_CASE(JSOP_DEFLOCALFUN_FC)
 {
-    JSFunction *fun;
-    LOAD_FUNCTION(SLOTNO_LEN);
+    JSFunction *fun = script->getFunction(GET_UINT32_INDEX(regs.pc + SLOTNO_LEN));
 
     JSObject *obj = js_NewFlatClosure(cx, fun);
     if (!obj)
         goto error;
 
-    uint32_t slot = GET_SLOTNO(regs.pc);
-    regs.fp()->slots()[slot].setObject(*obj);
+    regs.fp()->varSlot(GET_SLOTNO(regs.pc)) = ObjectValue(*obj);
 }
 END_CASE(JSOP_DEFLOCALFUN_FC)
 
 BEGIN_CASE(JSOP_LAMBDA)
 {
     /* Load the specified function object literal. */
-    JSFunction *fun;
-    LOAD_FUNCTION(0);
+    JSFunction *fun = script->getFunction(GET_UINT32_INDEX(regs.pc));
     JSObject *obj = fun;
 
     /* do-while(0) so we can break instead of using a goto. */
@@ -3521,8 +3340,7 @@ END_CASE(JSOP_LAMBDA)
 
 BEGIN_CASE(JSOP_LAMBDA_FC)
 {
-    JSFunction *fun;
-    LOAD_FUNCTION(0);
+    JSFunction *fun = script->getFunction(GET_UINT32_INDEX(regs.pc));
 
     JSObject *obj = js_NewFlatClosure(cx, fun);
     if (!obj)
@@ -3634,10 +3452,6 @@ BEGIN_CASE(JSOP_SETTER)
     }
     attrs |= JSPROP_ENUMERATE | JSPROP_SHARED;
 
-    /* Check for a readonly or permanent property of the same name. */
-    if (!CheckRedeclaration(cx, obj, id, attrs))
-        goto error;
-
     if (!obj->defineGeneric(cx, id, UndefinedValue(), getter, setter, attrs))
         goto error;
 
@@ -3699,8 +3513,7 @@ END_CASE(JSOP_NEWARRAY)
 
 BEGIN_CASE(JSOP_NEWOBJECT)
 {
-    JSObject *baseobj;
-    LOAD_OBJECT(0, baseobj);
+    JSObject *baseobj = script->getObject(GET_UINT32_INDEX(regs.pc));
 
     TypeObject *type = TypeScript::InitObject(cx, script, regs.pc, JSProto_Object);
     if (!type)
@@ -3848,16 +3661,12 @@ BEGIN_CASE(JSOP_THROW)
     goto error;
 }
 BEGIN_CASE(JSOP_SETLOCALPOP)
-{
     /*
      * The stack must have a block with at least one local slot below the
      * exception object.
      */
     JS_ASSERT((size_t) (regs.sp - regs.fp()->base()) >= 2);
-    uint32_t slot = GET_UINT16(regs.pc);
-    JS_ASSERT(slot + 1 < script->nslots);
-    POP_COPY_TO(regs.fp()->slots()[slot]);
-}
+    POP_COPY_TO(regs.fp()->localSlot(GET_UINT16(regs.pc)));
 END_CASE(JSOP_SETLOCALPOP)
 
 BEGIN_CASE(JSOP_INSTANCEOF)
@@ -4246,9 +4055,7 @@ BEGIN_CASE(JSOP_ENTERBLOCK)
 BEGIN_CASE(JSOP_ENTERLET0)
 BEGIN_CASE(JSOP_ENTERLET1)
 {
-    JSObject *obj;
-    LOAD_OBJECT(0, obj);
-    StaticBlockObject &blockObj = obj->asStaticBlock();
+    StaticBlockObject &blockObj = script->getObject(GET_UINT32_INDEX(regs.pc))->asStaticBlock();
     JS_ASSERT(regs.fp()->maybeBlockChain() == blockObj.enclosingBlock());
 
     if (op == JSOP_ENTERBLOCK) {

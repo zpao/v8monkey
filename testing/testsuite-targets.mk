@@ -76,7 +76,8 @@ RUN_MOCHITEST_REMOTE = \
 
 RUN_MOCHITEST_ROBOTIUM = \
   rm -f ./$@.log && \
-  $(PYTHON) _tests/testing/mochitest/runtestsremote.py --robocop-path=$(DEPTH)/build/mobile/robocop \
+  $(PYTHON) _tests/testing/mochitest/runtestsremote.py --robocop-path=$(DEPTH)/dist \
+    --robocop-ids=$(DEPTH)/build/mobile/robocop/fennec_ids.txt \
     --console-level=INFO --log-file=./$@.log --file-level=INFO $(DM_FLAGS) --dm_trans=adb \
     --app=$(TEST_PACKAGE_NAME) --deviceIP=${TEST_DEVICE} --xre-path=${MOZ_HOST_BIN} \
     --robocop=$(DEPTH)/build/mobile/robocop/robocop.ini $(SYMBOLS_PATH) $(TEST_PATH_ARG) $(EXTRA_TEST_ARGS)
@@ -96,20 +97,24 @@ endif
 
 mochitest-remote: DM_TRANS?=adb
 mochitest-remote:
-	@if test -f ${MOZ_HOST_BIN}/xpcshell && [ "${TEST_DEVICE}" != "usb" -o "$(DM_TRANS)" = "adb" ]; \
-          then $(RUN_MOCHITEST_REMOTE); \
-        else \
-          echo "please prepare your host with environment variables for TEST_DEVICE and MOZ_HOST_BIN"; \
-        fi
+	@if [ ! -f ${MOZ_HOST_BIN}/xpcshell ]; then \
+        echo "please prepare your host with the environment variable MOZ_HOST_BIN"; \
+    elif [ "${TEST_DEVICE}" = "" -a "$(DM_TRANS)" != "adb" ]; then \
+        echo "please prepare your host with the environment variable TEST_DEVICE"; \
+    else \
+        $(RUN_MOCHITEST_REMOTE); \
+    fi
 
 mochitest-robotium: robotium-id-map
 mochitest-robotium: DM_TRANS?=adb
 mochitest-robotium:
-	@if test -f ${MOZ_HOST_BIN}/xpcshell && [ "${TEST_DEVICE}" != "usb" -o "$(DM_TRANS)" = "adb" ]; \
-          then $(RUN_MOCHITEST_ROBOTIUM); \
-        else \
-          echo "please prepare your host with environment variables for TEST_DEVICE and MOZ_HOST_BIN"; \
-        fi
+	@if [ ! -f ${MOZ_HOST_BIN}/xpcshell ]; then \
+        echo "please prepare your host with the environment variable MOZ_HOST_BIN"; \
+    elif [ "${TEST_DEVICE}" = "" -a "$(DM_TRANS)" != "adb" ]; then \
+        echo "please prepare your host with the environment variable TEST_DEVICE"; \
+    else \
+        $(RUN_MOCHITEST_ROBOTIUM); \
+    fi
 
 mochitest-plain:
 	$(RUN_MOCHITEST)
@@ -171,11 +176,15 @@ reftest:
 reftest-remote: TEST_PATH?=layout/reftests/reftest.list
 reftest-remote: DM_TRANS?=adb
 reftest-remote:
-	@if test -f ${MOZ_HOST_BIN}/xpcshell && [ "${TEST_DEVICE}" != "" -o "$(DM_TRANS)" = "adb" ]; \
-	  then ln -s $(abspath $(topsrcdir)) _tests/reftest/tests;$(call REMOTE_REFTEST,tests/$(TEST_PATH)); $(CHECK_TEST_ERROR); \
-        else \
-          echo "please prepare your host with environment variables for TEST_DEVICE and MOZ_HOST_BIN"; \
-        fi
+	@if [ ! -f ${MOZ_HOST_BIN}/xpcshell ]; then \
+        echo "please prepare your host with the environment variable MOZ_HOST_BIN"; \
+    elif [ "${TEST_DEVICE}" = "" -a "$(DM_TRANS)" != "adb" ]; then \
+        echo "please prepare your host with the environment variable TEST_DEVICE"; \
+    else \
+        ln -s $(abspath $(topsrcdir)) _tests/reftest/tests; \
+        $(call REMOTE_REFTEST,tests/$(TEST_PATH)); \
+        $(CHECK_TEST_ERROR); \
+    fi
 
 reftest-ipc: TEST_PATH?=layout/reftests/reftest.list
 reftest-ipc:
@@ -294,7 +303,6 @@ stage-mochitest: robotium-id-map
 stage-mochitest: make-stage-dir
 	$(MAKE) -C $(DEPTH)/testing/mochitest stage-package
 ifeq ($(MOZ_BUILD_APP),mobile/android)
-	$(NSINSTALL) $(DEPTH)/build/mobile/robocop/robocop.apk $(PKG_STAGE)/bin
 	$(NSINSTALL) $(DEPTH)/build/mobile/robocop/fennec_ids.txt $(PKG_STAGE)/mochitest
 endif
 

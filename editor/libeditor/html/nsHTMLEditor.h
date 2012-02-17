@@ -71,6 +71,9 @@
 #include "nsPoint.h"
 #include "nsTArray.h"
 #include "nsAutoPtr.h"
+#include "nsAttrName.h"
+
+#include "mozilla/dom/Element.h"
 
 class nsIDOMKeyEvent;
 class nsITransferable;
@@ -79,7 +82,6 @@ class nsIClipboard;
 class TypeInState;
 class nsIContentFilter;
 class nsIURL;
-class nsIRangeUtils;
 class nsILinkHandler;
 struct PropItem;
 
@@ -419,7 +421,21 @@ public:
                                   nsCSSStyleSheet *aStyleSheet);
 
   nsresult RemoveStyleSheetFromList(const nsAString &aURL);
-                       
+
+  bool IsCSSEnabled()
+  {
+    // TODO: removal of mCSSAware and use only the presence of mHTMLCSSUtils
+    return mCSSAware && mHTMLCSSUtils && mHTMLCSSUtils->IsCSSPrefChecked();
+  }
+
+  static bool HasAttributes(mozilla::dom::Element* aElement)
+  {
+    MOZ_ASSERT(aElement);
+    PRUint32 attrCount = aElement->GetAttrCount();
+    return attrCount > 1 ||
+           (1 == attrCount && !aElement->GetAttrNameAt(0)->Equals(nsGkAtoms::mozdirty));
+  }
+
 protected:
 
   NS_IMETHOD  InitRules();
@@ -441,16 +457,12 @@ protected:
   // Return TRUE if aElement is a table-related elemet and caret was set
   bool SetCaretInTableCell(nsIDOMElement* aElement);
   bool IsNodeInActiveEditor(nsIDOMNode* aNode);
+  bool IsNodeInActiveEditor(nsINode* aNode);
 
   // key event helpers
   NS_IMETHOD TabInTable(bool inIsShift, bool *outHandled);
   NS_IMETHOD CreateBR(nsIDOMNode *aNode, PRInt32 aOffset, 
                       nsCOMPtr<nsIDOMNode> *outBRNode, nsIEditor::EDirection aSelect = nsIEditor::eNone);
-  NS_IMETHOD CreateBRImpl(nsCOMPtr<nsIDOMNode> *aInOutParent, 
-                         PRInt32 *aInOutOffset, 
-                         nsCOMPtr<nsIDOMNode> *outBRNode, 
-                         nsIEditor::EDirection aSelect);
-  NS_IMETHOD InsertBR(nsCOMPtr<nsIDOMNode> *outBRNode);
 
 // Table Editing (implemented in nsTableEditor.cpp)
 
@@ -721,8 +733,8 @@ protected:
                              bool *aAll,
                              nsAString *outValue,
                              bool aCheckDefaults = true);
-  nsresult HasStyleOrIdOrClass(nsIDOMElement * aElement, bool *aHasStyleOrIdOrClass);
-  nsresult RemoveElementIfNoStyleOrIdOrClass(nsIDOMElement * aElement, nsIAtom * aTag);
+  bool HasStyleOrIdOrClass(mozilla::dom::Element* aElement);
+  nsresult RemoveElementIfNoStyleOrIdOrClass(nsIDOMNode* aElement);
 
   // Whether the outer window of the DOM event target has focus or not.
   bool     OurWindowHasFocus();
@@ -771,13 +783,6 @@ protected:
 
    // for real-time spelling
    nsCOMPtr<nsITextServicesDocument> mTextServices;
-
-  // And a static range utils service
-  static nsIRangeUtils* sRangeHelper;
-
-public:
-  // ... which means that we need to listen to shutdown
-  static void Shutdown();
 
 protected:
 

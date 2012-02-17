@@ -43,6 +43,7 @@
 #include "jsalloc.h"
 #include "jsprvtd.h"
 #include "jsapi.h"
+#include "jsfriendapi.h"
 
 #include "gc/Barrier.h"
 #include "js/HashTable.h"
@@ -90,8 +91,11 @@ class WatchpointMap {
     static bool markAllIteratively(JSTracer *trc);
     bool markIteratively(JSTracer *trc);
     void markAll(JSTracer *trc);
-    static void sweepAll(JSContext *cx);
-    void sweep(JSContext *cx);
+    static void sweepAll(JSRuntime *rt);
+    void sweep();
+
+    static void traceAll(WeakMapTracer *trc);
+    void trace(WeakMapTracer *trc);
 
   private:
     Map map;

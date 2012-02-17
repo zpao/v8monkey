@@ -1062,17 +1062,14 @@ NS_METHOD nsCocoaWindow::PlaceBehind(nsTopLevelWidgetZPlacement aPlacement,
   return NS_OK;
 }
 
-// Note bug 278777, we need to update state when the window is unminimized
-// from the dock by users.
 NS_METHOD nsCocoaWindow::SetSizeMode(PRInt32 aMode)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
-  PRInt32 previousMode;
-  nsBaseWidget::GetSizeMode(&previousMode);
-
-  nsresult rv = nsBaseWidget::SetSizeMode(aMode);
-  NS_ENSURE_SUCCESS(rv, rv);
+  // mSizeMode will be updated in DispatchSizeModeEvent, which will be called
+  // from a delegate method that handles the state change during one of the
+  // calls below.
+  nsSizeMode previousMode = mSizeMode;
 
   if (aMode == nsSizeMode_Normal) {
     if ([mWindow isMiniaturized])
@@ -1089,6 +1086,10 @@ NS_METHOD nsCocoaWindow::SetSizeMode(PRInt32 aMode)
       [mWindow deminiaturize:nil];
     if (![mWindow isZoomed])
       [mWindow zoom:nil];
+  }
+  else if (aMode == nsSizeMode_Fullscreen) {
+    if (!mFullScreen)
+      MakeFullScreen(true);
   }
 
   return NS_OK;
@@ -1172,6 +1173,7 @@ NS_METHOD nsCocoaWindow::MakeFullScreen(bool aFullScreen)
   NS_ENSURE_SUCCESS(rv, rv);
 
   mFullScreen = aFullScreen;
+  DispatchSizeModeEvent();
 
   return NS_OK;
 
@@ -1378,8 +1380,14 @@ nsCocoaWindow::DispatchEvent(nsGUIEvent* event, nsEventStatus& aStatus)
   return NS_OK;
 }
 
+// aFullScreen should be the window's mFullScreen. We don't have access to that
+// from here, so we need to pass it in. mFullScreen should be the canonical
+// indicator that a window is currently full screen and it makes sense to keep
+// all sizemode logic here.
 static nsSizeMode
-GetWindowSizeMode(NSWindow* aWindow) {
+GetWindowSizeMode(NSWindow* aWindow, bool aFullScreen) {
+  if (aFullScreen)
+    return nsSizeMode_Fullscreen;
   if ([aWindow isMiniaturized])
     return nsSizeMode_Minimized;
   if (([aWindow styleMask] & NSResizableWindowMask) && [aWindow isZoomed])
@@ -1419,8 +1427,13 @@ nsCocoaWindow::ReportMoveEvent()
 void
 nsCocoaWindow::DispatchSizeModeEvent()
 {
+  nsSizeMode newMode = GetWindowSizeMode(mWindow, mFullScreen);
+  if (mSizeMode == newMode)
+    return;
+
+  mSizeMode = newMode;
   nsSizeModeEvent event(true, NS_SIZEMODE, this);
-  event.mSizeMode = GetWindowSizeMode(mWindow);
+  event.mSizeMode = mSizeMode;
   event.time = PR_IntervalNow();
 
   nsEventStatus status = nsEventStatus_eIgnore;

@@ -65,6 +65,7 @@ pref("extensions.minCompatibleAppVersion", "4.0");
 pref("extensions.getAddons.cache.enabled", true);
 pref("extensions.getAddons.maxResults", 15);
 pref("extensions.getAddons.get.url", "https://services.addons.mozilla.org/%LOCALE%/firefox/api/%API_VERSION%/search/guid:%IDS%?src=firefox&appOS=%OS%&appVersion=%VERSION%");
+pref("extensions.getAddons.getWithPerformance.url", "https://services.addons.mozilla.org/%LOCALE%/firefox/api/%API_VERSION%/search/guid:%IDS%?src=firefox&appOS=%OS%&appVersion=%VERSION%&tMain=%TIME_MAIN%&tFirstPaint=%TIME_FIRST_PAINT%&tSessionRestored=%TIME_SESSION_RESTORED%");
 pref("extensions.getAddons.search.browseURL", "https://addons.mozilla.org/%LOCALE%/firefox/search?q=%TERMS%");
 pref("extensions.getAddons.search.url", "https://services.addons.mozilla.org/%LOCALE%/firefox/api/%API_VERSION%/search/%TERMS%/all/%MAX_RESULTS%/%OS%/%VERSION%/%COMPATIBILITY_MODE%?src=firefox");
 pref("extensions.webservice.discoverURL", "https://services.addons.mozilla.org/%LOCALE%/firefox/discovery/pane/%VERSION%/%OS%/%COMPATIBILITY_MODE%");
@@ -280,7 +281,7 @@ pref("browser.urlbar.doubleClickSelectsAll", true);
 #else
 pref("browser.urlbar.doubleClickSelectsAll", false);
 #endif
-pref("browser.urlbar.autoFill", true);
+pref("browser.urlbar.autoFill", false);
 // 0: Match anywhere (e.g., middle of words)
 // 1: Match on word boundaries and then try matching anywhere
 // 2: Match only on word boundaries (e.g., after / or .)
@@ -293,7 +294,7 @@ pref("browser.urlbar.maxRichResults", 12);
 // The amount of time (ms) to wait after the user has stopped typing
 // before starting to perform autocomplete.  50 is the default set in
 // autocomplete.xml.
-pref("browser.urlbar.delay", 0);
+pref("browser.urlbar.delay", 50);
 
 // The special characters below can be typed into the urlbar to either restrict
 // the search to visited history, bookmarked, tagged pages; or force a match on
@@ -355,6 +356,9 @@ pref("browser.search.order.3",                "chrome://browser-region/locale/re
 
 // search bar results always open in a new tab
 pref("browser.search.openintab", false);
+
+// context menu searches open in the foreground
+pref("browser.search.context.loadInBackground", false);
 
 // send ping to the server to update
 pref("browser.search.update", true);
@@ -1030,6 +1034,12 @@ pref("devtools.errorconsole.enabled", false);
 pref("devtools.inspector.enabled", true);
 pref("devtools.inspector.htmlHeight", 112);
 
+// Enable the Debugger
+pref("devtools.debugger.enabled", false);
+
+// The default Debugger UI height
+pref("devtools.debugger.ui.height", 250);
+
 // Enable the style inspector
 pref("devtools.styleinspector.enabled", true);
 
@@ -1093,12 +1103,9 @@ pref("devtools.editor.expandtab", true);
 // Tells which component you want to use for source editing in developer tools.
 //
 // Available components:
-//   "textarea" - this is a basic text editor, like an HTML <textarea>.
-//
 //   "orion" - this is the Orion source code editor from the Eclipse project. It
 //   provides programmer-specific editor features such as syntax highlighting,
-//   indenting and bracket recognition. It may not be appropriate for all
-//   locales (esp. RTL) or a11y situations.
+//   indenting and bracket recognition.
 pref("devtools.editor.component", "orion");
 
 // Whether the character encoding menu is under the main Firefox button. This
@@ -1111,10 +1118,15 @@ pref("prompts.tab_modal.enabled", true);
 pref("browser.panorama.animate_zoom", true);
 
 // Defines the url to be used for new tabs.
-pref("browser.newtab.url", "about:blank");
+pref("browser.newtab.url", "about:newtab");
 
 // Toggles the content of 'about:newtab'. Shows the grid when enabled.
-pref("browser.newtabpage.enabled", false);
+pref("browser.newtabpage.enabled", true);
 
 // Enable the DOM full-screen API.
 pref("full-screen-api.enabled", true);
+
+// Startup Crash Tracking
+// number of startup crashes that can occur before starting into safe mode automatically
+// (this pref has no effect if more than 6 hours have passed since the last crash)
+pref("toolkit.startup.max_resumed_crashes", 2);

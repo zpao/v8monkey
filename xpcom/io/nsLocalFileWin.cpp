@@ -64,7 +64,7 @@
 
 #include <direct.h>
 #include <windows.h>
-
+#include <shlwapi.h>
 #include <aclapi.h>
 
 #include "shellapi.h"
@@ -104,6 +104,10 @@ unsigned char *_mbsstr( const unsigned char *str,
 
 #ifndef FILE_ATTRIBUTE_NOT_CONTENT_INDEXED
 #define FILE_ATTRIBUTE_NOT_CONTENT_INDEXED  0x00002000
+#endif
+
+#ifndef DRIVE_REMOTE
+#define DRIVE_REMOTE 4
 #endif
 
 ILCreateFromPathWPtr nsLocalFile::sILCreateFromPathW = NULL;
@@ -690,6 +694,7 @@ NS_IMPL_ISUPPORTS2(nsDirEnumerator, nsISimpleEnumerator, nsIDirectoryEnumerator)
 
 nsLocalFile::nsLocalFile()
   : mDirty(true)
+  , mResolveDirty(true)
   , mFollowSymlinks(false)
 {
 }
@@ -731,6 +736,7 @@ NS_IMPL_THREADSAFE_ISUPPORTS4(nsLocalFile,
 
 nsLocalFile::nsLocalFile(const nsLocalFile& other)
   : mDirty(true)
+  , mResolveDirty(true)
   , mFollowSymlinks(other.mFollowSymlinks)
   , mWorkingPath(other.mWorkingPath)
 {
@@ -793,6 +799,7 @@ nsLocalFile::ResolveAndStat()
         || !IsShortcutPath(mWorkingPath))
     {
         mDirty = false;
+        mResolveDirty = false;
         return NS_OK;
     }
 
@@ -806,6 +813,7 @@ nsLocalFile::ResolveAndStat()
         mResolvedPath.Assign(mWorkingPath);
         return rv;
     }
+    mResolveDirty = false;
 
     // get the details of the resolved path
     rv = GetFileInfo(mResolvedPath, &mFileInfo64);
@@ -816,6 +824,50 @@ nsLocalFile::ResolveAndStat()
     return NS_OK;
 }
 
+/**
+ * Fills the mResolvedPath member variable with the file or symlink target
+ * if follow symlinks is on.  This is a copy of the Resolve parts from
+ * ResolveAndStat. ResolveAndStat is much slower though because of the stat.
+ *
+ * @return NS_OK on success.
+*/
+nsresult
+nsLocalFile::Resolve()
+{
+  // if we aren't dirty then we are already done
+  if (!mResolveDirty) {
+    return NS_OK;
+  }
+
+  // we can't resolve/stat anything that isn't a valid NSPR addressable path
+  if (mWorkingPath.IsEmpty()) {
+    return NS_ERROR_FILE_INVALID_PATH;
+  }
+  
+  // this is usually correct
+  mResolvedPath.Assign(mWorkingPath);
+
+  // if this isn't a shortcut file or we aren't following symlinks then
+  // we're done.
+  if (!mFollowSymlinks || 
+      !IsShortcutPath(mWorkingPath)) {
+    mResolveDirty = false;
+    return NS_OK;
+  }
+
+  // we need to resolve this shortcut to what it points to, this will
+  // set mResolvedPath. Even if it fails we need to have the resolved
+  // path equal to working path for those functions that always use
+  // the resolved path.
+  nsresult rv = ResolveShortcut();
+  if (NS_FAILED(rv)) {
+    mResolvedPath.Assign(mWorkingPath);
+    return rv;
+  }
+
+  mResolveDirty = false;
+  return NS_OK;
+}
 
 //-----------------------------------------------------------------------------
 // nsLocalFile::nsIFile,nsILocalFile
@@ -870,6 +922,14 @@ nsLocalFile::InitWithPath(const nsAString &filePath)
     if (secondChar != L':' && (secondChar != L'\\' || firstChar != L'\\'))
         return NS_ERROR_FILE_UNRECOGNIZED_PATH;
 
+    if (secondChar == L':') {
+        // Make sure we have a valid drive, later code assumes the drive letter
+        // is a single char a-z or A-Z.
+        if (PathGetDriveNumberW(filePath.Data()) == -1) {
+            return NS_ERROR_FILE_UNRECOGNIZED_PATH;
+        }
+    }
+
     mWorkingPath = filePath;
     // kill any trailing '\'
     if (mWorkingPath.Last() == L'\\')
@@ -882,8 +942,8 @@ nsLocalFile::InitWithPath(const nsAString &filePath)
 NS_IMETHODIMP
 nsLocalFile::OpenNSPRFileDesc(PRInt32 flags, PRInt32 mode, PRFileDesc **_retval)
 {
-    nsresult rv = ResolveAndStat();
-    if (NS_FAILED(rv) && rv != NS_ERROR_FILE_NOT_FOUND)
+    nsresult rv = Resolve();
+    if (NS_FAILED(rv))
         return rv;
 
     return OpenFile(mResolvedPath, flags, mode, _retval);
@@ -1361,6 +1421,40 @@ nsLocalFile::GetVersionInfoField(const char* aField, nsAString& _retval)
     return rv;
 }
 
+/** 
+ * Determines if the drive type for the specified file is rmeote or local.
+ * 
+ * @param path   The path of the file to check
+ * @param remote Out parameter, on function success holds true if the specified
+ *               file path is remote, or false if the file path is local.
+ * @return true  on success. The return value implies absolutely nothing about
+ *               wether the file is local or remote.
+*/
+static bool
+IsRemoteFilePath(LPCWSTR path, bool &remote)
+{
+  // Obtain the parent directory path and make sure it ends with
+  // a trailing backslash.
+  WCHAR dirPath[MAX_PATH + 1] = { 0 };
+  wcsncpy(dirPath, path, MAX_PATH);
+  if (!PathRemoveFileSpecW(dirPath)) {
+    return false;
+  }
+  size_t len = wcslen(dirPath);
+  // In case the dirPath holds exaclty MAX_PATH and remains unchanged, we
+  // recheck the required length here since we need to terminate it with
+  // a backslash.
+  if (len >= MAX_PATH) {
+    return false;
+  }
+
+  dirPath[len] = L'\\';
+  dirPath[len + 1] = L'\0';
+  UINT driveType = GetDriveTypeW(dirPath);
+  remote = driveType == DRIVE_REMOTE;
+  return true;
+}
+
 nsresult
 nsLocalFile::CopySingleFile(nsIFile *sourceFile, nsIFile *destParent,
                             const nsAString &newName, 
@@ -1409,14 +1503,22 @@ nsLocalFile::CopySingleFile(nsIFile *sourceFile, nsIFile *destParent,
     // to a SMBV2 remote drive. Without this parameter subsequent append mode
     // file writes can cause the resultant file to become corrupt. We only need to do 
     // this if the major version of Windows is > 5(Only Windows Vista and above 
-    // can support SMBV2).
+    // can support SMBV2).  With a 7200RPM hard drive:
+    // Copying a 1KB file with COPY_FILE_NO_BUFFERING takes about 30-60ms.
+    // Copying a 1KB file without COPY_FILE_NO_BUFFERING takes < 1ms.
+    // So we only use COPY_FILE_NO_BUFFERING when we have a remote drive.
     int copyOK;
     DWORD dwVersion = GetVersion();
     DWORD dwMajorVersion = (DWORD)(LOBYTE(LOWORD(dwVersion)));
     DWORD dwCopyFlags = 0;
-    
-    if (dwMajorVersion > 5)
-       dwCopyFlags = COPY_FILE_NO_BUFFERING;
+    if (dwMajorVersion > 5) {
+        bool path1Remote, path2Remote;
+        if (!IsRemoteFilePath(filePath.get(), path1Remote) || 
+            !IsRemoteFilePath(destPath.get(), path2Remote) ||
+            path1Remote || path2Remote) {
+            dwCopyFlags = COPY_FILE_NO_BUFFERING;
+        }
+    }
     
     if (!move)
         copyOK = ::CopyFileExW(filePath.get(), destPath.get(), NULL, NULL, NULL, dwCopyFlags);
@@ -1434,8 +1536,7 @@ nsLocalFile::CopySingleFile(nsIFile *sourceFile, nsIFile *destParent,
         else
         {
             copyOK = ::MoveFileExW(filePath.get(), destPath.get(),
-                                   MOVEFILE_REPLACE_EXISTING |
-                                   MOVEFILE_WRITE_THROUGH);
+                                   MOVEFILE_REPLACE_EXISTING);
             
             // Check if copying the source file to a different volume,
             // as this could be an SMBV2 mapped drive.
@@ -2422,7 +2523,7 @@ nsLocalFile::IsExecutable(bool *_retval)
             "wsf",
             "wsh"};
         nsDependentSubstring ext = Substring(path, dotIdx + 1);
-        for ( int i = 0; i < ArrayLength(executableExts); i++ ) {
+        for ( size_t i = 0; i < ArrayLength(executableExts); i++ ) {
             if ( ext.EqualsASCII(executableExts[i])) {
                 // Found a match.  Set result and quit.
                 *_retval = true;
@@ -2438,27 +2539,31 @@ nsLocalFile::IsExecutable(bool *_retval)
 NS_IMETHODIMP
 nsLocalFile::IsDirectory(bool *_retval)
 {
-    NS_ENSURE_ARG(_retval);
+  nsresult rv = IsFile(_retval);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
 
-    nsresult rv = ResolveAndStat();
-    if (NS_FAILED(rv))
-        return rv;
-
-    *_retval = (mFileInfo64.type == PR_FILE_DIRECTORY); 
-    return NS_OK;
+  *_retval = !*_retval;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 nsLocalFile::IsFile(bool *_retval)
 {
-    NS_ENSURE_ARG(_retval);
+  NS_ENSURE_ARG(_retval);
+  nsresult rv = Resolve();
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
 
-    nsresult rv = ResolveAndStat();
-    if (NS_FAILED(rv))
-        return rv;
+  DWORD attributes = GetFileAttributes(mResolvedPath.get());
+  if (INVALID_FILE_ATTRIBUTES == attributes) {
+    return NS_ERROR_FILE_NOT_FOUND;
+  }
 
-    *_retval = (mFileInfo64.type == PR_FILE_FILE); 
-    return NS_OK;
+  *_retval = !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+  return NS_OK;
 }
 
 NS_IMETHODIMP

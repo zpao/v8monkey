@@ -1038,7 +1038,7 @@ IDBObjectStore::StructuredCloneWriteCallback(JSContext* aCx,
   StructuredCloneWriteInfo* cloneWriteInfo =
     reinterpret_cast<StructuredCloneWriteInfo*>(aClosure);
 
-  if (JS_GET_CLASS(aCx, aObj) == &gDummyPropClass) {
+  if (JS_GetClass(aObj) == &gDummyPropClass) {
     NS_ASSERTION(cloneWriteInfo->mOffsetToKeyProp == 0,
                  "We should not have been here before!");
     cloneWriteInfo->mOffsetToKeyProp = js_GetSCOffset(aWriter);
@@ -1532,7 +1532,7 @@ IDBObjectStore::GetAll(const jsval& aKey,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  if (aOptionalArgCount < 2) {
+  if (aOptionalArgCount < 2 || aLimit == 0) {
     aLimit = PR_UINT32_MAX;
   }
 

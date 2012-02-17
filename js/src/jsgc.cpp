@@ -70,7 +70,6 @@
 #include "jsexn.h"
 #include "jsfun.h"
 #include "jsgc.h"
-#include "jsgcchunk.h"
 #include "jsgcmark.h"
 #include "jsinterp.h"
 #include "jsiter.h"
@@ -88,6 +87,7 @@
 #endif
 
 #include "frontend/Parser.h"
+#include "gc/Memory.h"
 #include "methodjit/MethodJIT.h"
 #include "vm/Debugger.h"
 #include "vm/String.h"
@@ -432,6 +432,16 @@ FinalizeArenas(JSContext *cx, ArenaLists::ArenaList *al, AllocKind thingKind, bo
     }
 }
 
+static inline Chunk *
+AllocChunk() {
+    return static_cast<Chunk *>(MapAlignedPages(ChunkSize, ChunkSize));
+}
+
+static inline void
+FreeChunk(Chunk *p) {
+    UnmapPages(static_cast<void *>(p), ChunkSize);
+}
+
 #ifdef JS_THREADSAFE
 inline bool
 ChunkPool::wantBackgroundAllocation(JSRuntime *rt) const
@@ -698,7 +708,7 @@ Chunk::fetchNextDecommittedArena()
     decommittedArenas.unset(offset);
 
     Arena *arena = &arenas[offset];
-    CommitMemory(arena, ArenaSize);
+    MarkPagesInUse(arena, ArenaSize);
     arena->aheader.setAsNotAllocated();
 
     return &arena->aheader;
@@ -774,10 +784,8 @@ Chunk::releaseArena(ArenaHeader *aheader)
     JS_ASSERT(rt->gcBytes >= ArenaSize);
     JS_ASSERT(comp->gcBytes >= ArenaSize);
 #ifdef JS_THREADSAFE
-    if (rt->gcHelperThread.sweeping()) {
-        rt->reduceGCTriggerBytes(GC_HEAP_GROWTH_FACTOR * ArenaSize);
+    if (rt->gcHelperThread.sweeping())
         comp->reduceGCTriggerBytes(GC_HEAP_GROWTH_FACTOR * ArenaSize);
-    }
 #endif
     rt->gcBytes -= ArenaSize;
     comp->gcBytes -= ArenaSize;
@@ -836,13 +844,10 @@ PickChunk(JSCompartment *comp)
 }
 
 JS_FRIEND_API(bool)
-IsAboutToBeFinalized(JSContext *cx, const Cell *thing)
+IsAboutToBeFinalized(const Cell *thing)
 {
-    JS_ASSERT(cx);
-
     JSCompartment *thingCompartment = reinterpret_cast<const Cell *>(thing)->compartment();
-    JSRuntime *rt = cx->runtime;
-    JS_ASSERT(rt == thingCompartment->rt);
+    JSRuntime *rt = thingCompartment->rt;
     if (rt->gcCurrentCompartment != NULL && rt->gcCurrentCompartment != thingCompartment)
         return false;
 
@@ -850,18 +855,10 @@ IsAboutToBeFinalized(JSContext *cx, const Cell *thing)
 }
 
 bool
-IsAboutToBeFinalized(JSContext *cx, const Value &v)
+IsAboutToBeFinalized(const Value &v)
 {
     JS_ASSERT(v.isMarkable());
-    return IsAboutToBeFinalized(cx, (Cell *)v.toGCThing());
-}
-
-JS_FRIEND_API(bool)
-js_GCThingIsMarked(void *thing, uintN color = BLACK)
-{
-    JS_ASSERT(thing);
-    AssertValidColor(thing, color);
-    return reinterpret_cast<Cell *>(thing)->isMarked(color);
+    return IsAboutToBeFinalized((Cell *)v.toGCThing());
 }
 
 /* Lifetime for type sets attached to scripts containing observed types. */
@@ -893,12 +890,6 @@ js_InitGC(JSRuntime *rt, uint32_t maxbytes)
      */
     rt->gcMaxBytes = maxbytes;
     rt->setGCMaxMallocBytes(maxbytes);
-
-    /*
-     * The assigned value prevents GC from running when GC memory is too low
-     * (during JS engine start).
-     */
-    rt->setGCLastBytes(8192, GC_NORMAL);
 
     rt->gcJitReleaseTime = PRMJ_Now() + JIT_SCRIPT_RELEASE_TYPES_INTERVAL;
     return true;
@@ -1092,11 +1083,11 @@ MarkConservativeStackRoots(JSTracer *trc, JSRuntime *rt)
 
     uintptr_t *stackMin, *stackEnd;
 #if JS_STACK_GROWTH_DIRECTION > 0
-    stackMin = rt->conservativeGC.nativeStackBase;
+    stackMin = rt->nativeStackBase;
     stackEnd = cgcd->nativeStackTop;
 #else
     stackMin = cgcd->nativeStackTop + 1;
-    stackEnd = rt->conservativeGC.nativeStackBase;
+    stackEnd = reinterpret_cast<uintptr_t *>(rt->nativeStackBase);
 #endif
 
     JS_ASSERT(stackMin <= stackEnd);
@@ -1357,25 +1348,6 @@ js_MapGCRoots(JSRuntime *rt, JSGCRootMapFun map, void *data)
 }
 
 void
-JSRuntime::setGCLastBytes(size_t lastBytes, JSGCInvocationKind gckind)
-{
-    gcLastBytes = lastBytes;
-
-    size_t base = gckind == GC_SHRINK ? lastBytes : Max(lastBytes, GC_ALLOCATION_THRESHOLD);
-    float trigger = float(base) * GC_HEAP_GROWTH_FACTOR;
-    gcTriggerBytes = size_t(Min(float(gcMaxBytes), trigger));
-}
-
-void
-JSRuntime::reduceGCTriggerBytes(size_t amount) {
-    JS_ASSERT(amount > 0);
-    JS_ASSERT(gcTriggerBytes - amount >= 0);
-    if (gcTriggerBytes - amount < GC_ALLOCATION_THRESHOLD * GC_HEAP_GROWTH_FACTOR)
-        return;
-    gcTriggerBytes -= amount;
-}
-
-void
 JSCompartment::setGCLastBytes(size_t lastBytes, JSGCInvocationKind gckind)
 {
     gcLastBytes = lastBytes;
@@ -1386,7 +1358,8 @@ JSCompartment::setGCLastBytes(size_t lastBytes, JSGCInvocationKind gckind)
 }
 
 void
-JSCompartment::reduceGCTriggerBytes(size_t amount) {
+JSCompartment::reduceGCTriggerBytes(size_t amount)
+{
     JS_ASSERT(amount > 0);
     JS_ASSERT(gcTriggerBytes - amount >= 0);
     if (gcTriggerBytes - amount < GC_ALLOCATION_THRESHOLD * GC_HEAP_GROWTH_FACTOR)
@@ -1842,7 +1815,7 @@ GCMarker::markDelayedChildren()
 
 #ifdef DEBUG
 static void
-EmptyMarkCallback(JSTracer *trc, void *thing, JSGCTraceKind kind)
+EmptyMarkCallback(JSTracer *trc, void **thingp, JSGCTraceKind kind)
 {
 }
 #endif
@@ -1880,50 +1853,29 @@ gc_root_traversal(JSTracer *trc, const RootEntry &entry)
 #endif
     const char *name = entry.value.name ? entry.value.name : "root";
     if (entry.value.type == JS_GC_ROOT_GCTHING_PTR)
-        MarkRootGCThing(trc, *reinterpret_cast<void **>(entry.key), name);
+        MarkGCThingRoot(trc, *reinterpret_cast<void **>(entry.key), name);
     else
-        MarkRoot(trc, *reinterpret_cast<Value *>(entry.key), name);
+        MarkValueRoot(trc, *reinterpret_cast<Value *>(entry.key), name);
 }
 
 static void
 gc_lock_traversal(const GCLocks::Entry &entry, JSTracer *trc)
 {
     JS_ASSERT(entry.value >= 1);
-    MarkRootGCThing(trc, entry.key, "locked object");
-}
-
-void
-js_TraceStackFrame(JSTracer *trc, StackFrame *fp)
-{
-    MarkRoot(trc, &fp->scopeChain(), "scope chain");
-    if (fp->isDummyFrame())
-        return;
-    if (fp->hasArgsObj())
-        MarkRoot(trc, &fp->argsObj(), "arguments");
-    if (fp->isFunctionFrame()) {
-        MarkRoot(trc, fp->fun(), "fun");
-        if (fp->isEvalFrame()) {
-            MarkRoot(trc, fp->script(), "eval script");
-        }
-    } else {
-        MarkRoot(trc, fp->script(), "script");
-    }
-    fp->script()->compartment()->active = true;
-    MarkRoot(trc, fp->returnValue(), "rval");
+    MarkGCThingRoot(trc, entry.key, "locked object");
 }
 
 void
 AutoIdArray::trace(JSTracer *trc)
 {
     JS_ASSERT(tag == IDARRAY);
-    gc::MarkIdRange(trc, idArray->vector, idArray->vector + idArray->length,
-                    "JSAutoIdArray.idArray");
+    gc::MarkIdRange(trc, idArray->length, idArray->vector, "JSAutoIdArray.idArray");
 }
 
 void
 AutoEnumStateRooter::trace(JSTracer *trc)
 {
-    gc::MarkRoot(trc, obj, "JS::AutoEnumStateRooter.obj");
+    gc::MarkObjectRoot(trc, obj, "JS::AutoEnumStateRooter.obj");
 }
 
 inline void
@@ -1931,7 +1883,7 @@ AutoGCRooter::trace(JSTracer *trc)
 {
     switch (tag) {
       case JSVAL:
-        MarkRoot(trc, static_cast<AutoValueRooter *>(this)->val, "JS::AutoValueRooter.val");
+        MarkValueRoot(trc, static_cast<AutoValueRooter *>(this)->val, "JS::AutoValueRooter.val");
         return;
 
       case PARSER:
@@ -1944,7 +1896,7 @@ AutoGCRooter::trace(JSTracer *trc)
 
       case IDARRAY: {
         JSIdArray *ida = static_cast<AutoIdArray *>(this)->idArray;
-        MarkIdRange(trc, ida->vector, ida->vector + ida->length, "JS::AutoIdArray.idArray");
+        MarkIdRange(trc, ida->length, ida->vector, "JS::AutoIdArray.idArray");
         return;
       }
 
@@ -1953,10 +1905,10 @@ AutoGCRooter::trace(JSTracer *trc)
             static_cast<AutoPropDescArrayRooter *>(this)->descriptors;
         for (size_t i = 0, len = descriptors.length(); i < len; i++) {
             PropDesc &desc = descriptors[i];
-            MarkRoot(trc, desc.pd, "PropDesc::pd");
-            MarkRoot(trc, desc.value, "PropDesc::value");
-            MarkRoot(trc, desc.get, "PropDesc::get");
-            MarkRoot(trc, desc.set, "PropDesc::set");
+            MarkValueRoot(trc, desc.pd, "PropDesc::pd");
+            MarkValueRoot(trc, desc.value, "PropDesc::value");
+            MarkValueRoot(trc, desc.get, "PropDesc::get");
+            MarkValueRoot(trc, desc.set, "PropDesc::set");
         }
         return;
       }
@@ -1964,12 +1916,12 @@ AutoGCRooter::trace(JSTracer *trc)
       case DESCRIPTOR : {
         PropertyDescriptor &desc = *static_cast<AutoPropertyDescriptorRooter *>(this);
         if (desc.obj)
-            MarkRoot(trc, desc.obj, "Descriptor::obj");
-        MarkRoot(trc, desc.value, "Descriptor::value");
+            MarkObjectRoot(trc, desc.obj, "Descriptor::obj");
+        MarkValueRoot(trc, desc.value, "Descriptor::value");
         if ((desc.attrs & JSPROP_GETTER) && desc.getter)
-            MarkRoot(trc, CastAsObject(desc.getter), "Descriptor::get");
+            MarkObjectRoot(trc, CastAsObject(desc.getter), "Descriptor::get");
         if (desc.attrs & JSPROP_SETTER && desc.setter)
-            MarkRoot(trc, CastAsObject(desc.setter), "Descriptor::set");
+            MarkObjectRoot(trc, CastAsObject(desc.setter), "Descriptor::set");
         return;
       }
 
@@ -1986,52 +1938,53 @@ AutoGCRooter::trace(JSTracer *trc)
 
       case OBJECT:
         if (JSObject *obj = static_cast<AutoObjectRooter *>(this)->obj)
-            MarkRoot(trc, obj, "JS::AutoObjectRooter.obj");
+            MarkObjectRoot(trc, obj, "JS::AutoObjectRooter.obj");
         return;
 
       case ID:
-        MarkRoot(trc, static_cast<AutoIdRooter *>(this)->id_, "JS::AutoIdRooter.id_");
+        MarkIdRoot(trc, static_cast<AutoIdRooter *>(this)->id_, "JS::AutoIdRooter.id_");
         return;
 
       case VALVECTOR: {
         AutoValueVector::VectorImpl &vector = static_cast<AutoValueVector *>(this)->vector;
-        MarkRootRange(trc, vector.length(), vector.begin(), "js::AutoValueVector.vector");
+        MarkValueRootRange(trc, vector.length(), vector.begin(), "js::AutoValueVector.vector");
         return;
       }
 
       case STRING:
         if (JSString *str = static_cast<AutoStringRooter *>(this)->str)
-            MarkRoot(trc, str, "JS::AutoStringRooter.str");
+            MarkStringRoot(trc, str, "JS::AutoStringRooter.str");
         return;
 
       case IDVECTOR: {
         AutoIdVector::VectorImpl &vector = static_cast<AutoIdVector *>(this)->vector;
-        MarkRootRange(trc, vector.length(), vector.begin(), "js::AutoIdVector.vector");
+        MarkIdRootRange(trc, vector.length(), vector.begin(), "js::AutoIdVector.vector");
         return;
       }
 
       case SHAPEVECTOR: {
         AutoShapeVector::VectorImpl &vector = static_cast<js::AutoShapeVector *>(this)->vector;
-        MarkRootRange(trc, vector.length(), vector.begin(), "js::AutoShapeVector.vector");
+        MarkShapeRootRange(trc, vector.length(), const_cast<Shape **>(vector.begin()), 
+                           "js::AutoShapeVector.vector");
         return;
       }
 
       case OBJVECTOR: {
         AutoObjectVector::VectorImpl &vector = static_cast<AutoObjectVector *>(this)->vector;
-        MarkRootRange(trc, vector.length(), vector.begin(), "js::AutoObjectVector.vector");
+        MarkObjectRootRange(trc, vector.length(), vector.begin(), "js::AutoObjectVector.vector");
         return;
       }
 
       case VALARRAY: {
         AutoValueArray *array = static_cast<AutoValueArray *>(this);
-        MarkRootRange(trc, array->length(), array->start(), "js::AutoValueArray");
+        MarkValueRootRange(trc, array->length(), array->start(), "js::AutoValueArray");
         return;
       }
     }
 
     JS_ASSERT(tag >= 0);
-    MarkRootRange(trc, tag, static_cast<AutoArrayRooter *>(this)->array,
-                  "JS::AutoArrayRooter.array");
+    MarkValueRootRange(trc, tag, static_cast<AutoArrayRooter *>(this)->array,
+                       "JS::AutoArrayRooter.array");
 }
 
 void
@@ -2050,9 +2003,9 @@ MarkContext(JSTracer *trc, JSContext *acx)
 
     /* Mark other roots-by-definition in acx. */
     if (acx->globalObject && !acx->hasRunOption(JSOPTION_UNROOTED_GLOBAL))
-        MarkRoot(trc, acx->globalObject, "global object");
+        MarkObjectRoot(trc, acx->globalObject, "global object");
     if (acx->isExceptionPending())
-        MarkRoot(trc, acx->getPendingException(), "exception");
+        MarkValueRoot(trc, acx->getPendingException(), "exception");
 
     if (acx->autoGCRooters)
         acx->autoGCRooters->traceAll(trc);
@@ -2060,7 +2013,7 @@ MarkContext(JSTracer *trc, JSContext *acx)
     if (acx->sharpObjectMap.depth > 0)
         js_TraceSharpMap(trc, &acx->sharpObjectMap);
 
-    MarkRoot(trc, acx->iterValue, "iterValue");
+    MarkValueRoot(trc, acx->iterValue, "iterValue");
 }
 
 void
@@ -2092,7 +2045,7 @@ MarkRuntime(JSTracer *trc)
     if (rt->scriptPCCounters) {
         const ScriptOpcodeCountsVector &vec = *rt->scriptPCCounters;
         for (size_t i = 0; i < vec.length(); i++)
-            MarkRoot(trc, vec[i].script, "scriptPCCounters");
+            MarkScriptRoot(trc, vec[i].script, "scriptPCCounters");
     }
 
     js_TraceAtomState(trc);
@@ -2117,10 +2070,16 @@ MarkRuntime(JSTracer *trc)
             for (CellIterUnderGC i(c, FINALIZE_SCRIPT); !i.done(); i.next()) {
                 JSScript *script = i.get<JSScript>();
                 if (script->pcCounters)
-                    MarkRoot(trc, script, "profilingScripts");
+                    MarkScriptRoot(trc, script, "profilingScripts");
             }
         }
     }
+
+#ifdef JS_METHODJIT
+    /* We need to expand inline frames before stack scanning. */
+    for (CompartmentsIter c(rt); !c.done(); c.next())
+        mjit::ExpandInlineFrames(c);
+#endif
 
     rt->stackSpace.mark(trc);
 
@@ -2171,12 +2130,6 @@ TriggerCompartmentGC(JSCompartment *comp, gcreason::Reason reason)
         /* If we need to GC more than one compartment, run a full GC. */
         if (rt->gcTriggerCompartment != comp)
             rt->gcTriggerCompartment = NULL;
-        return;
-    }
-
-    if (rt->gcBytes > 8192 && rt->gcBytes >= 3 * (rt->gcTriggerBytes / 2)) {
-        /* If we're using significantly more than our quota, do a full GC. */
-        TriggerGC(rt, reason);
         return;
     }
 
@@ -2283,7 +2236,7 @@ DecommitArenasFromAvailableList(JSRuntime *rt, Chunk **availableListHeadp)
                 Maybe<AutoUnlockGC> maybeUnlock;
                 if (!rt->gcRunning)
                     maybeUnlock.construct(rt);
-                ok = DecommitMemory(aheader->getArena(), ArenaSize);
+                ok = MarkPagesUnused(aheader->getArena(), ArenaSize);
             }
 
             if (ok) {
@@ -2759,10 +2712,10 @@ SweepPhase(JSContext *cx, GCMarker *gcmarker, JSGCInvocationKind gckind)
     /* Finalize unreachable (key,value) pairs in all weak maps. */
     WeakMapBase::sweepAll(gcmarker);
 
-    js_SweepAtomState(cx);
+    js_SweepAtomState(rt);
 
     /* Collect watch points associated with unreachable objects. */
-    WatchpointMap::sweepAll(cx);
+    WatchpointMap::sweepAll(rt);
 
     if (!rt->gcCurrentCompartment)
         Debugger::sweepAll(cx);
@@ -2850,6 +2803,16 @@ MarkAndSweep(JSContext *cx, JSGCInvocationKind gckind)
     /* Clear gcIsNeeded now, when we are about to start a normal GC cycle. */
     rt->gcIsNeeded = false;
     rt->gcTriggerCompartment = NULL;
+    
+    /* Clear gcMallocBytes for all compartments */
+    JSCompartment **read = rt->compartments.begin();
+    JSCompartment **end = rt->compartments.end();
+    JS_ASSERT(rt->compartments.length() >= 1);
+    
+    while (read < end) {
+        JSCompartment *compartment = *read++;
+        compartment->resetGCMallocBytes();
+    }
 
     /* Reset weak map list. */
     WeakMapBase::resetWeakMapList(rt);
@@ -2957,7 +2920,6 @@ GCCycle(JSContext *cx, JSCompartment *comp, JSGCInvocationKind gckind)
 #endif
 
     rt->gcMarkAndSweep = false;
-    rt->setGCLastBytes(rt->gcBytes, gckind);
     rt->gcCurrentCompartment = NULL;
 
     for (CompartmentsIter c(rt); !c.done(); c.next())
@@ -3431,7 +3393,7 @@ struct VerifyTracer : JSTracer {
  * node.
  */
 static void
-AccumulateEdge(JSTracer *jstrc, void *thing, JSGCTraceKind kind)
+AccumulateEdge(JSTracer *jstrc, void **thingp, JSGCTraceKind kind)
 {
     VerifyTracer *trc = (VerifyTracer *)jstrc;
 
@@ -3444,7 +3406,7 @@ AccumulateEdge(JSTracer *jstrc, void *thing, JSGCTraceKind kind)
     VerifyNode *node = trc->curnode;
     uint32_t i = node->count;
 
-    node->edges[i].thing = thing;
+    node->edges[i].thing = *thingp;
     node->edges[i].kind = kind;
     node->edges[i].label = trc->debugPrinter ? NULL : (char *)trc->debugPrintArg;
     node->count++;
@@ -3585,9 +3547,9 @@ oom:
 }
 
 static void
-CheckAutorooter(JSTracer *jstrc, void *thing, JSGCTraceKind kind)
+CheckAutorooter(JSTracer *jstrc, void **thingp, JSGCTraceKind kind)
 {
-    static_cast<Cell *>(thing)->markIfUnmarked();
+    static_cast<Cell *>(*thingp)->markIfUnmarked();
 }
 
 /*
@@ -3598,13 +3560,13 @@ CheckAutorooter(JSTracer *jstrc, void *thing, JSGCTraceKind kind)
  * modified) must point to marked objects.
  */
 static void
-CheckEdge(JSTracer *jstrc, void *thing, JSGCTraceKind kind)
+CheckEdge(JSTracer *jstrc, void **thingp, JSGCTraceKind kind)
 {
     VerifyTracer *trc = (VerifyTracer *)jstrc;
     VerifyNode *node = trc->curnode;
 
     for (uint32_t i = 0; i < node->count; i++) {
-        if (node->edges[i].thing == thing) {
+        if (node->edges[i].thing == *thingp) {
             JS_ASSERT(node->edges[i].kind == kind);
             node->edges[i].thing = NULL;
             return;

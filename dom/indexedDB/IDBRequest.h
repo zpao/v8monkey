@@ -45,7 +45,7 @@
 
 #include "nsIIDBRequest.h"
 #include "nsIIDBOpenDBRequest.h"
-
+#include "nsDOMEventTargetHelper.h"
 #include "mozilla/dom/indexedDB/IDBWrapperCache.h"
 
 class nsIScriptContext;
@@ -158,8 +158,8 @@ protected:
   virtual void UnrootResultValInternal();
 
   // Only touched on the main thread.
-  NS_DECL_EVENT_HANDLER(blocked);
-  NS_DECL_EVENT_HANDLER(upgradeneeded);
+  NS_DECL_EVENT_HANDLER(blocked)
+  NS_DECL_EVENT_HANDLER(upgradeneeded)
 };
 
 END_INDEXEDDB_NAMESPACE

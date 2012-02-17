@@ -55,9 +55,12 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/Services.h"
 #include "nsAppShell.h"
+#include "nsDOMTouchEvent.h"
 #include "nsGkAtoms.h"
 #include "nsGUIEvent.h"
 #include "nsIObserverService.h"
+#include "nsIScreen.h"
+#include "nsScreenManagerGonk.h"
 #include "nsWindow.h"
 
 #include "android/log.h"
@@ -107,6 +110,32 @@ pipeHandler(int fd, FdHandler *data)
     } while (len > 0);
 }
 
+struct Touch {
+    int32_t id;
+    PointerCoords coords;
+};
+
+struct UserInputData {
+    uint64_t timeMs;
+    enum {
+        MOTION_DATA,
+        KEY_DATA
+    } type;
+    int32_t action;
+    int32_t flags;
+    int32_t metaState;
+    union {
+        struct {
+            int32_t keyCode;
+            int32_t scanCode;
+        } key;
+        struct {
+            int32_t touchCount;
+            Touch touches[MAX_POINTERS];
+        } motion;
+    };
+};
+
 static void
 sendMouseEvent(PRUint32 msg, uint64_t timeMs, int x, int y)
 {
@@ -125,6 +154,62 @@ sendMouseEvent(PRUint32 msg, uint64_t timeMs, int x, int y)
         event.clickCount = 1;
 
     nsWindow::DispatchInputEvent(event);
+}
+
+static void
+addDOMTouch(UserInputData& data, nsTouchEvent& event, int i)
+{
+    const Touch& touch = data.motion.touches[i];
+    event.touches.AppendElement(
+        new nsDOMTouch(touch.id,
+                       nsIntPoint(touch.coords.x, touch.coords.y),
+                       nsIntPoint(touch.coords.size, touch.coords.size),
+                       0,
+                       touch.coords.pressure));
+}
+
+static nsEventStatus
+sendTouchEvent(UserInputData& data)
+{
+    PRUint32 msg;
+    int32_t action = data.action & AMOTION_EVENT_ACTION_MASK;
+    switch (action) {
+    case AMOTION_EVENT_ACTION_DOWN:
+    case AMOTION_EVENT_ACTION_POINTER_DOWN:
+        msg = NS_TOUCH_START;
+        break;
+    case AMOTION_EVENT_ACTION_MOVE:
+        msg = NS_TOUCH_MOVE;
+        break;
+    case AMOTION_EVENT_ACTION_UP:
+    case AMOTION_EVENT_ACTION_POINTER_UP:
+        msg = NS_TOUCH_END;
+        break;
+    case AMOTION_EVENT_ACTION_OUTSIDE:
+    case AMOTION_EVENT_ACTION_CANCEL:
+        msg = NS_TOUCH_CANCEL;
+        break;
+    }
+
+    nsTouchEvent event(true, msg, NULL);
+
+    event.time = data.timeMs;
+    event.isShift = false;
+    event.isControl = false;
+    event.isMeta = false;
+    event.isAlt = false;
+
+    int32_t i;
+    if (msg == NS_TOUCH_END) {
+        i = data.action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK;
+        i >>= AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+        addDOMTouch(data, event, i);
+    } else {
+        for (i = 0; i < data.motion.touchCount; ++i)
+            addDOMTouch(data, event, i);
+    }
+
+    return nsWindow::DispatchInputEvent(event);
 }
 
 static nsEventStatus
@@ -195,26 +280,6 @@ maybeSendKeyEvent(int keyCode, bool pressed, uint64_t timeMs)
     }
 }
 
-struct UserInputData {
-    uint64_t timeMs;
-    enum {
-        MOTION_DATA,
-        KEY_DATA
-    } type;
-    int32_t action;
-    int32_t flags;
-    int32_t metaState;
-    union {
-        struct {
-            int32_t keyCode;
-            int32_t scanCode;
-        } key;
-        struct {
-            PointerCoords coords;
-        } motion;
-    };
-};
-
 class GeckoInputReaderPolicy : public InputReaderPolicyInterface {
 public:
     GeckoInputReaderPolicy() {}
@@ -284,6 +349,19 @@ GeckoInputReaderPolicy::getDisplayInfo(int32_t displayId,
                                        int32_t* height,
                                        int32_t* orientation)
 {
+    MOZ_STATIC_ASSERT(nsIScreen::ROTATION_0_DEG ==
+                      InputReaderPolicyInterface::ROTATION_0,
+                      "Orientation enums not matched!");
+    MOZ_STATIC_ASSERT(nsIScreen::ROTATION_90_DEG ==
+                      InputReaderPolicyInterface::ROTATION_90,
+                      "Orientation enums not matched!");
+    MOZ_STATIC_ASSERT(nsIScreen::ROTATION_180_DEG ==
+                      InputReaderPolicyInterface::ROTATION_180,
+                      "Orientation enums not matched!");
+    MOZ_STATIC_ASSERT(nsIScreen::ROTATION_270_DEG ==
+                      InputReaderPolicyInterface::ROTATION_270,
+                      "Orientation enums not matched!");
+
     // 0 is the default displayId. We only support one display
     if (displayId)
         return false;
@@ -293,7 +371,7 @@ GeckoInputReaderPolicy::getDisplayInfo(int32_t displayId,
     if (height)
         *height = gScreenBounds.height;
     if (orientation)
-        *orientation = ROTATION_0;
+        *orientation = nsScreenGonk::GetRotation();
     return true;
 }
 
@@ -412,7 +490,6 @@ GeckoInputDispatcher::dispatchOnce()
         MutexAutoLock lock(mQueueLock);
         if (mEventQueue.empty())
             return;
-
         data = mEventQueue.front();
         mEventQueue.pop();
         if (!mEventQueue.empty())
@@ -421,22 +498,30 @@ GeckoInputDispatcher::dispatchOnce()
 
     switch (data.type) {
     case UserInputData::MOTION_DATA: {
+        nsEventStatus status = sendTouchEvent(data);
+        if (status == nsEventStatus_eConsumeNoDefault)
+            break;
+
         PRUint32 msg;
-        switch (data.action) {
+        switch (data.action & AMOTION_EVENT_ACTION_MASK) {
         case AMOTION_EVENT_ACTION_DOWN:
             msg = NS_MOUSE_BUTTON_DOWN;
             break;
+        case AMOTION_EVENT_ACTION_POINTER_DOWN:
+        case AMOTION_EVENT_ACTION_POINTER_UP:
         case AMOTION_EVENT_ACTION_MOVE:
             msg = NS_MOUSE_MOVE;
             break;
+        case AMOTION_EVENT_ACTION_OUTSIDE:
+        case AMOTION_EVENT_ACTION_CANCEL:
         case AMOTION_EVENT_ACTION_UP:
             msg = NS_MOUSE_BUTTON_UP;
             break;
         }
         sendMouseEvent(msg,
                        data.timeMs,
-                       data.motion.coords.x,
-                       data.motion.coords.y);
+                       data.motion.touches[0].coords.x,
+                       data.motion.touches[0].coords.y);
         break;
     }
     case UserInputData::KEY_DATA:
@@ -508,10 +593,22 @@ GeckoInputDispatcher::notifyMotion(nsecs_t eventTime,
     data.action = action;
     data.flags = flags;
     data.metaState = metaState;
-    data.motion.coords = *pointerCoords;
+    MOZ_ASSERT(pointerCount <= MAX_POINTERS);
+    data.motion.touchCount = pointerCount;
+    for (int32_t i = 0; i < pointerCount; ++i) {
+        Touch& touch = data.motion.touches[i];
+        touch.id = pointerIds[i];
+        memcpy(&touch.coords, &pointerCoords[i], sizeof(*pointerCoords));
+    }
     {
         MutexAutoLock lock(mQueueLock);
-        mEventQueue.push(data);
+        if (!mEventQueue.empty() &&
+             mEventQueue.back().type == UserInputData::MOTION_DATA &&
+            (mEventQueue.back().action & AMOTION_EVENT_ACTION_MASK) ==
+             AMOTION_EVENT_ACTION_MOVE)
+            mEventQueue.back() = data;
+        else
+            mEventQueue.push(data);
     }
     gAppShell->NotifyNativeEvent();
 }

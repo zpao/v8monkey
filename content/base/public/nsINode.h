@@ -51,6 +51,7 @@
 #include "jspubtd.h"
 #include "nsDOMMemoryReporter.h"
 #include "nsIVariant.h"
+#include "nsGkAtoms.h"
 
 // Including 'windows.h' will #define GetClassInfo to something else.
 #ifdef XP_WIN
@@ -288,8 +289,8 @@ private:
 
 // IID for the nsINode interface
 #define NS_INODE_IID \
-{ 0xd026d280, 0x5b25, 0x41c0, \
-  { 0x92, 0xcf, 0x6, 0xf6, 0xf, 0xb, 0x9a, 0xfe } }
+{ 0xfcd3b0d1, 0x75db, 0x46c4, \
+  { 0xa1, 0xf5, 0x07, 0xc2, 0x09, 0xf8, 0x1f, 0x44 } }
 
 /**
  * An internal interface that abstracts some DOMNode-related parts that both
@@ -310,18 +311,24 @@ public:
   friend class nsAttrAndChildArray;
 
 #ifdef MOZILLA_INTERNAL_API
+  static nsINode *sOrphanNodeHead;
+
   nsINode(already_AddRefed<nsINodeInfo> aNodeInfo)
   : mNodeInfo(aNodeInfo),
     mParent(nsnull),
     mFlags(0),
-    mBoolFlags(0),
-    mNextSibling(nsnull),
-    mPreviousSibling(nsnull),
+    mBoolFlags(1 << NodeIsOrphan),
+    mNextOrphanNode(sOrphanNodeHead->mNextOrphanNode),
+    mPreviousOrphanNode(sOrphanNodeHead),
     mFirstChild(nsnull),
     mSlots(nsnull)
   {
-  }
+    NS_ASSERTION(GetBoolFlag(NodeIsOrphan),
+                 "mBoolFlags not initialized correctly!");
 
+    mNextOrphanNode->mPreviousOrphanNode = this;
+    sOrphanNodeHead->mNextOrphanNode = this;
+  }
 #endif
 
   virtual ~nsINode();
@@ -994,6 +1001,22 @@ public:
    */
   virtual already_AddRefed<nsIURI> GetBaseURI() const = 0;
 
+  /**
+   * Facility for explicitly setting a base URI on a node.
+   */
+  nsresult SetExplicitBaseURI(nsIURI* aURI);
+  /**
+   * The explicit base URI, if set, otherwise null
+   */
+protected:
+  nsIURI* GetExplicitBaseURI() const {
+    if (HasExplicitBaseURI()) {
+      return static_cast<nsIURI*>(GetProperty(nsGkAtoms::baseURIProperty));
+    }
+    return nsnull;
+  }
+  
+public:
   nsresult GetDOMBaseURI(nsAString &aURI) const;
 
   // Note! This function must never fail. It only return an nsresult so that
@@ -1086,8 +1109,63 @@ public:
   nsresult IsEqualNode(nsIDOMNode* aOther, bool* aReturn);
   bool IsEqualTo(nsINode* aOther);
 
-  nsIContent* GetNextSibling() const { return mNextSibling; }
-  nsIContent* GetPreviousSibling() const { return mPreviousSibling; }
+  nsIContent* GetNextSibling() const
+  {
+    return NS_UNLIKELY(IsOrphan()) ? nsnull : mNextSibling;
+  }
+
+  nsIContent* GetPreviousSibling() const
+  {
+    return NS_UNLIKELY(IsOrphan()) ? nsnull : mPreviousSibling;
+  }
+
+  // Returns true if this node is an orphan node
+  bool IsOrphan() const
+  {
+#ifdef MOZILLA_INTERNAL_API
+    NS_ASSERTION(this != sOrphanNodeHead, "Orphan node head orphan check?!");
+#endif
+
+    return GetBoolFlag(NodeIsOrphan);
+  }
+
+#ifdef MOZILLA_INTERNAL_API
+  // Mark this node as an orphan node. This marking is only relevant
+  // for this node itself, not its children. Its children are not
+  // considered orphan until they themselves are removed from their
+  // parent and get marked as orphans.
+  void MarkAsOrphan()
+  {
+    NS_ASSERTION(!IsOrphan(), "Orphan node orphaned again?");
+    NS_ASSERTION(this != sOrphanNodeHead, "Orphan node head orphaned?!");
+
+    mNextOrphanNode = sOrphanNodeHead->mNextOrphanNode;
+    mPreviousOrphanNode = sOrphanNodeHead;
+    mNextOrphanNode->mPreviousOrphanNode = this;
+    sOrphanNodeHead->mNextOrphanNode = this;
+
+    SetBoolFlag(NodeIsOrphan);
+  }
+
+  // Unmark this node as an orphan node. Do this before inserting this
+  // node into a parent or otherwise associating it with some other
+  // owner.
+  void MarkAsNonOrphan()
+  {
+    NS_ASSERTION(IsOrphan(), "Non-orphan node un-orphaned");
+    NS_ASSERTION(this != sOrphanNodeHead, "Orphan node head unorphaned?!");
+    NS_ASSERTION(!mParent, "Must not have a parent here!");
+
+    mPreviousOrphanNode->mNextOrphanNode = mNextOrphanNode;
+    mNextOrphanNode->mPreviousOrphanNode = mPreviousOrphanNode;
+    mPreviousOrphanNode = nsnull;
+    mNextOrphanNode = nsnull;
+
+    ClearBoolFlag(NodeIsOrphan);
+  }
+#endif
+
+  static void Init();
 
   /**
    * Get the next node in the pre-order tree traversal of the DOM.  If
@@ -1223,6 +1301,19 @@ private:
     NodeIsCommonAncestorForRangeInSelection,
     // Set if the node is a descendant of a node with the above bit set.
     NodeIsDescendantOfCommonAncestorForRangeInSelection,
+    // Set if CanSkipInCC check has been done for this subtree root.
+    NodeIsCCMarkedRoot,
+    // Maybe set if this node is in black subtree.
+    NodeIsCCBlackTree,
+    // Maybe set if the node is a root of a subtree 
+    // which needs to be kept in the purple buffer.
+    NodeIsPurpleRoot,
+    // Set if the node has an explicit base URI stored
+    NodeHasExplicitBaseURI,
+    // Set if the element has some style states locked
+    ElementHasLockedStyleStates,
+    // Set if the node is an orphan node.
+    NodeIsOrphan,
     // Guard value
     BooleanFlagCount
   };
@@ -1270,6 +1361,16 @@ public:
   void ClearDescendantOfCommonAncestorForRangeInSelection()
     { ClearBoolFlag(NodeIsDescendantOfCommonAncestorForRangeInSelection); }
 
+  void SetCCMarkedRoot(bool aValue)
+    { SetBoolFlag(NodeIsCCMarkedRoot, aValue); }
+  bool CCMarkedRoot() const { return GetBoolFlag(NodeIsCCMarkedRoot); }
+  void SetInCCBlackTree(bool aValue)
+    { SetBoolFlag(NodeIsCCBlackTree, aValue); }
+  bool InCCBlackTree() const { return GetBoolFlag(NodeIsCCBlackTree); }
+  void SetIsPurpleRoot(bool aValue)
+    { SetBoolFlag(NodeIsPurpleRoot, aValue); }
+  bool IsPurpleRoot() const { return GetBoolFlag(NodeIsPurpleRoot); }
+
 protected:
   void SetParentIsContent(bool aValue) { SetBoolFlag(ParentIsContent, aValue); }
   void SetInDocument() { SetBoolFlag(IsInDocument); }
@@ -1283,6 +1384,12 @@ protected:
   void ClearHasName() { ClearBoolFlag(ElementHasName); }
   void SetMayHaveContentEditableAttr()
     { SetBoolFlag(ElementMayHaveContentEditableAttr); }
+  bool HasExplicitBaseURI() const { return GetBoolFlag(NodeHasExplicitBaseURI); }
+  void SetHasExplicitBaseURI() { SetBoolFlag(NodeHasExplicitBaseURI); }
+  void SetHasLockedStyleStates() { SetBoolFlag(ElementHasLockedStyleStates); }
+  void ClearHasLockedStyleStates() { ClearBoolFlag(ElementHasLockedStyleStates); }
+  bool HasLockedStyleStates() const
+    { return GetBoolFlag(ElementHasLockedStyleStates); }
 
 public:
   // Optimized way to get classinfo.
@@ -1422,8 +1529,24 @@ private:
   PRUint32 mBoolFlags;
 
 protected:
-  nsIContent* mNextSibling;
-  nsIContent* mPreviousSibling;
+  union {
+    // mNextSibling is used when this node is part of a DOM tree
+    nsIContent* mNextSibling;
+
+    // mNextOrphanNode is used when this is in the linked list of
+    // orphan nodes.
+    nsINode *mNextOrphanNode;
+  };
+
+  union {
+    // mPreviousSibling is used when this node is part of a DOM tree
+    nsIContent* mPreviousSibling;
+
+    // mPreviousOrphanNode is used when this is in the linked list of
+    // orphan nodes.
+    nsINode* mPreviousOrphanNode;
+  };
+
   nsIContent* mFirstChild;
 
   // Storage for more members that are usually not needed; allocated lazily.

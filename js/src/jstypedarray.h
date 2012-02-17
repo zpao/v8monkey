@@ -167,10 +167,6 @@ struct JS_FRIEND_API(ArrayBuffer) {
 
     static JSObject *
     getArrayBuffer(JSObject *obj);
-
-    void *data;
-    uint32 byteLength;
-    bool isExternal;
 };
 
 /*

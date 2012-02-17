@@ -730,6 +730,12 @@ nsWindow::DispatchEvent(nsGUIEvent *aEvent)
         case NS_TEXT_TEXT:
             mIMEComposingText = static_cast<nsTextEvent*>(aEvent)->theText;
             break;
+        case NS_KEY_PRESS:
+            // Sometimes the text changes after a key press do not generate notifications (see Bug 723810)
+            // Call the corresponding methods explicitly to send those changes back to Java
+            OnIMETextChange(0, 0, 0);
+            OnIMESelectionChange();
+            break;
         }
         return status;
     }
@@ -1019,7 +1025,7 @@ nsWindow::OnGlobalAndroidEvent(AndroidGeckoEvent *ae)
                 if (surface) {
                     sNativeWindow = AndroidBridge::Bridge()->AcquireNativeWindow(surface);
                     if (sNativeWindow) {
-                        AndroidBridge::Bridge()->SetNativeWindowFormat(sNativeWindow, AndroidBridge::WINDOW_FORMAT_RGB_565);
+                        AndroidBridge::Bridge()->SetNativeWindowFormat(sNativeWindow, 0, 0, AndroidBridge::WINDOW_FORMAT_RGB_565);
                     }
                 }
             }
@@ -1208,18 +1214,15 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
         metadataProvider->GetDrawMetadata(metadata);
     }
 
+    nsIntRect dirtyRect = ae->Rect().Intersect(nsIntRect(0, 0, gAndroidBounds.width, gAndroidBounds.height));
+
     AndroidGeckoSoftwareLayerClient &client =
         AndroidBridge::Bridge()->GetSoftwareLayerClient();
     if (!client.BeginDrawing(gAndroidBounds.width, gAndroidBounds.height,
                              gAndroidTileSize.width, gAndroidTileSize.height,
-                             metadata, HasDirectTexture())) {
+                             dirtyRect, metadata, HasDirectTexture())) {
         return;
     }
-
-    nsIntPoint renderOffset;
-    client.GetRenderOffset(renderOffset);
-
-    nsIntRect dirtyRect = ae->Rect().Intersect(nsIntRect(0, 0, gAndroidBounds.width, gAndroidBounds.height));
 
     unsigned char *bits = NULL;
     if (HasDirectTexture()) {
@@ -1241,26 +1244,24 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
 
         int offset = 0;
 
-        // It is assumed that the buffer has been over-allocated so that not
-        // only is the tile-size constant, but that a render-offset of anything
-        // up to (but not including) the tile size could be accommodated.
-        for (int y = 0; y < gAndroidBounds.height + gAndroidTileSize.height; y += tileHeight) {
-            for (int x = 0; x < gAndroidBounds.width + gAndroidTileSize.width; x += tileWidth) {
+        for (int y = 0; y < gAndroidBounds.height; y += tileHeight) {
+            for (int x = 0; x < gAndroidBounds.width; x += tileWidth) {
+                int width = NS_MIN(tileWidth, gAndroidBounds.width - x);
+                int height = NS_MIN(tileHeight, gAndroidBounds.height - y);
 
                 nsRefPtr<gfxImageSurface> targetSurface =
                     new gfxImageSurface(bits + offset,
-                                        gfxIntSize(tileWidth, tileHeight),
-                                        tileWidth * 2,
+                                        gfxIntSize(width, height),
+                                        width * 2,
                                         gfxASurface::ImageFormatRGB16_565);
 
-                offset += tileWidth * tileHeight * 2;
+                offset += width * height * 2;
 
                 if (targetSurface->CairoStatus()) {
                     ALOG("### Failed to create a valid surface from the bitmap");
                     break;
                 } else {
-                    targetSurface->SetDeviceOffset(gfxPoint(renderOffset.x - x,
-                                                            renderOffset.y - y));
+                    targetSurface->SetDeviceOffset(gfxPoint(-x, -y));
                     DrawTo(targetSurface, dirtyRect);
                 }
             }
@@ -1352,8 +1353,12 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
                 return;
             }
 
-            void *buf = AndroidBridge::JNI()->GetDirectBufferAddress(bytebuf);
-            int cap = AndroidBridge::JNI()->GetDirectBufferCapacity(bytebuf);
+            JNIEnv *env = AndroidBridge::GetJNIEnv();
+            if (!env)
+                return;
+
+            void *buf = env->GetDirectBufferAddress(bytebuf);
+            int cap = env->GetDirectBufferCapacity(bytebuf);
             if (!buf || cap != (mBounds.width * mBounds.height * 2)) {
                 ALOG("### Software drawing, but unexpected buffer size %d expected %d (or no buffer %p)!", cap, mBounds.width * mBounds.height * 2, buf);
                 return;
@@ -1575,11 +1580,11 @@ nsWindow::DispatchMultitouchEvent(nsTouchEvent &event, AndroidGeckoEvent *ae)
 
     nsEventStatus status;
     DispatchEvent(&event, status);
-    if (status == nsEventStatus_eConsumeNoDefault) {
-        AndroidBridge::Bridge()->PreventPanning();
-        return true;
+    bool preventPanning = (status == nsEventStatus_eConsumeNoDefault);
+    if (preventPanning || action == AndroidMotionEvent::ACTION_MOVE) {
+        AndroidBridge::Bridge()->SetPreventPanning(preventPanning);
     }
-    return false;
+    return preventPanning;
 }
 
 void

@@ -136,6 +136,7 @@ public:
   typedef mozilla::ReentrantMonitor ReentrantMonitor;
   typedef mozilla::TimeStamp TimeStamp;
   typedef mozilla::TimeDuration TimeDuration;
+  typedef mozilla::VideoFrameContainer VideoFrameContainer;
 
   nsBuiltinDecoderStateMachine(nsBuiltinDecoder* aDecoder, nsBuiltinDecoderReader* aReader, bool aRealTime = false);
   ~nsBuiltinDecoderStateMachine();
@@ -223,7 +224,7 @@ public:
     return 0;
   }
 
-  void NotifyDataArrived(const char* aBuffer, PRUint32 aLength, PRUint32 aOffset);
+  void NotifyDataArrived(const char* aBuffer, PRUint32 aLength, PRInt64 aOffset);
 
   PRInt64 GetEndMediaTime() const {
     mDecoder->GetReentrantMonitor().AssertCurrentThreadIn();

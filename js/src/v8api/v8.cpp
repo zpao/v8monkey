@@ -726,17 +726,13 @@ JSScript* ScriptData::GenerateScript(void *aData, int aLen) {
 //// Script class
 
 JS_STATIC_ASSERT(sizeof(Script) == sizeof(GCReference));
-  
-Handle<Object> Script::InternalObject() {
-    if (JSVAL_IS_NULL(mVal))
-    {
-        JSObject* obj = JS_NewObject(cx(), NULL, NULL, NULL);
-        mVal = OBJECT_TO_JSVAL(obj);
-    }
-  Object o(JSVAL_TO_OBJECT(mVal));
-  return Local<Object>::New(&o);
-}
 
+JSClass script_class = {
+  "v8::ScriptObj", JSCLASS_HAS_PRIVATE,
+  JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+  JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_FinalizeStub,
+  JSCLASS_NO_OPTIONAL_MEMBERS
+};
 Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, 
                              Handle<String> scriptData, bool bindToCurrentContext) {
   JSScript* s = NULL;
@@ -771,9 +767,16 @@ Local<Script> Script::Create(Handle<String> source, ScriptOrigin *origin, Script
     return Local<Script>();
   }
 
-  Script script(s);
+
+  JSObject *obj = JS_NewObject(cx(), &script_class, NULL, NULL);
+  if (!obj) {
+    return Local<Script>();
+  }
+  JS_SetPrivate(obj, s);
+
+  Script script(obj);
   if (bindToCurrentContext) {
-    script.InternalObject()->Set(String::New("global"), Context::GetCurrent()->Global());
+    script.Set(String::New("global"), Context::GetCurrent()->Global());
   }
   return Local<Script>::New(&script);
 }
@@ -801,7 +804,7 @@ Local<Script> Script::Compile(Handle<String> source, Handle<Value> fileName,
 
 Local<Value>
 Script::Run() {
-  Handle<Value> boundGlobalValue = InternalObject()->Get(String::New("global"));
+  Handle<Value> boundGlobalValue = Get(String::New("global"));
   Handle<Object> global;
   JS_ASSERT(!boundGlobalValue.IsEmpty());
   if (boundGlobalValue->IsUndefined()) {

@@ -271,14 +271,9 @@ EXPORTS_js = \
 VPATH += $(srcdir)/../../mfbt
 include $(srcdir)/../../mfbt/exported_headers.mk
 
-EXPORTS_NAMESPACES += mozilla
-
-EXPORTS_mozilla = \
-		RangedPtr.h \
-		RefPtr.h \
-		Types.h	\
-		Util.h \
-		$(NULL)
+###############################################
+# BEGIN include sources for v8 API implementation
+#
 
 CPPSRCS += \
 		v8api/v8.cpp \
@@ -309,6 +304,9 @@ EXPORTS_v8 = \
 #ifdef ENABLE_TESTS
 DIRS += v8api/test
 #endif
+#
+# END include sources for v8 API implementation
+###############################################
 
 ifdef ENABLE_METHODJIT
 

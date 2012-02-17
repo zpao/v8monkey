@@ -15,8 +15,8 @@ struct PrivateData {
   Traced<String> name;
   Traced<Function> cachedFunction;
 
-  static PrivateData* Get(JSContext* cx, JSObject* obj) {
-    return reinterpret_cast<PrivateData*>(JS_GetPrivate(cx, obj));
+  static PrivateData* Get(JSObject* obj) {
+    return reinterpret_cast<PrivateData*>(JS_GetPrivate(obj));
   }
 };
 
@@ -27,7 +27,7 @@ ft_SetProperty(JSContext* cx,
                JSBool strict,
                jsval* vp)
 {
-  PrivateData* data = PrivateData::Get(cx, obj);
+  PrivateData* data = PrivateData::Get(obj);
   JS_ASSERT(data);
 
   Value v(*vp);
@@ -54,7 +54,7 @@ ft_SetProperty(JSContext* cx,
 
 void
 ft_Trace(JSTracer* tracer, JSObject* obj) {
-  PrivateData* data = PrivateData::Get(tracer->context, obj);
+  PrivateData* data = PrivateData::Get(obj);
   JS_ASSERT(data);
   data->attributes.trace(tracer);
   data->instanceTemplate.trace(tracer);
@@ -64,10 +64,9 @@ ft_Trace(JSTracer* tracer, JSObject* obj) {
 }
 
 void
-ft_finalize(JSContext* cx,
-            JSObject* obj)
+ft_finalize(JSContext* cx, JSObject* obj)
 {
-  PrivateData* data = PrivateData::Get(cx, obj);
+  PrivateData* data = PrivateData::Get(obj);
   delete_(data);
 }
 
@@ -102,7 +101,7 @@ bool IsFunctionTemplate(Handle<Value> v) {
   if (o.IsEmpty())
     return false;
   JSObject *obj = **o;
-  return &gFunctionTemplateClass == JS_GET_CLASS(cx(), obj);
+  return &gFunctionTemplateClass == JS_GetClass(obj);
 }
 }
 
@@ -110,7 +109,7 @@ FunctionTemplate::FunctionTemplate() :
   Template(&gFunctionTemplateClass)
 {
   PrivateData* data = new_<PrivateData>();
-  JS_SetPrivate(cx(), JSVAL_TO_OBJECT(mVal), data);
+  JS_SetPrivate(JSVAL_TO_OBJECT(mVal), data);
 
   Handle<ObjectTemplate> protoTemplate = ObjectTemplate::New();
   Set("prototype", protoTemplate);
@@ -130,7 +129,7 @@ FunctionTemplate::CallCallback(JSContext* cx,
   ApiExceptionBoundary boundary;
   HandleScope scope;
   Object fn(JSVAL_TO_OBJECT(JS_CALLEE(cx, vp)));
-  PrivateData* pd = PrivateData::Get(cx, **fn.GetInternalField(0).As<Object>());
+  PrivateData* pd = PrivateData::Get(**fn.GetInternalField(0).As<Object>());
   Handle<ObjectTemplate> instanceTemplate = pd->instanceTemplate.get();
   InvocationCallback callback = pd->callback;
   Local<Value> data = pd->callbackData.get();
@@ -181,7 +180,7 @@ Local<Function>
 FunctionTemplate::GetFunction(JSObject* parent)
 {
   HandleScope scope;
-  PrivateData* pd = PrivateData::Get(cx(), InternalObject());
+  PrivateData* pd = PrivateData::Get(InternalObject());
   Local<Function> fn = pd->cachedFunction.get();
   if (!fn.IsEmpty()) {
     return scope.Close(Local<Function>::New(fn));
@@ -224,7 +223,7 @@ void
 FunctionTemplate::SetCallHandler(InvocationCallback callback,
                                  Handle<Value> data)
 {
-  PrivateData* pd = PrivateData::Get(cx(), InternalObject());
+  PrivateData* pd = PrivateData::Get(InternalObject());
   pd->callback = callback;
   pd->callbackData = data;
 }
@@ -232,7 +231,7 @@ FunctionTemplate::SetCallHandler(InvocationCallback callback,
 Local<ObjectTemplate>
 FunctionTemplate::InstanceTemplate()
 {
-  PrivateData* pd = PrivateData::Get(cx(), InternalObject());
+  PrivateData* pd = PrivateData::Get(InternalObject());
   return pd->instanceTemplate.get();
 }
 
@@ -255,7 +254,7 @@ FunctionTemplate::PrototypeTemplate()
 void
 FunctionTemplate::SetClassName(Handle<String> name)
 {
-  PrivateData* pd = PrivateData::Get(cx(), InternalObject());
+  PrivateData* pd = PrivateData::Get(InternalObject());
   pd->name = name;
   pd->instanceTemplate->SetObjectName(name);
 }

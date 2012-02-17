@@ -116,7 +116,7 @@ namespace internal {
     while (ref != NULL) {
       jsval v = ref->native();
       ref->isNearDeath = JSVAL_IS_GCTHING(v) == JS_TRUE &&
-          JS_IsAboutToBeFinalized(cx(), JSVAL_TO_GCTHING(v)) == JS_TRUE;
+          JS_IsAboutToBeFinalized(JSVAL_TO_GCTHING(v)) == JS_TRUE;
       PersistentGCReference *next = ref->next;
       if (ref->isNearDeath && ref->callback) {
         Persistent<Value> h(reinterpret_cast<Value*>(ref));

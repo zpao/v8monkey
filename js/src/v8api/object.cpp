@@ -74,13 +74,11 @@ JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   ApiExceptionBoundary boundary;
   HandleScope scope;
   JSObject* fnObj = JSVAL_TO_OBJECT(JS_CALLEE(cx, vp));
-  jsval accessorOwner;
-  (void) JS_GetReservedSlot(cx, fnObj, 0, &accessorOwner);
+  jsval accessorOwner = JS_GetReservedSlot(fnObj, 0);
   JS_ASSERT(JSVAL_IS_OBJECT(accessorOwner));
   Object o(JSVAL_TO_OBJECT(accessorOwner));
 
-  jsval name;
-  (void) JS_GetReservedSlot(cx, fnObj, 1, &name);
+  jsval name = JS_GetReservedSlot(fnObj, 1);
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
 
@@ -95,13 +93,11 @@ JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   ApiExceptionBoundary boundary;
   HandleScope scope;
   JSObject* fnObj = JSVAL_TO_OBJECT(JS_CALLEE(cx, vp));
-  jsval accessorOwner;
-  (void) JS_GetReservedSlot(cx, fnObj, 0, &accessorOwner);
+  jsval accessorOwner = JS_GetReservedSlot(fnObj, 0);
   JS_ASSERT(JSVAL_IS_OBJECT(accessorOwner));
   Object o(JSVAL_TO_OBJECT(accessorOwner));
 
-  jsval name;
-  (void) JS_GetReservedSlot(cx, fnObj, 1, &name);
+  jsval name = JS_GetReservedSlot(fnObj, 1);
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
 
@@ -285,10 +281,10 @@ Object::SetAccessor(Handle<String> name,
     return false;
   JSObject *setterObj = JS_GetFunctionObject(setterFn);
 
-  JS_SetReservedSlot(cx(), getterObj, 0, native());
-  JS_SetReservedSlot(cx(), getterObj, 1, name->native());
-  JS_SetReservedSlot(cx(), setterObj, 0, native());
-  JS_SetReservedSlot(cx(), setterObj, 1, name->native());
+  JS_SetReservedSlot(getterObj, 0, native());
+  JS_SetReservedSlot(getterObj, 1, name->native());
+  JS_SetReservedSlot(setterObj, 0, native());
+  JS_SetReservedSlot(setterObj, 1, name->native());
 
   uintN attributes = JSPROP_GETTER | JSPROP_SETTER | JSPROP_SHARED;
   if (!JS_DefinePropertyById(cx(), *this, propid,
@@ -326,7 +322,7 @@ Object::GetPropertyNames()
 Local<Value>
 Object::GetPrototype()
 {
-  Value v(OBJECT_TO_JSVAL(JS_GetPrototype(cx(), *this)));
+  Value v(OBJECT_TO_JSVAL(JS_GetPrototype(*this)));
   return Local<Value>::New(&v);
 }
 
@@ -351,7 +347,7 @@ Object::FindInstanceInPrototypeChain(Handle<FunctionTemplate> tmpl)
 Local<String>
 Object::ObjectProtoToString()
 {
-  Object proto(JS_GetPrototype(cx(), *this));
+  Object proto(JS_GetPrototype(*this));
   Handle<Function> toString = proto.Get(String::New("toString")).As<Function>();
   if (toString.IsEmpty()) {
     TryCatch::CheckForException();
@@ -370,7 +366,7 @@ Object::GetConstructorName()
 int
 Object::InternalFieldCount()
 {
-  JSClass *cls = JS_GET_CLASS(cx(), *this);
+  JSClass *cls = JS_GetClass(*this);
   if (!cls)
     return -1;
   return JSCLASS_RESERVED_SLOTS(cls);
@@ -379,25 +375,26 @@ Object::InternalFieldCount()
 Local<Value>
 Object::GetInternalField(int index)
 {
-  Value v;
-  if (!JS_GetReservedSlot(cx(), *this, index, &v.native())) {
+  jsval v = JS_GetReservedSlot(*this, index);
+  if (JSVAL_IS_VOID(v)) {
     return Local<Value>();
   }
-  return Local<Value>::New(&v);
+  Value value(v);
+  return Local<Value>::New(&value);
 }
 
 void
 Object::SetInternalField(int index,
                          Handle<Value> value)
 {
-  (void) JS_SetReservedSlot(cx(), *this, index, value->native());
+  (void) JS_SetReservedSlot(*this, index, value->native());
 }
 
 void*
 Object::GetPointerFromInternalField(int index)
 {
-  jsval v;
-  if (!JS_GetReservedSlot(cx(), *this, index, &v)) {
+  jsval v = JS_GetReservedSlot(*this, index);
+  if (JSVAL_IS_VOID(v)) {
     return NULL;
   }
   // XXX: this assumes there was a ptr there
@@ -409,7 +406,7 @@ Object::SetPointerInInternalField(int index,
                                   void* value)
 {
   jsval v = PRIVATE_TO_JSVAL(value);
-  (void) JS_SetReservedSlot(cx(), *this, index, v);
+  (void) JS_SetReservedSlot(*this, index, v);
 }
 
 bool

@@ -2,8 +2,7 @@
 #define v8_v8_internal_h__
 #include "v8.h"
 #include "jsapi.h"
-//#include "jsfriendapi.h"
-#include "jsdbgapi.h"
+#include "jsfriendapi.h"
 
 namespace v8 {
 namespace internal {

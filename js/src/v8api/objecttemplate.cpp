@@ -36,14 +36,9 @@ struct PrivateData
     free(name);
   }
 
-  static PrivateData* Get(JSContext* cx,
-                          JSObject* obj)
-  {
-    return static_cast<PrivateData*>(JS_GetPrivate(cx, obj));
-  }
   static PrivateData* Get(JSObject* obj)
   {
-    return Get(cx(), obj);
+    return static_cast<PrivateData*>(JS_GetPrivate(obj));
   }
   static PrivateData* Get(Handle<ObjectTemplate> ot)
   {
@@ -87,37 +82,34 @@ struct ObjectTemplateHandle
     JS_ASSERT(holder != NULL);
   }
 
-  static ObjectTemplateHandle* Get(JSContext* cx,
-                                   JSObject* obj)
+  static ObjectTemplateHandle* Get(JSObject* obj)
   {
     ObjectTemplateHandle* data = NULL;
     // XXX: this doesn't work correctly if there are multiple
     // instantiated objects in the proto chain
     JSObject* o = obj;
     while (o != NULL) {
-      JSClass* cls = JS_GET_CLASS(cx, o);
+      JSClass* cls = JS_GetClass(o);
       if (cls->delProperty == o_DeleteProperty) {
-        data = static_cast<ObjectTemplateHandle*>(JS_GetPrivate(cx, o));
+        data = static_cast<ObjectTemplateHandle*>(JS_GetPrivate(o));
         break;
       }
-      o = JS_GetPrototype(cx, o);
+      o = JS_GetPrototype(o);
     }
     JS_ASSERT(data);
     return data;
   }
 
-  static Local<ObjectTemplate> GetHandle(JSContext* cx,
-                                         JSObject* obj)
+  static Local<ObjectTemplate> GetHandle(JSObject* obj)
   {
-    ObjectTemplateHandle* h = ObjectTemplateHandle::Get(cx, obj);
+    ObjectTemplateHandle* h = ObjectTemplateHandle::Get(obj);
     JS_ASSERT(h && h->objectTemplate);
     return h->objectTemplate.get();
   }
 
-  static JSObject* GetHolder(JSContext* cx,
-                             JSObject* obj)
+  static JSObject* GetHolder(JSObject* obj)
   {
-    ObjectTemplateHandle* h = ObjectTemplateHandle::Get(cx, obj);
+    ObjectTemplateHandle* h = ObjectTemplateHandle::Get(obj);
     JS_ASSERT(h && h->holder);
     return h->holder;
   }
@@ -135,7 +127,7 @@ o_DeleteProperty(JSContext* cx,
                  jsval* vp)
 {
   ApiExceptionBoundary boundary;
-  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
+  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(obj);
   PrivateData* pd = PrivateData::Get(ot);
   JS_ASSERT(pd);
   if (JSID_IS_INT(id) && pd->indexedDeleter) {
@@ -167,11 +159,11 @@ o_GetProperty(JSContext* cx,
               jsval* vp)
 {
   ApiExceptionBoundary boundary;
-  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
+  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(obj);
   PrivateData* pd = PrivateData::Get(ot);
   JS_ASSERT(pd);
   if (JSID_IS_INT(id) && JSID_TO_INT(id) >= 0 && pd->indexedGetter) {
-    JSObject* holder = ObjectTemplateHandle::GetHolder(cx, obj);
+    JSObject* holder = ObjectTemplateHandle::GetHolder(obj);
     const AccessorInfo info =
       AccessorInfo::MakeAccessorInfo(pd->indexedData.get(), obj, holder);
     Handle<Value> ret = pd->indexedGetter(JSID_TO_INT(id), info);
@@ -181,7 +173,7 @@ o_GetProperty(JSContext* cx,
     }
   }
   else if (JSID_IS_STRING(id) && pd->namedGetter) {
-    JSObject* holder = ObjectTemplateHandle::GetHolder(cx, obj);
+    JSObject* holder = ObjectTemplateHandle::GetHolder(obj);
     const AccessorInfo info =
       AccessorInfo::MakeAccessorInfo(pd->namedData.get(), obj, holder);
     Handle<Value> ret = pd->namedGetter(String::FromJSID(id), info);
@@ -202,7 +194,7 @@ o_SetProperty(JSContext* cx,
               jsval* vp)
 {
   ApiExceptionBoundary boundary;
-  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(cx, obj);
+  Local<ObjectTemplate> ot = ObjectTemplateHandle::GetHandle(obj);
   PrivateData* pd = PrivateData::Get(ot);
   JS_ASSERT(pd);
   if (JSID_IS_INT(id) && pd->indexedSetter) {
@@ -235,7 +227,7 @@ void
 o_Trace(JSTracer* tracer,
         JSObject* obj)
 {
-  ObjectTemplateHandle* data = ObjectTemplateHandle::Get(tracer->context, obj);
+  ObjectTemplateHandle* data = ObjectTemplateHandle::Get(obj);
   JS_ASSERT(data);
   data->objectTemplate.trace(tracer);
 }
@@ -244,7 +236,7 @@ void
 o_finalize(JSContext* cx,
            JSObject* obj)
 {
-  ObjectTemplateHandle* data = ObjectTemplateHandle::Get(cx, obj);
+  ObjectTemplateHandle* data = ObjectTemplateHandle::Get(obj);
   delete_(data);
 }
 
@@ -275,7 +267,7 @@ ot_SetProperty(JSContext* cx,
                JSBool strict,
                jsval* vp)
 {
-  PrivateData* data = PrivateData::Get(cx, obj);
+  PrivateData* data = PrivateData::Get(obj);
   JS_ASSERT(data);
 
   Value v(*vp);
@@ -291,7 +283,7 @@ void
 ot_Trace(JSTracer* tracer,
          JSObject* obj)
 {
-  PrivateData* data = PrivateData::Get(tracer->context, obj);
+  PrivateData* data = PrivateData::Get(obj);
   data->accessors.trace(tracer);
   data->attributes.trace(tracer);
   data->namedData.trace(tracer);
@@ -303,7 +295,7 @@ void
 ot_finalize(JSContext* cx,
             JSObject* obj)
 {
-  PrivateData* data = PrivateData::Get(cx, obj);
+  PrivateData* data = PrivateData::Get(obj);
   delete_(data);
 }
 
@@ -337,7 +329,7 @@ bool IsObjectTemplate(Handle<Value> v) {
   if (o.IsEmpty())
     return false;
   JSObject *obj = **o;
-  return &gObjectTemplateClass == JS_GET_CLASS(cx(), obj);
+  return &gObjectTemplateClass == JS_GetClass(obj);
 }
 }
 
@@ -345,7 +337,7 @@ ObjectTemplate::ObjectTemplate() :
   Template(&gObjectTemplateClass)
 {
   PrivateData* data = new PrivateData();
-  (void)JS_SetPrivate(cx(), InternalObject(), data);
+  (void)JS_SetPrivate(InternalObject(), data);
 }
 
 void ObjectTemplate::SetPrototype(Handle<ObjectTemplate> o) {
@@ -395,11 +387,7 @@ ObjectTemplate::NewInstance(JSObject* parent)
   }
 
   ObjectTemplateHandle* handle = new_<ObjectTemplateHandle>(this, obj);
-  if (!JS_SetPrivate(cx(), obj, handle)) {
-    delete_(handle);
-    // TODO handle error better
-    UNIMPLEMENTEDAPI(Local<Object>());
-  }
+  JS_SetPrivate(obj, handle);
 
   Object o(obj);
 

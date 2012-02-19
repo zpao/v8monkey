@@ -112,7 +112,7 @@ test_IsArray()
 Test gTests[] = {
   TEST(test_IntegerConversion),
   TEST(test_BooleanConversion),
-  TEST(test_IsFunction),
+  DISABLED_TEST(test_IsFunction, 102),
   TEST(test_IsArray),
 };
 

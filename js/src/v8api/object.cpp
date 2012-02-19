@@ -384,9 +384,11 @@ Object::GetInternalField(int index)
   else {
     v = JS_GetReservedSlot(*this, index);
   }
-  if (JSVAL_IS_VOID(v)) {
-    return Local<Value>();
-  }
+  // TODO: verify that it's ok to simply remove this. It should be, as creating
+  // a Value with a void jsval seems to be fine.
+//  if (JSVAL_IS_VOID(v)) {
+//    return Local<Value>();
+//  }
   Value value(v);
   return Local<Value>::New(&value);
 }

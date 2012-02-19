@@ -69,7 +69,7 @@ protected:
   jsval mVal;
 public:
   GCReference(jsval val) : mVal(val) {}
-  GCReference() : mVal(JSVAL_NULL) {}
+  GCReference() : mVal(JSVAL_VOID) {}
   jsval &native() {
     return mVal;
   }

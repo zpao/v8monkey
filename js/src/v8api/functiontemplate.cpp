@@ -190,7 +190,8 @@ FunctionTemplate::GetFunction(JSObject* parent)
     name = String::Empty();
   String::AsciiValue fnName(name);
   JSFunction* func =
-    JS_NewFunction(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR, NULL, *fnName);
+      js::NewFunctionWithReserved(cx(), CallCallback, 0, JSFUN_CONSTRUCTOR,
+                                  NULL, *fnName);
   JSObject* obj = JS_GetFunctionObject(func);
   Object o(obj);
   Local<String> prototypeStr = String::NewSymbol("prototype");

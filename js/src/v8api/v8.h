@@ -67,11 +67,9 @@ class GCReference {
 
 protected:
   jsval mVal;
-  js::gc::Cell *mGCCell;
 public:
-  GCReference(jsval val) : mVal(val), mGCCell(NULL) {}
-  GCReference(js::gc::Cell *cell) : mVal(JSVAL_NULL), mGCCell(cell) {}
-  GCReference() : mVal(JSVAL_NULL), mGCCell(NULL) {}
+  GCReference(jsval val) : mVal(val) {}
+  GCReference() : mVal(JSVAL_VOID) {}
   jsval &native() {
     return mVal;
   }
@@ -955,15 +953,12 @@ protected:
   friend class Script;
 };
 
-class Script : public internal::GCReference {
-  Script(JSScript *s) : GCReference((js::gc::Cell *)s) {};
+class Script : public v8::Object {
+  Script(JSObject *s) : v8::Object(s) {};
   
-
   operator JSScript *() {
-    return (JSScript*)mGCCell;
+    return reinterpret_cast<JSScript *>(JS_GetPrivate(*this));
   }
-  
-  Handle<Object> InternalObject();
   
   static Local<Script> Create(Handle<String> source, ScriptOrigin *origin, ScriptData *preData, Handle<String> scriptData, bool bindToCurrentContext);
 public:

@@ -727,6 +727,10 @@ JSScript* ScriptData::GenerateScript(void *aData, int aLen) {
 
 JS_STATIC_ASSERT(sizeof(Script) == sizeof(GCReference));
 
+// JSScript doesn't have a way to associate private data with it, so we create
+// a custom JSClass that we can instantiate and associate with the script. This
+// way, we can let v8::Script extend v8::Object and work on the custom object
+// instead of on the script itself.
 JSClass script_class = {
   "v8::ScriptObj", JSCLASS_HAS_PRIVATE,
   JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,

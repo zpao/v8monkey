@@ -74,11 +74,11 @@ JSBool Object::JSAPIPropertyGetter(JSContext* cx, uintN argc, jsval* vp) {
   ApiExceptionBoundary boundary;
   HandleScope scope;
   JSObject* fnObj = JSVAL_TO_OBJECT(JS_CALLEE(cx, vp));
-  jsval accessorOwner = JS_GetReservedSlot(fnObj, 0);
+  jsval accessorOwner = js::GetFunctionNativeReserved(fnObj, 0);
   JS_ASSERT(JSVAL_IS_OBJECT(accessorOwner));
   Object o(JSVAL_TO_OBJECT(accessorOwner));
 
-  jsval name = JS_GetReservedSlot(fnObj, 1);
+  jsval name = js::GetFunctionNativeReserved(fnObj, 1);
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
 
@@ -93,11 +93,11 @@ JSBool Object::JSAPIPropertySetter(JSContext* cx, uintN argc, jsval* vp) {
   ApiExceptionBoundary boundary;
   HandleScope scope;
   JSObject* fnObj = JSVAL_TO_OBJECT(JS_CALLEE(cx, vp));
-  jsval accessorOwner = JS_GetReservedSlot(fnObj, 0);
+  jsval accessorOwner = js::GetFunctionNativeReserved(fnObj, 0);
   JS_ASSERT(JSVAL_IS_OBJECT(accessorOwner));
   Object o(JSVAL_TO_OBJECT(accessorOwner));
 
-  jsval name = JS_GetReservedSlot(fnObj, 1);
+  jsval name = js::GetFunctionNativeReserved(fnObj, 1);
   jsid id;
   (void) JS_ValueToId(cx, name, &id);
 
@@ -271,20 +271,22 @@ Object::SetAccessor(Handle<String> name,
 
   jsid propid;
   JS_ValueToId(cx(), name->native(), &propid);
-  JSFunction* getterFn = JS_NewFunction(cx(), JSAPIPropertyGetter, 0, 0, NULL, NULL);
+  JSFunction* getterFn =
+    js::NewFunctionWithReserved(cx(), JSAPIPropertyGetter, 0, 0, NULL, NULL);
   if (!getterFn)
     return false;
   JSObject *getterObj = JS_GetFunctionObject(getterFn);
 
-  JSFunction* setterFn = JS_NewFunction(cx(), JSAPIPropertySetter, 1, 0, NULL, NULL);
+  JSFunction* setterFn =
+    js::NewFunctionWithReserved(cx(), JSAPIPropertySetter, 1, 0, NULL, NULL);
   if (!setterFn)
     return false;
   JSObject *setterObj = JS_GetFunctionObject(setterFn);
 
-  JS_SetReservedSlot(getterObj, 0, native());
-  JS_SetReservedSlot(getterObj, 1, name->native());
-  JS_SetReservedSlot(setterObj, 0, native());
-  JS_SetReservedSlot(setterObj, 1, name->native());
+  js::SetFunctionNativeReserved(getterObj, 0, native());
+  js::SetFunctionNativeReserved(getterObj, 1, name->native());
+  js::SetFunctionNativeReserved(setterObj, 0, native());
+  js::SetFunctionNativeReserved(setterObj, 1, name->native());
 
   uintN attributes = JSPROP_GETTER | JSPROP_SETTER | JSPROP_SHARED;
   if (!JS_DefinePropertyById(cx(), *this, propid,
@@ -375,10 +377,18 @@ Object::InternalFieldCount()
 Local<Value>
 Object::GetInternalField(int index)
 {
-  jsval v = JS_GetReservedSlot(*this, index);
-  if (JSVAL_IS_VOID(v)) {
-    return Local<Value>();
+  jsval v = JSVAL_VOID;
+  if (JS_ObjectIsFunction(cx(), *this)) {
+    v = js::GetFunctionNativeReserved(*this, index);
   }
+  else {
+    v = JS_GetReservedSlot(*this, index);
+  }
+  // TODO: verify that it's ok to simply remove this. It should be, as creating
+  // a Value with a void jsval seems to be fine.
+//  if (JSVAL_IS_VOID(v)) {
+//    return Local<Value>();
+//  }
   Value value(v);
   return Local<Value>::New(&value);
 }
@@ -387,7 +397,12 @@ void
 Object::SetInternalField(int index,
                          Handle<Value> value)
 {
-  (void) JS_SetReservedSlot(*this, index, value->native());
+  if (JS_ObjectIsFunction(cx(), *this)) {
+    js::SetFunctionNativeReserved(*this, index, value->native());
+  }
+  else {
+    (void) JS_SetReservedSlot(*this, index, value->native());
+  }
 }
 
 void*

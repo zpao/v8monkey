@@ -272,13 +272,13 @@ Object::SetAccessor(Handle<String> name,
   jsid propid;
   JS_ValueToId(cx(), name->native(), &propid);
   JSFunction* getterFn =
-      js::NewFunctionWithReserved(cx(), JSAPIPropertyGetter, 0, 0, NULL, NULL);
+    js::NewFunctionWithReserved(cx(), JSAPIPropertyGetter, 0, 0, NULL, NULL);
   if (!getterFn)
     return false;
   JSObject *getterObj = JS_GetFunctionObject(getterFn);
 
   JSFunction* setterFn =
-      js::NewFunctionWithReserved(cx(), JSAPIPropertySetter, 1, 0, NULL, NULL);
+    js::NewFunctionWithReserved(cx(), JSAPIPropertySetter, 1, 0, NULL, NULL);
   if (!setterFn)
     return false;
   JSObject *setterObj = JS_GetFunctionObject(setterFn);
